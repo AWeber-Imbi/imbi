@@ -417,6 +417,25 @@ class PatchOperationLogTests(_OpsLogTestBase):
         self.assertGreater(columns['_row_version'], 1)
         self.assertEqual(columns['id'], 'entry-abc')
 
+    def test_patch_refuses_agent_task_entries(self) -> None:
+        # A change to Agent Task.
+        self._setup_existing()
+        response = self.client.patch(
+            '/operations-log/entry-abc',
+            json=[
+                {'op': 'replace', 'path': '/entry_type', 'value': 'Agent Task'}
+            ],
+        )
+        self.assertEqual(response.status_code, 400)
+        # A change to a row that is Agent Task.
+        self._setup_existing(entry_type='Agent Task')
+        response = self.client.patch(
+            '/operations-log/entry-abc',
+            json=[{'op': 'replace', 'path': '/description', 'value': 'x'}],
+        )
+        self.assertEqual(response.status_code, 400)
+        self.mock_publish.assert_not_awaited()
+
     def test_patch_readonly_id_is_400(self) -> None:
         self._setup_existing()
         response = self.client.patch(
