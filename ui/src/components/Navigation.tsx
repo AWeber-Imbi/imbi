@@ -30,6 +30,7 @@ import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
 
 import { AGENTS_NAV, agentsPath } from './agents/agentsNav'
+import { useWaitingTaskCount } from './agents/taskQueries'
 import { NewOpsLogDialog } from './NewOpsLogDialog'
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -325,6 +326,8 @@ export function Navigation({ currentView }: NavigationProps) {
 /** The Agents entry: a menu of the pages in the Agents area. */
 function AgentsMenu({ isActive }: { isActive: boolean }) {
   const navigate = useNavigate()
+  const { selectedOrganization } = useOrganization()
+  const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
@@ -355,7 +358,13 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
                 <Icon className="text-tertiary size-4" />
                 <span className="flex flex-col">
                   <span className="text-sm font-medium">{item.label}</span>
-                  <span className="text-tertiary text-xs">{item.note}</span>
+                  {item.id === 'tasks' && waiting ? (
+                    <span className="text-amber-text text-xs">
+                      {waiting} waiting on you
+                    </span>
+                  ) : (
+                    <span className="text-tertiary text-xs">{item.note}</span>
+                  )}
                 </span>
               </DropdownMenuItem>
             </div>
