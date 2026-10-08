@@ -4527,6 +4527,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/requests/{request_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Agent Task Request
+         * @description Answer a feedback request, or approve or reject an approval.
+         *
+         *     Only a person can resolve a request, so an agent can never resolve
+         *     its own request or one of its subagent (I6). An approval names the
+         *     digests that the person reviewed; they must be the digests of the
+         *     request (I3). The resolution records the person, the time, the
+         *     channel, the constraints, and the approved digests (I9).
+         *
+         *     The status is 201 when this call resolves the request. When the
+         *     same person sends the same resolution again, the status is 200 and
+         *     nothing changes. A request that someone else resolved is a
+         *     ``409 request_resolved`` that names who resolved it (I4).
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:resolve``,
+         *             or is not a member of the org.
+         *         404: No such task or request.
+         *         409: ``task_closed``, ``request_resolved``, ``request_expired``,
+         *             or ``digest_mismatch``.
+         *         413: The resolution is larger than :data:`MAX_PAYLOAD_BYTES`.
+         *         422: The status does not fit the kind of the request.
+         */
+        post: operations["resolve_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests__request_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply Agent Task
+         * @description Write a reply from a person to the agent (H3).
+         *
+         *     The reply is a ``turn`` event with the person and the channel. The
+         *     harness reads it by seq at its next turn boundary (H7). With
+         *     ``hold``, the control value also changes to ``pause``, in the same
+         *     transaction (Reply and hold).
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed, or ``hold`` and a cancel is not done
+         *             yet.
+         *         413: The reply is larger than :data:`MAX_PAYLOAD_BYTES`.
+         */
+        post: operations["reply_agent_task_api_organizations__org_slug__agent_tasks__short_id__reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/{short_id}/sessions": {
         parameters: {
             query?: never;
@@ -4548,8 +4621,8 @@ export interface paths {
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
          *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
-         *             ``concurrency_limit`` (the agent has
-         *             ``settings.max_concurrent_tasks`` open sessions).
+         *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
+         *             other tasks of the agent have an open session).
          */
         post: operations["open_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions_post"];
         delete?: never;
@@ -4662,10 +4735,16 @@ export interface paths {
          * Open Agent Task Request
          * @description Ask a person for feedback or an approval; block the task.
          *
+         *     A repeat with the same ``request_key`` returns the first request
+         *     with status 200, resolved or not. Changed ``artifact_digests`` need a
+         *     new key (I3).
+         *
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task or session.
-         *         409: ``task_closed`` or ``session_closed``.
+         *         409: ``task_closed``, ``session_closed``, or
+         *             ``request_key_conflict`` (the request with the key has other
+         *             ``artifact_digests``).
          *         413: The request content is larger than
          *             :data:`MAX_PAYLOAD_BYTES`.
          *         422: An approval with no ``artifact_digests``, or an
@@ -8565,6 +8644,49 @@ export interface components {
              * @description The email of the new owner. Must be in the org.
              */
             owner: string;
+        };
+        /** AgentTaskReply */
+        AgentTaskReply: {
+            /** Body */
+            body: string;
+            /**
+             * Hold
+             * @description Also pause the task (Reply and hold).
+             * @default false
+             */
+            hold: boolean;
+        };
+        /**
+         * AgentTaskRequestResolve
+         * @description How a person resolves a request (I9).
+         */
+        AgentTaskRequestResolve: {
+            /**
+             * Status
+             * @description ``answered`` for feedback; ``approved`` or ``rejected`` for an approval.
+             * @enum {string}
+             */
+            status: "answered" | "approved" | "rejected";
+            /**
+             * Answer
+             * @description The decision. Required for ``answered``.
+             */
+            answer?: string | null;
+            /**
+             * Constraints
+             * @description Conditions that the person sets on the resolution.
+             */
+            constraints?: string[] | null;
+            /**
+             * Artifact Digests
+             * @description For ``approved``: the digests that the person reviewed. They must be the digests of the request (I3).
+             */
+            artifact_digests?: string[] | null;
+        };
+        /** AgentTaskRequestResolveResponse */
+        AgentTaskRequestResolveResponse: {
+            request: components["schemas"]["RequestResponse"];
+            task: components["schemas"]["AgentTaskResponse"];
         };
         /** AgentTaskResponse */
         AgentTaskResponse: {
@@ -12675,7 +12797,7 @@ export interface components {
              * Entry Type
              * @enum {string}
              */
-            entry_type: "Configured" | "Decommissioned" | "Deployed" | "Migrated" | "Provisioned" | "Restarted" | "Rolled Back" | "Scaled" | "Upgraded";
+            entry_type: "Agent Task" | "Configured" | "Decommissioned" | "Deployed" | "Migrated" | "Provisioned" | "Restarted" | "Rolled Back" | "Scaled" | "Upgraded";
             /** Description */
             description: string;
             /** Link */
@@ -15156,6 +15278,11 @@ export interface components {
             expires_at?: string | null;
             /** Session Id */
             session_id?: string | null;
+            /**
+             * Request Key
+             * @description A repeat with the same key returns the first request of the task.
+             */
+            request_key?: string | null;
         };
         /** RequestOpenResponse */
         RequestOpenResponse: {
@@ -15192,6 +15319,16 @@ export interface components {
              * Format: date-time
              */
             opened_at: string;
+            /** Request Key */
+            request_key?: string | null;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolution */
+            resolution?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RescoreRequest */
         RescoreRequest: {
@@ -24919,6 +25056,88 @@ export interface operations {
             };
         };
     };
+    resolve_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests__request_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                request_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskRequestResolve"];
+            };
+        };
+        responses: {
+            /** @description The caller already resolved the request this way; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskRequestResolveResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskRequestResolveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_agent_task_api_organizations__org_slug__agent_tasks__short_id__reply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskReply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     open_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions_post: {
         parameters: {
             query?: never;
@@ -25095,6 +25314,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description A request with this request key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestOpenResponse"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {

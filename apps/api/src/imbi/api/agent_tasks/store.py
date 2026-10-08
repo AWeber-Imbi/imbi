@@ -103,6 +103,30 @@ class EventIdConflict(ValueError):
     """An event of another task has this ``event_id``."""
 
 
+class RequestNotFound(LookupError):
+    """The task has no request with this id."""
+
+
+class RequestNotOpen(ValueError):
+    """The request is resolved or expired. ``request`` is its row."""
+
+    def __init__(self, request: dict[str, typing.Any]) -> None:
+        super().__init__(str(request['id']))
+        self.request = request
+
+
+class DigestMismatch(ValueError):
+    """The approved digests are not the digests of the request (I3)."""
+
+
+class ResolutionInvalid(ValueError):
+    """The resolution does not fit the kind of the request."""
+
+
+class RequestKeyConflict(ValueError):
+    """The request with this key binds to other digests."""
+
+
 @dataclasses.dataclass(frozen=True)
 class Actor:
     """Who caused an event, and through which channel."""
@@ -130,6 +154,7 @@ class NewTask:
     idempotency_key: str | None
     owner: str
     budget: decimal.Decimal | None
+    project_slug: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -212,6 +237,30 @@ class NewRequest:
     artifact_digests: list[str] | None
     expires_at: datetime.datetime | None
     session_id: uuid.UUID | None
+    request_key: str | None = None
+
+
+#: The status of a resolved request, by kind: feedback is answered,
+#: approval is approved or rejected.
+ResolvedStatus = typing.Literal['answered', 'approved', 'rejected']
+_RESOLVED_STATUSES: dict[str, tuple[ResolvedStatus, ...]] = {
+    'feedback': ('answered',),
+    'approval': ('approved', 'rejected'),
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class Resolution:
+    """How a person resolves a request (I9).
+
+    ``artifact_digests`` are the digests that the person approves. They
+    must be the digests of the request (I3).
+    """
+
+    status: ResolvedStatus
+    answer: str | None
+    constraints: list[str] | None
+    artifact_digests: list[str] | None
 
 
 @dataclasses.dataclass
@@ -300,10 +349,10 @@ class TaskStore:
                 await conn.execute(
                     'INSERT INTO agent_runtime.tasks (id, organization_id,'
                     ' short_id, agent_id, agent_version, prompt_version,'
-                    ' service_account_id, project_id, title, description,'
-                    ' origin_kind, origin_id, origin, idempotency_key, owner,'
-                    ' budget) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, %s, %s)',
+                    ' service_account_id, project_id, project_slug, title,'
+                    ' description, origin_kind, origin_id, origin,'
+                    ' idempotency_key, owner, budget) VALUES (%s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
                     (
                         task_id,
                         task.organization_id,
@@ -313,6 +362,7 @@ class TaskStore:
                         task.prompt_version,
                         task.service_account_id,
                         task.project_id,
+                        task.project_slug,
                         task.title,
                         task.description,
                         task.origin_kind,
@@ -529,54 +579,33 @@ class TaskStore:
 
         """
         async with self._write(organization_id, short_id) as write:
-            task = write.task
-            if task['control'] == control:
-                return task
-            if task['control'] == 'cancel':
-                raise CancelPending(short_id)
-            await write.event(
-                'control.changed',
-                {'from': task['control'], 'to': control, 'actor': actor.id},
-                actor,
-            )
-            changes: Row = {'control': control}
-            status = task['status']
-            if not await _session_open(write.conn, task['id']):
-                status = _IDLE_STATUS[control]
-                if status == 'queued' and await _request_open(
-                    write.conn, task['id']
-                ):
-                    status = 'blocked'
-            elif control == 'run' and status == 'paused':
-                status = (
-                    'blocked'
-                    if await _request_open(write.conn, task['id'])
-                    else 'running'
-                )
-            if status != task['status']:
-                changes['status'] = status
-                await write.event(
-                    'state.changed',
-                    {
-                        'from': task['status'],
-                        'to': status,
-                        'reason': 'control_changed',
-                    },
-                    actor,
-                )
-            if status == 'closed':
-                changes['outcome'] = 'cancelled_by_human'
-                changes['outcome_reason'] = CANCELLED_WITHOUT_SESSION
-                changes['closed_at'] = datetime.datetime.now(datetime.UTC)
-                await write.event(
-                    'outcome.set',
-                    {
-                        'outcome': changes['outcome'],
-                        'reason': changes['outcome_reason'],
-                    },
-                    actor,
-                )
-            await write.update(changes)
+            await _apply_control(write, control, actor, short_id)
+        return write.task
+
+    async def reply(
+        self,
+        organization_id: str,
+        short_id: str,
+        body: str,
+        actor: Actor,
+        *,
+        hold: bool = False,
+    ) -> Row:
+        """Write a human ``turn`` (H3); with ``hold``, also pause.
+
+        The harness reads the turn by seq at its next turn boundary
+        (H7). The turn and the pause commit together.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            CancelPending: ``hold`` and a cancel waits for the harness.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            await write.event('turn', {'body': body}, actor)
+            if hold:
+                await _apply_control(write, 'pause', actor, short_id)
         return write.task
 
     async def set_owner(
@@ -872,26 +901,47 @@ class TaskStore:
         short_id: str,
         request: NewRequest,
         actor: Actor,
-    ) -> tuple[Row, Row]:
+    ) -> tuple[Row, Row, bool]:
         """Open a request, write ``request.opened``, and block the task.
+
+        Return the task, the request, and whether the request is new. A
+        repeat with the same ``request_key`` returns the first request
+        of the task.
 
         Raises:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
             SessionNotFound: The task has no such session.
             SessionClosed: The session is closed.
+            RequestKeyConflict: The request with the key has other
+                ``artifact_digests``. Changed digests need a new request
+                (I3).
 
         """
         async with self._write(organization_id, short_id) as write:
             task = write.task
+            if request.request_key is not None:
+                # Two opens with one key wait for the same task lock.
+                existing = await _fetch_one(
+                    write.conn,
+                    'SELECT * FROM agent_runtime.requests'
+                    ' WHERE task_id = %s AND request_key = %s',
+                    (task['id'], request.request_key),
+                )
+                if existing is not None:
+                    if existing['artifact_digests'] != (
+                        request.artifact_digests
+                    ):
+                        raise RequestKeyConflict(request.request_key)
+                    return task, existing, False
             if request.session_id is not None:
                 await _open_session(write.conn, task['id'], request.session_id)
             row = await _fetch_one(
                 write.conn,
                 'INSERT INTO agent_runtime.requests (id, task_id,'
                 ' session_id, kind, title, why, options, artifacts,'
-                ' artifact_digests, expires_at)'
-                ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+                ' artifact_digests, expires_at, request_key)'
+                ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
                 ' RETURNING *',
                 (
                     uuid.uuid4(),
@@ -904,6 +954,7 @@ class TaskStore:
                     _jsonb(request.artifacts),
                     request.artifact_digests,
                     request.expires_at,
+                    request.request_key,
                 ),
             )
             if row is None:  # pragma: no cover - RETURNING yields a row
@@ -929,7 +980,124 @@ class TaskStore:
             )
             if task['status'] != 'blocked':
                 await _set_status(write, 'blocked', 'request_opened', actor)
-        return write.task, row
+        return write.task, row, True
+
+    async def resolve_request(
+        self,
+        organization_id: str,
+        short_id: str,
+        request_id: uuid.UUID,
+        resolution: Resolution,
+        actor: Actor,
+    ) -> tuple[Row, Row, bool]:
+        """Resolve an open request and write ``request.resolved``.
+
+        Return the task, the request, and whether this call resolved
+        it. The same actor that sends the same resolution again gets the
+        request back unchanged (I4). When no open request remains, a
+        ``blocked`` task goes back to ``running`` if a session is open
+        and the control value is ``run``; with no session open, it goes
+        to ``queued`` (``paused`` when the control value is ``pause``).
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            RequestNotFound: The task has no such request.
+            RequestNotOpen: Another resolution, or the request expired.
+            ResolutionInvalid: The status does not fit the kind.
+            DigestMismatch: An approval of other digests (I3).
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            request = await _fetch_one(
+                write.conn,
+                'SELECT * FROM agent_runtime.requests'
+                ' WHERE id = %s AND task_id = %s FOR UPDATE',
+                (request_id, task['id']),
+            )
+            if request is None:
+                raise RequestNotFound(str(request_id))
+            if request['status'] != 'open':
+                stored: Row = request['resolution'] or {}
+                if (
+                    request['resolved_by'] == actor.id
+                    and request['status'] == resolution.status
+                    and stored.get('answer') == resolution.answer
+                    and stored.get('constraints') == resolution.constraints
+                    and (
+                        resolution.status != 'approved'
+                        or sorted(stored.get('artifact_digests') or [])
+                        == sorted(resolution.artifact_digests or [])
+                    )
+                ):
+                    return task, request, False
+                raise RequestNotOpen(request)
+            now = datetime.datetime.now(datetime.UTC)
+            if request['expires_at'] is not None and (
+                request['expires_at'] <= now
+            ):
+                raise RequestNotOpen(request)
+            if resolution.status not in _RESOLVED_STATUSES[request['kind']]:
+                raise ResolutionInvalid(
+                    f'a {request["kind"]} request cannot be '
+                    f'{resolution.status}'
+                )
+            if resolution.status == 'approved' and sorted(
+                resolution.artifact_digests or []
+            ) != sorted(request['artifact_digests'] or []):
+                raise DigestMismatch(str(request_id))
+            record: Row = {
+                'answer': resolution.answer,
+                'constraints': resolution.constraints,
+                'artifact_digests': (
+                    request['artifact_digests']
+                    if resolution.status == 'approved'
+                    else None
+                ),
+                'channel': actor.channel,
+            }
+            request = await _fetch_one(
+                write.conn,
+                'UPDATE agent_runtime.requests SET status = %s,'
+                ' resolved_by = %s, resolved_at = %s, resolution = %s'
+                ' WHERE id = %s RETURNING *',
+                (
+                    resolution.status,
+                    actor.id,
+                    now,
+                    pg_json.Jsonb(record),
+                    request_id,
+                ),
+            )
+            if request is None:  # pragma: no cover - the row is locked
+                raise RequestNotFound(str(request_id))
+            await write.event(
+                'request.resolved',
+                {
+                    'request_id': str(request_id),
+                    'kind': request['kind'],
+                    'status': resolution.status,
+                    'resolved_by': actor.id,
+                    **record,
+                },
+                actor,
+            )
+            if task['status'] == 'blocked' and not await _request_open(
+                write.conn, task['id']
+            ):
+                if not await _session_open(write.conn, task['id']):
+                    await _set_status(
+                        write,
+                        _IDLE_STATUS[task['control']],
+                        'request_resolved',
+                        actor,
+                    )
+                elif task['control'] == 'run':
+                    await _set_status(
+                        write, 'running', 'request_resolved', actor
+                    )
+        return write.task, request, True
 
     async def report_usage(
         self,
@@ -1076,6 +1244,58 @@ class TaskStore:
         async with self._write(organization_id, short_id) as write:
             await _close(write, outcome, reason, actor)
         return write.task
+
+
+async def _apply_control(
+    write: _Write, control: Control, actor: Actor, short_id: str
+) -> None:
+    """Set the control value; see :meth:`TaskStore.set_control`."""
+    task = write.task
+    if task['control'] == control:
+        return
+    if task['control'] == 'cancel':
+        raise CancelPending(short_id)
+    await write.event(
+        'control.changed',
+        {'from': task['control'], 'to': control, 'actor': actor.id},
+        actor,
+    )
+    changes: Row = {'control': control}
+    status = task['status']
+    if not await _session_open(write.conn, task['id']):
+        status = _IDLE_STATUS[control]
+        if status == 'queued' and await _request_open(write.conn, task['id']):
+            status = 'blocked'
+    elif control == 'run' and status == 'paused':
+        status = (
+            'blocked'
+            if await _request_open(write.conn, task['id'])
+            else 'running'
+        )
+    if status != task['status']:
+        changes['status'] = status
+        await write.event(
+            'state.changed',
+            {
+                'from': task['status'],
+                'to': status,
+                'reason': 'control_changed',
+            },
+            actor,
+        )
+    if status == 'closed':
+        changes['outcome'] = 'cancelled_by_human'
+        changes['outcome_reason'] = CANCELLED_WITHOUT_SESSION
+        changes['closed_at'] = datetime.datetime.now(datetime.UTC)
+        await write.event(
+            'outcome.set',
+            {
+                'outcome': changes['outcome'],
+                'reason': changes['outcome_reason'],
+            },
+            actor,
+        )
+    await write.update(changes)
 
 
 async def _set_status(

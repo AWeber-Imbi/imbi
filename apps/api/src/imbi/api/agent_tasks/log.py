@@ -8,6 +8,9 @@ ClickHouse does not have and publishes them again.
 
 Both tables are ReplacingMergeTree tables keyed on the identity of the
 row, so a row that is published two times is stored one time.
+
+Request resolutions and terminal outcomes also go to the Operations Log
+(I9, N9), as a projection of their events: see :func:`opslog_row`.
 """
 
 import decimal
@@ -17,7 +20,7 @@ import uuid
 
 import orjson
 
-from imbi.common import clickhouse, iggy
+from imbi.common import clickhouse, iggy, models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +29,10 @@ type Row = dict[str, typing.Any]
 EVENTS_STREAM = 'agent_task_events'
 USAGE_STREAM = 'agent_usage'
 TOPIC = 'agent_tasks'
+OPSLOG_STREAM = 'operations_log'
+OPSLOG_TOPIC = 'api'
+#: The event types that the Operations Log shows.
+OPSLOG_EVENT_TYPES = frozenset({'request.resolved', 'outcome.set'})
 
 _ARCHIVED_EVENTS_QUERY = """
 SELECT event_id, seq, type, schema_version, actor_kind, actor_id, channel,
@@ -129,6 +136,41 @@ def usage_row(task: Row, ledger: Row) -> Row:
     return row
 
 
+def opslog_row(task: Row, event: Row) -> Row | None:
+    """Return the ``operations_log`` row of an event, or ``None``.
+
+    Only a resolution or an outcome of a task with a project has a row.
+    The Operations Log is project scoped, and its list is not scoped to
+    an organization, so a task with no project never goes there. The
+    description has no task, request, or reply text. The row id is the
+    event id, so a row that is published again collapses.
+    """
+    if event['type'] not in OPSLOG_EVENT_TYPES or not task['project_slug']:
+        return None
+    payload = event['payload']
+    if event['type'] == 'request.resolved':
+        description = f'{task["short_id"]}: {payload["kind"]} request '
+        description += payload['status']
+    else:
+        description = f'{task["short_id"]} closed: {payload["outcome"]}'
+    actor = event['actor_id'] or 'imbi'
+    entry = models.OperationLog(
+        id=str(event['event_id']),
+        occurred_at=event['at'],
+        recorded_by=actor,
+        performed_by=actor,
+        completed_at=event['at'],
+        project_id=task['project_id'],
+        project_slug=task['project_slug'],
+        environment_slug='',
+        entry_type='Agent Task',
+        description=description,
+    )
+    row = entry.model_dump(by_alias=True, mode='python')
+    row['is_deleted'] = 0
+    return row
+
+
 async def publish(
     task: Row, events: list[Row], ledger: list[Row] | None = None
 ) -> None:
@@ -138,6 +180,13 @@ async def publish(
     commits. A failure is logged; the sweep publishes the rows later.
     """
     try:
+        # Before the events: when this publish fails, the sweep finds
+        # the events missing and publishes both again.
+        opslog = [
+            row for e in events if (row := opslog_row(task, e)) is not None
+        ]
+        if opslog:
+            await iggy.publish_rows(OPSLOG_STREAM, OPSLOG_TOPIC, opslog)
         if events:
             await iggy.publish_rows(
                 EVENTS_STREAM, TOPIC, [event_row(task, e) for e in events]

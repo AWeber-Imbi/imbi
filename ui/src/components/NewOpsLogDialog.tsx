@@ -78,7 +78,13 @@ export function NewOpsLogDialog({
     if (!isOpen) return
     setProjectId(initialValues?.project_id ?? '')
     setEnvironmentSlug(initialValues?.environment_slug ?? '')
-    setEntryType(initialValues?.entry_type ?? '')
+    // A person cannot make an Agent Task entry, so a duplicate of one
+    // starts with no type.
+    setEntryType(
+      initialValues?.entry_type === 'Agent Task'
+        ? ''
+        : (initialValues?.entry_type ?? ''),
+    )
     setDescription(initialValues?.description ?? '')
     setVersion(initialValues?.version ?? '')
     setLink(initialValues?.link ?? '')
@@ -255,7 +261,10 @@ export function NewOpsLogDialog({
               <Combobox
                 id="new-ops-entry-type"
                 onChange={(val) => setEntryType(val as OperationsLogEntryType)}
-                options={OPERATIONS_LOG_ENTRY_TYPES.map((t) => ({
+                // Agent Task rows come only from agent task events.
+                options={OPERATIONS_LOG_ENTRY_TYPES.filter(
+                  (t) => t !== 'Agent Task',
+                ).map((t) => ({
                   label: t,
                   value: t,
                 }))}

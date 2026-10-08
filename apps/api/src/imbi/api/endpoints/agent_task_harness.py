@@ -26,7 +26,6 @@ import typing
 import uuid
 
 import fastapi
-import orjson
 import pydantic
 
 from imbi.api import agent_tasks
@@ -36,7 +35,7 @@ from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.common import graph, models
 
 #: The largest inline event payload, in bytes of JSON.
-MAX_PAYLOAD_BYTES = 64 * 1024
+MAX_PAYLOAD_BYTES = tasks_api.MAX_PAYLOAD_BYTES
 
 #: The event types that a harness writes. Imbi writes all others.
 HarnessEventType = typing.Literal[
@@ -158,6 +157,14 @@ class RequestCreate(pydantic.BaseModel):
     )
     expires_at: pydantic.AwareDatetime | None = None
     session_id: uuid.UUID | None = None
+    request_key: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            'A repeat with the same key returns the first request of the task.'
+        ),
+    )
 
     @pydantic.model_validator(mode='after')
     def _check(self) -> typing.Self:
@@ -243,22 +250,8 @@ class UsageResponse(pydantic.BaseModel):
     task: TaskState
 
 
-class RequestResponse(pydantic.BaseModel):
-    id: uuid.UUID
-    session_id: uuid.UUID | None = None
-    kind: str
-    status: str
-    title: str
-    why: str | None = None
-    options: list[typing.Any] | None = None
-    artifacts: list[typing.Any] | None = None
-    artifact_digests: list[str] | None = None
-    expires_at: datetime.datetime | None = None
-    opened_at: datetime.datetime
-
-
 class RequestOpenResponse(pydantic.BaseModel):
-    request: RequestResponse
+    request: tasks_api.RequestResponse
     task: TaskState
 
 
@@ -400,18 +393,6 @@ def _conflict(error: str, message: str) -> fastapi.HTTPException:
     )
 
 
-def _too_large(what: str, size: int) -> fastapi.HTTPException:
-    return fastapi.HTTPException(
-        status_code=413,
-        detail={
-            'error': 'payload_too_large',
-            'message': (
-                f'{what} is {size} bytes; the limit is {MAX_PAYLOAD_BYTES}'
-            ),
-        },
-    )
-
-
 _STORE_ERRORS = (
     agent_tasks.TaskNotFound,
     agent_tasks.SessionNotFound,
@@ -420,6 +401,7 @@ _STORE_ERRORS = (
     agent_tasks.SessionClosed,
     agent_tasks.ConcurrencyLimit,
     agent_tasks.EventIdConflict,
+    agent_tasks.RequestKeyConflict,
 )
 
 
@@ -444,6 +426,11 @@ def _translate(err: Exception, short_id: str) -> fastapi.HTTPException:
     if isinstance(err, agent_tasks.EventIdConflict):
         return _conflict(
             'event_id_conflict', 'Another task has an event with this id'
+        )
+    if isinstance(err, agent_tasks.RequestKeyConflict):
+        return _conflict(
+            'request_key_conflict',
+            f'Request {err} has other artifact_digests; use a new key',
         )
     return _conflict(
         'concurrency_limit',
@@ -621,9 +608,9 @@ async def append_agent_task_events(
 
     """
     for index, event in enumerate(data.events):
-        size = len(orjson.dumps(event.payload))
-        if size > MAX_PAYLOAD_BYTES:
-            raise _too_large(f'The payload of event {index}', size)
+        tasks_api.check_payload_size(
+            f'The payload of event {index}', event.payload
+        )
     try:
         _row, written, duplicates = await store.append_events(
             org_id,
@@ -719,30 +706,43 @@ async def report_agent_task_usage(
     '/{short_id}/requests',
     status_code=201,
     response_model=RequestOpenResponse,
+    responses={
+        200: {
+            'model': RequestOpenResponse,
+            'description': (
+                'A request with this request key exists; it is returned.'
+            ),
+        },
+    },
 )
 async def open_agent_task_request(
     org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: RequestCreate,
+    response: fastapi.Response,
     store: agent_tasks.Store,
 ) -> RequestOpenResponse:
     """Ask a person for feedback or an approval; block the task.
 
+    A repeat with the same ``request_key`` returns the first request
+    with status 200, resolved or not. Changed ``artifact_digests`` need a
+    new key (I3).
+
     Raises:
         403: The caller is not the service account of the task's agent.
         404: No such task or session.
-        409: ``task_closed`` or ``session_closed``.
+        409: ``task_closed``, ``session_closed``, or
+            ``request_key_conflict`` (the request with the key has other
+            ``artifact_digests``).
         413: The request content is larger than
             :data:`MAX_PAYLOAD_BYTES`.
         422: An approval with no ``artifact_digests``, or an
             ``expires_at`` that is not in the future.
 
     """
-    size = len(orjson.dumps(data.model_dump(mode='json')))
-    if size > MAX_PAYLOAD_BYTES:
-        raise _too_large('The request', size)
+    tasks_api.check_payload_size('The request', data.model_dump(mode='json'))
     try:
-        row, request = await store.open_request(
+        row, request, created = await store.open_request(
             org_id,
             task['short_id'],
             agent_tasks.NewRequest(
@@ -754,13 +754,16 @@ async def open_agent_task_request(
                 artifact_digests=data.artifact_digests,
                 expires_at=data.expires_at,
                 session_id=data.session_id,
+                request_key=data.request_key,
             ),
             _agent_actor(task),
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
+    if not created:
+        response.status_code = 200
     return RequestOpenResponse(
-        request=RequestResponse.model_validate(request),
+        request=tasks_api.RequestResponse.model_validate(request),
         task=task_state(row),
     )
 
