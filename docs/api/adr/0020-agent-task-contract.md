@@ -70,11 +70,14 @@ transaction. Nothing changes a task without writing an event.
 
 ### Archive moves the log out of Postgres
 
-A sweep runs on a schedule. For each task it compares the Postgres event
-count and highest sequence number with ClickHouse and republishes any
-missing event. When a task has a terminal outcome and ClickHouse has every
-sequence number, the sweep deletes the task's Postgres events and sets
-`log_archived_at`.
+A sweep runs on a schedule. For each task it compares the Postgres events
+with ClickHouse and republishes any missing event. ClickHouse has every
+event when its number of distinct sequence numbers equals its highest
+sequence number: sequences start at 1 and have no gaps, so only the full
+set `1..max` gives that result. Duplicate rows that ReplacingMergeTree has
+not merged yet do not change a distinct count. When a task has a terminal
+outcome and ClickHouse has every event, the sweep deletes the task's
+Postgres events and sets `log_archived_at`.
 
 The events endpoint reads Postgres for a task that is not archived and
 ClickHouse for one that is. Callers see one log.
