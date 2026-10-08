@@ -424,7 +424,9 @@ class TaskStore:
         when its agent is in ``text_agent_ids`` or its project is in
         ``text_project_ids``; the caller finds those in the graph.
         ``before`` is the ``(created_at, id)`` keyset of the last row of
-        the previous page.
+        the previous page. Each row also has ``blocked_since``, the time
+        the oldest open request opened, so a blocked queue can sort
+        oldest block first (O2).
         """
         conditions: list[sql.Composable] = [sql.SQL('organization_id = %s')]
         params: list[typing.Any] = [organization_id]
@@ -455,7 +457,10 @@ class TaskStore:
             conditions.append(sql.SQL('(created_at, id) < (%s, %s)'))
             params += list(before)
         statement = sql.SQL(
-            'SELECT * FROM agent_runtime.tasks WHERE {where}'
+            'SELECT *, (SELECT min(r.opened_at)'
+            ' FROM agent_runtime.requests AS r WHERE r.task_id = tasks.id'
+            " AND r.status = 'open') AS blocked_since"
+            ' FROM agent_runtime.tasks WHERE {where}'
             ' ORDER BY created_at DESC, id DESC LIMIT %s'
         ).format(where=sql.SQL(' AND ').join(conditions))
         params.append(limit)
@@ -465,6 +470,17 @@ class TaskStore:
         ):
             await cursor.execute(statement, params)
             return await cursor.fetchall()
+
+    async def count_blocked(self, organization_id: str) -> int:
+        """Return the number of blocked tasks in the organization."""
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT count(*) FROM agent_runtime.tasks'
+                " WHERE organization_id = %s AND status = 'blocked'",
+                (organization_id,),
+            )
+            row = await cursor.fetchone()
+        return int(row[0]) if row else 0
 
     async def events(
         self, task_id: uuid.UUID, after_seq: int, limit: int

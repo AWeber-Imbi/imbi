@@ -112,6 +112,8 @@ class AgentTaskResponse(pydantic.BaseModel):
     prompt_version: int | None = None
     service_account_id: str
     project_id: str | None = None
+    #: The slug of the project when the task was made.
+    project_slug: str | None = None
     title: str
     description: str
     origin: AgentTaskOrigin
@@ -134,6 +136,16 @@ class AgentTaskResponse(pydantic.BaseModel):
     updated_at: datetime.datetime
     closed_at: datetime.datetime | None = None
     log_archived_at: datetime.datetime | None = None
+
+
+class AgentTaskListItem(AgentTaskResponse):
+    #: When the oldest open request opened; ``null`` with none open.
+    blocked_since: datetime.datetime | None = None
+
+
+class AgentTaskWaiting(pydantic.BaseModel):
+    #: The number of blocked tasks in the organization (O1).
+    count: int
 
 
 class AgentTaskEventResponse(pydantic.BaseModel):
@@ -537,7 +549,7 @@ async def create_agent_task(
     return task
 
 
-@agent_tasks_router.get('/', response_model=list[AgentTaskResponse])
+@agent_tasks_router.get('/', response_model=list[AgentTaskListItem])
 async def list_agent_tasks(
     org_slug: str,
     org_id: OrgId,
@@ -561,7 +573,9 @@ async def list_agent_tasks(
 
     ``q`` matches the title, the short id, the agent name, or the
     project slug. ``mine`` keeps the tasks that the caller owns. The
-    ``Link`` header has the URL of the next page.
+    ``Link`` header has the URL of the next page. Each task has
+    ``blocked_since``, so a client can sort the blocked queue oldest
+    block first (O2).
 
     Raises:
         400: The cursor is not valid.
@@ -611,6 +625,28 @@ async def list_agent_tasks(
         )
     response.headers['Link'] = build_link_header(request, next_cursor)
     return rows
+
+
+@agent_tasks_router.get('/waiting', response_model=AgentTaskWaiting)
+async def count_waiting_agent_tasks(
+    org_id: OrgId,
+    store: agent_tasks.Store,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:read')),
+    ],
+) -> dict[str, int]:
+    """Count the tasks in the organization that wait on a person.
+
+    A task waits when it is ``blocked`` on an open request. The count is
+    for the whole organization, for the navigation badge (O1).
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization.
+
+    """
+    return {'count': await store.count_blocked(org_id)}
 
 
 @agent_tasks_router.get('/{short_id}', response_model=AgentTaskResponse)

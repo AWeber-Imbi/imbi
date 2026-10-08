@@ -484,6 +484,45 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(await self.list_ids(owner=self.member), ['T-3'])
         self.assertEqual(await self.list_ids(mine='true'), ['T-2', 'T-1'])
 
+    async def test_project_slug(self) -> None:
+        response = await self.client.get(self.url('T-2'))
+        self.assertEqual(response.json()['project_slug'], self.project_id)
+        response = await self.client.get(self.url('T-1'))
+        self.assertIsNone(response.json()['project_slug'])
+
+    async def open_request(self, short_id: str, title: str) -> None:
+        await self.store.open_request(
+            self.org,
+            short_id,
+            agent_tasks.NewRequest(
+                kind='feedback',
+                title=title,
+                why=None,
+                options=None,
+                artifacts=None,
+                artifact_digests=None,
+                expires_at=None,
+                session_id=None,
+            ),
+            agent_tasks.Actor('agent', 'triage', 'harness'),
+        )
+
+    async def test_blocked_since_and_waiting_count(self) -> None:
+        response = await self.client.get(self.url('waiting'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {'count': 0})
+        await self.open_request('T-3', 'First')
+        await self.open_request('T-1', 'Second')
+        await self.open_request('T-3', 'Third')
+        response = await self.client.get(self.url())
+        since = {t['short_id']: t['blocked_since'] for t in response.json()}
+        self.assertIsNone(since['T-2'])
+        self.assertLess(since['T-3'], since['T-1'])
+        response = await self.client.get(self.url('waiting'))
+        self.assertEqual(response.json(), {'count': 2})
+        response = await self.client.get(self.url('waiting', self.other_org))
+        self.assertEqual(response.json(), {'count': 0})
+
     async def test_events_page_by_seq(self) -> None:
         await self.client.post(self.url('T-1/pause'))
         await self.client.post(self.url('T-1/resume'))
@@ -637,6 +676,7 @@ class PermissionTests(AgentTaskTestCase):
                 {'agent_slug': 'triage', 'title': 'x', 'description': 'y'},
             ),
             ('agent_task:read', 'GET', '', None),
+            ('agent_task:read', 'GET', 'waiting', None),
             ('agent_task:read', 'GET', 'T-1', None),
             ('agent_task:read', 'GET', 'T-1/events', None),
             ('agent_task:manage', 'POST', 'T-1/pause', None),
@@ -786,6 +826,7 @@ class MembershipTests(AgentTaskTestCase):
                 {'agent_slug': 'triage', 'title': 'x', 'description': 'y'},
             ),
             ('GET', '', None),
+            ('GET', 'waiting', None),
             ('GET', 'T-1', None),
             ('GET', 'T-1/events', None),
             ('POST', 'T-1/pause', None),
