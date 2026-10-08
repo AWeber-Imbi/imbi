@@ -92,7 +92,7 @@ export function TasksPage() {
         <Panel className="flex min-h-0 flex-col" id="detail" minSize="35%">
           {shortId ? (
             <TaskDetail
-              key={shortId}
+              key={`${orgSlug}:${shortId}`}
               orgSlug={orgSlug}
               shortId={shortId}
               tab={tab}
