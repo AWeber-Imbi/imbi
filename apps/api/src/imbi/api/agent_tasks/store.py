@@ -514,7 +514,9 @@ class TaskStore:
         """Set the control value of a task and write its events.
 
         When a harness session is open, only ``control`` changes; the
-        harness acts on it at its next turn boundary. When no session is
+        harness acts on it at its next turn boundary. One exception:
+        ``run`` moves a ``paused`` task to ``running`` (``blocked`` when
+        a request is open), because the harness works it. When no session is
         open, the status changes too: ``pause`` moves the task to
         ``paused``, ``run`` moves it back to ``queued`` (``blocked``
         when a request is open), and ``cancel`` closes it with the
@@ -538,35 +540,42 @@ class TaskStore:
                 actor,
             )
             changes: Row = {'control': control}
+            status = task['status']
             if not await _session_open(write.conn, task['id']):
                 status = _IDLE_STATUS[control]
                 if status == 'queued' and await _request_open(
                     write.conn, task['id']
                 ):
                     status = 'blocked'
-                if status != task['status']:
-                    changes['status'] = status
-                    await write.event(
-                        'state.changed',
-                        {
-                            'from': task['status'],
-                            'to': status,
-                            'reason': 'control_changed',
-                        },
-                        actor,
-                    )
-                if status == 'closed':
-                    changes['outcome'] = 'cancelled_by_human'
-                    changes['outcome_reason'] = CANCELLED_WITHOUT_SESSION
-                    changes['closed_at'] = datetime.datetime.now(datetime.UTC)
-                    await write.event(
-                        'outcome.set',
-                        {
-                            'outcome': changes['outcome'],
-                            'reason': changes['outcome_reason'],
-                        },
-                        actor,
-                    )
+            elif control == 'run' and status == 'paused':
+                status = (
+                    'blocked'
+                    if await _request_open(write.conn, task['id'])
+                    else 'running'
+                )
+            if status != task['status']:
+                changes['status'] = status
+                await write.event(
+                    'state.changed',
+                    {
+                        'from': task['status'],
+                        'to': status,
+                        'reason': 'control_changed',
+                    },
+                    actor,
+                )
+            if status == 'closed':
+                changes['outcome'] = 'cancelled_by_human'
+                changes['outcome_reason'] = CANCELLED_WITHOUT_SESSION
+                changes['closed_at'] = datetime.datetime.now(datetime.UTC)
+                await write.event(
+                    'outcome.set',
+                    {
+                        'outcome': changes['outcome'],
+                        'reason': changes['outcome_reason'],
+                    },
+                    actor,
+                )
             await write.update(changes)
         return write.task
 

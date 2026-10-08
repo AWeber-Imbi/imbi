@@ -287,6 +287,22 @@ class SessionTests(HarnessTestCase):
         sessions = await self.sessions()
         self.assertIsNotNone(sessions[0]['heartbeat_at'])
 
+    async def test_resume_runs_a_paused_task_with_a_session(self) -> None:
+        await self.as_user('POST', 'T-1/pause')
+        self.assertEqual((await self.task_row())['status'], 'paused')
+        await self.open_session()
+        self.assertEqual((await self.task_row())['status'], 'paused')
+        response = await self.as_user('POST', 'T-1/resume')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'running')
+        changed = [
+            e for e in await self.events() if e['type'] == 'state.changed'
+        ]
+        self.assertEqual(
+            changed[-1]['payload'],
+            {'from': 'paused', 'to': 'running', 'reason': 'control_changed'},
+        )
+
     async def test_heartbeat_needs_an_open_session(self) -> None:
         session = (await self.open_session())['session']
         response = await self.post(f'sessions/{uuid.uuid4()}/heartbeat')

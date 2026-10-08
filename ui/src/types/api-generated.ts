@@ -16189,13 +16189,25 @@ export interface components {
              * @description The catalog slug or the model id sent to the provider.
              */
             model_id: string;
-            /** Tokens In */
+            /**
+             * Tokens In
+             * @description Uncached input tokens only. Do not include the tokens in cache_read_tokens or cache_write_tokens.
+             */
             tokens_in?: number | null;
-            /** Tokens Out */
+            /**
+             * Tokens Out
+             * @description Output tokens.
+             */
             tokens_out?: number | null;
-            /** Cache Read Tokens */
+            /**
+             * Cache Read Tokens
+             * @description Input tokens read from the cache.
+             */
             cache_read_tokens?: number | null;
-            /** Cache Write Tokens */
+            /**
+             * Cache Write Tokens
+             * @description Input tokens written to the cache.
+             */
             cache_write_tokens?: number | null;
             /** Session Id */
             session_id?: string | null;

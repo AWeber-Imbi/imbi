@@ -119,10 +119,23 @@ class UsageReport(pydantic.BaseModel):
         max_length=200,
         description='The catalog slug or the model id sent to the provider.',
     )
-    tokens_in: int | None = pydantic.Field(default=None, ge=0)
-    tokens_out: int | None = pydantic.Field(default=None, ge=0)
-    cache_read_tokens: int | None = pydantic.Field(default=None, ge=0)
-    cache_write_tokens: int | None = pydantic.Field(default=None, ge=0)
+    tokens_in: int | None = pydantic.Field(
+        default=None,
+        ge=0,
+        description=(
+            'Uncached input tokens only. Do not include the tokens in'
+            ' cache_read_tokens or cache_write_tokens.'
+        ),
+    )
+    tokens_out: int | None = pydantic.Field(
+        default=None, ge=0, description='Output tokens.'
+    )
+    cache_read_tokens: int | None = pydantic.Field(
+        default=None, ge=0, description='Input tokens read from the cache.'
+    )
+    cache_write_tokens: int | None = pydantic.Field(
+        default=None, ge=0, description='Input tokens written to the cache.'
+    )
     session_id: uuid.UUID | None = None
 
 
