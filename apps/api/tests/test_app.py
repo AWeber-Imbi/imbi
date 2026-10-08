@@ -72,6 +72,7 @@ class CreateAppTestCase(unittest.TestCase):
             response.headers['content-type'].startswith('text/plain')
         )
         self.assertIn('imbi_iggy_published_total', response.text)
+        self.assertIn('imbi_iggy_topic_status_up', response.text)
 
 
 class ApiPrefixTestCase(unittest.TestCase):

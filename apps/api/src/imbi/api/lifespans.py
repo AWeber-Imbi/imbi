@@ -10,7 +10,7 @@ import contextlib
 import logging
 from collections import abc
 
-from imbi.api import openapi
+from imbi.api import iggy_metrics, openapi
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.documents import read_sweeper as document_read_sweeper
@@ -66,6 +66,26 @@ async def iggy_hook() -> abc.AsyncGenerator[None]:
         raise RuntimeError('Iggy initialization failed')
     async with contextlib.aclosing(iggy):
         yield
+
+
+@contextlib.asynccontextmanager
+async def iggy_metrics_hook() -> abc.AsyncGenerator[None]:
+    """Refresh the Iggy topic status gauges in the background."""
+    stop = asyncio.Event()
+    task = asyncio.create_task(iggy_metrics.run_refresher(stop=stop))
+    try:
+        yield None
+    finally:
+        stop.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Iggy metrics refresher exited with error', exc_info=True
+            )
 
 
 @contextlib.asynccontextmanager

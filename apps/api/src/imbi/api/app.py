@@ -38,6 +38,7 @@ def create_app() -> fastapi.FastAPI:
             sentry.sentry_lifespan,
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
+            lifespans.iggy_metrics_hook,
             graph.graph_lifespan,
             agent_tasks.store_lifespan,
             prompt_pool.pool_lifespan,
