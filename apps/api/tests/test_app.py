@@ -4,6 +4,7 @@ import unittest
 import unittest.mock
 
 import fastapi
+import fastapi.testclient
 
 from imbi.api import app, settings, version
 from imbi.common import access_log
@@ -58,7 +59,19 @@ class CreateAppTestCase(unittest.TestCase):
         quiet_paths = typing.cast(
             'set[str]', access_log_mw.kwargs['quiet_paths']
         )
-        self.assertEqual(set(quiet_paths), {'/status', '/api/status'})
+        self.assertEqual(
+            set(quiet_paths), {'/status', '/api/status', '/metrics'}
+        )
+
+    def test_metrics_returns_prometheus_text(self) -> None:
+        # No `with`, so the lifespan does not run: the route needs none.
+        client = fastapi.testclient.TestClient(app.create_app())
+        response = client.get('/metrics')
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(
+            response.headers['content-type'].startswith('text/plain')
+        )
+        self.assertIn('imbi_iggy_published_total', response.text)
 
 
 class ApiPrefixTestCase(unittest.TestCase):
@@ -77,6 +90,8 @@ class ApiPrefixTestCase(unittest.TestCase):
         self.assertNotIn('/uploads/', paths)
         self.assertIn('/openapi.json', paths)
         self.assertIn('/docs', paths)
+        self.assertIn('/metrics', paths)
+        self.assertNotIn('/api/metrics', paths)
 
     def test_no_url_serves_at_root(self) -> None:
         with unittest.mock.patch.dict(os.environ, {'IMBI_API_URL': ''}):

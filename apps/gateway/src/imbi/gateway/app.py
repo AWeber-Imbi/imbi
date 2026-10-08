@@ -5,7 +5,14 @@ import fastapi
 import typer
 
 import imbi.gateway
-from imbi.common import access_log, graph, lifespan, server, settings
+from imbi.common import (
+    access_log,
+    graph,
+    lifespan,
+    metrics,
+    server,
+    settings,
+)
 from imbi.common.plugins import registry as plugin_registry
 from imbi.gateway import app_status, lifespans, notifications
 
@@ -42,9 +49,12 @@ def create_app() -> fastapi.FastAPI:
     )
     app.include_router(notifications.router)
     app.include_router(app_status.router)
+    # For Prometheus to scrape by pod IP. The Caddyfile refuses
+    # /gateway/metrics so that the public routes do not reach it.
+    metrics.add_route(app)
     app.add_middleware(
         access_log.AccessLogMiddleware,
-        quiet_paths={'/status', '/gateway/status'},
+        quiet_paths={'/status', '/gateway/status', metrics.PATH},
     )
     return app
 

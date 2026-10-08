@@ -72,6 +72,16 @@ class AppTests(helpers.TestCase):
         self.assertIn('/jobs/v1/tasks', paths)
         self.assertNotIn('/api/tasks', paths)
 
+    def test_metrics_returns_prometheus_text(self) -> None:
+        # No `with`, so the lifespan does not run: the route needs none.
+        client = fastapi.testclient.TestClient(imbi.scheduler.app.create_app())
+        response = client.get('/metrics')
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(
+            response.headers['content-type'].startswith('text/plain')
+        )
+        self.assertIn('imbi_iggy_published_total', response.text)
+
     def test_status_is_never_prefixed(self) -> None:
         # The health path must not move when the API does: the container and
         # helm probes read it directly on the pod, not through the Caddy mount.
