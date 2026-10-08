@@ -117,7 +117,8 @@ class HarnessClient:
         self, request_id: str, after_seq: int, interval: float = 2.0
     ) -> Body:
         """Read the log by seq until the request is resolved; return the
-        ``request.resolved`` event.
+        ``request.resolved`` event. When the task closes first (a person
+        cancels it), return the ``outcome.set`` event.
 
         This is how a harness gets human input (H7): it polls the events
         after the last ``seq`` that it saw.
@@ -128,7 +129,7 @@ class HarnessClient:
                 await asyncio.sleep(interval)
             for event in page:
                 after_seq = event['seq']
-                if (
+                if event['type'] == 'outcome.set' or (
                     event['type'] == 'request.resolved'
                     and event['payload']['request_id'] == request_id
                 ):
@@ -205,9 +206,23 @@ async def run_task(
         answer = await harness.wait_for_answer(
             request['request']['id'], request['task']['last_seq'], interval
         )
-        session_id = (await harness.open_session(f'reference-{run}-2'))[
-            'session'
-        ]['id']
+        if answer['type'] == 'outcome.set':
+            return {
+                'status': 'closed',
+                'outcome': answer['payload']['outcome'],
+                'outcome_reason': answer['payload']['reason'],
+            }
+        opened = await harness.open_session(f'reference-{run}-2')
+        session_id = opened['session']['id']
+        # A person can pause the task while the request is open.
+        state = opened['task']
+        while state['control'] == 'pause':
+            await asyncio.sleep(interval)
+            state = await harness.heartbeat(session_id)
+        if state['control'] == 'cancel':
+            return await harness.set_outcome(
+                'cancelled_by_human', 'cancel_seen'
+            )
         await harness.append(
             session_id,
             [

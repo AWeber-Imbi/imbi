@@ -1019,9 +1019,17 @@ class TaskStore:
             if request is None:
                 raise RequestNotFound(str(request_id))
             if request['status'] != 'open':
+                stored: Row = request['resolution'] or {}
                 if (
                     request['resolved_by'] == actor.id
                     and request['status'] == resolution.status
+                    and stored.get('answer') == resolution.answer
+                    and stored.get('constraints') == resolution.constraints
+                    and (
+                        resolution.status != 'approved'
+                        or sorted(stored.get('artifact_digests') or [])
+                        == sorted(resolution.artifact_digests or [])
+                    )
                 ):
                     return task, request, False
                 raise RequestNotOpen(request)

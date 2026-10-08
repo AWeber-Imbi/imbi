@@ -173,6 +173,17 @@ class ResolveTests(ActionTestCase):
         # who resolved it.
         response = await self.resolve(request_id, status='rejected')
         self.assertEqual(response.status_code, 409, response.text)
+        response = await self.resolve(
+            request_id, status='approved', artifact_digests=['sha256:cd']
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self.resolve(
+            request_id,
+            status='approved',
+            artifact_digests=['sha256:ab'],
+            answer='Ship it.',
+        )
+        self.assertEqual(response.status_code, 409, response.text)
         self.act_as_person(self.member)
         response = await self.resolve(
             request_id, status='approved', artifact_digests=['sha256:ab']
@@ -412,6 +423,87 @@ class ClientWaitTests(ActionTestCase):
             if e['type'] == 'turn'
         ]
         self.assertIn('The answer is yes.', turns)
+
+    async def wait_for_open_request(self) -> uuid.UUID:
+        while True:
+            async with self.pool.connection() as conn:
+                cursor = await conn.execute(
+                    'SELECT id FROM agent_runtime.requests'
+                    " WHERE task_id = %s AND status = 'open'",
+                    (uuid.UUID(self.task['id']),),
+                )
+                row = await cursor.fetchone()
+            if row is not None:
+                return row[0]
+            await asyncio.sleep(0.01)
+
+    async def run_client(self, person: typing.Any) -> dict[str, typing.Any]:
+        slug = f'opus-{uuid.uuid4().hex[:8]}'
+        await self.make_model(slug, slug)
+        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        state, _ = await asyncio.wait_for(
+            asyncio.gather(
+                agent_task_client.run_task(
+                    harness, model_id=slug, ask=True, wait=True, interval=0.01
+                ),
+                person(),
+            ),
+            timeout=30,
+        )
+        return state
+
+    async def test_client_stops_when_the_task_is_cancelled(self) -> None:
+        human = agent_tasks.Actor('human', self.email, 'web')
+
+        async def cancel() -> None:
+            await self.wait_for_open_request()
+            await self.store.set_control(self.org, 'T-1', 'cancel', human)
+
+        state = await self.run_client(cancel)
+        self.assertEqual(state['status'], 'closed')
+        self.assertEqual(state['outcome'], 'cancelled_by_human')
+
+    async def test_client_waits_for_run_after_a_pause(self) -> None:
+        human = agent_tasks.Actor('human', self.email, 'web')
+
+        async def pause_then_run() -> None:
+            request_id = await self.wait_for_open_request()
+            await self.store.set_control(self.org, 'T-1', 'pause', human)
+            await self.store.resolve_request(
+                self.org,
+                'T-1',
+                request_id,
+                agent_tasks.Resolution('answered', 'yes', None, None),
+                human,
+            )
+            # Read the database, not the API: the API client is the
+            # harness's client while run_task works.
+            task_id = uuid.UUID(self.task['id'])
+            while True:
+                async with self.pool.connection() as conn:
+                    cursor = await conn.execute(
+                        'SELECT count(*) FROM agent_runtime.sessions'
+                        " WHERE task_id = %s AND session_key LIKE '%%-2'",
+                        (task_id,),
+                    )
+                    row = await cursor.fetchone()
+                if row and row[0]:
+                    break
+                await asyncio.sleep(0.01)
+            # The paused client writes no work.
+            async with self.pool.connection() as conn:
+                cursor = await conn.execute(
+                    'SELECT count(*) FROM agent_runtime.events'
+                    " WHERE task_id = %s AND type = 'turn'"
+                    " AND payload->>'body' = 'The answer is yes.'",
+                    (task_id,),
+                )
+                row = await cursor.fetchone()
+            self.assertEqual(row, (0,))
+            await self.store.set_control(self.org, 'T-1', 'run', human)
+
+        state = await self.run_client(pause_then_run)
+        self.assertEqual(state['outcome'], 'done_acted')
 
 
 class SizeTests(ActionTestCase):
