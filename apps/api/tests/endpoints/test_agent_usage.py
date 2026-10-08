@@ -1,7 +1,9 @@
 """Tests for the agent usage endpoint (ADR 0020).
 
-The usage rows go into the live ClickHouse that ``root:services`` boots,
-in the shape that :func:`imbi.api.agent_tasks.log.usage_row` makes.
+The rows go into the live ClickHouse that ``root:services`` boots, in
+the shape that :func:`imbi.api.agent_tasks.log.usage_row` and
+:func:`~imbi.api.agent_tasks.log.event_row` make. A run is a
+``task.created`` event; cost and tokens come from usage reports.
 """
 
 import datetime
@@ -18,7 +20,45 @@ TODAY = datetime.datetime.now(datetime.UTC).replace(
 )
 
 
+def _task(org: str, task: str, agent: str) -> dict[str, typing.Any]:
+    return {
+        'organization_id': org,
+        'id': uuid.uuid5(uuid.NAMESPACE_URL, f'{org}/{task}'),
+        'short_id': task,
+        'agent_id': agent,
+        'agent_version': 1,
+        'project_id': None,
+    }
+
+
 class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
+    async def create(
+        self,
+        *,
+        org: str | None = None,
+        agent: str = 'agent-a',
+        task: str = 'T-1',
+        days_ago: int = 0,
+    ) -> None:
+        """Publish the ``task.created`` event of ``task``."""
+        event = {
+            'seq': 1,
+            'event_id': uuid.uuid4(),
+            'type': 'task.created',
+            'schema_version': 1,
+            'actor_kind': 'human',
+            'actor_id': self.email,
+            'channel': 'web',
+            'session_id': None,
+            'at': TODAY - datetime.timedelta(days=days_ago),
+            'payload': {},
+        }
+        await iggy.publish_rows(
+            log.EVENTS_STREAM,
+            log.TOPIC,
+            [log.event_row(_task(org or self.org, task, agent), event)],
+        )
+
     async def publish(
         self,
         *,
@@ -31,14 +71,7 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         report_id: str | None = None,
     ) -> None:
         """Publish one usage report of ``task``."""
-        org = org or self.org
-        task_row = {
-            'organization_id': org,
-            'id': uuid.uuid5(uuid.NAMESPACE_URL, f'{org}/{task}'),
-            'short_id': task,
-            'agent_id': agent,
-            'project_id': None,
-        }
+        task_row = _task(org or self.org, task, agent)
         ledger: dict[str, typing.Any] = {
             'session_id': None,
             'id': report_id or str(uuid.uuid4()),
@@ -68,6 +101,15 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         return response.json()
 
     async def test_totals_by_agent_and_day(self) -> None:
+        await self.create(task='T-1')
+        # The sweep can publish an event again; the task counts once.
+        await self.create(task='T-1')
+        await self.create(task='T-2', days_ago=1)
+        await self.create(agent='agent-b', task='T-3')
+        # A run that stopped before its first model call.
+        await self.create(task='T-5', days_ago=2)
+        await self.create(task='T-4', days_ago=40)
+        await self.create(org=self.other_org, task='T-1')
         duplicate = str(uuid.uuid4())
         await self.publish(report_id=duplicate)
         # The sweep can publish a row again; it counts one time.
@@ -89,7 +131,8 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         )
         by_agent = {row['agent_id']: row for row in usage['agents']}
         self.assertEqual(list(by_agent), ['agent-b', 'agent-a'])
-        self.assertEqual(by_agent['agent-a']['tasks'], 2)
+        # T-1, T-2, and T-5. T-4 was created out of the range.
+        self.assertEqual(by_agent['agent-a']['tasks'], 3)
         # An unmeasured report adds no tokens and no cost.
         self.assertEqual(by_agent['agent-a']['tokens_in'], 2000)
         self.assertEqual(by_agent['agent-a']['tokens_out'], 300)
@@ -104,16 +147,22 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
             for row in usage['days']
         ]
         yesterday = (today - datetime.timedelta(days=1)).isoformat()
+        before = (today - datetime.timedelta(days=2)).isoformat()
         self.assertEqual(
             [(d, a, t, decimal.Decimal(c)) for d, a, t, c in days],
             [
+                (before, 'agent-a', 1, decimal.Decimal(0)),
                 (yesterday, 'agent-a', 1, decimal.Decimal('0.25')),
-                (today.isoformat(), 'agent-a', 2, decimal.Decimal('1.5')),
+                # T-2 has usage today, but it is a run of yesterday.
+                (today.isoformat(), 'agent-a', 1, decimal.Decimal('1.5')),
                 (today.isoformat(), 'agent-b', 1, decimal.Decimal(4)),
             ],
         )
 
     async def test_range_and_agent_filters(self) -> None:
+        await self.create(days_ago=40)
+        await self.create(days_ago=35, task='T-2')
+        await self.create(agent='agent-b', days_ago=40, task='T-3')
         await self.publish(days_ago=40)
         await self.publish(days_ago=35, task='T-2')
         await self.publish(agent='agent-b', days_ago=40, task='T-3')
@@ -142,6 +191,7 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         )
 
     async def test_other_organization_is_not_visible(self) -> None:
+        await self.create(org=self.other_org)
         await self.publish(org=self.other_org)
 
         usage = await self.get_usage()

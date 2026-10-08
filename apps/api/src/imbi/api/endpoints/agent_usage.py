@@ -2,8 +2,9 @@
 
 Token use and cost of agent tasks, from the ``agent_usage`` table in
 ClickHouse. ClickHouse is analytics only: the budget authority is the
-Postgres ledger. A task counts as one run of its agent when it has a
-usage report in the range.
+Postgres ledger. A task counts as one run of its agent on the day of its
+``task.created`` event in ``agent_task_events``, so a task that stops
+before its first model call is also a run.
 
 Like the task routes, every route needs the caller to be a member of
 the organization (``MEMBER_OF``).
@@ -29,7 +30,8 @@ DEFAULT_RANGE_DAYS = 30
 
 class AgentUsageTotals(pydantic.BaseModel):
     agent_id: str
-    #: Tasks with a usage report in the range.
+    #: Tasks created in the range (runs). Usage in the range can come
+    #: from tasks created before it.
     tasks: int
     #: Input tokens. Cache reads and writes are not included.
     tokens_in: int
@@ -47,9 +49,9 @@ class AgentUsageDay(AgentUsageTotals):
 class AgentUsage(pydantic.BaseModel):
     start: datetime.date
     end: datetime.date
-    #: One row for each day and agent with usage, by day.
+    #: One row for each day and agent with runs or usage, by day.
     days: list[AgentUsageDay]
-    #: One row for each agent with usage in the range, by cost.
+    #: One row for each agent with runs or usage in the range, by cost.
     agents: list[AgentUsageTotals]
     #: USD this UTC calendar month, by agent id, for the advisory
     #: monthly cost cap. It does not depend on ``start`` and ``end``.
@@ -66,7 +68,6 @@ WHERE organization_id = {organization_id:String}
 """
 
 _TOTALS = """
-       uniqExact(task_id) AS tasks,
        ifNull(sum(tokens_in), 0) AS tokens_in,
        ifNull(sum(tokens_out), 0) AS tokens_out,
        ifNull(sum(cache_read_tokens), 0) AS cache_read_tokens,
@@ -77,19 +78,57 @@ _TOTALS = """
 _DAYS_QUERY = f"""
 SELECT toDate(recorded_at) AS day, agent_id, {_TOTALS} {_FROM}
 GROUP BY day, agent_id
-ORDER BY day, agent_id
 """
 
 _AGENTS_QUERY = f"""
 SELECT agent_id, {_TOTALS} {_FROM}
 GROUP BY agent_id
-ORDER BY cost DESC, agent_id
+"""
+
+_RUNS_FROM = """
+FROM imbi.agent_task_events
+WHERE organization_id = {organization_id:String}
+  AND type = 'task.created'
+  AND at >= {since:DateTime64(6)}
+  AND at < {until:DateTime64(6)}
+  AND ({agent_id:String} = '' OR agent_id = {agent_id:String})
+"""
+
+_DAY_RUNS_QUERY = f"""
+SELECT toDate(at) AS day, agent_id, uniqExact(task_id) AS tasks {_RUNS_FROM}
+GROUP BY day, agent_id
+"""
+
+_AGENT_RUNS_QUERY = f"""
+SELECT agent_id, uniqExact(task_id) AS tasks {_RUNS_FROM}
+GROUP BY agent_id
 """
 
 _MONTH_QUERY = f"""
 SELECT agent_id, ifNull(sum(cost), 0) AS cost {_FROM}
 GROUP BY agent_id
 """
+
+
+_ZERO: dict[str, typing.Any] = {
+    'tasks': 0,
+    'tokens_in': 0,
+    'tokens_out': 0,
+    'cache_read_tokens': 0,
+    'cache_write_tokens': 0,
+    'cost': decimal.Decimal(0),
+}
+
+
+def _merge(
+    rows: list[dict[str, typing.Any]], *keys: str
+) -> list[dict[str, typing.Any]]:
+    """Merge usage rows and run rows that have the same ``keys``."""
+    merged: dict[tuple[typing.Any, ...], dict[str, typing.Any]] = {}
+    for row in rows:
+        key = tuple(row[k] for k in keys)
+        merged.setdefault(key, dict(_ZERO)).update(row)
+    return list(merged.values())
 
 
 def _midnight(day: datetime.date) -> datetime.datetime:
@@ -148,10 +187,20 @@ async def get_agent_usage(
         'since': _midnight(today.replace(day=1)),
         'until': _midnight(today + datetime.timedelta(days=1)),
     }
-    days, agents, month_rows = await asyncio.gather(
+    days, day_runs, agents, agent_runs, month_rows = await asyncio.gather(
         clickhouse.query(_DAYS_QUERY, params),
+        clickhouse.query(_DAY_RUNS_QUERY, params),
         clickhouse.query(_AGENTS_QUERY, params),
+        clickhouse.query(_AGENT_RUNS_QUERY, params),
         clickhouse.query(_MONTH_QUERY, month),
+    )
+    days = sorted(
+        _merge(days + day_runs, 'day', 'agent_id'),
+        key=lambda row: (row['day'], row['agent_id']),
+    )
+    agents = sorted(
+        _merge(agents + agent_runs, 'agent_id'),
+        key=lambda row: (-row['cost'], row['agent_id']),
     )
     return AgentUsage(
         start=start,
