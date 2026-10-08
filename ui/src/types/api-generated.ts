@@ -4328,7 +4328,9 @@ export interface paths {
          *
          *     ``q`` matches the title, the short id, the agent name, or the
          *     project slug. ``mine`` keeps the tasks that the caller owns. The
-         *     ``Link`` header has the URL of the next page.
+         *     ``Link`` header has the URL of the next page. Each task has
+         *     ``blocked_since``, so a client can sort the blocked queue oldest
+         *     block first (O2).
          *
          *     Raises:
          *         400: The cursor is not valid.
@@ -4353,6 +4355,33 @@ export interface paths {
          *             is more than the agent's task budget.
          */
         post: operations["create_agent_task_api_organizations__org_slug__agent_tasks__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/waiting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Waiting Agent Tasks
+         * @description Count the tasks in the organization that wait on a person.
+         *
+         *     A task waits when it is ``blocked`` on an open request. The count is
+         *     for the whole organization, for the navigation badge (O1).
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["count_waiting_agent_tasks_api_organizations__org_slug__agent_tasks_waiting_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8621,6 +8650,83 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AgentTaskListItem */
+        AgentTaskListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Short Id */
+            short_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: number;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            /** Service Account Id */
+            service_account_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Slug */
+            project_slug?: string | null;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            origin: components["schemas"]["AgentTaskOrigin"];
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Owner */
+            owner: string;
+            /** Budget */
+            budget?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            /**
+             * Control
+             * @enum {string}
+             */
+            control: "run" | "pause" | "cancel";
+            /** Phase */
+            phase?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Cost Total */
+            cost_total: string;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Last Seq */
+            last_seq: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /** Log Archived At */
+            log_archived_at?: string | null;
+            /** Blocked Since */
+            blocked_since?: string | null;
+        };
         /**
          * AgentTaskOrigin
          * @description What started a task. It does not change.
@@ -8707,6 +8813,8 @@ export interface components {
             service_account_id: string;
             /** Project Id */
             project_id?: string | null;
+            /** Project Slug */
+            project_slug?: string | null;
             /** Title */
             title: string;
             /** Description */
@@ -8760,6 +8868,11 @@ export interface components {
             closed_at?: string | null;
             /** Log Archived At */
             log_archived_at?: string | null;
+        };
+        /** AgentTaskWaiting */
+        AgentTaskWaiting: {
+            /** Count */
+            count: number;
         };
         /** AgentTeamRef */
         AgentTeamRef: {
@@ -24754,7 +24867,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentTaskResponse"][];
+                    "application/json": components["schemas"]["AgentTaskListItem"][];
                 };
             };
             /** @description Validation Error */
@@ -24799,6 +24912,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_waiting_agent_tasks_api_organizations__org_slug__agent_tasks_waiting_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskWaiting"];
                 };
             };
             /** @description Validation Error */

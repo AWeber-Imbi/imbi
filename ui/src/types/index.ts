@@ -745,6 +745,20 @@ export type AgentSubagent = Schemas['AgentSubagent']
 
 export type AgentSubagentRef = Schemas['AgentSubagentRef']
 
+// Agent tasks (ADR 0020): the work of one agent, its event log, and the
+// requests that wait on a person.
+export type AgentTask = Schemas['AgentTaskResponse']
+
+export type AgentTaskCreate = Schemas['AgentTaskCreate']
+
+export type AgentTaskEvent = Schemas['AgentTaskEventResponse']
+
+export type AgentTaskListItem = Schemas['AgentTaskListItem']
+
+export type AgentTaskResolve = Schemas['AgentTaskRequestResolve']
+
+export type AgentTaskStatus = AgentTask['status']
+
 // The tools that an agent can use, in groups by server, and the
 // configuration of one tool. The tool key is `<server slug>.<name>`.
 export type AgentToolCatalog = Schemas['AgentToolCatalog']
