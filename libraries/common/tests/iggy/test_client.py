@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 import orjson
+import prometheus_client
 import pydantic
 
 from imbi.common import iggy as common_iggy
@@ -24,6 +25,13 @@ def _pending_tasks() -> list[asyncio.Task[typing.Any]]:
         for task in asyncio.all_tasks()
         if task is not current and not task.done()
     ]
+
+
+def _count(name: str, stream: str, topic: str) -> float | None:
+    """The value of one publish counter series, None when it is absent."""
+    return prometheus_client.REGISTRY.get_sample_value(
+        name, {'stream': stream, 'topic': topic}
+    )
 
 
 class SampleModel(pydantic.BaseModel):
@@ -414,6 +422,61 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIn('publish to events/gateway', str(ctx.exception))
 
+    async def test_publish_counts_the_published_messages(self) -> None:
+        iggy = client.Iggy.get_instance()
+        published = _count('imbi_iggy_published_total', 'events', 'gateway')
+        errors = _count('imbi_iggy_publish_errors_total', 'events', 'gateway')
+        await iggy.publish(
+            'events',
+            'gateway',
+            [SampleModel(id=1, name='one'), SampleModel(id=2, name='2')],
+        )
+        await iggy.publish_rows('events', 'gateway', [{'id': 3}])
+        self.assertEqual(
+            (published or 0) + 3,
+            _count('imbi_iggy_published_total', 'events', 'gateway'),
+        )
+        self.assertEqual(
+            errors,
+            _count('imbi_iggy_publish_errors_total', 'events', 'gateway'),
+        )
+
+    async def test_publish_counts_a_failed_send(self) -> None:
+        iggy = client.Iggy.get_instance()
+        published = _count('imbi_iggy_published_total', 'events', 'gateway')
+        errors = _count('imbi_iggy_publish_errors_total', 'events', 'gateway')
+        self.mock_client.send_messages.side_effect = RuntimeError(
+            'Disconnected'
+        )
+        with self.assertRaises(client.PublishError):
+            await iggy.publish(
+                'events',
+                'gateway',
+                [SampleModel(id=1, name='one'), SampleModel(id=2, name='2')],
+            )
+        self.assertEqual(
+            (errors or 0) + 2,
+            _count('imbi_iggy_publish_errors_total', 'events', 'gateway'),
+        )
+        self.assertEqual(
+            published,
+            _count('imbi_iggy_published_total', 'events', 'gateway'),
+        )
+
+    async def test_publish_counts_a_failed_connect(self) -> None:
+        iggy = client.Iggy.get_instance()
+        iggy._settings.max_connect_attempts = 1
+        self.mock_client.connect.side_effect = RuntimeError('refused')
+        errors = _count('imbi_iggy_publish_errors_total', 'events', 'gateway')
+        with self.assertRaises(RuntimeError):
+            await iggy.publish(
+                'events', 'gateway', [SampleModel(id=1, name='a')]
+            )
+        self.assertEqual(
+            (errors or 0) + 1,
+            _count('imbi_iggy_publish_errors_total', 'events', 'gateway'),
+        )
+
     async def test_publish_reconnects_after_the_server_restarts(self) -> None:
         # What an Iggy restart looks like to a long-lived producer: the
         # cached client raises, and every later publish has to build a
@@ -668,3 +731,17 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(client.PublishError):
                 await iggy.topic_status()
         self.assertEqual([], _pending_tasks())
+
+
+class PublishCountersTestCase(unittest.TestCase):
+    def test_every_topic_starts_at_zero(self) -> None:
+        # A series that exists before its first change is what lets
+        # `increase()` see the first failed publish after a restart.
+        for stream, topics in common_iggy.TOPICS.items():
+            for topic in topics:
+                for name in (
+                    'imbi_iggy_published_total',
+                    'imbi_iggy_publish_errors_total',
+                ):
+                    with self.subTest(stream=stream, topic=topic, name=name):
+                        self.assertIsNotNone(_count(name, stream, topic))

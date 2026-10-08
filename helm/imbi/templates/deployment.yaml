@@ -15,6 +15,17 @@ spec:
       {{- include "imbi.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- if has .Values.service.mode (list "all" "api" "gateway" "scheduler") }}
+      {{- /* imbi-api, imbi-gateway and imbi-scheduler serve /metrics on
+             their own port. In "all" mode they share the pod, and a pod
+             names one scrape port, so only imbi-api on 8000 is scraped.
+             It has the Iggy topic gauges; the gateway and scheduler
+             publish counters are not scraped in that mode. */}}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ ternary "8000" (include "imbi.containerPort" . | trim) (eq .Values.service.mode "all") | quote }}
+        prometheus.io/path: /metrics
+      {{- end }}
       labels:
         {{- include "imbi.selectorLabels" . | nindent 8 }}
     spec:

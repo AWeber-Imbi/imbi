@@ -4,7 +4,7 @@ import fastapi
 import typer
 
 import imbi.scheduler
-from imbi.common import access_log, graph, lifespan, server
+from imbi.common import access_log, graph, lifespan, metrics, server
 from imbi.scheduler import app_status, endpoints, lifespans, settings, store
 
 
@@ -35,6 +35,9 @@ def create_app() -> fastapi.FastAPI:
     # should not move when the API is relocated, and the probes read it
     # directly on the pod rather than through the Caddy mount.
     app.include_router(app_status.router)
+    # Unprefixed for the same reason, and the Caddyfile refuses
+    # /scheduler/metrics so that the public routes do not reach it.
+    metrics.add_route(app)
     # A fresh read rather than `get_settings()`: this runs once at startup, so
     # the parse is free, and the route table should reflect the environment as
     # it is now rather than whenever something first cached it.
@@ -43,7 +46,7 @@ def create_app() -> fastapi.FastAPI:
     )
     app.add_middleware(
         access_log.AccessLogMiddleware,
-        quiet_paths={'/status'},
+        quiet_paths={'/status', metrics.PATH},
     )
     return app
 

@@ -52,6 +52,19 @@
 		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
+	# imbi-gateway and imbi-scheduler serve /metrics on their root for
+	# Prometheus to scrape by pod IP. The handle_path mounts below remove
+	# their prefix, so without these two routes the public URL reaches
+	# that unauthenticated endpoint. imbi-api needs no route: /api/* keeps
+	# the prefix, and its /metrics is not under it.
+	handle /gateway/metrics* {
+		respond "Not Found" 404
+	}
+
+	handle /scheduler/metrics* {
+		respond "Not Found" 404
+	}
+
 	handle_path /gateway/* {
 		reverse_proxy {$IMBI_GATEWAY_UPSTREAM:127.0.0.1:8003}
 	}

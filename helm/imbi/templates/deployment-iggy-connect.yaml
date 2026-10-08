@@ -20,6 +20,11 @@ spec:
       {{- include "imbi.iggyConnectSelectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- /* The runtime serves its own Prometheus metrics on its HTTP API. */}}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: /metrics
       labels:
         {{- include "imbi.iggyConnectSelectorLabels" . | nindent 8 }}
     spec:

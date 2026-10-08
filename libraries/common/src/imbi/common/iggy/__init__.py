@@ -51,6 +51,14 @@ TOPICS: dict[str, tuple[str, ...]] = {
     'tags': ('github',),
 }
 
+# Start each publish counter series at zero. Without that, the first
+# failed publish after a restart creates its series at 1, and
+# `increase()` does not see that change.
+for _stream, _topics in TOPICS.items():
+    for _topic in _topics:
+        client.PUBLISHED.labels(_stream, _topic)
+        client.PUBLISH_ERRORS.labels(_stream, _topic)
+
 
 async def initialize() -> bool:
     """Create a new client and test the connection."""

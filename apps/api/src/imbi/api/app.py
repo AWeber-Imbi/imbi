@@ -14,7 +14,14 @@ from imbi.api import (
     version,
 )
 from imbi.api.middleware import rate_limit
-from imbi.common import access_log, graph, lifespan, sentry, valkey
+from imbi.common import (
+    access_log,
+    graph,
+    lifespan,
+    metrics,
+    sentry,
+    valkey,
+)
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginInstallationMissing,
@@ -31,6 +38,7 @@ def create_app() -> fastapi.FastAPI:
             sentry.sentry_lifespan,
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
+            lifespans.iggy_metrics_hook,
             graph.graph_lifespan,
             agent_tasks.store_lifespan,
             prompt_pool.pool_lifespan,
@@ -62,7 +70,7 @@ def create_app() -> fastapi.FastAPI:
     # listing both keeps the middleware deployment-agnostic.
     app.add_middleware(
         access_log.AccessLogMiddleware,
-        quiet_paths={'/status', '/api/status'},
+        quiet_paths={'/status', '/api/status', metrics.PATH},
     )
     app.add_middleware(
         cors.CORSMiddleware,
@@ -128,6 +136,9 @@ def create_app() -> fastapi.FastAPI:
         app.include_router(router, prefix=server_config.api_prefix)
     for router in endpoints.unprefixed_routers:
         app.include_router(router)
+    # On the app root, not under the API prefix: Prometheus scrapes it
+    # by pod IP, and the public routes do not reach it.
+    metrics.add_route(app)
 
     # Set custom OpenAPI schema generator with blueprint-enhanced models
     # FastAPI pattern: override openapi method to customize schema
