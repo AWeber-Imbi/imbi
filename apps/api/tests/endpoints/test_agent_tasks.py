@@ -30,6 +30,7 @@ ALL_PERMISSIONS = frozenset(
         'agent_task:read',
         'agent_task:create',
         'agent_task:manage',
+        'agent_task:resolve',
     }
 )
 
@@ -647,6 +648,13 @@ class PermissionTests(AgentTaskTestCase):
                 'T-1/reassign',
                 {'owner': self.member},
             ),
+            ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
+            (
+                'agent_task:resolve',
+                'POST',
+                f'T-1/requests/{uuid.uuid4()}/resolve',
+                {'status': 'answered', 'answer': 'yes'},
+            ),
         ]
         for permission, method, path, body in cases:
             with self.subTest(permission=permission, path=path):
@@ -784,6 +792,12 @@ class MembershipTests(AgentTaskTestCase):
             ('POST', 'T-1/resume', None),
             ('POST', 'T-1/cancel', None),
             ('POST', 'T-1/reassign', {'owner': self.member}),
+            ('POST', 'T-1/reply', {'body': 'Hi.'}),
+            (
+                'POST',
+                f'T-1/requests/{uuid.uuid4()}/resolve',
+                {'status': 'answered', 'answer': 'yes'},
+            ),
         ]
         for method, path, body in cases:
             with self.subTest(method=method, path=path):

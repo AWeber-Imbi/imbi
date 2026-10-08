@@ -158,6 +158,14 @@ class RequestCreate(pydantic.BaseModel):
     )
     expires_at: pydantic.AwareDatetime | None = None
     session_id: uuid.UUID | None = None
+    request_key: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            'A repeat with the same key returns the first request of the task.'
+        ),
+    )
 
     @pydantic.model_validator(mode='after')
     def _check(self) -> typing.Self:
@@ -243,22 +251,8 @@ class UsageResponse(pydantic.BaseModel):
     task: TaskState
 
 
-class RequestResponse(pydantic.BaseModel):
-    id: uuid.UUID
-    session_id: uuid.UUID | None = None
-    kind: str
-    status: str
-    title: str
-    why: str | None = None
-    options: list[typing.Any] | None = None
-    artifacts: list[typing.Any] | None = None
-    artifact_digests: list[str] | None = None
-    expires_at: datetime.datetime | None = None
-    opened_at: datetime.datetime
-
-
 class RequestOpenResponse(pydantic.BaseModel):
-    request: RequestResponse
+    request: tasks_api.RequestResponse
     task: TaskState
 
 
@@ -420,6 +414,7 @@ _STORE_ERRORS = (
     agent_tasks.SessionClosed,
     agent_tasks.ConcurrencyLimit,
     agent_tasks.EventIdConflict,
+    agent_tasks.RequestKeyConflict,
 )
 
 
@@ -444,6 +439,11 @@ def _translate(err: Exception, short_id: str) -> fastapi.HTTPException:
     if isinstance(err, agent_tasks.EventIdConflict):
         return _conflict(
             'event_id_conflict', 'Another task has an event with this id'
+        )
+    if isinstance(err, agent_tasks.RequestKeyConflict):
+        return _conflict(
+            'request_key_conflict',
+            f'Request {err} has other artifact_digests; use a new key',
         )
     return _conflict(
         'concurrency_limit',
@@ -719,19 +719,34 @@ async def report_agent_task_usage(
     '/{short_id}/requests',
     status_code=201,
     response_model=RequestOpenResponse,
+    responses={
+        200: {
+            'model': RequestOpenResponse,
+            'description': (
+                'A request with this request key exists; it is returned.'
+            ),
+        },
+    },
 )
 async def open_agent_task_request(
     org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: RequestCreate,
+    response: fastapi.Response,
     store: agent_tasks.Store,
 ) -> RequestOpenResponse:
     """Ask a person for feedback or an approval; block the task.
 
+    A repeat with the same ``request_key`` returns the first request
+    with status 200, resolved or not. Changed ``artifact_digests`` need a
+    new key (I3).
+
     Raises:
         403: The caller is not the service account of the task's agent.
         404: No such task or session.
-        409: ``task_closed`` or ``session_closed``.
+        409: ``task_closed``, ``session_closed``, or
+            ``request_key_conflict`` (the request with the key has other
+            ``artifact_digests``).
         413: The request content is larger than
             :data:`MAX_PAYLOAD_BYTES`.
         422: An approval with no ``artifact_digests``, or an
@@ -742,7 +757,7 @@ async def open_agent_task_request(
     if size > MAX_PAYLOAD_BYTES:
         raise _too_large('The request', size)
     try:
-        row, request = await store.open_request(
+        row, request, created = await store.open_request(
             org_id,
             task['short_id'],
             agent_tasks.NewRequest(
@@ -754,13 +769,16 @@ async def open_agent_task_request(
                 artifact_digests=data.artifact_digests,
                 expires_at=data.expires_at,
                 session_id=data.session_id,
+                request_key=data.request_key,
             ),
             _agent_actor(task),
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
+    if not created:
+        response.status_code = 200
     return RequestOpenResponse(
-        request=RequestResponse.model_validate(request),
+        request=tasks_api.RequestResponse.model_validate(request),
         task=task_state(row),
     )
 

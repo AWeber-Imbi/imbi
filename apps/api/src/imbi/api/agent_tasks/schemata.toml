@@ -147,6 +147,8 @@ opened_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 resolved_by = "TEXT"
 resolved_at = "TIMESTAMP WITH TIME ZONE"
 resolution = "JSONB"
+# The client key that makes a request open idempotent.
+request_key = "TEXT"
 
 [tables.primary_key]
 columns = ["id"]
@@ -154,6 +156,13 @@ columns = ["id"]
 [[tables.indexes]]
 name = "requests_task_idx"
 columns = ["task_id", "status"]
+
+# A repeat with the same key returns the first request of the task. NULL
+# keys are distinct, so requests without a key do not collide.
+[[tables.indexes]]
+name = "requests_request_key"
+columns = ["task_id", "request_key"]
+unique = true
 
 # One row per usage report, with the rates used. Rows never change: a
 # correction is a new row. NULL token counts mean unmeasured, not zero.

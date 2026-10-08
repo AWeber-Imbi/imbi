@@ -26,7 +26,13 @@ import fastapi
 import pydantic
 
 from imbi.api import agent_tasks
-from imbi.api.agent_tasks.store import ActorKind, Channel, Control, Status
+from imbi.api.agent_tasks.store import (
+    ActorKind,
+    Channel,
+    Control,
+    ResolvedStatus,
+    Status,
+)
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import agents
 from imbi.api.endpoints._pagination import (
@@ -38,6 +44,9 @@ from imbi.common import graph, models
 
 #: The origin kind of a task that a person makes with this API.
 HUMAN_ORIGIN = 'human'
+
+#: The longest reply or answer, in characters.
+MAX_TEXT_LENGTH = 64 * 1024
 
 
 # --- Schemas -----------------------------------------------------------
@@ -131,6 +140,73 @@ class AgentTaskEventResponse(pydantic.BaseModel):
     payload: dict[str, typing.Any]
 
 
+class RequestResponse(pydantic.BaseModel):
+    id: uuid.UUID
+    session_id: uuid.UUID | None = None
+    kind: str
+    status: str
+    title: str
+    why: str | None = None
+    options: list[typing.Any] | None = None
+    artifacts: list[typing.Any] | None = None
+    artifact_digests: list[str] | None = None
+    expires_at: datetime.datetime | None = None
+    opened_at: datetime.datetime
+    request_key: str | None = None
+    #: The email of the person who resolved the request.
+    resolved_by: str | None = None
+    resolved_at: datetime.datetime | None = None
+    #: The answer, constraints, approved digests, and channel (I9).
+    resolution: dict[str, typing.Any] | None = None
+
+
+class AgentTaskRequestResolve(pydantic.BaseModel):
+    """How a person resolves a request (I9)."""
+
+    status: ResolvedStatus = pydantic.Field(
+        description='``answered`` for feedback; ``approved`` or '
+        '``rejected`` for an approval.'
+    )
+    answer: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_TEXT_LENGTH,
+        description='The decision. Required for ``answered``.',
+    )
+    constraints: list[str] | None = pydantic.Field(
+        default=None,
+        description='Conditions that the person sets on the resolution.',
+    )
+    artifact_digests: list[str] | None = pydantic.Field(
+        default=None,
+        description=(
+            'For ``approved``: the digests that the person reviewed. They '
+            'must be the digests of the request (I3).'
+        ),
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _check(self) -> typing.Self:
+        if self.status == 'answered' and not self.answer:
+            raise ValueError('an answer needs answer text')
+        if self.status == 'approved' and not self.artifact_digests:
+            raise ValueError('an approval needs artifact_digests')
+        return self
+
+
+class AgentTaskRequestResolveResponse(pydantic.BaseModel):
+    request: RequestResponse
+    task: AgentTaskResponse
+
+
+class AgentTaskReply(pydantic.BaseModel):
+    body: str = pydantic.Field(min_length=1, max_length=MAX_TEXT_LENGTH)
+    hold: bool = pydantic.Field(
+        default=False,
+        description='Also pause the task (Reply and hold).',
+    )
+
+
 # --- Queries -----------------------------------------------------------
 
 #: The agents and projects that the text query of the task list
@@ -170,6 +246,15 @@ RETURN u.email AS email
 
 def _unprocessable(detail: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=422, detail=detail)
+
+
+def _conflict(
+    error: str, message: str, **extra: typing.Any
+) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409,
+        detail={'error': error, 'message': message, **extra},
+    )
 
 
 #: The id of the organization in the path. The router also depends on
@@ -628,4 +713,148 @@ async def reassign_agent_task(
     except agent_tasks.TaskClosed as e:
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is closed'
+        ) from e
+
+
+@agent_tasks_router.post(
+    '/{short_id}/requests/{request_id}/resolve',
+    status_code=201,
+    response_model=AgentTaskRequestResolveResponse,
+    responses={
+        200: {
+            'model': AgentTaskRequestResolveResponse,
+            'description': (
+                'The caller already resolved the request this way; it is '
+                'returned unchanged.'
+            ),
+        },
+    },
+)
+async def resolve_agent_task_request(
+    org_id: OrgId,
+    short_id: str,
+    request_id: uuid.UUID,
+    data: AgentTaskRequestResolve,
+    response: fastapi.Response,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:resolve')),
+    ],
+) -> dict[str, typing.Any]:
+    """Answer a feedback request, or approve or reject an approval.
+
+    Only a person can resolve a request, so an agent can never resolve
+    its own request or one of its subagent (I6). An approval names the
+    digests that the person reviewed; they must be the digests of the
+    request (I3). The resolution records the person, the time, the
+    channel, the constraints, and the approved digests (I9).
+
+    The status is 201 when this call resolves the request. When the
+    same person sends the same resolution again, the status is 200 and
+    nothing changes. A request that someone else resolved is a
+    ``409 request_resolved`` that names who resolved it (I4).
+
+    Raises:
+        403: The caller is not a person, has no ``agent_task:resolve``,
+            or is not a member of the org.
+        404: No such task or request.
+        409: ``task_closed``, ``request_resolved``, ``request_expired``,
+            or ``digest_mismatch``.
+        422: The status does not fit the kind of the request.
+
+    """
+    _ = auth.require_user  # raises 403 for a caller that is not a person
+    try:
+        task, request, created = await store.resolve_request(
+            org_id,
+            short_id.upper(),
+            request_id,
+            agent_tasks.Resolution(
+                status=data.status,
+                answer=data.answer,
+                constraints=data.constraints,
+                artifact_digests=data.artifact_digests,
+            ),
+            _actor(auth),
+        )
+    except agent_tasks.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        ) from e
+    except agent_tasks.RequestNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Request {request_id} not found'
+        ) from e
+    except agent_tasks.TaskClosed as e:
+        raise _conflict('task_closed', f'Task {short_id!r} is closed') from e
+    except agent_tasks.RequestNotOpen as e:
+        if e.request['status'] == 'open':
+            raise _conflict(
+                'request_expired', f'Request {request_id} expired'
+            ) from e
+        raise _conflict(
+            'request_resolved',
+            f'Request {request_id} is {e.request["status"]} by '
+            f'{e.request["resolved_by"]}',
+            status=e.request['status'],
+            resolved_by=e.request['resolved_by'],
+            resolved_at=e.request['resolved_at'].isoformat(),
+        ) from e
+    except agent_tasks.DigestMismatch as e:
+        raise _conflict(
+            'digest_mismatch',
+            'The artifacts changed; the approval is void. Review the '
+            'request again.',
+        ) from e
+    except agent_tasks.ResolutionInvalid as e:
+        raise _unprocessable(str(e)) from e
+    if not created:
+        response.status_code = 200
+    return {'request': request, 'task': task}
+
+
+@agent_tasks_router.post('/{short_id}/reply', response_model=AgentTaskResponse)
+async def reply_agent_task(
+    org_id: OrgId,
+    short_id: str,
+    data: AgentTaskReply,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+    ],
+) -> dict[str, typing.Any]:
+    """Write a reply from a person to the agent (H3).
+
+    The reply is a ``turn`` event with the person and the channel. The
+    harness reads it by seq at its next turn boundary (H7). With
+    ``hold``, the control value also changes to ``pause``, in the same
+    transaction (Reply and hold).
+
+    Raises:
+        403: The caller is not a person, has no ``agent_task:manage``,
+            or is not a member of the org.
+        404: No such task.
+        409: The task is closed, or ``hold`` and a cancel is not done
+            yet.
+
+    """
+    _ = auth.require_user  # raises 403 for a caller that is not a person
+    try:
+        return await store.reply(
+            org_id, short_id.upper(), data.body, _actor(auth), hold=data.hold
+        )
+    except agent_tasks.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        ) from e
+    except agent_tasks.TaskClosed as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Task {short_id!r} is closed'
+        ) from e
+    except agent_tasks.CancelPending as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e

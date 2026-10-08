@@ -4,8 +4,10 @@ This works one task from start to end through the harness endpoints,
 as the service account of the task's agent. It opens a session, writes
 phases, turns, and a tool call, reports usage, and sets the outcome
 ``done_acted``. With ``--ask`` it opens a feedback request instead and
-leaves the task ``blocked``. The tests use :class:`HarnessClient` and
-:func:`run_task`; the dev environment uses the command line.
+leaves the task ``blocked``. With ``--ask --wait`` it then reads the log
+by seq until a person answers, and finishes the task. The tests use
+:class:`HarnessClient` and :func:`run_task`; the dev environment uses
+the command line.
 
 Credentials in the dev environment
 ----------------------------------
@@ -98,7 +100,39 @@ class HarnessClient:
         )
 
     async def open_request(self, **request: typing.Any) -> Body:
+        """Open a request. A repeat with the same ``request_key`` returns
+        the first request."""
         return await self._post('requests', request)
+
+    async def events(self, after_seq: int, limit: int = 100) -> list[Body]:
+        """Read the events of the task with ``seq`` after ``after_seq``."""
+        response = await self._client.get(
+            f'{self._path}/events',
+            params={'after_seq': after_seq, 'limit': limit},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def wait_for_answer(
+        self, request_id: str, after_seq: int, interval: float = 2.0
+    ) -> Body:
+        """Read the log by seq until the request is resolved; return the
+        ``request.resolved`` event.
+
+        This is how a harness gets human input (H7): it polls the events
+        after the last ``seq`` that it saw.
+        """
+        while True:
+            page = await self.events(after_seq)
+            if not page:
+                await asyncio.sleep(interval)
+            for event in page:
+                after_seq = event['seq']
+                if (
+                    event['type'] == 'request.resolved'
+                    and event['payload']['request_id'] == request_id
+                ):
+                    return event
 
     async def set_outcome(
         self, outcome: str, reason: str | None = None
@@ -109,9 +143,18 @@ class HarnessClient:
 
 
 async def run_task(
-    harness: HarnessClient, *, model_id: str, ask: bool = False
+    harness: HarnessClient,
+    *,
+    model_id: str,
+    ask: bool = False,
+    wait: bool = False,
+    interval: float = 2.0,
 ) -> Body:
-    """Work a task the way a harness does; return the last task state."""
+    """Work a task the way a harness does; return the last task state.
+
+    With ``ask``, open a feedback request. With ``wait`` too, wait for
+    the answer in a new session, then finish the task.
+    """
     run = uuid.uuid4().hex[:8]
     session_id = (await harness.open_session(f'reference-{run}'))['session'][
         'id'
@@ -154,9 +197,28 @@ async def run_task(
             why='The reference client asks one question.',
             options=['yes', 'no'],
             session_id=session_id,
+            request_key=f'{run}-ask',
         )
         await harness.close_session(session_id, 'waiting_for_reply')
-        return request['task']
+        if not wait:
+            return request['task']
+        answer = await harness.wait_for_answer(
+            request['request']['id'], request['task']['last_seq'], interval
+        )
+        session_id = (await harness.open_session(f'reference-{run}-2'))[
+            'session'
+        ]['id']
+        await harness.append(
+            session_id,
+            [
+                {
+                    'type': 'turn',
+                    'payload': {
+                        'body': f'The answer is {answer["payload"]["answer"]}.'
+                    },
+                }
+            ],
+        )
     await harness.append(
         session_id,
         [
@@ -193,6 +255,7 @@ async def _main(args: argparse.Namespace) -> Body:
             HarnessClient(client, args.org, args.task),
             model_id=args.model,
             ask=args.ask,
+            wait=args.wait,
         )
 
 
@@ -214,6 +277,11 @@ def main() -> None:
         '--ask',
         action='store_true',
         help='Open a feedback request and leave the task blocked',
+    )
+    parser.add_argument(
+        '--wait',
+        action='store_true',
+        help='With --ask, wait for the answer, then finish the task',
     )
     args = parser.parse_args()
     if not args.client_id or not args.client_secret:
