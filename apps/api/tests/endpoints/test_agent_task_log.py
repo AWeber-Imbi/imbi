@@ -152,6 +152,30 @@ class SweepTests(ClickHouseTestCase):
             [event['seq'] for event in await self.postgres_events(last)],
         )
 
+    async def test_one_failed_session_close_does_not_stop_the_sweep(
+        self,
+    ) -> None:
+        stale = [
+            {
+                'id': uuid.uuid4(),
+                'organization_id': self.org,
+                'short_id': 'T-1',
+            }
+            for _ in range(2)
+        ]
+        close = mock.AsyncMock(side_effect=RuntimeError('Postgres is down'))
+        with (
+            mock.patch.object(
+                self.store,
+                'stale_sessions',
+                mock.AsyncMock(return_value=stale),
+            ),
+            mock.patch.object(self.store, 'close_session', close),
+        ):
+            result = await sweeper.sweep_once(self.store)
+        self.assertEqual(close.await_count, 2)
+        self.assertEqual(result.closed_sessions, 0)
+
     async def test_archive_moves_the_log_to_clickhouse(self) -> None:
         response = await self.client.post(self.url('T-1/cancel'))
         self.assertEqual(response.json()['status'], 'closed')

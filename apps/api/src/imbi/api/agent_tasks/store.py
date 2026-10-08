@@ -516,8 +516,9 @@ class TaskStore:
         When a harness session is open, only ``control`` changes; the
         harness acts on it at its next turn boundary. When no session is
         open, the status changes too: ``pause`` moves the task to
-        ``paused``, ``run`` moves it back to ``queued``, and ``cancel``
-        closes it with the outcome ``cancelled_by_human``.
+        ``paused``, ``run`` moves it back to ``queued`` (``blocked``
+        when a request is open), and ``cancel`` closes it with the
+        outcome ``cancelled_by_human``.
 
         Raises:
             TaskNotFound: No such task.
@@ -539,6 +540,10 @@ class TaskStore:
             changes: Row = {'control': control}
             if not await _session_open(write.conn, task['id']):
                 status = _IDLE_STATUS[control]
+                if status == 'queued' and await _request_open(
+                    write.conn, task['id']
+                ):
+                    status = 'blocked'
                 if status != task['status']:
                     changes['status'] = status
                     await write.event(
@@ -604,8 +609,8 @@ class TaskStore:
         """Open a harness session; return the task, it, and if it is new.
 
         A repeat with the same ``key`` returns the first session. A new
-        session moves a ``queued`` task, or a ``blocked`` task with no
-        open request, to ``running`` when the control value is ``run``.
+        session moves a ``queued`` or ``blocked`` task with no open
+        request to ``running`` when the control value is ``run``.
 
         Raises:
             TaskNotFound: No such task.
@@ -650,12 +655,10 @@ class TaskStore:
                 actor,
                 session_id=session['id'],
             )
-            if task['control'] == 'run' and (
-                task['status'] == 'queued'
-                or (
-                    task['status'] == 'blocked'
-                    and not await _request_open(write.conn, task['id'])
-                )
+            if (
+                task['control'] == 'run'
+                and task['status'] in ('queued', 'blocked')
+                and not await _request_open(write.conn, task['id'])
             ):
                 await _set_status(write, 'running', 'session_opened', actor)
         return write.task, session, True

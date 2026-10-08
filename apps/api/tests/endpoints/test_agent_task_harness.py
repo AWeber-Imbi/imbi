@@ -688,6 +688,27 @@ class RequestTests(HarnessTestCase):
         response = await self.post('sessions', {'session_key': 's-2'})
         self.assertEqual(response.json()['task']['status'], 'blocked')
 
+    async def test_resume_keeps_a_task_with_an_open_request_blocked(
+        self,
+    ) -> None:
+        session = (await self.open_session())['session']
+        response = await self.post(
+            'requests',
+            {
+                'kind': 'feedback',
+                'title': 'Which repo?',
+                'session_id': session['id'],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        await self.post(f'sessions/{session["id"]}/close', {'reason': 'x'})
+        response = await self.as_user('POST', 'T-1/pause')
+        self.assertEqual(response.json()['status'], 'paused')
+        response = await self.as_user('POST', 'T-1/resume')
+        self.assertEqual(response.json()['status'], 'blocked')
+        response = await self.post('sessions', {'session_key': 's-2'})
+        self.assertEqual(response.json()['task']['status'], 'blocked')
+
     async def test_request_is_validated(self) -> None:
         past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
             hours=1

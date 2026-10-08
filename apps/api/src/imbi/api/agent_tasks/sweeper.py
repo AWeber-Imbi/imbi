@@ -130,6 +130,13 @@ async def sweep_once(store: task_store.TaskStore) -> SweepResult:
             task_store.SessionNotFound,
         ):
             continue
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Agent task sweep failed to close session %s',
+                session['id'],
+                exc_info=True,
+            )
+            continue
         result.closed_sessions += 1
     tasks = await store.unarchived()
     for organization_id, group in itertools.groupby(
