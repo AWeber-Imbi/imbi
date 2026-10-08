@@ -25,6 +25,10 @@ agent_version = "INTEGER NOT NULL"
 prompt_version = "INTEGER"
 service_account_id = "TEXT NOT NULL"
 project_id = "TEXT"
+# The slug of the project at creation, for the Operations Log rows of
+# the task. NULL for a task with no project, and for project tasks made
+# before this column existed.
+project_slug = "TEXT"
 title = "TEXT NOT NULL"
 description = "TEXT NOT NULL"
 origin_kind = "TEXT NOT NULL"

@@ -154,6 +154,7 @@ class NewTask:
     idempotency_key: str | None
     owner: str
     budget: decimal.Decimal | None
+    project_slug: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -348,10 +349,10 @@ class TaskStore:
                 await conn.execute(
                     'INSERT INTO agent_runtime.tasks (id, organization_id,'
                     ' short_id, agent_id, agent_version, prompt_version,'
-                    ' service_account_id, project_id, title, description,'
-                    ' origin_kind, origin_id, origin, idempotency_key, owner,'
-                    ' budget) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, %s, %s)',
+                    ' service_account_id, project_id, project_slug, title,'
+                    ' description, origin_kind, origin_id, origin,'
+                    ' idempotency_key, owner, budget) VALUES (%s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
                     (
                         task_id,
                         task.organization_id,
@@ -361,6 +362,7 @@ class TaskStore:
                         task.prompt_version,
                         task.service_account_id,
                         task.project_id,
+                        task.project_slug,
                         task.title,
                         task.description,
                         task.origin_kind,

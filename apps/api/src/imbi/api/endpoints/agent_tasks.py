@@ -231,7 +231,7 @@ _PROJECT_QUERY: typing.LiteralString = """
 MATCH (p:Project {{id: {project_id}}})
       -[:OWNED_BY]->(:Team)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-RETURN p.id AS id
+RETURN p.slug AS slug
 """
 
 _MEMBER_QUERY: typing.LiteralString = """
@@ -456,12 +456,16 @@ async def create_agent_task(
         else models.AgentSettings.model_validate(raw_settings)
     )
     budget = _task_budget(settings, data.budget)
-    if data.project_id is not None and not await db.execute(
-        _PROJECT_QUERY,
-        {'project_id': data.project_id, 'org_slug': org_slug},
-        ['id'],
-    ):
-        raise _unprocessable(f'Project {data.project_id!r} not found')
+    project_slug: str | None = None
+    if data.project_id is not None:
+        records = await db.execute(
+            _PROJECT_QUERY,
+            {'project_id': data.project_id, 'org_slug': org_slug},
+            ['slug'],
+        )
+        if not records:
+            raise _unprocessable(f'Project {data.project_id!r} not found')
+        project_slug = str(graph.parse_agtype(records[0]['slug']))
     agent_id = str(agent['id'])
     service_account_id = await agents.ensure_service_account(
         db, agent_id, str(agent.get('name', data.agent_slug))
@@ -477,6 +481,7 @@ async def create_agent_task(
             prompt_version=prompt_version,
             service_account_id=service_account_id,
             project_id=data.project_id,
+            project_slug=project_slug,
             title=data.title,
             description=data.description,
             origin_kind=HUMAN_ORIGIN,
