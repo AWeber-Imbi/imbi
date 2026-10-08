@@ -4557,6 +4557,7 @@ export interface paths {
          *         404: No such task or request.
          *         409: ``task_closed``, ``request_resolved``, ``request_expired``,
          *             or ``digest_mismatch``.
+         *         413: The resolution is larger than :data:`MAX_PAYLOAD_BYTES`.
          *         422: The status does not fit the kind of the request.
          */
         post: operations["resolve_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests__request_id__resolve_post"];
@@ -4590,6 +4591,7 @@ export interface paths {
          *         404: No such task.
          *         409: The task is closed, or ``hold`` and a cancel is not done
          *             yet.
+         *         413: The reply is larger than :data:`MAX_PAYLOAD_BYTES`.
          */
         post: operations["reply_agent_task_api_organizations__org_slug__agent_tasks__short_id__reply_post"];
         delete?: never;

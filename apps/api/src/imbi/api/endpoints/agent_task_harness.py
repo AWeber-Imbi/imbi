@@ -26,7 +26,6 @@ import typing
 import uuid
 
 import fastapi
-import orjson
 import pydantic
 
 from imbi.api import agent_tasks
@@ -36,7 +35,7 @@ from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.common import graph, models
 
 #: The largest inline event payload, in bytes of JSON.
-MAX_PAYLOAD_BYTES = 64 * 1024
+MAX_PAYLOAD_BYTES = tasks_api.MAX_PAYLOAD_BYTES
 
 #: The event types that a harness writes. Imbi writes all others.
 HarnessEventType = typing.Literal[
@@ -394,18 +393,6 @@ def _conflict(error: str, message: str) -> fastapi.HTTPException:
     )
 
 
-def _too_large(what: str, size: int) -> fastapi.HTTPException:
-    return fastapi.HTTPException(
-        status_code=413,
-        detail={
-            'error': 'payload_too_large',
-            'message': (
-                f'{what} is {size} bytes; the limit is {MAX_PAYLOAD_BYTES}'
-            ),
-        },
-    )
-
-
 _STORE_ERRORS = (
     agent_tasks.TaskNotFound,
     agent_tasks.SessionNotFound,
@@ -621,9 +608,9 @@ async def append_agent_task_events(
 
     """
     for index, event in enumerate(data.events):
-        size = len(orjson.dumps(event.payload))
-        if size > MAX_PAYLOAD_BYTES:
-            raise _too_large(f'The payload of event {index}', size)
+        tasks_api.check_payload_size(
+            f'The payload of event {index}', event.payload
+        )
     try:
         _row, written, duplicates = await store.append_events(
             org_id,
@@ -753,9 +740,7 @@ async def open_agent_task_request(
             ``expires_at`` that is not in the future.
 
     """
-    size = len(orjson.dumps(data.model_dump(mode='json')))
-    if size > MAX_PAYLOAD_BYTES:
-        raise _too_large('The request', size)
+    tasks_api.check_payload_size('The request', data.model_dump(mode='json'))
     try:
         row, request, created = await store.open_request(
             org_id,

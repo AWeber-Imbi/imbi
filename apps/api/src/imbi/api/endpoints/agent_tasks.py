@@ -23,6 +23,7 @@ import typing
 import uuid
 
 import fastapi
+import orjson
 import pydantic
 
 from imbi.api import agent_tasks
@@ -47,6 +48,14 @@ HUMAN_ORIGIN = 'human'
 
 #: The longest reply or answer, in characters.
 MAX_TEXT_LENGTH = 64 * 1024
+
+#: The largest inline event payload, in bytes of JSON.
+MAX_PAYLOAD_BYTES = 64 * 1024
+
+#: A constraint or a digest in a resolution.
+_ShortText = typing.Annotated[
+    str, pydantic.StringConstraints(min_length=1, max_length=1000)
+]
 
 
 # --- Schemas -----------------------------------------------------------
@@ -173,12 +182,14 @@ class AgentTaskRequestResolve(pydantic.BaseModel):
         max_length=MAX_TEXT_LENGTH,
         description='The decision. Required for ``answered``.',
     )
-    constraints: list[str] | None = pydantic.Field(
+    constraints: list[_ShortText] | None = pydantic.Field(
         default=None,
+        max_length=50,
         description='Conditions that the person sets on the resolution.',
     )
-    artifact_digests: list[str] | None = pydantic.Field(
+    artifact_digests: list[_ShortText] | None = pydantic.Field(
         default=None,
+        max_length=100,
         description=(
             'For ``approved``: the digests that the person reviewed. They '
             'must be the digests of the request (I3).'
@@ -246,6 +257,26 @@ RETURN u.email AS email
 
 def _unprocessable(detail: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=422, detail=detail)
+
+
+def check_payload_size(what: str, payload: typing.Any) -> None:
+    """Raise 413 when ``payload`` as JSON is larger than the limit.
+
+    Raises:
+        413: ``payload_too_large``.
+
+    """
+    size = len(orjson.dumps(payload))
+    if size > MAX_PAYLOAD_BYTES:
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail={
+                'error': 'payload_too_large',
+                'message': (
+                    f'{what} is {size} bytes; the limit is {MAX_PAYLOAD_BYTES}'
+                ),
+            },
+        )
 
 
 def _conflict(
@@ -766,10 +797,12 @@ async def resolve_agent_task_request(
         404: No such task or request.
         409: ``task_closed``, ``request_resolved``, ``request_expired``,
             or ``digest_mismatch``.
+        413: The resolution is larger than :data:`MAX_PAYLOAD_BYTES`.
         422: The status does not fit the kind of the request.
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
+    check_payload_size('The resolution', data.model_dump(mode='json'))
     try:
         task, request, created = await store.resolve_request(
             org_id,
@@ -843,9 +876,11 @@ async def reply_agent_task(
         404: No such task.
         409: The task is closed, or ``hold`` and a cancel is not done
             yet.
+        413: The reply is larger than :data:`MAX_PAYLOAD_BYTES`.
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
+    check_payload_size('The reply', data.model_dump(mode='json'))
     try:
         return await store.reply(
             org_id, short_id.upper(), data.body, _actor(auth), hold=data.hold

@@ -412,3 +412,45 @@ class ClientWaitTests(ActionTestCase):
             if e['type'] == 'turn'
         ]
         self.assertIn('The answer is yes.', turns)
+
+
+class SizeTests(ActionTestCase):
+    """Human input is bounded like harness input."""
+
+    #: Fewer characters than the field limit, more bytes than the payload
+    #: limit: each 'é' is two bytes of JSON.
+    WIDE = 'é' * 40_000
+
+    async def test_resolution_is_bounded(self) -> None:
+        request_id = (await self.open_request(FEEDBACK))['request']['id']
+        response = await self.resolve(
+            request_id, status='answered', answer=self.WIDE
+        )
+        self.assertEqual(response.status_code, 413, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'payload_too_large'
+        )
+        for body in (
+            {'answer': 'x' * 70_000},
+            {'answer': 'a', 'constraints': ['x'] * 51},
+            {'answer': 'a', 'constraints': ['x' * 1001]},
+            {'answer': 'a', 'constraints': ['']},
+        ):
+            with self.subTest(body=list(body)):
+                response = await self.resolve(
+                    request_id, status='answered', **body
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual((await self.task_row())['status'], 'blocked')
+
+    async def test_reply_is_bounded(self) -> None:
+        last_seq = (await self.task_row())['last_seq']
+        response = await self.as_user(
+            'POST', 'T-1/reply', json={'body': self.WIDE}
+        )
+        self.assertEqual(response.status_code, 413, response.text)
+        response = await self.as_user(
+            'POST', 'T-1/reply', json={'body': 'x' * 70_000}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual((await self.task_row())['last_seq'], last_seq)
