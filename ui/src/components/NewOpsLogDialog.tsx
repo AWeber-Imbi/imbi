@@ -78,7 +78,13 @@ export function NewOpsLogDialog({
     if (!isOpen) return
     setProjectId(initialValues?.project_id ?? '')
     setEnvironmentSlug(initialValues?.environment_slug ?? '')
-    setEntryType(initialValues?.entry_type ?? '')
+    // A person cannot make an Agent Task entry, so a duplicate of one
+    // starts with no type.
+    setEntryType(
+      initialValues?.entry_type === 'Agent Task'
+        ? ''
+        : (initialValues?.entry_type ?? ''),
+    )
     setDescription(initialValues?.description ?? '')
     setVersion(initialValues?.version ?? '')
     setLink(initialValues?.link ?? '')
