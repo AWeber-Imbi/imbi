@@ -4,22 +4,18 @@ import { AGENTS_NAV, type AgentsSection } from './agentsNav'
 
 // Agents can be defined, but nothing runs them yet. These pages say so
 // instead of showing sample data.
-const COPY: Record<Exclude<AgentsSection, 'manage'>, string> = {
+type Section = Exclude<AgentsSection, 'manage' | 'usage'>
+
+const COPY: Record<Section, string> = {
   dashboard:
     'The agent dashboard is not built yet. When agents can run, it will show their activity, the tasks that need you, and their spend.',
   tasks:
     'Agents do not run yet, so there are no tasks. When agents can run, their tasks and the tasks that wait for you will show here.',
-  usage:
-    'Agents do not run yet, so there is no usage. When agents can run, their token use and cost will show here.',
   workflows:
     'Workflows are not built yet. A workflow will connect agents into a run with more than one step.',
 }
 
-export function ComingSoon({
-  section,
-}: {
-  section: Exclude<AgentsSection, 'manage'>
-}) {
+export function ComingSoon({ section }: { section: Section }) {
   const item = AGENTS_NAV.find((n) => n.id === section)
   const Icon = item?.icon
   return (

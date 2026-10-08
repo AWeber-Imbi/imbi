@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import {
+  type AgentUsageParams,
   getAgentToolCatalog,
+  getAgentUsage,
   listAgents,
   listEnvironments,
   resolvePrompt,
@@ -38,6 +40,22 @@ export function useAgentToolCatalog(orgSlug: string) {
     onSuccess: (catalog) => queryClient.setQueryData(queryKey, catalog),
   })
   return { query, refresh }
+}
+
+/**
+ * Token use and cost of the agents of an org. Disabled when the user
+ * may not read agent tasks.
+ */
+export function useAgentUsage(
+  orgSlug: string | undefined,
+  params: AgentUsageParams = {},
+) {
+  const canRead = useHasPermission('agent_task:read')
+  return useQuery({
+    enabled: !!orgSlug && canRead,
+    queryFn: ({ signal }) => getAgentUsage(orgSlug!, params, signal),
+    queryKey: queryKeys.agentUsage(orgSlug ?? '', params),
+  })
 }
 
 /** The environments of an org, in their sort order. */

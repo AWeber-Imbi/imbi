@@ -16,6 +16,7 @@ import {
   isAgentsSection,
 } from './agentsNav'
 import { ComingSoon } from './ComingSoon'
+import { UsagePage } from './UsagePage'
 
 /**
  * The Agents area: its own sidebar (Agentic platform, Settings) and the
@@ -40,6 +41,8 @@ export function AgentsArea() {
       <div className="min-w-0 flex-1">
         {current === 'manage' ? (
           <AgentsManagement />
+        ) : current === 'usage' ? (
+          <UsagePage />
         ) : (
           <ComingSoon section={current} />
         )}

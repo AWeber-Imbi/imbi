@@ -754,6 +754,11 @@ export type AgentToolGroup = Schemas['AgentToolGroup']
 
 export type AgentUpdate = Schemas['AgentUpdate']
 
+// Token use and cost of agent tasks, from ClickHouse.
+export type AgentUsage = Schemas['AgentUsage']
+
+export type AgentUsageTotals = Schemas['AgentUsageTotals']
+
 export type AgentVersion = Schemas['AgentVersionResponse']
 
 export type ApiKey = Schemas['APIKeyResponse']

@@ -17,8 +17,11 @@ import { useIcon } from '@/lib/icons'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Agent } from '@/types'
 
+import { formatMoney } from './agentDraft'
 import { AgentLabels } from './AgentLabelChip'
+import { useAgentUsage } from './agentQueries'
 import { agentsPath } from './agentsNav'
+import { formatCount } from './agentUsage'
 
 interface AgentListProps {
   agents: Agent[]
@@ -40,6 +43,30 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
     team: [],
   })
   const toggleEnabled = useToggleEnabled(orgSlug)
+  const { data: usage } = useAgentUsage(orgSlug)
+  const usageOf = (a: Agent) => {
+    if (!usage) return null
+    const row = usage.agents.find((u) => u.agent_id === a.id)
+    return { cost: Number(row?.cost ?? 0), runs: row?.tasks ?? 0 }
+  }
+  const usageColumn = (
+    key: string,
+    header: string,
+    value: (u: { cost: number; runs: number }) => string,
+  ) => ({
+    cellAlign: 'right' as const,
+    header,
+    headerAlign: 'right' as const,
+    key,
+    render: (a: Agent) => {
+      const u = usageOf(a)
+      return (
+        <span className="text-secondary font-mono text-sm tabular-nums">
+          {u ? value(u) : '—'}
+        </span>
+      )
+    },
+  })
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -123,6 +150,11 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
               </span>
             ),
           },
+          usageColumn('runs', 'Runs 30d', (u) => formatCount(u.runs)),
+          usageColumn('cost', 'Cost 30d', (u) => formatMoney(u.cost)),
+          usageColumn('avg', 'Avg / run', (u) =>
+            u.runs > 0 ? formatMoney(u.cost / u.runs) : '—',
+          ),
           {
             header: header(
               'Labels',
