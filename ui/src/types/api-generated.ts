@@ -8775,6 +8775,8 @@ export interface components {
             days: components["schemas"]["AgentUsageDay"][];
             /** Agents */
             agents: components["schemas"]["AgentUsageTotals"][];
+            /** Unpriced Reports */
+            unpriced_reports: number;
             /** Month To Date */
             month_to_date: {
                 [key: string]: string;

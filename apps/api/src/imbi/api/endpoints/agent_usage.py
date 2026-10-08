@@ -53,6 +53,9 @@ class AgentUsage(pydantic.BaseModel):
     days: list[AgentUsageDay]
     #: One row for each agent with runs or usage in the range, by cost.
     agents: list[AgentUsageTotals]
+    #: Usage reports in the range with no cost, because the model or
+    #: its price was unknown. They count as $0.
+    unpriced_reports: int
     #: USD this UTC calendar month, by agent id, for the advisory
     #: monthly cost cap. It does not depend on ``start`` and ``end``.
     month_to_date: dict[str, decimal.Decimal]
@@ -80,8 +83,11 @@ SELECT toDate(recorded_at) AS day, agent_id, {_TOTALS} {_FROM}
 GROUP BY day, agent_id
 """
 
+# `agent_usage.cost` is the column; a bare `cost` is the sum alias.
 _AGENTS_QUERY = f"""
-SELECT agent_id, {_TOTALS} {_FROM}
+SELECT agent_id, {_TOTALS},
+       countIf(agent_usage.cost IS NULL) AS unpriced
+{_FROM}
 GROUP BY agent_id
 """
 
@@ -198,6 +204,7 @@ async def get_agent_usage(
         _merge(days + day_runs, 'day', 'agent_id'),
         key=lambda row: (row['day'], row['agent_id']),
     )
+    unpriced = sum(int(row['unpriced']) for row in agents)
     agents = sorted(
         _merge(agents + agent_runs, 'agent_id'),
         key=lambda row: (-row['cost'], row['agent_id']),
@@ -207,5 +214,6 @@ async def get_agent_usage(
         end=end,
         days=[AgentUsageDay.model_validate(row) for row in days],
         agents=[AgentUsageTotals.model_validate(row) for row in agents],
+        unpriced_reports=unpriced,
         month_to_date={row['agent_id']: row['cost'] for row in month_rows},
     )

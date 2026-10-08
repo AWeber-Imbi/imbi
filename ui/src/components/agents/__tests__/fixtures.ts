@@ -131,6 +131,7 @@ export function usage(overrides: Partial<AgentUsage> = {}): AgentUsage {
     end: '2026-10-08',
     month_to_date: { 'agt-1': '340.000000' },
     start: '2026-09-09',
+    unpriced_reports: 0,
     ...overrides,
   }
 }

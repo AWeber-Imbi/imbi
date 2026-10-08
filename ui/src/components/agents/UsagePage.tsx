@@ -142,6 +142,13 @@ export function UsagePage() {
         <>
           <CapWarnings agents={agents} usage={usage.data} />
           <UsageTotals usage={usage.data} />
+          {usage.data.unpriced_reports > 0 && (
+            <p className="text-tertiary text-xs">
+              {formatCount(usage.data.unpriced_reports)} usage report
+              {usage.data.unpriced_reports === 1 ? '' : 's'} had no price and
+              count as $0.
+            </p>
+          )}
           <UsageChart
             focus={focus}
             metric={metric}

@@ -141,6 +141,8 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         self.assertEqual(decimal.Decimal(by_agent['agent-a']['cost']), 1.75)
         self.assertEqual(by_agent['agent-b']['tasks'], 1)
         self.assertEqual(decimal.Decimal(by_agent['agent-b']['cost']), 4)
+        # Only one report of T-2 has no cost.
+        self.assertEqual(usage['unpriced_reports'], 1)
 
         days = [
             (row['day'], row['agent_id'], row['tasks'], row['cost'])
@@ -199,6 +201,7 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         self.assertEqual(usage['agents'], [])
         self.assertEqual(usage['days'], [])
         self.assertEqual(usage['month_to_date'], {})
+        self.assertEqual(usage['unpriced_reports'], 0)
 
     async def test_not_a_member(self) -> None:
         response = await self.client.get(

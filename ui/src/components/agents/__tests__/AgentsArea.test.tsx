@@ -179,6 +179,22 @@ describe('AgentsArea', () => {
     ).toBeInTheDocument()
   })
 
+  it('says on Usage only how many reports had no price', async () => {
+    vi.mocked(endpoints.getAgentUsage).mockResolvedValue(
+      usage({ unpriced_reports: 2 }),
+    )
+    renderAt('/agents/usage')
+    expect(
+      await screen.findByText('2 usage reports had no price and count as $0.'),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the unpriced line when every report had a price', async () => {
+    renderAt('/agents/usage')
+    await screen.findByText('Usage by agent')
+    expect(screen.queryByText(/had no price/)).not.toBeInTheDocument()
+  })
+
   it('says so when the user may not read agent tasks', () => {
     auth.user = { is_admin: false, permissions: ['agent:read'] }
     renderAt('/agents/usage')
