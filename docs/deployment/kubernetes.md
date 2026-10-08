@@ -243,6 +243,39 @@ The runtime exits when imbi-api is unreachable or a stream it is configured
 for does not exist yet. Both are states a restart resolves, so the Deployment
 is left to restart into them.
 
+### Metrics
+
+imbi-api, imbi-gateway and imbi-scheduler serve Prometheus metrics at
+`/metrics` on their own port (8000, 8003 and 8005). The path is on the app
+root, not under the API prefix, and has no authentication: Prometheus scrapes
+it by pod IP. The bundled Caddy does not route it. The chart adds the
+`prometheus.io/scrape`, `prometheus.io/port` and `prometheus.io/path` pod
+annotations in `api`, `gateway` and `scheduler` mode. In `all` mode the three
+services share one pod, and the annotations name imbi-api on port 8000 only,
+so the gateway and scheduler counters are not scraped. The connectors runtime
+pod is annotated for its own metrics on port 8081.
+
+| Metric | Type | Labels | Exported by |
+| --- | --- | --- | --- |
+| `imbi_iggy_published_total` | counter | `stream`, `topic` | api, gateway, scheduler |
+| `imbi_iggy_publish_errors_total` | counter | `stream`, `topic` | api, gateway, scheduler |
+| `imbi_iggy_topic_status_up` | gauge | none | api |
+| `imbi_iggy_topic_current_offset` | gauge | `stream`, `topic` | api |
+| `imbi_iggy_topic_messages` | gauge | `stream`, `topic` | api |
+| `imbi_iggy_consumer_group_members` | gauge | `stream`, `topic` | api |
+| `imbi_iggy_consumer_group_members_owning` | gauge | `stream`, `topic` | api |
+
+- The two counters count messages, one per row, in the process that
+  published them. Every topic in `imbi.common.iggy.TOPICS` starts at 0.
+- The gauges come from the same read as the admin Iggy dashboard. Each
+  imbi-api pod refreshes them every 30 seconds and reports the same global
+  values, so aggregate them with `max()`.
+- `imbi_iggy_topic_status_up` is 0 when the last refresh failed or took more
+  than 10 seconds. The other gauges then keep the values of the last good
+  refresh.
+- A consumer group with more members than owning members has a member that
+  reads nothing (apache/iggy#4273), and its topic does not drain.
+
 ### Ingress
 
 ```yaml
