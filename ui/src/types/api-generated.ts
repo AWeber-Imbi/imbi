@@ -4815,6 +4815,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-usage/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Usage
+         * @description Return token use and cost by day and by agent.
+         *
+         *     ``start`` and ``end`` are UTC days and are both in the range. The
+         *     default range is the 30 days that end today. ``agent_id`` keeps
+         *     the usage of one agent.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         *         422: ``start`` is after ``end``, or the range is too long.
+         */
+        get: operations["get_agent_usage_api_organizations__org_slug__agent_usage__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/configuration/": {
         parameters: {
             query?: never;
@@ -8964,6 +8993,68 @@ export interface components {
             subagents?: components["schemas"]["AgentSubagent"][] | null;
             /** Version Summary */
             version_summary?: string | null;
+        };
+        /** AgentUsage */
+        AgentUsage: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Days */
+            days: components["schemas"]["AgentUsageDay"][];
+            /** Agents */
+            agents: components["schemas"]["AgentUsageTotals"][];
+            /** Unpriced Reports */
+            unpriced_reports: number;
+            /** Month To Date */
+            month_to_date: {
+                [key: string]: string;
+            };
+        };
+        /** AgentUsageDay */
+        AgentUsageDay: {
+            /** Agent Id */
+            agent_id: string;
+            /** Tasks */
+            tasks: number;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Cost */
+            cost: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+        };
+        /** AgentUsageTotals */
+        AgentUsageTotals: {
+            /** Agent Id */
+            agent_id: string;
+            /** Tasks */
+            tasks: number;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Cost */
+            cost: string;
         };
         /** AgentVersionResponse */
         AgentVersionResponse: {
@@ -25510,6 +25601,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_usage_api_organizations__org_slug__agent_usage__get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUsage"];
                 };
             };
             /** @description Validation Error */

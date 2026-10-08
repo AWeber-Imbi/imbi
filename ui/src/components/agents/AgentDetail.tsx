@@ -9,14 +9,30 @@ import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
-import type { Agent, AgentSubagentRef } from '@/types'
+import type { Agent, AgentSubagentRef, AgentUsage } from '@/types'
 
 import { formatDuration, formatMoney, slaLabel, wordCount } from './agentDraft'
 import { AgentLabels } from './AgentLabelChip'
-import { useAgentToolCatalog, usePromptResolution } from './agentQueries'
+import {
+  useAgentToolCatalog,
+  useAgentUsage,
+  usePromptResolution,
+} from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { serverOf } from './agentTools'
+import {
+  capStatus,
+  dailyValues,
+  daysBetween,
+  formatCount,
+  formatShare,
+  sumTotals,
+} from './agentUsage'
 import { RunTaskButton } from './RunTaskButton'
+import { UsageBars } from './UsageBars'
+
+// The design's runs line: the Dusk label swatch.
+const RUNS_COLOR = 'var(--color-entity-project)'
 
 export function AgentDetail({ agent }: { agent: Agent }) {
   const navigate = useNavigate()
@@ -26,6 +42,9 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const prompt = usePromptResolution(agent.prompt_ref)
   const version = prompt.data ?? null
   const settings = agent.settings ?? {}
+  const { data: usage } = useAgentUsage(agent.organization.slug, {
+    agent_id: agent.id,
+  })
 
   const model = prompt.isLoading
     ? '…'
@@ -40,10 +59,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     {
       mono: true,
       name: 'Monthly cost cap',
-      value:
-        settings.monthly_cost_cap == null
-          ? 'No cap'
-          : formatMoney(settings.monthly_cost_cap),
+      value: <MonthlyCap agent={agent} usage={usage} />,
     },
     {
       mono: true,
@@ -69,6 +85,11 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     {
       name: 'Human response SLA',
       value: slaLabel(settings.response_sla) ?? 'Not set',
+    },
+    {
+      mono: true,
+      name: 'Runs (30 days)',
+      value: usage ? formatCount(sumTotals(usage.agents).tasks) : '—',
     },
     { name: 'Labels', value: <AgentLabels tags={agent.tags} /> },
   ]
@@ -149,6 +170,8 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         </dl>
       </div>
 
+      {usage && <CostOverTime usage={usage} />}
+
       <ToolAccessCard agent={agent} />
 
       <div className="grid grid-cols-2 gap-6">
@@ -178,6 +201,104 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/** Daily cost bars and a runs line over the last 30 days. */
+function CostOverTime({ usage }: { usage: AgentUsage }) {
+  const days = daysBetween(usage.start, usage.end)
+  const cost = dailyValues(usage, (row) => Number(row.cost))
+  const runs = dailyValues(usage, (row) => row.tasks)
+  const total = sumTotals(usage.agents)
+  const stats = [
+    { label: 'Total', value: formatMoney(total.cost) },
+    { label: 'Daily avg', value: formatMoney(total.cost / days.length) },
+    {
+      label: 'Avg / run',
+      value: total.tasks > 0 ? formatMoney(total.cost / total.tasks) : '—',
+    },
+    { label: 'Peak day', value: formatMoney(Math.max(...cost)) },
+  ]
+  return (
+    <div className="border-border bg-card rounded-lg border">
+      <div className="border-border flex items-end justify-between border-b px-6 py-4">
+        <div>
+          <h3 className="text-card-title">Cost over time</h3>
+          <p className="text-tertiary text-xs">Daily spend · last 30 days</p>
+        </div>
+        <div className="flex items-center gap-6">
+          {stats.map((s) => (
+            <span className="flex flex-col text-right" key={s.label}>
+              <span className="text-overline text-tertiary uppercase">
+                {s.label}
+              </span>
+              <span className="font-mono text-sm tabular-nums">{s.value}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      {usage.days.length === 0 ? (
+        <p className="text-tertiary px-6 py-10 text-center text-sm">
+          No spend in the last 30 days.
+        </p>
+      ) : (
+        <>
+          <div className="px-6 py-5">
+            <UsageBars
+              days={days}
+              format={(n) => formatMoney(n)}
+              height={180}
+              label="Cost and runs per day"
+              line={{ color: RUNS_COLOR, values: runs }}
+              series={[
+                { color: 'var(--ds-action-bg)', key: 'cost', values: cost },
+              ]}
+            />
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 px-6 pb-4">
+            <span className="text-secondary flex items-center gap-2 text-xs">
+              <span className="bg-action size-2.25 rounded-xs" />
+              Cost per day
+            </span>
+            <span className="text-secondary flex items-center gap-2 text-xs">
+              <span
+                className="h-0.5 w-3 rounded-xs"
+                style={{ background: RUNS_COLOR }}
+              />
+              Runs per day
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The spend of this UTC month against the advisory monthly cost cap,
+ * with a warning from 80% of the cap.
+ */
+function MonthlyCap({
+  agent,
+  usage,
+}: {
+  agent: Agent
+  usage: AgentUsage | undefined
+}) {
+  const raw = agent.settings?.monthly_cost_cap
+  if (raw == null) return 'No cap'
+  if (!usage) return formatMoney(raw)
+  const spent = Number(usage.month_to_date[agent.id] ?? 0)
+  const status = capStatus(agent, spent)
+  return (
+    <span className="flex items-center gap-2">
+      {formatMoney(spent)} of {formatMoney(raw)}
+      {status && (
+        <Badge variant={status.level === 'over' ? 'danger' : 'warning'}>
+          {formatShare(status.share)} of cap
+        </Badge>
+      )}
+    </span>
   )
 }
 

@@ -18,6 +18,7 @@ import {
 import { ComingSoon } from './ComingSoon'
 import { useWaitingTaskCount } from './taskQueries'
 import { TasksPage } from './TasksPage'
+import { UsagePage } from './UsagePage'
 
 /**
  * The Agents area: its own sidebar (Agentic platform, Settings) and the
@@ -44,6 +45,8 @@ export function AgentsArea() {
           <AgentsManagement />
         ) : current === 'tasks' ? (
           <TasksPage />
+        ) : current === 'usage' ? (
+          <UsagePage />
         ) : (
           <ComingSoon section={current} />
         )}

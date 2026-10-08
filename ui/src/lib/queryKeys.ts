@@ -20,6 +20,8 @@ export const queryKeys = {
   agentTasksWaiting: (orgSlug: string) =>
     ['agentTasksWaiting', orgSlug] as const,
   agentToolCatalog: (orgSlug: string) => ['agentToolCatalog', orgSlug] as const,
+  agentUsage: (orgSlug: string, params: object) =>
+    ['agentUsage', orgSlug, params] as const,
   agentVersions: (orgSlug: string, slug: string) =>
     ['agentVersions', orgSlug, slug] as const,
   aiModels: () => ['ai-models'] as const,

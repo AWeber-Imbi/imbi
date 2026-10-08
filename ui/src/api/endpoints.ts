@@ -18,6 +18,7 @@ import type {
   AgentTaskStatus,
   AgentToolCatalog,
   AgentUpdate,
+  AgentUsage,
   AgentVersion,
   AIDiscoveryResponse,
   AIModel,
@@ -3564,6 +3565,24 @@ export const patchAgent = (
 
 export const deleteAgent = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(agentPath(orgSlug, slug))
+
+/** `start` and `end` are UTC days (YYYY-MM-DD); both are in the range. */
+export interface AgentUsageParams {
+  agent_id?: string
+  end?: string
+  start?: string
+}
+
+export const getAgentUsage = (
+  orgSlug: string,
+  params: AgentUsageParams,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentUsage>(
+    `/organizations/${encodeURIComponent(orgSlug)}/agent-usage/`,
+    { ...params },
+    signal,
+  )
 
 export const listAgentVersions = async (
   orgSlug: string,
