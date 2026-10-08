@@ -225,6 +225,12 @@ class PostOperationLogTests(_OpsLogTestBase):
         response = self.client.post('/operations-log/', json=body)
         self.assertEqual(response.status_code, 400)
 
+    def test_create_refuses_agent_task_entries(self) -> None:
+        body = self._valid_body() | {'entry_type': 'Agent Task'}
+        response = self.client.post('/operations-log/', json=body)
+        self.assertEqual(response.status_code, 400)
+        self.mock_publish.assert_not_awaited()
+
     def test_create_forbidden_without_permission(self) -> None:
         self._revoke_permissions()
         response = self.client.post(

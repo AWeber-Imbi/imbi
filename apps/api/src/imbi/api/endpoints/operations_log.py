@@ -91,6 +91,7 @@ class OperationLogResponse(pydantic.BaseModel):
     project_slug: str
     environment_slug: str
     entry_type: typing.Literal[
+        'Agent Task',
         'Configured',
         'Decommissioned',
         'Deployed',
@@ -251,6 +252,12 @@ async def create_operation_log(
             status_code=400,
             detail=f'Validation error: {e.errors()}',
         ) from e
+
+    if entry.entry_type == 'Agent Task':
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Agent Task entries come only from agent task events',
+        )
 
     if entry.performed_by is None:
         entry.performed_by = entry.recorded_by

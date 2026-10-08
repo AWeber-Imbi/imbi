@@ -311,6 +311,95 @@ class ReferenceClientTests(
         self.assertEqual((await self.task_row())['status'], 'blocked')
 
 
+class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
+    """Resolutions and outcomes of project tasks go to the Operations Log."""
+
+    async def resolve_and_close(self, short_id: str) -> list[str]:
+        """Approve a request and close the task; return the event ids."""
+        response = await self.post(
+            'requests',
+            {
+                'kind': 'approval',
+                'title': 'Merge the secret fix',
+                'artifact_digests': ['sha256:ab'],
+            },
+            short_id,
+        )
+        request_id = response.json()['request']['id']
+        response = await self.as_user(
+            'POST',
+            f'{short_id}/requests/{request_id}/resolve',
+            json={'status': 'approved', 'artifact_digests': ['sha256:ab']},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        await self.post('outcome', {'outcome': 'done_acted'}, short_id)
+        task = await self.task_row(short_id)
+        return [
+            str(e['event_id'])
+            for e in await self.postgres_events(str(task['id']))
+            if e['type'] in ('request.resolved', 'outcome.set')
+        ]
+
+    async def opslog(self, ids: list[str]) -> list[dict[str, typing.Any]]:
+        return await clickhouse.query(
+            'SELECT * FROM imbi.operations_log FINAL'
+            ' WHERE id IN {ids:Array(String)} ORDER BY occurred_at',
+            {'ids': ids},
+        )
+
+    async def test_project_task_rows(self) -> None:
+        self.act_as_user()
+        response = await self.create_task(project_id=self.project_id)
+        self.act_as(self.account)
+        ids = await self.resolve_and_close('T-2')
+        rows = await self.opslog(ids)
+        self.assertEqual(
+            [
+                (
+                    row['id'],
+                    row['entry_type'],
+                    row['description'],
+                    row['performed_by'],
+                    row['project_id'],
+                    row['project_slug'],
+                )
+                for row in rows
+            ],
+            [
+                (
+                    ids[0],
+                    'Agent Task',
+                    'T-2: approval request approved',
+                    self.email,
+                    self.project_id,
+                    self.project_id,
+                ),
+                (
+                    ids[1],
+                    'Agent Task',
+                    'T-2 closed: done_acted',
+                    response.json()['agent_id'],
+                    self.project_id,
+                    self.project_id,
+                ),
+            ],
+        )
+        for row in rows:
+            self.assertIsNotNone(row['completed_at'])
+
+        # A republish by the sweep collapses on the id.
+        task = await self.task_row('T-2')
+        await agent_tasks.log.publish(
+            task, await self.postgres_events(str(task['id']))
+        )
+        self.assertEqual(len(await self.opslog(ids)), 2)
+
+    async def test_task_without_project_has_no_rows(self) -> None:
+        ids = await self.resolve_and_close('T-1')
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(await self.opslog(ids), [])
+
+
 class StaleSessionTests(
     test_agent_task_harness.HarnessTestCase, ClickHouseTestCase
 ):

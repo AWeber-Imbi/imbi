@@ -255,7 +255,10 @@ export function NewOpsLogDialog({
               <Combobox
                 id="new-ops-entry-type"
                 onChange={(val) => setEntryType(val as OperationsLogEntryType)}
-                options={OPERATIONS_LOG_ENTRY_TYPES.map((t) => ({
+                // Agent Task rows come only from agent task events.
+                options={OPERATIONS_LOG_ENTRY_TYPES.filter(
+                  (t) => t !== 'Agent Task',
+                ).map((t) => ({
                   label: t,
                   value: t,
                 }))}
