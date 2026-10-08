@@ -12,7 +12,7 @@ import {
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
-import type { AgentTaskEvent } from '@/types'
+import type { AgentTask, AgentTaskEvent } from '@/types'
 
 /** How often a live task reads new events (O4). */
 export const EVENT_POLL_MS = 3000
@@ -73,13 +73,19 @@ export function useAgentTaskEvents(
     refetchInterval: live ? EVENT_POLL_MS : false,
   })
   // A new event can change the task (status, phase, totals), so the
-  // task, the inbox, and the waiting count read it again.
+  // task, the inbox, and the waiting count read it again. Before the
+  // first event read, the reference is the `last_seq` of the cached
+  // task, because the task can change between the two reads.
   const lastSeq = query.data?.[query.data.length - 1]?.seq ?? 0
-  const seenSeq = useRef(lastSeq)
+  const seenSeq = useRef(0)
   useEffect(() => {
-    if (seenSeq.current > 0 && lastSeq > seenSeq.current) {
+    const taskKey = queryKeys.agentTask(orgSlug, shortId)
+    const base =
+      seenSeq.current ||
+      (queryClient.getQueryData<AgentTask>(taskKey)?.last_seq ?? lastSeq)
+    if (lastSeq > base) {
       for (const key of [
-        queryKeys.agentTask(orgSlug, shortId),
+        taskKey,
         queryKeys.agentTasks(orgSlug),
         queryKeys.agentTasksWaiting(orgSlug),
       ])

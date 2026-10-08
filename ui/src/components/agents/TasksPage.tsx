@@ -139,7 +139,9 @@ function TaskInbox({
   )
   const shown = tasks.filter(
     (t) =>
-      (states.size === 0 || states.has(t.status)) &&
+      (states.size === 0 ||
+        states.has(t.status) ||
+        (!!t.blocked_since && states.has('blocked'))) &&
       (owners.size === 0 || owners.has(t.owner)),
   )
   const groups = groupTasks(shown)

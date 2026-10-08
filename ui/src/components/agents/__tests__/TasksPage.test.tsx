@@ -105,7 +105,7 @@ describe('Tasks', () => {
                 blocked_since: '2026-10-08T09:00:00Z',
                 owner: 'pat@example.com',
                 short_id: 'T-2',
-                status: 'blocked',
+                status: 'paused',
                 title: 'Waiting longest',
               }),
             ],
@@ -168,6 +168,18 @@ describe('Tasks', () => {
     )
     expect(screen.getByText('Busy')).toBeInTheDocument()
     expect(screen.getByText('1 of 4 tasks')).toBeInTheDocument()
+  })
+
+  it('shows a paused task with an open request under Needs input', async () => {
+    renderAt('/agents/tasks')
+    await screen.findByText('Busy')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter by State' }))
+    fireEvent.click(await screen.findByLabelText('Needs input'))
+    await waitFor(() =>
+      expect(screen.queryByText('Busy')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('Waiting longest')).toBeInTheDocument()
+    expect(screen.getByText('Apply the fix')).toBeInTheDocument()
   })
 
   it('answers a feedback request', async () => {
