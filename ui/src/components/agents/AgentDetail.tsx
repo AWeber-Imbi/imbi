@@ -46,6 +46,14 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     },
     {
       mono: true,
+      name: 'Task budget',
+      value:
+        settings.task_budget == null
+          ? 'No budget'
+          : formatMoney(settings.task_budget, 6),
+    },
+    {
+      mono: true,
       name: 'Max concurrent tasks',
       value: settings.max_concurrent_tasks ?? 'No limit',
     },

@@ -12,6 +12,15 @@ and sets ``Agent.version`` to its number. A write that changes only
 ``enabled``, or that changes nothing, does not write a version. A
 restore also moves the prompt label back to the recorded prompt
 version, so the system prompt and the model come back too.
+
+Each agent is its own service principal (ADR 0020): a
+``ServiceAccount`` that is ``MEMBER_OF`` the organization, with an
+``ACTS_AS`` edge from the agent. It is made with the agent and deleted
+with it. It has no role, so it has no permissions.
+
+Every route needs the caller to be a member of the organization
+(``MEMBER_OF``), because the ``agent:*`` permissions are not scoped to
+an organization: see :mod:`imbi.api.auth.organizations`.
 """
 
 import datetime
@@ -25,7 +34,7 @@ import psycopg.errors
 import pydantic
 
 from imbi.api import agent_tools
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
@@ -37,7 +46,10 @@ from imbi.common.prompts import resolve as prompt_resolve
 
 LOGGER = logging.getLogger(__name__)
 
-agents_router = fastapi.APIRouter(tags=['Agents'])
+agents_router = fastapi.APIRouter(
+    tags=['Agents'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
 
 #: The prompt CMS namespace that holds the prompts the UI makes for
 #: agents (``agents/<slug>``). Restore moves labels only in it.
@@ -392,11 +404,40 @@ MATCH (v:AgentVersion)-[:VERSION_OF]->(:Agent {{id: {id}}})
 DETACH DELETE v
 """
 
+#: Deletes the agent, its service account, and the credentials of
+#: the service account.
 _DELETE_AGENT_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
-DETACH DELETE a
+OPTIONAL MATCH (a)-[:ACTS_AS]->(s:ServiceAccount)
+OPTIONAL MATCH (s)<-[:OWNED_BY]-(c)
+DETACH DELETE c, s, a
 RETURN 1 AS deleted
 """
+
+#: Makes the service account of agent ``a`` in organization ``o``.
+_CREATE_SERVICE_ACCOUNT: typing.LiteralString = """
+CREATE (s:ServiceAccount {{id: {sa_id}, slug: {sa_slug},
+                          display_name: {sa_display_name},
+                          description: {sa_description},
+                          is_active: true, created_at: {sa_created_at}}})
+CREATE (s)-[:MEMBER_OF]->(o)
+CREATE (a)-[:ACTS_AS]->(s)
+"""
+
+_SERVICE_ACCOUNT_QUERY: typing.LiteralString = """
+MATCH (:Agent {{id: {id}}})-[:ACTS_AS]->(s:ServiceAccount)
+RETURN s.id AS id
+"""
+
+_ENSURE_SERVICE_ACCOUNT_QUERY: typing.LiteralString = (
+    """
+    MATCH (a:Agent {{id: {id}}})-[:BELONGS_TO]->(o:Organization)
+    """
+    + _CREATE_SERVICE_ACCOUNT
+    + """
+    RETURN s.id AS id
+    """
+)
 
 
 # --- Helpers -----------------------------------------------------------
@@ -412,6 +453,52 @@ def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
     if not isinstance(parsed, dict):
         return None
     return typing.cast('dict[str, typing.Any]', parsed)
+
+
+def _service_account_params(agent_id: str, name: str) -> dict[str, typing.Any]:
+    """Return the parameters of :data:`_CREATE_SERVICE_ACCOUNT`.
+
+    The slug comes from the agent id, which does not change, so two
+    requests that make the same service account collide on the unique
+    slug index.
+    """
+    return {
+        'sa_id': nanoid.generate(),
+        'sa_slug': f'agent-{agent_id}',
+        'sa_display_name': name,
+        'sa_description': f'Service principal of the agent {name!r}',
+        'sa_created_at': _now(),
+    }
+
+
+async def ensure_service_account(
+    db: graph.Graph, agent_id: str, name: str
+) -> str:
+    """Return the id of the agent's service account.
+
+    Make the service account when the agent has none. Agents made before
+    service accounts existed get one here, so no backfill is necessary.
+    """
+    records = await db.execute(
+        _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
+    )
+    if not records:
+        try:
+            records = await db.execute(
+                _ENSURE_SERVICE_ACCOUNT_QUERY,
+                {'id': agent_id, **_service_account_params(agent_id, name)},
+                ['id'],
+            )
+        except psycopg.errors.UniqueViolation:
+            # A concurrent request made it first.
+            records = await db.execute(
+                _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
+            )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Agent {name!r} not found'
+        )
+    return str(graph.parse_agtype(records[0]['id']))
 
 
 def _not_found(slug: str) -> fastapi.HTTPException:
@@ -956,7 +1043,9 @@ async def create_agent(
         'updated_at': now,
     }
     # ``org_id`` is copied from the organization so that the
-    # ``(org_id, slug)`` unique index stops a concurrent create.
+    # ``(org_id, slug)`` unique index stops a concurrent create. The
+    # service account is made in the same statement. A duplicate gets
+    # its own service account, because it is a new agent.
     query = (
         'MATCH (o:Organization {{slug: {org_slug}}}),'
         ' (t:Team {{id: {team_id}}})'
@@ -964,12 +1053,18 @@ async def create_agent(
         ' SET a.org_id = o.id'
         ' CREATE (a)-[:BELONGS_TO]->(o)'
         ' CREATE (a)-[:OWNED_BY]->(t)'
-        ' RETURN a.id AS id'
+        + _CREATE_SERVICE_ACCOUNT
+        + ' RETURN a.id AS id'
     )
     with conflict_on_unique_violation(_slug_taken_detail(snapshot.slug)):
         records = await db.execute(
             query,
-            {**props, 'org_slug': org_slug, 'team_id': team_id},
+            {
+                **props,
+                **_service_account_params(agent_id, snapshot.name),
+                'org_slug': org_slug,
+                'team_id': team_id,
+            },
             ['id'],
         )
     if not records:
@@ -1158,7 +1253,7 @@ async def delete_agent(
         fastapi.Depends(permissions.require_permission('agent:delete')),
     ],
 ) -> None:
-    """Delete an agent and every version of it.
+    """Delete an agent, every version of it, and its service account.
 
     Raises:
         404: No such agent.

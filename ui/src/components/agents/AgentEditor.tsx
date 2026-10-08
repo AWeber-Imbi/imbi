@@ -54,6 +54,7 @@ const TABS: { key: TabKey; label: string }[] = [
 const SETTINGS_FIELDS = new Set([
   'maxConcurrentTasks',
   'monthlyCostCap',
+  'taskBudget',
   'taskTimeout',
 ])
 

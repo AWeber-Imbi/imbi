@@ -4212,7 +4212,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Agent
-         * @description Delete an agent and every version of it.
+         * @description Delete an agent, every version of it, and its service account.
          *
          *     Raises:
          *         404: No such agent.
@@ -4309,6 +4309,194 @@ export interface paths {
          *         422: The snapshot team or a snapshot tag no longer exists.
          */
         post: operations["restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Tasks
+         * @description List the tasks in an organization, newest first.
+         *
+         *     ``q`` matches the title, the short id, the agent name, or the
+         *     project slug. ``mine`` keeps the tasks that the caller owns. The
+         *     ``Link`` header has the URL of the next page.
+         *
+         *     Raises:
+         *         400: The cursor is not valid.
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["list_agent_tasks_api_organizations__org_slug__agent_tasks__get"];
+        put?: never;
+        /**
+         * Create Agent Task
+         * @description Make a task for an agent, owned by the caller.
+         *
+         *     The task records the agent version and the prompt version that the
+         *     agent has now. A repeat with the same ``idempotency_key`` returns
+         *     the first task with status 200.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or not a member of the org.
+         *         404: No such organization.
+         *         409: The agent is disabled.
+         *         422: The agent or the project is not in the org, or the budget
+         *             is more than the agent's task budget.
+         */
+        post: operations["create_agent_task_api_organizations__org_slug__agent_tasks__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task
+         * @description Get a task by its short id (``T-<n>``).
+         */
+        get: operations["get_agent_task_api_organizations__org_slug__agent_tasks__short_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Task Events
+         * @description List the events of a task with ``seq`` after ``after_seq``.
+         *
+         *     To read new events, give the ``seq`` of the last event that you
+         *     have as ``after_seq``.
+         */
+        get: operations["list_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Agent Task
+         * @description Set the control value of a task to ``pause``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed, or a cancel is not done yet.
+         */
+        post: operations["pause_agent_task_api_organizations__org_slug__agent_tasks__short_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Agent Task
+         * @description Set the control value of a task to ``run``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed, or a cancel is not done yet.
+         */
+        post: operations["resume_agent_task_api_organizations__org_slug__agent_tasks__short_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Agent Task
+         * @description Set the control value of a task to ``cancel``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         */
+        post: operations["cancel_agent_task_api_organizations__org_slug__agent_tasks__short_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reassign Agent Task
+         * @description Give a task a new owner.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         *         422: The new owner is not a member of the org.
+         */
+        post: operations["reassign_agent_task_api_organizations__org_slug__agent_tasks__short_id__reassign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7963,6 +8151,8 @@ export interface components {
         "AgentSettings-Input": {
             /** Monthly Cost Cap */
             monthly_cost_cap?: number | string | null;
+            /** Task Budget */
+            task_budget?: number | string | null;
             /** Max Concurrent Tasks */
             max_concurrent_tasks?: number | null;
             /** Task Timeout Seconds */
@@ -7977,6 +8167,8 @@ export interface components {
         "AgentSettings-Output": {
             /** Monthly Cost Cap */
             monthly_cost_cap?: string | null;
+            /** Task Budget */
+            task_budget?: string | null;
             /** Max Concurrent Tasks */
             max_concurrent_tasks?: number | null;
             /** Task Timeout Seconds */
@@ -8073,6 +8265,167 @@ export interface components {
             slug: string;
             /** Color */
             color?: string | null;
+        };
+        /** AgentTaskCreate */
+        AgentTaskCreate: {
+            /** Agent Slug */
+            agent_slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @description The instruction for the agent.
+             */
+            description: string;
+            /**
+             * Project Id
+             * @description The primary project of the task.
+             */
+            project_id?: string | null;
+            /**
+             * Budget
+             * @description USD. Defaults to the agent's task_budget. It cannot be more than that budget.
+             */
+            budget?: number | string | null;
+            /**
+             * Idempotency Key
+             * @description A repeat with the same key returns the first task.
+             */
+            idempotency_key?: string | null;
+        };
+        /** AgentTaskEventResponse */
+        AgentTaskEventResponse: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Seq */
+            seq: number;
+            /** Type */
+            type: string;
+            /** Schema Version */
+            schema_version: number;
+            /**
+             * Actor Kind
+             * @enum {string}
+             */
+            actor_kind: "human" | "agent" | "subagent" | "system";
+            /** Actor Id */
+            actor_id?: string | null;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "web" | "slack" | "mcp" | "api" | "harness";
+            /** Session Id */
+            session_id?: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AgentTaskOrigin
+         * @description What started a task. It does not change.
+         */
+        AgentTaskOrigin: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "human" | "schedule" | "webhook" | "task";
+            /** User */
+            user?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AgentTaskReassign */
+        AgentTaskReassign: {
+            /**
+             * Owner
+             * Format: email
+             * @description The email of the new owner. Must be in the org.
+             */
+            owner: string;
+        };
+        /** AgentTaskResponse */
+        AgentTaskResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Short Id */
+            short_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: number;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            /** Service Account Id */
+            service_account_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            origin: components["schemas"]["AgentTaskOrigin"];
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Owner */
+            owner: string;
+            /** Budget */
+            budget?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            /**
+             * Control
+             * @enum {string}
+             */
+            control: "run" | "pause" | "cancel";
+            /** Phase */
+            phase?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Cost Total */
+            cost_total: string;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Last Seq */
+            last_seq: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /** Log Archived At */
+            log_archived_at?: string | null;
         };
         /** AgentTeamRef */
         AgentTeamRef: {
@@ -23729,6 +24082,288 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_tasks_api_organizations__org_slug__agent_tasks__get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                agent_id?: string | null;
+                owner?: string | null;
+                mine?: boolean;
+                q?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_task_api_organizations__org_slug__agent_tasks__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description A task with this idempotency key exists; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_task_api_organizations__org_slug__agent_tasks__short_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_agent_task_api_organizations__org_slug__agent_tasks__short_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_agent_task_api_organizations__org_slug__agent_tasks__short_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_agent_task_api_organizations__org_slug__agent_tasks__short_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_agent_task_api_organizations__org_slug__agent_tasks__short_id__reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskReassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
                 };
             };
             /** @description Validation Error */

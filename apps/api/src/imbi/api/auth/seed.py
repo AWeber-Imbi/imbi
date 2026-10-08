@@ -462,6 +462,26 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('agent:read', 'agent', 'read', 'View agents and their versions'),
     ('agent:write', 'agent', 'write', 'Update and restore agents'),
     ('agent:delete', 'agent', 'delete', 'Delete agents'),
+    # Agent tasks (ADR 0020)
+    (
+        'agent_task:read',
+        'agent_task',
+        'read',
+        'View agent tasks and their events',
+    ),
+    ('agent_task:create', 'agent_task', 'create', 'Create agent tasks'),
+    (
+        'agent_task:manage',
+        'agent_task',
+        'manage',
+        'Pause, resume, cancel, and reassign agent tasks',
+    ),
+    (
+        'agent_task:resolve',
+        'agent_task',
+        'resolve',
+        'Answer feedback requests and resolve approvals of agent tasks',
+    ),
     # Plugin management
     (
         'admin:plugins:read',
@@ -689,8 +709,12 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         500,
         [
             'agent:create',
+            'agent_task:create',
             'agent:read',
+            'agent_task:read',
             'agent:write',
+            'agent_task:manage',
+            'agent_task:resolve',
             'blueprint:read',
             'blueprint:write',
             'project:create',
@@ -746,6 +770,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         150,
         [
             'agent:read',
+            'agent_task:read',
             'blueprint:read',
             'component:read',
             'document:read',
@@ -780,6 +805,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         100,
         [
             'agent:read',
+            'agent_task:read',
             'blueprint:read',
             'component:read',
             'ai_model:read',
@@ -828,6 +854,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # them is an :admin operation by definition.
             'scheduled_task:admin',
             'agent:read',
+            'agent_task:read',
             'blueprint:read',
             'document:read',
             'document_template:read',

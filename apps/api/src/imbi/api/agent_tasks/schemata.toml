@@ -1,0 +1,194 @@
+# Relational schema for agent task state (ADR 0020).
+#
+# The initializer (imbi.common.relational) walks this file and issues
+# idempotent DDL, so adding a column is a data change, not a code change.
+# Rows refer to graph nodes (organization, agent, project, service account)
+# by id. People are referred to by email, because the API addresses users
+# by email. Application code validates these references on write.
+#
+# The schema name is fixed: `agent_runtime`.
+
+# One row per task.
+#
+# `last_seq` is the sequence number of the newest event. An event write
+# increments it in the same transaction, which locks the row, so the
+# per-task sequence has no gaps.
+[[tables]]
+name = "tasks"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+short_id = "TEXT NOT NULL"
+agent_id = "TEXT NOT NULL"
+agent_version = "INTEGER NOT NULL"
+prompt_version = "INTEGER"
+service_account_id = "TEXT NOT NULL"
+project_id = "TEXT"
+title = "TEXT NOT NULL"
+description = "TEXT NOT NULL"
+origin_kind = "TEXT NOT NULL"
+# The principal that started the task: the user id for a `human` origin.
+origin_id = "TEXT NOT NULL"
+origin = "JSONB NOT NULL"
+idempotency_key = "TEXT"
+owner = "TEXT NOT NULL"
+budget = "NUMERIC(14, 6)"
+status = "TEXT NOT NULL DEFAULT 'queued'"
+control = "TEXT NOT NULL DEFAULT 'run'"
+phase = "TEXT"
+outcome = "TEXT"
+outcome_reason = "TEXT"
+cost_total = "NUMERIC(14, 6) NOT NULL DEFAULT 0"
+tokens_in = "BIGINT NOT NULL DEFAULT 0"
+tokens_out = "BIGINT NOT NULL DEFAULT 0"
+cache_read_tokens = "BIGINT NOT NULL DEFAULT 0"
+cache_write_tokens = "BIGINT NOT NULL DEFAULT 0"
+last_seq = "BIGINT NOT NULL DEFAULT 0"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+closed_at = "TIMESTAMP WITH TIME ZONE"
+log_archived_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "tasks_short_id_key"
+columns = ["organization_id", "short_id"]
+unique = true
+
+# A repeat with the same key returns the first task. The key is scoped
+# to the origin principal, so one principal cannot get the task of
+# another with its key. NULL keys are distinct, so tasks without a key
+# do not collide.
+[[tables.indexes]]
+name = "tasks_origin_idempotency_key"
+columns = ["organization_id", "origin_kind", "origin_id", "idempotency_key"]
+unique = true
+
+# The list query's access path: newest first in an organization.
+[[tables.indexes]]
+name = "tasks_organization_created_idx"
+columns = ["organization_id", "created_at", "id"]
+
+[[tables.indexes]]
+name = "tasks_agent_idx"
+columns = ["agent_id"]
+
+# One row per period in which a harness works a task. A session is a
+# tracking record, not an execution lease. An open session has no
+# `closed_at`.
+[[tables]]
+name = "sessions"
+
+[tables.columns]
+id = "UUID NOT NULL"
+task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+harness_instance = "TEXT"
+opened_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+heartbeat_at = "TIMESTAMP WITH TIME ZONE"
+closed_at = "TIMESTAMP WITH TIME ZONE"
+close_reason = "TEXT"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "sessions_task_idx"
+columns = ["task_id"]
+
+# The event buffer of tasks that are not archived. ClickHouse holds the
+# permanent log; the archive sweep deletes these rows.
+[[tables]]
+name = "events"
+
+[tables.columns]
+task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+seq = "BIGINT NOT NULL"
+event_id = "UUID NOT NULL"
+type = "TEXT NOT NULL"
+schema_version = "INTEGER NOT NULL DEFAULT 1"
+actor_kind = "TEXT NOT NULL"
+actor_id = "TEXT"
+channel = "TEXT NOT NULL"
+session_id = "UUID"
+at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+payload = "JSONB NOT NULL DEFAULT '{}'"
+
+[tables.primary_key]
+columns = ["task_id", "seq"]
+
+[[tables.indexes]]
+name = "events_event_id_key"
+columns = ["event_id"]
+unique = true
+
+# Feedback and approval requests and their resolution.
+[[tables]]
+name = "requests"
+
+[tables.columns]
+id = "UUID NOT NULL"
+task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+session_id = "UUID"
+kind = "TEXT NOT NULL"
+status = "TEXT NOT NULL DEFAULT 'open'"
+title = "TEXT NOT NULL"
+why = "TEXT"
+options = "JSONB"
+artifacts = "JSONB"
+artifact_digests = "TEXT[]"
+expires_at = "TIMESTAMP WITH TIME ZONE"
+opened_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+resolved_by = "TEXT"
+resolved_at = "TIMESTAMP WITH TIME ZONE"
+resolution = "JSONB"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "requests_task_idx"
+columns = ["task_id", "status"]
+
+# One row per usage report, with the rates used. Rows never change: a
+# correction is a new row. NULL token counts mean unmeasured, not zero.
+[[tables]]
+name = "budget_ledger"
+
+[tables.columns]
+id = "UUID NOT NULL"
+task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+session_id = "UUID"
+idempotency_key = "TEXT NOT NULL"
+model_id = "TEXT"
+tokens_in = "BIGINT"
+tokens_out = "BIGINT"
+cache_read_tokens = "BIGINT"
+cache_write_tokens = "BIGINT"
+input_cost_per_million = "NUMERIC(14, 6)"
+output_cost_per_million = "NUMERIC(14, 6)"
+cache_read_cost_per_million = "NUMERIC(14, 6)"
+cache_write_cost_per_million = "NUMERIC(14, 6)"
+cost = "NUMERIC(14, 6)"
+recorded_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "budget_ledger_idempotency_key"
+columns = ["task_id", "idempotency_key"]
+unique = true
+
+# One counter per organization for `T-<n>` short ids.
+[[tables]]
+name = "task_id_sequences"
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+last_value = "BIGINT NOT NULL"
+
+[tables.primary_key]
+columns = ["organization_id"]

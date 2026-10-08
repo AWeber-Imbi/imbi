@@ -37,20 +37,33 @@ describe('agentDraft', () => {
       maxConcurrentTasks: '3',
       monthlyCostCap: '$400.00',
       responseSla: '4h',
+      taskBudget: '$5.00',
       taskTimeout: '30m',
     })
     expect(settingsFromDraft(draft.settings)).toEqual({
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
       response_sla: '4h',
+      task_budget: '5.00',
       task_timeout_seconds: 1800,
     })
     expect(settingsFromDraft(emptyDraft().settings)).toEqual({
       max_concurrent_tasks: null,
       monthly_cost_cap: null,
       response_sla: null,
+      task_budget: null,
       task_timeout_seconds: null,
     })
+  })
+
+  it('keeps a task budget below one cent', () => {
+    const base = agent()
+    const draft = draftFromAgent(
+      { ...base, settings: { ...base.settings, task_budget: '0.004' } },
+      null,
+    )
+    expect(draft.settings.taskBudget).toBe('$0.004')
+    expect(settingsFromDraft(draft.settings).task_budget).toBe('0.004')
   })
 
   it('parses durations and money', () => {
@@ -79,8 +92,10 @@ describe('agentDraft', () => {
     const draft = draftFromAgent(agent(), promptVersion())
     draft.prompt.params.maxTokens = { on: true, value: 'many' }
     draft.settings.taskTimeout = 'later'
+    draft.settings.taskBudget = 'lots'
     expect(draftErrors(draft)).toEqual({
       'param.maxTokens': 'Enter a whole number above 0',
+      taskBudget: 'Enter an amount, for example $5',
       taskTimeout: 'Enter a duration, for example 30m or 2h',
     })
   })

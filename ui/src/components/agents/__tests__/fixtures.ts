@@ -16,6 +16,7 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
       response_sla: '4h',
+      task_budget: '5.00',
       task_timeout_seconds: 1800,
     },
     slack_channel: '#cs-escalations',

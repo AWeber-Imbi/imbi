@@ -5,7 +5,14 @@ from fastapi import responses
 from fastapi.middleware import cors
 from uvicorn.middleware import proxy_headers
 
-from imbi.api import endpoints, lifespans, openapi, settings, version
+from imbi.api import (
+    agent_tasks,
+    endpoints,
+    lifespans,
+    openapi,
+    settings,
+    version,
+)
 from imbi.api.middleware import rate_limit
 from imbi.common import access_log, graph, lifespan, sentry, valkey
 from imbi.common.plugins.errors import (
@@ -25,6 +32,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
             graph.graph_lifespan,
+            agent_tasks.store_lifespan,
             prompt_pool.pool_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,

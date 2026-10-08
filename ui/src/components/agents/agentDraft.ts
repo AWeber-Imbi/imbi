@@ -58,6 +58,7 @@ export interface SettingsDraft {
   maxConcurrentTasks: string
   monthlyCostCap: string
   responseSla: '' | ResponseSla
+  taskBudget: string
   taskTimeout: string
 }
 
@@ -113,6 +114,8 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
   const s = draft.settings
   if (s.monthlyCostCap.trim() && parseMoney(s.monthlyCostCap) === null)
     errors.monthlyCostCap = 'Enter an amount, for example $400'
+  if (s.taskBudget.trim() && parseMoney(s.taskBudget) === null)
+    errors.taskBudget = 'Enter an amount, for example $5'
   if (s.maxConcurrentTasks.trim() && !/^[1-9]\d*$/.test(s.maxConcurrentTasks))
     errors.maxConcurrentTasks = 'Enter a whole number above 0'
   if (s.taskTimeout.trim() && parseDuration(s.taskTimeout) === null)
@@ -148,6 +151,10 @@ export function draftFromAgent(
           ? ''
           : formatMoney(settings.monthly_cost_cap),
       responseSla: settings.response_sla ?? '',
+      taskBudget:
+        settings.task_budget == null
+          ? ''
+          : formatMoney(settings.task_budget, 6),
       taskTimeout:
         settings.task_timeout_seconds == null
           ? ''
@@ -184,6 +191,7 @@ export function emptyDraft(): AgentDraft {
       maxConcurrentTasks: '',
       monthlyCostCap: '',
       responseSla: '',
+      taskBudget: '',
       taskTimeout: '',
     },
     slackChannel: '',
@@ -203,11 +211,12 @@ export function formatDuration(seconds: number): string {
   return `${seconds}s`
 }
 
-export function formatMoney(value: number | string): string {
+/** Format USD with cents; `maxDigits` keeps more precision, for editing. */
+export function formatMoney(value: number | string, maxDigits = 2): string {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return String(value)
   return `$${n.toLocaleString('en-US', {
-    maximumFractionDigits: 2,
+    maximumFractionDigits: maxDigits,
     minimumFractionDigits: 2,
   })}`
 }
@@ -272,10 +281,13 @@ export function parseDuration(value: string): null | number {
   return n * factor
 }
 
-/** Parse "$1,200.50" to "1200.50"; return null when it is not money. */
+/**
+ * Parse "$1,200.50" to "1200.50"; return null when it is not money.
+ * Up to 6 decimal places, the precision of the API.
+ */
 export function parseMoney(value: string): null | string {
   const cleaned = value.replace(/[$,\s]/g, '')
-  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null
+  if (!/^\d+(\.\d{1,6})?$/.test(cleaned)) return null
   return cleaned
 }
 
@@ -346,6 +358,7 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
       : null,
     monthly_cost_cap: cap,
     response_sla: draft.responseSla || null,
+    task_budget: draft.taskBudget.trim() ? parseMoney(draft.taskBudget) : null,
     task_timeout_seconds: draft.taskTimeout.trim()
       ? parseDuration(draft.taskTimeout)
       : null,

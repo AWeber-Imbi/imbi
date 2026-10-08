@@ -38,6 +38,20 @@ export function SettingsTab({ errors, onChange, value }: SettingsTabProps) {
           />
         </Field>
         <Field
+          error={errors.taskBudget}
+          help="The default hard budget of each task. A task can only lower it."
+          htmlFor="agent-task-budget"
+          label="Task budget"
+        >
+          <Input
+            id="agent-task-budget"
+            inputMode="decimal"
+            onChange={(e) => set({ taskBudget: e.target.value })}
+            placeholder="No budget"
+            value={value.taskBudget}
+          />
+        </Field>
+        <Field
           error={errors.maxConcurrentTasks}
           htmlFor="agent-max-tasks"
           label="Max concurrent tasks"
