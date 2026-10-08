@@ -15,6 +15,7 @@ from imbi.common import patch as json_patch
 
 from .agent_task_harness import agent_task_harness_router
 from .agent_tasks import agent_tasks_router
+from .agent_usage import agent_usage_router
 from .agents import agents_router
 from .comments import comments_router
 from .components import (
@@ -188,6 +189,10 @@ organizations_router.include_router(
     agent_task_harness_router,
     prefix='/{org_slug}/agent-tasks',
     dependencies=agent_tasks_router.dependencies,
+)
+organizations_router.include_router(
+    agent_usage_router,
+    prefix='/{org_slug}/agent-usage',
 )
 organizations_router.include_router(
     project_configuration_router,
