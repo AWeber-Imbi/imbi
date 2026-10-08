@@ -7,7 +7,7 @@ import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
-import { agent, catalog, promptVersion } from './fixtures'
+import { agent, catalog, promptVersion, usage } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
@@ -18,6 +18,7 @@ vi.mock('@/api/endpoints', () => ({
   deleteAgent: vi.fn(),
   deleteUpload: vi.fn(),
   getAgentToolCatalog: vi.fn(),
+  getAgentUsage: vi.fn(),
   getUploadThumbnailUrl: vi.fn(),
   listAgents: vi.fn(),
   listAgentVersions: vi.fn(),
@@ -88,6 +89,7 @@ describe('AgentsArea', () => {
     vi.mocked(endpoints.listAgentVersions).mockResolvedValue([])
     vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(catalog())
     vi.mocked(endpoints.listEnvironments).mockResolvedValue([])
+    vi.mocked(endpoints.getAgentUsage).mockResolvedValue(usage())
   })
 
   it('shows an honest empty state and the agent count', async () => {
@@ -122,9 +124,82 @@ describe('AgentsArea', () => {
     renderAt('/agents/manage/mender')
     await screen.findByText('claude-sonnet')
     expect(screen.getByText('v3')).toBeInTheDocument()
-    expect(screen.getByText('$400.00')).toBeInTheDocument()
+    expect(
+      await screen.findByText('$340.00 of $400.00', { exact: false }),
+    ).toBeInTheDocument()
     expect(screen.getByText('30m')).toBeInTheDocument()
     expect(screen.getByText('You fix bugs.')).toBeInTheDocument()
+  })
+
+  it('shows runs, cost, and the cap warning on the detail page', async () => {
+    renderAt('/agents/manage/mender')
+    expect(await screen.findByText('85% of cap')).toBeInTheDocument()
+    expect(endpoints.getAgentUsage).toHaveBeenCalledWith(
+      'acme',
+      { agent_id: 'agt-1' },
+      expect.anything(),
+    )
+    const runs = screen.getByText('Runs (30 days)').nextElementSibling
+    expect(runs).toHaveTextContent('5')
+    expect(screen.getByText('Cost over time')).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: 'Cost and runs per day' }),
+    ).toBeInTheDocument()
+    // Avg / run is $12.50 / 5 tasks.
+    expect(screen.getByText('$2.50')).toBeInTheDocument()
+  })
+
+  it('shows runs, cost, and average per run in the agent list', async () => {
+    renderAt('/agents/manage')
+    const mender = (await screen.findByText('Mender')).closest('tr')!
+    await waitFor(() => expect(mender).toHaveTextContent('$12.50'))
+    expect(mender).toHaveTextContent('$2.50')
+    const herald = screen.getByText('Herald').closest('tr')!
+    expect(herald).toHaveTextContent('$0.00')
+    expect(herald).toHaveTextContent('—')
+  })
+
+  it('shows totals, the agent table, and cap warnings on Usage', async () => {
+    renderAt('/agents/usage')
+    expect(await screen.findByText('Usage by agent')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Mender spent $340.00 of $400.00 this month (85%).',
+    )
+    // Tokens in counts cache reads: 1,000 + 3,000.
+    const total = screen.getByText('Total').closest('tr')!
+    expect(total).toHaveTextContent('4,000')
+    expect(total).toHaveTextContent('75%')
+    expect(total).toHaveTextContent('$12.50')
+    expect(
+      screen.getByRole('img', { name: 'Cost per day by agent' }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Token usage' }))
+    expect(
+      screen.getByRole('img', { name: 'Tokens per day by agent' }),
+    ).toBeInTheDocument()
+  })
+
+  it('says on Usage only how many reports had no price', async () => {
+    vi.mocked(endpoints.getAgentUsage).mockResolvedValue(
+      usage({ unpriced_reports: 2 }),
+    )
+    renderAt('/agents/usage')
+    expect(
+      await screen.findByText('2 usage reports had no price and count as $0.'),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the unpriced line when every report had a price', async () => {
+    renderAt('/agents/usage')
+    await screen.findByText('Usage by agent')
+    expect(screen.queryByText(/had no price/)).not.toBeInTheDocument()
+  })
+
+  it('says so when the user may not read agent tasks', () => {
+    auth.user = { is_admin: false, permissions: ['agent:read'] }
+    renderAt('/agents/usage')
+    expect(screen.getByText(/agent_task:read/)).toBeInTheDocument()
+    expect(endpoints.getAgentUsage).not.toHaveBeenCalled()
   })
 
   it('saves a prompt change: version, then label, then agent', async () => {
