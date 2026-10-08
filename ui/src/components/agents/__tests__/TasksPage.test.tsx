@@ -8,7 +8,7 @@ import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
 import { EVENT_POLL_MS } from '../taskQueries'
-import { agent } from './fixtures'
+import { agent, catalog, promptVersion } from './fixtures'
 import { event, task } from './taskFixtures'
 
 // fallow-ignore-next-line unresolved-import
@@ -253,4 +253,37 @@ describe('Tasks', () => {
     },
     EVENT_POLL_MS + 5000,
   )
+
+  it('runs an agent from its detail page', async () => {
+    vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
+      label: 'stable',
+      ref: 'agents/mender@stable',
+      version: promptVersion(),
+    })
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(catalog())
+    vi.mocked(endpoints.createAgentTask).mockResolvedValue(
+      task({ short_id: 'T-9' }),
+    )
+    renderAt('/agents/manage/mender')
+    fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Check the build' },
+    })
+    fireEvent.change(screen.getByLabelText('Instruction'), {
+      target: { value: 'Find why it fails.' },
+    })
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Run' }),
+    )
+    await waitFor(() =>
+      expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+        agent_slug: 'mender',
+        description: 'Find why it fails.',
+        title: 'Check the build',
+      }),
+    )
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/tasks/T-9'),
+    )
+  })
 })

@@ -16,6 +16,7 @@ import { AgentLabels } from './AgentLabelChip'
 import { useAgentToolCatalog, usePromptResolution } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { serverOf } from './agentTools'
+import { RunTaskButton } from './RunTaskButton'
 
 export function AgentDetail({ agent }: { agent: Agent }) {
   const navigate = useNavigate()
@@ -108,6 +109,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          <RunTaskButton agent={agent} />
           {canCreate && (
             <Button
               onClick={() =>
