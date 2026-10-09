@@ -96,6 +96,10 @@ class AuthContext(pydantic.BaseModel):
     service_account: models.ServiceAccount | None = None
     session_id: str | None = None
     auth_method: typing.Literal['jwt', 'api_key', 'client_credentials']
+    #: The surface that a user token was minted for, from the token's
+    #: ``channel`` claim. Only a holder of the JWT secret can set it:
+    #: imbi-slackbot sets ``slack``. ``None`` for every other token.
+    channel: typing.Literal['slack'] | None = None
     permissions: set[str] = pydantic.Field(default_factory=set)
     identities: list[IdentityInfo] = pydantic.Field(default_factory=list)
 
@@ -467,6 +471,7 @@ async def authenticate_jwt(
         user=user,
         session_id=jti,
         auth_method='jwt',
+        channel='slack' if claims.get('channel') == 'slack' else None,
         permissions=perms,
         identities=identities,
     )

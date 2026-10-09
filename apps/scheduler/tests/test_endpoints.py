@@ -272,6 +272,7 @@ class CreateTests(EndpointTestCase):
         body = response.json()
         # created_by is the authenticated caller, never a claim in the body.
         self.assertEqual(OWNER, body['created_by'])
+        self.assertEqual(OWNER, body['updated_by'])
         self.assertIsNotNone(body['next_run_at'])
         self.assertEqual(0, body['consecutive_skips'])
         stored = await self.tasks.get('nightly-recompute')
@@ -404,9 +405,111 @@ class PatchTests(EndpointTestCase):
             datetime.datetime.fromisoformat(response.json()['next_run_at']),
         )
 
+    async def _patch(
+        self, task: models.Task, path: str, value: object
+    ) -> httpx.Response:
+        response = await self.client.patch(
+            f'/api/tasks/{task.slug}',
+            json=[{'op': 'replace', 'path': path, 'value': value}],
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        return response
+
+    async def _accountable(self, task: models.Task) -> str:
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        return stored.accountable
+
+    async def test_a_pause_or_a_pure_disable_does_not_move_it(self) -> None:
+        """A person who only stops a task does not answer for its runs.
+
+        The executor sends ``accountable`` to imbi-api, which makes that
+        person the owner of the agent tasks the task makes (ADR 0020).
+        """
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.post(f'/api/tasks/{task.slug}/pause')
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(OTHER, await self._accountable(task))
+        disabled = await self.given_task(slug='acct-disable', created_by=OTHER)
+        await self._patch(disabled, '/enabled', False)
+        self.assertEqual(OTHER, await self._accountable(disabled))
+
+    async def test_every_other_patch_moves_it(self) -> None:
+        """Deny by default: the render context exposes every field."""
+        for path, value in (
+            ('/target/path', '/agent-tasks/'),
+            ('/name', 'Renamed'),
+            ('/tags', ['nightly']),
+            ('/execution/retries', 2),
+            ('/kind', 'user'),
+            ('/enabled', True),
+        ):
+            with self.subTest(path=path):
+                kind = 'system' if path == '/kind' else 'user'
+                task = await self.given_task(
+                    slug=f'acct{path.replace("/", "-")}',
+                    created_by=OTHER,
+                    kind=kind,
+                    enabled=path != '/enabled',
+                )
+                self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+                response = await self._patch(task, path, value)
+                self.assertEqual(OWNER, response.json()['updated_by'])
+                self.assertEqual(OWNER, await self._accountable(task))
+                stored = await self.tasks.get(task.slug)
+                assert stored is not None
+                self.assertEqual(OTHER, stored.created_by)
+
+    async def test_a_disable_with_another_change_moves_it(self) -> None:
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.patch(
+            f'/api/tasks/{task.slug}',
+            json=[
+                {'op': 'replace', 'path': '/enabled', 'value': False},
+                {'op': 'replace', 'path': '/name', 'value': 'Renamed'},
+            ],
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(OWNER, await self._accountable(task))
+
+    async def test_a_resume_moves_it_back(self) -> None:
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        await self._patch(task, '/target/path', '/agent-tasks/')
+        response = await self.client.post(f'/api/tasks/{task.slug}/pause')
+        self.assertEqual(OWNER, await self._accountable(task))
+        self.as_user(OTHER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.post(f'/api/tasks/{task.slug}/resume')
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(OTHER, await self._accountable(task))
+
+    async def test_a_run_now_is_the_firers_for_that_run_only(self) -> None:
+        """The run sends the firer; the next scheduled run does not."""
+        due = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            seconds=1
+        )
+        task = await self.given_task(created_by=OTHER, next_run_at=due)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        await self._patch(task, '/target/path', '/agent-tasks/')
+        self.as_user(OTHER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.post(f'/api/tasks/{task.slug}/run')
+        self.assertIn(response.status_code, (200, 201), response.text)
+        self.assertEqual(OWNER, await self._accountable(task))
+        await self.engine.tick(datetime.datetime.now(datetime.UTC))
+        self.assertEqual([task.slug] * 2, self.executor.fired)
+        self.assertEqual([OTHER, OWNER], self.executor.accountable)
+
     async def test_a_server_owned_field_cannot_be_patched(self) -> None:
         task = await self.given_task()
-        for path in ('/id', '/created_by', '/created_at', '/next_run_at'):
+        for path in (
+            '/id',
+            '/created_by',
+            '/updated_by',
+            '/created_at',
+            '/next_run_at',
+        ):
             with self.subTest(path=path):
                 response = await self.client.patch(
                     f'/api/tasks/{task.slug}',

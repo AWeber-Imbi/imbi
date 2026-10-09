@@ -250,6 +250,9 @@ async def create_webhook(
         'secret': (
             encryptor.encrypt(data.secret) if data.secret is not None else None
         ),
+        # The person accountable for what the rules do: an agent task
+        # that a rule makes is theirs (ADR 0020).
+        'created_by': auth.principal_name,
     }
     create_tpl = props_template(props)
 
@@ -580,6 +583,9 @@ async def patch_webhook(
         'description': data.description,
         'icon': data.icon,
         'secret': encrypted_secret,
+        # Every patch rewrites the rules, so whoever patched last is
+        # accountable for what they do (ADR 0020).
+        'created_by': auth.principal_name,
     }
     set_stmt = set_clause('w', props)
 

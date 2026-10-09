@@ -329,6 +329,43 @@ class ServiceAccountPermissionTestCase(
         self.assertEqual(ctx.auth_method, 'client_credentials')
         self.assertIn('project:read', ctx.permissions)
 
+    async def test_authenticate_jwt_channel_claim(self) -> None:
+        """A user JWT's ``channel`` claim sets the context channel."""
+        from imbi.common import settings
+        from imbi.common.auth import core
+
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-32-characters!',
+            jwt_algorithm='HS256',
+            access_token_expire_seconds=3600,
+        )
+        user = models.User(
+            email='ada@example.com',
+            display_name='Ada',
+            is_active=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        mock_db = mock.AsyncMock()
+        mock_db.execute = mock.AsyncMock(return_value=[])
+        mock_db.match.return_value = [user]
+        cases: list[tuple[dict[str, str] | None, str | None]] = [
+            ({'channel': 'slack'}, 'slack'),
+            ({'channel': 'web'}, None),
+            (None, None),
+        ]
+        for claims, expected in cases:
+            with self.subTest(claims=claims):
+                token = core.create_access_token(
+                    user.email,
+                    extra_claims=claims,
+                    auth_settings=auth_settings,
+                )
+                ctx = await permissions.authenticate_jwt(
+                    mock_db, token, auth_settings
+                )
+                self.assertEqual(ctx.auth_method, 'jwt')
+                self.assertEqual(ctx.channel, expected)
+
 
 class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
     """`_authenticate_token` registers the API-key owner for the log."""

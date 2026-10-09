@@ -234,6 +234,96 @@ class ApiTargetTests(ExecutorTestCase):
             .startswith('nightly-recompute-')
         )
 
+    async def test_sends_the_origin_and_a_key_per_run(self) -> None:
+        """Every attempt of a run names the task and has the same key.
+
+        imbi-api makes an agent task with a ``schedule`` origin from
+        these headers, so a retry of the run makes no second task.
+        """
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[httpx.Response(503)] + [httpx.Response(201)] * 2
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=1, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        first, retry = (call.request.headers for call in route.calls)
+        self.assertEqual(str(task.id), first['x-imbi-scheduled-task'])
+        # Nobody changed the task, so its creator answers for it.
+        self.assertEqual(
+            task.created_by, first['x-imbi-scheduled-task-accountable']
+        )
+        self.assertNotIn('x-imbi-scheduled-task-org', first)
+        self.assertEqual(str(run.run_id), first['idempotency-key'])
+        self.assertEqual(first['idempotency-key'], retry['idempotency-key'])
+        self.assertEqual(
+            first['x-imbi-scheduled-task'], retry['x-imbi-scheduled-task']
+        )
+        # The next run has a new key.
+        await self.executor.execute(task, FIRED_AT)
+        self.assertNotEqual(
+            first['idempotency-key'],
+            route.calls[-1].request.headers['idempotency-key'],
+        )
+
+    async def test_sends_who_last_changed_the_task(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(201)
+        )
+        task = helpers.build_task(
+            created_by='creator@example.com', updated_by='editor@example.com'
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(
+            'editor@example.com',
+            route.calls[0].request.headers[
+                'x-imbi-scheduled-task-accountable'
+            ],
+        )
+
+    async def test_a_run_on_demand_sends_its_firer(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(201)
+        )
+        task = helpers.build_task(updated_by='editor@example.com')
+        await self.executor.execute(
+            task, FIRED_AT, accountable='firer@example.com'
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(
+            ['firer@example.com', 'editor@example.com'],
+            [
+                call.request.headers['x-imbi-scheduled-task-accountable']
+                for call in route.calls
+            ],
+        )
+
+    async def test_sends_the_org_that_the_request_is_in(self) -> None:
+        """The target org wins over the task org, as in the path."""
+        for task, org in (
+            (helpers.build_task(organization='acme'), 'acme'),
+            (
+                helpers.build_task(
+                    organization='acme',
+                    target=models.ApiTarget(
+                        method='POST',
+                        path='/scoring/recompute-all',
+                        organization='other',
+                    ),
+                ),
+                'other',
+            ),
+        ):
+            route = self.mock.post(
+                f'{API_URL}/organizations/{org}/scoring/recompute-all'
+            ).mock(return_value=httpx.Response(202))
+            await self.executor.execute(task, FIRED_AT)
+            self.assertEqual(
+                org,
+                route.calls[-1].request.headers['x-imbi-scheduled-task-org'],
+            )
+
     async def test_render_failure_makes_no_request(self) -> None:
         route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
             return_value=httpx.Response(202)

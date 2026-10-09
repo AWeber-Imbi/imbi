@@ -854,6 +854,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # them is an :admin operation by definition.
             'scheduled_task:admin',
             'agent:read',
+            # An `api` task can start agent work with a `schedule`
+            # origin (ADR 0020).
+            'agent_task:create',
             'agent_task:read',
             'blueprint:read',
             'document:read',
@@ -890,6 +893,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # /users/by-identity, used to attribute an inbound event to
             # the Imbi user behind an external identity.
             'user:read',
+            # The `create_agent_task` action, with a `webhook` origin
+            # (ADR 0020).
+            'agent_task:create',
         ],
         False,
     ),

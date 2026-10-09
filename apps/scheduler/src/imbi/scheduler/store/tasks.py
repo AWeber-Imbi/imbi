@@ -62,6 +62,7 @@ COLUMNS = (
     'execution',
     'tags',
     'created_by',
+    'updated_by',
     'created_at',
     'updated_at',
     'last_run_at',
@@ -359,9 +360,12 @@ class Tasks:
         return following
 
     async def set_enabled(
-        self, slug: str, *, enabled: bool
+        self, slug: str, *, enabled: bool, updated_by: str | None = None
     ) -> models.Task | None:
         """Enable or disable a task without deleting it.
+
+        ``updated_by``, when given, becomes accountable for the task in the
+        same statement: whoever lets a task run again answers for it.
 
         Enabling also reschedules. A task that has been disabled — by an
         operator or by the engine's skip limit — keeps the ``next_run_at`` it
@@ -370,12 +374,15 @@ class Tasks:
         re-enabling would be indistinguishable from never having recovered.
         """
         statement = sql.SQL(
-            'UPDATE {table} SET enabled = %s, updated_at = %s'
+            'UPDATE {table} SET enabled = %s, updated_at = %s,'
+            ' updated_by = COALESCE(%s, updated_by)'
             ' WHERE slug = %s RETURNING {columns}'
         ).format(table=self._table, columns=self._columns())
         now = datetime.datetime.now(datetime.UTC)
         async with self._pool.connection() as conn, conn.transaction():
-            row = await self._fetch_one(conn, statement, (enabled, now, slug))
+            row = await self._fetch_one(
+                conn, statement, (enabled, now, updated_by, slug)
+            )
             if row is not None and enabled:
                 following = row.next_fire_time(now)
                 await conn.execute(

@@ -48,6 +48,7 @@ _ERROR_MESSAGE = 'Sorry — something went wrong handling your request.'
 _app: AsyncApp | None = None
 _handler: AsyncSocketModeHandler | None = None
 _bot_user_id: str | None = None
+_bot_id: str = ''
 
 
 class _StatusReporter:
@@ -159,12 +160,19 @@ async def handle_event(
     slack_client: SlackClient,
     *,
     bot_user_id: str,
+    bot_id: str = '',
 ) -> None:
     """Process a mention or DM and post the bot's reply in-thread."""
     channel = event.get('channel')
     ts = event.get('ts')
     slack_user_id = event.get('user')
     if not channel or not ts or not slack_user_id:
+        return
+    # P10: a message that this bot posted never starts a turn, so the
+    # bot cannot loop on its own replies. Other bots are not refused.
+    if slack_user_id == bot_user_id or (
+        bot_id and event.get('bot_id') == bot_id
+    ):
         return
     thread_ts = event.get('thread_ts') or ts
 
@@ -235,6 +243,7 @@ async def _process(
             max_tool_result_chars=slackbot_settings.max_tool_result_chars,
             on_status=reporter.update,
             temperature=prompt.temperature,
+            idempotency_prefix=f'slack:{channel}:{ts}',
         )
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)
@@ -255,7 +264,9 @@ def _build_app(bot_token: str) -> AsyncApp:
         event: dict[str, typing.Any],
         client: SlackClient,
     ) -> None:
-        await handle_event(event, client, bot_user_id=_bot_user_id or '')
+        await handle_event(
+            event, client, bot_user_id=_bot_user_id or '', bot_id=_bot_id
+        )
 
     @app.event('message')  # pyright: ignore[reportUnknownMemberType]
     async def _on_message(  # pyright: ignore[reportUnusedFunction]
@@ -268,14 +279,16 @@ def _build_app(bot_token: str) -> AsyncApp:
             return
         if event.get('bot_id') or event.get('subtype'):
             return
-        await handle_event(event, client, bot_user_id=_bot_user_id or '')
+        await handle_event(
+            event, client, bot_user_id=_bot_user_id or '', bot_id=_bot_id
+        )
 
     return app
 
 
 async def initialize() -> None:
     """Build the Slack app and open the Socket Mode connection."""
-    global _app, _handler, _bot_user_id
+    global _app, _handler, _bot_user_id, _bot_id
 
     slackbot_settings = settings.get_slackbot_settings()
     if not slackbot_settings.enabled:
@@ -293,6 +306,7 @@ async def initialize() -> None:
     _app = _build_app(slackbot_settings.slack_bot_token)
     auth = await _app.client.auth_test()  # pyright: ignore[reportUnknownMemberType]
     _bot_user_id = str(auth['user_id'])  # pyright: ignore[reportUnknownArgumentType]
+    _bot_id = str(auth.get('bot_id') or '')  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
     LOGGER.info('Connected to Slack as bot user %s', _bot_user_id)
 
     _handler = AsyncSocketModeHandler(_app, slackbot_settings.slack_app_token)
@@ -302,11 +316,12 @@ async def initialize() -> None:
 
 async def aclose() -> None:
     """Drain in-flight work and close the Socket Mode connection."""
-    global _app, _handler, _bot_user_id
+    global _app, _handler, _bot_user_id, _bot_id
     await inflight.wait_for_drain()
     if _handler is not None:
         await _handler.close_async()  # type: ignore[no-untyped-call]
         _handler = None
     _app = None
     _bot_user_id = None
+    _bot_id = ''
     identity.clear_cache()

@@ -16,6 +16,8 @@
   `overview`, `dependencies`, `relationships`, `documents`, `configuration`,
   `logs`, and `operations-log`, plus any plugin-provided tabs.
 - `/operations-log`: the global operations log.
+- `/agents/tasks/{short_id}`: an agent task's detail page. `short_id` is the
+  task's `short_id` (for example `T-12`) as returned by the Imbi API.
 - `/reports` and `/reports/{report_id}`: reports. `report_id` is one of a
   fixed set of report keys: `monthly-improvement`, `open-pull-requests`,
   `projects-graph`, `score-history`, and `team-kpi`.

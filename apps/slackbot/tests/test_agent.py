@@ -180,6 +180,60 @@ class RunTurnTests(helpers.TestCase):
             for patch in patches:
                 patch.stop()
 
+    async def test_task_creates_get_idempotency_keys(self) -> None:
+        create = (
+            'create_agent_task_api_organizations__org_slug__agent_tasks__post'
+        )
+        client = FakeClient(
+            [
+                Response(
+                    [
+                        _tool('t1', 'list_agents', {'org_slug': 'o'}),
+                        _tool(
+                            't2',
+                            create,
+                            {'agent_slug': 'mender', 'idempotency_key': 'x'},
+                        ),
+                        _tool('t3', create, {'agent_slug': 'triage'}),
+                    ],
+                    'tool_use',
+                ),
+                Response(
+                    [_tool('t4', create, {'agent_slug': 'mender'})], 'tool_use'
+                ),
+                Response([_text('done')], 'end_turn'),
+            ]
+        )
+        manager = FakeManager([('ok', False)] * 4)
+        await self._run_tools(
+            client, manager, idempotency_prefix='slack:C1:1.5'
+        )
+        inputs = [tool_input for _, tool_input, _ in manager.executed]
+        self.assertEqual({'org_slug': 'o'}, inputs[0])
+        self.assertEqual(
+            [
+                'slack:C1:1.5:mender:1',
+                'slack:C1:1.5:triage:1',
+                'slack:C1:1.5:mender:2',
+            ],
+            [tool_input['idempotency_key'] for tool_input in inputs[1:]],
+        )
+
+    async def test_no_prefix_leaves_task_create_input(self) -> None:
+        create = 'create_agent_task_organizations__org_slug__agent_tasks__post'
+        client = FakeClient(
+            [
+                Response(
+                    [_tool('t1', create, {'agent_slug': 'mender'})],
+                    'tool_use',
+                ),
+                Response([_text('done')], 'end_turn'),
+            ]
+        )
+        manager = FakeManager([('ok', False)])
+        await self._run_tools(client, manager)
+        self.assertEqual({'agent_slug': 'mender'}, manager.executed[0][1])
+
     async def test_on_status_called_with_tools(self) -> None:
         client = FakeClient(
             [
