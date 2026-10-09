@@ -138,6 +138,31 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['id'], 'abc123def4')
         self.assertEqual(data['notification_path'], '/abc123def4')
 
+    def _written_by(self) -> list[object]:
+        """Return each ``created_by`` that a graph write was given."""
+        return [
+            call.args[1]['created_by']
+            for call in self.mock_db.execute.call_args_list
+            if 'created_by' in call.args[1]
+        ]
+
+    def test_create_records_who_set_the_rules(self) -> None:
+        """The creator owns the agent tasks that the rules make."""
+        self.mock_db.execute.return_value = [self.webhook_record]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=self.webhook_create_json,
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._written_by(), ['admin@example.com'])
+
     def test_create_slug_auto_generated_from_name(self) -> None:
         """Slug is derived from the webhook name, not provided by caller."""
         record = copy.deepcopy(self.webhook_record)
@@ -1168,6 +1193,8 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.mock_encryptor.encrypt.assert_called_once_with('my-secret')
+        # Every patch rewrites the rules, so the patcher owns them now.
+        self.assertEqual(self._written_by(), ['admin@example.com'])
 
     def test_patch_webhook_keeps_secret_when_untouched(self) -> None:
         existing_record = {

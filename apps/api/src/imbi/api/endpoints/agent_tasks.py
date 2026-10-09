@@ -20,6 +20,7 @@ a control change also changes the status at once: see
 import contextlib
 import datetime
 import decimal
+import logging
 import typing
 import uuid
 from collections import abc
@@ -44,6 +45,9 @@ from imbi.api.endpoints._pagination import (
     encode_cursor,
 )
 from imbi.common import graph, models
+from imbi.common.auth import permissions as common_permissions
+
+LOGGER = logging.getLogger(__name__)
 
 #: The origin kind of a task that a person makes with this API.
 HUMAN_ORIGIN = 'human'
@@ -101,13 +105,6 @@ class AgentTaskCreate(pydantic.BaseModel):
         min_length=1,
         max_length=200,
         description='A repeat with the same key returns the first task.',
-    )
-    owner: pydantic.EmailStr | None = pydantic.Field(
-        default=None,
-        description=(
-            'The email of the owner, a member of the org. Required from '
-            "Imbi's own services; a person owns the tasks that they make."
-        ),
     )
 
 
@@ -339,6 +336,17 @@ WHERE p.id IN {ids}
 RETURN p.id AS id, p.slug AS slug, p.name AS name
 """
 
+_WEBHOOK_QUERY: typing.LiteralString = """
+MATCH (w:Webhook {{id: {id}}})-[:BELONGS_TO]->(o:Organization)
+RETURN o.slug AS org, w.created_by AS created_by
+"""
+
+_OWNER_QUERY: typing.LiteralString = """
+MATCH (u:User {{email: {email}}})
+      -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
+RETURN u.is_admin AS is_admin, u.is_active AS is_active
+"""
+
 _MEMBER_QUERY: typing.LiteralString = """
 MATCH (u:User {{email: {email}}})
       -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
@@ -435,6 +443,10 @@ class TaskOrigin(typing.NamedTuple):
     #: idempotency key is unique per kind and id.
     id: str
     record: dict[str, typing.Any]
+    #: For a ``schedule`` origin, the creator and the org of the
+    #: scheduler task, as the scheduler sends them.
+    creator: str | None = None
+    org: str | None = None
 
 
 def task_origin(
@@ -442,14 +454,18 @@ def task_origin(
     scheduled_task: str | None = None,
     webhook: str | None = None,
     delivery: str | None = None,
+    scheduled_by: str | None = None,
+    scheduled_org: str | None = None,
 ) -> TaskOrigin:
     """Return the origin of a new task, from the caller (CC9).
 
     A person starts a ``human`` task. Only the service account of the
     scheduler makes a ``schedule`` task, and only the service account
     of the gateway makes a ``webhook`` task (:data:`SERVICE_ORIGINS`).
-    Each service names its origin in request headers. A person cannot
-    name an origin, so a person cannot forge one.
+    Each service names its origin in request headers. The scheduler
+    also sends the creator and the org of its task, which the author of
+    the task cannot change. A person cannot name an origin, so a person
+    cannot forge one.
 
     Raises:
         403: A person names an origin, or the caller is a service
@@ -458,7 +474,14 @@ def task_origin(
 
     """
     if auth.user is not None:
-        if scheduled_task or webhook or delivery:
+        named = (
+            scheduled_task,
+            webhook,
+            delivery,
+            scheduled_by,
+            scheduled_org,
+        )
+        if any(named):
             raise autonomous.forbidden(
                 'origin_forbidden',
                 "Only Imbi's own services can name the origin of a task.",
@@ -477,6 +500,8 @@ def task_origin(
             kind,
             scheduled_task,
             {'kind': kind, 'scheduled_task_id': scheduled_task},
+            scheduled_by,
+            scheduled_org,
         )
     if kind == 'webhook':
         if webhook is None or delivery is None:
@@ -579,31 +604,86 @@ async def _set_control(
         ) from e
 
 
+async def _may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
+    """Return whether the person can make agent tasks in the org.
+
+    The person must be an active member of the org, and an admin or a
+    holder of ``agent_task:create``, as for a create of their own.
+    """
+    records = await db.execute(
+        _OWNER_QUERY,
+        {'email': email, 'org_slug': org_slug},
+        ['is_admin', 'is_active'],
+    )
+    if not records or graph.parse_agtype(records[0]['is_active']) is False:
+        return False
+    if graph.parse_agtype(records[0]['is_admin']):
+        return True
+    return 'agent_task:create' in (
+        await common_permissions.load_principal_permissions(
+            db, 'User', 'email', email
+        )
+    )
+
+
 async def _owner(
     db: graph.Graph,
     org_slug: str,
     auth: permissions.AuthContext,
-    requested: str | None,
+    origin: TaskOrigin,
 ) -> str:
-    """Return the owner of a new task (F9), or raise 422.
+    """Return the owner of a new task (F9).
 
-    A person owns the tasks that they make. A service names the owner,
-    who must be a member of the org.
+    A person owns the tasks that they make. A ``schedule`` task is owned
+    by the person who made the scheduler task, and a ``webhook`` task by
+    the person who last set the rules of the webhook. The scheduler task
+    or the webhook must be in the org, and its person must be able to
+    make agent tasks in the org. So a person who can configure a service
+    cannot use it to make tasks that they could not make.
+
+    Raises:
+        403: ``origin_forbidden``: the scheduler task or the webhook is
+            not in the org. ``owner_forbidden``: no person is recorded,
+            or the person cannot make agent tasks in the org.
+        422: No such webhook.
+
     """
     if auth.user is not None:
-        if requested is not None:
-            raise _unprocessable(
-                'A person owns the tasks that they make; reassign the task '
-                'to change its owner'
-            )
         return auth.user.email
-    if requested is None:
-        raise _unprocessable('owner is required')
-    if not await db.execute(
-        _MEMBER_QUERY, {'email': requested, 'org_slug': org_slug}, ['email']
-    ):
-        raise _unprocessable(f'User {requested!r} is not in the org')
-    return requested
+    if origin.kind == 'schedule':
+        org, creator = origin.org, origin.creator
+    else:
+        records = await db.execute(
+            _WEBHOOK_QUERY, {'id': origin.id}, ['org', 'created_by']
+        )
+        if not records:
+            raise _unprocessable(f'Webhook {origin.id!r} not found')
+        org = graph.parse_agtype(records[0]['org'])
+        creator = graph.parse_agtype(records[0]['created_by'])
+    if org != org_slug:
+        raise autonomous.forbidden(
+            'origin_forbidden',
+            f'The {origin.kind} {origin.id!r} is not in organization '
+            f'{org_slug!r}.',
+        )
+    if not creator:
+        LOGGER.warning(
+            'Refusing a %s task from %r: it records no person who set it',
+            origin.kind,
+            origin.id,
+        )
+        raise autonomous.forbidden(
+            'owner_forbidden',
+            f'The {origin.kind} {origin.id!r} records no person who set it; '
+            'edit it to make agent tasks from it.',
+        )
+    if not await _may_create(db, org_slug, str(creator)):
+        raise autonomous.forbidden(
+            'owner_forbidden',
+            f'{creator!r} cannot make agent tasks in organization '
+            f'{org_slug!r}.',
+        )
+    return str(creator)
 
 
 async def _project_slug(
@@ -694,6 +774,12 @@ async def create_agent_task(
     ] = None,
     webhook: typing.Annotated[str | None, _header('X-Imbi-Webhook')] = None,
     delivery: typing.Annotated[str | None, _header('X-Imbi-Delivery')] = None,
+    scheduled_by: typing.Annotated[
+        str | None, _header('X-Imbi-Scheduled-Task-Created-By')
+    ] = None,
+    scheduled_org: typing.Annotated[
+        str | None, _header('X-Imbi-Scheduled-Task-Org')
+    ] = None,
     idempotency_key: typing.Annotated[
         str | None, _header('Idempotency-Key')
     ] = None,
@@ -702,25 +788,28 @@ async def create_agent_task(
 
     A person owns the tasks that they make. The scheduler and the
     gateway also make tasks, with a ``schedule`` or a ``webhook``
-    origin that they name in headers, and an ``owner`` in the body (see
-    :func:`task_origin`). The task records the agent version and the
+    origin that they name in headers (see :func:`task_origin`). The
+    person who set the scheduler task or the webhook owns such a task
+    (see :func:`_owner`). The task records the agent version and the
     prompt version that the agent has now. A repeat with the same
     idempotency key (``idempotency_key``, else the ``Idempotency-Key``
     header) and the same origin returns the first task with status 200.
 
     Raises:
         403: The caller is not a person or one of Imbi's own services,
-            a person names an origin, or the caller is not a member of
-            the org.
+            a person names an origin, the caller is not a member of the
+            org, or the origin or its person is not allowed (see
+            :func:`_owner`).
         404: No such organization.
         409: The agent is disabled.
-        422: The agent, the project, or the owner is not in the org,
-            the budget is more than the agent's task budget, a service
-            does not name its origin or its owner, or a person names an
-            owner.
+        422: The agent or the project is not in the org, the budget is
+            more than the agent's task budget, a service does not name
+            its origin, or the webhook does not exist.
 
     """
-    origin = task_origin(auth, scheduled_task, webhook, delivery)
+    origin = task_origin(
+        auth, scheduled_task, webhook, delivery, scheduled_by, scheduled_org
+    )
     key = data.idempotency_key or idempotency_key
     if key is not None:
         existing = await store.find_by_idempotency_key(
@@ -729,7 +818,7 @@ async def create_agent_task(
         if existing is not None:
             response.status_code = 200
             return existing
-    owner = await _owner(db, org_slug, auth, data.owner)
+    owner = await _owner(db, org_slug, auth, origin)
     agent = await _fetch_agent(db, org_slug, data.agent_slug)
     if not agent.get('enabled', True):
         raise fastapi.HTTPException(

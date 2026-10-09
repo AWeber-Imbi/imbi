@@ -577,8 +577,9 @@ class CreateAgentTaskConfig(pydantic.BaseModel):
 
     ``title_expression`` and ``description_expression`` are CEL
     expressions over the event context (``payload.<field>``); a static
-    text is a quoted CEL string. ``owner`` is the email of the person
-    accountable for the task (F9), a member of the organization.
+    text is a quoted CEL string. The person who last set the rules of
+    the webhook owns the task (F9); imbi-api checks that they can make
+    agent tasks in the organization.
 
     ``delivery_id_selector`` points at the id of the delivery in the
     event context. The default is GitHub's ``X-GitHub-Delivery``
@@ -587,7 +588,6 @@ class CreateAgentTaskConfig(pydantic.BaseModel):
     """
 
     agent_slug: str
-    owner: str
     title_expression: str
     description_expression: str
     delivery_id_selector: json_pointer.JsonPointer = pydantic.Field(
@@ -1366,7 +1366,6 @@ async def create_agent_task(
             action_config.description_expression, event
         ),
         'project_id': ctx.project_id,
-        'owner': action_config.owner,
         'idempotency_key': (
             f'{delivery_id}:{action_config.agent_slug}:{ctx.project_id}'
         ),

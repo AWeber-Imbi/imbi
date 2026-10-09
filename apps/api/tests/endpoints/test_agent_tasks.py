@@ -433,11 +433,106 @@ class CreateTaskTests(AgentTaskTestCase):
 
 
 class TriggerOriginTests(AgentTaskTestCase):
-    """Tasks that the scheduler and the gateway make (P6, CC9)."""
+    """Tasks that the scheduler and the gateway make (P6, CC9).
+
+    ``creator`` holds ``agent_task:create`` through a role of this
+    test; ``bystander`` is a member with a role that grants nothing.
+    """
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         await self.make_agent()
+        suffix = uuid.uuid4().hex[:10]
+        self.creator = f'creator-{suffix}@example.com'
+        self.bystander = f'bystander-{suffix}@example.com'
+        self.webhook_id = f'wh-{suffix}'
+        self.other_webhook_id = f'wh-other-{suffix}'
+        self.unset_webhook_id = f'wh-unset-{suffix}'
+        grants, nothing = f'at-grants-{suffix}', f'at-nothing-{suffix}'
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{slug: {org}}})
+            MATCH (x:Organization {{slug: {other}}})
+            MERGE (p:Permission {{name: 'agent_task:create'}})
+            CREATE (g:Role {{slug: {grants}, name: {grants}}})
+            CREATE (n:Role {{slug: {nothing}, name: {nothing}}})
+            CREATE (g)-[:GRANTS]->(p)
+            CREATE (c:User {{id: {creator}, email: {creator},
+                             display_name: 'Creator', is_active: true,
+                             is_admin: false}})
+            CREATE (b:User {{id: {bystander}, email: {bystander},
+                             display_name: 'Bystander', is_active: true,
+                             is_admin: false}})
+            CREATE (c)-[:MEMBER_OF {{role: {grants}}}]->(o)
+            CREATE (c)-[:MEMBER_OF {{role: {grants}}}]->(x)
+            CREATE (b)-[:MEMBER_OF {{role: {nothing}}}]->(o)
+            CREATE (w:Webhook {{id: {wh}, slug: {wh}, name: {wh},
+                                created_by: {creator}}})
+            CREATE (w)-[:BELONGS_TO]->(o)
+            CREATE (v:Webhook {{id: {wh_other}, slug: {wh_other},
+                                name: {wh_other}, created_by: {creator}}})
+            CREATE (v)-[:BELONGS_TO]->(x)
+            CREATE (u:Webhook {{id: {wh_unset}, slug: {wh_unset},
+                                name: {wh_unset}}})
+            CREATE (u)-[:BELONGS_TO]->(o)
+            RETURN o.id AS id
+            """,
+            {
+                'org': self.org,
+                'other': self.other_org,
+                'grants': grants,
+                'nothing': nothing,
+                'creator': self.creator,
+                'bystander': self.bystander,
+                'wh': self.webhook_id,
+                'wh_other': self.other_webhook_id,
+                'wh_unset': self.unset_webhook_id,
+            },
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (n) WHERE n.slug IN {slugs} OR n.email IN {emails}'
+            ' DETACH DELETE n RETURN 1 AS ok',
+            {
+                'slugs': [
+                    grants,
+                    nothing,
+                    self.webhook_id,
+                    self.other_webhook_id,
+                    self.unset_webhook_id,
+                ],
+                'emails': [self.creator, self.bystander],
+            },
+            ['ok'],
+        )
+
+    def schedule(
+        self,
+        task_id: str = 'st-1',
+        created_by: str | None = None,
+        org: str | None = '',
+        key: str | None = None,
+    ) -> dict[str, str]:
+        """Return the headers that the scheduler sends for a run."""
+        headers = {
+            'X-Imbi-Scheduled-Task': task_id,
+            'X-Imbi-Scheduled-Task-Created-By': created_by or self.creator,
+        }
+        if org is not None:
+            headers['X-Imbi-Scheduled-Task-Org'] = org or self.org
+        if key is not None:
+            headers['Idempotency-Key'] = key
+        return headers
+
+    def delivery(
+        self, webhook_id: str | None = None, delivery_id: str = 'd-1'
+    ) -> dict[str, str]:
+        """Return the headers that the gateway sends for a delivery."""
+        return {
+            'X-Imbi-Webhook': webhook_id or self.webhook_id,
+            'X-Imbi-Delivery': delivery_id,
+        }
 
     async def act_as_internal_service(self, slug: str) -> None:
         """Authenticate as one of Imbi's own services, a member of ``org``.
@@ -487,34 +582,37 @@ class TriggerOriginTests(AgentTaskTestCase):
             'agent_slug': 'triage',
             'title': 'Nightly audit',
             'description': 'Audit the dependencies.',
-            'owner': self.member,
         }
         payload.update(body)
         return await self.client.post(
             self.url(), json=payload, headers=headers
         )
 
+    def assert_refused(self, response: httpx.Response, error: str) -> None:
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(response.json()['detail']['error'], error)
+
     async def test_schedule_run_makes_one_task(self) -> None:
         await self.act_as_internal_service('imbi-scheduler')
-        run = {'X-Imbi-Scheduled-Task': 'st-1', 'Idempotency-Key': 'run-1'}
-        first = await self.post(run)
+        first = await self.post(self.schedule(key='run-1'))
         self.assertEqual(first.status_code, 201, first.text)
         task = first.json()
         origin = {'kind': 'schedule', 'scheduled_task_id': 'st-1'}
         self.assertLessEqual(origin.items(), task['origin'].items())
         self.assertEqual(task['idempotency_key'], 'run-1')
-        self.assertEqual(task['owner'], self.member)
+        # The person who made the scheduler task owns the agent task.
+        self.assertEqual(task['owner'], self.creator)
         # No dispatch yet (D2): the task waits.
         self.assertEqual(task['status'], 'queued')
 
         # A retry of the same run returns the first task.
-        repeat = await self.post(run, title='Other')
+        repeat = await self.post(self.schedule(key='run-1'), title='Other')
         self.assertEqual(repeat.status_code, 200, repeat.text)
         self.assertEqual(repeat.json()['id'], task['id'])
         # The next run, and the same key from another schedule, are new.
         for headers in (
-            {'X-Imbi-Scheduled-Task': 'st-1', 'Idempotency-Key': 'run-2'},
-            {'X-Imbi-Scheduled-Task': 'st-2', 'Idempotency-Key': 'run-1'},
+            self.schedule(key='run-2'),
+            self.schedule('st-2', key='run-1'),
         ):
             response = await self.post(headers)
             self.assertEqual(response.status_code, 201, response.text)
@@ -526,61 +624,103 @@ class TriggerOriginTests(AgentTaskTestCase):
         self.assertEqual(event['actor_id'], 'imbi-scheduler')
         self.assertEqual(event['payload']['origin'], origin)
 
+    async def test_schedule_creator_needs_agent_task_create(self) -> None:
+        await self.act_as_internal_service('imbi-scheduler')
+        # A member whose role does not grant it, a service account, and
+        # a person who is not in the org.
+        for created_by in (
+            self.bystander,
+            'imbi-scheduler',
+            'stranger@example.com',
+        ):
+            with self.subTest(created_by=created_by):
+                response = await self.post(
+                    self.schedule(created_by=created_by)
+                )
+                self.assert_refused(response, 'owner_forbidden')
+
+    async def test_schedule_must_be_in_the_org(self) -> None:
+        await self.act_as_internal_service('imbi-scheduler')
+        for org in (self.other_org, None):
+            with self.subTest(org=org):
+                response = await self.post(self.schedule(org=org))
+                self.assert_refused(response, 'origin_forbidden')
+
+    async def test_body_cannot_name_the_owner(self) -> None:
+        """An ``owner`` in the body does not change the owner."""
+        await self.act_as_internal_service('imbi-scheduler')
+        response = await self.post(self.schedule(), owner=self.bystander)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['owner'], self.creator)
+
     async def test_webhook_delivery_makes_one_task(self) -> None:
         await self.act_as_internal_service('imbi-gateway')
-        delivery = {'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'}
-        first = await self.post(delivery, idempotency_key='d-1/triage')
+        first = await self.post(self.delivery(), idempotency_key='d-1/triage')
         self.assertEqual(first.status_code, 201, first.text)
         task = first.json()
         origin = {
             'kind': 'webhook',
-            'webhook_id': 'wh-1',
+            'webhook_id': self.webhook_id,
             'delivery_id': 'd-1',
         }
         self.assertLessEqual(origin.items(), task['origin'].items())
+        # The person who last set the rules of the webhook owns it.
+        self.assertEqual(task['owner'], self.creator)
         self.assertEqual(task['status'], 'queued')
-        repeat = await self.post(delivery, idempotency_key='d-1/triage')
+        repeat = await self.post(self.delivery(), idempotency_key='d-1/triage')
         self.assertEqual(repeat.status_code, 200, repeat.text)
         self.assertEqual(repeat.json()['id'], task['id'])
         (event,) = (await self.client.get(self.url('T-1/events'))).json()
         self.assertEqual(event['payload']['origin'], origin)
         self.assertEqual(event['actor_id'], 'imbi-gateway')
 
-    async def test_service_names_its_origin_and_owner(self) -> None:
+    async def test_webhook_must_be_in_the_org(self) -> None:
+        await self.act_as_internal_service('imbi-gateway')
+        response = await self.post(self.delivery(self.other_webhook_id))
+        self.assert_refused(response, 'origin_forbidden')
+        response = await self.post(self.delivery('no-such-webhook'))
+        self.assertEqual(response.status_code, 422, response.text)
+
+    async def test_webhook_needs_a_person_who_can_create(self) -> None:
+        await self.act_as_internal_service('imbi-gateway')
+        with self.assertLogs('imbi.api.endpoints.agent_tasks', 'WARNING'):
+            response = await self.post(self.delivery(self.unset_webhook_id))
+        self.assert_refused(response, 'owner_forbidden')
+        await self.graph.execute(
+            'MATCH (w:Webhook {{id: {id}}}) SET w.created_by = {email}'
+            ' RETURN w.id AS id',
+            {'id': self.webhook_id, 'email': self.bystander},
+            ['id'],
+        )
+        response = await self.post(self.delivery())
+        self.assert_refused(response, 'owner_forbidden')
+
+    async def test_service_names_its_origin(self) -> None:
         await self.act_as_internal_service('imbi-scheduler')
         response = await self.post({})
         self.assertEqual(response.status_code, 422, response.text)
         self.assertIn('X-Imbi-Scheduled-Task', response.text)
         # A webhook origin from the scheduler is not a schedule origin.
-        response = await self.post(
-            {'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'}
-        )
-        self.assertEqual(response.status_code, 422, response.text)
-        headers = {'X-Imbi-Scheduled-Task': 'st-1'}
-        response = await self.post(headers, owner=None)
-        self.assertEqual(response.status_code, 422, response.text)
-        response = await self.post(headers, owner='stranger@example.com')
+        response = await self.post(self.delivery())
         self.assertEqual(response.status_code, 422, response.text)
 
     async def test_person_cannot_name_an_origin(self) -> None:
         for headers in (
-            {'X-Imbi-Scheduled-Task': 'st-1'},
-            {'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'},
+            self.schedule(),
+            {'X-Imbi-Scheduled-Task-Created-By': self.creator},
+            self.delivery(),
         ):
-            response = await self.post(headers, owner=None)
-            self.assertEqual(response.status_code, 403, response.text)
-            self.assertEqual(
-                response.json()['detail']['error'], 'origin_forbidden'
-            )
-        response = await self.post({})
-        self.assertEqual(response.status_code, 422, response.text)
-        response = await self.post({}, owner=None)
+            with self.subTest(headers=headers):
+                response = await self.post(headers)
+                self.assert_refused(response, 'origin_forbidden')
+        response = await self.post({}, owner=self.member)
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['origin']['kind'], 'human')
+        self.assertEqual(response.json()['owner'], self.email)
 
     async def test_origin_does_not_change(self) -> None:
         await self.act_as_internal_service('imbi-scheduler')
-        created = await self.post({'X-Imbi-Scheduled-Task': 'st-1'})
+        created = await self.post(self.schedule())
         self.assertEqual(created.status_code, 201, created.text)
         await self.store.set_owner(
             self.org,

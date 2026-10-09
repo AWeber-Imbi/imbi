@@ -3092,7 +3092,6 @@ class ImbiClientTests(helpers.TestCase):
 class CreateAgentTaskTests(helpers.TestCase):
     config = actions.CreateAgentTaskConfig(
         agent_slug='triage',
-        owner='oncall@example.com',
         title_expression='"Fix " + payload.check_run.name',
         description_expression='"The check failed."',
     )
@@ -3138,7 +3137,6 @@ class CreateAgentTaskTests(helpers.TestCase):
                 'title': 'Fix lint',
                 'description': 'The check failed.',
                 'project_id': 'proj',
-                'owner': 'oncall@example.com',
                 'idempotency_key': 'd-1:triage:proj',
             },
         )

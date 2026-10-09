@@ -4345,22 +4345,23 @@ export interface paths {
          *
          *     A person owns the tasks that they make. The scheduler and the
          *     gateway also make tasks, with a ``schedule`` or a ``webhook``
-         *     origin that they name in headers, and an ``owner`` in the body (see
-         *     :func:`task_origin`). The task records the agent version and the
+         *     origin that they name in headers (see :func:`task_origin`). The
+         *     person who set the scheduler task or the webhook owns such a task
+         *     (see :func:`_owner`). The task records the agent version and the
          *     prompt version that the agent has now. A repeat with the same
          *     idempotency key (``idempotency_key``, else the ``Idempotency-Key``
          *     header) and the same origin returns the first task with status 200.
          *
          *     Raises:
          *         403: The caller is not a person or one of Imbi's own services,
-         *             a person names an origin, or the caller is not a member of
-         *             the org.
+         *             a person names an origin, the caller is not a member of the
+         *             org, or the origin or its person is not allowed (see
+         *             :func:`_owner`).
          *         404: No such organization.
          *         409: The agent is disabled.
-         *         422: The agent, the project, or the owner is not in the org,
-         *             the budget is more than the agent's task budget, a service
-         *             does not name its origin or its owner, or a person names an
-         *             owner.
+         *         422: The agent or the project is not in the org, the budget is
+         *             more than the agent's task budget, a service does not name
+         *             its origin, or the webhook does not exist.
          */
         post: operations["create_agent_task_api_organizations__org_slug__agent_tasks__post"];
         delete?: never;
@@ -8792,11 +8793,6 @@ export interface components {
              * @description A repeat with the same key returns the first task.
              */
             idempotency_key?: string | null;
-            /**
-             * Owner
-             * @description The email of the owner, a member of the org. Required from Imbi's own services; a person owns the tasks that they make.
-             */
-            owner?: string | null;
         };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
@@ -25210,6 +25206,8 @@ export interface operations {
                 "X-Imbi-Scheduled-Task"?: string | null;
                 "X-Imbi-Webhook"?: string | null;
                 "X-Imbi-Delivery"?: string | null;
+                "X-Imbi-Scheduled-Task-Created-By"?: string | null;
+                "X-Imbi-Scheduled-Task-Org"?: string | null;
                 "Idempotency-Key"?: string | null;
             };
             path: {

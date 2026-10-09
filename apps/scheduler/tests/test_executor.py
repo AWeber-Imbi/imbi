@@ -250,6 +250,10 @@ class ApiTargetTests(ExecutorTestCase):
         self.assertEqual('succeeded', run.state)
         first, retry = (call.request.headers for call in route.calls)
         self.assertEqual(str(task.id), first['x-imbi-scheduled-task'])
+        self.assertEqual(
+            task.created_by, first['x-imbi-scheduled-task-created-by']
+        )
+        self.assertNotIn('x-imbi-scheduled-task-org', first)
         self.assertEqual(str(run.run_id), first['idempotency-key'])
         self.assertEqual(first['idempotency-key'], retry['idempotency-key'])
         self.assertEqual(
@@ -261,6 +265,31 @@ class ApiTargetTests(ExecutorTestCase):
             first['idempotency-key'],
             route.calls[-1].request.headers['idempotency-key'],
         )
+
+    async def test_sends_the_org_that_the_request_is_in(self) -> None:
+        """The target org wins over the task org, as in the path."""
+        for task, org in (
+            (helpers.build_task(organization='acme'), 'acme'),
+            (
+                helpers.build_task(
+                    organization='acme',
+                    target=models.ApiTarget(
+                        method='POST',
+                        path='/scoring/recompute-all',
+                        organization='other',
+                    ),
+                ),
+                'other',
+            ),
+        ):
+            route = self.mock.post(
+                f'{API_URL}/organizations/{org}/scoring/recompute-all'
+            ).mock(return_value=httpx.Response(202))
+            await self.executor.execute(task, FIRED_AT)
+            self.assertEqual(
+                org,
+                route.calls[-1].request.headers['x-imbi-scheduled-task-org'],
+            )
 
     async def test_render_failure_makes_no_request(self) -> None:
         route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
