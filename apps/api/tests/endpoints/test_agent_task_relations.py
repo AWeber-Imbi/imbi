@@ -429,8 +429,21 @@ class AccessTests(RelationTestCase):
                     'organization_forbidden',
                 )
 
-    async def test_service_account_cannot_change_relations(self) -> None:
-        # The agent's own service account, with every permission.
+    async def test_own_service_account_needs_read_permission(self) -> None:
+        # Its own task, but no agent_task:read: the relations show
+        # other tasks and the people who linked them.
+        await self.act_as_agent(set())
+        for path in ('T-1/relations', 'T-1/projects'):
+            with self.subTest(path=path):
+                response = await self.client.get(self.url(path))
+                self.assertEqual(response.status_code, 403, response.text)
+                self.assertIn('agent_task:read', response.text)
+        # It can still read its task.
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def act_as_agent(self, granted: set[str]) -> None:
+        """Authenticate as the service account of the agent of T-1."""
         (account,) = await self.service_accounts(
             self.agent_tasks['T-1']['agent_id']
         )
@@ -443,12 +456,16 @@ class AccessTests(RelationTestCase):
                     display_name='Triage Bot',
                 ),
                 auth_method='client_credentials',
-                permissions=set(test_agent_tasks.ALL_PERMISSIONS),
+                permissions=set(granted),
             )
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             agent
         )
+
+    async def test_service_account_cannot_change_relations(self) -> None:
+        # The agent's own service account, with every permission.
+        await self.act_as_agent(set(test_agent_tasks.ALL_PERMISSIONS))
         for permission, method, path in self.routes():
             with self.subTest(method=method, path=path):
                 response = await self.client.request(method, self.url(path))

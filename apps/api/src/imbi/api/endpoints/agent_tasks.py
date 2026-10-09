@@ -524,6 +524,12 @@ def _relation_errors() -> abc.Generator[None]:
         ) from e
 
 
+#: A caller with ``agent_task:read``, with no exception for the service
+#: account of the task's agent (see :func:`_readable_task`).
+TaskReader = typing.Annotated[
+    permissions.AuthContext, fastapi.Depends(_require_read)
+]
+
 _require_manage = permissions.require_permission('agent_task:manage')
 
 #: A person with ``agent_task:manage``. Agents cannot change relations.
@@ -1036,10 +1042,14 @@ async def reply_agent_task(
     '/{short_id}/relations', response_model=AgentTaskRelations
 )
 async def get_agent_task_relations(
-    task: ReadableTask, store: agent_tasks.Store
+    task: ReadableTask, store: agent_tasks.Store, _auth: TaskReader
 ) -> dict[str, typing.Any]:
     """List the tasks related to a task: the tasks it requires, the
-    tasks that require it, and its parent and children (delegation)."""
+    tasks that require it, and its parent and children (delegation).
+
+    The caller needs ``agent_task:read``, also the service account of the
+    task's agent: the relations show other tasks.
+    """
     return await store.relations(task)
 
 
@@ -1110,9 +1120,13 @@ async def list_agent_task_projects(
     task: ReadableTask,
     db: graph.Pool,
     store: agent_tasks.Store,
+    _auth: TaskReader,
 ) -> list[dict[str, typing.Any]]:
     """List the projects of a task: the primary project first, then the
     associated projects, oldest first.
+
+    The caller needs ``agent_task:read``, also the service account of the
+    task's agent: the rows show who associated each project.
 
     A project that is no longer in the org is not ``available``; its
     slug is the slug when it was associated.
