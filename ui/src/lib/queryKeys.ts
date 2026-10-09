@@ -10,11 +10,11 @@ export const queryKeys = {
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
   agents: (orgSlug: string) => ['agents', orgSlug] as const,
-  agentTask: (orgSlug: string, shortId: string) =>
-    ['agentTask', orgSlug, shortId] as const,
-  agentTaskEvents: (orgSlug: string, shortId: string) =>
-    ['agentTaskEvents', orgSlug, shortId] as const,
   // Without a short id: the prefix for every task of the org.
+  agentTask: (orgSlug: string, ...shortId: string[]) =>
+    ['agentTask', orgSlug, ...shortId] as const,
+  agentTaskEvents: (orgSlug: string, ...shortId: string[]) =>
+    ['agentTaskEvents', orgSlug, ...shortId] as const,
   agentTaskProjects: (orgSlug: string, ...shortId: string[]) =>
     ['agentTaskProjects', orgSlug, ...shortId] as const,
   agentTaskRelations: (orgSlug: string, ...shortId: string[]) =>

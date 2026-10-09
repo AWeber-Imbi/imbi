@@ -166,8 +166,8 @@ export function useAgentTaskRelationMutation<T>(
         [
           queryKeys.agentTaskRelations(orgSlug),
           queryKeys.agentTaskProjects(orgSlug),
-          ['agentTaskEvents', orgSlug],
-          ['agentTask', orgSlug],
+          queryKeys.agentTaskEvents(orgSlug),
+          queryKeys.agentTask(orgSlug),
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
   })
