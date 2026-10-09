@@ -197,6 +197,32 @@ describe('Related tasks', () => {
     },
     EVENT_POLL_MS + 5000,
   )
+
+  it('reads the relations again for a relation event the task has seen', async () => {
+    const log = [
+      event(1, 'task.created'),
+      event(2, 'dependency.added', { side: 'prerequisite' }),
+    ]
+    // The relations are read before the event that the task has seen,
+    // and the events are read after it.
+    let relationsRead = () => {}
+    const gate = new Promise<void>((resolve) => (relationsRead = resolve))
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue(task({ last_seq: 2 }))
+    vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+      async (_org, _id, afterSeq) => {
+        await gate
+        return log.filter((e) => e.seq > afterSeq)
+      },
+    )
+    vi.mocked(endpoints.getAgentTaskRelations)
+      .mockImplementationOnce(async () => {
+        relationsRead()
+        return { ...RELATIONS, required_by: [] }
+      })
+      .mockResolvedValue(RELATIONS)
+    render(<TaskDetail orgSlug="acme" shortId="T-1" tab="related" />)
+    expect(await screen.findByText('Task T-3')).toBeInTheDocument()
+  })
 })
 
 describe('Link task dialog', () => {

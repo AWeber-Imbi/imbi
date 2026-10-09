@@ -89,31 +89,34 @@ export function useAgentTaskEvents(
   })
   // A new event can change the task (status, phase, totals), so the
   // task, the inbox, and the waiting count read it again; a relation
-  // event, also the relations. Before the first event read, the
+  // event, also the relations. Before the first event read, the task
   // reference is the `last_seq` of the cached task, because the task
-  // can change between the two reads.
+  // can change between the two reads. The relations do not use that
+  // reference: they are a different read, so the first event read
+  // refreshes them if it contains a relation event.
   const data = query.data
   const seenSeq = useRef(0)
   useEffect(() => {
     const lastSeq = data?.[data.length - 1]?.seq ?? 0
     const taskKey = queryKeys.agentTask(orgSlug, shortId)
+    const previousSeq = seenSeq.current
     const base =
-      seenSeq.current ||
+      previousSeq ||
       (queryClient.getQueryData<AgentTask>(taskKey)?.last_seq ?? lastSeq)
-    if (lastSeq > base) {
-      const keys: QueryKey[] = [
+    const keys: QueryKey[] = []
+    if (lastSeq > base)
+      keys.push(
         taskKey,
         queryKeys.agentTasks(orgSlug),
         queryKeys.agentTasksWaiting(orgSlug),
-      ]
-      if (data?.some((e) => e.seq > base && RELATION_EVENTS.has(e.type)))
-        keys.push(
-          queryKeys.agentTaskRelations(orgSlug, shortId),
-          queryKeys.agentTaskProjects(orgSlug, shortId),
-        )
-      for (const key of keys)
-        void queryClient.invalidateQueries({ queryKey: key })
-    }
+      )
+    if (data?.some((e) => e.seq > previousSeq && RELATION_EVENTS.has(e.type)))
+      keys.push(
+        queryKeys.agentTaskRelations(orgSlug, shortId),
+        queryKeys.agentTaskProjects(orgSlug, shortId),
+      )
+    for (const key of keys)
+      void queryClient.invalidateQueries({ queryKey: key })
     seenSeq.current = lastSeq
   }, [data, orgSlug, shortId, queryClient])
   return query
