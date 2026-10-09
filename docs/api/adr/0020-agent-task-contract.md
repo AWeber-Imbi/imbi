@@ -269,6 +269,53 @@ Resolutions and terminal outcomes appear in the Operations Log as a
 projection of task events (I9, N9). The Operations Log is not a second place
 to write them.
 
+### Task relations and associated projects
+
+Added 2026-10-09.
+
+A task can depend on other tasks and can touch projects other than its
+primary project (F13). Two tables hold this state:
+
+| Table | Holds |
+|---|---|
+| `task_dependencies` | One row per dependency: `organization_id`, `dependent_task_id`, `prerequisite_task_id`, `created_by_kind`, `created_by`, `created_at` |
+| `task_projects` | One row per associated project: `organization_id`, `task_id`, `project_id`, `project_slug`, `added_by_kind`, `added_by`, `added_at` |
+
+- **One relation, read in two directions.** "A requires B" and "B blocks
+  A" are the same row. The UI shows requires and required by, and blocks
+  and blocked by, from it.
+- **Parent and child are not stored here.** They come from a `task`
+  origin, which is immutable. The UI shows them read only, as delegation.
+- **Organization isolation is in the keys.** `tasks` has a unique key on
+  `(organization_id, id)`. Both tables refer to tasks through
+  `(organization_id, task id)` foreign keys, so a row can never join
+  tasks in two organizations. The organization comes from the route,
+  never from the request body. Application code checks that a project
+  belongs to the organization, because projects are in the graph.
+- **No self dependency.** A check constraint refuses it. Longer cycles
+  are allowed in v1, because a dependency does not gate anything.
+- **Dependencies are information only.** A dependency does not change a
+  task's status and does not affect dispatch. Before a dependency gates
+  anything, cycle checks must come first.
+- **The primary project is not in `task_projects`.** Associating the
+  primary project is refused. A row stays when its project is deleted
+  from the graph; the UI shows the slug snapshot as no longer available.
+- **Events.** Each change writes an event: `dependency.added`,
+  `dependency.removed`, `project.associated`, `project.dissociated`. A
+  dependency event is written on both tasks, in one transaction, with
+  the same `operation_id`, both task ids, and the side of each task. The
+  transaction locks both tasks in task id order. A removal event keeps
+  the full row that was removed. An add that finds the row already there,
+  or a remove that finds no row, writes no event.
+- **Archived tasks are sealed.** A task whose log is archived gets no new
+  events. A dependency between an archived task and a live task writes
+  its event only on the live task, and the payload names both tasks. A
+  change where every task involved is archived is refused.
+- **Who can change them.** People with `agent_task:manage`. The audit
+  fields hold an actor kind and id, not a user only, so a later decision
+  can let an agent add them through a narrower permission. Agents get no
+  write access to relations now.
+
 ### Not decided here
 
 - How a harness learns that a task was created (dispatch).

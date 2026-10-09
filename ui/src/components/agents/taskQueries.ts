@@ -1,13 +1,20 @@
 import { useEffect, useRef } from 'react'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  type QueryKey,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import {
   type AgentTaskListParams,
   countWaitingAgentTasks,
   getAgentTask,
+  getAgentTaskRelations,
   listAgentTaskEvents,
+  listAgentTaskProjects,
   listAgentTasks,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
@@ -21,6 +28,14 @@ export const EVENT_POLL_MS = 3000
 const LIST_POLL_MS = 15_000
 
 const EVENT_PAGE = 500
+
+/** The event types that change the relations of a task. */
+const RELATION_EVENTS = new Set([
+  'dependency.added',
+  'dependency.removed',
+  'project.associated',
+  'project.dissociated',
+])
 
 /** The `detail` text of an API error, or its message. */
 export function errorMessage(error: Error): string {
@@ -73,26 +88,37 @@ export function useAgentTaskEvents(
     refetchInterval: live ? EVENT_POLL_MS : false,
   })
   // A new event can change the task (status, phase, totals), so the
-  // task, the inbox, and the waiting count read it again. Before the
-  // first event read, the reference is the `last_seq` of the cached
-  // task, because the task can change between the two reads.
-  const lastSeq = query.data?.[query.data.length - 1]?.seq ?? 0
+  // task, the inbox, and the waiting count read it again; a relation
+  // event, also the relations. Before the first event read, the task
+  // reference is the `last_seq` of the cached task, because the task
+  // can change between the two reads. The relations do not use that
+  // reference: they are a different read, so the first event read
+  // refreshes them if it contains a relation event.
+  const data = query.data
   const seenSeq = useRef(0)
   useEffect(() => {
+    const lastSeq = data?.[data.length - 1]?.seq ?? 0
     const taskKey = queryKeys.agentTask(orgSlug, shortId)
+    const previousSeq = seenSeq.current
     const base =
-      seenSeq.current ||
+      previousSeq ||
       (queryClient.getQueryData<AgentTask>(taskKey)?.last_seq ?? lastSeq)
-    if (lastSeq > base) {
-      for (const key of [
+    const keys: QueryKey[] = []
+    if (lastSeq > base)
+      keys.push(
         taskKey,
         queryKeys.agentTasks(orgSlug),
         queryKeys.agentTasksWaiting(orgSlug),
-      ])
-        void queryClient.invalidateQueries({ queryKey: key })
-    }
+      )
+    if (data?.some((e) => e.seq > previousSeq && RELATION_EVENTS.has(e.type)))
+      keys.push(
+        queryKeys.agentTaskRelations(orgSlug, shortId),
+        queryKeys.agentTaskProjects(orgSlug, shortId),
+      )
+    for (const key of keys)
+      void queryClient.invalidateQueries({ queryKey: key })
     seenSeq.current = lastSeq
-  }, [lastSeq, orgSlug, shortId, queryClient])
+  }, [data, orgSlug, shortId, queryClient])
   return query
 }
 
@@ -117,6 +143,43 @@ export function useAgentTaskMutation<T>(
           queryKeys.agentTasksWaiting(orgSlug),
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
+  })
+}
+
+export function useAgentTaskProjects(orgSlug: string, shortId: string) {
+  return useQuery({
+    queryFn: ({ signal }) => listAgentTaskProjects(orgSlug, shortId, signal),
+    queryKey: queryKeys.agentTaskProjects(orgSlug, shortId),
+  })
+}
+
+/**
+ * A change to the relations of tasks. It writes events on each task in
+ * it, so the relations, the events, and the tasks of the org read again.
+ */
+export function useAgentTaskRelationMutation<T>(
+  orgSlug: string,
+  mutationFn: (value: T) => Promise<unknown>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSettled: () =>
+      Promise.all(
+        [
+          queryKeys.agentTaskRelations(orgSlug),
+          queryKeys.agentTaskProjects(orgSlug),
+          queryKeys.agentTaskEvents(orgSlug),
+          queryKeys.agentTask(orgSlug),
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      ),
+  })
+}
+
+export function useAgentTaskRelations(orgSlug: string, shortId: string) {
+  return useQuery({
+    queryFn: ({ signal }) => getAgentTaskRelations(orgSlug, shortId, signal),
+    queryKey: queryKeys.agentTaskRelations(orgSlug, shortId),
   })
 }
 

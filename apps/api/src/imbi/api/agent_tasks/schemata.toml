@@ -80,6 +80,14 @@ columns = ["organization_id", "created_at", "id"]
 name = "tasks_agent_idx"
 columns = ["agent_id"]
 
+# The key that task relations refer to, so that a relation can never join
+# tasks in two organizations. A unique index, not a constraint, because
+# the initializer adds indexes to a table that exists.
+[[tables.indexes]]
+name = "tasks_organization_id_key"
+columns = ["organization_id", "id"]
+unique = true
+
 # One row per period in which a harness works a task. A session is a
 # tracking record, not an execution lease. An open session has no
 # `closed_at`.
@@ -208,3 +216,56 @@ last_value = "BIGINT NOT NULL"
 
 [tables.primary_key]
 columns = ["organization_id"]
+
+# One row per dependency: the dependent task requires the prerequisite
+# task, and the prerequisite blocks the dependent. A dependency is
+# information only; it does not change a status or gate dispatch, so
+# cycles longer than one task are allowed.
+#
+# The foreign keys include the organization, so both tasks are in the
+# organization of the row. RESTRICT, because task rows are never
+# deleted in normal operation.
+[[tables]]
+name = "task_dependencies"
+constraints = [
+  "CONSTRAINT task_dependencies_not_self CHECK (dependent_task_id <> prerequisite_task_id)",
+  "CONSTRAINT task_dependencies_dependent_fkey FOREIGN KEY (organization_id, dependent_task_id) REFERENCES agent_runtime.tasks (organization_id, id) ON DELETE RESTRICT",
+  "CONSTRAINT task_dependencies_prerequisite_fkey FOREIGN KEY (organization_id, prerequisite_task_id) REFERENCES agent_runtime.tasks (organization_id, id) ON DELETE RESTRICT",
+]
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+dependent_task_id = "UUID NOT NULL"
+prerequisite_task_id = "UUID NOT NULL"
+created_by_kind = "TEXT NOT NULL"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id", "dependent_task_id", "prerequisite_task_id"]
+
+# The "required by" direction.
+[[tables.indexes]]
+name = "task_dependencies_prerequisite_idx"
+columns = ["organization_id", "prerequisite_task_id"]
+
+# One row per project that a task touches, other than its primary
+# project (F13). The project is a graph node; `project_slug` is its slug
+# when the row was added, so the UI can name a project that was deleted.
+[[tables]]
+name = "task_projects"
+constraints = [
+  "CONSTRAINT task_projects_task_fkey FOREIGN KEY (organization_id, task_id) REFERENCES agent_runtime.tasks (organization_id, id) ON DELETE RESTRICT",
+]
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+task_id = "UUID NOT NULL"
+project_id = "TEXT NOT NULL"
+project_slug = "TEXT NOT NULL"
+added_by_kind = "TEXT NOT NULL"
+added_by = "TEXT NOT NULL"
+added_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id", "task_id", "project_id"]

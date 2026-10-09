@@ -6,8 +6,15 @@ DDL so a re-run is a no-op. There is no migration framework in this repo, so
 column changes are additive and applied here.
 
 The TOML holds a ``tables`` list. Each table has ``name``, a ``columns``
-map of name to SQL type, a ``primary_key`` with ``columns``, and optional
-``indexes`` with ``name``, ``columns``, and ``unique``.
+map of name to SQL type, a ``primary_key`` with ``columns``, optional
+``constraints`` (table constraints as SQL, for example a foreign key on two
+columns), and optional ``indexes`` with ``name``, ``columns``, and
+``unique``.
+
+An existing table gets new columns and new indexes, so a unique key that a
+later table refers to is a unique index. A new constraint applies only to a
+table that does not exist yet: ``CREATE TABLE IF NOT EXISTS`` ignores it on
+an existing table.
 """
 
 import pathlib
@@ -93,13 +100,19 @@ async def _create_table(
             sql.Identifier(col) for col in table['primary_key']['columns']
         )
     )
+    constraints = sql.SQL('').join(
+        sql.SQL(', ') + sql.SQL(constraint)
+        for constraint in table.get('constraints', [])
+    )
     await cursor.execute(
         sql.SQL(
-            'CREATE TABLE IF NOT EXISTS {table} ({col_defs}, {pk_def})'
+            'CREATE TABLE IF NOT EXISTS {table}'
+            ' ({col_defs}, {pk_def}{constraints})'
         ).format(
             table=sql.Identifier(schema, table['name']),
             col_defs=col_defs,
             pk_def=pk_def,
+            constraints=constraints,
         )
     )
     await _add_missing_columns(cursor, schema, table)
