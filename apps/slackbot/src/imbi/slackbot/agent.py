@@ -8,6 +8,7 @@ stops requesting tools, and return the final assistant text.
 
 from __future__ import annotations
 
+import collections
 import logging
 import typing
 
@@ -41,6 +42,10 @@ _TOO_LONG_MESSAGE = (
 _GENERIC_ERROR_MESSAGE = (
     'Sorry — I hit an error talking to the model. Please try again.'
 )
+#: The name of the agent task create tool, without the suffix that
+#: FastMCP makes from the API's mount path and method.
+_CREATE_TASK_TOOL = 'create_agent_task_'
+
 _TOOL_RESULT_TOO_LARGE = (
     'ERROR: the tool returned too much data to process. Narrow the '
     'request (filter, paginate, or ask for fewer fields) and try again.'
@@ -126,6 +131,7 @@ async def run_turn(
     on_status: StatusCallback | None = None,
     max_tool_result_chars: int = _DEFAULT_MAX_TOOL_RESULT_CHARS,
     temperature: float | None = None,
+    idempotency_prefix: str | None = None,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -144,6 +150,10 @@ async def run_turn(
             with an error to protect the context window.
         temperature: Sampling temperature, or ``None`` for the model
             default.
+        idempotency_prefix: When set, every agent task create gets the
+            key ``<prefix>:<agent slug>:<n>``, where ``n`` counts the
+            creates for that agent in this turn. The model's own key is
+            replaced, so a redelivered event makes no second task.
 
     Returns:
         The assistant's final text (concatenated across rounds).
@@ -155,6 +165,7 @@ async def run_turn(
     # Work on a copy so appending assistant/tool-result turns does not
     # mutate the caller-supplied list.
     messages = list(messages)
+    creates: collections.Counter[str] = collections.Counter()
 
     for _round in range(max_rounds):
         kwargs: dict[str, typing.Any] = {
@@ -191,9 +202,22 @@ async def run_turn(
 
         tool_results: list[dict[str, typing.Any]] = []
         for tool_use in tool_uses:
+            tool_input = tool_use['input']
+            if idempotency_prefix and str(tool_use['name']).startswith(
+                _CREATE_TASK_TOOL
+            ):
+                agent_slug = str(tool_input.get('agent_slug', ''))
+                creates[agent_slug] += 1
+                tool_input = {
+                    **tool_input,
+                    'idempotency_key': (
+                        f'{idempotency_prefix}:{agent_slug}:'
+                        f'{creates[agent_slug]}'
+                    ),
+                }
             result_text, is_error = await manager.execute_tool(
                 tool_use['name'],
-                tool_use['input'],
+                tool_input,
                 auth_token,
             )
             if len(result_text) > max_tool_result_chars:

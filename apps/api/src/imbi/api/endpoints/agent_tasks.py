@@ -522,9 +522,12 @@ def _actor(auth: permissions.AuthContext) -> agent_tasks.Actor:
     """Return the actor of a request, for the events that it writes.
 
     A browser session authenticates with a JWT; other callers use an API
-    key or client credentials.
+    key or client credentials. imbi-slackbot mints its JWTs with a
+    ``slack`` channel claim.
     """
-    channel: Channel = 'web' if auth.auth_method == 'jwt' else 'api'
+    channel: Channel = auth.channel or (
+        'web' if auth.auth_method == 'jwt' else 'api'
+    )
     if auth.user is not None:
         return agent_tasks.Actor('human', auth.user.email, channel)
     return agent_tasks.Actor('system', auth.principal_name, channel)
