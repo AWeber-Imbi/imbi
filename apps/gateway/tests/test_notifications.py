@@ -810,6 +810,130 @@ class ProcessNotificationTests(helpers.TestCase):
             finally:
                 TokenEncryption.reset_instance()
 
+    async def _post_github(
+        self,
+        secret: str | None,
+        raw: bytes,
+        headers: dict[str, str],
+        plugin: str = 'github',
+    ) -> httpx.Response:
+        """Post ``raw`` to the webhook with ``secret`` as its secret."""
+        await self._set_integration_plugin(plugin)
+        await self._add_rule(filter_expression='true')
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                if secret is not None:
+                    await self.g.execute(
+                        'MATCH (w:Webhook {{id: {wid}}})'
+                        ' SET w.secret = {enc} RETURN 1 AS r',
+                        {
+                            'wid': self.webhook_id,
+                            'enc': TokenEncryption.get_instance().encrypt(
+                                secret
+                            ),
+                        },
+                        ['r'],
+                    )
+                return await self._post_raw(raw, headers)
+            finally:
+                TokenEncryption.reset_instance()
+
+    @staticmethod
+    def _sign_github(secret: str, raw: bytes) -> str:
+        digest = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        return f'sha256={digest}'
+
+    def _github_verified(self) -> object:
+        event = typing.cast('dict[str, typing.Any]', ACTION_CALLS[0]['event'])
+        return event['github_signature_verified']
+
+    async def test_github_valid_signature_accepted(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        resp = await self._post_github(
+            'ghsec',
+            raw,
+            {'X-Hub-Signature-256': self._sign_github('ghsec', raw)},
+        )
+        self.assertEqual(202, resp.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        self.assertIs(True, self._github_verified())
+
+    async def test_github_wrong_signature_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        with self.assertLogs(
+            'imbi.gateway.notifications', level='WARNING'
+        ) as cm:
+            resp = await self._post_github(
+                'ghsec',
+                raw,
+                {'X-Hub-Signature-256': self._sign_github('other', raw)},
+            )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('verification failed' in line for line in cm.output)
+        )
+
+    async def test_github_missing_signature_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        resp = await self._post_github('ghsec', raw, {})
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
+    async def test_github_tampered_body_dropped(self) -> None:
+        signed = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        tampered = json.dumps(
+            {'repo': {'id': self.ext_id}, 'extra': True}
+        ).encode()
+        resp = await self._post_github(
+            'ghsec',
+            tampered,
+            {'X-Hub-Signature-256': self._sign_github('ghsec', signed)},
+        )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
+    async def test_github_sha1_or_malformed_signature_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        sha1 = hmac.new(b'ghsec', raw, hashlib.sha1).hexdigest()
+        sha256 = hmac.new(b'ghsec', raw, hashlib.sha256).hexdigest()
+        for headers in (
+            {'X-Hub-Signature': f'sha1={sha1}'},
+            {'X-Hub-Signature-256': f'sha1={sha1}'},
+            {'X-Hub-Signature-256': sha256},
+            {'X-Hub-Signature-256': f'v1={sha256}'},
+            {'X-Hub-Signature-256': 'sha256='},
+        ):
+            with self.subTest(headers=headers):
+                resp = await self._post_github('ghsec', raw, headers)
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+
+    async def test_github_no_secret_processed_unverified(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        with self.assertLogs(
+            'imbi.gateway.notifications', level='WARNING'
+        ) as cm:
+            first = await self._post_github(None, raw, {})
+            second = await self._post_raw(raw, {})
+        self.assertEqual(202, first.status_code)
+        self.assertEqual(202, second.status_code)
+        self.assertIs(False, self._github_verified())
+        # Logged once per webhook, not once per delivery.
+        self.assertEqual(
+            1, sum('GitHub webhook has no secret' in o for o in cm.output)
+        )
+
+    async def test_non_github_webhook_secret_not_checked(self) -> None:
+        # Only GitHub deliveries are checked against Webhook.secret.
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        resp = await self._post_github('ghsec', raw, {}, plugin='sonarqube')
+        self.assertEqual(202, resp.status_code)
+        self.assertIs(False, self._github_verified())
+
     async def test_filter_matches_on_resolved_event_type(self) -> None:
         await self._set_implemented_by(event_type_selector='x-github-event')
         await self._add_rule(filter_expression='type == "push"')
