@@ -33,6 +33,7 @@ import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import {
+  checksFrom,
   conversation,
   formatElapsed,
   formatTokens,
@@ -49,9 +50,14 @@ import {
   useAgentTaskEvents,
   useAgentTaskMutation,
 } from './taskQueries'
-import { ActionsTab, ConversationTab, InputRequiredTab } from './TaskTabs'
+import {
+  ActionsTab,
+  ChecksTab,
+  ConversationTab,
+  InputRequiredTab,
+} from './TaskTabs'
 
-type TabKey = 'actions' | 'conversation' | 'input' | 'overview'
+type TabKey = 'actions' | 'checks' | 'conversation' | 'input' | 'overview'
 
 /** The task in the inbox: its header, phase timeline, and tabs. */
 export function TaskDetail({
@@ -87,7 +93,10 @@ export function TaskDetail({
   const end = t.closed_at ? Date.parse(t.closed_at) : now
   const requests = requestsFrom(log, now)
   const open = requests.filter((r) => r.status === 'open').length
-  const tabs: { count?: number; key: TabKey; label: string }[] = [
+  const failing = checksFrom(log).filter(
+    (e) => e.payload.verdict === 'fail',
+  ).length
+  const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
     {
@@ -96,6 +105,11 @@ export function TaskDetail({
       label: 'Conversation',
     },
     { count: toolCalls(log).length, key: 'actions', label: 'Actions taken' },
+    {
+      count: failing ? `${failing} failing` : undefined,
+      key: 'checks',
+      label: 'Signals and checks',
+    },
   ]
   const current: TabKey = tabs.some((x) => x.key === tab)
     ? (tab as TabKey)
@@ -146,6 +160,7 @@ export function TaskDetail({
           <ConversationTab events={log} orgSlug={orgSlug} task={t} />
         )}
         {current === 'actions' && <ActionsTab events={log} orgSlug={orgSlug} />}
+        {current === 'checks' && <ChecksTab events={log} />}
       </div>
     </div>
   )
