@@ -420,9 +420,7 @@ class PatchTests(EndpointTestCase):
         assert stored is not None
         return stored.accountable
 
-    async def test_a_pause_or_a_rename_does_not_move_accountability(
-        self,
-    ) -> None:
+    async def test_a_pause_or_a_pure_disable_does_not_move_it(self) -> None:
         """A person who only stops a task does not answer for its runs.
 
         The executor sends ``accountable`` to imbi-api, which makes that
@@ -432,43 +430,76 @@ class PatchTests(EndpointTestCase):
         self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
         response = await self.client.post(f'/api/tasks/{task.slug}/pause')
         self.assertEqual(200, response.status_code, response.text)
-        await self._patch(task, '/name', 'Renamed')
-        await self._patch(task, '/enabled', False)
         self.assertEqual(OTHER, await self._accountable(task))
+        disabled = await self.given_task(slug='acct-disable', created_by=OTHER)
+        await self._patch(disabled, '/enabled', False)
+        self.assertEqual(OTHER, await self._accountable(disabled))
 
-    async def test_a_change_to_what_the_task_does_moves_it(self) -> None:
-        task = await self.given_task(created_by=OTHER)
-        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
-        response = await self._patch(task, '/target/path', '/agent-tasks/')
-        self.assertEqual(OWNER, response.json()['updated_by'])
-        self.assertEqual(OWNER, await self._accountable(task))
-        stored = await self.tasks.get(task.slug)
-        assert stored is not None
-        self.assertEqual(OTHER, stored.created_by)
-
-    async def test_whoever_makes_the_task_run_answers_for_it(self) -> None:
-        """After another person's change, a resume or a run takes it back."""
-        for action in ('resume', 'run', 'enable'):
-            with self.subTest(action=action):
+    async def test_every_other_patch_moves_it(self) -> None:
+        """Deny by default: the render context exposes every field."""
+        for path, value in (
+            ('/target/path', '/agent-tasks/'),
+            ('/name', 'Renamed'),
+            ('/tags', ['nightly']),
+            ('/execution/retries', 2),
+            ('/kind', 'user'),
+            ('/enabled', True),
+        ):
+            with self.subTest(path=path):
+                kind = 'system' if path == '/kind' else 'user'
                 task = await self.given_task(
-                    slug=f'acct-{action}', created_by=OTHER
+                    slug=f'acct{path.replace("/", "-")}',
+                    created_by=OTHER,
+                    kind=kind,
+                    enabled=path != '/enabled',
                 )
                 self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
-                await self._patch(task, '/target/path', '/agent-tasks/')
-                await self._patch(task, '/enabled', False)
+                response = await self._patch(task, path, value)
+                self.assertEqual(OWNER, response.json()['updated_by'])
                 self.assertEqual(OWNER, await self._accountable(task))
-                self.as_user(OTHER, ALL_PERMISSIONS, admin=True)
-                if action == 'enable':
-                    await self._patch(task, '/enabled', True)
-                else:
-                    response = await self.client.post(
-                        f'/api/tasks/{task.slug}/{action}'
-                    )
-                    self.assertIn(response.status_code, (200, 201))
-                self.assertEqual(OTHER, await self._accountable(task))
-        # The run on demand fired as the person who started it.
-        self.assertEqual(['acct-run'], self.executor.fired)
-        self.assertEqual([OTHER], self.executor.accountable)
+                stored = await self.tasks.get(task.slug)
+                assert stored is not None
+                self.assertEqual(OTHER, stored.created_by)
+
+    async def test_a_disable_with_another_change_moves_it(self) -> None:
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.patch(
+            f'/api/tasks/{task.slug}',
+            json=[
+                {'op': 'replace', 'path': '/enabled', 'value': False},
+                {'op': 'replace', 'path': '/name', 'value': 'Renamed'},
+            ],
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(OWNER, await self._accountable(task))
+
+    async def test_a_resume_moves_it_back(self) -> None:
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        await self._patch(task, '/target/path', '/agent-tasks/')
+        response = await self.client.post(f'/api/tasks/{task.slug}/pause')
+        self.assertEqual(OWNER, await self._accountable(task))
+        self.as_user(OTHER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.post(f'/api/tasks/{task.slug}/resume')
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(OTHER, await self._accountable(task))
+
+    async def test_a_run_now_is_the_firers_for_that_run_only(self) -> None:
+        """The run sends the firer; the next scheduled run does not."""
+        due = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            seconds=1
+        )
+        task = await self.given_task(created_by=OTHER, next_run_at=due)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        await self._patch(task, '/target/path', '/agent-tasks/')
+        self.as_user(OTHER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.post(f'/api/tasks/{task.slug}/run')
+        self.assertIn(response.status_code, (200, 201), response.text)
+        self.assertEqual(OWNER, await self._accountable(task))
+        await self.engine.tick(datetime.datetime.now(datetime.UTC))
+        self.assertEqual([task.slug] * 2, self.executor.fired)
+        self.assertEqual([OTHER, OWNER], self.executor.accountable)
 
     async def test_a_server_owned_field_cannot_be_patched(self) -> None:
         task = await self.given_task()

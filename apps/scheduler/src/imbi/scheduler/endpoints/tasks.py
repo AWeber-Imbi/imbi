@@ -217,14 +217,14 @@ async def patch_task(
     reason = identity.unresolvable(updated.identity, settings.get_settings())
     if reason is not None:
         raise fastapi.HTTPException(status_code=422, detail=reason)
-    if _reschedules(task, updated):
-        updated = _scheduled(updated)
-    if _changes_behavior(task, updated):
+    if not _only_disables(task, updated):
         # The patcher answers for what the task does from now on: imbi-api
         # makes them the owner of the agent tasks that it makes (ADR 0020).
         updated = updated.model_copy(
             update={'updated_by': auth.principal_name}
         )
+    if _reschedules(task, updated):
+        updated = _scheduled(updated)
     stored = await tasks.update(updated)
     if stored is None:  # pragma: no cover - it was loaded a moment ago
         raise fastapi.HTTPException(status_code=404, detail=slug)
@@ -250,21 +250,19 @@ def _errors(err: pydantic.ValidationError) -> list[dict[str, typing.Any]]:
     ]
 
 
-def _changes_behavior(before: models.Task, after: models.Task) -> bool:
-    """Return whether a patch changes what the task does, or lets it run.
+def _only_disables(before: models.Task, after: models.Task) -> bool:
+    """Return whether a patch does nothing but disable the task.
 
-    Such a patch moves accountability to the patcher. A disable, or a
-    change to the name, description, tags, or execution policy, does not:
-    otherwise a person who only paused a task would answer for the runs
-    that its owner starts again later.
+    Every other patch moves accountability to the patcher. Deny by
+    default: almost every field changes what a run does, even the name
+    and the tags, because the render context exposes them. A person who
+    only stops a task must not answer for the runs that its owner starts
+    again later.
     """
     return (
-        before.target != after.target
-        or before.identity != after.identity
-        or before.organization != after.organization
-        or before.trigger != after.trigger
-        or before.timezone != after.timezone
-        or (after.enabled and not before.enabled)
+        before.enabled
+        and not after.enabled
+        and before.model_copy(update={'enabled': False}) == after
     )
 
 
@@ -367,12 +365,14 @@ async def run_task(
     an operator firing one by hand is usually testing whether it is safe to
     re-enable.
     """
-    await dependencies.load_for_management(tasks, slug, auth)
-    # Whoever fires the task answers for the run (ADR 0020).
-    task = await tasks.mark_accountable(slug, auth.principal_name)
-    if task is None:  # pragma: no cover - it was loaded a moment ago
-        raise fastapi.HTTPException(status_code=404, detail=slug)
-    return await engine.run_now(task)
+    task = await dependencies.load_for_management(tasks, slug, auth)
+    # Whoever fires the task answers for this run only (ADR 0020). A copy,
+    # not a write: the stored task, and so every scheduled run, keeps its
+    # accountable person. The engine writes run outcomes by task id, never
+    # the task itself, so the copy is not stored.
+    return await engine.run_now(
+        task.model_copy(update={'updated_by': auth.principal_name})
+    )
 
 
 @router.post(

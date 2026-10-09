@@ -297,8 +297,8 @@ class Task(pydantic.BaseModel):
     execution: ExecutionPolicy = ExecutionPolicy()
     tags: list[str] = []
     created_by: str
-    #: The last principal that created the task, changed what it does,
-    #: or made it run (resume, run now).
+    #: The last principal that created, patched, or resumed the task. A
+    #: patch that only disables it does not count.
     updated_by: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -354,9 +354,10 @@ class Task(pydantic.BaseModel):
     def accountable(self) -> str:
         """Return who answers for what the task does now.
 
-        The last principal that changed what the task does or made it
-        run, because that is a new decision about what it does. A pause
-        or a rename does not move it.
+        The last principal that patched the task or let it run again,
+        because that is a new decision about what it does. A pause, or a
+        patch that only disables the task, does not move it. A run on
+        demand is the firer's for that run only.
         """
         return self.updated_by or self.created_by
 

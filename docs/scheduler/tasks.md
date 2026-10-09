@@ -110,9 +110,9 @@ Calls `imbi-api` as the task's identity.
 
 Every request has headers that the task cannot change:
 `X-Imbi-Scheduled-Task` (the task id), `X-Imbi-Scheduled-Task-Accountable`
-(who last changed what the task does or made it run — a patch to the
-target, identity, organization, or schedule, a resume, or a run now — else
-who made it), `X-Imbi-Scheduled-Task-Org` (the organization of the request,
+(who last patched or resumed the task, else who made it; a patch that only
+disables the task does not count, and a run now sends who fired it, for that
+run only), `X-Imbi-Scheduled-Task-Org` (the organization of the request,
 when the task names one), and `Idempotency-Key` (the run id, unless
 `idempotency_key` sets one). All attempts of a run send the same key.
 

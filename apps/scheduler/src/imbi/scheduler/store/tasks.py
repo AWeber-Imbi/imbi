@@ -365,7 +365,7 @@ class Tasks:
         """Enable or disable a task without deleting it.
 
         ``updated_by``, when given, becomes accountable for the task in the
-        same statement (see :meth:`mark_accountable`).
+        same statement: whoever lets a task run again answers for it.
 
         Enabling also reschedules. A task that has been disabled — by an
         operator or by the engine's skip limit — keeps the ``next_run_at`` it
@@ -394,21 +394,6 @@ class Tasks:
                 row = row.model_copy(update={'next_run_at': following})
             await self._notify(conn)
         return row
-
-    async def mark_accountable(
-        self, slug: str, principal: str
-    ) -> models.Task | None:
-        """Make `principal` accountable for the task, and return it.
-
-        For an action that makes the task run, such as a run on demand:
-        whoever starts it answers for it (ADR 0020 in imbi-api).
-        """
-        statement = sql.SQL(
-            'UPDATE {table} SET updated_by = %s WHERE slug = %s'
-            ' RETURNING {columns}'
-        ).format(table=self._table, columns=self._columns())
-        async with self._pool.connection() as conn:
-            return await self._fetch_one(conn, statement, (principal, slug))
 
     async def acquire_lease(
         self,
