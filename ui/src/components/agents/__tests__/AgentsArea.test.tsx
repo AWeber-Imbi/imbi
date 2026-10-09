@@ -93,9 +93,9 @@ describe('AgentsArea', () => {
   })
 
   it('shows an honest empty state and the agent count', async () => {
-    renderAt('/agents/dashboard')
+    renderAt('/agents/workflows')
     expect(screen.getByText('Coming soon')).toBeInTheDocument()
-    expect(screen.getByText(/dashboard is not built yet/)).toBeInTheDocument()
+    expect(screen.getByText(/Workflows are not built yet/)).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
   })
 
