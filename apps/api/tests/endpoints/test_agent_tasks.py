@@ -432,6 +432,170 @@ class CreateTaskTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 200, response.text)
 
 
+class TriggerOriginTests(AgentTaskTestCase):
+    """Tasks that the scheduler and the gateway make (P6, CC9)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.make_agent()
+
+    async def act_as_internal_service(self, slug: str) -> None:
+        """Authenticate as one of Imbi's own services, a member of ``org``.
+
+        The account can already exist in the shared database, from the
+        setup of another test, so it is only deleted when made here.
+        """
+        if not await self.graph.execute(
+            'MATCH (s:ServiceAccount {{slug: {slug}}}) RETURN s.slug AS slug',
+            {'slug': slug},
+            ['slug'],
+        ):
+            self.addAsyncCleanup(
+                self.graph.execute,
+                'MATCH (s:ServiceAccount {{slug: {slug}}}) DETACH DELETE s'
+                ' RETURN 1 AS ok',
+                {'slug': slug},
+                ['ok'],
+            )
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{slug: {org}}})
+            MERGE (s:ServiceAccount {{slug: {slug}}})
+            MERGE (s)-[:MEMBER_OF]->(o)
+            RETURN s.slug AS slug
+            """,
+            {'org': self.org, 'slug': slug},
+            ['slug'],
+        )
+        account = models.ServiceAccount(slug=slug, display_name=slug)
+
+        async def service_account() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                service_account=account,
+                auth_method='client_credentials',
+                permissions={'agent_task:create', 'agent_task:read'},
+            )
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            service_account
+        )
+
+    async def post(
+        self, headers: dict[str, str], **body: typing.Any
+    ) -> httpx.Response:
+        payload: dict[str, typing.Any] = {
+            'agent_slug': 'triage',
+            'title': 'Nightly audit',
+            'description': 'Audit the dependencies.',
+            'owner': self.member,
+        }
+        payload.update(body)
+        return await self.client.post(
+            self.url(), json=payload, headers=headers
+        )
+
+    async def test_schedule_run_makes_one_task(self) -> None:
+        await self.act_as_internal_service('imbi-scheduler')
+        run = {'X-Imbi-Scheduled-Task': 'st-1', 'Idempotency-Key': 'run-1'}
+        first = await self.post(run)
+        self.assertEqual(first.status_code, 201, first.text)
+        task = first.json()
+        origin = {'kind': 'schedule', 'scheduled_task_id': 'st-1'}
+        self.assertLessEqual(origin.items(), task['origin'].items())
+        self.assertEqual(task['idempotency_key'], 'run-1')
+        self.assertEqual(task['owner'], self.member)
+        # No dispatch yet (D2): the task waits.
+        self.assertEqual(task['status'], 'queued')
+
+        # A retry of the same run returns the first task.
+        repeat = await self.post(run, title='Other')
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json()['id'], task['id'])
+        # The next run, and the same key from another schedule, are new.
+        for headers in (
+            {'X-Imbi-Scheduled-Task': 'st-1', 'Idempotency-Key': 'run-2'},
+            {'X-Imbi-Scheduled-Task': 'st-2', 'Idempotency-Key': 'run-1'},
+        ):
+            response = await self.post(headers)
+            self.assertEqual(response.status_code, 201, response.text)
+            self.assertNotEqual(response.json()['id'], task['id'])
+
+        (event,) = (await self.client.get(self.url('T-1/events'))).json()
+        self.assertEqual(event['type'], 'task.created')
+        self.assertEqual(event['actor_kind'], 'system')
+        self.assertEqual(event['actor_id'], 'imbi-scheduler')
+        self.assertEqual(event['payload']['origin'], origin)
+
+    async def test_webhook_delivery_makes_one_task(self) -> None:
+        await self.act_as_internal_service('imbi-gateway')
+        delivery = {'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'}
+        first = await self.post(delivery, idempotency_key='d-1/triage')
+        self.assertEqual(first.status_code, 201, first.text)
+        task = first.json()
+        origin = {
+            'kind': 'webhook',
+            'webhook_id': 'wh-1',
+            'delivery_id': 'd-1',
+        }
+        self.assertLessEqual(origin.items(), task['origin'].items())
+        self.assertEqual(task['status'], 'queued')
+        repeat = await self.post(delivery, idempotency_key='d-1/triage')
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json()['id'], task['id'])
+        (event,) = (await self.client.get(self.url('T-1/events'))).json()
+        self.assertEqual(event['payload']['origin'], origin)
+        self.assertEqual(event['actor_id'], 'imbi-gateway')
+
+    async def test_service_names_its_origin_and_owner(self) -> None:
+        await self.act_as_internal_service('imbi-scheduler')
+        response = await self.post({})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('X-Imbi-Scheduled-Task', response.text)
+        # A webhook origin from the scheduler is not a schedule origin.
+        response = await self.post(
+            {'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        headers = {'X-Imbi-Scheduled-Task': 'st-1'}
+        response = await self.post(headers, owner=None)
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.post(headers, owner='stranger@example.com')
+        self.assertEqual(response.status_code, 422, response.text)
+
+    async def test_person_cannot_name_an_origin(self) -> None:
+        for headers in (
+            {'X-Imbi-Scheduled-Task': 'st-1'},
+            {'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'},
+        ):
+            response = await self.post(headers, owner=None)
+            self.assertEqual(response.status_code, 403, response.text)
+            self.assertEqual(
+                response.json()['detail']['error'], 'origin_forbidden'
+            )
+        response = await self.post({})
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.post({}, owner=None)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['origin']['kind'], 'human')
+
+    async def test_origin_does_not_change(self) -> None:
+        await self.act_as_internal_service('imbi-scheduler')
+        created = await self.post({'X-Imbi-Scheduled-Task': 'st-1'})
+        self.assertEqual(created.status_code, 201, created.text)
+        await self.store.set_owner(
+            self.org,
+            'T-1',
+            self.email,
+            agent_tasks.Actor('human', self.email, 'web'),
+        )
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        self.assertEqual(task['owner'], self.email)
+        self.assertEqual(
+            task['origin'], {'kind': 'schedule', 'scheduled_task_id': 'st-1'}
+        )
+
+
 class ReadTaskTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()

@@ -252,6 +252,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
 
         The scheduler manages the schedule and reads everything else; the
         gateway writes only projects (which covers releases and SBOMs).
+        Both can start agent tasks, with their own origin (ADR 0020).
         Widening either is a deliberate decision, not a drive-by edit.
         """
         scheduler = next(
@@ -262,12 +263,12 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             for perm in scheduler[4]
             if ':read' not in perm and not perm.startswith('scheduled_task:')
         }
-        self.assertEqual(non_read, set())
+        self.assertEqual(non_read, {'agent_task:create'})
 
         gateway = next(r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-gateway')
         self.assertEqual(
             {perm for perm in gateway[4] if ':read' not in perm},
-            {'project:write'},
+            {'project:write', 'agent_task:create'},
         )
 
     def test_internal_service_roles_are_not_auto_assigned(self) -> None:
