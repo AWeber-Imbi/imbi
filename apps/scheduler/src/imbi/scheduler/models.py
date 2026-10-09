@@ -297,6 +297,9 @@ class Task(pydantic.BaseModel):
     execution: ExecutionPolicy = ExecutionPolicy()
     tags: list[str] = []
     created_by: str
+    #: The last principal that created, patched, or resumed the task. A
+    #: patch that only disables it does not count.
+    updated_by: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     last_run_at: datetime.datetime | None = None
@@ -346,6 +349,17 @@ class Task(pydantic.BaseModel):
     def tzinfo(self) -> zoneinfo.ZoneInfo:
         """Return the task's timezone."""
         return zoneinfo.ZoneInfo(self.timezone)
+
+    @property
+    def accountable(self) -> str:
+        """Return who answers for what the task does now.
+
+        The last principal that patched the task or let it run again,
+        because that is a new decision about what it does. A pause, or a
+        patch that only disables the task, does not move it. A run on
+        demand overrides it for that run only (``Engine.run_now``).
+        """
+        return self.updated_by or self.created_by
 
     @property
     def principal_name(self) -> str:

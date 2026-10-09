@@ -94,16 +94,21 @@ class Engine:
             return await self._decline(task, moment, misfire)
         return await self._fire_under_lease(task, moment)
 
-    async def run_now(self, task: models.Task) -> runs.Run:
+    async def run_now(
+        self, task: models.Task, *, accountable: str | None = None
+    ) -> runs.Run:
         """Fire `task` immediately, as ``POST /tasks/{slug}/run`` asks.
 
         The misfire check is skipped and only that: an on-demand run is by
         definition on time, but it is still a real firing, so it takes an
         execution slot, counts against this process's concurrency ceiling,
         resolves identity, and lands in history like any other.
+
+        ``accountable`` replaces the task's accountable person for this run
+        only; nothing stores it.
         """
         run = await self._fire_under_lease(
-            task, datetime.datetime.now(datetime.UTC)
+            task, datetime.datetime.now(datetime.UTC), accountable
         )
         if run is None:  # pragma: no cover - the lease path always records
             raise RuntimeError('on-demand run produced no record')
@@ -121,7 +126,10 @@ class Engine:
         )
 
     async def _fire_under_lease(
-        self, task: models.Task, moment: datetime.datetime
+        self,
+        task: models.Task,
+        moment: datetime.datetime,
+        accountable: str | None = None,
     ) -> runs.Run | None:
         """Take a slot, execute, and record, whatever the outcome.
 
@@ -148,7 +156,7 @@ class Engine:
             )
             return await self._decline(task, moment, reason)
         try:
-            run = await self._execute(task, moment, run_id)
+            run = await self._execute(task, moment, run_id, accountable)
         finally:
             await self._tasks.release_lease(lease)
         return await self._record(task, run)
@@ -158,6 +166,7 @@ class Engine:
         task: models.Task,
         moment: datetime.datetime,
         run_id: uuid.UUID,
+        accountable: str | None = None,
     ) -> runs.Run:
         """Run the firing as a cancellable task, and classify how it ended."""
         if await self._tasks.cancel_requested(run_id):
@@ -173,7 +182,9 @@ class Engine:
             if await self._tasks.cancel_requested(run_id):
                 return self._cancelled_run(task, moment, run_id, started=False)
             pending = asyncio.create_task(
-                self._executor.execute(task, moment, run_id=run_id)
+                self._executor.execute(
+                    task, moment, run_id=run_id, accountable=accountable
+                )
             )
             self._in_flight[key] = pending
             try:

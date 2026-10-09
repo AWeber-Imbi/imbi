@@ -32,7 +32,9 @@ project_slug = "TEXT"
 title = "TEXT NOT NULL"
 description = "TEXT NOT NULL"
 origin_kind = "TEXT NOT NULL"
-# The principal that started the task: the user id for a `human` origin.
+# The principal that started the task: the user id for a `human` origin,
+# the scheduler task id for `schedule`, the webhook id for `webhook`, and
+# the parent task id for `task`.
 origin_id = "TEXT NOT NULL"
 origin = "JSONB NOT NULL"
 idempotency_key = "TEXT"

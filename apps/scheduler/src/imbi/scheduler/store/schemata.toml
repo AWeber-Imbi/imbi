@@ -26,6 +26,10 @@ target = "JSONB NOT NULL"
 execution = "JSONB NOT NULL"
 tags = "TEXT[] NOT NULL DEFAULT '{}'"
 created_by = "TEXT NOT NULL"
+# The last person who patched the task (other than to only disable it)
+# or resumed it. Agent tasks that it makes are theirs (ADR 0020). NULL for a task that no one changed since before
+# this column existed: then `created_by` is accountable.
+updated_by = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 last_run_at = "TIMESTAMP WITH TIME ZONE"

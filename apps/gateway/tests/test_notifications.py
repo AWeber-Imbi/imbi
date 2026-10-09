@@ -569,6 +569,8 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(self.integration_slug, ctx.integration_slug)
         event = typing.cast('dict[str, typing.Any]', call['event'])
         self.assertEqual(body, event['payload'])
+        # No signing secret on the edge: nothing was verified.
+        self.assertIs(False, event['signature_verified'])
         self.assertEqual({}, call['credentials'])
         self.assertEqual(self.ext_id, call['external_identifier'])
         self.assertIsNone(ctx.actor_user_id)
@@ -675,6 +677,10 @@ class ProcessNotificationTests(helpers.TestCase):
                 )
                 self.assertEqual(202, resp.status_code)
                 self.assertEqual(1, len(ACTION_CALLS))
+                event = typing.cast(
+                    'dict[str, typing.Any]', ACTION_CALLS[0]['event']
+                )
+                self.assertIs(True, event['signature_verified'])
             finally:
                 TokenEncryption.reset_instance()
 
@@ -807,6 +813,36 @@ class ProcessNotificationTests(helpers.TestCase):
                 )
                 self.assertEqual(202, resp.status_code)
                 self.assertEqual(2, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_signature_verified_is_per_project(self) -> None:
+        # One edge has a secret and one has none. The signature proves
+        # the delivery only for the project whose edge has the secret.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                second_id = await self._create_extra_project()
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(202, resp.status_code)
+                verified = {
+                    typing.cast(
+                        'plugin_base.PluginContext', call['ctx']
+                    ).project_id: typing.cast(
+                        'dict[str, typing.Any]', call['event']
+                    )['signature_verified']
+                    for call in ACTION_CALLS
+                }
+                self.assertEqual(
+                    {self.proj_id: True, second_id: False}, verified
+                )
             finally:
                 TokenEncryption.reset_instance()
 

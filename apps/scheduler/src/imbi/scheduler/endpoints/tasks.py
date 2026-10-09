@@ -38,6 +38,7 @@ READONLY_PATHS: frozenset[str] = frozenset(
         '/id',
         '/created_at',
         '/created_by',
+        '/updated_by',
         '/updated_at',
         '/last_run_at',
         '/next_run_at',
@@ -73,6 +74,7 @@ def _created(body: TaskCreate, created_by: str) -> models.Task:
         models.Task(
             id=uuid.uuid4(),
             created_by=created_by,
+            updated_by=created_by,
             created_at=now,
             updated_at=now,
             **body.model_dump(),
@@ -215,6 +217,12 @@ async def patch_task(
     reason = identity.unresolvable(updated.identity, settings.get_settings())
     if reason is not None:
         raise fastapi.HTTPException(status_code=422, detail=reason)
+    if not _only_disables(task, updated):
+        # The patcher answers for what the task does from now on: imbi-api
+        # makes them the owner of the agent tasks that it makes (ADR 0020).
+        updated = updated.model_copy(
+            update={'updated_by': auth.principal_name}
+        )
     if _reschedules(task, updated):
         updated = _scheduled(updated)
     stored = await tasks.update(updated)
@@ -240,6 +248,22 @@ def _errors(err: pydantic.ValidationError) -> list[dict[str, typing.Any]]:
         }
         for error in err.errors(include_context=False, include_url=False)
     ]
+
+
+def _only_disables(before: models.Task, after: models.Task) -> bool:
+    """Return whether a patch does nothing but disable the task.
+
+    Every other patch moves accountability to the patcher. Deny by
+    default: almost every field changes what a run does, even the name
+    and the tags, because the render context exposes them. A person who
+    only stops a task must not answer for the runs that its owner starts
+    again later.
+    """
+    return (
+        before.enabled
+        and not after.enabled
+        and before.model_copy(update={'enabled': False}) == after
+    )
 
 
 def _reschedules(before: models.Task, after: models.Task) -> bool:
@@ -302,13 +326,22 @@ async def resume_task(
     without the reschedule the first tick would read it as a misfire.
     """
     await dependencies.load_for_management(tasks, slug, auth)
-    return await _set_enabled(tasks, slug, enabled=True)
+    # Whoever lets the task run again answers for it (ADR 0020).
+    return await _set_enabled(
+        tasks, slug, enabled=True, updated_by=auth.principal_name
+    )
 
 
 async def _set_enabled(
-    tasks: store.Tasks, slug: str, *, enabled: bool
+    tasks: store.Tasks,
+    slug: str,
+    *,
+    enabled: bool,
+    updated_by: str | None = None,
 ) -> models.Task:
-    task = await tasks.set_enabled(slug, enabled=enabled)
+    task = await tasks.set_enabled(
+        slug, enabled=enabled, updated_by=updated_by
+    )
     if task is None:  # pragma: no cover - it was loaded a moment ago
         raise fastapi.HTTPException(status_code=404, detail=slug)
     return task
@@ -333,7 +366,9 @@ async def run_task(
     re-enable.
     """
     task = await dependencies.load_for_management(tasks, slug, auth)
-    return await engine.run_now(task)
+    # Whoever fires the task answers for this run only (ADR 0020). Nothing
+    # is stored, so every scheduled run keeps the accountable person.
+    return await engine.run_now(task, accountable=auth.principal_name)
 
 
 @router.post(
