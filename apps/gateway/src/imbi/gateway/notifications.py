@@ -428,14 +428,17 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
                 # set it. A delivery to an edge with a signing secret got
                 # here only if its signature verified (see
                 # ``_resolve_project_and_verify``). An edge with no secret
-                # verified nothing, even when another edge did.
+                # verified nothing, even when another edge did. A GitHub
+                # delivery that verified against ``Webhook.secret`` is
+                # verified for every project it reaches.
                 event={
                     **context,
                     'signature_verified': bool(
                         graph.parse_agtype(
                             proj_record.get('webhook_secret_enc')
                         )
-                    ),
+                    )
+                    or context['github_signature_verified'],
                 },
                 user_id=user_id,
                 rules=matched_rules,

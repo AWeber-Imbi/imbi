@@ -972,6 +972,61 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(202, resp.status_code)
         self.assertIs(False, self._github_verified())
 
+    async def _post_github_agent_task(
+        self, secret: str | None
+    ) -> unittest.mock.AsyncMock:
+        """Post a GitHub delivery to a webhook with a create_agent_task
+        rule, signed with ``secret`` when the webhook has one."""
+        await self._add_rule(
+            handler='gateway-actions#create_agent_task',
+            handler_config=json.dumps(
+                {
+                    'agent_slug': 'triage',
+                    'title_expression': '"Fix it"',
+                    'description_expression': '"The check failed."',
+                }
+            ),
+            ordinal=2,
+        )
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        headers = {'X-GitHub-Delivery': 'd-1'}
+        if secret is not None:
+            headers['X-Hub-Signature-256'] = self._sign_github(secret, raw)
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_agent_task',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            resp = await self._post_github(secret, raw, headers)
+        self.assertEqual(202, resp.status_code)
+        return mock_create
+
+    async def test_github_verified_delivery_creates_agent_task(self) -> None:
+        # No secret on the EXISTS_IN edge: the GitHub HMAC check alone
+        # makes the delivery verified for the project.
+        mock_create = await self._post_github_agent_task('ghsec')
+        event = typing.cast('dict[str, typing.Any]', ACTION_CALLS[0]['event'])
+        self.assertIs(True, event['signature_verified'])
+        mock_create.assert_awaited_once()
+        self.assertEqual(
+            (self.org_slug, self.webhook_id, 'd-1'),
+            mock_create.call_args.args[:3],
+        )
+
+    async def test_github_no_secret_skips_agent_task(self) -> None:
+        with self.assertLogs('imbi.gateway.actions', level='WARNING') as cm:
+            mock_create = await self._post_github_agent_task(None)
+        event = typing.cast('dict[str, typing.Any]', ACTION_CALLS[0]['event'])
+        self.assertIs(False, event['signature_verified'])
+        mock_create.assert_not_called()
+        self.assertTrue(
+            any('no verified signature' in line for line in cm.output)
+        )
+
     async def test_filter_matches_on_resolved_event_type(self) -> None:
         await self._set_implemented_by(event_type_selector='x-github-event')
         await self._add_rule(filter_expression='type == "push"')
