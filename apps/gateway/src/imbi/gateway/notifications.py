@@ -528,8 +528,9 @@ def _verify_webhook_signature(  # noqa: PLR0913
         prefix
         + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
     )
+    # Compare bytes: compare_digest raises TypeError on non-ASCII str.
     for token in signature_header.split(','):
-        if hmac.compare_digest(token.strip(), expected):
+        if hmac.compare_digest(token.strip().encode(), expected.encode()):
             return True
     LOGGER.warning(
         'Webhook signature verification failed; dropping delivery '

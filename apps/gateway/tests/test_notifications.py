@@ -3,6 +3,7 @@ import hmac
 import json
 import typing
 import unittest.mock
+from collections import abc
 
 import celpy
 import fastapi
@@ -645,7 +646,7 @@ class ProcessNotificationTests(helpers.TestCase):
         )
 
     async def _post_raw(
-        self, raw: bytes, headers: dict[str, str]
+        self, raw: bytes, headers: abc.Mapping[str, str | bytes]
     ) -> httpx.Response:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url='http://test'
@@ -814,7 +815,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self,
         secret: str | None,
         raw: bytes,
-        headers: dict[str, str],
+        headers: abc.Mapping[str, str | bytes],
         plugin: str = 'github',
     ) -> httpx.Response:
         """Post ``raw`` to the webhook with ``secret`` as its secret."""
@@ -906,6 +907,7 @@ class ProcessNotificationTests(helpers.TestCase):
             {'X-Hub-Signature-256': sha256},
             {'X-Hub-Signature-256': f'v1={sha256}'},
             {'X-Hub-Signature-256': 'sha256='},
+            {'X-Hub-Signature-256': 'sha256=\xe9'.encode('latin-1')},
         ):
             with self.subTest(headers=headers):
                 resp = await self._post_github('ghsec', raw, headers)
