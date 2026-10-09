@@ -405,32 +405,70 @@ class PatchTests(EndpointTestCase):
             datetime.datetime.fromisoformat(response.json()['next_run_at']),
         )
 
-    async def test_the_patcher_is_accountable_for_the_task(self) -> None:
-        """A change to another person's task makes the changer answer.
-
-        The executor sends ``accountable`` to imbi-api, which makes that
-        person the owner of the agent tasks the task makes (ADR 0020), so
-        a patch cannot make a task act for the person who created it.
-        """
-        task = await self.given_task(created_by=OTHER)
-        self.assertEqual(OTHER, task.accountable)
-        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+    async def _patch(
+        self, task: models.Task, path: str, value: object
+    ) -> httpx.Response:
         response = await self.client.patch(
             f'/api/tasks/{task.slug}',
-            json=[
-                {
-                    'op': 'replace',
-                    'path': '/target/path',
-                    'value': '/agent-tasks/',
-                }
-            ],
+            json=[{'op': 'replace', 'path': path, 'value': value}],
         )
         self.assertEqual(200, response.status_code, response.text)
+        return response
+
+    async def _accountable(self, task: models.Task) -> str:
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        return stored.accountable
+
+    async def test_a_pause_or_a_rename_does_not_move_accountability(
+        self,
+    ) -> None:
+        """A person who only stops a task does not answer for its runs.
+
+        The executor sends ``accountable`` to imbi-api, which makes that
+        person the owner of the agent tasks the task makes (ADR 0020).
+        """
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.post(f'/api/tasks/{task.slug}/pause')
+        self.assertEqual(200, response.status_code, response.text)
+        await self._patch(task, '/name', 'Renamed')
+        await self._patch(task, '/enabled', False)
+        self.assertEqual(OTHER, await self._accountable(task))
+
+    async def test_a_change_to_what_the_task_does_moves_it(self) -> None:
+        task = await self.given_task(created_by=OTHER)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        response = await self._patch(task, '/target/path', '/agent-tasks/')
         self.assertEqual(OWNER, response.json()['updated_by'])
+        self.assertEqual(OWNER, await self._accountable(task))
         stored = await self.tasks.get(task.slug)
         assert stored is not None
         self.assertEqual(OTHER, stored.created_by)
-        self.assertEqual(OWNER, stored.accountable)
+
+    async def test_whoever_makes_the_task_run_answers_for_it(self) -> None:
+        """After another person's change, a resume or a run takes it back."""
+        for action in ('resume', 'run', 'enable'):
+            with self.subTest(action=action):
+                task = await self.given_task(
+                    slug=f'acct-{action}', created_by=OTHER
+                )
+                self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+                await self._patch(task, '/target/path', '/agent-tasks/')
+                await self._patch(task, '/enabled', False)
+                self.assertEqual(OWNER, await self._accountable(task))
+                self.as_user(OTHER, ALL_PERMISSIONS, admin=True)
+                if action == 'enable':
+                    await self._patch(task, '/enabled', True)
+                else:
+                    response = await self.client.post(
+                        f'/api/tasks/{task.slug}/{action}'
+                    )
+                    self.assertIn(response.status_code, (200, 201))
+                self.assertEqual(OTHER, await self._accountable(task))
+        # The run on demand fired as the person who started it.
+        self.assertEqual(['acct-run'], self.executor.fired)
+        self.assertEqual([OTHER], self.executor.accountable)
 
     async def test_a_server_owned_field_cannot_be_patched(self) -> None:
         task = await self.given_task()

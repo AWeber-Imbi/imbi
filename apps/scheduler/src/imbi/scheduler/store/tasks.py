@@ -360,9 +360,12 @@ class Tasks:
         return following
 
     async def set_enabled(
-        self, slug: str, *, enabled: bool
+        self, slug: str, *, enabled: bool, updated_by: str | None = None
     ) -> models.Task | None:
         """Enable or disable a task without deleting it.
+
+        ``updated_by``, when given, becomes accountable for the task in the
+        same statement (see :meth:`mark_accountable`).
 
         Enabling also reschedules. A task that has been disabled — by an
         operator or by the engine's skip limit — keeps the ``next_run_at`` it
@@ -371,12 +374,15 @@ class Tasks:
         re-enabling would be indistinguishable from never having recovered.
         """
         statement = sql.SQL(
-            'UPDATE {table} SET enabled = %s, updated_at = %s'
+            'UPDATE {table} SET enabled = %s, updated_at = %s,'
+            ' updated_by = COALESCE(%s, updated_by)'
             ' WHERE slug = %s RETURNING {columns}'
         ).format(table=self._table, columns=self._columns())
         now = datetime.datetime.now(datetime.UTC)
         async with self._pool.connection() as conn, conn.transaction():
-            row = await self._fetch_one(conn, statement, (enabled, now, slug))
+            row = await self._fetch_one(
+                conn, statement, (enabled, now, updated_by, slug)
+            )
             if row is not None and enabled:
                 following = row.next_fire_time(now)
                 await conn.execute(
@@ -388,6 +394,21 @@ class Tasks:
                 row = row.model_copy(update={'next_run_at': following})
             await self._notify(conn)
         return row
+
+    async def mark_accountable(
+        self, slug: str, principal: str
+    ) -> models.Task | None:
+        """Make `principal` accountable for the task, and return it.
+
+        For an action that makes the task run, such as a run on demand:
+        whoever starts it answers for it (ADR 0020 in imbi-api).
+        """
+        statement = sql.SQL(
+            'UPDATE {table} SET updated_by = %s WHERE slug = %s'
+            ' RETURNING {columns}'
+        ).format(table=self._table, columns=self._columns())
+        async with self._pool.connection() as conn:
+            return await self._fetch_one(conn, statement, (principal, slug))
 
     async def acquire_lease(
         self,

@@ -219,9 +219,12 @@ async def patch_task(
         raise fastapi.HTTPException(status_code=422, detail=reason)
     if _reschedules(task, updated):
         updated = _scheduled(updated)
-    # The patcher answers for what the task does from now on: imbi-api
-    # makes them the owner of the agent tasks that it makes (ADR 0020).
-    updated = updated.model_copy(update={'updated_by': auth.principal_name})
+    if _changes_behavior(task, updated):
+        # The patcher answers for what the task does from now on: imbi-api
+        # makes them the owner of the agent tasks that it makes (ADR 0020).
+        updated = updated.model_copy(
+            update={'updated_by': auth.principal_name}
+        )
     stored = await tasks.update(updated)
     if stored is None:  # pragma: no cover - it was loaded a moment ago
         raise fastapi.HTTPException(status_code=404, detail=slug)
@@ -245,6 +248,24 @@ def _errors(err: pydantic.ValidationError) -> list[dict[str, typing.Any]]:
         }
         for error in err.errors(include_context=False, include_url=False)
     ]
+
+
+def _changes_behavior(before: models.Task, after: models.Task) -> bool:
+    """Return whether a patch changes what the task does, or lets it run.
+
+    Such a patch moves accountability to the patcher. A disable, or a
+    change to the name, description, tags, or execution policy, does not:
+    otherwise a person who only paused a task would answer for the runs
+    that its owner starts again later.
+    """
+    return (
+        before.target != after.target
+        or before.identity != after.identity
+        or before.organization != after.organization
+        or before.trigger != after.trigger
+        or before.timezone != after.timezone
+        or (after.enabled and not before.enabled)
+    )
 
 
 def _reschedules(before: models.Task, after: models.Task) -> bool:
@@ -307,13 +328,22 @@ async def resume_task(
     without the reschedule the first tick would read it as a misfire.
     """
     await dependencies.load_for_management(tasks, slug, auth)
-    return await _set_enabled(tasks, slug, enabled=True)
+    # Whoever lets the task run again answers for it (ADR 0020).
+    return await _set_enabled(
+        tasks, slug, enabled=True, updated_by=auth.principal_name
+    )
 
 
 async def _set_enabled(
-    tasks: store.Tasks, slug: str, *, enabled: bool
+    tasks: store.Tasks,
+    slug: str,
+    *,
+    enabled: bool,
+    updated_by: str | None = None,
 ) -> models.Task:
-    task = await tasks.set_enabled(slug, enabled=enabled)
+    task = await tasks.set_enabled(
+        slug, enabled=enabled, updated_by=updated_by
+    )
     if task is None:  # pragma: no cover - it was loaded a moment ago
         raise fastapi.HTTPException(status_code=404, detail=slug)
     return task
@@ -337,7 +367,11 @@ async def run_task(
     an operator firing one by hand is usually testing whether it is safe to
     re-enable.
     """
-    task = await dependencies.load_for_management(tasks, slug, auth)
+    await dependencies.load_for_management(tasks, slug, auth)
+    # Whoever fires the task answers for the run (ADR 0020).
+    task = await tasks.mark_accountable(slug, auth.principal_name)
+    if task is None:  # pragma: no cover - it was loaded a moment ago
+        raise fastapi.HTTPException(status_code=404, detail=slug)
     return await engine.run_now(task)
 
 

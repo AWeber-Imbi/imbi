@@ -48,6 +48,8 @@ class StubExecutor:
         #: tick to still be running while another has already finished.
         self.delays = delays or {}
         self.fired: list[str] = []
+        #: The accountable person of each task fired, in order.
+        self.accountable: list[str] = []
 
     async def execute(
         self,
@@ -58,6 +60,7 @@ class StubExecutor:
         trace_id: str = '',
     ) -> runs.Run:
         self.fired.append(task.slug)
+        self.accountable.append(task.accountable)
         delay = self.delays.get(task.slug, self.delay)
         if delay:
             await asyncio.sleep(delay)

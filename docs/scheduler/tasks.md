@@ -110,14 +110,16 @@ Calls `imbi-api` as the task's identity.
 
 Every request has headers that the task cannot change:
 `X-Imbi-Scheduled-Task` (the task id), `X-Imbi-Scheduled-Task-Accountable`
-(who last changed the task, or who made it), `X-Imbi-Scheduled-Task-Org` (the organization of the request,
+(who last changed what the task does or made it run — a patch to the
+target, identity, organization, or schedule, a resume, or a run now — else
+who made it), `X-Imbi-Scheduled-Task-Org` (the organization of the request,
 when the task names one), and `Idempotency-Key` (the run id, unless
 `idempotency_key` sets one). All attempts of a run send the same key.
 
 To start agent work on a schedule, post to the agent tasks of an organization.
 `imbi-api` records the task with a `schedule` origin, and a retry of the run
-returns the first task. The person who last changed the scheduled task (or who
-made it) owns the agent task, so that person must be a member of the
+returns the first task. The person accountable for the scheduled task owns the
+agent task, so that person must be a member of the
 organization and hold `agent_task:create`. The scheduled task must name that organization in
 `organization`, on the task or on the target:
 
