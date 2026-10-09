@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { Inbox } from 'lucide-react'
 import {
@@ -17,20 +17,16 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { cn } from '@/lib/utils'
 import type { AgentTaskListItem, AgentTaskStatus } from '@/types'
 
 import { agentsPath } from './agentsNav'
 import { TaskDetail } from './TaskDetail'
 import { groupTasks, statusLabel, statusVariant, TRIGGERS } from './taskEvents'
-import { useAgentTasks } from './taskQueries'
+import { useAgentTaskPages } from './taskQueries'
 
 const OPEN: AgentTaskStatus[] = ['blocked', 'running', 'paused', 'queued']
-
-// ponytail: the inbox reads the newest 100 open and 25 closed tasks;
-// page with the Link header when an org has more open work than that.
-const OPEN_LIMIT = 100
-const CLOSED_LIMIT = 25
 
 const STATES: { label: string; slug: AgentTaskStatus }[] = [
   { label: 'Needs input', slug: 'blocked' },
@@ -40,18 +36,41 @@ const STATES: { label: string; slug: AgentTaskStatus }[] = [
   { label: 'Closed', slug: 'closed' },
 ]
 
+/** A short id: an old link (`/agents/tasks/<short id>`) has no org. */
+const SHORT_ID = /^T-\d+$/
+
 /**
  * Agents > Tasks: the inbox in a resizable pane and the task in the URL
- * (`/agents/tasks/<short id>[/<tab>]`).
+ * (`/agents/tasks/<org slug>/<short id>[/<tab>]`). The org in the URL
+ * becomes the selected org. An old link without the org goes to the
+ * selected org.
  */
 export function TasksPage() {
-  const { action: tab, slug: shortId } = useParams<{
+  const params = useParams<{
     action?: string
     slug?: string
+    tab?: string
   }>()
-  const { selectedOrganization } = useOrganization()
+  const legacy = SHORT_ID.test(params.slug ?? '')
+  const taskOrg = legacy ? undefined : params.slug
+  const shortId = legacy ? params.slug : params.action
+  const tab = legacy ? params.action : params.tab
+  const navigate = useNavigate()
+  const { organizations, selectedOrganization, setSelectedOrganization } =
+    useOrganization()
   const orgSlug = selectedOrganization?.slug
   const canRead = useHasPermission('agent_task:read')
+  const urlOrg = organizations.find((o) => o.slug === taskOrg)
+  useEffect(() => {
+    if (urlOrg) setSelectedOrganization(urlOrg)
+  }, [urlOrg, setSelectedOrganization])
+  // A change to a different org in the header closes the task.
+  const previousOrg = useRef(orgSlug)
+  useEffect(() => {
+    if (taskOrg && previousOrg.current === taskOrg && orgSlug !== taskOrg)
+      navigate(agentsPath('tasks'))
+    previousOrg.current = orgSlug
+  }, [orgSlug, taskOrg, navigate])
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'imbi:agent-tasks:split',
     panelIds: ['list', 'detail'],
@@ -64,6 +83,19 @@ export function TasksPage() {
         {orgSlug
           ? 'You do not have permission to read agent tasks.'
           : 'Select an organization to see agent tasks.'}
+      </div>
+    )
+  }
+
+  if (legacy) {
+    const rest = [orgSlug, shortId!, ...(tab ? [tab] : [])]
+    return <Navigate replace to={agentsPath('tasks', ...rest)} />
+  }
+
+  if (taskOrg && !urlOrg) {
+    return (
+      <div className="text-tertiary p-8 text-center">
+        You are not a member of the organization {taskOrg}.
       </div>
     )
   }
@@ -86,14 +118,17 @@ export function TasksPage() {
           maxSize="55%"
           minSize="20%"
         >
-          <TaskInbox orgSlug={orgSlug} selected={shortId} />
+          <TaskInbox
+            orgSlug={orgSlug}
+            selected={taskOrg === orgSlug ? shortId : undefined}
+          />
         </Panel>
         <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
         <Panel className="flex min-h-0 flex-col" id="detail" minSize="35%">
-          {shortId ? (
+          {taskOrg && shortId ? (
             <TaskDetail
-              key={`${orgSlug}:${shortId}`}
-              orgSlug={orgSlug}
+              key={`${taskOrg}:${shortId}`}
+              orgSlug={taskOrg}
               shortId={shortId}
               tab={tab}
             />
@@ -121,20 +156,29 @@ function TaskInbox({
   const [states, setStates] = useState(new Set<string>())
   const [owners, setOwners] = useState(new Set<string>())
   const q = useDebouncedValue(text.trim(), 250) || undefined
-  const open = useAgentTasks(orgSlug, {
-    limit: OPEN_LIMIT,
-    mine,
-    q,
-    status: OPEN,
-  })
-  const closed = useAgentTasks(orgSlug, {
-    limit: CLOSED_LIMIT,
-    mine,
-    q,
-    status: ['closed'],
+  const open = useAgentTaskPages(orgSlug, { mine, q, status: OPEN })
+  const closed = useAgentTaskPages(orgSlug, { mine, q, status: ['closed'] })
+  // The API gives tasks newest first, but the open groups sort by other
+  // fields (blocked_since), so a part of the open tasks can put a task in
+  // the wrong place. Thus the inbox reads all of the open pages. The
+  // closed group reads its next page when the end of the list comes into
+  // view. After a failed page, only the Retry button reads it again.
+  const { fetchNextPage, hasNextPage, isFetching, isFetchNextPageError } = open
+  useEffect(() => {
+    if (hasNextPage && !isFetching && !isFetchNextPageError)
+      void fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetching, isFetchNextPageError])
+  const { sentinelRef } = useInfiniteScroll({
+    fetchNextPage: closed.fetchNextPage,
+    hasNextPage:
+      closed.hasNextPage && !open.hasNextPage && !closed.isFetchNextPageError,
+    isFetchingNextPage: closed.isFetching,
   })
   const tasks = useMemo(
-    () => [...(open.data ?? []), ...(closed.data ?? [])],
+    () =>
+      [...(open.data?.pages ?? []), ...(closed.data?.pages ?? [])].flatMap(
+        (page) => page.entries,
+      ),
     [open.data, closed.data],
   )
   const shown = tasks.filter(
@@ -154,7 +198,13 @@ function TaskInbox({
     .sort()
     .map((o) => ({ label: o, slug: o }))
   const loading = open.isLoading || closed.isLoading
+  const more = open.hasNextPage || closed.hasNextPage
   const error = open.error ?? closed.error
+  const failed = open.error ? open : closed
+  const retry = () =>
+    void (failed.isFetchNextPageError
+      ? failed.fetchNextPage()
+      : failed.refetch())
 
   return (
     <>
@@ -202,7 +252,10 @@ function TaskInbox({
         {loading && <p className="text-tertiary p-4 text-sm">Loading…</p>}
         {error && (
           <p className="text-danger p-4 text-sm" role="alert">
-            Could not load tasks: {error.message}
+            Could not load tasks: {error.message}{' '}
+            <button className="underline" onClick={retry} type="button">
+              Retry
+            </button>
           </p>
         )}
         {!loading && !error && groups.length === 0 && (
@@ -218,20 +271,27 @@ function TaskInbox({
               <span>{group.label}</span>
               <span className="font-mono tabular-nums">
                 {group.tasks.length}
+                {(group.id === 'closed' ? closed : open).hasNextPage && '+'}
               </span>
             </h3>
             {group.tasks.map((task) => (
               <TaskRow
                 active={task.short_id === selected}
                 key={task.id}
+                orgSlug={orgSlug}
                 task={task}
               />
             ))}
           </section>
         ))}
+        {more && !error && (
+          <p className="text-tertiary p-4 text-center text-sm">Loading…</p>
+        )}
+        <div ref={sentinelRef} />
       </div>
       <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
-        {shown.length} of {tasks.length} tasks
+        {shown.length} of {tasks.length}
+        {more && '+'} tasks
       </div>
     </>
   )
@@ -239,9 +299,11 @@ function TaskInbox({
 
 function TaskRow({
   active,
+  orgSlug,
   task,
 }: {
   active: boolean
+  orgSlug: string
   task: AgentTaskListItem
 }) {
   const trigger = TRIGGERS[task.origin.kind]
@@ -260,7 +322,7 @@ function TaskRow({
         'flex flex-col gap-1 border-b border-tertiary px-4 py-3 transition-colors',
         active ? 'bg-secondary' : 'hover:bg-secondary',
       )}
-      to={agentsPath('tasks', task.short_id)}
+      to={agentsPath('tasks', orgSlug, task.short_id)}
     >
       <span className="flex items-center gap-2">
         <span className="text-tertiary font-mono text-xs">{task.short_id}</span>

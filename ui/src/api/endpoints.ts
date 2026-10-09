@@ -3639,6 +3639,25 @@ export const listAgentTasks = (
     signal,
   )
 
+export interface AgentTaskPage {
+  entries: AgentTaskListItem[]
+  nextCursor?: string
+}
+
+/** One page of tasks and the cursor of the next page (`Link` header). */
+export const listAgentTaskPage = async (
+  orgSlug: string,
+  params: AgentTaskListParams & { cursor?: string },
+  signal?: AbortSignal,
+): Promise<AgentTaskPage> => {
+  const { data, headers } = await apiClient.getWithHeaders<AgentTaskListItem[]>(
+    `${agentTasksPath(orgSlug)}/`,
+    { ...params },
+    signal,
+  )
+  return { entries: data, nextCursor: parseNextCursor(headers) }
+}
+
 /** The number of blocked tasks in the org (the "waiting on you" badge). */
 export const countWaitingAgentTasks = (orgSlug: string, signal?: AbortSignal) =>
   apiClient.get<{ count: number }>(

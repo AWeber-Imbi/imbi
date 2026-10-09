@@ -157,7 +157,7 @@ function App() {
                       <AgentsPage />
                     </ProtectedRoute>
                   }
-                  path="/agents/:section?/:slug?/:action?"
+                  path="/agents/:section?/:slug?/:action?/:tab?"
                 />
                 <Route
                   element={
