@@ -28,9 +28,16 @@ vi.mock('@/api/endpoints', () => ({
   resolvePrompt: vi.fn(),
 }))
 
+const ORGS = vi.hoisted(() => [{ slug: 'acme' }, { slug: 'beta' }])
+const setSelectedOrganization = vi.hoisted(() => vi.fn())
+
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
+  useOrganization: () => ({
+    organizations: ORGS,
+    selectedOrganization: ORGS[0],
+    setSelectedOrganization,
+  }),
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -74,7 +81,7 @@ function renderAt(path: string) {
     <Routes>
       <Route
         element={<AgentsArea />}
-        path="/agents/:section?/:slug?/:action?"
+        path="/agents/:section?/:slug?/:action?/:tab?"
       />
     </Routes>,
   )
@@ -140,6 +147,47 @@ describe('Tasks', () => {
     expect(await screen.findByTitle('2 waiting on you')).toBeInTheDocument()
   })
 
+  it('links each task with its org', async () => {
+    renderAt('/agents/tasks')
+    expect((await screen.findByText('Busy')).closest('a')).toHaveAttribute(
+      'href',
+      '/agents/tasks/acme/T-4',
+    )
+  })
+
+  it('redirects an old link to the selected org', async () => {
+    renderAt('/agents/tasks/T-3/input')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/tasks/acme/T-3/input'),
+    )
+    expect(await screen.findByRole('button', { name: 'yes' })).toBeVisible()
+  })
+
+  it('opens a task in the org of the link', async () => {
+    renderAt('/agents/tasks/beta/T-3')
+    await waitFor(() =>
+      expect(endpoints.getAgentTask).toHaveBeenCalledWith(
+        'beta',
+        'T-3',
+        expect.anything(),
+      ),
+    )
+    expect(setSelectedOrganization).toHaveBeenCalledWith(ORGS[1])
+    expect(endpoints.getAgentTask).not.toHaveBeenCalledWith(
+      'acme',
+      'T-3',
+      expect.anything(),
+    )
+  })
+
+  it('does not open a task in an org that is not yours', async () => {
+    renderAt('/agents/tasks/zeta/T-3')
+    expect(
+      await screen.findByText('You are not a member of the organization zeta.'),
+    ).toBeInTheDocument()
+    expect(endpoints.getAgentTask).not.toHaveBeenCalled()
+  })
+
   it('filters by text on the server, and by state and mine', async () => {
     renderAt('/agents/tasks')
     await screen.findByText('Busy')
@@ -184,7 +232,7 @@ describe('Tasks', () => {
 
   it('answers a feedback request', async () => {
     vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
-    renderAt('/agents/tasks/T-3/input')
+    renderAt('/agents/tasks/acme/T-3/input')
     fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
     await waitFor(() =>
       expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledWith(
@@ -208,7 +256,7 @@ describe('Tasks', () => {
         },
       }),
     )
-    renderAt('/agents/tasks/T-3/input')
+    renderAt('/agents/tasks/acme/T-3/input')
     fireEvent.click(await screen.findByRole('button', { name: 'no' }))
     expect(
       await screen.findByText('Answered by pat@example.com'),
@@ -235,7 +283,7 @@ describe('Tasks', () => {
     vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
       async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
     )
-    renderAt('/agents/tasks/T-3/checks')
+    renderAt('/agents/tasks/acme/T-3/checks')
     const row = (await screen.findByText('p95 latency')).closest('li')!
     expect(within(row).getByText('Failing')).toBeInTheDocument()
     expect(within(row).getByText('158ms')).toBeInTheDocument()
@@ -252,7 +300,7 @@ describe('Tasks', () => {
 
   it('sends Reply and hold', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
-    renderAt('/agents/tasks/T-3/conversation')
+    renderAt('/agents/tasks/acme/T-3/conversation')
     fireEvent.change(await screen.findByLabelText('Reply'), {
       target: { value: 'Wait for me.' },
     })
@@ -271,7 +319,7 @@ describe('Tasks', () => {
   it(
     'appends new events by seq without a reload (O4)',
     async () => {
-      renderAt('/agents/tasks/T-3/conversation')
+      renderAt('/agents/tasks/acme/T-3/conversation')
       await screen.findByText('I read the task.')
       LOG.push(event(4, 'turn', { body: 'A new turn.' }))
       try {
@@ -326,7 +374,7 @@ describe('Tasks', () => {
       }),
     )
     await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/tasks/T-9'),
+      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9'),
     )
   })
 })

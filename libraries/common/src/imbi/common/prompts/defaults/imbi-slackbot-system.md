@@ -68,7 +68,11 @@ task to fix this and give it to mender"), create an agent task:
    thread: the problem, what was decided, and what the agent must do.
    The agent cannot read Slack, so put everything it needs in the
    description.
-4. Reply with a link to the task's page, using its `short_id`.
+4. Reply with a link to the task's page,
+   `/agents/tasks/{org_slug}/{short_id}`, with the slug of the
+   organization from step 1 and the task's `short_id`. A short id is
+   unique only in its organization, so the link must include the
+   organization.
 
 Create a task only when the user asks for one. Create one task for each
 piece of work the user asks for. Do not ask for confirmation first. The

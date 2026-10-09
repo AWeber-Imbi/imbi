@@ -143,7 +143,9 @@ export function TaskDetail({
               x.key === 'input' && open > 0 && 'text-amber-text',
             )}
             key={x.key}
-            onClick={() => navigate(agentsPath('tasks', shortId, x.key))}
+            onClick={() =>
+              navigate(agentsPath('tasks', orgSlug, shortId, x.key))
+            }
             role="tab"
             type="button"
           >

@@ -123,7 +123,7 @@ describe('Related tasks', () => {
     ])
     expect(within(rows[0]).getByRole('link')).toHaveAttribute(
       'href',
-      '/agents/tasks/T-2',
+      '/agents/tasks/acme/T-2',
     )
     // Delegation cannot be removed.
     expect(within(rows[2]).queryByRole('button')).toBeNull()

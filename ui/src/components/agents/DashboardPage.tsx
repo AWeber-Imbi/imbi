@@ -214,7 +214,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
         kind: 'Waiting',
         meta: `${t.short_id} · ${nameOf(t.agent_id)} · ${t.owner}`,
         title: t.title,
-        to: agentsPath('tasks', t.short_id, 'input'),
+        to: agentsPath('tasks', orgSlug, t.short_id, 'input'),
         tone: 'warning',
       }),
     ),
@@ -235,7 +235,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
             .filter(Boolean)
             .join(' · '),
           title: t.title,
-          to: agentsPath('tasks', t.short_id),
+          to: agentsPath('tasks', orgSlug, t.short_id),
           tone: statusVariant(t) === 'danger' ? 'danger' : 'warning',
         }),
       ),
@@ -322,7 +322,11 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
 
       <WaitingOnPeople since={since} tasks={waiting} />
 
-      <RecentRuns nameOf={nameOf} tasks={recent.data.slice(0, RECENT_RUNS)} />
+      <RecentRuns
+        nameOf={nameOf}
+        orgSlug={orgSlug}
+        tasks={recent.data.slice(0, RECENT_RUNS)}
+      />
     </div>
   )
 }
@@ -400,9 +404,11 @@ function NeedsAttention({
 
 function RecentRuns({
   nameOf,
+  orgSlug,
   tasks,
 }: {
   nameOf: (id: string) => string
+  orgSlug: string
   tasks: AgentTaskListItem[]
 }) {
   return (
@@ -425,7 +431,7 @@ function RecentRuns({
             <li className="border-border border-b last:border-b-0" key={t.id}>
               <Link
                 className="hover:bg-secondary flex items-center gap-4 px-5 py-3 transition-colors"
-                to={agentsPath('tasks', t.short_id)}
+                to={agentsPath('tasks', orgSlug, t.short_id)}
               >
                 <span className="text-tertiary w-16 shrink-0 font-mono text-xs tabular-nums">
                   {t.short_id}

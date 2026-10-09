@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { Inbox } from 'lucide-react'
 import {
@@ -40,18 +40,41 @@ const STATES: { label: string; slug: AgentTaskStatus }[] = [
   { label: 'Closed', slug: 'closed' },
 ]
 
+/** A short id: an old link (`/agents/tasks/<short id>`) has no org. */
+const SHORT_ID = /^T-\d+$/
+
 /**
  * Agents > Tasks: the inbox in a resizable pane and the task in the URL
- * (`/agents/tasks/<short id>[/<tab>]`).
+ * (`/agents/tasks/<org slug>/<short id>[/<tab>]`). The org in the URL
+ * becomes the selected org. An old link without the org goes to the
+ * selected org.
  */
 export function TasksPage() {
-  const { action: tab, slug: shortId } = useParams<{
+  const params = useParams<{
     action?: string
     slug?: string
+    tab?: string
   }>()
-  const { selectedOrganization } = useOrganization()
+  const legacy = SHORT_ID.test(params.slug ?? '')
+  const taskOrg = legacy ? undefined : params.slug
+  const shortId = legacy ? params.slug : params.action
+  const tab = legacy ? params.action : params.tab
+  const navigate = useNavigate()
+  const { organizations, selectedOrganization, setSelectedOrganization } =
+    useOrganization()
   const orgSlug = selectedOrganization?.slug
   const canRead = useHasPermission('agent_task:read')
+  const urlOrg = organizations.find((o) => o.slug === taskOrg)
+  useEffect(() => {
+    if (urlOrg) setSelectedOrganization(urlOrg)
+  }, [urlOrg, setSelectedOrganization])
+  // A change to a different org in the header closes the task.
+  const previousOrg = useRef(orgSlug)
+  useEffect(() => {
+    if (taskOrg && previousOrg.current === taskOrg && orgSlug !== taskOrg)
+      navigate(agentsPath('tasks'))
+    previousOrg.current = orgSlug
+  }, [orgSlug, taskOrg, navigate])
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'imbi:agent-tasks:split',
     panelIds: ['list', 'detail'],
@@ -64,6 +87,19 @@ export function TasksPage() {
         {orgSlug
           ? 'You do not have permission to read agent tasks.'
           : 'Select an organization to see agent tasks.'}
+      </div>
+    )
+  }
+
+  if (legacy) {
+    const rest = [orgSlug, shortId!, ...(tab ? [tab] : [])]
+    return <Navigate replace to={agentsPath('tasks', ...rest)} />
+  }
+
+  if (taskOrg && !urlOrg) {
+    return (
+      <div className="text-tertiary p-8 text-center">
+        You are not a member of the organization {taskOrg}.
       </div>
     )
   }
@@ -86,14 +122,17 @@ export function TasksPage() {
           maxSize="55%"
           minSize="20%"
         >
-          <TaskInbox orgSlug={orgSlug} selected={shortId} />
+          <TaskInbox
+            orgSlug={orgSlug}
+            selected={taskOrg === orgSlug ? shortId : undefined}
+          />
         </Panel>
         <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
         <Panel className="flex min-h-0 flex-col" id="detail" minSize="35%">
-          {shortId ? (
+          {taskOrg && shortId ? (
             <TaskDetail
-              key={`${orgSlug}:${shortId}`}
-              orgSlug={orgSlug}
+              key={`${taskOrg}:${shortId}`}
+              orgSlug={taskOrg}
               shortId={shortId}
               tab={tab}
             />
@@ -224,6 +263,7 @@ function TaskInbox({
               <TaskRow
                 active={task.short_id === selected}
                 key={task.id}
+                orgSlug={orgSlug}
                 task={task}
               />
             ))}
@@ -239,9 +279,11 @@ function TaskInbox({
 
 function TaskRow({
   active,
+  orgSlug,
   task,
 }: {
   active: boolean
+  orgSlug: string
   task: AgentTaskListItem
 }) {
   const trigger = TRIGGERS[task.origin.kind]
@@ -260,7 +302,7 @@ function TaskRow({
         'flex flex-col gap-1 border-b border-tertiary px-4 py-3 transition-colors',
         active ? 'bg-secondary' : 'hover:bg-secondary',
       )}
-      to={agentsPath('tasks', task.short_id)}
+      to={agentsPath('tasks', orgSlug, task.short_id)}
     >
       <span className="flex items-center gap-2">
         <span className="text-tertiary font-mono text-xs">{task.short_id}</span>

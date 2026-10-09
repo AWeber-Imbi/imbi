@@ -490,7 +490,7 @@ export function RelatedTasksTab({
             </span>
             <Link
               className="flex min-w-0 flex-1 items-center gap-4"
-              to={agentsPath('tasks', row.task.short_id)}
+              to={agentsPath('tasks', orgSlug, row.task.short_id)}
             >
               <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
                 {row.task.short_id}
