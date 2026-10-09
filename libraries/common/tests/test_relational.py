@@ -5,6 +5,7 @@ schema of their own.
 """
 
 import unittest
+import uuid
 
 import dotenv
 import psycopg
@@ -74,3 +75,53 @@ class InitializeTestCase(unittest.IsolatedAsyncioTestCase):
         )
         await relational.initialize(SCHEMA, SCHEMATA, 'test.relational')
         self.assertEqual(await self._columns(), {'id', 'name'})
+
+    async def test_new_table_refers_to_a_unique_index_added_later(
+        self,
+    ) -> None:
+        # A deployed schema: the table exists without the unique index.
+        await relational.initialize(SCHEMA, SCHEMATA, 'test.relational')
+        items = SCHEMATA['tables'][0]
+        upgraded = {
+            'tables': [
+                {
+                    **items,
+                    'indexes': [
+                        *items['indexes'],
+                        {
+                            'name': 'items_name_id_key',
+                            'columns': ['name', 'id'],
+                            'unique': True,
+                        },
+                    ],
+                },
+                {
+                    'name': 'links',
+                    'columns': {
+                        'name': 'TEXT NOT NULL',
+                        'item_id': 'UUID NOT NULL',
+                    },
+                    'primary_key': {'columns': ['name', 'item_id']},
+                    'constraints': [
+                        'CONSTRAINT links_item_fkey FOREIGN KEY'
+                        ' (name, item_id) REFERENCES'
+                        f' {SCHEMA}.items (name, id)',
+                        "CONSTRAINT links_name_check CHECK (name <> '')",
+                    ],
+                },
+            ]
+        }
+        await relational.initialize(SCHEMA, upgraded, 'test.relational')
+        await relational.initialize(SCHEMA, upgraded, 'test.relational')
+        item_id = uuid.uuid4()
+        insert = sql.SQL('INSERT INTO {} VALUES (%s, %s)')
+        items_table = sql.Identifier(SCHEMA, 'items')
+        links_table = sql.Identifier(SCHEMA, 'links')
+        await self.conn.execute(insert.format(items_table), (item_id, 'a'))
+        await self.conn.execute(insert.format(links_table), ('a', item_id))
+        # No such (name, id) in items, and the check constraint.
+        for name in ('b', ''):
+            with self.assertRaises(psycopg.errors.IntegrityError):
+                await self.conn.execute(
+                    insert.format(links_table), (name, item_id)
+                )
