@@ -127,8 +127,8 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                 label='Create Agent Task from Webhook',
                 description=(
                     'Starts agent work on the matched project, with the '
-                    'webhook delivery as its origin. A redelivery makes '
-                    'no second task.'
+                    'webhook delivery as its origin. Only for signed '
+                    'deliveries. A redelivery makes no second task.'
                 ),
                 callable_path='imbi.gateway.actions:create_agent_task',
                 model_path='imbi.gateway.actions:CreateAgentTaskConfig',

@@ -569,6 +569,8 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(self.integration_slug, ctx.integration_slug)
         event = typing.cast('dict[str, typing.Any]', call['event'])
         self.assertEqual(body, event['payload'])
+        # No signing secret on the edge: nothing was verified.
+        self.assertIs(False, event['signature_verified'])
         self.assertEqual({}, call['credentials'])
         self.assertEqual(self.ext_id, call['external_identifier'])
         self.assertIsNone(ctx.actor_user_id)
@@ -675,6 +677,10 @@ class ProcessNotificationTests(helpers.TestCase):
                 )
                 self.assertEqual(202, resp.status_code)
                 self.assertEqual(1, len(ACTION_CALLS))
+                event = typing.cast(
+                    'dict[str, typing.Any]', ACTION_CALLS[0]['event']
+                )
+                self.assertIs(True, event['signature_verified'])
             finally:
                 TokenEncryption.reset_instance()
 
