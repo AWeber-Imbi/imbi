@@ -484,6 +484,78 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(await self.list_ids(owner=self.member), ['T-3'])
         self.assertEqual(await self.list_ids(mine='true'), ['T-2', 'T-1'])
 
+    async def test_project_slug(self) -> None:
+        response = await self.client.get(self.url('T-2'))
+        self.assertEqual(response.json()['project_slug'], self.project_id)
+        response = await self.client.get(self.url('T-1'))
+        self.assertIsNone(response.json()['project_slug'])
+
+    async def open_request(
+        self,
+        short_id: str,
+        title: str,
+        expires_at: datetime.datetime | None = None,
+    ) -> None:
+        await self.store.open_request(
+            self.org,
+            short_id,
+            agent_tasks.NewRequest(
+                kind='feedback',
+                title=title,
+                why=None,
+                options=None,
+                artifacts=None,
+                artifact_digests=None,
+                expires_at=expires_at,
+                session_id=None,
+            ),
+            agent_tasks.Actor('agent', 'triage', 'harness'),
+        )
+
+    async def waiting(self) -> tuple[int, dict[str, str | None]]:
+        """Return the waiting count and ``blocked_since`` by short id."""
+        response = await self.client.get(self.url('waiting'))
+        self.assertEqual(response.status_code, 200, response.text)
+        tasks = (await self.client.get(self.url())).json()
+        return response.json()['count'], {
+            t['short_id']: t['blocked_since'] for t in tasks
+        }
+
+    async def test_blocked_since_and_waiting_count(self) -> None:
+        self.assertEqual((await self.waiting())[0], 0)
+        await self.open_request('T-3', 'First')
+        await self.open_request('T-1', 'Second')
+        await self.open_request('T-3', 'Third')
+        count, since = await self.waiting()
+        self.assertEqual(count, 2)
+        self.assertIsNone(since['T-2'])
+        assert since['T-1'] is not None and since['T-3'] is not None
+        self.assertLess(since['T-3'], since['T-1'])
+        response = await self.client.get(self.url('waiting', self.other_org))
+        self.assertEqual(response.json(), {'count': 0})
+
+    async def test_paused_task_with_open_request_still_waits(self) -> None:
+        await self.open_request('T-1', 'Ask')
+        response = await self.client.post(
+            self.url('T-1/reply'), json={'body': 'Wait.', 'hold': True}
+        )
+        self.assertEqual(response.json()['status'], 'paused')
+        count, since = await self.waiting()
+        self.assertEqual(count, 1)
+        self.assertIsNotNone(since['T-1'])
+
+    async def test_closed_task_and_expired_request_do_not_wait(self) -> None:
+        await self.open_request('T-1', 'Ask')
+        await self.client.post(self.url('T-1/cancel'))
+        past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            minutes=1
+        )
+        await self.open_request('T-2', 'Too late', expires_at=past)
+        count, since = await self.waiting()
+        self.assertEqual(count, 0)
+        self.assertIsNone(since['T-1'])
+        self.assertIsNone(since['T-2'])
+
     async def test_events_page_by_seq(self) -> None:
         await self.client.post(self.url('T-1/pause'))
         await self.client.post(self.url('T-1/resume'))
@@ -637,6 +709,7 @@ class PermissionTests(AgentTaskTestCase):
                 {'agent_slug': 'triage', 'title': 'x', 'description': 'y'},
             ),
             ('agent_task:read', 'GET', '', None),
+            ('agent_task:read', 'GET', 'waiting', None),
             ('agent_task:read', 'GET', 'T-1', None),
             ('agent_task:read', 'GET', 'T-1/events', None),
             ('agent_task:manage', 'POST', 'T-1/pause', None),
@@ -786,6 +859,7 @@ class MembershipTests(AgentTaskTestCase):
                 {'agent_slug': 'triage', 'title': 'x', 'description': 'y'},
             ),
             ('GET', '', None),
+            ('GET', 'waiting', None),
             ('GET', 'T-1', None),
             ('GET', 'T-1/events', None),
             ('POST', 'T-1/pause', None),

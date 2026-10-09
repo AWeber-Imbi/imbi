@@ -16,6 +16,8 @@ import {
   isAgentsSection,
 } from './agentsNav'
 import { ComingSoon } from './ComingSoon'
+import { useWaitingTaskCount } from './taskQueries'
+import { TasksPage } from './TasksPage'
 import { UsagePage } from './UsagePage'
 
 /**
@@ -41,6 +43,8 @@ export function AgentsArea() {
       <div className="min-w-0 flex-1">
         {current === 'manage' ? (
           <AgentsManagement />
+        ) : current === 'tasks' ? (
+          <TasksPage />
         ) : current === 'usage' ? (
           <UsagePage />
         ) : (
@@ -55,6 +59,7 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
   const [open, setOpen] = useState(true)
   const { selectedOrganization } = useOrganization()
   const { data: agents } = useAgentList(selectedOrganization?.slug)
+  const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   const groups = ['Agentic platform', 'Settings'] as const
 
   return (
@@ -79,7 +84,11 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
               const Icon = item.icon
               const active = item.id === current
               const count =
-                item.id === 'manage' && agents ? String(agents.length) : ''
+                item.id === 'manage' && agents
+                  ? String(agents.length)
+                  : item.id === 'tasks' && waiting
+                    ? String(waiting)
+                    : ''
               return (
                 <Link
                   aria-current={active ? 'page' : undefined}
@@ -90,7 +99,11 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
                       : 'text-secondary hover:bg-secondary hover:text-primary',
                   )}
                   key={item.id}
-                  title={item.label}
+                  title={
+                    item.id === 'tasks' && waiting
+                      ? `${waiting} waiting on you`
+                      : item.label
+                  }
                   to={agentsPath(item.id)}
                 >
                   <Icon className="size-4.5 shrink-0" />

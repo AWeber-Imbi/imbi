@@ -63,6 +63,15 @@ Outcome = typing.Literal[
     'refused_rate_ceiling',
 ]
 
+#: The open requests of the task ``t`` that a person can still resolve.
+#: A task that is not closed and has one waits on a person (O1), also
+#: when it is paused (Reply and hold).
+_OPEN_REQUESTS = sql.SQL(
+    'FROM agent_runtime.requests AS r WHERE r.task_id = t.id'
+    " AND r.status = 'open'"
+    ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
+)
+
 #: The status of a task with no open session, by control value.
 _IDLE_STATUS: dict[Control, Status] = {
     'run': 'queued',
@@ -424,7 +433,10 @@ class TaskStore:
         when its agent is in ``text_agent_ids`` or its project is in
         ``text_project_ids``; the caller finds those in the graph.
         ``before`` is the ``(created_at, id)`` keyset of the last row of
-        the previous page.
+        the previous page. Each row also has ``blocked_since``: for a
+        task that waits on a person (see :data:`_OPEN_REQUESTS`), the
+        time its oldest open request opened, so the queue can sort
+        oldest block first (O2); else ``None``.
         """
         conditions: list[sql.Composable] = [sql.SQL('organization_id = %s')]
         params: list[typing.Any] = [organization_id]
@@ -455,9 +467,11 @@ class TaskStore:
             conditions.append(sql.SQL('(created_at, id) < (%s, %s)'))
             params += list(before)
         statement = sql.SQL(
-            'SELECT * FROM agent_runtime.tasks WHERE {where}'
+            "SELECT t.*, CASE WHEN t.status <> 'closed' THEN"
+            ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
+            ' FROM agent_runtime.tasks AS t WHERE {where}'
             ' ORDER BY created_at DESC, id DESC LIMIT %s'
-        ).format(where=sql.SQL(' AND ').join(conditions))
+        ).format(open=_OPEN_REQUESTS, where=sql.SQL(' AND ').join(conditions))
         params.append(limit)
         async with (
             self._pool.connection() as conn,
@@ -465,6 +479,22 @@ class TaskStore:
         ):
             await cursor.execute(statement, params)
             return await cursor.fetchall()
+
+    async def count_waiting(self, organization_id: str) -> int:
+        """Return the number of tasks in the organization that wait on
+        a person: tasks that are not closed and have an open request.
+        """
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(
+                sql.SQL(
+                    'SELECT count(*) FROM agent_runtime.tasks AS t'
+                    " WHERE t.organization_id = %s AND t.status <> 'closed'"
+                    ' AND EXISTS (SELECT 1 {open})'
+                ).format(open=_OPEN_REQUESTS),
+                (organization_id,),
+            )
+            row = await cursor.fetchone()
+        return int(row[0]) if row else 0
 
     async def events(
         self, task_id: uuid.UUID, after_seq: int, limit: int

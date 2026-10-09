@@ -28,6 +28,7 @@ import {
   formatShare,
   sumTotals,
 } from './agentUsage'
+import { RunTaskButton } from './RunTaskButton'
 import { UsageBars } from './UsageBars'
 
 // The design's runs line: the Dusk label swatch.
@@ -129,6 +130,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          <RunTaskButton agent={agent} />
           {canCreate && (
             <Button
               onClick={() =>
