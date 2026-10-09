@@ -4642,6 +4642,9 @@ export interface paths {
          * Get Agent Task Relations
          * @description List the tasks related to a task: the tasks it requires, the
          *     tasks that require it, and its parent and children (delegation).
+         *
+         *     The caller needs ``agent_task:read``, also the service account of the
+         *     task's agent: the relations show other tasks.
          */
         get: operations["get_agent_task_relations_api_organizations__org_slug__agent_tasks__short_id__relations_get"];
         put?: never;
@@ -4708,6 +4711,9 @@ export interface paths {
          * List Agent Task Projects
          * @description List the projects of a task: the primary project first, then the
          *     associated projects, oldest first.
+         *
+         *     The caller needs ``agent_task:read``, also the service account of the
+         *     task's agent: the rows show who associated each project.
          *
          *     A project that is no longer in the org is not ``available``; its
          *     slug is the slug when it was associated.
