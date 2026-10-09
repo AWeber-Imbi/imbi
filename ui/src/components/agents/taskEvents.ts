@@ -116,6 +116,17 @@ const STATUS_LABELS: Record<AgentTaskStatus, string> = {
   running: 'Running',
 }
 
+/**
+ * The latest `check.reported` event of each check, by `payload.name`,
+ * in the order each check first reported (J2).
+ */
+export function checksFrom(events: AgentTaskEvent[]): AgentTaskEvent[] {
+  const byName = new Map<string, AgentTaskEvent>()
+  for (const e of events)
+    if (e.type === 'check.reported') byName.set(String(e.payload.name), e)
+  return [...byName.values()]
+}
+
 /** Events in the Conversation tab: turns, with state changes inline. */
 export function conversation(events: AgentTaskEvent[]): AgentTaskEvent[] {
   return events.filter((e) => CONVERSATION_TYPES.has(e.type))

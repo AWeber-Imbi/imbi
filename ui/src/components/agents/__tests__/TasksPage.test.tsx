@@ -219,6 +219,37 @@ describe('Tasks', () => {
     expect(screen.queryByText('Waiting on you')).not.toBeInTheDocument()
   })
 
+  it('renders Signals and checks (J2)', async () => {
+    const log = [
+      ...LOG,
+      event(4, 'check.reported', {
+        baseline: '120ms',
+        delta: 38,
+        name: 'p95 latency',
+        source: 'grafana',
+        value: '158ms',
+        verdict: 'fail',
+      }),
+      event(5, 'check.reported', { name: 'tests', verdict: 'pending' }),
+    ]
+    vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+      async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
+    )
+    renderAt('/agents/tasks/T-3/checks')
+    const row = (await screen.findByText('p95 latency')).closest('li')!
+    expect(within(row).getByText('Failing')).toBeInTheDocument()
+    expect(within(row).getByText('158ms')).toBeInTheDocument()
+    expect(
+      within(row).getByText('delta +38 · baseline 120ms · source grafana'),
+    ).toBeInTheDocument()
+    const other = screen.getByText('tests').closest('li')!
+    expect(within(other).getByText('pending')).toBeInTheDocument()
+    expect(within(other).getByText('—')).toBeInTheDocument()
+    expect(
+      screen.getByRole('tab', { name: 'Signals and checks1 failing' }),
+    ).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('sends Reply and hold', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
     renderAt('/agents/tasks/T-3/conversation')
