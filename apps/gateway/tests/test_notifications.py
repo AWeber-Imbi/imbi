@@ -816,6 +816,36 @@ class ProcessNotificationTests(helpers.TestCase):
             finally:
                 TokenEncryption.reset_instance()
 
+    async def test_signature_verified_is_per_project(self) -> None:
+        # One edge has a secret and one has none. The signature proves
+        # the delivery only for the project whose edge has the secret.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                second_id = await self._create_extra_project()
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(202, resp.status_code)
+                verified = {
+                    typing.cast(
+                        'plugin_base.PluginContext', call['ctx']
+                    ).project_id: typing.cast(
+                        'dict[str, typing.Any]', call['event']
+                    )['signature_verified']
+                    for call in ACTION_CALLS
+                }
+                self.assertEqual(
+                    {self.proj_id: True, second_id: False}, verified
+                )
+            finally:
+                TokenEncryption.reset_instance()
+
     async def test_filter_matches_on_resolved_event_type(self) -> None:
         await self._set_implemented_by(event_type_selector='x-github-event')
         await self._add_rule(filter_expression='type == "push"')

@@ -1325,6 +1325,11 @@ def _resolve_title(
 
 _WEBHOOK_ID = jsonpointer.JsonPointer('/metadata/webhook_id')
 
+#: A delivery id. The sender sets it, and it goes into the idempotency
+#: key and the description, so anything else is refused. Used with
+#: ``fullmatch``: ``$`` would also match before a trailing newline.
+_DELIVERY_ID_PATTERN = re.compile(r'[A-Za-z0-9._:-]{1,128}')
+
 #: The longest title of an agent task that a webhook makes.
 _TITLE_LIMIT = 200
 
@@ -1380,8 +1385,10 @@ async def create_agent_task(
     makes no second task, while one delivery can still start each agent
     once on each matched project.
 
-    A delivery without an id is skipped: without one, a redelivery
-    would make a second task. A delivery without a verified signature
+    A delivery without a valid id is skipped: without one, a redelivery
+    would make a second task. The webhook id comes from the event
+    context, which the gateway sets from the request path, never from
+    the payload. A delivery without a verified signature
     is skipped too, because the text of the task comes from it.
 
     The title and the description come from the payload, so they are
@@ -1403,9 +1410,12 @@ async def create_agent_task(
         return
     webhook_id = _WEBHOOK_ID.resolve(event, None)
     delivery_id = action_config.delivery_id_selector.resolve(event, None)
-    if not webhook_id or not delivery_id:
+    if not webhook_id or not (
+        isinstance(delivery_id, str)
+        and _DELIVERY_ID_PATTERN.fullmatch(delivery_id)
+    ):
         LOGGER.warning(
-            'Skipping agent task for project %s: the delivery has no id at %r',
+            'Skipping agent task for project %s: no valid delivery id at %r',
             ctx.project_id,
             str(action_config.delivery_id_selector),
         )

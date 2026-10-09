@@ -348,14 +348,6 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
         event_type=event_type,
         body=body,
     )
-    # Outside ``payload``, so a sender cannot set it. A delivery to an
-    # edge with a signing secret got here only if its signature verified
-    # (see ``_resolve_project_and_verify``); with no secret, nothing was
-    # verified.
-    context['signature_verified'] = any(
-        graph.parse_agtype(record.get('webhook_secret_enc'))
-        for record in project_records
-    )
     if not webhook_actions_enabled:
         LOGGER.debug(
             'webhook-actions capability disabled for integration %r;'
@@ -415,7 +407,19 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
                 capability_options=capability_options,
                 integration_credentials=integration_credentials,
                 external_identifier=str(resolved),
-                event=context,
+                # Per project and outside ``payload``, so a sender cannot
+                # set it. A delivery to an edge with a signing secret got
+                # here only if its signature verified (see
+                # ``_resolve_project_and_verify``). An edge with no secret
+                # verified nothing, even when another edge did.
+                event={
+                    **context,
+                    'signature_verified': bool(
+                        graph.parse_agtype(
+                            proj_record.get('webhook_secret_enc')
+                        )
+                    ),
+                },
                 user_id=user_id,
                 rules=matched_rules,
                 resolver=resolver,
