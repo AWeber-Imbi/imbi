@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import {
   type QueryKey,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -10,10 +11,12 @@ import {
 import { ApiError } from '@/api/client'
 import {
   type AgentTaskListParams,
+  type AgentTaskPage,
   countWaitingAgentTasks,
   getAgentTask,
   getAgentTaskRelations,
   listAgentTaskEvents,
+  listAgentTaskPage,
   listAgentTaskProjects,
   listAgentTasks,
 } from '@/api/endpoints'
@@ -28,6 +31,9 @@ export const EVENT_POLL_MS = 3000
 const LIST_POLL_MS = 15_000
 
 const EVENT_PAGE = 500
+
+/** The largest page that the task list API gives. */
+const TASK_PAGE = 100
 
 /** The event types that change the relations of a task. */
 const RELATION_EVENTS = new Set([
@@ -143,6 +149,28 @@ export function useAgentTaskMutation<T>(
           queryKeys.agentTasksWaiting(orgSlug),
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
+  })
+}
+
+/**
+ * The tasks of the org a page at a time, newest first. Each refresh
+ * reads all of the loaded pages again, so it keeps them.
+ */
+export function useAgentTaskPages(
+  orgSlug: string,
+  params: AgentTaskListParams,
+) {
+  return useInfiniteQuery({
+    getNextPageParam: (last: AgentTaskPage) => last.nextCursor,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      listAgentTaskPage(
+        orgSlug,
+        { ...params, cursor: pageParam, limit: TASK_PAGE },
+        signal,
+      ),
+    queryKey: queryKeys.agentTasks(orgSlug, { ...params, paged: true }),
+    refetchInterval: LIST_POLL_MS,
   })
 }
 

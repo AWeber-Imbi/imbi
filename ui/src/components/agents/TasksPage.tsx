@@ -17,20 +17,16 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { cn } from '@/lib/utils'
 import type { AgentTaskListItem, AgentTaskStatus } from '@/types'
 
 import { agentsPath } from './agentsNav'
 import { TaskDetail } from './TaskDetail'
 import { groupTasks, statusLabel, statusVariant, TRIGGERS } from './taskEvents'
-import { useAgentTasks } from './taskQueries'
+import { useAgentTaskPages } from './taskQueries'
 
 const OPEN: AgentTaskStatus[] = ['blocked', 'running', 'paused', 'queued']
-
-// ponytail: the inbox reads the newest 100 open and 25 closed tasks;
-// page with the Link header when an org has more open work than that.
-const OPEN_LIMIT = 100
-const CLOSED_LIMIT = 25
 
 const STATES: { label: string; slug: AgentTaskStatus }[] = [
   { label: 'Needs input', slug: 'blocked' },
@@ -160,20 +156,27 @@ function TaskInbox({
   const [states, setStates] = useState(new Set<string>())
   const [owners, setOwners] = useState(new Set<string>())
   const q = useDebouncedValue(text.trim(), 250) || undefined
-  const open = useAgentTasks(orgSlug, {
-    limit: OPEN_LIMIT,
-    mine,
-    q,
-    status: OPEN,
-  })
-  const closed = useAgentTasks(orgSlug, {
-    limit: CLOSED_LIMIT,
-    mine,
-    q,
-    status: ['closed'],
+  const open = useAgentTaskPages(orgSlug, { mine, q, status: OPEN })
+  const closed = useAgentTaskPages(orgSlug, { mine, q, status: ['closed'] })
+  // The API gives tasks newest first, but the open groups sort by other
+  // fields (blocked_since), so a part of the open tasks can put a task in
+  // the wrong place. Thus the inbox reads all of the open pages. The
+  // closed group reads its next page when the end of the list comes into
+  // view.
+  const { fetchNextPage, hasNextPage, isFetching } = open
+  useEffect(() => {
+    if (hasNextPage && !isFetching) void fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetching])
+  const { sentinelRef } = useInfiniteScroll({
+    fetchNextPage: closed.fetchNextPage,
+    hasNextPage: closed.hasNextPage && !open.hasNextPage,
+    isFetchingNextPage: closed.isFetching,
   })
   const tasks = useMemo(
-    () => [...(open.data ?? []), ...(closed.data ?? [])],
+    () =>
+      [...(open.data?.pages ?? []), ...(closed.data?.pages ?? [])].flatMap(
+        (page) => page.entries,
+      ),
     [open.data, closed.data],
   )
   const shown = tasks.filter(
@@ -193,6 +196,7 @@ function TaskInbox({
     .sort()
     .map((o) => ({ label: o, slug: o }))
   const loading = open.isLoading || closed.isLoading
+  const more = open.hasNextPage || closed.hasNextPage
   const error = open.error ?? closed.error
 
   return (
@@ -257,6 +261,7 @@ function TaskInbox({
               <span>{group.label}</span>
               <span className="font-mono tabular-nums">
                 {group.tasks.length}
+                {(group.id === 'closed' ? closed : open).hasNextPage && '+'}
               </span>
             </h3>
             {group.tasks.map((task) => (
@@ -269,9 +274,14 @@ function TaskInbox({
             ))}
           </section>
         ))}
+        {more && (
+          <p className="text-tertiary p-4 text-center text-sm">Loading…</p>
+        )}
+        <div ref={sentinelRef} />
       </div>
       <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
-        {shown.length} of {tasks.length} tasks
+        {shown.length} of {tasks.length}
+        {more && '+'} tasks
       </div>
     </>
   )
