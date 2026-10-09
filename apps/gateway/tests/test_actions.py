@@ -3087,3 +3087,104 @@ class ImbiClientTests(helpers.TestCase):
         self.assertEqual(
             '/api/organizations/org/projects/proj', response.json()['path']
         )
+
+
+class CreateAgentTaskTests(helpers.TestCase):
+    config = actions.CreateAgentTaskConfig(
+        agent_slug='triage',
+        owner='oncall@example.com',
+        title_expression='"Fix " + payload.check_run.name',
+        description_expression='"The check failed."',
+    )
+
+    def _delivery(self, delivery_id: str = 'd-1') -> dict[str, typing.Any]:
+        return _event(
+            {'check_run': {'name': 'lint'}},
+            metadata={
+                'webhook_id': 'wh-1',
+                'headers': {'x-github-delivery': delivery_id},
+            },
+        )
+
+    async def _run(
+        self, event: dict[str, typing.Any], project_id: str = 'proj'
+    ) -> unittest.mock.AsyncMock:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_agent_task',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_agent_task(
+                ctx=_ctx(org_slug='myorg', project_id=project_id),
+                credentials={},
+                external_identifier='',
+                action_config=self.config,
+                event=event,
+            )
+        return mock_create
+
+    async def test_delivery_names_the_origin_and_the_key(self) -> None:
+        mock_create = await self._run(self._delivery())
+        mock_create.assert_called_once_with(
+            'myorg',
+            'wh-1',
+            'd-1',
+            {
+                'agent_slug': 'triage',
+                'title': 'Fix lint',
+                'description': 'The check failed.',
+                'project_id': 'proj',
+                'owner': 'oncall@example.com',
+                'idempotency_key': 'd-1:triage:proj',
+            },
+        )
+
+    async def test_redelivery_sends_the_same_key(self) -> None:
+        """The API returns the first task for a repeated key."""
+        keys = [
+            (await self._run(event)).call_args.args[3]['idempotency_key']
+            for event in (
+                self._delivery(),
+                self._delivery(),
+                self._delivery('d-2'),
+            )
+        ]
+        self.assertEqual(keys[0], keys[1])
+        self.assertNotEqual(keys[0], keys[2])
+        # Each matched project gets its own task.
+        other = await self._run(self._delivery(), project_id='other')
+        self.assertNotEqual(
+            keys[0], other.call_args.args[3]['idempotency_key']
+        )
+
+    async def test_delivery_without_an_id_is_skipped(self) -> None:
+        event = self._delivery()
+        event['metadata']['headers'] = {}
+        mock_create = await self._run(event)
+        mock_create.assert_not_called()
+
+
+class ImbiClientCreateAgentTaskTests(helpers.TestCase):
+    async def test_origin_goes_in_headers(self) -> None:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_post,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.create_agent_task(
+                    'myorg', 'wh-1', 'd-1', {'a': 1}
+                )
+        mock_post.assert_called_once_with(
+            '/organizations/myorg/agent-tasks/',
+            json={'a': 1},
+            headers={'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'},
+        )
