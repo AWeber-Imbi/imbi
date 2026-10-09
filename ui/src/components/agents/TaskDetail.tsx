@@ -49,9 +49,16 @@ import {
   useAgentTaskEvents,
   useAgentTaskMutation,
 } from './taskQueries'
+import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { ActionsTab, ConversationTab, InputRequiredTab } from './TaskTabs'
 
-type TabKey = 'actions' | 'conversation' | 'input' | 'overview'
+type TabKey =
+  | 'actions'
+  | 'conversation'
+  | 'input'
+  | 'overview'
+  | 'projects'
+  | 'related'
 
 /** The task in the inbox: its header, phase timeline, and tabs. */
 export function TaskDetail({
@@ -96,6 +103,8 @@ export function TaskDetail({
       label: 'Conversation',
     },
     { count: toolCalls(log).length, key: 'actions', label: 'Actions taken' },
+    { key: 'related', label: 'Related tasks' },
+    { key: 'projects', label: 'Associated projects' },
   ]
   const current: TabKey = tabs.some((x) => x.key === tab)
     ? (tab as TabKey)
@@ -146,6 +155,12 @@ export function TaskDetail({
           <ConversationTab events={log} orgSlug={orgSlug} task={t} />
         )}
         {current === 'actions' && <ActionsTab events={log} orgSlug={orgSlug} />}
+        {current === 'related' && (
+          <RelatedTasksTab orgSlug={orgSlug} task={t} />
+        )}
+        {current === 'projects' && (
+          <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
+        )}
       </div>
     </div>
   )

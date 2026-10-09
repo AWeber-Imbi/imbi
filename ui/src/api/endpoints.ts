@@ -14,6 +14,8 @@ import type {
   AgentTaskCreate,
   AgentTaskEvent,
   AgentTaskListItem,
+  AgentTaskProject,
+  AgentTaskRelations,
   AgentTaskResolve,
   AgentTaskStatus,
   AgentToolCatalog,
@@ -3707,3 +3709,49 @@ export const resolveAgentTaskRequest = (
     `${agentTaskPath(orgSlug, shortId)}/requests/${encodeURIComponent(requestId)}/resolve`,
     resolution,
   )
+
+/** Requires, required by, parent, and children of a task. */
+export const getAgentTaskRelations = (
+  orgSlug: string,
+  shortId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentTaskRelations>(
+    `${agentTaskPath(orgSlug, shortId)}/relations`,
+    undefined,
+    signal,
+  )
+
+/** Make `shortId` require `prerequisite`, or remove that dependency. */
+export const setAgentTaskDependency = (
+  orgSlug: string,
+  shortId: string,
+  prerequisite: string,
+  linked: boolean,
+) => {
+  const url = `${agentTaskPath(orgSlug, shortId)}/requires/${encodeURIComponent(prerequisite)}`
+  return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
+}
+
+/** The primary project of a task first, then its associated projects. */
+export const listAgentTaskProjects = (
+  orgSlug: string,
+  shortId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentTaskProject[]>(
+    `${agentTaskPath(orgSlug, shortId)}/projects`,
+    undefined,
+    signal,
+  )
+
+/** Associate a project with a task, or remove the association. */
+export const setAgentTaskProject = (
+  orgSlug: string,
+  shortId: string,
+  projectId: string,
+  linked: boolean,
+) => {
+  const url = `${agentTaskPath(orgSlug, shortId)}/projects/${encodeURIComponent(projectId)}`
+  return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
+}
