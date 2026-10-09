@@ -4631,6 +4631,141 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task Relations
+         * @description List the tasks related to a task: the tasks it requires, the
+         *     tasks that require it, and its parent and children (delegation).
+         */
+        get: operations["get_agent_task_relations_api_organizations__org_slug__agent_tasks__short_id__relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/requires/{prerequisite}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Agent Task Dependency
+         * @description Make the task require the ``prerequisite`` task, in the same org.
+         *
+         *     A dependency is information only: it does not change a status. Each
+         *     task gets a ``dependency.added`` event; an archived task gets none.
+         *     When the dependency exists, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``: both tasks are archived.
+         *         422: The two tasks are the same.
+         */
+        put: operations["add_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__put"];
+        post?: never;
+        /**
+         * Remove Agent Task Dependency
+         * @description Remove the dependency of the task on the ``prerequisite`` task.
+         *
+         *     Each task gets a ``dependency.removed`` event with the removed row;
+         *     an archived task gets none. When there is no such dependency,
+         *     nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``: both tasks are archived.
+         */
+        delete: operations["remove_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Task Projects
+         * @description List the projects of a task: the primary project first, then the
+         *     associated projects, oldest first.
+         *
+         *     A project that is no longer in the org is not ``available``; its
+         *     slug is the slug when it was associated.
+         */
+        get: operations["list_agent_task_projects_api_organizations__org_slug__agent_tasks__short_id__projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Associate Agent Task Project
+         * @description Associate a project of the org with the task (F13).
+         *
+         *     The task gets a ``project.associated`` event. When the project is
+         *     associated, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``, or ``primary_project``: the project is
+         *             the primary project of the task.
+         *         422: The project is not in the org.
+         */
+        put: operations["associate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__put"];
+        post?: never;
+        /**
+         * Dissociate Agent Task Project
+         * @description Remove a project association from the task.
+         *
+         *     The task gets a ``project.dissociated`` event with the removed row.
+         *     A project that is no longer in the org can also be removed. When the
+         *     project is not associated, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``.
+         */
+        delete: operations["dissociate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/{short_id}/sessions": {
         parameters: {
             query?: never;
@@ -8782,6 +8917,23 @@ export interface components {
              */
             owner: string;
         };
+        /**
+         * AgentTaskRelations
+         * @description The tasks related to a task.
+         *
+         *     ``requires`` are the tasks that block this task; ``required_by`` are
+         *     the tasks that this task blocks. ``parent`` and ``children`` come from
+         *     a ``task`` origin (delegation) and do not change.
+         */
+        AgentTaskRelations: {
+            /** Requires */
+            requires: components["schemas"]["RelatedTask"][];
+            /** Required By */
+            required_by: components["schemas"]["RelatedTask"][];
+            parent?: components["schemas"]["RelatedTask"] | null;
+            /** Children */
+            children: components["schemas"]["RelatedTask"][];
+        };
         /** AgentTaskReply */
         AgentTaskReply: {
             /** Body */
@@ -9183,6 +9335,31 @@ export interface components {
             written: components["schemas"]["AgentTaskEventResponse"][];
             /** Duplicates */
             duplicates: string[];
+        };
+        /**
+         * AssociatedProject
+         * @description A project that a task touches (F13).
+         */
+        AssociatedProject: {
+            /** Project Id */
+            project_id: string;
+            /** Project Slug */
+            project_slug: string;
+            /** Name */
+            name?: string | null;
+            /** Available */
+            available: boolean;
+            /**
+             * Primary
+             * @default false
+             */
+            primary: boolean;
+            /** Added By Kind */
+            added_by_kind?: ("human" | "agent" | "subagent" | "system") | null;
+            /** Added By */
+            added_by?: string | null;
+            /** Added At */
+            added_at?: string | null;
         };
         /**
          * AttachmentRef
@@ -14747,6 +14924,36 @@ export interface components {
             pr_title?: string | null;
             /** Pr State */
             pr_state?: ("open" | "closed" | "merged") | null;
+        };
+        /**
+         * RelatedTask
+         * @description The task at the other end of a relation.
+         */
+        RelatedTask: {
+            /** Short Id */
+            short_id: string;
+            /** Title */
+            title: string;
+            /** Agent Id */
+            agent_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            /** Outcome */
+            outcome?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Linked By Kind */
+            linked_by_kind?: ("human" | "agent" | "subagent" | "system") | null;
+            /** Linked By */
+            linked_by?: string | null;
+            /** Linked At */
+            linked_at?: string | null;
         };
         /**
          * RelationshipLink
@@ -25363,6 +25570,194 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentTaskResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_task_relations_api_organizations__org_slug__agent_tasks__short_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskRelations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                prerequisite: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                prerequisite: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_task_projects_api_organizations__org_slug__agent_tasks__short_id__projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssociatedProject"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    associate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dissociate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                project_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
