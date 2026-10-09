@@ -16,6 +16,7 @@ import typing
 import uuid
 
 import httpx
+from psycopg import sql
 
 from apps.api.tests import support
 from imbi.api import agent_tasks, models
@@ -157,6 +158,14 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
             ['ok'],
         )
         async with self.pool.connection() as conn:
+            # The relation keys RESTRICT the delete of a task.
+            for table in ('task_dependencies', 'task_projects'):
+                await conn.execute(
+                    sql.SQL(
+                        'DELETE FROM {} WHERE organization_id = ANY(%s)'
+                    ).format(sql.Identifier('agent_runtime', table)),
+                    ([self.org, self.other_org, self.foreign_org],),
+                )
             await conn.execute(
                 'DELETE FROM agent_runtime.tasks'
                 ' WHERE organization_id = ANY(%s)',

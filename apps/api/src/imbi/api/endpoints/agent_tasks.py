@@ -17,10 +17,12 @@ a control change also changes the status at once: see
 :meth:`imbi.api.agent_tasks.TaskStore.set_control`.
 """
 
+import contextlib
 import datetime
 import decimal
 import typing
 import uuid
+from collections import abc
 
 import fastapi
 import orjson
@@ -231,6 +233,52 @@ class AgentTaskReply(pydantic.BaseModel):
     )
 
 
+class RelatedTask(pydantic.BaseModel):
+    """The task at the other end of a relation."""
+
+    short_id: str
+    title: str
+    agent_id: str
+    status: Status
+    outcome: str | None = None
+    created_at: datetime.datetime
+    #: Who linked the tasks, and when. ``null`` for delegation.
+    linked_by_kind: ActorKind | None = None
+    linked_by: str | None = None
+    linked_at: datetime.datetime | None = None
+
+
+class AgentTaskRelations(pydantic.BaseModel):
+    """The tasks related to a task.
+
+    ``requires`` are the tasks that block this task; ``required_by`` are
+    the tasks that this task blocks. ``parent`` and ``children`` come from
+    a ``task`` origin (delegation) and do not change.
+    """
+
+    requires: list[RelatedTask]
+    required_by: list[RelatedTask]
+    parent: RelatedTask | None = None
+    children: list[RelatedTask]
+
+
+class AssociatedProject(pydantic.BaseModel):
+    """A project that a task touches (F13)."""
+
+    project_id: str
+    #: The slug now, or the slug when the project was associated if the
+    #: project is not available.
+    project_slug: str
+    name: str | None = None
+    #: ``false`` when the project is no longer in the organization.
+    available: bool
+    #: The primary project of the task. It cannot be removed.
+    primary: bool = False
+    added_by_kind: ActorKind | None = None
+    added_by: str | None = None
+    added_at: datetime.datetime | None = None
+
+
 # --- Queries -----------------------------------------------------------
 
 #: The agents and projects that the text query of the task list
@@ -256,6 +304,14 @@ MATCH (p:Project {{id: {project_id}}})
       -[:OWNED_BY]->(:Team)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN p.slug AS slug
+"""
+
+_PROJECTS_QUERY: typing.LiteralString = """
+MATCH (p:Project)
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+WHERE p.id IN {ids}
+RETURN p.id AS id, p.slug AS slug, p.name AS name
 """
 
 _MEMBER_QUERY: typing.LiteralString = """
@@ -432,6 +488,50 @@ async def _set_control(
         ) from e
 
 
+async def _project_slug(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> str:
+    """Return the slug of a project in the org, or raise 422."""
+    records = await db.execute(
+        _PROJECT_QUERY,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['slug'],
+    )
+    if not records:
+        raise _unprocessable(f'Project {project_id!r} not found')
+    return str(graph.parse_agtype(records[0]['slug']))
+
+
+@contextlib.contextmanager
+def _relation_errors() -> abc.Generator[None]:
+    """Map the errors of a relation change to HTTP errors."""
+    try:
+        yield
+    except agent_tasks.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {str(e)!r} not found'
+        ) from e
+    except agent_tasks.TaskArchived as e:
+        raise _conflict(
+            'task_archived', f'The log of {e} is archived; it cannot change'
+        ) from e
+    except agent_tasks.SelfDependency as e:
+        raise _unprocessable(f'Task {str(e)!r} cannot require itself') from e
+    except agent_tasks.PrimaryProject as e:
+        raise _conflict(
+            'primary_project',
+            f'Project {str(e)!r} is the primary project of the task',
+        ) from e
+
+
+_require_manage = permissions.require_permission('agent_task:manage')
+
+#: A person with ``agent_task:manage``. Agents cannot change relations.
+ManagingPerson = typing.Annotated[
+    permissions.AuthContext, fastapi.Depends(_require_manage)
+]
+
+
 # --- Endpoints ---------------------------------------------------------
 
 agent_tasks_router = fastapi.APIRouter(
@@ -502,14 +602,7 @@ async def create_agent_task(
     budget = _task_budget(settings, data.budget)
     project_slug: str | None = None
     if data.project_id is not None:
-        records = await db.execute(
-            _PROJECT_QUERY,
-            {'project_id': data.project_id, 'org_slug': org_slug},
-            ['slug'],
-        )
-        if not records:
-            raise _unprocessable(f'Project {data.project_id!r} not found')
-        project_slug = str(graph.parse_agtype(records[0]['slug']))
+        project_slug = await _project_slug(db, org_slug, data.project_id)
     agent_id = str(agent['id'])
     service_account_id = await agents.ensure_service_account(
         db, agent_id, str(agent.get('name', data.agent_slug))
@@ -937,3 +1030,180 @@ async def reply_agent_task(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e
+
+
+@agent_tasks_router.get(
+    '/{short_id}/relations', response_model=AgentTaskRelations
+)
+async def get_agent_task_relations(
+    task: ReadableTask, store: agent_tasks.Store
+) -> dict[str, typing.Any]:
+    """List the tasks related to a task: the tasks it requires, the
+    tasks that require it, and its parent and children (delegation)."""
+    return await store.relations(task)
+
+
+@agent_tasks_router.put('/{short_id}/requires/{prerequisite}', status_code=204)
+async def add_agent_task_dependency(
+    org_id: OrgId,
+    short_id: str,
+    prerequisite: str,
+    store: agent_tasks.Store,
+    auth: ManagingPerson,
+) -> None:
+    """Make the task require the ``prerequisite`` task, in the same org.
+
+    A dependency is information only: it does not change a status. Each
+    task gets a ``dependency.added`` event; an archived task gets none.
+    When the dependency exists, nothing changes.
+
+    Raises:
+        403: The caller is not a person, has no ``agent_task:manage``,
+            or is not a member of the org.
+        404: No such task.
+        409: ``task_archived``: both tasks are archived.
+        422: The two tasks are the same.
+
+    """
+    _ = auth.require_user  # raises 403 for a caller that is not a person
+    with _relation_errors():
+        await store.add_dependency(
+            org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+        )
+
+
+@agent_tasks_router.delete(
+    '/{short_id}/requires/{prerequisite}', status_code=204
+)
+async def remove_agent_task_dependency(
+    org_id: OrgId,
+    short_id: str,
+    prerequisite: str,
+    store: agent_tasks.Store,
+    auth: ManagingPerson,
+) -> None:
+    """Remove the dependency of the task on the ``prerequisite`` task.
+
+    Each task gets a ``dependency.removed`` event with the removed row;
+    an archived task gets none. When there is no such dependency,
+    nothing changes.
+
+    Raises:
+        403: The caller is not a person, has no ``agent_task:manage``,
+            or is not a member of the org.
+        404: No such task.
+        409: ``task_archived``: both tasks are archived.
+
+    """
+    _ = auth.require_user  # raises 403 for a caller that is not a person
+    with _relation_errors():
+        await store.remove_dependency(
+            org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+        )
+
+
+@agent_tasks_router.get(
+    '/{short_id}/projects', response_model=list[AssociatedProject]
+)
+async def list_agent_task_projects(
+    org_slug: str,
+    task: ReadableTask,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+) -> list[dict[str, typing.Any]]:
+    """List the projects of a task: the primary project first, then the
+    associated projects, oldest first.
+
+    A project that is no longer in the org is not ``available``; its
+    slug is the slug when it was associated.
+    """
+    rows: list[dict[str, typing.Any]] = []
+    if task['project_id']:
+        rows.append(
+            {
+                'project_id': task['project_id'],
+                'project_slug': task['project_slug'] or task['project_id'],
+                'primary': True,
+            }
+        )
+    rows += await store.projects(task)
+    records = await db.execute(
+        _PROJECTS_QUERY,
+        {'org_slug': org_slug, 'ids': [row['project_id'] for row in rows]},
+        ['id', 'slug', 'name'],
+    )
+    found = {
+        str(graph.parse_agtype(r['id'])): (
+            str(graph.parse_agtype(r['slug'])),
+            graph.parse_agtype(r['name']),
+        )
+        for r in records
+    }
+    for row in rows:
+        current = found.get(row['project_id'])
+        row['available'] = current is not None
+        if current is not None:
+            row['project_slug'], row['name'] = current
+    return rows
+
+
+@agent_tasks_router.put('/{short_id}/projects/{project_id}', status_code=204)
+async def associate_agent_task_project(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    project_id: str,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+    auth: ManagingPerson,
+) -> None:
+    """Associate a project of the org with the task (F13).
+
+    The task gets a ``project.associated`` event. When the project is
+    associated, nothing changes.
+
+    Raises:
+        403: The caller is not a person, has no ``agent_task:manage``,
+            or is not a member of the org.
+        404: No such task.
+        409: ``task_archived``, or ``primary_project``: the project is
+            the primary project of the task.
+        422: The project is not in the org.
+
+    """
+    _ = auth.require_user  # raises 403 for a caller that is not a person
+    slug = await _project_slug(db, org_slug, project_id)
+    with _relation_errors():
+        await store.associate_project(
+            org_id, short_id.upper(), project_id, slug, _actor(auth)
+        )
+
+
+@agent_tasks_router.delete(
+    '/{short_id}/projects/{project_id}', status_code=204
+)
+async def dissociate_agent_task_project(
+    org_id: OrgId,
+    short_id: str,
+    project_id: str,
+    store: agent_tasks.Store,
+    auth: ManagingPerson,
+) -> None:
+    """Remove a project association from the task.
+
+    The task gets a ``project.dissociated`` event with the removed row.
+    A project that is no longer in the org can also be removed. When the
+    project is not associated, nothing changes.
+
+    Raises:
+        403: The caller is not a person, has no ``agent_task:manage``,
+            or is not a member of the org.
+        404: No such task.
+        409: ``task_archived``.
+
+    """
+    _ = auth.require_user  # raises 403 for a caller that is not a person
+    with _relation_errors():
+        await store.dissociate_project(
+            org_id, short_id.upper(), project_id, _actor(auth)
+        )

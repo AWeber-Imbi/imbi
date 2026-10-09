@@ -72,6 +72,18 @@ _OPEN_REQUESTS = sql.SQL(
     ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
 )
 
+#: The tasks at the other end of the dependencies of a task, with the
+#: link. ``this`` is the column of the task, ``other`` the other column.
+_LINKED_TASKS = sql.SQL(
+    'SELECT t.*, d.created_by_kind AS linked_by_kind,'
+    ' d.created_by AS linked_by, d.created_at AS linked_at'
+    ' FROM agent_runtime.task_dependencies AS d'
+    ' JOIN agent_runtime.tasks AS t'
+    ' ON t.organization_id = d.organization_id AND t.id = d.{other}'
+    ' WHERE d.organization_id = %s AND d.{this} = %s'
+    ' ORDER BY d.created_at, t.id'
+)
+
 #: The status of a task with no open session, by control value.
 _IDLE_STATUS: dict[Control, Status] = {
     'run': 'queued',
@@ -134,6 +146,18 @@ class ResolutionInvalid(ValueError):
 
 class RequestKeyConflict(ValueError):
     """The request with this key binds to other digests."""
+
+
+class TaskArchived(ValueError):
+    """Every task in the change is archived. Its log is sealed."""
+
+
+class SelfDependency(ValueError):
+    """A task cannot depend on itself."""
+
+
+class PrimaryProject(ValueError):
+    """The project is the primary project of the task."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -299,6 +323,42 @@ class _Write:
         """Change columns of the task and keep the new row."""
         self.task = await _update_task(self.conn, self.task['id'], changes)
         return self.task
+
+
+@dataclasses.dataclass
+class _Relate:
+    """One change to the relations of locked tasks.
+
+    ``tasks`` are in task id order. An event goes to each task whose log
+    is not archived; an archived task is sealed. All events of the change
+    share ``operation_id``.
+    """
+
+    conn: Conn
+    tasks: list[Row]
+    operation_id: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
+    events: dict[uuid.UUID, list[Row]] = dataclasses.field(
+        default_factory=dict[uuid.UUID, list[Row]]
+    )
+
+    async def event(
+        self,
+        event_type: str,
+        payload: abc.Callable[[Row], Row],
+        actor: Actor,
+    ) -> None:
+        """Write ``event_type`` on each live task, with ``payload(task)``."""
+        for task in self.tasks:
+            if task['log_archived_at'] is not None:
+                continue
+            row = await _append_event(
+                self.conn,
+                task['id'],
+                event_type,
+                {'operation_id': str(self.operation_id), **payload(task)},
+                actor,
+            )
+            self.events.setdefault(task['id'], []).append(row)
 
 
 class TaskStore:
@@ -661,6 +721,261 @@ class TaskStore:
                 )
                 await write.update({'owner': owner})
         return write.task
+
+    # --- Relations ----------------------------------------------------
+
+    @contextlib.asynccontextmanager
+    async def _relate(
+        self, organization_id: str, short_ids: list[str]
+    ) -> abc.AsyncGenerator[_Relate]:
+        """Lock tasks for a change to their relations, then publish.
+
+        The tasks lock in task id order, so two changes on one pair of
+        tasks cannot deadlock. A closed task takes relation events until
+        its log is archived.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskArchived: Every task is archived.
+
+        """
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                tasks = await _lock_tasks(conn, organization_id, short_ids)
+                if all(task['log_archived_at'] is not None for task in tasks):
+                    raise TaskArchived(', '.join(short_ids))
+                relate = _Relate(conn, tasks)
+                yield relate
+                # Event writes change ``last_seq``.
+                published = [
+                    (await _fetch_task(conn, task_id), events)
+                    for task_id, events in relate.events.items()
+                ]
+        for task, events in published:
+            await log.publish(task, events)
+
+    async def add_dependency(
+        self,
+        organization_id: str,
+        dependent: str,
+        prerequisite: str,
+        actor: Actor,
+    ) -> bool:
+        """Make ``dependent`` require ``prerequisite``.
+
+        Write ``dependency.added`` on both tasks, or only on the one that
+        is not archived. Return ``False`` and write no event when the
+        dependency exists.
+
+        Raises:
+            SelfDependency: The two short ids are the same.
+            TaskNotFound: No such task.
+            TaskArchived: Both tasks are archived.
+
+        """
+        if dependent == prerequisite:
+            raise SelfDependency(dependent)
+        async with self._relate(
+            organization_id, [dependent, prerequisite]
+        ) as relate:
+            ids = {task['short_id']: task['id'] for task in relate.tasks}
+            row = await _fetch_one(
+                relate.conn,
+                'INSERT INTO agent_runtime.task_dependencies'
+                ' (organization_id, dependent_task_id, prerequisite_task_id,'
+                ' created_by_kind, created_by) VALUES (%s, %s, %s, %s, %s)'
+                ' ON CONFLICT DO NOTHING RETURNING *',
+                (
+                    organization_id,
+                    ids[dependent],
+                    ids[prerequisite],
+                    actor.kind,
+                    actor.id,
+                ),
+            )
+            if row is not None:
+                await relate.event(
+                    'dependency.added', _dependency_payload(relate, row), actor
+                )
+        return row is not None
+
+    async def remove_dependency(
+        self,
+        organization_id: str,
+        dependent: str,
+        prerequisite: str,
+        actor: Actor,
+    ) -> bool:
+        """Remove the dependency of ``dependent`` on ``prerequisite``.
+
+        Write ``dependency.removed``, with the removed row, as
+        :meth:`add_dependency` writes ``dependency.added``. Return
+        ``False`` and write no event when there is no such dependency.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskArchived: Both tasks are archived.
+
+        """
+        async with self._relate(
+            organization_id, [dependent, prerequisite]
+        ) as relate:
+            ids = {task['short_id']: task['id'] for task in relate.tasks}
+            row = await _fetch_one(
+                relate.conn,
+                'DELETE FROM agent_runtime.task_dependencies'
+                ' WHERE organization_id = %s AND dependent_task_id = %s'
+                ' AND prerequisite_task_id = %s RETURNING *',
+                (organization_id, ids[dependent], ids[prerequisite]),
+            )
+            if row is not None:
+                await relate.event(
+                    'dependency.removed',
+                    _dependency_payload(relate, row),
+                    actor,
+                )
+        return row is not None
+
+    async def associate_project(
+        self,
+        organization_id: str,
+        short_id: str,
+        project_id: str,
+        project_slug: str,
+        actor: Actor,
+    ) -> bool:
+        """Associate a project, other than the primary, with a task.
+
+        The caller checks that the project is in the organization. Write
+        ``project.associated``. Return ``False`` and write no event when
+        the project is associated.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskArchived: The task is archived.
+            PrimaryProject: The project is the primary project.
+
+        """
+        async with self._relate(organization_id, [short_id]) as relate:
+            if relate.tasks[0]['project_id'] == project_id:
+                raise PrimaryProject(project_id)
+            row = await _fetch_one(
+                relate.conn,
+                'INSERT INTO agent_runtime.task_projects (organization_id,'
+                ' task_id, project_id, project_slug, added_by_kind, added_by)'
+                ' VALUES (%s, %s, %s, %s, %s, %s)'
+                ' ON CONFLICT DO NOTHING RETURNING *',
+                (
+                    organization_id,
+                    relate.tasks[0]['id'],
+                    project_id,
+                    project_slug,
+                    actor.kind,
+                    actor.id,
+                ),
+            )
+            if row is not None:
+                await relate.event(
+                    'project.associated', lambda _: _json_row(row), actor
+                )
+        return row is not None
+
+    async def dissociate_project(
+        self,
+        organization_id: str,
+        short_id: str,
+        project_id: str,
+        actor: Actor,
+    ) -> bool:
+        """Remove a project association; write ``project.dissociated``
+        with the removed row. Return ``False`` and write no event when
+        the project is not associated.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskArchived: The task is archived.
+
+        """
+        async with self._relate(organization_id, [short_id]) as relate:
+            row = await _fetch_one(
+                relate.conn,
+                'DELETE FROM agent_runtime.task_projects'
+                ' WHERE organization_id = %s AND task_id = %s'
+                ' AND project_id = %s RETURNING *',
+                (organization_id, relate.tasks[0]['id'], project_id),
+            )
+            if row is not None:
+                await relate.event(
+                    'project.dissociated', lambda _: _json_row(row), actor
+                )
+        return row is not None
+
+    async def relations(self, task: Row) -> dict[str, typing.Any]:
+        """Return the tasks related to ``task``.
+
+        ``requires`` and ``required_by`` are its dependencies in the two
+        directions, oldest link first. Each is the other task, with the
+        ``linked_by_kind``, ``linked_by``, and ``linked_at`` of the link.
+        ``parent`` and ``children`` come from a ``task`` origin
+        (delegation): the ``origin_id`` of a child is the id of its
+        parent.
+        """
+        params = (task['organization_id'], task['id'])
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                _LINKED_TASKS.format(
+                    other=sql.Identifier('prerequisite_task_id'),
+                    this=sql.Identifier('dependent_task_id'),
+                ),
+                params,
+            )
+            requires = await cursor.fetchall()
+            await cursor.execute(
+                _LINKED_TASKS.format(
+                    other=sql.Identifier('dependent_task_id'),
+                    this=sql.Identifier('prerequisite_task_id'),
+                ),
+                params,
+            )
+            required_by = await cursor.fetchall()
+            parent: Row | None = None
+            if task['origin_kind'] == 'task':
+                await cursor.execute(
+                    'SELECT * FROM agent_runtime.tasks'
+                    ' WHERE organization_id = %s AND id::text = %s',
+                    (task['organization_id'], task['origin_id']),
+                )
+                parent = await cursor.fetchone()
+            await cursor.execute(
+                'SELECT * FROM agent_runtime.tasks'
+                " WHERE organization_id = %s AND origin_kind = 'task'"
+                ' AND origin_id = %s ORDER BY created_at, id',
+                (task['organization_id'], str(task['id'])),
+            )
+            children = await cursor.fetchall()
+        return {
+            'requires': requires,
+            'required_by': required_by,
+            'parent': parent,
+            'children': children,
+        }
+
+    async def projects(self, task: Row) -> list[Row]:
+        """Return the projects associated with ``task``, oldest first."""
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT * FROM agent_runtime.task_projects'
+                ' WHERE organization_id = %s AND task_id = %s'
+                ' ORDER BY added_at, project_id',
+                (task['organization_id'], task['id']),
+            )
+            return await cursor.fetchall()
 
     # --- Harness ------------------------------------------------------
 
@@ -1509,6 +1824,56 @@ async def _lock_task(
     if task['status'] == 'closed':
         raise TaskClosed(short_id)
     return task
+
+
+async def _lock_tasks(
+    conn: Conn, organization_id: str, short_ids: list[str]
+) -> list[Row]:
+    """Lock and return tasks in task id order, closed or not."""
+    async with conn.cursor(row_factory=rows.dict_row) as cursor:
+        await cursor.execute(
+            'SELECT * FROM agent_runtime.tasks'
+            ' WHERE organization_id = %s AND short_id = ANY(%s)'
+            ' ORDER BY id FOR UPDATE',
+            (organization_id, short_ids),
+        )
+        tasks = await cursor.fetchall()
+    found = {task['short_id'] for task in tasks}
+    for short_id in short_ids:
+        if short_id not in found:
+            raise TaskNotFound(short_id)
+    return tasks
+
+
+def _json_row(row: Row) -> Row:
+    """Return a relation row as event payload: ids and times as text."""
+    return {
+        key: value.isoformat()
+        if isinstance(value, datetime.datetime)
+        else str(value)
+        if isinstance(value, uuid.UUID)
+        else value
+        for key, value in row.items()
+    }
+
+
+def _dependency_payload(relate: _Relate, row: Row) -> abc.Callable[[Row], Row]:
+    """Return the payload of a dependency event on each task: the row,
+    the short ids of both tasks, and the side of the task."""
+    short_ids = {task['id']: task['short_id'] for task in relate.tasks}
+    common: Row = {
+        **_json_row(row),
+        'dependent_short_id': short_ids[row['dependent_task_id']],
+        'prerequisite_short_id': short_ids[row['prerequisite_task_id']],
+    }
+    return lambda task: {
+        **common,
+        'side': (
+            'dependent'
+            if task['id'] == row['dependent_task_id']
+            else 'prerequisite'
+        ),
+    }
 
 
 async def _update_task(
