@@ -1,3 +1,5 @@
+import json
+import types
 from unittest import mock
 
 from apps.slackbot.tests import helpers
@@ -70,6 +72,57 @@ class FakeManager:
         return ['list']
 
 
+CREATE_TASK = (
+    'create_agent_task_api_organizations__org_slug__agent_tasks__post'
+)
+
+
+class FakeTaskApi(FakeManager):
+    """The task create tool, with the API's idempotency behavior."""
+
+    def __init__(self) -> None:
+        self.tasks: dict[str, dict] = {}
+        self.calls: list = []
+
+    async def execute_tool(self, name, tool_input, token):
+        self.calls.append((name, tool_input, token))
+        key = tool_input['idempotency_key']
+        if key not in self.tasks:
+            self.tasks[key] = {'short_id': f'T-{len(self.tasks) + 1}'}
+        return json.dumps(self.tasks[key]), False
+
+
+class FakeModel:
+    """Asks for one task, then links the task that the tool returned."""
+
+    def __init__(self) -> None:
+        self.messages = self
+
+    async def create(self, **kwargs):
+        last = kwargs['messages'][-1]['content']
+        if isinstance(last, list) and last[0].get('type') == 'tool_result':
+            task = json.loads(last[0]['content'])
+            link = f'<https://imbi/agents/tasks/{task["short_id"]}|T>'
+            return types.SimpleNamespace(
+                content=[types.SimpleNamespace(type='text', text=link)],
+                stop_reason='end_turn',
+            )
+        tool_use = types.SimpleNamespace(
+            type='tool_use',
+            id='t1',
+            name=CREATE_TASK,
+            input={
+                'org_slug': 'eng',
+                'agent_slug': 'mender',
+                'title': 'Fix the build',
+                'description': 'The thread says the build fails.',
+            },
+        )
+        return types.SimpleNamespace(
+            content=[tool_use], stop_reason='tool_use'
+        )
+
+
 class LoadThreadTests(helpers.TestCase):
     async def test_fallback_on_error(self) -> None:
         fallback = {'user': 'U1', 'text': 'hi'}
@@ -83,7 +136,9 @@ class FakeApp:
         self.token = token
         self.handlers: dict = {}
         self.client = mock.AsyncMock()
-        self.client.auth_test = mock.AsyncMock(return_value={'user_id': 'BOT'})
+        self.client.auth_test = mock.AsyncMock(
+            return_value={'user_id': 'BOT', 'bot_id': 'B_IMBI'}
+        )
 
     def event(self, name: str):
         def deco(fn):
@@ -157,6 +212,7 @@ class InitializeTests(helpers.TestCase):
         ):
             await slack_handler.initialize()
             self.assertEqual('BOT', slack_handler._bot_user_id)
+            self.assertEqual('B_IMBI', slack_handler._bot_id)
             self.assertTrue(slack_handler._handler.connected)
 
             app = slack_handler._app
@@ -351,3 +407,88 @@ class HandleEventTests(helpers.TestCase):
         client = FakeSlackClient(replies=[])
         await slack_handler.handle_event({}, client, bot_user_id='BOT')
         self.assertEqual([], client.posts)
+
+    async def test_mention_creates_one_task_per_delivery(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {
+            'channel': 'C1',
+            'ts': '1.5',
+            'user': 'U1',
+            'text': '<@BOT> make a task for mender',
+        }
+        api = FakeTaskApi()
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.mcp, 'get_manager', return_value=api
+            ),
+            mock.patch.object(
+                slack_handler.agent.client,
+                'get_client',
+                return_value=FakeModel(),
+            ),
+        ):
+            first = FakeSlackClient(replies=[])
+            await slack_handler.handle_event(event, first, bot_user_id='BOT')
+            # Slack delivers the same event again.
+            again = FakeSlackClient(replies=[])
+            await slack_handler.handle_event(event, again, bot_user_id='BOT')
+        self.assertEqual(['slack:C1:1.5:mender:1'], list(api.tasks))
+        self.assertEqual(2, len(api.calls))
+        self.assertEqual('tok', api.calls[0][2])
+        for client in (first, again):
+            self.assertIn(
+                'https://imbi/agents/tasks/T-1',
+                client.posts[-1]['markdown_text'],
+            )
+            self.assertEqual('1.5', client.posts[-1]['thread_ts'])
+
+    async def test_own_bot_events_are_ignored(self) -> None:
+        resolve = mock.AsyncMock()
+        events = [
+            {'channel': 'C', 'ts': '1', 'user': 'BOT', 'text': '<@BOT>'},
+            {
+                'channel': 'C',
+                'ts': '2',
+                'user': 'U9',
+                'bot_id': 'B_IMBI',
+                'text': '<@BOT>',
+            },
+        ]
+        client = FakeSlackClient(replies=[])
+        with mock.patch.object(slack_handler.identity, 'resolve', new=resolve):
+            for event in events:
+                await slack_handler.handle_event(
+                    event, client, bot_user_id='BOT', bot_id='B_IMBI'
+                )
+        resolve.assert_not_awaited()
+        self.assertEqual([], client.posts)
+        self.assertEqual([], client.reactions)
+
+    async def test_other_bot_gets_unmapped_reply(self) -> None:
+        event = {
+            'channel': 'C',
+            'ts': '1',
+            'user': 'U_WORKFLOW',
+            'bot_id': 'B_WORKFLOW',
+            'text': '<@BOT> make a task',
+        }
+        client = FakeSlackClient(replies=[])
+        run_turn = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=None),
+            ),
+            mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
+        ):
+            await slack_handler.handle_event(
+                event, client, bot_user_id='BOT', bot_id='B_IMBI'
+            )
+        run_turn.assert_not_awaited()
+        self.assertIn('match your Slack account', client.posts[-1]['text'])

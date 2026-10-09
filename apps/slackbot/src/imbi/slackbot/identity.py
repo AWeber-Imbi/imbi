@@ -153,7 +153,11 @@ def mint_token(user: ImbiUser) -> str:
     The token is signed with the shared ``IMBI_AUTH_JWT_SECRET`` and
     carries the user's email as its subject, exactly as the Imbi API
     does at login. The API loads the user's permissions fresh from the
-    graph on each request keyed by this subject.
+    graph on each request keyed by this subject. The ``channel`` claim
+    makes the API record ``slack`` as the channel of what the user does
+    through the bot (H3).
 
     """
-    return core.create_access_token(user.email)
+    return core.create_access_token(
+        user.email, extra_claims={'channel': 'slack'}
+    )

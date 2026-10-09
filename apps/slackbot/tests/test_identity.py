@@ -132,3 +132,4 @@ class IdentityTestCase(helpers.TestCase):
         claims = core.verify_token(token)
         self.assertEqual('a@example.com', claims['sub'])
         self.assertEqual('access', claims['type'])
+        self.assertEqual('slack', claims['channel'])

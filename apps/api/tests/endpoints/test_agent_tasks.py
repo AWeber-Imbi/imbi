@@ -342,6 +342,34 @@ class CreateTaskTests(AgentTaskTestCase):
         events = (await self.client.get(self.url('T-1/events'))).json()
         self.assertEqual(events[0]['channel'], 'api')
 
+    async def test_slackbot_token_writes_slack_channel(self) -> None:
+        await self.make_agent()
+        await self.make_agent(org=self.foreign_org)
+
+        async def slack_user() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                user=self.user,
+                session_id='test-session',
+                auth_method='jwt',
+                channel='slack',
+                permissions=set(self.permissions),
+            )
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            slack_user
+        )
+        response = await self.create_task()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            response.json()['origin'], {'kind': 'human', 'user': self.email}
+        )
+        events = (await self.client.get(self.url('T-1/events'))).json()
+        self.assertEqual(events[0]['actor_id'], self.email)
+        self.assertEqual(events[0]['channel'], 'slack')
+        # The bot cannot make a task in an org the user is not in.
+        response = await self.create_task(org=self.foreign_org)
+        self.assertEqual(response.status_code, 403, response.text)
+
     async def test_budget_can_be_lowered_not_raised(self) -> None:
         await self.make_agent(settings={'task_budget': '5'})
         response = await self.create_task(budget='2.5')
