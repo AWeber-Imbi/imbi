@@ -184,6 +184,18 @@ class Executor:
                 request = render.api_request(
                     task, task.target, renderer, self._settings.api_base_url
                 )
+                # Set here, not by the target, so the author of a task
+                # cannot change the scheduler task id: imbi-api records
+                # it as the origin of an agent task (ADR 0020). The run
+                # id is the default key, so a retry of the run makes no
+                # second task.
+                request = request._replace(
+                    headers={
+                        **request.headers,
+                        'X-Imbi-Scheduled-Task': str(task.id),
+                        'Idempotency-Key': run_id,
+                    }
+                )
             case models.GatewayTarget():
                 request = render.gateway_request(
                     task.target, renderer, self._settings.gateway_url

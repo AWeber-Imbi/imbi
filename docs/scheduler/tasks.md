@@ -108,6 +108,29 @@ Calls `imbi-api` as the task's identity.
 `path` must be relative — an absolute URL is refused. A non-2xx response is a
 `failed` run.
 
+Every request has two headers that the task cannot change:
+`X-Imbi-Scheduled-Task` (the task id) and `Idempotency-Key` (the run id, unless
+`idempotency_key` sets one). All attempts of a run send the same key.
+
+To start agent work on a schedule, post to the agent tasks of an organization.
+`imbi-api` records the task with a `schedule` origin, and a retry of the run
+returns the first task. The body must name the `owner`, a member of the
+organization:
+
+```json
+{
+  "kind": "api",
+  "method": "POST",
+  "path": "/organizations/acme/agent-tasks/",
+  "body": {
+    "agent_slug": "triage",
+    "title": "Nightly dependency audit",
+    "description": "Audit the dependencies of every project.",
+    "owner": "oncall@example.com"
+  }
+}
+```
+
 ### `gateway`
 
 Delivers a webhook payload to `imbi-gateway`. Carries no identity: that endpoint
