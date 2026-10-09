@@ -58,9 +58,10 @@ class StubExecutor:
         *,
         run_id: uuid.UUID | None = None,
         trace_id: str = '',
+        accountable: str | None = None,
     ) -> runs.Run:
         self.fired.append(task.slug)
-        self.accountable.append(task.accountable)
+        self.accountable.append(accountable or task.accountable)
         delay = self.delays.get(task.slug, self.delay)
         if delay:
             await asyncio.sleep(delay)

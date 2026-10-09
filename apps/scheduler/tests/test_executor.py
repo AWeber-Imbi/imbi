@@ -282,6 +282,23 @@ class ApiTargetTests(ExecutorTestCase):
             ],
         )
 
+    async def test_a_run_on_demand_sends_its_firer(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(201)
+        )
+        task = helpers.build_task(updated_by='editor@example.com')
+        await self.executor.execute(
+            task, FIRED_AT, accountable='firer@example.com'
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(
+            ['firer@example.com', 'editor@example.com'],
+            [
+                call.request.headers['x-imbi-scheduled-task-accountable']
+                for call in route.calls
+            ],
+        )
+
     async def test_sends_the_org_that_the_request_is_in(self) -> None:
         """The target org wins over the task org, as in the path."""
         for task, org in (

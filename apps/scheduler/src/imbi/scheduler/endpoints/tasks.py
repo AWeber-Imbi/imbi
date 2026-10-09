@@ -366,13 +366,9 @@ async def run_task(
     re-enable.
     """
     task = await dependencies.load_for_management(tasks, slug, auth)
-    # Whoever fires the task answers for this run only (ADR 0020). A copy,
-    # not a write: the stored task, and so every scheduled run, keeps its
-    # accountable person. The engine writes run outcomes by task id, never
-    # the task itself, so the copy is not stored.
-    return await engine.run_now(
-        task.model_copy(update={'updated_by': auth.principal_name})
-    )
+    # Whoever fires the task answers for this run only (ADR 0020). Nothing
+    # is stored, so every scheduled run keeps the accountable person.
+    return await engine.run_now(task, accountable=auth.principal_name)
 
 
 @router.post(

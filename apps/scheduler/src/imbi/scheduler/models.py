@@ -357,7 +357,7 @@ class Task(pydantic.BaseModel):
         The last principal that patched the task or let it run again,
         because that is a new decision about what it does. A pause, or a
         patch that only disables the task, does not move it. A run on
-        demand is the firer's for that run only.
+        demand overrides it for that run only (``Engine.run_now``).
         """
         return self.updated_by or self.created_by
 

@@ -76,8 +76,12 @@ class Executor:
         *,
         run_id: uuid.UUID | None = None,
         trace_id: str = '',
+        accountable: str | None = None,
     ) -> runs.Run:
         """Fire `task` once, honoring its retry policy.
+
+        ``accountable``, when given, replaces ``task.accountable`` in the
+        request for this run only, for a run on demand.
 
         The `running` row is written before anything is attempted, and the
         caller writes the terminal row over it. Two writes rather than one so
@@ -112,7 +116,7 @@ class Executor:
                 finished_at=fired_at,
             )
         try:
-            request = self._render(task, run.run_id, fired_at)
+            request = self._render(task, run.run_id, fired_at, accountable)
         except render.RenderError as err:
             return runs.finish(
                 run,
@@ -175,6 +179,7 @@ class Executor:
         task: models.Task,
         run_id: str,
         fired_at: datetime.datetime,
+        accountable: str | None = None,
     ) -> render.RenderedRequest:
         renderer = render.Renderer(render.context(task, fired_at, run_id))
         # Exhaustive rather than if/else: a new target kind must fail loudly
@@ -194,7 +199,9 @@ class Executor:
                 headers = {
                     **request.headers,
                     'X-Imbi-Scheduled-Task': str(task.id),
-                    'X-Imbi-Scheduled-Task-Accountable': task.accountable,
+                    'X-Imbi-Scheduled-Task-Accountable': (
+                        accountable or task.accountable
+                    ),
                     'Idempotency-Key': run_id,
                 }
                 organization = task.target.organization or task.organization
