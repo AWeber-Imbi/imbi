@@ -257,6 +257,37 @@ describe('Tasks', () => {
     expect(within(group).getByText('2')).toBeInTheDocument()
   })
 
+  it('does not read a failed open page again until Retry', async () => {
+    let fail = true
+    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
+      async (_org, params) => {
+        if (params.status?.includes('closed')) return { entries: [] }
+        if (params.cursor !== 'o2')
+          return { entries: [BLOCKED], nextCursor: 'o2' }
+        if (fail) throw new Error('boom')
+        return {
+          entries: [task({ id: 'open-2', short_id: 'T-2', title: 'Page two' })],
+        }
+      },
+    )
+    renderAt('/agents/tasks')
+    expect(
+      await screen.findByText(/Could not load tasks: boom/),
+    ).toBeInTheDocument()
+    const page2 = () =>
+      vi
+        .mocked(endpoints.listAgentTaskPage)
+        .mock.calls.filter(([, p]) => p.cursor === 'o2').length
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+    expect(page2()).toBe(1)
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Page two')).toBeInTheDocument()
+    expect(page2()).toBe(2)
+  })
+
   it('reads every open page and merges the groups', async () => {
     vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
       async (_org, params) =>

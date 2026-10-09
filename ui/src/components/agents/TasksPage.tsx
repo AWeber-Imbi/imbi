@@ -162,14 +162,16 @@ function TaskInbox({
   // fields (blocked_since), so a part of the open tasks can put a task in
   // the wrong place. Thus the inbox reads all of the open pages. The
   // closed group reads its next page when the end of the list comes into
-  // view.
-  const { fetchNextPage, hasNextPage, isFetching } = open
+  // view. After a failed page, only the Retry button reads it again.
+  const { fetchNextPage, hasNextPage, isFetching, isFetchNextPageError } = open
   useEffect(() => {
-    if (hasNextPage && !isFetching) void fetchNextPage()
-  }, [fetchNextPage, hasNextPage, isFetching])
+    if (hasNextPage && !isFetching && !isFetchNextPageError)
+      void fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetching, isFetchNextPageError])
   const { sentinelRef } = useInfiniteScroll({
     fetchNextPage: closed.fetchNextPage,
-    hasNextPage: closed.hasNextPage && !open.hasNextPage,
+    hasNextPage:
+      closed.hasNextPage && !open.hasNextPage && !closed.isFetchNextPageError,
     isFetchingNextPage: closed.isFetching,
   })
   const tasks = useMemo(
@@ -198,6 +200,11 @@ function TaskInbox({
   const loading = open.isLoading || closed.isLoading
   const more = open.hasNextPage || closed.hasNextPage
   const error = open.error ?? closed.error
+  const failed = open.error ? open : closed
+  const retry = () =>
+    void (failed.isFetchNextPageError
+      ? failed.fetchNextPage()
+      : failed.refetch())
 
   return (
     <>
@@ -245,7 +252,10 @@ function TaskInbox({
         {loading && <p className="text-tertiary p-4 text-sm">Loading…</p>}
         {error && (
           <p className="text-danger p-4 text-sm" role="alert">
-            Could not load tasks: {error.message}
+            Could not load tasks: {error.message}{' '}
+            <button className="underline" onClick={retry} type="button">
+              Retry
+            </button>
           </p>
         )}
         {!loading && !error && groups.length === 0 && (
@@ -274,7 +284,7 @@ function TaskInbox({
             ))}
           </section>
         ))}
-        {more && (
+        {more && !error && (
           <p className="text-tertiary p-4 text-center text-sm">Loading…</p>
         )}
         <div ref={sentinelRef} />
