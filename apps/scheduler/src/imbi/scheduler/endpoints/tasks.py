@@ -38,6 +38,7 @@ READONLY_PATHS: frozenset[str] = frozenset(
         '/id',
         '/created_at',
         '/created_by',
+        '/updated_by',
         '/updated_at',
         '/last_run_at',
         '/next_run_at',
@@ -73,6 +74,7 @@ def _created(body: TaskCreate, created_by: str) -> models.Task:
         models.Task(
             id=uuid.uuid4(),
             created_by=created_by,
+            updated_by=created_by,
             created_at=now,
             updated_at=now,
             **body.model_dump(),
@@ -217,6 +219,9 @@ async def patch_task(
         raise fastapi.HTTPException(status_code=422, detail=reason)
     if _reschedules(task, updated):
         updated = _scheduled(updated)
+    # The patcher answers for what the task does from now on: imbi-api
+    # makes them the owner of the agent tasks that it makes (ADR 0020).
+    updated = updated.model_copy(update={'updated_by': auth.principal_name})
     stored = await tasks.update(updated)
     if stored is None:  # pragma: no cover - it was loaded a moment ago
         raise fastapi.HTTPException(status_code=404, detail=slug)

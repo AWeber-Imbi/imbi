@@ -62,6 +62,7 @@ COLUMNS = (
     'execution',
     'tags',
     'created_by',
+    'updated_by',
     'created_at',
     'updated_at',
     'last_run_at',

@@ -4346,7 +4346,7 @@ export interface paths {
          *     A person owns the tasks that they make. The scheduler and the
          *     gateway also make tasks, with a ``schedule`` or a ``webhook``
          *     origin that they name in headers (see :func:`task_origin`). The
-         *     person who set the scheduler task or the webhook owns such a task
+         *     person who last set the scheduler task or the webhook owns such a task
          *     (see :func:`_owner`). The task records the agent version and the
          *     prompt version that the agent has now. A repeat with the same
          *     idempotency key (``idempotency_key``, else the ``Idempotency-Key``
@@ -25206,7 +25206,7 @@ export interface operations {
                 "X-Imbi-Scheduled-Task"?: string | null;
                 "X-Imbi-Webhook"?: string | null;
                 "X-Imbi-Delivery"?: string | null;
-                "X-Imbi-Scheduled-Task-Created-By"?: string | null;
+                "X-Imbi-Scheduled-Task-Accountable"?: string | null;
                 "X-Imbi-Scheduled-Task-Org"?: string | null;
                 "Idempotency-Key"?: string | null;
             };

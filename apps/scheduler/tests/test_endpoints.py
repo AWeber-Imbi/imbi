@@ -272,6 +272,7 @@ class CreateTests(EndpointTestCase):
         body = response.json()
         # created_by is the authenticated caller, never a claim in the body.
         self.assertEqual(OWNER, body['created_by'])
+        self.assertEqual(OWNER, body['updated_by'])
         self.assertIsNotNone(body['next_run_at'])
         self.assertEqual(0, body['consecutive_skips'])
         stored = await self.tasks.get('nightly-recompute')
@@ -404,9 +405,42 @@ class PatchTests(EndpointTestCase):
             datetime.datetime.fromisoformat(response.json()['next_run_at']),
         )
 
+    async def test_the_patcher_is_accountable_for_the_task(self) -> None:
+        """A change to another person's task makes the changer answer.
+
+        The executor sends ``accountable`` to imbi-api, which makes that
+        person the owner of the agent tasks the task makes (ADR 0020), so
+        a patch cannot make a task act for the person who created it.
+        """
+        task = await self.given_task(created_by=OTHER)
+        self.assertEqual(OTHER, task.accountable)
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        response = await self.client.patch(
+            f'/api/tasks/{task.slug}',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/target/path',
+                    'value': '/agent-tasks/',
+                }
+            ],
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(OWNER, response.json()['updated_by'])
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        self.assertEqual(OTHER, stored.created_by)
+        self.assertEqual(OWNER, stored.accountable)
+
     async def test_a_server_owned_field_cannot_be_patched(self) -> None:
         task = await self.given_task()
-        for path in ('/id', '/created_by', '/created_at', '/next_run_at'):
+        for path in (
+            '/id',
+            '/created_by',
+            '/updated_by',
+            '/created_at',
+            '/next_run_at',
+        ):
             with self.subTest(path=path):
                 response = await self.client.patch(
                     f'/api/tasks/{task.slug}',

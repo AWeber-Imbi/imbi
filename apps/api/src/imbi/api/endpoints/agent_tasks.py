@@ -443,8 +443,8 @@ class TaskOrigin(typing.NamedTuple):
     #: idempotency key is unique per kind and id.
     id: str
     record: dict[str, typing.Any]
-    #: For a ``schedule`` origin, the creator and the org of the
-    #: scheduler task, as the scheduler sends them.
+    #: For a ``schedule`` origin, the person accountable for the
+    #: scheduler task and its org, as the scheduler sends them.
     creator: str | None = None
     org: str | None = None
 
@@ -463,9 +463,9 @@ def task_origin(
     scheduler makes a ``schedule`` task, and only the service account
     of the gateway makes a ``webhook`` task (:data:`SERVICE_ORIGINS`).
     Each service names its origin in request headers. The scheduler
-    also sends the creator and the org of its task, which the author of
-    the task cannot change. A person cannot name an origin, so a person
-    cannot forge one.
+    also sends the person accountable for its task (who last changed
+    it) and its org, which the author of the task cannot change. A
+    person cannot name an origin, so a person cannot forge one.
 
     Raises:
         403: A person names an origin, or the caller is a service
@@ -635,11 +635,12 @@ async def _owner(
     """Return the owner of a new task (F9).
 
     A person owns the tasks that they make. A ``schedule`` task is owned
-    by the person who made the scheduler task, and a ``webhook`` task by
-    the person who last set the rules of the webhook. The scheduler task
-    or the webhook must be in the org, and its person must be able to
-    make agent tasks in the org. So a person who can configure a service
-    cannot use it to make tasks that they could not make.
+    by the person who last changed the scheduler task, and a ``webhook``
+    task by the person who last set the rules of the webhook. The
+    scheduler task or the webhook must be in the org, and its person
+    must be able to make agent tasks in the org. So a person who can
+    configure a service cannot use it to make tasks that they could not
+    make.
 
     Raises:
         403: ``origin_forbidden``: the scheduler task or the webhook is
@@ -775,7 +776,7 @@ async def create_agent_task(
     webhook: typing.Annotated[str | None, _header('X-Imbi-Webhook')] = None,
     delivery: typing.Annotated[str | None, _header('X-Imbi-Delivery')] = None,
     scheduled_by: typing.Annotated[
-        str | None, _header('X-Imbi-Scheduled-Task-Created-By')
+        str | None, _header('X-Imbi-Scheduled-Task-Accountable')
     ] = None,
     scheduled_org: typing.Annotated[
         str | None, _header('X-Imbi-Scheduled-Task-Org')
@@ -789,7 +790,7 @@ async def create_agent_task(
     A person owns the tasks that they make. The scheduler and the
     gateway also make tasks, with a ``schedule`` or a ``webhook``
     origin that they name in headers (see :func:`task_origin`). The
-    person who set the scheduler task or the webhook owns such a task
+    person who last set the scheduler task or the webhook owns such a task
     (see :func:`_owner`). The task records the agent version and the
     prompt version that the agent has now. A repeat with the same
     idempotency key (``idempotency_key``, else the ``Idempotency-Key``

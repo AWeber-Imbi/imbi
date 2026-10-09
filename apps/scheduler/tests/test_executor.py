@@ -250,8 +250,9 @@ class ApiTargetTests(ExecutorTestCase):
         self.assertEqual('succeeded', run.state)
         first, retry = (call.request.headers for call in route.calls)
         self.assertEqual(str(task.id), first['x-imbi-scheduled-task'])
+        # Nobody changed the task, so its creator answers for it.
         self.assertEqual(
-            task.created_by, first['x-imbi-scheduled-task-created-by']
+            task.created_by, first['x-imbi-scheduled-task-accountable']
         )
         self.assertNotIn('x-imbi-scheduled-task-org', first)
         self.assertEqual(str(run.run_id), first['idempotency-key'])
@@ -264,6 +265,21 @@ class ApiTargetTests(ExecutorTestCase):
         self.assertNotEqual(
             first['idempotency-key'],
             route.calls[-1].request.headers['idempotency-key'],
+        )
+
+    async def test_sends_who_last_changed_the_task(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(201)
+        )
+        task = helpers.build_task(
+            created_by='creator@example.com', updated_by='editor@example.com'
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(
+            'editor@example.com',
+            route.calls[0].request.headers[
+                'x-imbi-scheduled-task-accountable'
+            ],
         )
 
     async def test_sends_the_org_that_the_request_is_in(self) -> None:

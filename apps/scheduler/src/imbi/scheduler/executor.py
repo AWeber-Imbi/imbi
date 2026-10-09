@@ -186,14 +186,15 @@ class Executor:
                 )
                 # Set here, not by the target, so the author of a task
                 # cannot change them: imbi-api records the task id as the
-                # origin of an agent task, and makes its creator the
-                # owner, only in the org named here (ADR 0020). The run
+                # origin of an agent task, and makes the person who last
+                # changed the task the owner, only in the org named here
+                # (ADR 0020). The run
                 # id is the default key, so a retry of the run makes no
                 # second task.
                 headers = {
                     **request.headers,
                     'X-Imbi-Scheduled-Task': str(task.id),
-                    'X-Imbi-Scheduled-Task-Created-By': task.created_by,
+                    'X-Imbi-Scheduled-Task-Accountable': task.accountable,
                     'Idempotency-Key': run_id,
                 }
                 organization = task.target.organization or task.organization

@@ -297,6 +297,8 @@ class Task(pydantic.BaseModel):
     execution: ExecutionPolicy = ExecutionPolicy()
     tags: list[str] = []
     created_by: str
+    #: The last principal that created or changed the task.
+    updated_by: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     last_run_at: datetime.datetime | None = None
@@ -346,6 +348,15 @@ class Task(pydantic.BaseModel):
     def tzinfo(self) -> zoneinfo.ZoneInfo:
         """Return the task's timezone."""
         return zoneinfo.ZoneInfo(self.timezone)
+
+    @property
+    def accountable(self) -> str:
+        """Return who answers for what the task does now.
+
+        The last principal that changed the task, because a change to the
+        target is a new decision about what it does.
+        """
+        return self.updated_by or self.created_by
 
     @property
     def principal_name(self) -> str:

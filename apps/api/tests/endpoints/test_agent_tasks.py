@@ -510,14 +510,14 @@ class TriggerOriginTests(AgentTaskTestCase):
     def schedule(
         self,
         task_id: str = 'st-1',
-        created_by: str | None = None,
+        accountable: str | None = None,
         org: str | None = '',
         key: str | None = None,
     ) -> dict[str, str]:
         """Return the headers that the scheduler sends for a run."""
         headers = {
             'X-Imbi-Scheduled-Task': task_id,
-            'X-Imbi-Scheduled-Task-Created-By': created_by or self.creator,
+            'X-Imbi-Scheduled-Task-Accountable': accountable or self.creator,
         }
         if org is not None:
             headers['X-Imbi-Scheduled-Task-Org'] = org or self.org
@@ -624,18 +624,26 @@ class TriggerOriginTests(AgentTaskTestCase):
         self.assertEqual(event['actor_id'], 'imbi-scheduler')
         self.assertEqual(event['payload']['origin'], origin)
 
-    async def test_schedule_creator_needs_agent_task_create(self) -> None:
+    async def test_schedule_accountable_needs_agent_task_create(
+        self,
+    ) -> None:
+        """The person who last changed the scheduler task must qualify.
+
+        When a second person patches the target of the scheduler task,
+        the scheduler sends that person as accountable, so a patch by a
+        member who cannot make agent tasks makes runs that are refused.
+        """
         await self.act_as_internal_service('imbi-scheduler')
         # A member whose role does not grant it, a service account, and
         # a person who is not in the org.
-        for created_by in (
+        for accountable in (
             self.bystander,
             'imbi-scheduler',
             'stranger@example.com',
         ):
-            with self.subTest(created_by=created_by):
+            with self.subTest(accountable=accountable):
                 response = await self.post(
-                    self.schedule(created_by=created_by)
+                    self.schedule(accountable=accountable)
                 )
                 self.assert_refused(response, 'owner_forbidden')
 
@@ -707,7 +715,7 @@ class TriggerOriginTests(AgentTaskTestCase):
     async def test_person_cannot_name_an_origin(self) -> None:
         for headers in (
             self.schedule(),
-            {'X-Imbi-Scheduled-Task-Created-By': self.creator},
+            {'X-Imbi-Scheduled-Task-Accountable': self.creator},
             self.delivery(),
         ):
             with self.subTest(headers=headers):
