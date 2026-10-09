@@ -16,6 +16,7 @@ import {
   isAgentsSection,
 } from './agentsNav'
 import { ComingSoon } from './ComingSoon'
+import { DashboardPage } from './DashboardPage'
 import { useWaitingTaskCount } from './taskQueries'
 import { TasksPage } from './TasksPage'
 import { UsagePage } from './UsagePage'
@@ -41,7 +42,9 @@ export function AgentsArea() {
     <div className="flex min-h-[calc(100vh-4rem)]">
       <AgentsSidebar current={current} />
       <div className="min-w-0 flex-1">
-        {current === 'manage' ? (
+        {current === 'dashboard' ? (
+          <DashboardPage />
+        ) : current === 'manage' ? (
           <AgentsManagement />
         ) : current === 'tasks' ? (
           <TasksPage />

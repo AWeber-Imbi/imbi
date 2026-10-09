@@ -4,11 +4,12 @@ import { AGENTS_NAV, type AgentsSection } from './agentsNav'
 
 // The pages of the Agents area that are not built yet. They say so
 // instead of showing sample data.
-type Section = Exclude<AgentsSection, 'manage' | 'tasks' | 'usage'>
+type Section = Exclude<
+  AgentsSection,
+  'dashboard' | 'manage' | 'tasks' | 'usage'
+>
 
 const COPY: Record<Section, string> = {
-  dashboard:
-    'The agent dashboard is not built yet. When agents can run, it will show their activity, the tasks that need you, and their spend.',
   workflows:
     'Workflows are not built yet. A workflow will connect agents into a run with more than one step.',
 }

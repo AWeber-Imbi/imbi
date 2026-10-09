@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  checksFrom,
   formatElapsed,
   groupTasks,
   phaseTimeline,
@@ -145,5 +146,20 @@ describe('formatElapsed', () => {
     expect(formatElapsed(7_440_000)).toBe('2h 4m')
     expect(formatElapsed(266_400_000)).toBe('3d 2h')
     expect(formatElapsed(0)).toBe('0s')
+  })
+})
+
+describe('checksFrom', () => {
+  it('keeps the latest report of each check, in first-report order', () => {
+    const checks = checksFrom([
+      event(1, 'check.reported', { name: 'tests', verdict: 'fail' }),
+      event(2, 'turn', { body: 'Fixing.' }),
+      event(3, 'check.reported', { name: 'p95', verdict: 'pass' }),
+      event(4, 'check.reported', { name: 'tests', verdict: 'pass' }),
+    ])
+    expect(checks.map((e) => [e.payload.name, e.seq])).toEqual([
+      ['tests', 4],
+      ['p95', 3],
+    ])
   })
 })

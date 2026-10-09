@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import {
+  Activity,
   Check,
   ChevronDown,
   ChevronUp,
@@ -22,6 +23,7 @@ import type { AgentTask, AgentTaskEvent, AgentTaskResolve } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import {
+  checksFrom,
   conversation,
   formatElapsed,
   statusLabel,
@@ -35,6 +37,16 @@ const ROLE: Record<AgentTaskEvent['actor_kind'], string> = {
   human: 'Person',
   subagent: 'Subagent',
   system: 'System',
+}
+
+/** The badge of the check verdicts the design knows; others show as is. */
+const VERDICT: Record<
+  string,
+  undefined | { label: string; variant: 'danger' | 'success' | 'warning' }
+> = {
+  fail: { label: 'Failing', variant: 'danger' },
+  pass: { label: 'Passing', variant: 'success' },
+  warn: { label: 'Watch', variant: 'warning' },
 }
 
 const RESOLVED: Record<TaskRequestView['status'], string> = {
@@ -129,6 +141,63 @@ export function ActionsTab({
         )
       })}
     </ul>
+  )
+}
+
+/**
+ * The latest report of each check: value, delta, baseline, verdict, and
+ * source (J2).
+ */
+export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
+  const checks = checksFrom(events)
+  if (checks.length === 0) {
+    return <p className="text-tertiary p-6 text-sm">No checks reported yet.</p>
+  }
+  return (
+    <div>
+      <p className="border-tertiary text-tertiary border-b px-6 py-3 text-xs">
+        Signals the agent and its subagents report against this task
+      </p>
+      <ul>
+        {checks.map((e) => {
+          // Only the payload fields that ADR 0020 names. Who ran the
+          // check (its provenance) comes later, from the harness plan.
+          const p = e.payload
+          const verdict = VERDICT[String(p.verdict)]
+          const delta =
+            typeof p.delta === 'number' && p.delta > 0 ? `+${p.delta}` : p.delta
+          const detail = [
+            delta != null && `delta ${label(delta)}`,
+            p.baseline != null && `baseline ${label(p.baseline)}`,
+            p.source != null && `source ${label(p.source)}`,
+          ].filter(Boolean)
+          return (
+            <li
+              className="border-tertiary flex items-center gap-3 border-b px-6 py-3"
+              key={e.event_id}
+            >
+              <Activity className="text-tertiary size-4 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{label(p.name)}</span>
+                  <Badge variant={verdict?.variant ?? 'neutral'}>
+                    {verdict?.label ?? label(p.verdict ?? 'No verdict')}
+                  </Badge>
+                </div>
+                {detail.length > 0 && (
+                  <div className="text-tertiary text-xs">
+                    {detail.join(' · ')}
+                  </div>
+                )}
+              </div>
+              <span className="text-secondary ml-auto font-mono text-xs whitespace-nowrap tabular-nums">
+                {p.value == null ? '—' : label(p.value)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
