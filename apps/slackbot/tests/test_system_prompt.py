@@ -36,6 +36,11 @@ class SystemPromptTests(helpers.TestCase):
         prompt = await self.build(user, [])
         self.assertIn('NO tools', prompt)
 
+    async def test_task_link_has_the_org(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        prompt = await self.build(user, ['list'])
+        self.assertIn('`/agents/tasks/{org_slug}/{short_id}`', prompt)
+
     async def test_admin_flag(self) -> None:
         user = identity.ImbiUser('a@example.com', 'A', is_admin=True)
         prompt = await self.build(user, ['list'])

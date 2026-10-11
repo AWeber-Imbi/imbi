@@ -102,7 +102,7 @@ class FakeModel:
         last = kwargs['messages'][-1]['content']
         if isinstance(last, list) and last[0].get('type') == 'tool_result':
             task = json.loads(last[0]['content'])
-            link = f'<https://imbi/agents/tasks/{task["short_id"]}|T>'
+            link = f'<https://imbi/agents/tasks/eng/{task["short_id"]}|T>'
             return types.SimpleNamespace(
                 content=[types.SimpleNamespace(type='text', text=link)],
                 stop_reason='end_turn',
@@ -442,7 +442,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual('tok', api.calls[0][2])
         for client in (first, again):
             self.assertIn(
-                'https://imbi/agents/tasks/T-1',
+                'https://imbi/agents/tasks/eng/T-1',
                 client.posts[-1]['markdown_text'],
             )
             self.assertEqual('1.5', client.posts[-1]['thread_ts'])

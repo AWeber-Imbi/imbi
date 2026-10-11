@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
+import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
 import { EVENT_POLL_MS } from '../taskQueries'
@@ -21,6 +21,7 @@ vi.mock('@/api/endpoints', () => ({
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
   listAgentTaskEvents: vi.fn(),
+  listAgentTaskPage: vi.fn(),
   listAgentTasks: vi.fn(),
   reassignAgentTask: vi.fn(),
   replyAgentTask: vi.fn(),
@@ -28,9 +29,16 @@ vi.mock('@/api/endpoints', () => ({
   resolvePrompt: vi.fn(),
 }))
 
+const ORGS = vi.hoisted(() => [{ slug: 'acme' }, { slug: 'beta' }])
+const setSelectedOrganization = vi.hoisted(() => vi.fn())
+
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
+  useOrganization: () => ({
+    organizations: ORGS,
+    selectedOrganization: ORGS[0],
+    setSelectedOrganization,
+  }),
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -68,21 +76,70 @@ const LOG = [
   }),
 ]
 
+/** The sentinel observers; `scrollToEnd` shows each sentinel. */
+let observers: IntersectionObserverCallback[] = []
+/** Each closed page, by the cursor that reads it. */
+function closedPages(pages: Record<string, endpoints.AgentTaskPage>) {
+  vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
+    async (org, params, signal) =>
+      params.status?.includes('closed')
+        ? pages[params.cursor ?? '']
+        : { entries: await endpoints.listAgentTasks(org, params, signal) },
+  )
+}
+
+function closedTask(n: number) {
+  return task({
+    closed_at: `2026-10-0${n}T11:00:00Z`,
+    id: `closed-${n}`,
+    outcome: 'done_acted',
+    short_id: `T-${10 + n}`,
+    status: 'closed',
+    title: `Closed ${n}`,
+  })
+}
+
 function renderAt(path: string) {
   window.history.pushState({}, '', path)
   return render(
     <Routes>
       <Route
         element={<AgentsArea />}
-        path="/agents/:section?/:slug?/:action?"
+        path="/agents/:section?/:slug?/:action?/:tab?"
       />
     </Routes>,
   )
 }
 
+function scrollToEnd() {
+  act(() => {
+    for (const callback of observers)
+      callback(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      )
+  })
+}
+
 describe('Tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    observers = []
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          observers.push(callback)
+        }
+        disconnect() {}
+        observe() {}
+      },
+    )
+    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
+      async (org, params, signal) => ({
+        entries: await endpoints.listAgentTasks(org, params, signal),
+      }),
+    )
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
     vi.mocked(endpoints.listAdminUsers).mockResolvedValue([])
     vi.mocked(endpoints.countWaitingAgentTasks).mockResolvedValue({ count: 2 })
@@ -140,6 +197,156 @@ describe('Tasks', () => {
     expect(await screen.findByTitle('2 waiting on you')).toBeInTheDocument()
   })
 
+  it('links each task with its org', async () => {
+    renderAt('/agents/tasks')
+    expect((await screen.findByText('Busy')).closest('a')).toHaveAttribute(
+      'href',
+      '/agents/tasks/acme/T-4',
+    )
+  })
+
+  it('redirects an old link to the selected org', async () => {
+    renderAt('/agents/tasks/T-3/input')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/tasks/acme/T-3/input'),
+    )
+    expect(await screen.findByRole('button', { name: 'yes' })).toBeVisible()
+  })
+
+  it('opens a task in the org of the link', async () => {
+    renderAt('/agents/tasks/beta/T-3')
+    await waitFor(() =>
+      expect(endpoints.getAgentTask).toHaveBeenCalledWith(
+        'beta',
+        'T-3',
+        expect.anything(),
+      ),
+    )
+    expect(setSelectedOrganization).toHaveBeenCalledWith(ORGS[1])
+    expect(endpoints.getAgentTask).not.toHaveBeenCalledWith(
+      'acme',
+      'T-3',
+      expect.anything(),
+    )
+  })
+
+  it('does not open a task in an org that is not yours', async () => {
+    renderAt('/agents/tasks/zeta/T-3')
+    expect(
+      await screen.findByText('You are not a member of the organization zeta.'),
+    ).toBeInTheDocument()
+    expect(endpoints.getAgentTask).not.toHaveBeenCalled()
+  })
+
+  it('reads the next closed page when the end is in view', async () => {
+    closedPages({
+      '': { entries: [closedTask(2)], nextCursor: 'c2' },
+      c2: { entries: [closedTask(1)] },
+    })
+    renderAt('/agents/tasks')
+    const group = await screen.findByRole('region', { name: 'Recently closed' })
+    expect(within(group).getByText('1+')).toBeInTheDocument()
+    expect(screen.queryByText('Closed 1')).not.toBeInTheDocument()
+    scrollToEnd()
+    expect(await screen.findByText('Closed 1')).toBeInTheDocument()
+    expect(endpoints.listAgentTaskPage).toHaveBeenCalledWith(
+      'acme',
+      expect.objectContaining({ cursor: 'c2', status: ['closed'] }),
+      expect.anything(),
+    )
+    expect(within(group).getByText('2')).toBeInTheDocument()
+  })
+
+  it('does not read a failed open page again until Retry', async () => {
+    let fail = true
+    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
+      async (_org, params) => {
+        if (params.status?.includes('closed')) return { entries: [] }
+        if (params.cursor !== 'o2')
+          return { entries: [BLOCKED], nextCursor: 'o2' }
+        if (fail) throw new Error('boom')
+        return {
+          entries: [task({ id: 'open-2', short_id: 'T-2', title: 'Page two' })],
+        }
+      },
+    )
+    renderAt('/agents/tasks')
+    expect(
+      await screen.findByText(/Could not load tasks: boom/),
+    ).toBeInTheDocument()
+    const page2 = () =>
+      vi
+        .mocked(endpoints.listAgentTaskPage)
+        .mock.calls.filter(([, p]) => p.cursor === 'o2').length
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+    expect(page2()).toBe(1)
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Page two')).toBeInTheDocument()
+    expect(page2()).toBe(2)
+  })
+
+  it('reads every open page and merges the groups', async () => {
+    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
+      async (_org, params) =>
+        params.status?.includes('closed')
+          ? { entries: [] }
+          : params.cursor === 'o2'
+            ? {
+                entries: [
+                  task({
+                    blocked_since: '2026-10-08T09:00:00Z',
+                    id: 'open-2',
+                    short_id: 'T-2',
+                    status: 'paused',
+                    title: 'Waiting longest',
+                  }),
+                ],
+              }
+            : { entries: [BLOCKED], nextCursor: 'o2' },
+    )
+    renderAt('/agents/tasks')
+    // No scroll: the second open page loads by itself.
+    const input = await screen.findByRole('region', {
+      name: 'Human input required',
+    })
+    await waitFor(() =>
+      expect(
+        within(input)
+          .getAllByRole('link')
+          .map((a) => a.textContent),
+      ).toEqual([
+        expect.stringContaining('Waiting longest'),
+        expect.stringContaining('Apply the fix'),
+      ]),
+    )
+    expect(within(input).getByText('2')).toBeInTheDocument()
+  })
+
+  it('keeps the loaded pages when the list refreshes', async () => {
+    closedPages({
+      '': { entries: [closedTask(2)], nextCursor: 'c2' },
+      c2: { entries: [closedTask(1)] },
+    })
+    vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
+    renderAt('/agents/tasks/acme/T-3/input')
+    await screen.findByText('Closed 2')
+    scrollToEnd()
+    const row = await screen.findByText('Closed 1')
+    const reads = () =>
+      vi
+        .mocked(endpoints.listAgentTaskPage)
+        .mock.calls.filter(([, params]) => params.cursor === 'c2').length
+    expect(reads()).toBe(1)
+    // An answer refreshes the inbox.
+    fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
+    await waitFor(() => expect(reads()).toBe(2))
+    expect(screen.getByText('Closed 1')).toBe(row)
+    expect(screen.getByText('Closed 2')).toBeInTheDocument()
+  })
+
   it('filters by text on the server, and by state and mine', async () => {
     renderAt('/agents/tasks')
     await screen.findByText('Busy')
@@ -184,7 +391,7 @@ describe('Tasks', () => {
 
   it('answers a feedback request', async () => {
     vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
-    renderAt('/agents/tasks/T-3/input')
+    renderAt('/agents/tasks/acme/T-3/input')
     fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
     await waitFor(() =>
       expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledWith(
@@ -208,7 +415,7 @@ describe('Tasks', () => {
         },
       }),
     )
-    renderAt('/agents/tasks/T-3/input')
+    renderAt('/agents/tasks/acme/T-3/input')
     fireEvent.click(await screen.findByRole('button', { name: 'no' }))
     expect(
       await screen.findByText('Answered by pat@example.com'),
@@ -235,7 +442,7 @@ describe('Tasks', () => {
     vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
       async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
     )
-    renderAt('/agents/tasks/T-3/checks')
+    renderAt('/agents/tasks/acme/T-3/checks')
     const row = (await screen.findByText('p95 latency')).closest('li')!
     expect(within(row).getByText('Failing')).toBeInTheDocument()
     expect(within(row).getByText('158ms')).toBeInTheDocument()
@@ -252,7 +459,7 @@ describe('Tasks', () => {
 
   it('sends Reply and hold', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
-    renderAt('/agents/tasks/T-3/conversation')
+    renderAt('/agents/tasks/acme/T-3/conversation')
     fireEvent.change(await screen.findByLabelText('Reply'), {
       target: { value: 'Wait for me.' },
     })
@@ -271,7 +478,7 @@ describe('Tasks', () => {
   it(
     'appends new events by seq without a reload (O4)',
     async () => {
-      renderAt('/agents/tasks/T-3/conversation')
+      renderAt('/agents/tasks/acme/T-3/conversation')
       await screen.findByText('I read the task.')
       LOG.push(event(4, 'turn', { body: 'A new turn.' }))
       try {
@@ -326,7 +533,7 @@ describe('Tasks', () => {
       }),
     )
     await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/tasks/T-9'),
+      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9'),
     )
   })
 })

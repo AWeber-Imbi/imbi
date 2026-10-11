@@ -47,7 +47,7 @@ export function RunTaskButton({ agent }: { agent: Agent }) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.agentTasks(orgSlug),
       })
-      navigate(agentsPath('tasks', task.short_id))
+      navigate(agentsPath('tasks', orgSlug, task.short_id))
     },
   })
   if (!canCreate || !agent.enabled) return null

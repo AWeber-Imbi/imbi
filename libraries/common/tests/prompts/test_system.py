@@ -21,8 +21,13 @@ TRICKY = {
 
 
 def _str_format_template(default: system.DefaultPrompt) -> str:
-    """Undo the ``{{ x }}`` conversion, giving the pre-CMS template."""
-    return re.sub(r'\{\{ ([a-z_]+) \}\}', r'{\1}', default.text())
+    """Undo the ``{{ x }}`` conversion, giving the pre-CMS template.
+
+    Literal braces (such as ``{org_slug}`` in a URL pattern) are escaped
+    first, because ``str.format`` reads a single brace as a field.
+    """
+    text = default.text().replace('{', '{{').replace('}', '}}')
+    return re.sub(r'\{\{\{\{ ([a-z_]+) \}\}\}\}', r'{\1}', text)
 
 
 class DefaultTemplateTestCase(unittest.IsolatedAsyncioTestCase):
