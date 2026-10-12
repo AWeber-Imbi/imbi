@@ -46,6 +46,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- else if eq .Values.service.mode "gateway" }}8003
 {{- else if eq .Values.service.mode "slackbot" }}8004
 {{- else if eq .Values.service.mode "scheduler" }}8005
+{{- else if eq .Values.service.mode "workflows" }}8006
 {{- else }}8080
 {{- end }}
 {{- end }}
@@ -60,7 +61,7 @@ probe has to follow it. In "all" mode the request goes through the bundled
 Caddy, which preserves the path when forwarding to imbi-api, so the same
 derived path applies.
 
-imbi-scheduler and imbi-slackbot deliberately leave /status unprefixed and do
+imbi-scheduler, imbi-slackbot, and imbi-workflows leave /status unprefixed and do
 not use this.
 */}}
 {{- define "imbi.apiStatusPath" -}}

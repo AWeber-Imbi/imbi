@@ -46,4 +46,6 @@ STEP = step_type.StepType(
         'reasoning': 'Sample output of a test run.',
     },
     ports=None,
+    timeout_seconds=60,
+    retries=2,
 )

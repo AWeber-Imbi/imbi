@@ -1,0 +1,685 @@
+"""Workflow run endpoints (ADR 0021).
+
+A manual run is written ``queued`` in ``workflow_runtime``; imbi-workflows
+claims and executes it. Cancel only asks: the engine stops the run
+before its next step. A test run walks the graph with the sample output
+of each step type and writes nothing.
+
+The two email routes are for the engine only. imbi-api holds the email
+client, so the engine asks it to send what a run recorded: the input of
+a running email step, or the failure notice of a failed run. Both take
+an ``Idempotency-Key``, so a repeat after a crash sends nothing twice.
+
+Every route needs the caller to be a member of the organization
+(``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
+"""
+
+import datetime
+import typing
+import uuid
+
+import fastapi
+import pydantic
+
+from imbi.api import email, workflows
+from imbi.api.auth import organizations, permissions
+from imbi.api.email import client as email_client
+from imbi.common import graph, lifespan
+from imbi.common.workflows import graph as wf
+from imbi.common.workflows import registry, validation, walk
+from imbi.common.workflows.registry import email as email_step
+
+OrgId = organizations.MemberOrgId
+
+RunStatus = typing.Literal[
+    'queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'
+]
+
+
+# --- Schemas -----------------------------------------------------------
+
+
+class RunCreate(pydantic.BaseModel):
+    inputs: dict[str, str | int | float | bool] = {}
+    trigger: str | None = pydantic.Field(
+        default=None,
+        description='The id of a manual trigger node. Defaults to the '
+        'only manual trigger.',
+    )
+
+
+class StepRun(pydantic.BaseModel):
+    node_id: str
+    node_key: str
+    node_type: str
+    title: str
+    status: walk.Status
+    attempt: int
+    input: dict[str, typing.Any] | None
+    output: dict[str, typing.Any] | None
+    error: str | None
+    port: int | None
+    started_at: datetime.datetime | None
+    finished_at: datetime.datetime | None
+
+
+class Run(pydantic.BaseModel):
+    id: uuid.UUID
+    version: int
+    trigger_node_id: str
+    origin_kind: str
+    origin_id: str
+    payload: dict[str, typing.Any]
+    status: RunStatus
+    error: str | None
+    cancel_requested: bool
+    created_at: datetime.datetime
+    started_at: datetime.datetime | None
+    closed_at: datetime.datetime | None
+
+
+class RunDetail(Run):
+    steps: list[StepRun]
+
+
+class TestRunCreate(pydantic.BaseModel):
+    version: int | None = pydantic.Field(
+        default=None, gt=0, description='Defaults to the latest version.'
+    )
+    trigger: str | None = pydantic.Field(
+        default=None, description='A trigger node id. Defaults to the first.'
+    )
+    ports: dict[str, int] = pydantic.Field(
+        default_factory=dict,
+        description='The port that a branching node takes, by node id. '
+        'Defaults to its first port.',
+    )
+
+
+class TestRunStep(pydantic.BaseModel):
+    node_id: str
+    key: str
+    type: str
+    title: str
+    output: dict[str, typing.Any]
+    port: int
+    port_name: str
+
+
+class TestRunResult(pydantic.BaseModel):
+    steps: list[TestRunStep]
+    skipped: list[str]
+
+
+class EmailResult(pydantic.BaseModel):
+    #: The addresses that got the message.
+    recipients: list[str]
+    #: The addresses that a send failed for, after the client's retries.
+    failed: list[str] = []
+
+
+# --- Helpers -----------------------------------------------------------
+
+_TEAM_MEMBER_QUERY: typing.LiteralString = """
+MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(t:Team {{id: {team}}})
+RETURN u.email AS email
+"""
+
+#: The service account of the engine (``auth/internal_services.py``).
+ENGINE_SERVICE_ACCOUNT = 'imbi-workflows'
+
+_USER_EMAIL_QUERY: typing.LiteralString = """
+MATCH (u:User)-[:MEMBER_OF]->(:Organization {{id: {org}}})
+WHERE (u.id = {id} OR u.email = {id}) AND u.is_active
+RETURN u.email AS email
+"""
+
+_TEAM_EMAILS_QUERY: typing.LiteralString = """
+MATCH (u:User)-[:MEMBER_OF]->(t:Team)-[:BELONGS_TO]->
+      (:Organization {{id: {org}}})
+WHERE t.id = {id} AND u.is_active
+RETURN u.email AS email
+"""
+
+_INPUT_TYPES: dict[str, tuple[type, ...]] = {
+    'string': (str,),
+    'number': (int, float),
+    'boolean': (bool,),
+}
+
+
+def _not_found(slug: str) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=404, detail=f'Workflow {slug!r} not found'
+    )
+
+
+async def _workflow(
+    store: workflows.WorkflowStore, org_id: str, slug: str
+) -> workflows.Row:
+    row = await store.get(org_id, slug)
+    if row is None:
+        raise _not_found(slug)
+    return row
+
+
+async def _version_graph(
+    store: workflows.WorkflowStore, org_id: str, slug: str, version: int
+) -> tuple[wf.Graph, wf.Settings]:
+    row = await store.version(org_id, slug, version)
+    if row is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Workflow {slug!r} has no version {version}',
+        )
+    return (
+        wf.Graph.model_validate(row['graph']),
+        wf.Settings.model_validate(row['settings']),
+    )
+
+
+def _manual_trigger(wf_graph: wf.Graph, node_id: str | None) -> wf.Node:
+    manual = [n for n in wf_graph.nodes if n.type == 'manual']
+    if node_id is not None:
+        manual = [n for n in manual if n.id == node_id]
+    if len(manual) != 1:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail='Name the manual trigger to start'
+            if manual
+            else 'The active version has no such manual trigger',
+        )
+    return manual[0]
+
+
+async def _check_who(
+    db: graph.Graph,
+    trigger: wf.Node,
+    workflow: workflows.Row,
+    auth: permissions.AuthContext,
+    action: str = 'start',
+) -> None:
+    """Apply the ``who`` parameter of the trigger.
+
+    A trigger without ``who`` (schedule, webhook) allows the owner team.
+    """
+    who = trigger.params.get('who', 'owner_team')
+    if auth.is_admin or who == 'anyone':
+        return
+    if who == 'owner_team' and await db.execute(
+        _TEAM_MEMBER_QUERY,
+        {'email': auth.principal_name, 'team': workflow['owner_team_id']},
+        ['email'],
+    ):
+        return
+    raise fastapi.HTTPException(
+        status_code=403,
+        detail=f'Only {who.replace("_", " ")} can {action} this workflow',
+    )
+
+
+def _check_inputs(
+    trigger: wf.Node, inputs: dict[str, str | int | float | bool]
+) -> None:
+    """Every declared input is required and typed. Others are refused."""
+    declared = {
+        str(i['name']): str(i.get('type', 'string'))
+        for i in trigger.params.get('inputs', [])
+    }
+    errors = [f'Unknown input {n!r}' for n in sorted(inputs.keys() - declared)]
+    for name, kind in declared.items():
+        if name not in inputs:
+            errors.append(f'Input {name!r} is required')
+            continue
+        value = inputs[name]
+        if not isinstance(value, _INPUT_TYPES[kind]) or (
+            kind == 'number' and isinstance(value, bool)
+        ):
+            errors.append(f'Input {name!r} must be a {kind}')
+    if errors:
+        raise fastapi.HTTPException(status_code=422, detail=errors)
+
+
+async def _run(
+    runs: workflows.RunStore, workflow: workflows.Row, run_id: uuid.UUID
+) -> workflows.Row:
+    row = await runs.get(workflow['id'], run_id)
+    if row is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Run {run_id} not found'
+        )
+    return row
+
+
+async def _recipients(
+    db: graph.Graph, org_id: str, to: list[email_step.Recipient]
+) -> list[str]:
+    """Return the emails of org users and team members, in order.
+
+    Only Imbi users and teams of the organization: never an address
+    that a workflow names itself (ADR 0021).
+    """
+    found: list[str] = []
+    for recipient in to:
+        query = (
+            _USER_EMAIL_QUERY
+            if recipient.kind == 'user'
+            else _TEAM_EMAILS_QUERY
+        )
+        for record in await db.execute(
+            query, {'org': org_id, 'id': recipient.id}, ['email']
+        ):
+            address = str(graph.parse_agtype(record['email']))
+            if address not in found:
+                found.append(address)
+    return found
+
+
+def _email_client(
+    context: lifespan.InjectLifespan,
+) -> email_client.EmailClient:
+    # Imported here: imbi.api.email imports the lifespans, which import
+    # the endpoints, so a module-level import is circular.
+    from imbi.api import lifespans
+
+    client, _ = context.get_state(lifespans.email_hook)
+    return client
+
+
+async def _send(
+    client: email_client.EmailClient, to: list[str], subject: str, body: str
+) -> dict[str, typing.Any]:
+    """Send to every address, and report which sends failed.
+
+    A failure does not stop the others, and the result is stored with
+    the idempotency key: a repeat returns it and sends nothing again.
+    """
+    sent: list[str] = []
+    failed: list[str] = []
+    for address in to:
+        audit = await email.send_workflow_email(
+            client, to_email=address, subject=subject, body=body
+        )
+        (failed if audit.status == 'failed' else sent).append(address)
+    return {'recipients': sent, 'failed': failed}
+
+
+async def _require_engine(
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> permissions.AuthContext:
+    if (
+        auth.service_account is None
+        or auth.service_account.slug != ENGINE_SERVICE_ACCOUNT
+    ):
+        raise fastapi.HTTPException(
+            status_code=403, detail='Only imbi-workflows can call this'
+        )
+    return auth
+
+
+# --- Endpoints ---------------------------------------------------------
+
+workflow_runs_router = fastapi.APIRouter(
+    tags=['Workflows'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
+
+ReadAuth = typing.Annotated[
+    permissions.AuthContext,
+    fastapi.Depends(permissions.require_permission('workflow:read')),
+]
+RunAuth = typing.Annotated[
+    permissions.AuthContext,
+    fastapi.Depends(permissions.require_permission('workflow:run')),
+]
+EngineAuth = typing.Annotated[
+    permissions.AuthContext, fastapi.Depends(_require_engine)
+]
+EmailClient = typing.Annotated[
+    email_client.EmailClient, fastapi.Depends(_email_client)
+]
+IdempotencyKey = typing.Annotated[
+    str, fastapi.Header(alias='Idempotency-Key', max_length=256)
+]
+
+
+@workflow_runs_router.post('/{slug}/runs', status_code=202, response_model=Run)
+async def start_run(
+    org_id: OrgId,
+    slug: str,
+    data: RunCreate,
+    db: graph.Pool,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    auth: RunAuth,
+    idempotency_key: typing.Annotated[
+        str | None, fastapi.Header(alias='Idempotency-Key', max_length=256)
+    ] = None,
+) -> workflows.Row:
+    """Start a manual run of the active version.
+
+    A repeat of the ``Idempotency-Key`` header by the same person
+    returns the first run.
+
+    Raises:
+        403: The trigger's ``who`` does not include the caller.
+        404: No such workflow.
+        409: The workflow is not active.
+        422: No such manual trigger, or the inputs do not match it.
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    if workflow['status'] != 'active' or workflow['active_version'] is None:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Workflow {slug!r} is not active'
+        )
+    wf_graph, settings = await _version_graph(
+        store, org_id, slug, workflow['active_version']
+    )
+    trigger = _manual_trigger(wf_graph, data.trigger)
+    await _check_who(db, trigger, workflow, auth)
+    _check_inputs(trigger, data.inputs)
+    # Validation makes a one_per_key workflow declare its key input,
+    # and every input is required, but a string input can be empty.
+    try:
+        key = validation.concurrency_key(
+            settings, str(workflow['id']), dict(data.inputs)
+        )
+    except ValueError as e:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=['The input that the concurrency key uses is empty'],
+        ) from e
+    try:
+        row, _created = await runs.create(
+            workflows.NewRun(
+                organization_id=org_id,
+                workflow_id=workflow['id'],
+                version=workflow['active_version'],
+                trigger_node_id=trigger.id,
+                origin_kind='human',
+                origin_id=auth.principal_name,
+                idempotency_key=idempotency_key,
+                payload=dict(data.inputs),
+                concurrency_key=key,
+                activated_by=workflow['activated_by'],
+            )
+        )
+    except workflows.NotActive as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Workflow {slug!r} is not active'
+        ) from e
+    return row
+
+
+@workflow_runs_router.get('/{slug}/runs', response_model=list[Run])
+async def list_runs(
+    org_id: OrgId,
+    slug: str,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    _: ReadAuth,
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=200)] = 50,
+) -> list[workflows.Row]:
+    """Return the runs of a workflow, newest first."""
+    workflow = await _workflow(store, org_id, slug)
+    return await runs.list_runs(workflow['id'], limit)
+
+
+@workflow_runs_router.get('/{slug}/runs/{run_id}', response_model=RunDetail)
+async def get_run(
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    _: ReadAuth,
+) -> dict[str, typing.Any]:
+    """Return a run with its step records."""
+    workflow = await _workflow(store, org_id, slug)
+    row = await _run(runs, workflow, run_id)
+    return {**row, 'steps': await runs.steps(run_id)}
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/cancel', status_code=202, response_model=Run
+)
+async def cancel_run(
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    db: graph.Pool,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    auth: RunAuth,
+) -> workflows.Row:
+    """Ask the engine to stop a run before its next step.
+
+    The caller needs the same ``who`` as the trigger that started the
+    run, in the run's pinned version.
+
+    Raises:
+        403: The trigger's ``who`` does not include the caller.
+        404: No such workflow or run.
+        409: The run is closed.
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    run = await _run(runs, workflow, run_id)
+    wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
+    trigger = next(
+        (n for n in wf_graph.nodes if n.id == run['trigger_node_id']), None
+    )
+    if trigger is not None:
+        await _check_who(db, trigger, workflow, auth, 'cancel')
+    elif not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403, detail='Only admins can cancel this run'
+        )
+    if not await runs.cancel(run_id):
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Run {run_id} is closed'
+        )
+    return await _run(runs, workflow, run_id)
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/steps/{node_id}/email', response_model=EmailResult
+)
+async def send_step_email(
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    node_id: str,
+    db: graph.Pool,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    client: EmailClient,
+    auth: EngineAuth,
+    idempotency_key: IdempotencyKey,
+) -> dict[str, typing.Any]:
+    """Send the message of a running email step. Engine only.
+
+    Raises:
+        404: No such workflow, run, or step.
+        409: The step is not a running email step, or
+            ``outcome_unknown``: a call with the key did not finish.
+        422: No recipient is an active user of the organization.
+
+    A failed send is not an error here: the response lists it in
+    ``failed``, and the engine fails the step.
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    await _run(runs, workflow, run_id)
+    step = next(
+        (s for s in await runs.steps(run_id) if s['node_id'] == node_id),
+        None,
+    )
+    if step is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Run {run_id} has no step {node_id!r}'
+        )
+    if step['node_type'] != 'email' or step['status'] != 'running':
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Step {node_id!r} is not a running email step',
+        )
+    params = email_step.Params.model_validate(step['input'])
+
+    async def call() -> dict[str, typing.Any]:
+        to = await _recipients(db, org_id, params.to)
+        if not to:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'no_recipients'}
+            )
+        return await _send(client, to, params.subject, params.body)
+
+    return await runs.once(
+        auth.principal_name, 'step-email', idempotency_key, call
+    )
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/failure-notice', response_model=EmailResult
+)
+async def send_failure_notice(
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    db: graph.Pool,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    client: EmailClient,
+    auth: EngineAuth,
+    idempotency_key: IdempotencyKey,
+) -> dict[str, typing.Any]:
+    """Tell the owner team that a run failed. Engine only.
+
+    The ``notify_owner_team`` failure policy (ADR 0021).
+
+    Raises:
+        404: No such workflow or run.
+        409: The run did not fail, or its policy is not
+            ``notify_owner_team``.
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    run = await _run(runs, workflow, run_id)
+    _, settings = await _version_graph(store, org_id, slug, run['version'])
+    if run['status'] != 'failed' or settings.on_failure != 'notify_owner_team':
+        raise fastapi.HTTPException(
+            status_code=409, detail='No failure notice for this run'
+        )
+
+    async def call() -> dict[str, typing.Any]:
+        to = await _recipients(
+            db,
+            org_id,
+            [email_step.Recipient(kind='team', id=workflow['owner_team_id'])],
+        )
+        return await _send(
+            client,
+            to,
+            f'Workflow {workflow["name"]} failed',
+            f'Run {run_id} of workflow {workflow["name"]} failed: '
+            f'{run["error"]}.',
+        )
+
+    return await runs.once(
+        auth.principal_name, 'failure-notice', idempotency_key, call
+    )
+
+
+@workflow_runs_router.post('/{slug}/test-runs', response_model=TestRunResult)
+async def test_run(
+    org_id: OrgId,
+    slug: str,
+    store: workflows.Store,
+    _: RunAuth,
+    data: TestRunCreate | None = None,
+) -> TestRunResult:
+    """Walk a version with the sample output of each step.
+
+    Nothing is called, sent, or written.
+
+    Raises:
+        404: No such workflow, version, or trigger.
+        422: The version has errors, or a port is out of range.
+
+    """
+    data = data or TestRunCreate()
+    workflow = await _workflow(store, org_id, slug)
+    wf_graph, settings = await _version_graph(
+        store, org_id, slug, data.version or workflow['latest_version']
+    )
+    errors = [
+        i
+        for i in validation.validate(wf_graph, settings).issues
+        if i.severity == 'error'
+    ]
+    if errors:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail={
+                'error': 'validation_failed',
+                'issues': [i.model_dump() for i in errors],
+            },
+        )
+    return simulate(wf_graph, data.trigger, data.ports)
+
+
+def simulate(
+    wf_graph: wf.Graph, trigger_id: str | None, picked: dict[str, int]
+) -> TestRunResult:
+    """Walk ``wf_graph`` from a trigger with sample outputs."""
+    nodes = {n.id: n for n in wf_graph.nodes}
+    triggers = [
+        n.id for n in wf_graph.nodes if registry.STEP_TYPES[n.type].trigger
+    ]
+    if not triggers:
+        raise fastapi.HTTPException(
+            status_code=422, detail='The workflow has no trigger'
+        )
+    start = trigger_id or triggers[0]
+    if start not in triggers:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No trigger {start!r}'
+        )
+    status: dict[str, str] = dict.fromkeys(nodes, 'pending')
+    status.update(dict.fromkeys(triggers, 'skipped'))
+    ports: dict[str, int | None] = {}
+    steps: list[TestRunStep] = []
+    skipped: list[str] = []
+    node_id: str | None = start
+    while node_id is not None:
+        node = nodes[node_id]
+        step = registry.STEP_TYPES[node.type]
+        names = step.ports_for(node.params) or ['']
+        port = picked.get(node_id, 0)
+        if not 0 <= port < len(names):
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=f'{node.title} has no output {port}',
+            )
+        status[node_id], ports[node_id] = 'succeeded', port
+        steps.append(
+            TestRunStep(
+                node_id=node_id,
+                key=node.key,
+                type=node.type,
+                title=node.title,
+                output=step.sample_output,
+                port=port,
+                port_name=names[port],
+            )
+        )
+        ready, newly_skipped = walk.advance(wf_graph, status, ports)
+        skipped += newly_skipped
+        node_id = ready[0] if ready else None
+    return TestRunResult(
+        steps=steps,
+        skipped=skipped + [t for t in triggers if t != start],
+    )

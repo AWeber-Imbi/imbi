@@ -184,6 +184,7 @@ docker run -e IMBI_SERVICE=gateway ...
 docker run -e IMBI_SERVICE=mcp ...
 docker run -e IMBI_SERVICE=slackbot ...
 docker run -e IMBI_SERVICE=scheduler ...   # also needs the vars below
+docker run -e IMBI_SERVICE=workflows ...   # IMBI_WORKFLOWS_SA_CLIENT_ID/_SECRET
 docker run -e IMBI_SERVICE=ui ...          # Caddy only; set IMBI_*_UPSTREAM
 
 # Run initial setup (create admin user, seed permissions)
@@ -244,7 +245,7 @@ client credential. See
 
 | Variable                             | Description                                                                                                                                           | Default                 |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `IMBI_SERVICE`                       | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`, `ui`)                                                           | `all`                   |
+| `IMBI_SERVICE`                       | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`, `ui`, `workflows`)                                              | `all`                   |
 | `IMBI_<SERVICE>_UPSTREAM`            | `ui` mode only: host:port Caddy proxies to for `API`, `MCP`, `ASSISTANT`, `GATEWAY`, `SCHEDULER`                                                       | `127.0.0.1:<port>`      |
 | `IMBI_API_URL`                       | Public URL of the API, including the path prefix it is mounted under (e.g. `http://localhost:8080/api`); needed when serving behind the bundled Caddy | -                       |
 | `VITE_API_URL`                       | Same value as `IMBI_API_URL`; injected into the UI at serve time                                                                                      | -                       |
@@ -283,7 +284,8 @@ imbi/
 │   ├── mcp/           # imbi-mcp — MCP server (imbi.mcp)
 │   ├── scheduler/     # imbi-scheduler — scheduled task triggering
 │   │                  #   (imbi.scheduler)
-│   └── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
+│   ├── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
+│   └── workflows/     # imbi-workflows — workflow engine (imbi.workflows)
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
 │   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/
 ├── ui/                # React frontend (npm, not a uv member)

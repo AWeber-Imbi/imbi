@@ -31,5 +31,5 @@ STEP = step_type.StepType(
     output=Output,
     sample_output={'recipients': ['person@example.com']},
     side_effect=True,
-    idempotent=False,
+    timeout_seconds=120,
 )

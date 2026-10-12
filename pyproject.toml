@@ -35,6 +35,7 @@ dependencies = [
   "imbi-plugin-sonarqube==2.37.0",
   "imbi-scheduler==2.37.0",
   "imbi-slackbot==2.37.0",
+  "imbi-workflows==2.37.0",
 ]
 
 [dependency-groups]
@@ -101,6 +102,7 @@ files = [
   "apps/mcp/src",
   "apps/scheduler/src",
   "apps/slackbot/src",
+  "apps/workflows/src",
   "plugins/aws/src",
   "plugins/github/src",
   "plugins/google/src",
@@ -109,7 +111,7 @@ files = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -145,6 +147,7 @@ extraPaths = [
   "apps/mcp/src",
   "apps/scheduler/src",
   "apps/slackbot/src",
+  "apps/workflows/src",
   "plugins/aws/src",
   "plugins/github/src",
   "plugins/google/src",
@@ -289,6 +292,31 @@ reportUnusedFunction = "none"
 
 [[tool.pyright.executionEnvironments]]
 root = "apps/scheduler/tests"
+extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "apps/workflows/tests"
 extraPaths = ["."]
 reportUnnecessaryIsInstance = "none"
 reportTypedDictNotRequiredAccess = "none"
@@ -679,6 +707,8 @@ max-complexity = 15
 # without `from __future__ import annotations`.
 "apps/scheduler/**" = ["TC001", "TC002", "TC003", "UP037"]
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
+# TC001-TC003: as for the scheduler.
+"apps/workflows/**" = ["TC001", "TC002", "TC003", "UP037"]
 "conftest.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
   "A",
@@ -720,6 +750,7 @@ imbi-gateway = { workspace = true }
 imbi-mcp = { workspace = true }
 imbi-scheduler = { workspace = true }
 imbi-slackbot = { workspace = true }
+imbi-workflows = { workspace = true }
 imbi-plugin-aws = { workspace = true }
 imbi-plugin-github = { workspace = true }
 imbi-plugin-google = { workspace = true }
