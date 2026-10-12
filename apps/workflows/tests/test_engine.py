@@ -703,8 +703,34 @@ class CrashTestCase(EngineTestCase):
             [e.rsplit('/', 1)[1] for e in self.api.emails], ['failure-notice']
         )
         self.assertEqual(
-            self.api.by_key[f'{run_id}:on_failure'],
+            self.api.by_key[f'{run_id}/failure-notice'],
             {'recipients': [self.email]},
+        )
+
+    async def test_node_keyed_on_failure_keeps_the_notice(self) -> None:
+        """A step key cannot take the failure notice's key."""
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'on_failure',
+                    'email',
+                    {
+                        'to': [{'kind': 'user', 'id': self.email}],
+                        'subject': 'Hello',
+                        'body': 'Hello',
+                    },
+                ),
+            ],
+            [_edge('start', 'on_failure')],
+        )
+        run_id = await self._start(workflow_id)
+        self.api.by_key[f'{run_id}:on_failure'] = None
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'outcome_unknown')
+        self.assertEqual(
+            [e.rsplit('/', 1)[1] for e in self.api.emails], ['failure-notice']
         )
 
 

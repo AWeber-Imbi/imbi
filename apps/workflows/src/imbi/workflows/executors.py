@@ -356,7 +356,8 @@ class Executors:
                 run_id,
                 'failure-notice',
             ),
-            headers={'Idempotency-Key': f'{run_id}:on_failure'},
+            # A node key has no '/', so no step can make this key.
+            headers={'Idempotency-Key': f'{run_id}/failure-notice'},
         )
 
     async def _deploy(self, call: Call) -> Outcome:

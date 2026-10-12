@@ -191,10 +191,11 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
         return f'{self.base}/deploy-guard'
 
     async def _forget(self, key: str) -> None:
+        """Delete the side effects whose caller key contains ``key``."""
         async with self.pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM workflow_runtime.side_effects WHERE key = %s',
-                (key,),
+                'DELETE FROM workflow_runtime.side_effects WHERE key LIKE %s',
+                (f'%{key}%',),
             )
 
     async def _counts(self) -> dict[str, int]:
@@ -413,7 +414,7 @@ class DeployIdempotencyTestCase(WorkflowRunTestCase):
             plugin_id='p',
             plugin_slug='github',
         )
-        self.addAsyncCleanup(self._forget, f'unknown:{key}')
+        self.addAsyncCleanup(self._forget, key)
         with (
             mock.patch.object(
                 project_deployments, 'run_store', return_value=self.runs
@@ -431,7 +432,7 @@ class DeployIdempotencyTestCase(WorkflowRunTestCase):
 
     async def test_refusal_forgets_and_unknown_is_409(self) -> None:
         key = f'run-{uuid.uuid4()}:ship'
-        self.addAsyncCleanup(self._forget, f'unknown:{key}')
+        self.addAsyncCleanup(self._forget, key)
         with (
             mock.patch.object(
                 project_deployments, 'run_store', return_value=self.runs
@@ -509,7 +510,7 @@ class EngineEmailTestCase(WorkflowRunTestCase):
         patcher = mock.patch.object(email, '_save_audit', mock.AsyncMock())
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.addAsyncCleanup(self._forget, f'imbi-workflows:{self.run_id}:k')
+        self.addAsyncCleanup(self._forget, str(self.run_id))
 
     async def test_step_email_once(self) -> None:
         url = f'{self.url}/runs/{self.run_id}/steps/tell/email'
@@ -528,6 +529,27 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             headers=headers,
         )
         self.assertEqual(response.status_code, 404)
+
+    async def test_one_key_on_two_routes_does_not_meet(self) -> None:
+        headers = {'Idempotency-Key': f'{self.run_id}:k'}
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/steps/tell/email', headers=headers
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'failed'"
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/failure-notice', headers=headers
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [m.subject for m in self.sent],
+            ['Shipped 1', 'Workflow Deploy guard failed'],
+        )
 
     async def test_only_the_engine(self) -> None:
         overrides = self.test_app.dependency_overrides

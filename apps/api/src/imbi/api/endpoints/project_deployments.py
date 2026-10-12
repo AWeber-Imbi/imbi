@@ -2736,7 +2736,7 @@ async def trigger_deployment(
 
     return DeploymentTriggerResponse.model_validate(
         await run_store().once(
-            f'{auth.principal_name}:{idempotency_key}', call
+            auth.principal_name, 'deployment', idempotency_key, call
         )
     )
 

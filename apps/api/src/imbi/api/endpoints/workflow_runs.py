@@ -521,7 +521,9 @@ async def send_step_email(
             )
         return await _send(client, to, params.subject, params.body)
 
-    return await runs.once(f'{auth.principal_name}:{idempotency_key}', call)
+    return await runs.once(
+        auth.principal_name, 'step-email', idempotency_key, call
+    )
 
 
 @workflow_runs_router.post(
@@ -570,7 +572,9 @@ async def send_failure_notice(
             f'{run["error"]}.',
         )
 
-    return await runs.once(f'{auth.principal_name}:{idempotency_key}', call)
+    return await runs.once(
+        auth.principal_name, 'failure-notice', idempotency_key, call
+    )
 
 
 @workflow_runs_router.post('/{slug}/test-runs', response_model=TestRunResult)
