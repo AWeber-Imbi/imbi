@@ -5283,7 +5283,9 @@ export interface paths {
          *         409: The step is not a running email step, or
          *             ``outcome_unknown``: a call with the key did not finish.
          *         422: No recipient is an active user of the organization.
-         *         502: A send failed.
+         *
+         *     A failed send is not an error here: the response lists it in
+         *     ``failed``, and the engine fails the step.
          */
         post: operations["send_step_email_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__email_post"];
         delete?: never;
@@ -11809,6 +11811,11 @@ export interface components {
         EmailResult: {
             /** Recipients */
             recipients: string[];
+            /**
+             * Failed
+             * @default []
+             */
+            failed: string[];
         };
         /**
          * EnvironmentChip
