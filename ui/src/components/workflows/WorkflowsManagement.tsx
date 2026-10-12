@@ -8,7 +8,12 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 
 import { WorkflowEditor } from './WorkflowEditor'
 import { WorkflowList } from './WorkflowList'
-import { useStepTypes, useWorkflow, useWorkflowList } from './workflowQueries'
+import {
+  useStepTypes,
+  useWorkflow,
+  useWorkflowAttention,
+  useWorkflowList,
+} from './workflowQueries'
 
 /**
  * Agents > Workflows. The URL picks the view: `/agents/workflows`
@@ -23,6 +28,7 @@ export function WorkflowsManagement() {
   const canCreate = useHasPermission('workflow:create')
   const list = useWorkflowList(orgSlug)
   const stepTypes = useStepTypes(orgSlug)
+  const attention = useWorkflowAttention(orgSlug)
 
   if (!orgSlug) {
     return (
@@ -53,6 +59,7 @@ export function WorkflowsManagement() {
   return (
     <div className="p-8">
       <WorkflowList
+        attention={attention.data ?? []}
         error={list.error}
         loading={list.isLoading}
         stepTypes={stepTypes.data ?? []}

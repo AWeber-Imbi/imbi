@@ -5003,7 +5003,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Workflows */
+        /**
+         * List Workflows
+         * @description Return the workflows with their runs in 30 days and last run.
+         *
+         *     The run figures read ClickHouse. When it is not available, they are
+         *     ``None`` and the list still loads (ADR 0021).
+         */
         get: operations["list_workflows_api_organizations__org_slug__workflows__get"];
         put?: never;
         /**
@@ -5042,7 +5048,14 @@ export interface paths {
          */
         put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
         post?: never;
-        /** Delete Workflow */
+        /**
+         * Delete Workflow
+         * @description Delete a workflow that has no open runs.
+         *
+         *     Raises:
+         *         404: No such workflow.
+         *         409: A run of the workflow is queued or running.
+         */
         delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
         options?: never;
         head?: never;
@@ -5159,6 +5172,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Return the runs of a workflow, newest first.
+         */
+        get: operations["list_runs_api_organizations__org_slug__workflows__slug__runs_get"];
+        put?: never;
+        /**
+         * Start Run
+         * @description Start a manual run of the active version.
+         *
+         *     A repeat of the ``Idempotency-Key`` header by the same person
+         *     returns the first run.
+         *
+         *     Raises:
+         *         403: The trigger's ``who`` does not include the caller.
+         *         404: No such workflow.
+         *         409: The workflow is not active.
+         *         422: No such manual trigger, or the inputs do not match it.
+         */
+        post: operations["start_run_api_organizations__org_slug__workflows__slug__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description Return a run with its step records.
+         *
+         *     Raises:
+         *         404: No such workflow or run.
+         *         503: The run's log is archived and ClickHouse is not available.
+         */
+        get: operations["get_run_api_organizations__org_slug__workflows__slug__runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description Ask the engine to stop a run before its next step.
+         *
+         *     Raises:
+         *         404: No such workflow or run.
+         *         409: The run is closed.
+         */
+        post: operations["cancel_run_api_organizations__org_slug__workflows__slug__runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Step Email
+         * @description Send the message of a running email step. Engine only.
+         *
+         *     Raises:
+         *         404: No such workflow, run, or step.
+         *         409: The step is not a running email step, or
+         *             ``outcome_unknown``: a call with the key did not finish.
+         *         422: No recipient is an active user of the organization.
+         *         502: A send failed.
+         */
+        post: operations["send_step_email_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/failure-notice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Failure Notice
+         * @description Tell the owner team that a run failed. Engine only.
+         *
+         *     The ``notify_owner_team`` failure policy (ADR 0021).
+         *
+         *     Raises:
+         *         404: No such workflow or run.
+         *         409: The run did not fail, or its policy is not
+         *             ``notify_owner_team``.
+         */
+        post: operations["send_failure_notice_api_organizations__org_slug__workflows__slug__runs__run_id__failure_notice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/test-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Run
+         * @description Walk a version with the sample output of each step.
+         *
+         *     Nothing is called, sent, or written.
+         *
+         *     Raises:
+         *         404: No such workflow, version, or trigger.
+         *         422: The version has errors, or a port is out of range.
+         */
+        post: operations["test_run_api_organizations__org_slug__workflows__slug__test_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/workflow-step-types/": {
         parameters: {
             query?: never;
@@ -5171,6 +5345,29 @@ export interface paths {
          * @description Return the step types that a workflow can use.
          */
         get: operations["list_step_types_api_organizations__org_slug__workflow_step_types__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflow-runs/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attention Runs
+         * @description Return the failed runs of the last 7 days and the stuck runs.
+         *
+         *     A stuck run is open and no engine works on it: see
+         *     :meth:`imbi.api.workflows.RunStore.attention`.
+         */
+        get: operations["list_attention_runs_api_organizations__org_slug__workflow_runs_attention_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5535,6 +5732,11 @@ export interface paths {
          *     release with the supplied notes on the remote, dispatches the
          *     workflow against the tag for ``to_environment``, upserts the
          *     matching ``Release`` node, and records the deployment event.
+         *
+         *     With an ``Idempotency-Key`` header, a repeat of the key by the same
+         *     principal returns the first response and does not act again
+         *     (ADR 0021). A repeat while the first call has no result gets
+         *     ``409 outcome_unknown``: the deployment may or may not have started.
          */
         post: operations["trigger_deployment_api_organizations__org_slug__projects__project_id__deployments_post"];
         delete?: never;
@@ -9588,6 +9790,59 @@ export interface components {
              */
             project_types: string[];
         };
+        /** AttentionRun */
+        AttentionRun: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            /** Trigger Node Id */
+            trigger_node_id: string;
+            /** Origin Kind */
+            origin_kind: string;
+            /** Origin Id */
+            origin_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Error */
+            error: string | null;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Log Archived At */
+            log_archived_at: string | null;
+            /** Workflow Slug */
+            workflow_slug: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "failed" | "stuck";
+            /** Worker Id */
+            worker_id: string | null;
+            /** Lease Expires At */
+            lease_expires_at: string | null;
+        };
         /**
          * AttributePolicy
          * @description Map an attribute value to 0-100 via a value or range table.
@@ -11538,6 +11793,11 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** EmailResult */
+        EmailResult: {
+            /** Recipients */
+            recipients: string[];
+        };
         /**
          * EnvironmentChip
          * @description An environment a package version is currently deployed into.
@@ -13277,6 +13537,10 @@ export interface components {
              * @enum {string}
              */
             join: "any" | "all";
+            /** Timeout Seconds */
+            timeout_seconds?: number | null;
+            /** Retries */
+            retries?: number | null;
         };
         /**
          * NoulCriteria
@@ -16106,6 +16370,103 @@ export interface components {
             permissions: components["schemas"]["Permission"][];
             parent_role?: components["schemas"]["Role-Output"] | null;
         };
+        /** Run */
+        Run: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            /** Trigger Node Id */
+            trigger_node_id: string;
+            /** Origin Kind */
+            origin_kind: string;
+            /** Origin Id */
+            origin_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Error */
+            error: string | null;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Log Archived At */
+            log_archived_at: string | null;
+        };
+        /** RunCreate */
+        RunCreate: {
+            /**
+             * Inputs
+             * @default {}
+             */
+            inputs: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Trigger
+             * @description The id of a manual trigger node. Defaults to the only manual trigger.
+             */
+            trigger?: string | null;
+        };
+        /** RunDetail */
+        RunDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            /** Trigger Node Id */
+            trigger_node_id: string;
+            /** Origin Kind */
+            origin_kind: string;
+            /** Origin Id */
+            origin_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Error */
+            error: string | null;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Log Archived At */
+            log_archived_at: string | null;
+            /** Steps */
+            steps: components["schemas"]["StepRun"][];
+        };
         /**
          * RunDraft
          * @description Unsaved version content of an existing prompt, to run as is.
@@ -16733,6 +17094,40 @@ export interface components {
              */
             status: "ok" | "initializing" | "error";
         };
+        /** StepRun */
+        StepRun: {
+            /** Node Id */
+            node_id: string;
+            /** Node Key */
+            node_key: string;
+            /** Node Type */
+            node_type: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
+            /** Attempt */
+            attempt: number;
+            /** Input */
+            input: {
+                [key: string]: unknown;
+            } | null;
+            /** Output */
+            output: {
+                [key: string]: unknown;
+            } | null;
+            /** Error */
+            error: string | null;
+            /** Port */
+            port: number | null;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+        };
         /** StepType */
         StepType: {
             /** Type */
@@ -16769,6 +17164,10 @@ export interface components {
             side_effect: boolean;
             /** Idempotent */
             idempotent: boolean;
+            /** Timeout Seconds */
+            timeout_seconds: number | null;
+            /** Retries */
+            retries: number;
         };
         /** SurfaceCount */
         SurfaceCount: {
@@ -16926,6 +17325,52 @@ export interface components {
             key: string;
             /** Points */
             points: components["schemas"]["TeamScoreHistoryPoint"][];
+        };
+        /** TestRunCreate */
+        TestRunCreate: {
+            /**
+             * Version
+             * @description Defaults to the latest version.
+             */
+            version?: number | null;
+            /**
+             * Trigger
+             * @description A trigger node id. Defaults to the first.
+             */
+            trigger?: string | null;
+            /**
+             * Ports
+             * @description The port that a branching node takes, by node id. Defaults to its first port.
+             */
+            ports?: {
+                [key: string]: number;
+            };
+        };
+        /** TestRunResult */
+        TestRunResult: {
+            /** Steps */
+            steps: components["schemas"]["TestRunStep"][];
+            /** Skipped */
+            skipped: string[];
+        };
+        /** TestRunStep */
+        TestRunStep: {
+            /** Node Id */
+            node_id: string;
+            /** Key */
+            key: string;
+            /** Type */
+            type: string;
+            /** Title */
+            title: string;
+            /** Output */
+            output: {
+                [key: string]: unknown;
+            };
+            /** Port */
+            port: number;
+            /** Port Name */
+            port_name: string;
         };
         /**
          * TokenRefreshRequest
@@ -17444,6 +17889,12 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Runs 30D */
+            runs_30d?: number | null;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Run Status */
+            last_run_status?: string | null;
             /** Activated By */
             activated_by: string | null;
             /** Activated At */
@@ -17530,6 +17981,12 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Runs 30D */
+            runs_30d?: number | null;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Run Status */
+            last_run_status?: string | null;
         };
         /** WorkflowValidate */
         WorkflowValidate: {
@@ -26872,6 +27329,251 @@ export interface operations {
             };
         };
     };
+    list_runs_api_organizations__org_slug__workflows__slug__runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_organizations__org_slug__workflows__slug__runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_organizations__org_slug__workflows__slug__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                run_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_organizations__org_slug__workflows__slug__runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                run_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_step_email_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__email_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                slug: string;
+                run_id: string;
+                node_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_failure_notice_api_organizations__org_slug__workflows__slug__runs__run_id__failure_notice_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                slug: string;
+                run_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_run_api_organizations__org_slug__workflows__slug__test_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TestRunCreate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestRunResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_step_types_api_organizations__org_slug__workflow_step_types__get: {
         parameters: {
             query?: never;
@@ -26890,6 +27592,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StepType"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attention_runs_api_organizations__org_slug__workflow_runs_attention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionRun"][];
                 };
             };
             /** @description Validation Error */
@@ -27459,7 +28192,9 @@ export interface operations {
             query?: {
                 source?: string | null;
             };
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 org_slug: string;
                 project_id: string;

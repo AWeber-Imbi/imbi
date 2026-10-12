@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 
 import { portsOf, type StepTypes } from './graph'
 import { ParamsForm, SelectField } from './ParamsForm'
+import { StatusBadge } from './RunPanel'
+import { formatDuration, type StepResult } from './runs'
 import { paramFields } from './schemaFields'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type {
@@ -31,6 +33,8 @@ const ON_FAILURE = [
   { label: 'Notify the owner team', value: 'notify_owner_team' },
   { label: 'Do nothing', value: 'none' },
 ]
+
+export type InspectorTab = 'output' | 'params'
 
 export function EdgePanel({
   graph,
@@ -84,8 +88,12 @@ export function NodePanel({
   onDelete,
   onDuplicate,
   onRemoveItem,
+  onTab,
   orgSlug,
   readOnly,
+  result,
+  resultSource,
+  tab,
   types,
 }: {
   graph: WorkflowGraph
@@ -95,8 +103,14 @@ export function NodePanel({
   onDelete: () => void
   onDuplicate: () => void
   onRemoveItem: (name: string, index: number) => void
+  onTab: (tab: InspectorTab) => void
   orgSlug: string
   readOnly: boolean
+  /** What the step did in the run or the test run on show. */
+  result: null | StepResult
+  /** Null when no run or test run is on show. */
+  resultSource: 'run' | 'test' | null
+  tab: InspectorTab
   types: StepTypes
 }) {
   const type = types[node.type]
@@ -146,53 +160,79 @@ export function NodePanel({
           </>
         )}
       </div>
-      <fieldset
-        className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto p-4"
-        disabled={readOnly}
-      >
-        <IssueList issues={issues} />
-        <FormField
-          description="Later steps use this name to read the step's output."
-          error={keyError}
-          htmlFor="workflow-node-key"
-          label="Key"
-          touched
-        >
-          <Input
-            className="font-mono text-xs"
-            id="workflow-node-key"
-            onChange={(e) => onChange({ key: e.target.value })}
-            value={node.key}
-          />
-        </FormField>
-        <ParamsForm
-          fields={fields}
-          idPrefix={`workflow-node-${node.id}`}
-          onChange={(name, value) =>
-            onChange({ params: { ...node.params, [name]: value } })
-          }
-          onRemoveItem={onRemoveItem}
-          orgSlug={orgSlug}
-          params={node.params}
-        />
-        {incoming > 1 && (
-          <FormField
-            description="Any runs the step when the first connection arrives. All waits for every connection."
-            htmlFor="workflow-node-join"
-            label="Run when"
+      <div className="border-tertiary flex gap-4 border-b px-4">
+        {(
+          [
+            ['params', 'Parameters'],
+            ['output', 'Output'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            className={cn(
+              '-mb-px h-9 border-b-2 text-sm font-medium',
+              tab === value
+                ? 'text-primary border-amber-border'
+                : 'text-tertiary hover:text-primary border-transparent',
+            )}
+            key={value}
+            onClick={() => onTab(value)}
+            type="button"
           >
-            <SelectField
-              id="workflow-node-join"
-              onChange={(join) => onChange({ join: join as 'all' | 'any' })}
-              options={[
-                { label: 'Any input arrives', value: 'any' },
-                { label: 'All inputs arrive', value: 'all' },
-              ]}
-              value={node.join}
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'output' ? (
+        <OutputView result={result} source={resultSource} />
+      ) : (
+        <fieldset
+          className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto p-4"
+          disabled={readOnly}
+        >
+          <IssueList issues={issues} />
+          <FormField
+            description="Later steps use this name to read the step's output."
+            error={keyError}
+            htmlFor="workflow-node-key"
+            label="Key"
+            touched
+          >
+            <Input
+              className="font-mono text-xs"
+              id="workflow-node-key"
+              onChange={(e) => onChange({ key: e.target.value })}
+              value={node.key}
             />
           </FormField>
-        )}
-      </fieldset>
+          <ParamsForm
+            fields={fields}
+            idPrefix={`workflow-node-${node.id}`}
+            onChange={(name, value) =>
+              onChange({ params: { ...node.params, [name]: value } })
+            }
+            onRemoveItem={onRemoveItem}
+            orgSlug={orgSlug}
+            params={node.params}
+          />
+          {incoming > 1 && (
+            <FormField
+              description="Any runs the step when the first connection arrives. All waits for every connection."
+              htmlFor="workflow-node-join"
+              label="Run when"
+            >
+              <SelectField
+                id="workflow-node-join"
+                onChange={(join) => onChange({ join: join as 'all' | 'any' })}
+                options={[
+                  { label: 'Any input arrives', value: 'any' },
+                  { label: 'All inputs arrive', value: 'all' },
+                ]}
+                value={node.join}
+              />
+            </FormField>
+          )}
+        </fieldset>
+      )}
     </>
   )
 }
@@ -354,5 +394,66 @@ function IssueList({ issues }: { issues: ValidationIssue[] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+function JsonBlock({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-tertiary text-xs">{label}</span>
+      <pre className="bg-secondary rounded-md p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
+  )
+}
+
+function OutputView({
+  result,
+  source,
+}: {
+  result: null | StepResult
+  source: 'run' | 'test' | null
+}) {
+  if (!result || result.status === 'skipped') {
+    return (
+      <p className="text-tertiary p-4 text-sm">
+        {source === null
+          ? 'Run a test to see what this step returns.'
+          : result
+            ? 'This step was skipped. The run took a different branch.'
+            : source === 'test'
+              ? 'This step did not run in the last test run. The run took a different branch.'
+              : 'This step has not run yet.'}
+      </p>
+    )
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
+      <dl className="grid grid-cols-[90px_1fr] gap-x-3 gap-y-1.5 text-sm">
+        <dt className="text-tertiary">Status</dt>
+        <dd>
+          <StatusBadge status={result.status} />
+        </dd>
+        <dt className="text-tertiary">Duration</dt>
+        <dd className="font-mono text-xs">
+          {source === 'test' ? 'sample' : formatDuration(result.durationMs)}
+        </dd>
+        {result.branch && (
+          <>
+            <dt className="text-tertiary">Branch</dt>
+            <dd className="font-medium">{result.branch}</dd>
+          </>
+        )}
+        {result.error && (
+          <>
+            <dt className="text-tertiary">Error</dt>
+            <dd className="text-danger font-mono text-xs">{result.error}</dd>
+          </>
+        )}
+      </dl>
+      {result.input && <JsonBlock label="Input" value={result.input} />}
+      {result.output && <JsonBlock label="Output" value={result.output} />}
+    </div>
   )
 }

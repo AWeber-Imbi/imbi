@@ -6,17 +6,23 @@ import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
 import { WorkflowsManagement } from '../WorkflowsManagement'
-import { STEP_TYPES, workflow } from './fixtures'
+import { RUN, STEP_TYPES, workflow } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   activateWorkflow: vi.fn(),
+  cancelWorkflowRun: vi.fn(),
   createWorkflow: vi.fn(),
   getWorkflow: vi.fn(),
+  getWorkflowRun: vi.fn(),
   listTeams: vi.fn(),
+  listWorkflowAttention: vi.fn(),
+  listWorkflowRuns: vi.fn(),
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
   pauseWorkflow: vi.fn(),
+  startWorkflowRun: vi.fn(),
+  testRunWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   validateWorkflow: vi.fn(),
 }))
@@ -64,6 +70,8 @@ describe('WorkflowsManagement', () => {
     vi.mocked(endpoints.getWorkflow).mockResolvedValue(workflow())
     vi.mocked(endpoints.listTeams).mockResolvedValue([])
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({ issues: [] })
+    vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([])
+    vi.mocked(endpoints.listWorkflowRuns).mockResolvedValue([])
   })
 
   it('lists workflows with trigger, status, and empty run columns', async () => {
@@ -80,6 +88,116 @@ describe('WorkflowsManagement', () => {
     })
     expect(screen.queryByText('Deploy guard')).not.toBeInTheDocument()
     expect(screen.getByText('Dependency sweep')).toBeInTheDocument()
+  })
+
+  it('shows runs in 30 days, the last outcome, and runs to look at', async () => {
+    const { version: _version, ...summary } = workflow()
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([
+      {
+        ...summary,
+        last_run_at: new Date().toISOString(),
+        last_run_status: 'failed',
+        runs_30d: 12,
+      },
+    ])
+    vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([
+      {
+        ...RUN,
+        error: 'activator_lacks_permission',
+        lease_expires_at: null,
+        reason: 'failed',
+        status: 'failed',
+        worker_id: null,
+        workflow_name: 'Deploy guard',
+        workflow_slug: 'deploy-guard',
+      },
+    ])
+    renderAt('/agents/workflows')
+    const row = (await screen.findByText('Ships and checks a deploy.')).closest(
+      'tr',
+    )!
+    await waitFor(() => expect(row).toHaveTextContent('12'))
+    expect(row).toHaveTextContent('Failed')
+    expect(
+      await screen.findByText('activator_lacks_permission'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('activator_lacks_permission').closest('a'),
+    ).toHaveAttribute('href', `/agents/workflows/deploy-guard?run=${RUN.id}`)
+  })
+
+  it('test runs the workflow and shows a step output', async () => {
+    vi.mocked(endpoints.testRunWorkflow).mockResolvedValue({
+      skipped: [],
+      steps: [
+        {
+          key: 'settle',
+          node_id: 'b',
+          output: { waited: '10m' },
+          port: 0,
+          port_name: '',
+          title: 'Let traffic settle',
+          type: 'wait',
+        },
+      ],
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.click(await screen.findByRole('button', { name: 'Test run' }))
+    expect(
+      await screen.findByText('Test run finished · 1 steps ran · 0 skipped'),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByText('sample').closest('button')!)
+    expect(screen.getByRole('button', { name: 'Output' })).toBeInTheDocument()
+    expect(screen.getByText(/"waited": "10m"/)).toBeInTheDocument()
+  })
+
+  it('starts a run, shows its steps, and cancels it', async () => {
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(
+      workflow({ active_version: 2, status: 'active' }),
+    )
+    vi.mocked(endpoints.startWorkflowRun).mockResolvedValue(RUN)
+    vi.mocked(endpoints.getWorkflowRun).mockResolvedValue({
+      ...RUN,
+      status: 'running',
+      steps: [
+        {
+          attempt: 1,
+          error: null,
+          finished_at: null,
+          input: { duration: '10m' },
+          node_id: 'b',
+          node_key: 'settle',
+          node_type: 'wait',
+          output: null,
+          port: null,
+          started_at: '2026-10-12T00:00:01Z',
+          status: 'running',
+          title: 'Let traffic settle',
+        },
+      ],
+    })
+    vi.mocked(endpoints.cancelWorkflowRun).mockResolvedValue({
+      ...RUN,
+      cancel_requested: true,
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
+    await waitFor(() =>
+      expect(endpoints.startWorkflowRun).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        {},
+      ),
+    )
+    expect(await screen.findByText('Running')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    await waitFor(() =>
+      expect(endpoints.cancelWorkflowRun).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        RUN.id,
+      ),
+    )
   })
 
   it('hides New workflow without workflow:create', async () => {
