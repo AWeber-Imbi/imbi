@@ -128,15 +128,25 @@ class WorkflowStore:
             )
 
     async def save(
-        self, organization_id: str, slug: str, definition: Definition
+        self,
+        organization_id: str,
+        slug: str,
+        definition: Definition,
+        owner_team_id: str,
     ) -> bool:
-        """Write a new version. Return ``False`` when there is no workflow."""
+        """Write a new version.
+
+        ``owner_team_id`` is the owner team that the caller checked. The
+        save changes nothing and returns ``False`` when there is no
+        workflow, or when its owner team is no longer that team.
+        """
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
                 'UPDATE workflows.workflows SET name = %s,'
                 ' description = %s, owner_team_id = %s,'
                 ' latest_version = latest_version + 1, updated_at = NOW()'
                 ' WHERE organization_id = %s AND slug = %s'
+                ' AND owner_team_id = %s'
                 ' RETURNING id, latest_version',
                 (
                     definition.name,
@@ -144,6 +154,7 @@ class WorkflowStore:
                     definition.owner_team_id,
                     organization_id,
                     slug,
+                    owner_team_id,
                 ),
             )
             row = await cur.fetchone()

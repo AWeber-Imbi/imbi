@@ -48,11 +48,18 @@ log_archived_at = "TIMESTAMP WITH TIME ZONE"
 [tables.primary_key]
 columns = ["id"]
 
-# A repeat with the same key returns the first run. NULL keys are
+# A repeat with the same key returns the first run of that workflow:
+# one webhook delivery can start runs of two workflows. NULL keys are
 # distinct, so runs without a key do not collide.
 [[tables.indexes]]
-name = "runs_origin_idempotency_key"
-columns = ["organization_id", "origin_kind", "origin_id", "idempotency_key"]
+name = "runs_workflow_idempotency_key"
+columns = [
+  "organization_id",
+  "workflow_id",
+  "origin_kind",
+  "origin_id",
+  "idempotency_key",
+]
 unique = true
 
 # The run list: newest first per workflow.
