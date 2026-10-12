@@ -88,11 +88,12 @@ class SweepTestCase(RunHistoryTestCase):
             support.sink_to_clickhouse(),
             mock.patch.object(sweeper, '_try_sweep_lock', return_value=True),
         ):
-            result = await sweeper.sweep_once(self.runs)
-            self.assertGreaterEqual(result.republished_events, 3)
-            self.assertEqual(result.archived, 0)
-            result = await sweeper.sweep_once(self.runs)
-        self.assertEqual(result.archived, 1)
+            # The sweep covers every run in the database, so check this
+            # run, not the round's counts.
+            await sweeper.sweep_once(self.runs)
+            first = (await self.client.get(f'{url}/runs/{run_id}')).json()
+            self.assertIsNone(first['log_archived_at'])
+            await sweeper.sweep_once(self.runs)
 
         after = (await self.client.get(f'{url}/runs/{run_id}')).json()
         self.assertIsNotNone(after['log_archived_at'])
@@ -119,8 +120,8 @@ class SweepTestCase(RunHistoryTestCase):
             support.sink_to_clickhouse(),
             mock.patch.object(sweeper, '_try_sweep_lock', return_value=True),
         ):
-            result = await sweeper.sweep_once(self.runs)
-        self.assertEqual(result.archived, 0)
+            await sweeper.sweep_once(self.runs)
+            await sweeper.sweep_once(self.runs)
         run = (await self.client.get(f'{url}/runs/{run_id}')).json()
         self.assertIsNone(run['log_archived_at'])
 
