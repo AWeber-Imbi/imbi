@@ -7,6 +7,7 @@ contract of the deploy and email endpoints; TypeSafe is patched.
 
 import asyncio
 import collections
+import datetime
 import json
 import typing
 import unittest
@@ -205,7 +206,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
 
     def _engine(self, worker_id: str) -> engine.Engine:
         return engine.Engine(
-            store.Store(self.pool, worker_id),
+            store.Store(self.pool, worker_id, self.org),
             executors.Executors(
                 executors.Api(self.http, self.config),
                 self.graph,
@@ -655,6 +656,44 @@ class SecurityTestCase(EngineTestCase):
         )
         run = await self._drive(await self._start(workflow_id))
         self.assertEqual(run['error'], 'activator_lacks_permission')
+
+
+class StoreTestCase(EngineTestCase):
+    async def test_release_after_takeover_keeps_the_schedule(self) -> None:
+        workflow_id = await self._workflow([_node('start', 'manual')], [])
+        run_id = uuid.uuid4()
+        # One transaction, so that no other engine sees the run unleased.
+        async with self.pool.connection() as conn, conn.transaction():
+            await conn.execute(
+                'INSERT INTO workflow_runtime.runs (id, organization_id,'
+                ' workflow_id, version, trigger_node_id, origin_kind,'
+                ' origin_id, activated_by, due_at) VALUES (%s, %s, %s, 1,'
+                " 'start', 'human', %s, %s, NOW() + INTERVAL '1 hour')",
+                (run_id, self.org, workflow_id, self.email, self.email),
+            )
+            # Worker b took the run over after the lease of a expired.
+            await conn.execute(
+                'INSERT INTO workflow_runtime.leases'
+                ' (run_id, worker_id, expires_at)'
+                " VALUES (%s, 'b', NOW() + INTERVAL '1 hour')",
+                (run_id,),
+            )
+            cur = await conn.execute(
+                'SELECT due_at FROM workflow_runtime.runs WHERE id = %s',
+                (run_id,),
+            )
+            before = await cur.fetchone()
+        await store.Store(self.pool, 'a').release(
+            run_id, datetime.datetime.now(datetime.UTC)
+        )
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT r.due_at, l.worker_id FROM workflow_runtime.runs r'
+                ' JOIN workflow_runtime.leases l ON l.run_id = r.id'
+                ' WHERE r.id = %s',
+                (run_id,),
+            )
+            self.assertEqual(await cur.fetchone(), (before[0], 'b'))
 
 
 class CrashTestCase(EngineTestCase):

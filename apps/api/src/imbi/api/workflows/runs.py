@@ -281,7 +281,9 @@ class RunStore:
                 ' WHERE key = %s',
                 (key,),
             )
-            if found[0]['response'] is None:
+            # No row: the first call was refused and released the key
+            # after this INSERT saw it. Its outcome is still unknown here.
+            if not found or found[0]['response'] is None:
                 raise fastapi.HTTPException(
                     status_code=409,
                     detail={
