@@ -7,7 +7,7 @@ import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
 import { WorkflowsManagement } from '../WorkflowsManagement'
-import { RUN, STEP_TYPES, workflow } from './fixtures'
+import { node, RUN, STEP_TYPES, workflow } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
@@ -16,6 +16,7 @@ vi.mock('@/api/endpoints', () => ({
   createWorkflow: vi.fn(),
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
+  getWorkflowVersion: vi.fn(),
   listTeams: vi.fn(),
   listWorkflowAttention: vi.fn(),
   listWorkflowRuns: vi.fn(),
@@ -198,6 +199,60 @@ describe('WorkflowsManagement', () => {
         'deploy-guard',
         RUN.id,
       ),
+    )
+  })
+
+  it('asks for the inputs of the active version, not the latest', async () => {
+    const latest = workflow({
+      active_version: 1,
+      latest_version: 2,
+      status: 'active',
+    })
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(latest)
+    vi.mocked(endpoints.getWorkflowVersion).mockResolvedValue({
+      ...latest.version,
+      graph: {
+        edges: [],
+        nodes: [
+          node({
+            id: 'a',
+            key: 'start',
+            params: { inputs: [{ name: 'release', type: 'string' }] },
+            title: 'Start',
+            type: 'manual',
+          }),
+        ],
+      },
+      version: 1,
+    })
+    vi.mocked(endpoints.startWorkflowRun).mockResolvedValue(RUN)
+    vi.mocked(endpoints.getWorkflowRun).mockResolvedValue({
+      ...RUN,
+      steps: [],
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    const run = await screen.findByRole('button', { name: 'Run' })
+    await waitFor(() => expect(run).toBeEnabled())
+    fireEvent.click(run)
+    const start = await screen.findByRole('button', { name: 'Start run' })
+    // The input is required: an empty value cannot start the run.
+    expect(start).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/release/), {
+      target: { value: '1.2.3' },
+    })
+    fireEvent.click(start)
+    await waitFor(() =>
+      expect(endpoints.startWorkflowRun).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        { release: '1.2.3' },
+      ),
+    )
+    expect(endpoints.getWorkflowVersion).toHaveBeenCalledWith(
+      'acme',
+      'deploy-guard',
+      1,
+      expect.anything(),
     )
   })
 

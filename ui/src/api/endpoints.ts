@@ -7,6 +7,7 @@ import type {
   WorkflowRun,
   WorkflowRunDetail,
   WorkflowSummary,
+  WorkflowVersion,
   WorkflowWrite,
 } from '@/components/workflows/types'
 import {
@@ -3811,6 +3812,18 @@ export const getWorkflow = (
   slug: string,
   signal?: AbortSignal,
 ) => apiClient.get<Workflow>(workflowPath(orgSlug, slug), undefined, signal)
+
+export const getWorkflowVersion = (
+  orgSlug: string,
+  slug: string,
+  version: number,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<WorkflowVersion>(
+    `${workflowPath(orgSlug, slug)}/versions/${version}`,
+    undefined,
+    signal,
+  )
 
 export const createWorkflow = (orgSlug: string, workflow: WorkflowWrite) =>
   apiClient.post<Workflow>(`${workflowsPath(orgSlug)}/`, workflow)

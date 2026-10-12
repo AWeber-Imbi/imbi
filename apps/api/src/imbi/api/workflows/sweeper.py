@@ -24,6 +24,7 @@ import asyncio
 import dataclasses
 import itertools
 import logging
+import uuid
 
 from imbi.api.workflows import runs as run_store
 from imbi.common import valkey
@@ -34,6 +35,9 @@ LOGGER = logging.getLogger(__name__)
 #: How often the sweep runs.
 SWEEP_INTERVAL_SECONDS = 60
 _SWEEP_LOCK_KEY = 'imbi:workflows:log-sweeper'
+#: Runs read per page, so memory and each ClickHouse ``IN`` list stay
+#: bounded when the backlog grows.
+PAGE_SIZE = 500
 
 
 @dataclasses.dataclass
@@ -93,27 +97,51 @@ async def _sweep_run(
         result.archived += 1
 
 
+async def _sweep_batch(
+    store: run_store.RunStore,
+    organization_id: str,
+    batch: list[history.Row],
+    result: SweepResult,
+) -> None:
+    """Sweep the runs of one organization in one page.
+
+    A ClickHouse failure skips this batch only, so the other
+    organizations are still swept.
+    """
+    ids = [str(run['id']) for run in batch]
+    try:
+        events = await history.event_counts(organization_id, ids)
+        summaries = await history.summaries(organization_id, ids)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Workflow run sweep failed for organization %s',
+            organization_id,
+            exc_info=True,
+        )
+        return
+    for run in batch:
+        try:
+            await _sweep_run(store, run, events, summaries, result)
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Workflow run sweep failed for run %s',
+                run['id'],
+                exc_info=True,
+            )
+
+
 async def sweep_once(store: run_store.RunStore) -> SweepResult:
     """Republish what ClickHouse does not have and archive complete runs."""
     result = SweepResult()
     if not await _try_sweep_lock():
         return result
-    for organization_id, group in itertools.groupby(
-        await store.unarchived(), key=lambda run: run['organization_id']
-    ):
-        batch = list(group)
-        ids = [str(run['id']) for run in batch]
-        events = await history.event_counts(organization_id, ids)
-        summaries = await history.summaries(organization_id, ids)
-        for run in batch:
-            try:
-                await _sweep_run(store, run, events, summaries, result)
-            except Exception:  # noqa: BLE001
-                LOGGER.warning(
-                    'Workflow run sweep failed for run %s',
-                    run['id'],
-                    exc_info=True,
-                )
+    after: tuple[str, uuid.UUID] | None = None
+    while page := await store.unarchived(after, PAGE_SIZE):
+        after = (page[-1]['organization_id'], page[-1]['id'])
+        for organization_id, group in itertools.groupby(
+            page, key=lambda run: run['organization_id']
+        ):
+            await _sweep_batch(store, organization_id, list(group), result)
     if result != SweepResult():
         LOGGER.info('Workflow run sweep: %s', result)
     return result

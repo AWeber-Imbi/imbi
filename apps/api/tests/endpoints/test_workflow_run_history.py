@@ -84,9 +84,24 @@ class SweepTestCase(RunHistoryTestCase):
         before = (await self.client.get(f'{url}/runs/{run_id}')).json()
         self.assertEqual([s['status'] for s in before['steps']], ['succeeded'])
 
+        event_counts = history.event_counts
+
+        async def other_orgs_fail(
+            organization_id: str, run_ids: list[str]
+        ) -> dict[str, tuple[int, int, int]]:
+            if organization_id != self.org:
+                raise RuntimeError('ClickHouse refused this batch')
+            return await event_counts(organization_id, run_ids)
+
+        # One run per page, and every other organization fails: this
+        # run is still swept.
         with (
             support.sink_to_clickhouse(),
             mock.patch.object(sweeper, '_try_sweep_lock', return_value=True),
+            mock.patch.object(sweeper, 'PAGE_SIZE', 1),
+            mock.patch.object(
+                history, 'event_counts', side_effect=other_orgs_fail
+            ),
         ):
             # The sweep covers every run in the database, so check this
             # run, not the round's counts.

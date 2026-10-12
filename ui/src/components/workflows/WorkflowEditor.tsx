@@ -60,7 +60,7 @@ import type {
   WorkflowGraph,
   WorkflowWrite,
 } from './types'
-import { useWorkflowRun } from './workflowQueries'
+import { useWorkflowRun, useWorkflowVersion } from './workflowQueries'
 import { StatusBadge } from './WorkflowStatusBadge'
 
 const NEW_SETTINGS: WorkflowWrite['settings'] = {
@@ -248,7 +248,23 @@ export function WorkflowEditor({
     onSuccess: setTestRun,
   })
 
-  const trigger = manualTrigger(draft.graph)
+  // A run starts the active version, which may not be the version in
+  // the editor: read its manual trigger from that version.
+  const activeVersion = current?.active_version ?? null
+  const otherVersion = useWorkflowVersion(
+    orgSlug,
+    slug,
+    activeVersion !== null && activeVersion !== current?.latest_version
+      ? activeVersion
+      : null,
+  )
+  const activeGraph =
+    activeVersion === null
+      ? null
+      : activeVersion === current?.latest_version
+        ? current.version.graph
+        : (otherVersion.data?.graph ?? null)
+  const trigger = activeGraph ? manualTrigger(activeGraph) : null
   const start = useMutation({
     mutationFn: (inputs: Record<string, boolean | number | string>) =>
       startWorkflowRun(orgSlug, slug!, inputs),
@@ -423,7 +439,7 @@ export function WorkflowEditor({
                 ? 'Activate the workflow to run it.'
                 : trigger
                   ? 'Start a run of the active version.'
-                  : 'Add a manual trigger to run the workflow by hand.'
+                  : 'The active version has no manual trigger.'
             }
             variant="outline"
           >

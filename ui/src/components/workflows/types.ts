@@ -38,6 +38,7 @@ export type WorkflowRun = Schemas['Run']
 export type WorkflowRunDetail = Schemas['RunDetail']
 export type WorkflowStatus = Schemas['WorkflowSummary']['status']
 export type WorkflowSummary = Schemas['WorkflowSummary']
+export type WorkflowVersion = Schemas['WorkflowVersion']
 
 /** The body of a save; the editor always sends the graph and settings. */
 export type WorkflowWrite = Required<Schemas['WorkflowSave']>

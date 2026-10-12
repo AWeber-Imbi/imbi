@@ -4,6 +4,7 @@ import {
   getProjectsSlim,
   getWorkflow,
   getWorkflowRun,
+  getWorkflowVersion,
   listAIModels,
   listEnvironments,
   listTeams,
@@ -138,5 +139,21 @@ export function useWorkflowRuns(
     refetchInterval: (query) =>
       query.state.data?.some((r) => isOpen(r.status)) ? LIVE_MS : false,
     staleTime: 0,
+  })
+}
+
+/** One saved version. Disabled for ``null``. */
+export function useWorkflowVersion(
+  orgSlug: string,
+  slug: string | undefined,
+  version: null | number,
+) {
+  return useQuery({
+    enabled: !!slug && version !== null,
+    queryFn: ({ signal }) =>
+      getWorkflowVersion(orgSlug, slug!, version!, signal),
+    queryKey: [...queryKeys.workflow(orgSlug, slug ?? ''), 'versions', version],
+    // A version never changes.
+    staleTime: Infinity,
   })
 }

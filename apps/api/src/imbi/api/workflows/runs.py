@@ -190,12 +190,20 @@ class RunStore:
 
     # --- Archive sweep (ADR 0021, Run history) ---------------------------
 
-    async def unarchived(self) -> list[store.Row]:
-        """Return the runs whose log is not archived, by organization."""
+    async def unarchived(
+        self, after: tuple[str, uuid.UUID] | None, limit: int
+    ) -> list[store.Row]:
+        """Return a page of the runs whose log is not archived.
+
+        The page is ordered by organization and id, and starts after the
+        ``(organization_id, id)`` that ended the page before.
+        """
         return await self._all(
             'SELECT * FROM workflow_runtime.runs'
-            ' WHERE log_archived_at IS NULL ORDER BY organization_id, id',
-            (),
+            ' WHERE log_archived_at IS NULL'
+            ' AND (organization_id, id) > (%s, %s)'
+            ' ORDER BY organization_id, id LIMIT %s',
+            (*(after or ('', uuid.UUID(int=0))), limit),
         )
 
     async def events_with_seqs(

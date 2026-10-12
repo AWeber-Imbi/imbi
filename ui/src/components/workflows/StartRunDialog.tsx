@@ -42,11 +42,12 @@ export function StartRunDialog({
       return [i.name, typeof value === 'string' ? value : '']
     }),
   )
+  // Every declared input is required (the API refuses a run without it).
   const missing = inputs.some(
     (i) =>
-      i.type === 'number' &&
+      i.type !== 'boolean' &&
       (values[i.name] === undefined ||
-        values[i.name] === '' ||
+        String(values[i.name]).trim() === '' ||
         Number.isNaN(typed[i.name])),
   )
 
@@ -84,6 +85,7 @@ export function StartRunDialog({
                   <Input
                     id={id}
                     onChange={(e) => set(input.name, e.target.value)}
+                    required
                     type={input.type === 'number' ? 'number' : 'text'}
                     value={String(values[input.name] ?? '')}
                   />
