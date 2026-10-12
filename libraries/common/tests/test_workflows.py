@@ -167,6 +167,23 @@ class ValidationTestCase(unittest.TestCase):
         self.assertIn(('missing_param', 'warning', 'ship'), by_code)
         self.assertIn(('invalid_param', 'error', 'decide'), by_code)
 
+    def test_duplicate_branches(self) -> None:
+        issues = _check(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'decide',
+                    'model_decision',
+                    {**DECIDE, 'branches': ['y', 'y']},
+                ),
+            ],
+            [('start', 0, 'decide')],
+        )
+        self.assertEqual(
+            [(i.code, i.node_id) for i in issues],
+            [('invalid_param', 'decide')],
+        )
+
     def test_any_join_overlap(self) -> None:
         nodes = [
             _node('start', 'manual'),
