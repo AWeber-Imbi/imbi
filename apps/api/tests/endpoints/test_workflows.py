@@ -242,6 +242,12 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    async def test_create_with_empty_derived_slug(self) -> None:
+        response = await self._create(name='!!!')
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self._create(name='!!!', slug='bangs')
+        self.assertEqual(response.status_code, 201, response.text)
+
     async def test_create_with_unknown_team(self) -> None:
         response = await self._create(owner_team_slug='nope')
         self.assertEqual(response.status_code, 422)
