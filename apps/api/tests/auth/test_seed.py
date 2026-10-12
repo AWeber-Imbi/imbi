@@ -305,6 +305,9 @@ class SeedDefaultOrganizationTestCase(
             created = await seed.seed_default_organization(mock_db)
 
         self.assertTrue(created)
+        query, params = mock_db.execute.call_args_list[1].args
+        self.assertIn('SET o.id = coalesce(o.id, {id})', query)
+        self.assertTrue(params['id'])
 
     async def test_seed_default_organization_idempotent(
         self,
