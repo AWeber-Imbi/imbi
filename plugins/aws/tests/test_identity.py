@@ -12,6 +12,7 @@ from imbi.common.plugins.base import (
     PluginContext,
 )
 from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.plugins.aws import identity
 from imbi.plugins.aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
@@ -248,6 +249,11 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
             request.registered_credentials['client_secret_expires_at'],
             '4102444800',
         )
+
+
+class ClientExpiredTestCase(unittest.TestCase):
+    def test_out_of_range_timestamp_is_expired(self) -> None:
+        self.assertTrue(identity._client_expired('9' * 30))
 
 
 class ExchangeCodeTestCase(unittest.IsolatedAsyncioTestCase):

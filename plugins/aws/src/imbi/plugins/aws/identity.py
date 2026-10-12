@@ -565,7 +565,7 @@ def _client_expired(raw: str | None) -> bool:
         return True
     try:
         expires_at = datetime.datetime.fromtimestamp(int(raw), datetime.UTC)
-    except ValueError:
+    except (ValueError, OverflowError, OSError):
         return True
     now = datetime.datetime.now(datetime.UTC)
     return expires_at - CLIENT_EXPIRY_MARGIN <= now
