@@ -12,6 +12,7 @@ from imbi.api import (
     openapi,
     settings,
     version,
+    workflows,
 )
 from imbi.api.middleware import rate_limit
 from imbi.common import (
@@ -41,6 +42,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.iggy_metrics_hook,
             graph.graph_lifespan,
             agent_tasks.store_lifespan,
+            workflows.store_lifespan,
             prompt_pool.pool_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
