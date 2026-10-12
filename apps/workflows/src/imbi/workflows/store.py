@@ -32,6 +32,7 @@ type Conn = psycopg.AsyncConnection[typing.Any]
 #: that it can close.
 _CLAIMABLE = """
  WHERE r.status IN ('queued', 'running')
+   AND (%(org)s::text IS NULL OR r.organization_id = %(org)s)
    AND NOT EXISTS (SELECT 1 FROM workflow_runtime.leases AS l
                     WHERE l.run_id = r.id AND l.expires_at > NOW())
    AND (r.status = 'running' OR r.cancel_requested
@@ -70,9 +71,15 @@ class LeaseLost(Exception):
 
 
 class Store:
-    def __init__(self, pool: Pool, worker_id: str) -> None:
+    def __init__(
+        self, pool: Pool, worker_id: str, organization_id: str | None = None
+    ) -> None:
         self.pool = pool
         self.worker_id = worker_id
+        #: Claim only the runs of this organization. ``None``, as in
+        #: production, claims every run. Tests that share one database
+        #: with other engines set it.
+        self.organization_id = organization_id
 
     async def claim(self, ttl: datetime.timedelta) -> Row | None:
         """Claim the claimable run that is due first."""
@@ -81,7 +88,7 @@ class Store:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
-            await cur.execute(_CLAIM)
+            await cur.execute(_CLAIM, {'org': self.organization_id})
             run = await cur.fetchone()
             if run is None:
                 return None
@@ -149,7 +156,7 @@ class Store:
 
     async def next_due(self) -> datetime.datetime | None:
         async with self.pool.connection() as conn:
-            cur = await conn.execute(_NEXT_DUE)
+            cur = await conn.execute(_NEXT_DUE, {'org': self.organization_id})
             row = await cur.fetchone()
             return row[0] if row else None
 

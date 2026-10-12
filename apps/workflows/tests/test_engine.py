@@ -186,7 +186,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
 
     def _engine(self, worker_id: str) -> engine.Engine:
         return engine.Engine(
-            store.Store(self.pool, worker_id),
+            store.Store(self.pool, worker_id, self.org),
             executors.Executors(
                 executors.Api(self.http, self.config),
                 self.graph,
@@ -592,12 +592,15 @@ class SecurityTestCase(EngineTestCase):
 class StoreTestCase(EngineTestCase):
     async def test_release_after_takeover_keeps_the_schedule(self) -> None:
         workflow_id = await self._workflow([_node('start', 'manual')], [])
-        run_id = await self._start(workflow_id)
-        async with self.pool.connection() as conn:
+        run_id = uuid.uuid4()
+        # One transaction, so that no other engine sees the run unleased.
+        async with self.pool.connection() as conn, conn.transaction():
             await conn.execute(
-                'UPDATE workflow_runtime.runs SET due_at = NOW() + INTERVAL'
-                " '1 hour' WHERE id = %s",
-                (run_id,),
+                'INSERT INTO workflow_runtime.runs (id, organization_id,'
+                ' workflow_id, version, trigger_node_id, origin_kind,'
+                ' origin_id, activated_by, due_at) VALUES (%s, %s, %s, 1,'
+                " 'start', 'human', %s, %s, NOW() + INTERVAL '1 hour')",
+                (run_id, self.org, workflow_id, self.email, self.email),
             )
             # Worker b took the run over after the lease of a expired.
             await conn.execute(
