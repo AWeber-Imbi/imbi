@@ -190,7 +190,8 @@ MATCH (o:Organization {{id: {org}}}) RETURN o.slug AS slug
 
 _DEPLOYMENTS_QUERY: typing.LiteralString = """
 MATCH (d:Deployment)-[:BELONGS_TO]->(:Project {{id: {project}}}),
-      (d)-[:TARGETS]->(:Environment {{slug: {env}}}),
+      (d)-[:TARGETS]->(:Environment {{slug: {env}}})
+        -[:BELONGS_TO]->(:Organization {{id: {org}}}),
       (r:Release)-[:HAS_DEPLOYMENT]->(d)
 RETURN r.tag AS tag, r.committish AS committish, d.status AS status,
        coalesce(d.updated_at, d.created_at) AS at
@@ -345,7 +346,10 @@ class Executors:
         version = call.state.get('version') or params.version
         if params.target != 'version' and 'run_id' not in call.state:
             version = await self._earlier_release(
-                params.project_id, params.environment, params.target
+                call.organization_id,
+                params.project_id,
+                params.environment,
+                params.target,
             )
         return await self._deployment(
             call,
@@ -356,10 +360,15 @@ class Executors:
         )
 
     async def _earlier_release(
-        self, project_id: str, environment: str, target: str
+        self,
+        organization_id: str,
+        project_id: str,
+        environment: str,
+        target: str,
     ) -> str:
         """Return the release to roll back to.
 
+        ``environment`` is a slug in the organization.
         ``last_healthy``: the newest release that succeeded, other than
         the release of the newest attempt. ``previous``: the release
         that succeeded before the one that serves now.
@@ -371,7 +380,11 @@ class Executors:
         found = await _values(
             self.db,
             _DEPLOYMENTS_QUERY,
-            {'project': project_id, 'env': environment},
+            {
+                'project': project_id,
+                'env': environment,
+                'org': organization_id,
+            },
             ['tag', 'committish', 'status', 'at'],
         )
         found.sort(key=lambda d: str(d['at']), reverse=True)

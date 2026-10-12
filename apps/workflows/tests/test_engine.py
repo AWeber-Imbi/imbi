@@ -746,6 +746,9 @@ class RollbackTestCase(EngineTestCase):
             CREATE (p:Project {{id: {project}, slug: {project}}})
             CREATE (e:Environment {{id: {env}, slug: {env}}})
             WITH p, e
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (e)-[:BELONGS_TO]->(o)
+            WITH p, e
             UNWIND [['1.0.0', 'success', '2026-01-01'],
                     ['1.1.0', 'success', '2026-02-01'],
                     ['1.2.0', 'failure', '2026-03-01']] AS row
@@ -757,7 +760,7 @@ class RollbackTestCase(EngineTestCase):
             CREATE (r)-[:HAS_DEPLOYMENT]->(d)
             RETURN count(d) AS n
             """,
-            {'project': project, 'env': env},
+            {'project': project, 'env': env, 'org': self.org},
             ['n'],
         )
         workflow_id = await self._workflow(
