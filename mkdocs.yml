@@ -82,6 +82,7 @@ nav:
           - 0018 AI Model Catalog: api/adr/0018-ai-model-catalog.md
           - 0019 Apache Iggy Message Streaming: api/adr/0019-apache-iggy-message-streaming.md
           - 0020 Agent Task Contract: api/adr/0020-agent-task-contract.md
+          - 0021 Workflow Contract: api/adr/0021-workflow-contract.md
   - Library Reference:
       - Overview: common/index.md
       - Installation: common/installation.md
