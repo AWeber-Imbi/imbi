@@ -1932,3 +1932,120 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             list(merge_links.await_args.kwargs['remove']),
             ['github'],
         )
+
+
+class WorkflowRuleGuardTestCase(support.SharedAppTestCase):
+    """Only imbi-workflows writes start_workflow rules (ADR 0021)."""
+
+    setUp = WebhookEndpointsTestCase.setUp
+    _patch_encryption = WebhookEndpointsTestCase._patch_encryption
+
+    rule: typing.ClassVar[dict[str, object]] = {
+        'filter_expression': 'true',
+        'handler': 'gateway-actions#start_workflow',
+        'handler_config': {
+            'workflow_slug': 'nightly',
+            'trigger': 'hook',
+            'binding': 'b-1',
+        },
+    }
+
+    def _existing(self) -> dict[str, object]:
+        return {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'Old',
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': json.dumps(
+                [
+                    {
+                        **self.rule,
+                        'handler_config': json.dumps(
+                            self.rule['handler_config']
+                        ),
+                        'ordinal': 0,
+                    }
+                ]
+            ),
+        }
+
+    def _patch(self, operations: list[dict[str, object]]) -> typing.Any:
+        updated = {**self._existing(), 'rules': []}
+        self.mock_db.execute.side_effect = [
+            [self._existing()],
+            [updated],
+            [updated],
+        ]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            return self.client.patch(
+                '/organizations/engineering/webhooks/deploy', json=operations
+            )
+
+    def test_person_cannot_create_a_workflow_rule(self) -> None:
+        with self._patch_encryption():
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json={**self.webhook_create_json, 'rules': [self.rule]},
+            )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'workflow_rule_forbidden'
+        )
+        self.mock_db.execute.assert_not_called()
+
+    def test_person_cannot_edit_or_copy_a_workflow_rule(self) -> None:
+        for operations in (
+            [
+                {
+                    'op': 'replace',
+                    'path': '/rules/0/filter_expression',
+                    'value': 'false',
+                }
+            ],
+            [{'op': 'add', 'path': '/rules/-', 'value': self.rule}],
+            [{'op': 'remove', 'path': '/rules/0'}],
+        ):
+            with self.subTest(operations=operations):
+                self.mock_db.reset_mock()
+                response = self._patch(operations)
+                self.assertEqual(response.status_code, 403, response.text)
+                # Only the read of the webhook; nothing was written.
+                self.assertEqual(self.mock_db.execute.call_count, 1)
+
+    def test_other_edits_keep_the_workflow_rule(self) -> None:
+        response = self._patch(
+            [{'op': 'replace', 'path': '/description', 'value': 'New'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    def test_imbi_workflows_can_write_a_workflow_rule(self) -> None:
+        from imbi.api.auth import permissions
+
+        self.auth_context = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-workflows', display_name='Imbi Workflows'
+            ),
+            auth_method='client_credentials',
+            permissions={'webhook:update'},
+        )
+        response = self._patch(
+            [
+                {
+                    'op': 'replace',
+                    'path': '/rules/0/filter_expression',
+                    'value': 'false',
+                }
+            ]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
