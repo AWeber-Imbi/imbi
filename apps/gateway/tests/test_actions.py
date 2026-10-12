@@ -3301,7 +3301,11 @@ class StartWorkflowTests(helpers.TestCase):
             'nightly',
             'wh-1',
             'd-1',
-            {'trigger': 'hook', 'payload': {'payload': {'action': 'opened'}}},
+            {
+                'trigger': 'hook',
+                'binding': 'b-1',
+                'payload': {'payload': {'action': 'opened'}},
+            },
         )
 
     async def test_redelivery_sends_the_same_delivery_id(self) -> None:

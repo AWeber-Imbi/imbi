@@ -21,7 +21,10 @@ class FakeScheduler:
 
     def __init__(self) -> None:
         self.tasks: dict[str, dict[str, typing.Any]] = {}
-        self.calls: list[str] = []
+        #: ``(method, slug)`` of each task call. The reconciler passes
+        #: over every binding in the shared test database, so tests
+        #: look only at their own slug.
+        self.calls: list[tuple[str, str]] = []
         #: The status to answer every task call with, for a failure.
         self.fail: int | None = None
 
@@ -31,15 +34,17 @@ class FakeScheduler:
             return httpx.Response(
                 200, json={'access_token': 'token', 'expires_in': 900}
             )
-        self.calls.append(request.method)
+        slug = path.rsplit('/', 1)[1]
+        if request.method == 'POST':
+            slug = json.loads(request.content)['slug']
+        self.calls.append((request.method, slug))
         if self.fail:
             return httpx.Response(self.fail, json={'detail': 'down'})
-        slug = path.rsplit('/', 1)[1]
         task = self.tasks.get(slug)
         match request.method:
             case 'POST':
                 body = json.loads(request.content)
-                task = self.tasks[body['slug']] = {
+                task = self.tasks[slug] = {
                     **body,
                     'id': str(uuid.uuid4()),
                 }
@@ -226,7 +231,9 @@ class ScheduleTestCase(ReconcilerTestCase):
         # A task that matches is left alone.
         self.scheduler.calls.clear()
         await self.reconciler.reconcile()
-        self.assertEqual(self.scheduler.calls, ['GET'])
+        self.assertEqual(
+            [c for c in self.scheduler.calls if c[1] == slug], [('GET', slug)]
+        )
 
         await self.definitions.pause(self.org, self.slug)
         await self.reconciler.reconcile()
@@ -235,7 +242,7 @@ class ScheduleTestCase(ReconcilerTestCase):
 
         await self.definitions.delete(self.org, self.slug)
         await self.reconciler.reconcile()
-        self.assertEqual(self.scheduler.tasks, {})
+        self.assertNotIn(slug, self.scheduler.tasks)
         self.assertEqual(await self._bindings(), [])
 
     async def test_scheduler_failure_leaves_nothing_half_made(self) -> None:
@@ -246,7 +253,8 @@ class ScheduleTestCase(ReconcilerTestCase):
         self.assertEqual(binding['sync_state'], 'failed')
         self.assertIn('imbi-scheduler returned 500', binding['error'])
         self.assertIsNone(binding['target_id'])
-        self.assertEqual(self.scheduler.tasks, {})
+        slug = f'workflow-{binding["id"]}'
+        self.assertNotIn(slug, self.scheduler.tasks)
         row = await self.definitions.get(self.org, self.slug)
         assert row is not None
         self.assertEqual(row['status'], 'active')
@@ -257,7 +265,7 @@ class ScheduleTestCase(ReconcilerTestCase):
         [binding] = await self._bindings()
         self.assertEqual(binding['sync_state'], 'synced')
         self.assertIsNone(binding['error'])
-        self.assertEqual(len(self.scheduler.tasks), 1)
+        self.assertIn(slug, self.scheduler.tasks)
 
     async def test_change_during_a_pass_stays_pending(self) -> None:
         await self._activate(self.trigger)

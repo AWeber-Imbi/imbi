@@ -374,6 +374,7 @@ class ManualRunTestCase(WorkflowRunTestCase):
                 trigger_node_id='hook',
                 origin_kind='webhook',
                 origin_id='wh-1',
+                origin={},
                 idempotency_key='delivery-1',
                 payload={},
                 concurrency_key=None,

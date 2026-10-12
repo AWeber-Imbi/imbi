@@ -1,6 +1,7 @@
 """Schedule trigger: the scheduler starts a run on a cron schedule."""
 
 import datetime
+import typing
 import zoneinfo
 
 import pydantic
@@ -29,6 +30,13 @@ class Output(pydantic.BaseModel):
     fired_at: datetime.datetime
 
 
+def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
+    """imbi-workflows makes a scheduler task for this trigger. The
+    activator must be able to make that task.
+    """
+    return {'scheduled_task:create'}
+
+
 STEP = step_type.StepType(
     type='schedule',
     category='trigger',
@@ -38,4 +46,5 @@ STEP = step_type.StepType(
     output=Output,
     sample_output={'fired_at': '2026-01-01T09:00:00Z'},
     trigger=True,
+    required_permissions=required_permissions,
 )

@@ -52,6 +52,11 @@ class RunCreate(pydantic.BaseModel):
         description='The trigger payload that the scheduler or the '
         'gateway sends. A person sends inputs.',
     )
+    binding: str | None = pydantic.Field(
+        default=None,
+        description='The trigger binding of the gateway rule that '
+        'started a webhook run.',
+    )
 
 
 class StepRun(pydantic.BaseModel):
@@ -251,18 +256,19 @@ async def _service_trigger(
     store: workflows.WorkflowStore,
     workflow: workflows.Row,
     wf_graph: wf.Graph,
-    node_id: str | None,
+    data: RunCreate,
     origin: agent_tasks.TaskOrigin,
 ) -> wf.Node:
     """Return the schedule or webhook trigger that the service names.
 
     A schedule run must come from the scheduler task that the trigger's
     binding records, so a scheduler task that a person made cannot
-    start the workflow. A webhook run must come from the webhook that
-    the trigger names.
+    start the workflow. A webhook run must name, from its gateway rule,
+    the synced and enabled binding of the trigger on that webhook, so a
+    ``start_workflow`` rule that a person made cannot start it.
 
     Raises:
-        403: The scheduler task is not the binding's.
+        403: The scheduler task or the rule is not the binding's.
         409: The active version has no such trigger: the binding is out
             of date (ADR 0021, Triggers).
 
@@ -271,7 +277,7 @@ async def _service_trigger(
         (
             n
             for n in wf_graph.nodes
-            if n.id == node_id
+            if n.id == data.trigger
             and n.type == origin.kind
             and (
                 origin.kind != 'webhook'
@@ -285,15 +291,28 @@ async def _service_trigger(
             status_code=409,
             detail=f'The active version has no such {origin.kind} trigger',
         )
-    if origin.kind == 'schedule' and not any(
-        b['node_id'] == node.id and b['target_id'] == origin.id
-        for b in await store.bindings(workflow['id'])
-    ):
+    bindings = await store.bindings(workflow['id'])
+    if origin.kind == 'schedule':
+        allowed = any(
+            b['node_id'] == node.id and b['target_id'] == origin.id
+            for b in bindings
+        )
+    else:
+        allowed = any(
+            str(b['id']) == data.binding
+            and b['node_id'] == node.id
+            and b['type'] == 'webhook'
+            and b['enabled']
+            and b['sync_state'] == 'synced'
+            and b['target_id'] == origin.id
+            for b in bindings
+        )
+    if not allowed:
         raise fastapi.HTTPException(
             status_code=403,
             detail={
                 'error': 'origin_forbidden',
-                'message': f'Scheduled task {origin.id!r} is not the '
+                'message': f'The {origin.kind} {origin.id!r} is not the '
                 'binding of this trigger',
             },
         )
@@ -468,7 +487,7 @@ async def start_run(
         origin_id = auth.principal_name
     else:
         trigger = await _service_trigger(
-            store, workflow, wf_graph, data.trigger, origin
+            store, workflow, wf_graph, data, origin
         )
         payload, origin_id = data.payload, origin.id
         idempotency_key = delivery or idempotency_key

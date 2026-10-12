@@ -1526,7 +1526,9 @@ async def start_workflow(
     every call after the first returns the first run.
 
     A delivery without a verified signature or a valid id is skipped.
-    The run's trigger payload is the webhook body.
+    The run's trigger payload is the webhook body. The call names the
+    binding of the rule; imbi-api refuses a rule that is not the one
+    imbi-workflows wrote.
     """
     del credentials, external_identifier
     delivery = _signed_delivery(
@@ -1542,5 +1544,9 @@ async def start_workflow(
             action_config.workflow_slug,
             webhook_id,
             delivery_id,
-            {'trigger': action_config.trigger, 'payload': {'payload': body}},
+            {
+                'trigger': action_config.trigger,
+                'binding': action_config.binding,
+                'payload': {'payload': body},
+            },
         )

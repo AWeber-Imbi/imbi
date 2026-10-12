@@ -22,6 +22,13 @@ class Output(pydantic.BaseModel):
     payload: dict[str, typing.Any]
 
 
+def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
+    """imbi-workflows writes a gateway rule on the Webhook for this
+    trigger. The activator must be able to write that rule.
+    """
+    return {'webhook:update'}
+
+
 STEP = step_type.StepType(
     type='webhook',
     category='trigger',
@@ -31,4 +38,5 @@ STEP = step_type.StepType(
     output=Output,
     sample_output={'payload': {}},
     trigger=True,
+    required_permissions=required_permissions,
 )
