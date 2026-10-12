@@ -231,6 +231,22 @@ class ScheduleRunTestCase(TriggerTestCase):
         self.assertNotEqual(response.json()['id'], run['id'])
         self.assertEqual(await self._run_count(), 2)
 
+    async def test_schedule_run_needs_an_idempotency_key(self) -> None:
+        await self._sync('tick', 'task-1')
+        self._as('imbi-scheduler')
+        for key in (None, ''):
+            with self.subTest(key=key):
+                headers = {'X-Imbi-Scheduled-Task': 'task-1'}
+                if key is not None:
+                    headers['Idempotency-Key'] = key
+                response = await self.client.post(
+                    f'{self.url}/runs',
+                    json={'trigger': 'tick', 'payload': {}},
+                    headers=headers,
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(await self._run_count(), 0)
+
     async def test_only_the_binding_task_starts_runs(self) -> None:
         self._as('imbi-scheduler')
         # Not synced yet: the binding records no task.

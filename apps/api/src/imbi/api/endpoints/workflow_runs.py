@@ -476,8 +476,9 @@ async def start_run(
         404: No such workflow.
         409: The workflow is not active, or its active version has no
             such schedule or webhook trigger.
-        422: No such manual trigger, the inputs do not match it, or
-            ``concurrency_key_missing``.
+        422: No such manual trigger, the inputs do not match it,
+            ``concurrency_key_missing``, or a schedule run without an
+            ``Idempotency-Key``.
 
     """
     origin = agent_tasks.task_origin(auth, scheduled_task, webhook, delivery)
@@ -501,6 +502,12 @@ async def start_run(
         )
         payload, origin_id = data.payload, origin.id
         idempotency_key = delivery or idempotency_key
+        if not idempotency_key:
+            # The scheduler sends its run id, the same on every retry of
+            # a firing; without it a retry would start a second run.
+            raise fastapi.HTTPException(
+                status_code=422, detail='Idempotency-Key is required'
+            )
     try:
         key = validation.concurrency_key(
             settings, str(workflow['id']), payload
