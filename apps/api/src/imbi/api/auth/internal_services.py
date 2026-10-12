@@ -6,7 +6,8 @@ credential of its own is the only identity a system task can run as --
 and ``imbi-gateway`` calls back into imbi-api with a bearer token to
 patch projects and record releases. Neither is created by hand any more:
 ``imbi-api setup`` seeds both, and ``setup-service-accounts`` brings an
-existing install up to date.
+existing install up to date. ``imbi-workflows`` calls imbi-api as its
+own account for the deploy and rollback steps of a workflow (ADR 0021).
 
 imbi-assistant, imbi-mcp, and imbi-slackbot deliberately have no entry
 here. Each forwards the *caller's* token to imbi-api rather than acting
@@ -80,6 +81,15 @@ INTERNAL_SERVICES: tuple[InternalService, ...] = (
         credential='api_key',
         client_id_var=None,
         secret_var='IMBI_GATEWAY_API_TOKEN',
+    ),
+    InternalService(
+        slug='imbi-workflows',
+        display_name='Imbi Workflows',
+        description='Runs the side effects of workflow steps (ADR 0021)',
+        role_slug='imbi-workflows',
+        credential='client_credential',
+        client_id_var='IMBI_WORKFLOWS_SA_CLIENT_ID',
+        secret_var='IMBI_WORKFLOWS_SA_CLIENT_SECRET',
     ),
 )
 

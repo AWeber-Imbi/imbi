@@ -34,5 +34,7 @@ STEP = step_type.StepType(
     output=deploy.Output,
     sample_output={'deployment_id': 'sample', 'status': 'success'},
     side_effect=True,
+    timeout_seconds=3600,
+    retries=2,
     required_permissions=deploy.required_permissions,
 )

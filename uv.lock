@@ -27,6 +27,7 @@ members = [
     "imbi-plugin-sonarqube",
     "imbi-scheduler",
     "imbi-slackbot",
+    "imbi-workflows",
 ]
 
 [[package]]
@@ -1237,6 +1238,7 @@ dependencies = [
     { name = "imbi-plugin-sonarqube" },
     { name = "imbi-scheduler" },
     { name = "imbi-slackbot" },
+    { name = "imbi-workflows" },
 ]
 
 [package.dev-dependencies]
@@ -1287,6 +1289,7 @@ requires-dist = [
     { name = "imbi-plugin-sonarqube", editable = "plugins/sonarqube" },
     { name = "imbi-scheduler", editable = "apps/scheduler" },
     { name = "imbi-slackbot", editable = "apps/slackbot" },
+    { name = "imbi-workflows", editable = "apps/workflows" },
 ]
 
 [package.metadata.requires-dev]
@@ -1753,6 +1756,27 @@ requires-dist = [
     { name = "pydantic", specifier = "~=2.12" },
     { name = "sentry-sdk", specifier = ">=2.48.0" },
     { name = "slack-bolt", specifier = ">=1.21" },
+]
+
+[[package]]
+name = "imbi-workflows"
+version = "2.37.0"
+source = { editable = "apps/workflows" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "imbi-common", extra = ["databases", "server"] },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.135.1,<0.137" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "imbi-common", extras = ["databases", "server"], editable = "libraries/common" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
+    { name = "pydantic", specifier = "~=2.12" },
 ]
 
 [[package]]

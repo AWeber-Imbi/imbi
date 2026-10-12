@@ -70,6 +70,22 @@ require_scheduler_vars() {
     require_var IMBI_INTERNAL_API_URL "In-cluster origin of imbi-api (e.g. http://imbi-api:8000)"
 }
 
+require_workflows_vars() {
+    # Postgres holds the runs; the graph is read for permissions, models,
+    # and email recipients.
+    require_common_vars
+    require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
+    require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key (decrypts AI provider credentials)"
+    # Deploy and rollback steps call imbi-api as this service account
+    # (ADR 0021). Without it every such step fails.
+    require_var IMBI_WORKFLOWS_SA_CLIENT_ID "Client id of the workflow engine's service account"
+    require_var IMBI_WORKFLOWS_SA_CLIENT_SECRET "Client secret of the workflow engine's service account"
+    # Same reasons as for the scheduler: the route prefix comes from
+    # IMBI_API_URL, and there is no imbi-api on localhost in this mode.
+    require_var IMBI_API_URL "imbi-api's public URL, whose path is its route prefix"
+    require_var IMBI_INTERNAL_API_URL "In-cluster origin of imbi-api (e.g. http://imbi-api:8000)"
+}
+
 check_errors() {
     if [ -n "$errors" ]; then
         echo "ERROR: Missing required environment variables for $1:" >&2
@@ -130,6 +146,9 @@ case "$IMBI_SERVICE" in
     scheduler)
         require_scheduler_vars
         ;;
+    workflows)
+        require_workflows_vars
+        ;;
     slackbot)
         require_slackbot_vars
         ;;
@@ -141,7 +160,7 @@ case "$IMBI_SERVICE" in
         ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot, ui" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot, ui, workflows" >&2
         exit 1
         ;;
 esac
@@ -241,6 +260,11 @@ start_scheduler() {
     imbi-scheduler serve --host 0.0.0.0 --port 8005 &
 }
 
+start_workflows() {
+    echo "Starting imbi-workflows on :8006..."
+    imbi-workflows serve --host 0.0.0.0 --port 8006 &
+}
+
 start_caddy() {
     echo "Starting caddy reverse proxy on :8080..."
     caddy run --config /etc/caddy/Caddyfile &
@@ -260,6 +284,7 @@ random_token() {
 # them per boot is cheaper than asking an operator to invent them.
 provision_internal_credentials() {
     minted_scheduler=0
+    minted_workflows=0
     minted_gateway=0
     # Both halves or neither. Minting on an empty client id alone would
     # overwrite a secret the operator did set, and `setup-service-accounts`
@@ -276,6 +301,18 @@ provision_internal_credentials() {
     elif [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] || \
          [ -z "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
         echo "ERROR: set IMBI_SCHEDULER_SA_CLIENT_ID and IMBI_SCHEDULER_SA_CLIENT_SECRET together, or neither" >&2
+        return 1
+    fi
+    # The same, for the workflow engine's client credential.
+    if [ -z "${IMBI_WORKFLOWS_SA_CLIENT_ID:-}" ] && \
+       [ -z "${IMBI_WORKFLOWS_SA_CLIENT_SECRET:-}" ]; then
+        export IMBI_WORKFLOWS_SA_CLIENT_ID="cc_imbi_workflows_all_mode"
+        IMBI_WORKFLOWS_SA_CLIENT_SECRET="$(random_token)"
+        export IMBI_WORKFLOWS_SA_CLIENT_SECRET
+        minted_workflows=1
+    elif [ -z "${IMBI_WORKFLOWS_SA_CLIENT_ID:-}" ] || \
+         [ -z "${IMBI_WORKFLOWS_SA_CLIENT_SECRET:-}" ]; then
+        echo "ERROR: set IMBI_WORKFLOWS_SA_CLIENT_ID and IMBI_WORKFLOWS_SA_CLIENT_SECRET together, or neither" >&2
         return 1
     fi
     if [ -z "${IMBI_GATEWAY_API_TOKEN:-}" ]; then
@@ -297,6 +334,9 @@ provision_internal_credentials() {
     # heard of: "not configured" names the real problem, a 401 does not.
     if [ "$minted_scheduler" = 1 ]; then
         unset IMBI_SCHEDULER_SA_CLIENT_ID IMBI_SCHEDULER_SA_CLIENT_SECRET
+    fi
+    if [ "$minted_workflows" = 1 ]; then
+        unset IMBI_WORKFLOWS_SA_CLIENT_ID IMBI_WORKFLOWS_SA_CLIENT_SECRET
     fi
     if [ "$minted_gateway" = 1 ]; then
         unset IMBI_GATEWAY_API_TOKEN
@@ -346,8 +386,9 @@ case "$IMBI_SERVICE" in
         # claiming the scheduler's credential failed would be wrong.
         if [ "$scheduler_configured" = 1 ]; then
             start_scheduler
+            start_workflows
         else
-            echo "imbi-scheduler disabled (internal service account seeding failed; see the error above)"
+            echo "imbi-scheduler and imbi-workflows disabled (internal service account seeding failed; see the error above)"
         fi
         start_caddy
         ;;
@@ -366,6 +407,9 @@ case "$IMBI_SERVICE" in
     scheduler)
         exec imbi-scheduler serve --host 0.0.0.0 --port 8005
         ;;
+    workflows)
+        exec imbi-workflows serve --host 0.0.0.0 --port 8006
+        ;;
     slackbot)
         exec imbi-slackbot serve --host 0.0.0.0 --port 8004
         ;;
@@ -374,7 +418,7 @@ case "$IMBI_SERVICE" in
         ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot, ui" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot, ui, workflows" >&2
         exit 1
         ;;
 esac

@@ -24,4 +24,5 @@ STEP = step_type.StepType(
     params=Params,
     output=Output,
     sample_output={'waited_seconds': 600},
+    timeout_seconds=None,
 )

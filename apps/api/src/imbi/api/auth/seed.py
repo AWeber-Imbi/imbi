@@ -926,6 +926,21 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         ],
         False,
     ),
+    (
+        'imbi-workflows',
+        'Imbi Workflows',
+        'Service role for imbi-workflows: deploy and roll back the '
+        'projects that workflow steps name (ADR 0021)',
+        900,
+        [
+            'project:read',
+            'project:deployment:read',
+            'project:deployment:write',
+            # Not `integration:act-as-service`: an operator grants it,
+            # as ADR 0017 requires for every autonomous principal.
+        ],
+        False,
+    ),
 ]
 
 # Invariant: exactly one seeded role is the auto-assignment target so

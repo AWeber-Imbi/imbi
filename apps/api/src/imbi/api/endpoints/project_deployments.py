@@ -55,6 +55,7 @@ from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
+from imbi.api.workflows import run_store
 from imbi.common import clickhouse, graph, iggy, versioning
 from imbi.common import deployments as deployment_nodes
 from imbi.common import environments as environment_chains
@@ -2695,6 +2696,9 @@ async def trigger_deployment(
         ),
     ],
     source: str | None = None,
+    idempotency_key: typing.Annotated[
+        str | None, fastapi.Header(alias='Idempotency-Key', max_length=256)
+    ] = None,
 ) -> DeploymentTriggerResponse:
     """Trigger a deploy / redeploy / promote.
 
@@ -2707,7 +2711,47 @@ async def trigger_deployment(
     release with the supplied notes on the remote, dispatches the
     workflow against the tag for ``to_environment``, upserts the
     matching ``Release`` node, and records the deployment event.
+
+    With an ``Idempotency-Key`` header, a repeat of the key by the same
+    principal returns the first response and does not act again
+    (ADR 0021). A repeat while the first call has no result gets
+    ``409 outcome_unknown``: the deployment may or may not have started.
     """
+    trigger = functools.partial(
+        _trigger_deployment,
+        db,
+        org_slug,
+        project_id,
+        auth,
+        body,
+        background=background,
+        source=source,
+        valkey_client=valkey_client,
+    )
+    if idempotency_key is None:
+        return await trigger()
+
+    async def call() -> dict[str, typing.Any]:
+        return (await trigger()).model_dump(mode='json')
+
+    return DeploymentTriggerResponse.model_validate(
+        await run_store().once(
+            f'{auth.principal_name}:{idempotency_key}', call
+        )
+    )
+
+
+async def _trigger_deployment(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    body: DeploymentRequestBody,
+    *,
+    background: fastapi.BackgroundTasks,
+    source: str | None,
+    valkey_client: typing.Any,
+) -> DeploymentTriggerResponse:
     if body.action == 'promote':
         return await _handle_promote(
             db,

@@ -1,0 +1,144 @@
+# Relational schema for workflow runs (ADR 0021).
+#
+# imbi-api applies it on startup. imbi-api creates and cancels runs;
+# imbi-workflows executes them. Rows refer to graph nodes by id and to
+# people by email, as in the `workflows` schema.
+#
+# The schema name is fixed: `workflow_runtime`.
+
+# One row per run. The row stays after archive (W4).
+#
+# `last_seq` is the sequence number of the newest event. An event write
+# increments it in the same transaction, which locks the row, so the
+# per-run sequence has no gaps.
+#
+# `due_at` is when the engine can claim the run next: a wait, a retry
+# backoff, or a deployment poll moves it forward.
+[[tables]]
+name = "runs"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+workflow_id = "UUID NOT NULL"
+version = "INTEGER NOT NULL"
+# The trigger node that started the run.
+trigger_node_id = "TEXT NOT NULL"
+origin_kind = "TEXT NOT NULL"
+# The user email for `human`, the scheduler task id for `schedule`, the
+# webhook id for `webhook`.
+origin_id = "TEXT NOT NULL"
+origin = "JSONB NOT NULL DEFAULT '{}'"
+idempotency_key = "TEXT"
+payload = "JSONB NOT NULL DEFAULT '{}'"
+concurrency_key = "TEXT"
+# The person who activated the pinned version. The engine checks their
+# permissions again when the run starts.
+activated_by = "TEXT NOT NULL"
+status = "TEXT NOT NULL DEFAULT 'queued'"
+error = "TEXT"
+cancel_requested = "BOOLEAN NOT NULL DEFAULT FALSE"
+last_seq = "BIGINT NOT NULL DEFAULT 0"
+due_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+started_at = "TIMESTAMP WITH TIME ZONE"
+closed_at = "TIMESTAMP WITH TIME ZONE"
+log_archived_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+# A repeat with the same key returns the first run. NULL keys are
+# distinct, so runs without a key do not collide.
+[[tables.indexes]]
+name = "runs_origin_idempotency_key"
+columns = ["organization_id", "origin_kind", "origin_id", "idempotency_key"]
+unique = true
+
+# The run list: newest first per workflow.
+[[tables.indexes]]
+name = "runs_workflow_created_idx"
+columns = ["workflow_id", "created_at"]
+
+# The claim query: open runs by due time.
+[[tables.indexes]]
+name = "runs_status_due_idx"
+columns = ["status", "due_at"]
+
+# One row per node per run.
+#
+# `call_started_at` is set before the engine calls a step and cleared
+# when the result is recorded. A running step that still has it was
+# interrupted: its outcome is unknown.
+[[tables]]
+name = "step_runs"
+
+[tables.columns]
+run_id = "UUID NOT NULL REFERENCES workflow_runtime.runs (id) ON DELETE CASCADE"
+node_id = "TEXT NOT NULL"
+node_key = "TEXT NOT NULL"
+node_type = "TEXT NOT NULL"
+title = "TEXT NOT NULL"
+status = "TEXT NOT NULL DEFAULT 'pending'"
+attempt = "INTEGER NOT NULL DEFAULT 0"
+input = "JSONB"
+output = "JSONB"
+error = "TEXT"
+port = "INTEGER"
+# Progress of a step that spans claims: a wait, a deployment poll.
+state = "JSONB NOT NULL DEFAULT '{}'"
+call_started_at = "TIMESTAMP WITH TIME ZONE"
+started_at = "TIMESTAMP WITH TIME ZONE"
+finished_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["run_id", "node_id"]
+
+# The event buffer of runs that are not archived (W4 publishes them).
+[[tables]]
+name = "run_events"
+
+[tables.columns]
+run_id = "UUID NOT NULL REFERENCES workflow_runtime.runs (id) ON DELETE CASCADE"
+seq = "BIGINT NOT NULL"
+event_id = "UUID NOT NULL"
+type = "TEXT NOT NULL"
+at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+payload = "JSONB NOT NULL DEFAULT '{}'"
+
+[tables.primary_key]
+columns = ["run_id", "seq"]
+
+[[tables.indexes]]
+name = "run_events_event_id_key"
+columns = ["event_id"]
+unique = true
+
+# One row per claimed run. A lease that expired is claimable again.
+[[tables]]
+name = "leases"
+
+[tables.columns]
+run_id = "UUID NOT NULL REFERENCES workflow_runtime.runs (id) ON DELETE CASCADE"
+worker_id = "TEXT NOT NULL"
+expires_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+
+[tables.primary_key]
+columns = ["run_id"]
+
+# Side effects that a caller started with an idempotency key, so a
+# repeat returns the first result instead of acting again. The deploy
+# endpoint writes them for the `Idempotency-Key` header. A row with no
+# `response` is a call that started and did not finish: its outcome is
+# unknown.
+[[tables]]
+name = "side_effects"
+
+[tables.columns]
+# The principal name and the caller's key.
+key = "TEXT NOT NULL"
+response = "JSONB"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["key"]

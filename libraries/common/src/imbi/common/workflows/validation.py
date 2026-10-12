@@ -151,6 +151,27 @@ def _check_concurrency(
                 )
 
 
+def concurrency_key(
+    settings: graph.Settings, workflow_id: str, payload: dict[str, typing.Any]
+) -> str | None:
+    """Return the concurrency key of a run (ADR 0021, Concurrency).
+
+    Raises:
+        ValueError: ``one_per_key`` names a trigger value that the
+            payload does not have (``concurrency_key_missing``).
+
+    """
+    if settings.concurrency_mode == 'unlimited':
+        return None
+    if settings.concurrency_mode == 'one_at_a_time':
+        return workflow_id
+    match = _CONCURRENCY_KEY.match(settings.concurrency_key or '')
+    value = payload.get(match.group(1)) if match else None
+    if value is None or value == '':
+        raise ValueError('concurrency_key_missing')
+    return str(value)
+
+
 def _exclusive(a: frozenset[_Branch], b: frozenset[_Branch]) -> bool:
     """Return whether two sets of required branches cannot both hold."""
     return any(

@@ -111,6 +111,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         overrides[permissions.get_current_user] = current_user
         overrides[graph._inject_graph] = lambda: self.graph
         overrides[workflows._inject_store] = lambda: self.store
+        overrides[workflows.run_store] = lambda: workflows.RunStore(self.pool)
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.test_app),
             base_url='http://test',
