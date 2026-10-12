@@ -47,7 +47,7 @@ DEPLOY_GRAPH = {
             'ship',
             'deploy',
             {
-                'project_id': 'p1',
+                'project_id': '{{ trigger.project }}',
                 'environment': 'staging',
                 'version': '{{ trigger.version }}',
             },
@@ -64,6 +64,18 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.org = f'wf-{suffix}'
         self.team = f'team-{suffix}'
         self.email = f'dev-{suffix}@example.com'
+        # Resources in the org, and the same kinds in a foreign org.
+        self.team2 = f'team2-{suffix}'
+        self.project = f'proj-{suffix}'
+        self.webhook = f'hook-{suffix}'
+        self.member = f'member-{suffix}'
+        self.foreign = {
+            'org': f'wf-foreign-{suffix}',
+            'team': f'fteam-{suffix}',
+            'project': f'fproj-{suffix}',
+            'webhook': f'fhook-{suffix}',
+            'user': f'fuser-{suffix}',
+        }
         self.base = f'/organizations/{self.org}/workflows'
 
         await graph.initialize()
@@ -83,14 +95,40 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             CREATE (u:User {{id: {email}, email: {email},
                              display_name: 'Dev', is_active: true}})
             CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (t2:Team {{id: {team2}, slug: {team2}, name: 'Dev'}})
+            CREATE (t2)-[:BELONGS_TO]->(o)
+            CREATE (p:Project {{id: {project}, slug: {project}, name: 'P'}})
+            CREATE (p)-[:OWNED_BY]->(t)
+            CREATE (w:Webhook {{id: {webhook}, name: 'W'}})
+            CREATE (w)-[:BELONGS_TO]->(o)
+            CREATE (m:User {{id: {member}, email: {member}}})
+            CREATE (m)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (fo:Organization {{id: {f_org}, slug: {f_org}}})
+            CREATE (ft:Team {{id: {f_team}, slug: {f_team}}})
+            CREATE (ft)-[:BELONGS_TO]->(fo)
+            CREATE (fp:Project {{id: {f_project}, slug: {f_project}}})
+            CREATE (fp)-[:OWNED_BY]->(ft)
+            CREATE (fw:Webhook {{id: {f_webhook}}})
+            CREATE (fw)-[:BELONGS_TO]->(fo)
+            CREATE (fu:User {{id: {f_user}, email: {f_user}}})
+            CREATE (fu)-[:MEMBER_OF {{role: 'developer'}}]->(fo)
             RETURN o.id AS id
             """,
-            {'org': self.org, 'team': self.team, 'email': self.email},
+            {
+                'org': self.org,
+                'team': self.team,
+                'email': self.email,
+                'team2': self.team2,
+                'project': self.project,
+                'webhook': self.webhook,
+                'member': self.member,
+            }
+            | {f'f_{k}': v for k, v in self.foreign.items()},
             ['id'],
         )
 
         self.permissions = set(ALL_PERMISSIONS)
-        user = models.User(
+        self.user = user = models.User(
             id=self.email,
             email=self.email,
             display_name='Dev',
@@ -124,7 +162,18 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             DETACH DELETE n
             RETURN 1 AS ok
             """,
-            {'ids': [self.org, self.team, self.email]},
+            {
+                'ids': [
+                    self.org,
+                    self.team,
+                    self.email,
+                    self.team2,
+                    self.project,
+                    self.webhook,
+                    self.member,
+                    *self.foreign.values(),
+                ]
+            },
             ['ok'],
         )
         async with self.pool.connection() as conn:
@@ -302,3 +351,116 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(types['deploy']['ports'], ['Succeeded', 'Failed'])
         self.assertIsNone(types['model_decision']['ports'])
         self.assertTrue(types['manual']['trigger'])
+
+    async def _resource_issues(
+        self, step: str, params: dict[str, typing.Any]
+    ) -> list[str]:
+        response = await self.client.post(
+            f'{self.base}/anything/validate',
+            json={
+                'graph': {
+                    'nodes': [
+                        _node('start', 'manual'),
+                        _node('x', step, params),
+                    ],
+                    'edges': [{'source': 'start', 'port': 0, 'target': 'x'}],
+                }
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return [
+            i['message']
+            for i in response.json()['issues']
+            if i['code'] == 'resource_not_in_organization'
+        ]
+
+    async def test_project_must_be_in_org(self) -> None:
+        params = {'environment': 'staging', 'version': '1'}
+        for project, expected in (
+            (self.project, 0),
+            ('{{ trigger.project }}', 0),
+            (self.foreign['project'], 1),
+            ('missing', 1),
+        ):
+            for step in ('deploy', 'rollback'):
+                issues = await self._resource_issues(
+                    step, {**params, 'project_id': project}
+                )
+                self.assertEqual(len(issues), expected, (step, project))
+
+    async def test_webhook_must_be_in_org(self) -> None:
+        for webhook, expected in (
+            (self.webhook, 0),
+            (self.foreign['webhook'], 1),
+        ):
+            issues = await self._resource_issues(
+                'webhook', {'webhook_id': webhook}
+            )
+            self.assertEqual(len(issues), expected, webhook)
+
+    async def test_email_team_must_be_in_org(self) -> None:
+        issues = await self._resource_issues(
+            'email',
+            {
+                'subject': 's',
+                'body': 'b',
+                'to': [
+                    {'kind': 'team', 'id': self.team2},
+                    {'kind': 'team', 'id': self.foreign['team']},
+                ],
+            },
+        )
+        self.assertEqual(len(issues), 1)
+        self.assertIn(self.foreign['team'], issues[0])
+
+    async def test_email_user_must_be_org_member(self) -> None:
+        issues = await self._resource_issues(
+            'email',
+            {
+                'subject': 's',
+                'body': 'b',
+                'to': [
+                    {'kind': 'user', 'id': self.member},
+                    {'kind': 'user', 'id': self.foreign['user']},
+                    {'kind': 'user', 'id': '{{ trigger.user }}'},
+                ],
+            },
+        )
+        self.assertEqual(len(issues), 1)
+        self.assertIn(self.foreign['user'], issues[0])
+
+    async def test_owner_team_change_needs_member_or_admin(self) -> None:
+        await self._create()
+        body = {'name': 'Deploy guard', 'owner_team_slug': self.team2}
+        url = f'{self.base}/deploy-guard'
+        response = await self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'owner_team_forbidden'
+        )
+
+        # A save that keeps the owner team needs no membership.
+        response = await self.client.put(
+            url, json=body | {'owner_team_slug': self.team}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+        await self.graph.execute(
+            """
+            MATCH (u:User {{id: {email}}}), (t:Team {{id: {team}}})
+            CREATE (u)-[:MEMBER_OF]->(t)
+            RETURN t.id AS id
+            """,
+            {'email': self.email, 'team': self.team},
+            ['id'],
+        )
+        response = await self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['owner_team_slug'], self.team2)
+
+        # An admin can move it back without being a member of team2.
+        self.user.is_admin = True
+        response = await self.client.put(
+            url, json=body | {'owner_team_slug': self.team}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
