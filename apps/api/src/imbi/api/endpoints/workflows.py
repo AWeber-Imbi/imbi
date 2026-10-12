@@ -16,6 +16,7 @@ workflow yet.
 
 import datetime
 import typing
+from collections import abc
 
 import fastapi
 import pydantic
@@ -156,6 +157,106 @@ async def _team_slugs(
     }
 
 
+#: For each kind of resource that a step names by id: the ids in
+#: ``ids`` that are in the organization.
+_ORG_RESOURCE_QUERIES: dict[str, typing.LiteralString] = {
+    'project': """
+MATCH (r:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
+      (:Organization {{id: {org}}})
+WHERE r.id IN {ids}
+RETURN DISTINCT r.id AS id
+""",
+    'webhook': """
+MATCH (r:Webhook)-[:BELONGS_TO]->(:Organization {{id: {org}}})
+WHERE r.id IN {ids}
+RETURN r.id AS id
+""",
+    'team': """
+MATCH (r:Team)-[:BELONGS_TO]->(:Organization {{id: {org}}})
+WHERE r.id IN {ids}
+RETURN r.id AS id
+""",
+    'user': """
+MATCH (r:User)-[:MEMBER_OF]->(:Organization {{id: {org}}})
+WHERE r.id IN {ids}
+RETURN r.id AS id
+""",
+}
+
+_TEAM_MEMBER_QUERY: typing.LiteralString = """
+MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(t:Team {{id: {team}}})
+RETURN t.id AS id
+"""
+
+
+def _resource_ids(
+    wf_graph: wf.Graph,
+) -> dict[str, list[tuple[str, str]]]:
+    """Return the literal resource ids in step params, by kind.
+
+    Each entry is (node id, resource id). A value with a ``{{ }}``
+    reference is left out: the engine checks it when the step runs.
+    """
+    found: dict[str, list[tuple[str, str]]] = {}
+
+    def add(kind: str, node_id: str, value: typing.Any) -> None:
+        if isinstance(value, str) and value and '{{' not in value:
+            found.setdefault(kind, []).append((node_id, value))
+
+    for node in wf_graph.nodes:
+        params = node.params
+        if node.type in ('deploy', 'rollback'):
+            add('project', node.id, params.get('project_id'))
+        elif node.type == 'webhook':
+            add('webhook', node.id, params.get('webhook_id'))
+        elif node.type == 'email':
+            raw: typing.Any = params.get('to')
+            if not isinstance(raw, list):
+                continue
+            for recipient in typing.cast(abc.Iterable[typing.Any], raw):
+                if isinstance(recipient, dict):
+                    item = typing.cast(dict[str, typing.Any], recipient)
+                    if item.get('kind') in ('user', 'team'):
+                        add(str(item['kind']), node.id, item.get('id'))
+    return found
+
+
+async def _validate(
+    db: graph.Graph,
+    org_id: str,
+    wf_graph: wf.Graph,
+    settings: wf.Settings,
+) -> wf.ValidationResult:
+    """Return the issues of a graph, with the checks that need the org.
+
+    A literal id in step params must name a resource in the org: a
+    project, a gateway Webhook, a team, or a user who is a member. AI
+    models are a global catalog, so ``model_id`` is not checked here.
+    One graph query runs for each kind of resource.
+    """
+    result = validation.validate(wf_graph, settings)
+    if any(i.code in validation.LIMIT_CODES for i in result.issues):
+        return result
+    for kind, refs in _resource_ids(wf_graph).items():
+        records = await db.execute(
+            _ORG_RESOURCE_QUERIES[kind],
+            {'org': org_id, 'ids': sorted({value for _, value in refs})},
+            ['id'],
+        )
+        known = {str(graph.parse_agtype(r['id'])) for r in records}
+        for node_id, value in refs:
+            if value not in known:
+                result.issues.append(
+                    wf.ValidationIssue(
+                        severity='error',
+                        code='resource_not_in_organization',
+                        message=f'No {kind} {value!r} in the organization',
+                        node_id=node_id,
+                    )
+                )
+    return result
+
+
 def _version(row: workflows.Row) -> dict[str, typing.Any]:
     return {
         'version': row['version'],
@@ -221,7 +322,7 @@ async def _definition(
         422: The graph is too large, or the team is not in the org.
 
     """
-    result = validation.validate(data.graph, data.settings)
+    result = await _validate(db, org_id, data.graph, data.settings)
     limits = [i for i in result.issues if i.code in validation.LIMIT_CODES]
     if limits:
         raise fastapi.HTTPException(
@@ -335,15 +436,54 @@ async def save_workflow(
 
     The version is stored with its validation issues.
 
+    Only an admin or a member of the current owner team can change the
+    owner team, because the owner team controls the runs.
+
     Raises:
+        403: ``owner_team_forbidden``: the caller changes the owner team
+            and is not an admin or a member of the current owner team.
         404: No such workflow.
+        409: ``conflict``: the workflow changed owner team or was
+            deleted between the check and the save.
         422: The graph is too large, or the team is not in the org.
 
     """
-    definition = await _definition(db, org_id, data, auth)
-    if not await store.save(org_id, slug, definition):
+    current = await store.get(org_id, slug)
+    if current is None:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
+        )
+    definition = await _definition(db, org_id, data, auth)
+    if (
+        definition.owner_team_id != current['owner_team_id']
+        and not auth.is_admin
+        and not (
+            auth.user is not None
+            and await db.execute(
+                _TEAM_MEMBER_QUERY,
+                {'email': auth.user.email, 'team': current['owner_team_id']},
+                ['id'],
+            )
+        )
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'owner_team_forbidden',
+                'message': 'Only an admin or a member of the current owner '
+                'team can change the owner team',
+            },
+        )
+    if not await store.save(
+        org_id, slug, definition, current['owner_team_id']
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'conflict',
+                'message': f'Workflow {slug!r} changed or was deleted '
+                'during the save; read it again and retry',
+            },
         )
     return await _get(store, db, org_id, slug)
 
@@ -410,11 +550,13 @@ async def get_workflow_version(
 
 @workflows_router.post('/{slug}/validate', response_model=wf.ValidationResult)
 async def validate_workflow(
+    org_id: OrgId,
     data: WorkflowValidate,
+    db: graph.Pool,
     _: ReadAuth,
 ) -> wf.ValidationResult:
     """Return the issues of a graph. Nothing is written."""
-    return validation.validate(data.graph, data.settings)
+    return await _validate(db, org_id, data.graph, data.settings)
 
 
 @workflows_router.post('/{slug}/activate', response_model=Workflow)
@@ -447,8 +589,8 @@ async def activate_workflow(
             detail=f'Workflow {slug!r} has no version {number}',
         )
     wf_graph = wf.Graph.model_validate(row['graph'])
-    result = validation.validate(
-        wf_graph, wf.Settings.model_validate(row['settings'])
+    result = await _validate(
+        db, org_id, wf_graph, wf.Settings.model_validate(row['settings'])
     )
     if result.issues:
         raise fastapi.HTTPException(
