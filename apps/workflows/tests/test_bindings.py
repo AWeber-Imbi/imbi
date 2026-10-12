@@ -21,9 +21,7 @@ class FakeScheduler:
 
     def __init__(self) -> None:
         self.tasks: dict[str, dict[str, typing.Any]] = {}
-        #: ``(method, slug)`` of each task call. The reconciler passes
-        #: over every binding in the shared test database, so tests
-        #: look only at their own slug.
+        #: ``(method, slug)`` of each task call.
         self.calls: list[tuple[str, str]] = []
         #: The status to answer every task call with, for a failure.
         self.fail: int | None = None
@@ -130,6 +128,7 @@ class ReconcilerTestCase(unittest.IsolatedAsyncioTestCase):
                 executors.Api(self.http, config), self.graph, config
             ),
             config,
+            self.org,
         )
 
     async def _cleanup(self) -> None:

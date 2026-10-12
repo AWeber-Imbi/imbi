@@ -75,11 +75,16 @@ class Reconciler:
         http: httpx.AsyncClient,
         steps: executors.Executors,
         config: settings.Workflows,
+        organization_id: str | None = None,
     ) -> None:
         self.pool = pool
         self.http = http
         self.steps = steps
         self.config = config
+        #: Sync only the bindings of this organization. ``None``, as in
+        #: production, syncs every binding. Tests that share one
+        #: database with other engines set it, as for ``store.Store``.
+        self.organization_id = organization_id
         self._wake = asyncio.Event()
 
     def notify(self) -> None:
@@ -118,7 +123,9 @@ class Reconciler:
                 'SELECT b.*, w.slug AS workflow_slug'
                 ' FROM workflows.trigger_bindings AS b'
                 ' LEFT JOIN workflows.workflows AS w ON w.id = b.workflow_id'
-                ' ORDER BY b.updated_at'
+                ' WHERE %(org)s::text IS NULL OR b.organization_id = %(org)s'
+                ' ORDER BY b.updated_at',
+                {'org': self.organization_id},
             )
             bindings = await cur.fetchall()
         for binding in bindings:
