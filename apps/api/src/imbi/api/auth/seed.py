@@ -3,6 +3,8 @@
 import logging
 import typing
 
+import nanoid
+
 from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
@@ -1099,11 +1101,13 @@ async def seed_default_organization(
         raw = graph.parse_agtype(check_records[0].get('is_new'))
         is_new = bool(raw)
 
-    # Merge the organization node
+    # Merge the organization node. coalesce() gives an id to an
+    # organization that an earlier setup created without one.
     description = f'{name} organization'
     merge_query: typing.LiteralString = (
         'MERGE (o:Organization {{slug: {slug}}}) '
-        'SET o.name = {name}, '
+        'SET o.id = coalesce(o.id, {id}), '
+        'o.name = {name}, '
         'o.description = {description} '
         'RETURN o'
     )
@@ -1111,6 +1115,7 @@ async def seed_default_organization(
         merge_query,
         {
             'slug': slug,
+            'id': nanoid.generate(),
             'name': name,
             'description': description,
         },
