@@ -603,3 +603,64 @@ PARTITION BY toYYYYMM(recorded_at)
 ORDER BY (organization_id, task_id, report_id);
 """
 enabled = true
+
+# The permanent log of workflow runs (ADR 0021). One row per run event.
+# Postgres (`workflow_runtime.run_events`) holds the same rows until the
+# archive sweep confirms every `seq` of a run is here, then deletes them;
+# after that run detail reads this table. A step event carries a snapshot
+# of the step, so history never needs the workflow version.
+#
+# `seq` is unique per run, so a republish by the sweep collapses into one
+# row. Every row of a run shares `run_created_at`, so a republish lands in
+# the same partition, and a later TTL can expire a run on it as a unit.
+#
+# No TTL, like `agent_task_events`. If a retention decision is made, the
+# TTL must be on `run_created_at`, with no DELETE WHERE.
+[workflow_run_events]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.workflow_run_events {on_cluster}(
+  organization_id  LowCardinality(String),
+  workflow_id      String,
+  run_id           String,
+  run_created_at   DateTime64(6, 'UTC'),
+  seq              UInt64,
+  event_id         String,
+  type             LowCardinality(String),
+  at               DateTime64(6, 'UTC'),
+  payload          String
+) ENGINE = {replicated}ReplacingMergeTree()
+PARTITION BY toYYYYMM(run_created_at)
+ORDER BY (organization_id, run_id, seq);
+"""
+enabled = true
+
+# One summary row per workflow run state (ADR 0021), for the run counts
+# and the last outcome of the workflow list. A run writes a row when it
+# is created, when it starts, and when it closes. `_row_version` is the
+# run's `last_seq` at the write, so the terminal row is the latest.
+#
+# Read the latest row per run (`argMax` by `_row_version`, or FINAL): a
+# plain count() counts a run once per unmerged row. No TTL, as for
+# `workflow_run_events`, and for the same reason any later TTL goes on
+# `run_created_at`: a TTL on `closed_at`, which only the terminal row
+# has, would expire it and leave the `running` row as the survivor.
+[workflow_runs]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.workflow_runs {on_cluster}(
+  organization_id  LowCardinality(String),
+  workflow_id      String,
+  run_id           String,
+  version          UInt32,
+  origin_kind      LowCardinality(String),
+  origin_id        String,
+  status           LowCardinality(String),
+  error            String DEFAULT '',
+  run_created_at   DateTime64(6, 'UTC'),
+  started_at       Nullable(DateTime64(6, 'UTC')),
+  closed_at        Nullable(DateTime64(6, 'UTC')),
+  _row_version     UInt64
+) ENGINE = {replicated}ReplacingMergeTree(_row_version)
+PARTITION BY toYYYYMM(run_created_at)
+ORDER BY (organization_id, workflow_id, run_id);
+"""
+enabled = true

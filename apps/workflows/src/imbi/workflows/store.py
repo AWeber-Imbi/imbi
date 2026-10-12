@@ -17,7 +17,7 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
-from imbi.common.workflows import runtime
+from imbi.common.workflows import history, runtime
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -164,19 +164,25 @@ class Store:
     async def write(self, run_id: uuid.UUID) -> abc.AsyncGenerator[Conn]:
         """Open a transaction that holds the run's lease.
 
+        After the commit, the events that the transaction wrote go to
+        ClickHouse (ADR 0021, Run history).
+
         Raises:
             LeaseLost: This worker does not hold the lease any more.
 
         """
         async with self.pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
-                'SELECT 1 FROM workflow_runtime.leases'
-                ' WHERE run_id = %s AND worker_id = %s FOR UPDATE',
+                'SELECT r.last_seq FROM workflow_runtime.leases AS l'
+                ' JOIN workflow_runtime.runs AS r ON r.id = l.run_id'
+                ' WHERE l.run_id = %s AND l.worker_id = %s FOR UPDATE OF l',
                 (run_id, self.worker_id),
             )
-            if await cur.fetchone() is None:
+            row = await cur.fetchone()
+            if row is None:
                 raise LeaseLost(str(run_id))
             yield conn
+        await history.publish_since(self.pool, run_id, row[0])
 
 
 async def update(

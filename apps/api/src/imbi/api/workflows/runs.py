@@ -15,7 +15,7 @@ from psycopg import rows
 from psycopg.types import json as pg_json
 
 from imbi.api.workflows import store
-from imbi.common.workflows import runtime
+from imbi.common.workflows import history, runtime
 
 
 def side_effect_key(principal: str, action: str, idempotency_key: str) -> str:
@@ -128,7 +128,8 @@ class RunStore:
                 {'origin_kind': run.origin_kind, 'origin_id': run.origin_id},
             )
             await conn.execute(f'NOTIFY {runtime.NOTIFY_CHANNEL}')
-            return created, True
+        await history.publish_since(self._pool, created['id'], 0)
+        return created, True
 
     async def list_runs(
         self, workflow_id: uuid.UUID, limit: int
@@ -170,6 +171,90 @@ class RunStore:
                 return False
             await conn.execute(f'NOTIFY {runtime.NOTIFY_CHANNEL}')
             return True
+
+    async def attention(self, organization_id: str) -> list[store.Row]:
+        """Return the runs that an admin should look at, newest first.
+
+        ``failed``: a run failed or timed out in the last 7 days.
+        ``stuck``: an open run that no engine works on: its lease expired
+        and no worker took it again, or it is overdue by 5 minutes when
+        nothing (no other run of its concurrency key) holds it back.
+        """
+        return await self._all(
+            'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'
+            ' l.worker_id, l.expires_at AS lease_expires_at,'
+            " CASE WHEN r.status IN ('failed', 'timed_out')"
+            " THEN 'failed' ELSE 'stuck' END AS reason"
+            ' FROM workflow_runtime.runs AS r'
+            ' JOIN workflows.workflows AS w ON w.id = r.workflow_id'
+            ' LEFT JOIN workflow_runtime.leases AS l ON l.run_id = r.id'
+            ' WHERE r.organization_id = %s AND ('
+            "  (r.status IN ('failed', 'timed_out')"
+            "   AND r.closed_at > NOW() - INTERVAL '7 days')"
+            ' OR l.expires_at < NOW()'
+            " OR (r.due_at < NOW() - INTERVAL '5 minutes'"
+            "     AND (r.status = 'running'"
+            "          OR (r.status = 'queued'"
+            '              AND r.concurrency_key IS NULL))))'
+            ' ORDER BY COALESCE(r.closed_at, r.created_at) DESC LIMIT 100',
+            (organization_id,),
+        )
+
+    # --- Archive sweep (ADR 0021, Run history) ---------------------------
+
+    async def unarchived(
+        self, after: tuple[str, uuid.UUID] | None, limit: int
+    ) -> list[store.Row]:
+        """Return a page of the runs whose log is not archived.
+
+        The page is ordered by organization and id, and starts after the
+        ``(organization_id, id)`` that ended the page before.
+        """
+        return await self._all(
+            'SELECT * FROM workflow_runtime.runs'
+            ' WHERE log_archived_at IS NULL'
+            ' AND (organization_id, id) > (%s, %s)'
+            ' ORDER BY organization_id, id LIMIT %s',
+            (*(after or ('', uuid.UUID(int=0))), limit),
+        )
+
+    async def events_with_seqs(
+        self, run_id: uuid.UUID, seqs: list[int]
+    ) -> list[store.Row]:
+        """Return the events of a run with the given seqs, by seq."""
+        return await self._all(
+            'SELECT * FROM workflow_runtime.run_events'
+            ' WHERE run_id = %s AND seq = ANY(%s) ORDER BY seq',
+            (run_id, seqs),
+        )
+
+    async def archive(self, run_id: uuid.UUID, last_seq: int) -> bool:
+        """Delete the events and step rows of a closed run, and set
+        ``log_archived_at``. The ``runs`` row stays.
+
+        Do this only after ClickHouse has every seq up to ``last_seq``
+        and the terminal summary row. Return ``False`` and change nothing
+        when the run is open, is archived, or has events after
+        ``last_seq``.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                'UPDATE workflow_runtime.runs SET log_archived_at = NOW()'
+                ' WHERE id = %s AND status = ANY(%s)'
+                ' AND log_archived_at IS NULL AND last_seq = %s',
+                (run_id, list(runtime.CLOSED), last_seq),
+            )
+            if not cur.rowcount:
+                return False
+            await conn.execute(
+                'DELETE FROM workflow_runtime.run_events WHERE run_id = %s',
+                (run_id,),
+            )
+            await conn.execute(
+                'DELETE FROM workflow_runtime.step_runs WHERE run_id = %s',
+                (run_id,),
+            )
+        return True
 
     async def once(
         self,

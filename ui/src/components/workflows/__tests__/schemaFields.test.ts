@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { paramFields, paramSummary } from '../schemaFields'
+import { isIdOrReference, paramFields, paramSummary } from '../schemaFields'
 
 describe('paramFields', () => {
   it('builds fields from a Pydantic schema, in schema order', () => {
@@ -116,5 +116,18 @@ describe('paramSummary', () => {
         timeout: 'not shown',
       }),
     ).toBe('2 branches · Roll back?')
+  })
+})
+
+describe('isIdOrReference', () => {
+  it('takes a literal id or one plain reference only', () => {
+    expect(isIdOrReference('')).toBe(true)
+    expect(isIdOrReference('abc123')).toBe(true)
+    expect(isIdOrReference('{{ trigger.user }}')).toBe(true)
+    expect(isIdOrReference('{{ decide.choice.id }}')).toBe(true)
+    expect(isIdOrReference('x{{ trigger.user }}')).toBe(false)
+    expect(isIdOrReference('{{ trigger.user | lower }}')).toBe(false)
+    expect(isIdOrReference("{{ 'abc' }}")).toBe(false)
+    expect(isIdOrReference('{% if x %}a{% endif %}')).toBe(false)
   })
 })

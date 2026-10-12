@@ -1,8 +1,13 @@
 import type {
+  AttentionRun,
   StepType,
+  TestRunResult,
   ValidationResult,
   Workflow,
+  WorkflowRun,
+  WorkflowRunDetail,
   WorkflowSummary,
+  WorkflowVersion,
   WorkflowWrite,
 } from '@/components/workflows/types'
 import {
@@ -3808,6 +3813,18 @@ export const getWorkflow = (
   signal?: AbortSignal,
 ) => apiClient.get<Workflow>(workflowPath(orgSlug, slug), undefined, signal)
 
+export const getWorkflowVersion = (
+  orgSlug: string,
+  slug: string,
+  version: number,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<WorkflowVersion>(
+    `${workflowPath(orgSlug, slug)}/versions/${version}`,
+    undefined,
+    signal,
+  )
+
 export const createWorkflow = (orgSlug: string, workflow: WorkflowWrite) =>
   apiClient.post<Workflow>(`${workflowsPath(orgSlug)}/`, workflow)
 
@@ -3834,6 +3851,67 @@ export const activateWorkflow = (orgSlug: string, slug: string) =>
 
 export const pauseWorkflow = (orgSlug: string, slug: string) =>
   apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/pause`, {})
+
+export const startWorkflowRun = (
+  orgSlug: string,
+  slug: string,
+  inputs: Record<string, boolean | number | string>,
+) =>
+  apiClient.post<WorkflowRun>(`${workflowPath(orgSlug, slug)}/runs`, {
+    inputs,
+  })
+
+export const listWorkflowRuns = async (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<WorkflowRun[]> => {
+  const response = await apiClient.get<WorkflowRun[]>(
+    `${workflowPath(orgSlug, slug)}/runs`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getWorkflowRun = (
+  orgSlug: string,
+  slug: string,
+  runId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<WorkflowRunDetail>(
+    `${workflowPath(orgSlug, slug)}/runs/${encodeURIComponent(runId)}`,
+    undefined,
+    signal,
+  )
+
+export const cancelWorkflowRun = (
+  orgSlug: string,
+  slug: string,
+  runId: string,
+) =>
+  apiClient.post<WorkflowRun>(
+    `${workflowPath(orgSlug, slug)}/runs/${encodeURIComponent(runId)}/cancel`,
+    {},
+  )
+
+/** Walk the latest saved version with sample outputs. Sends nothing. */
+export const testRunWorkflow = (orgSlug: string, slug: string) =>
+  apiClient.post<TestRunResult>(`${workflowPath(orgSlug, slug)}/test-runs`, {})
+
+/** Failed runs of the last 7 days and runs that no engine works on. */
+export const listWorkflowAttention = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<AttentionRun[]> => {
+  const response = await apiClient.get<AttentionRun[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/attention`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
 
 export const listWorkflowStepTypes = async (
   orgSlug: string,

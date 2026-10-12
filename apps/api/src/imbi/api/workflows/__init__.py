@@ -4,8 +4,12 @@ The ``workflows`` schema holds definitions and the ``workflow_runtime``
 schema holds runs. They are plain Postgres schemas next to the graph,
 managed like ``agent_runtime``: the declarative schemata are applied on
 every start. imbi-api owns both; imbi-workflows executes the runs.
+
+The store lifespan also runs the archive sweep of the run log
+(:mod:`imbi.api.workflows.sweeper`), because it needs the pool.
 """
 
+import asyncio
 import contextlib
 import pathlib
 import typing
@@ -14,7 +18,7 @@ from collections import abc
 import fastapi
 
 from imbi.api.agent_tasks import create_pool
-from imbi.api.workflows import runs
+from imbi.api.workflows import runs, sweeper
 from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
     SCHEMA,
@@ -47,14 +51,22 @@ async def initialize() -> None:
 
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
-    """Initialize the schemas and hold the workflow stores open."""
+    """Initialize the schemas, hold the workflow stores open, and sweep."""
     global _runs
     await initialize()
     pool = create_pool()
     try:
         await pool.open()
         _runs = RunStore(pool)
-        yield WorkflowStore(pool)
+        stop = asyncio.Event()
+        sweep = asyncio.create_task(sweeper.run_sweeper(_runs, stop=stop))
+        try:
+            yield WorkflowStore(pool)
+        finally:
+            stop.set()
+            sweep.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep
     finally:
         _runs = None
         await pool.close()
@@ -96,4 +108,5 @@ __all__ = [
     'run_store',
     'runs',
     'store_lifespan',
+    'sweeper',
 ]

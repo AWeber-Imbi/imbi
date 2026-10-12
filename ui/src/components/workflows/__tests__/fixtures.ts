@@ -1,4 +1,20 @@
-import type { StepType, Workflow, WorkflowNode } from '../types'
+import type { StepType, Workflow, WorkflowNode, WorkflowRun } from '../types'
+
+export const RUN: WorkflowRun = {
+  cancel_requested: false,
+  closed_at: null,
+  created_at: '2026-10-12T00:00:00Z',
+  error: null,
+  id: '3f1c2a9e-0000-4000-8000-000000000001',
+  log_archived_at: null,
+  origin_id: 'gavin@example.com',
+  origin_kind: 'human',
+  payload: {},
+  started_at: null,
+  status: 'queued',
+  trigger_node_id: 'a',
+  version: 2,
+}
 
 export const STEP_TYPES: StepType[] = [
   stepType({
@@ -104,8 +120,10 @@ function stepType(overrides: Partial<StepType> = {}): StepType {
       type: 'object',
     },
     ports: [''],
+    retries: 0,
     sample_output: {},
     side_effect: false,
+    timeout_seconds: null,
     trigger: false,
     type: 'wait',
     ...overrides,
