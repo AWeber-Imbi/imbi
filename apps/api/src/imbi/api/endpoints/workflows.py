@@ -441,6 +441,8 @@ async def save_workflow(
         403: ``owner_team_forbidden``: the caller changes the owner team
             and is not an admin or a member of the current owner team.
         404: No such workflow.
+        409: ``conflict``: the workflow changed owner team or was
+            deleted between the check and the save.
         422: The graph is too large, or the team is not in the org.
 
     """
@@ -470,9 +472,16 @@ async def save_workflow(
                 'team can change the owner team',
             },
         )
-    if not await store.save(org_id, slug, definition):
+    if not await store.save(
+        org_id, slug, definition, current['owner_team_id']
+    ):
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Workflow {slug!r} not found'
+            status_code=409,
+            detail={
+                'error': 'conflict',
+                'message': f'Workflow {slug!r} changed or was deleted '
+                'during the save; read it again and retry',
+            },
         )
     return await _get(store, db, org_id, slug)
 

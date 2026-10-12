@@ -8,6 +8,7 @@ for definitions. Each test makes its own organization.
 import datetime
 import typing
 import uuid
+from unittest import mock
 
 import httpx
 
@@ -464,3 +465,25 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             url, json=body | {'owner_team_slug': self.team}
         )
         self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_save_conflicts_when_owner_team_changed(self) -> None:
+        await self._create()
+        real_get = self.store.get
+
+        async def stale_get(org_id: str, slug: str) -> dict[str, typing.Any]:
+            # The owner team as it was before someone else changed it.
+            row = await real_get(org_id, slug)
+            assert row is not None
+            return row | {'owner_team_id': self.team2}
+
+        with mock.patch.object(self.store, 'get', side_effect=stale_get):
+            self.user.is_admin = True
+            response = await self.client.put(
+                f'{self.base}/deploy-guard',
+                json={'name': 'Renamed', 'owner_team_slug': self.team},
+            )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'conflict')
+        response = await self.client.get(f'{self.base}/deploy-guard')
+        self.assertEqual(response.json()['name'], 'Deploy guard')
+        self.assertEqual(response.json()['latest_version'], 1)
