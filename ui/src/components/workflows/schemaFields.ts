@@ -33,8 +33,8 @@ const SOURCES: Record<string, FieldSource> = {
   webhook_id: 'webhook',
 }
 
-const MULTILINE = new Set(['body', 'filter', 'inputs', 'prompt'])
-const MONO = new Set(['filter', 'inputs'])
+const MULTILINE = new Set(['body', 'context', 'filter', 'prompt'])
+const MONO = new Set(['filter'])
 const UUID =
   /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i
 
