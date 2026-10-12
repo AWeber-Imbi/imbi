@@ -92,6 +92,12 @@ export const queryKeys = {
   // the LoginPage picker stays in sync.
   publicAuthProviders: () => ['authProviders'] as const,
   teams: (orgSlug: string) => ['teams', orgSlug] as const,
+  // Nested under `workflows` so a list invalidation refreshes each one.
+  workflow: (orgSlug: string, slug: string) =>
+    ['workflows', orgSlug, slug] as const,
+  workflows: (orgSlug: string) => ['workflows', orgSlug] as const,
+  workflowStepTypes: (orgSlug: string) =>
+    ['workflowStepTypes', orgSlug] as const,
 } as const
 
 /**

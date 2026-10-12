@@ -26,6 +26,8 @@ vi.mock('@/api/endpoints', () => ({
   listEnvironments: vi.fn(),
   listTags: vi.fn(),
   listTeams: vi.fn(),
+  listWorkflows: vi.fn(),
+  listWorkflowStepTypes: vi.fn(),
   patchAgent: vi.fn(),
   resolvePrompt: vi.fn(),
   restoreAgentVersion: vi.fn(),
@@ -92,10 +94,11 @@ describe('AgentsArea', () => {
     vi.mocked(endpoints.getAgentUsage).mockResolvedValue(usage())
   })
 
-  it('shows an honest empty state and the agent count', async () => {
+  it('shows the workflows page and the agent count', async () => {
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
     renderAt('/agents/workflows')
-    expect(screen.getByText('Coming soon')).toBeInTheDocument()
-    expect(screen.getByText(/Workflows are not built yet/)).toBeInTheDocument()
+    expect(await screen.findByText('No workflows yet.')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
   })
 

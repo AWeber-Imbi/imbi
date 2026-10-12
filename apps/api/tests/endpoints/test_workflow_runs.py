@@ -503,6 +503,25 @@ class DeployIdempotencyTestCase(WorkflowRunTestCase):
         self.assertEqual(dispatch.await_count, 1)
         self.assertEqual(second, first)
 
+    async def test_key_released_during_a_repeat_is_409(self) -> None:
+        """A repeat whose first call was refused between the repeat's
+        INSERT and its SELECT gets outcome_unknown, not a 500."""
+        key = f'run-{uuid.uuid4()}:ship'
+        self.addAsyncCleanup(self._forget, key)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key) VALUES (%s)',
+                (workflows.runs.side_effect_key('a', 'deployment', key),),
+            )
+        call = mock.AsyncMock()
+        with (
+            mock.patch.object(workflows.RunStore, '_all', return_value=[]),
+            self.assertRaises(fastapi.HTTPException) as raised,
+        ):
+            await self.runs.once('a', 'deployment', key, call)
+        self.assertEqual(raised.exception.status_code, 409)
+        call.assert_not_awaited()
+
     async def test_refusal_forgets_and_unknown_is_409(self) -> None:
         key = f'run-{uuid.uuid4()}:ship'
         self.addAsyncCleanup(self._forget, key)
