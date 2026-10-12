@@ -15,6 +15,7 @@ workflow yet.
 """
 
 import datetime
+import re
 import typing
 from collections import abc
 
@@ -189,19 +190,42 @@ RETURN t.id AS id
 """
 
 
+#: A resource id param may be one plain reference to a run-time value:
+#: ``trigger`` or a node key, then one or more attribute names. No
+#: filters, calls, literals, or other text, so it cannot hide a literal
+#: id from the organization check.
+_PLAIN_REFERENCE = re.compile(
+    r'\{\{\s*[a-z][a-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\}'
+)
+
+#: Jinja delimiters. A value with none of them renders to itself.
+_TEMPLATE_MARKERS = ('{{', '{%', '{#')
+
+#: Resource kinds that must be a literal id, because activation binds
+#: them before any run.
+_LITERAL_ONLY = frozenset({'webhook'})
+
+
 def _resource_ids(
     wf_graph: wf.Graph,
-) -> dict[str, list[tuple[str, str]]]:
-    """Return the literal resource ids in step params, by kind.
+) -> tuple[dict[str, list[tuple[str, str]]], list[tuple[str, str]]]:
+    """Return the literal resource ids in step params, and bad templates.
 
-    Each entry is (node id, resource id). A value with a ``{{ }}``
-    reference is left out: the engine checks it when the step runs.
+    The ids are by kind, each entry (node id, resource id). A plain
+    reference is left out: the engine checks its value when the step
+    runs. Any other template is returned as (node id, kind), because
+    it could render to an id from another organization.
     """
     found: dict[str, list[tuple[str, str]]] = {}
+    invalid: list[tuple[str, str]] = []
 
     def add(kind: str, node_id: str, value: typing.Any) -> None:
-        if isinstance(value, str) and value and '{{' not in value:
+        if not isinstance(value, str) or not value:
+            return
+        if not any(m in value for m in _TEMPLATE_MARKERS):
             found.setdefault(kind, []).append((node_id, value))
+        elif kind in _LITERAL_ONLY or not _PLAIN_REFERENCE.fullmatch(value):
+            invalid.append((node_id, kind))
 
     for node in wf_graph.nodes:
         params = node.params
@@ -218,7 +242,7 @@ def _resource_ids(
                     item = typing.cast(dict[str, typing.Any], recipient)
                     if item.get('kind') in ('user', 'team'):
                         add(str(item['kind']), node.id, item.get('id'))
-    return found
+    return found, invalid
 
 
 async def _validate(
@@ -237,7 +261,22 @@ async def _validate(
     result = validation.validate(wf_graph, settings)
     if any(i.code in validation.LIMIT_CODES for i in result.issues):
         return result
-    for kind, refs in _resource_ids(wf_graph).items():
+    found, invalid = _resource_ids(wf_graph)
+    for node_id, kind in invalid:
+        result.issues.append(
+            wf.ValidationIssue(
+                severity='error',
+                code='invalid_reference',
+                message=(
+                    f'The {kind} id must be a literal id'
+                    if kind in _LITERAL_ONLY
+                    else f'The {kind} id must be a literal id or one '
+                    'reference such as {{ trigger.project }}'
+                ),
+                node_id=node_id,
+            )
+        )
+    for kind, refs in found.items():
         records = await db.execute(
             _ORG_RESOURCE_QUERIES[kind],
             {'org': org_id, 'ids': sorted({value for _, value in refs})},

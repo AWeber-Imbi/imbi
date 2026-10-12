@@ -488,3 +488,60 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.json()['name'], 'Deploy guard')
         self.assertEqual(response.json()['latest_version'], 1)
+
+    async def _codes(
+        self, step: str, params: dict[str, typing.Any]
+    ) -> set[str]:
+        response = await self.client.post(
+            f'{self.base}/anything/validate',
+            json={
+                'graph': {
+                    'nodes': [
+                        _node('start', 'manual'),
+                        _node('x', step, params),
+                    ],
+                    'edges': [{'source': 'start', 'port': 0, 'target': 'x'}],
+                }
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return {i['code'] for i in response.json()['issues']}
+
+    async def test_resource_id_templates_must_be_plain_references(
+        self,
+    ) -> None:
+        params = {'environment': 'staging', 'version': '1'}
+        for value in (
+            "{{ 'x' }}",
+            f"{{{{ '{self.foreign['project']}' }}}}",
+            'a{{ trigger.p }}',
+            '{{ trigger.p | lower }}',
+            '{{ trigger }}',
+            f'{self.foreign["project"]}{{# #}}',
+            '{% if true %}x{% endif %}',
+        ):
+            codes = await self._codes(
+                'deploy', {**params, 'project_id': value}
+            )
+            self.assertIn('invalid_reference', codes, value)
+        codes = await self._codes(
+            'deploy', {**params, 'project_id': '{{ trigger.project }}'}
+        )
+        self.assertNotIn('invalid_reference', codes)
+        codes = await self._codes(
+            'email',
+            {
+                'subject': 's',
+                'body': 'b',
+                'to': [{'kind': 'team', 'id': "{{ 'x' }}"}],
+            },
+        )
+        self.assertIn('invalid_reference', codes)
+
+    async def test_webhook_id_must_be_literal(self) -> None:
+        codes = await self._codes(
+            'webhook', {'webhook_id': '{{ trigger.webhook }}'}
+        )
+        self.assertIn('invalid_reference', codes)
+        codes = await self._codes('webhook', {'webhook_id': self.webhook})
+        self.assertNotIn('invalid_reference', codes)
