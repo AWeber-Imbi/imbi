@@ -218,3 +218,40 @@ class AttentionTestCase(test_workflow_runs.WorkflowRunTestCase):
         self.assertEqual(found[failed]['error'], 'timeout')
         self.assertEqual(found[stuck]['reason'], 'stuck')
         self.assertEqual(found[stuck]['workflow_slug'], 'deploy-guard')
+
+    async def test_expired_lease_of_a_closed_run_is_not_stuck(self) -> None:
+        url = await self._workflow()
+        ids = []
+        for _ in range(2):
+            response = await self.client.post(
+                f'{url}/runs', json={'inputs': {'version': '1'}}
+            )
+            ids.append(response.json()['id'])
+        closed, open_ = ids
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'succeeded',"
+                ' closed_at = NOW() WHERE id = %s',
+                (closed,),
+            )
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'running'"
+                ' WHERE id = %s',
+                (open_,),
+            )
+            for run_id in ids:
+                await conn.execute(
+                    'INSERT INTO workflow_runtime.leases'
+                    ' (run_id, worker_id, expires_at)'
+                    " VALUES (%s, 'gone', NOW() - INTERVAL '1 minute')"
+                    ' ON CONFLICT (run_id) DO UPDATE SET'
+                    ' worker_id = EXCLUDED.worker_id,'
+                    ' expires_at = EXCLUDED.expires_at',
+                    (run_id,),
+                )
+        response = await self.client.get(
+            f'/organizations/{self.org}/workflow-runs/attention'
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        found = {r['id']: r['reason'] for r in response.json()}
+        self.assertEqual(found, {open_: 'stuck'})

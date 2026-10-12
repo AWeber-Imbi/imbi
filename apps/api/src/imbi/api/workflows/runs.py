@@ -195,7 +195,8 @@ class RunStore:
             ' WHERE r.organization_id = %s AND ('
             "  (r.status IN ('failed', 'timed_out')"
             "   AND r.closed_at > NOW() - INTERVAL '7 days')"
-            ' OR l.expires_at < NOW()'
+            # A closed run can keep a stale lease row: it is not stuck.
+            " OR (l.expires_at < NOW() AND r.status IN ('queued', 'running'))"
             " OR (r.due_at < NOW() - INTERVAL '5 minutes'"
             "     AND (r.status = 'running'"
             "          OR (r.status = 'queued'"
