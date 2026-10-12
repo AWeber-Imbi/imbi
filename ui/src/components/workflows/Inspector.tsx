@@ -280,11 +280,12 @@ export function SettingsPanel({
           <Input
             id="workflow-max-run"
             min={1}
-            onChange={(e) =>
-              setSettings({
-                max_run_time_seconds: Math.round(Number(e.target.value) * 60),
-              })
-            }
+            onChange={(e) => {
+              // An empty or non-positive value would save 0 seconds.
+              const minutes = Number(e.target.value)
+              if (!(minutes > 0)) return
+              setSettings({ max_run_time_seconds: Math.round(minutes * 60) })
+            }}
             type="number"
             value={settings.max_run_time_seconds / 60}
           />

@@ -132,6 +132,11 @@ export function Canvas({
     return { x: r.left, y: r.top }
   }
 
+  // Removes the window listeners of the drag in progress, also when the
+  // canvas unmounts during a drag.
+  const stopDrag = useRef<(() => void) | null>(null)
+  useEffect(() => () => stopDrag.current?.(), [])
+
   const startDrag = (drag: Drag) => {
     const move = (e: PointerEvent) => {
       const client = { x: e.clientX, y: e.clientY }
@@ -162,8 +167,7 @@ export function Canvas({
       }
     }
     const up = (e: PointerEvent) => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
+      stopDrag.current?.()
       setPanning(false)
       if (drag.kind === 'pan' && !drag.moved) latest.current.onSelect(null)
       if (drag.kind !== 'connect') return
@@ -204,6 +208,11 @@ export function Canvas({
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+    stopDrag.current = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      stopDrag.current = null
+    }
   }
 
   const onBackgroundDown = (e: ReactPointerEvent) => {

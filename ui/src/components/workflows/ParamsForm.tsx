@@ -306,7 +306,9 @@ function RecipientsField({
   const teams = useQuery({
     queryFn: ({ signal }) => listTeams(orgSlug, signal),
     queryKey: queryKeys.teams(orgSlug),
-    select: (rows) => rows.map((t) => ({ label: t.name, value: t.id ?? '' })),
+    // A Select item cannot take an empty value, so skip a team with no id.
+    select: (rows) =>
+      rows.flatMap((t) => (t.id ? [{ label: t.name, value: t.id }] : [])),
   })
   const set = (index: number, patch: Partial<Recipient>) =>
     onChange(value.map((r, i) => (i === index ? { ...r, ...patch } : r)))

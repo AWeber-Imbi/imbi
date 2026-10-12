@@ -153,4 +153,18 @@ describe('WorkflowsManagement', () => {
     expect(screen.queryByText('Let traffic settle')).not.toBeInTheDocument()
     expect(screen.getByText('Workflow settings')).toBeInTheDocument()
   })
+
+  it('removes drag listeners when the canvas unmounts mid-drag', async () => {
+    const { unmount } = renderAt('/agents/workflows/deploy-guard')
+    await screen.findByText('Let traffic settle')
+    // Start a connection drag from the first output port.
+    fireEvent.pointerDown(screen.getAllByTitle('Drag to connect')[0], {
+      button: 0,
+    })
+    const remove = vi.spyOn(window, 'removeEventListener')
+    unmount()
+    expect(remove).toHaveBeenCalledWith('pointermove', expect.any(Function))
+    expect(remove).toHaveBeenCalledWith('pointerup', expect.any(Function))
+    remove.mockRestore()
+  })
 })
