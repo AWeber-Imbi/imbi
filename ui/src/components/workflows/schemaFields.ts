@@ -112,3 +112,16 @@ function resolve(root: JsonSchema, prop: JsonSchema): JsonSchema {
   const branch = prop.anyOf?.find((s) => s.type !== 'null')
   return branch ? { ...prop, ...branch, anyOf: undefined } : prop
 }
+
+// A resource id is a literal id or one plain reference, as the API's
+// validation requires: anything else could render an id of another org.
+const PLAIN_REFERENCE =
+  /^\{\{\s*[a-z][a-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\}$/
+const TEMPLATE_MARKERS = ['{{', '{%', '{#']
+
+export function isIdOrReference(value: string): boolean {
+  return (
+    !TEMPLATE_MARKERS.some((m) => value.includes(m)) ||
+    PLAIN_REFERENCE.test(value)
+  )
+}

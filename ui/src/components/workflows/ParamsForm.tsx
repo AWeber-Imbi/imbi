@@ -19,7 +19,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 
-import type { FieldSource, ParamField } from './schemaFields'
+import {
+  type FieldSource,
+  isIdOrReference,
+  type ParamField,
+} from './schemaFields'
 import { useSourceOptions } from './workflowQueries'
 
 interface ParamsFormProps {
@@ -336,13 +340,22 @@ function RecipientsField({
                 value={recipient.id}
               />
             ) : (
-              <Input
-                aria-label={`Recipient ${i + 1} user id`}
-                className="font-mono text-xs"
-                onChange={(e) => set(i, { id: e.target.value })}
-                placeholder="User id"
-                value={recipient.id}
-              />
+              <>
+                <Input
+                  aria-invalid={!isIdOrReference(recipient.id)}
+                  aria-label={`Recipient ${i + 1} user id`}
+                  className="font-mono text-xs"
+                  onChange={(e) => set(i, { id: e.target.value })}
+                  placeholder="User id or {{ trigger.user }}"
+                  value={recipient.id}
+                />
+                {!isIdOrReference(recipient.id) && (
+                  <p className="text-danger mt-1 text-xs">
+                    Use a user id or one reference such as{' '}
+                    {'{{ trigger.user }}'}.
+                  </p>
+                )}
+              </>
             )}
           </div>
           <button

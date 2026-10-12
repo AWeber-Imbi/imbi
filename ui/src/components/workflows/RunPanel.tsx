@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ApiError } from '@/api/client'
 import { cancelWorkflowRun } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { RelativeTime } from '@/components/ui/RelativeTime'
@@ -132,10 +133,21 @@ function PanelActions({
   testRun,
 }: RunPanelProps) {
   const queryClient = useQueryClient()
+  // The API refuses a cancel (403) when the run's trigger does not let
+  // this person cancel it. Hide the button for that run after.
+  const [refused, setRefused] = useState<null | string>(null)
   const cancel = useMutation({
     mutationFn: () => cancelWorkflowRun(orgSlug, slug!, runId!),
-    onError: (error) =>
-      toast.error(`Failed to cancel the run: ${extractApiErrorDetail(error)}`),
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 403) {
+        setRefused(runId)
+        toast.error(
+          `You cannot cancel this run: ${extractApiErrorDetail(error)}`,
+        )
+        return
+      }
+      toast.error(`Failed to cancel the run: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       toast.success('Cancel requested. The run stops before its next step.')
       void queryClient.invalidateQueries({
@@ -151,7 +163,7 @@ function PanelActions({
   if (!runId) return null
   return (
     <>
-      {canRun && run && isOpen(run.status) && (
+      {canRun && run && isOpen(run.status) && refused !== run.id && (
         <SmallButton
           danger
           disabled={run.cancel_requested || cancel.isPending}

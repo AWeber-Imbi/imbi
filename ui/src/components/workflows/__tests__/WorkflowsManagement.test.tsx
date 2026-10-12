@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
@@ -197,6 +198,31 @@ describe('WorkflowsManagement', () => {
         'deploy-guard',
         RUN.id,
       ),
+    )
+  })
+
+  it('hides Cancel run after the API refuses it with 403', async () => {
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(
+      workflow({ active_version: 2, status: 'active' }),
+    )
+    vi.mocked(endpoints.startWorkflowRun).mockResolvedValue(RUN)
+    vi.mocked(endpoints.getWorkflowRun).mockResolvedValue({
+      ...RUN,
+      status: 'running',
+      steps: [],
+    })
+    vi.mocked(endpoints.cancelWorkflowRun).mockRejectedValue(
+      new ApiError(403, 'Forbidden', {
+        detail: 'Only owner team can cancel this workflow',
+      }),
+    )
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel run' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Cancel run' }),
+      ).not.toBeInTheDocument(),
     )
   })
 

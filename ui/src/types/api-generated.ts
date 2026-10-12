@@ -5042,8 +5042,15 @@ export interface paths {
          *
          *     The version is stored with its validation issues.
          *
+         *     Only an admin or a member of the current owner team can change the
+         *     owner team, because the owner team controls the runs.
+         *
          *     Raises:
+         *         403: ``owner_team_forbidden``: the caller changes the owner team
+         *             and is not an admin or a member of the current owner team.
          *         404: No such workflow.
+         *         409: ``conflict``: the workflow changed owner team or was
+         *             deleted between the check and the save.
          *         422: The graph is too large, or the team is not in the org.
          */
         put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
@@ -5242,7 +5249,11 @@ export interface paths {
          * Cancel Run
          * @description Ask the engine to stop a run before its next step.
          *
+         *     The caller needs the same ``who`` as the trigger that started the
+         *     run, in the run's pinned version.
+         *
          *     Raises:
+         *         403: The trigger's ``who`` does not include the caller.
          *         404: No such workflow or run.
          *         409: The run is closed.
          */
