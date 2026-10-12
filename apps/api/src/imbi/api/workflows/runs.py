@@ -55,7 +55,8 @@ class RunStore:
     async def create(self, run: NewRun) -> tuple[store.Row, bool]:
         """Write a queued run. Return it, and ``False`` for a repeat.
 
-        A repeat of an idempotency key returns the first run.
+        A repeat of an idempotency key for the same workflow returns
+        the first run.
         """
         async with (
             self._pool.connection() as conn,
@@ -68,8 +69,8 @@ class RunStore:
                 ' origin_id, idempotency_key, payload, concurrency_key,'
                 ' activated_by) VALUES'
                 ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-                ' ON CONFLICT (organization_id, origin_kind, origin_id,'
-                ' idempotency_key) DO NOTHING RETURNING *',
+                ' ON CONFLICT (organization_id, workflow_id, origin_kind,'
+                ' origin_id, idempotency_key) DO NOTHING RETURNING *',
                 (
                     uuid.uuid4(),
                     run.organization_id,
@@ -88,10 +89,12 @@ class RunStore:
             if created is None:
                 await cur.execute(
                     'SELECT * FROM workflow_runtime.runs'
-                    ' WHERE organization_id = %s AND origin_kind = %s'
-                    ' AND origin_id = %s AND idempotency_key = %s',
+                    ' WHERE organization_id = %s AND workflow_id = %s'
+                    ' AND origin_kind = %s AND origin_id = %s'
+                    ' AND idempotency_key = %s',
                     (
                         run.organization_id,
+                        run.workflow_id,
                         run.origin_kind,
                         run.origin_id,
                         run.idempotency_key,
