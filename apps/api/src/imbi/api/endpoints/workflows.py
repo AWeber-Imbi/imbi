@@ -439,10 +439,16 @@ async def create_workflow(
 
     Raises:
         409: The slug is in use in the org.
-        422: The graph is too large, or the team is not in the org.
+        422: The graph is too large, the team is not in the org, or
+            the name gives an empty slug and no slug is supplied.
 
     """
     slug = data.slug or slugify.slugify(data.name)
+    if not slug:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail='The name gives an empty slug; supply a slug',
+        )
     definition = await _definition(db, org_id, data, auth)
     with conflict_on_unique_violation(f'Workflow {slug!r} already exists'):
         await store.create(org_id, slug, definition)
