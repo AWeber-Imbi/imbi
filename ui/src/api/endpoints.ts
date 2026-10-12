@@ -1,3 +1,10 @@
+import type {
+  StepType,
+  ValidationResult,
+  Workflow,
+  WorkflowSummary,
+  WorkflowWrite,
+} from '@/components/workflows/types'
 import {
   ENVIRONMENT_BASE_FIELDS,
   PROJECT_TYPE_BASE_FIELDS,
@@ -3773,4 +3780,69 @@ export const setAgentTaskProject = (
 ) => {
   const url = `${agentTaskPath(orgSlug, shortId)}/projects/${encodeURIComponent(projectId)}`
   return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
+}
+
+// Workflows (org-scoped, ADR 0021). Each save writes an immutable
+// version; activation chooses the version that triggers run.
+const workflowsPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/workflows`
+
+const workflowPath = (orgSlug: string, slug: string) =>
+  `${workflowsPath(orgSlug)}/${encodeURIComponent(slug)}`
+
+export const listWorkflows = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<WorkflowSummary[]> => {
+  const response = await apiClient.get<WorkflowSummary[]>(
+    workflowsPath(orgSlug),
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getWorkflow = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) => apiClient.get<Workflow>(workflowPath(orgSlug, slug), undefined, signal)
+
+export const createWorkflow = (orgSlug: string, workflow: WorkflowWrite) =>
+  apiClient.post<Workflow>(workflowsPath(orgSlug), workflow)
+
+export const updateWorkflow = (
+  orgSlug: string,
+  slug: string,
+  workflow: WorkflowWrite,
+) => apiClient.put<Workflow>(workflowPath(orgSlug, slug), workflow)
+
+export const validateWorkflow = (
+  orgSlug: string,
+  slug: string,
+  body: Pick<WorkflowWrite, 'graph' | 'settings'>,
+  signal?: AbortSignal,
+) =>
+  apiClient.post<ValidationResult>(
+    `${workflowPath(orgSlug, slug)}/validate`,
+    body,
+    signal,
+  )
+
+export const activateWorkflow = (orgSlug: string, slug: string) =>
+  apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/activate`, {})
+
+export const pauseWorkflow = (orgSlug: string, slug: string) =>
+  apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/pause`, {})
+
+export const listWorkflowStepTypes = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<StepType[]> => {
+  const response = await apiClient.get<StepType[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-step-types`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
 }
