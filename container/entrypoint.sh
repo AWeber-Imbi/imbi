@@ -303,11 +303,16 @@ provision_internal_credentials() {
         echo "ERROR: set IMBI_SCHEDULER_SA_CLIENT_ID and IMBI_SCHEDULER_SA_CLIENT_SECRET together, or neither" >&2
         return 1
     fi
-    # The same, for the workflow engine's client credential.
+    # The same, for the workflow engine's client credential, with one
+    # difference: the secret is derived from IMBI_AUTH_JWT_SECRET, not
+    # random. Every 'all'-mode replica seeds it at boot, and with a random
+    # one the last replica to seed would lock the others out. The JWT
+    # secret is shared by every replica, and a holder of it can already
+    # mint any token, so deriving from it exposes nothing new.
     if [ -z "${IMBI_WORKFLOWS_SA_CLIENT_ID:-}" ] && \
        [ -z "${IMBI_WORKFLOWS_SA_CLIENT_SECRET:-}" ]; then
         export IMBI_WORKFLOWS_SA_CLIENT_ID="cc_imbi_workflows_all_mode"
-        IMBI_WORKFLOWS_SA_CLIENT_SECRET="$(random_token)"
+        IMBI_WORKFLOWS_SA_CLIENT_SECRET="$(printf 'imbi-workflows-all-mode:%s' "$IMBI_AUTH_JWT_SECRET" | sha256sum | cut -d' ' -f1)"
         export IMBI_WORKFLOWS_SA_CLIENT_SECRET
         minted_workflows=1
     elif [ -z "${IMBI_WORKFLOWS_SA_CLIENT_ID:-}" ] || \

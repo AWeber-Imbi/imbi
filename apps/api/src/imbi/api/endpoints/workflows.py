@@ -564,7 +564,6 @@ async def delete_workflow(
     org_id: OrgId,
     slug: str,
     store: workflows.Store,
-    runs: workflows.Runs,
     _: DeleteAuth,
 ) -> None:
     """Delete a workflow that has no open runs.
@@ -574,12 +573,12 @@ async def delete_workflow(
         409: A run of the workflow is queued or running.
 
     """
-    row = await store.get(org_id, slug)
-    if row is not None and await runs.has_open_runs(row['id']):
+    result = await store.delete(org_id, slug)
+    if result == 'open_runs':
         raise fastapi.HTTPException(
             status_code=409, detail=f'Workflow {slug!r} has open runs'
         )
-    if not await store.delete(org_id, slug):
+    if result == 'missing':
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )

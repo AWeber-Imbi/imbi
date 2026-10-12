@@ -338,6 +338,11 @@ class Executors:
             ),
             headers={'Idempotency-Key': call.idempotency_key},
         )
+        failed: list[str] = sent.get('failed') or []
+        if failed:
+            # Not retried: imbi-api stored this result with the key, and
+            # the other recipients already have the message.
+            raise StepError('email_failed: ' + ', '.join(failed), retry=False)
         return Outcome(output={'recipients': sent['recipients']})
 
     async def notify_failure(

@@ -165,17 +165,35 @@ class WorkflowStore:
             )
         return True
 
-    async def delete(self, organization_id: str, slug: str) -> bool:
-        """Delete a workflow and mark its trigger bindings ``removed``."""
+    async def delete(
+        self, organization_id: str, slug: str
+    ) -> typing.Literal['deleted', 'missing', 'open_runs']:
+        """Delete a workflow that has no open runs.
+
+        The ``FOR UPDATE`` lock waits for a run that is being written
+        (it holds ``FOR SHARE``), and the open-run check runs after it,
+        so no run can be written between the check and the delete. The
+        trigger bindings are marked ``removed`` for the reconciler.
+        """
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
-                'DELETE FROM workflows.workflows'
-                ' WHERE organization_id = %s AND slug = %s RETURNING id',
+                'SELECT id FROM workflows.workflows'
+                ' WHERE organization_id = %s AND slug = %s FOR UPDATE',
                 (organization_id, slug),
             )
             row = await cur.fetchone()
             if row is None:
-                return False
+                return 'missing'
+            cur = await conn.execute(
+                'SELECT 1 FROM workflow_runtime.runs'
+                ' WHERE workflow_id = %s AND NOT (status = ANY(%s)) LIMIT 1',
+                (row[0], list(runtime.CLOSED)),
+            )
+            if await cur.fetchone() is not None:
+                return 'open_runs'
+            await conn.execute(
+                'DELETE FROM workflows.workflows WHERE id = %s', (row[0],)
+            )
             await conn.execute(
                 'UPDATE workflows.trigger_bindings SET removed = TRUE,'
                 " sync_state = 'pending', updated_at = NOW()"
@@ -183,7 +201,7 @@ class WorkflowStore:
                 (row[0],),
             )
             await conn.execute(f'NOTIFY {runtime.BINDINGS_CHANNEL}')
-            return True
+            return 'deleted'
 
     async def versions(self, organization_id: str, slug: str) -> list[Row]:
         """Return the versions of a workflow, newest first."""

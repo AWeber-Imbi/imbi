@@ -4,6 +4,7 @@ These run against the live Postgres that ``root:services`` boots. The
 engine is not running: a started run stays ``queued``.
 """
 
+import asyncio
 import collections.abc
 import contextlib
 import datetime
@@ -20,6 +21,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
 from imbi.common import graph
 from imbi.common.plugins import base as plugin_base
+from imbi.common.workflows import graph as wf
 
 PERMISSIONS = frozenset(
     {
@@ -218,22 +220,33 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
         await self.pool.close()
         await self.graph.close()
 
-    async def _workflow(self, *, activate: bool = True) -> str:
+    async def _workflow(
+        self,
+        *,
+        activate: bool = True,
+        name: str = 'Deploy guard',
+        settings: dict[str, typing.Any] | None = None,
+    ) -> str:
         response = await self.client.post(
             self.base + '/',
             json={
-                'name': 'Deploy guard',
+                'name': name,
                 'owner_team_slug': self.team,
                 'graph': _graph(self.team, self.project),
+                'settings': settings or {},
             },
         )
         self.assertEqual(response.status_code, 201, response.text)
+        url = f'{self.base}/{response.json()["slug"]}'
         if activate:
-            response = await self.client.post(
-                f'{self.base}/deploy-guard/activate'
-            )
+            response = await self.client.post(f'{url}/activate')
             self.assertEqual(response.status_code, 200, response.text)
-        return f'{self.base}/deploy-guard'
+        return url
+
+    async def _workflow_id(self, url: str) -> uuid.UUID:
+        row = await self.store.get(self.org, url.rsplit('/', 1)[1])
+        assert row is not None
+        return row['id']
 
     async def _forget(self, key: str) -> None:
         """Delete the side effects whose caller key contains ``key``."""
@@ -297,6 +310,11 @@ class TestRunTestCase(WorkflowRunTestCase):
         decide.assert_not_called()
         deploy.assert_not_called()
         self.assertEqual(await self._counts(), before)
+
+    def test_simulate_without_a_trigger_is_422(self) -> None:
+        with self.assertRaises(fastapi.HTTPException) as raised:
+            workflow_runs.simulate(wf.Graph(), None, {})
+        self.assertEqual(raised.exception.status_code, 422)
 
     async def test_test_run_refuses_errors(self) -> None:
         response = await self.client.post(
@@ -381,7 +399,8 @@ class ManualRunTestCase(WorkflowRunTestCase):
                 activated_by=self.email,
             )
 
-        first, second = uuid.uuid4(), uuid.uuid4()
+        first = await self._workflow_id(await self._workflow(name='Guard A'))
+        second = await self._workflow_id(await self._workflow(name='Guard B'))
         a, created_a = await self.runs.create(new_run(first))
         b, created_b = await self.runs.create(new_run(second))
         again, created_again = await self.runs.create(new_run(first))
@@ -390,6 +409,50 @@ class ManualRunTestCase(WorkflowRunTestCase):
         self.assertEqual(b['workflow_id'], second)
         self.assertFalse(created_again)
         self.assertEqual(again['id'], a['id'])
+
+    async def test_delete_waits_for_a_run_being_written(self) -> None:
+        """A delete and a new run serialize on the workflow row."""
+        url = await self._workflow()
+        workflow_id = await self._workflow_id(url)
+        new_run = workflows.NewRun(
+            organization_id=self.org,
+            workflow_id=workflow_id,
+            version=1,
+            trigger_node_id='start',
+            origin_kind='human',
+            origin_id=self.email,
+            origin={},
+            idempotency_key=None,
+            payload={'version': '1'},
+            concurrency_key=None,
+            activated_by=self.email,
+        )
+        async with self.pool.connection() as conn, conn.transaction():
+            # The lock a delete takes before its open-run check.
+            await conn.execute(
+                'SELECT 1 FROM workflows.workflows WHERE id = %s FOR UPDATE',
+                (workflow_id,),
+            )
+            create = asyncio.create_task(self.runs.create(new_run))
+            await asyncio.sleep(0.3)
+            self.assertFalse(create.done())
+            await conn.execute(
+                'DELETE FROM workflows.workflows WHERE id = %s', (workflow_id,)
+            )
+        with self.assertRaises(workflows.NotActive):
+            await create
+
+    async def test_empty_concurrency_key_input_is_422(self) -> None:
+        url = await self._workflow(
+            settings={
+                'concurrency_mode': 'one_per_key',
+                'concurrency_key': '{{ trigger.version }}',
+            }
+        )
+        response = await self.client.post(
+            f'{url}/runs', json={'inputs': {'version': ''}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
 
     async def test_cancel_needs_the_start_gate(self) -> None:
         url = await self._workflow()
@@ -582,9 +645,13 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             )
         self.sent: list[typing.Any] = []
 
+        #: Addresses whose send fails.
+        self.failing: set[str] = set()
+
         async def send_email(message: typing.Any) -> typing.Any:
             self.sent.append(message)
-            return mock.Mock(status='sent')
+            failed = message.to_email in self.failing
+            return mock.Mock(status='failed' if failed else 'sent')
 
         engine = permissions.AuthContext(
             service_account=models.ServiceAccount(
@@ -610,7 +677,9 @@ class EngineEmailTestCase(WorkflowRunTestCase):
         for _ in range(2):
             response = await self.client.post(url, headers=headers)
             self.assertEqual(response.status_code, 200, response.text)
-            self.assertEqual(response.json(), {'recipients': [self.email]})
+            self.assertEqual(
+                response.json(), {'recipients': [self.email], 'failed': []}
+            )
         self.assertEqual(
             [(m.to_email, m.subject, m.text_body) for m in self.sent],
             [(self.email, 'Shipped 1', 'Deployment r1')],
@@ -621,6 +690,41 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             headers=headers,
         )
         self.assertEqual(response.status_code, 404)
+
+    async def test_partial_send_reaches_everyone_once(self) -> None:
+        other = f'other-{uuid.uuid4().hex[:8]}@example.com'
+        self.addAsyncCleanup(self._delete_user, other)
+        await self.graph.execute(
+            """
+            MATCH (t:Team {{id: {team}}})
+            CREATE (u:User {{id: {email}, email: {email},
+                             display_name: 'Other', is_active: true}})
+            CREATE (u)-[:MEMBER_OF]->(t)
+            RETURN 1 AS ok
+            """,
+            {'team': self.team, 'email': other},
+            ['ok'],
+        )
+        self.failing.add(self.email)
+        url = f'{self.url}/runs/{self.run_id}/steps/tell/email'
+        headers = {'Idempotency-Key': f'{self.run_id}:k'}
+        for _ in range(2):
+            response = await self.client.post(url, headers=headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(
+                response.json(),
+                {'recipients': [other], 'failed': [self.email]},
+            )
+        self.assertEqual(
+            sorted(m.to_email for m in self.sent), sorted([self.email, other])
+        )
+
+    async def _delete_user(self, address: str) -> None:
+        await self.graph.execute(
+            'MATCH (u:User {{email: {email}}}) DETACH DELETE u RETURN 1 AS ok',
+            {'email': address},
+            ['ok'],
+        )
 
     async def test_one_key_on_two_routes_does_not_meet(self) -> None:
         headers = {'Idempotency-Key': f'{self.run_id}:k'}
@@ -666,5 +770,7 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             )
         response = await self.client.post(url, headers=headers)
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json(), {'recipients': [self.email]})
+        self.assertEqual(
+            response.json(), {'recipients': [self.email], 'failed': []}
+        )
         self.assertEqual(self.sent[0].subject, 'Workflow Deploy guard failed')

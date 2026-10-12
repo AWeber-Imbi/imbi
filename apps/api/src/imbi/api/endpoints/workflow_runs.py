@@ -127,7 +127,10 @@ class TestRunResult(pydantic.BaseModel):
 
 
 class EmailResult(pydantic.BaseModel):
+    #: The addresses that got the message.
     recipients: list[str]
+    #: The addresses that a send failed for, after the client's retries.
+    failed: list[str] = []
 
 
 # --- Helpers -----------------------------------------------------------
@@ -362,19 +365,19 @@ def _email_client(
 async def _send(
     client: email_client.EmailClient, to: list[str], subject: str, body: str
 ) -> dict[str, typing.Any]:
+    """Send to every address, and report which sends failed.
+
+    A failure does not stop the others, and the result is stored with
+    the idempotency key: a repeat returns it and sends nothing again.
+    """
+    sent: list[str] = []
+    failed: list[str] = []
     for address in to:
         audit = await email.send_workflow_email(
             client, to_email=address, subject=subject, body=body
         )
-        if audit.status == 'failed':
-            raise fastapi.HTTPException(
-                status_code=502,
-                detail={
-                    'error': 'email_failed',
-                    'message': audit.error_message,
-                },
-            )
-    return {'recipients': to}
+        (failed if audit.status == 'failed' else sent).append(address)
+    return {'recipients': sent, 'failed': failed}
 
 
 async def _require_engine(
@@ -490,27 +493,35 @@ async def start_run(
             settings, str(workflow['id']), payload
         )
     except ValueError as e:
-        # Only a webhook payload can lack the key: validation makes a
-        # one_per_key workflow declare it as a manual input, and refuses
-        # one_per_key with a schedule trigger.
+        # Validation makes a one_per_key workflow declare its key input,
+        # and every input is required, but a string input can be empty.
+        # A webhook payload can lack the key: it is known only now.
         raise fastapi.HTTPException(
-            status_code=422, detail={'error': str(e)}
+            status_code=422,
+            detail=['The input that the concurrency key uses is empty']
+            if origin.kind == agent_tasks.HUMAN_ORIGIN
+            else {'error': str(e)},
         ) from e
-    row, _created = await runs.create(
-        workflows.NewRun(
-            organization_id=org_id,
-            workflow_id=workflow['id'],
-            version=workflow['active_version'],
-            trigger_node_id=trigger.id,
-            origin_kind=origin.kind,
-            origin_id=origin_id,
-            origin=origin.record,
-            idempotency_key=idempotency_key,
-            payload=payload,
-            concurrency_key=key,
-            activated_by=workflow['activated_by'],
+    try:
+        row, _created = await runs.create(
+            workflows.NewRun(
+                organization_id=org_id,
+                workflow_id=workflow['id'],
+                version=workflow['active_version'],
+                trigger_node_id=trigger.id,
+                origin_kind=origin.kind,
+                origin_id=origin_id,
+                origin=origin.record,
+                idempotency_key=idempotency_key,
+                payload=payload,
+                concurrency_key=key,
+                activated_by=workflow['activated_by'],
+            )
         )
-    )
+    except workflows.NotActive as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Workflow {slug!r} is not active'
+        ) from e
     return row
 
 
@@ -607,7 +618,9 @@ async def send_step_email(
         409: The step is not a running email step, or
             ``outcome_unknown``: a call with the key did not finish.
         422: No recipient is an active user of the organization.
-        502: A send failed.
+
+    A failed send is not an error here: the response lists it in
+    ``failed``, and the engine fails the step.
 
     """
     workflow = await _workflow(store, org_id, slug)
@@ -737,6 +750,10 @@ def simulate(
     triggers = [
         n.id for n in wf_graph.nodes if registry.STEP_TYPES[n.type].trigger
     ]
+    if not triggers:
+        raise fastapi.HTTPException(
+            status_code=422, detail='The workflow has no trigger'
+        )
     start = trigger_id or triggers[0]
     if start not in triggers:
         raise fastapi.HTTPException(
