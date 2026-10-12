@@ -1,5 +1,6 @@
 """Tests for the AWSIdentity device-flow capability handler."""
 
+import json
 import unittest
 
 import httpx
@@ -11,6 +12,7 @@ from imbi.common.plugins.base import (
     PluginContext,
 )
 from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.plugins.aws import identity
 from imbi.plugins.aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
@@ -82,6 +84,7 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
                 'client_id': 'cached-cid',
                 'client_secret': 'cached-sec',
                 'client_scopes': 'sso:account:access',
+                'client_secret_expires_at': '4102444800',
             },
             'https://imbi.test/cb',
         )
@@ -144,6 +147,10 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
             request.registered_credentials['client_scopes'],
             'sso:account:access',
         )
+        self.assertEqual(
+            request.registered_credentials['client_secret_expires_at'],
+            '999999999',
+        )
 
     @respx.mock
     async def test_re_registers_when_cached_scopes_stale(self) -> None:
@@ -192,6 +199,61 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
             'sso:account:access',
             request.registered_credentials['client_scopes'],
         )
+
+    @respx.mock
+    async def test_re_registers_when_cached_client_expired(self) -> None:
+        register_route = respx.post(
+            'https://oidc.us-east-1.amazonaws.com/client/register'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'clientId': 'fresh-cid',
+                    'clientSecret': 'fresh-sec',
+                    'clientSecretExpiresAt': 4102444800,
+                },
+            )
+        )
+        device_route = respx.post(
+            'https://oidc.us-east-1.amazonaws.com/device_authorization'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'deviceCode': 'dev-code',
+                    'userCode': 'CODE',
+                    'verificationUri': 'https://device.sso',
+                    'interval': 3,
+                    'expiresIn': 300,
+                },
+            )
+        )
+        plugin = AWSIdentity()
+        request = await plugin.authorization_request(
+            _ctx(),
+            {
+                'client_id': 'expired-cid',
+                'client_secret': 'expired-sec',
+                'client_scopes': 'sso:account:access',
+                'client_secret_expires_at': '999999999',
+            },
+            'https://imbi.test/cb',
+        )
+        self.assertTrue(register_route.called)
+        self.assertEqual(
+            json.loads(device_route.calls.last.request.content)['clientId'],
+            'fresh-cid',
+        )
+        assert request.registered_credentials is not None
+        self.assertEqual(
+            request.registered_credentials['client_secret_expires_at'],
+            '4102444800',
+        )
+
+
+class ClientExpiredTestCase(unittest.TestCase):
+    def test_out_of_range_timestamp_is_expired(self) -> None:
+        self.assertTrue(identity._client_expired('9' * 30))
 
 
 class ExchangeCodeTestCase(unittest.IsolatedAsyncioTestCase):
