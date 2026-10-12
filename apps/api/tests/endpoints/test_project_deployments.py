@@ -4817,6 +4817,22 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             '1.2.4', project_deployments._bump_semver('1.2.3', 'patch')
         )
 
+    def test_suggest_version_semver_policy_on_a_semver_shaped_date(
+        self,
+    ) -> None:
+        """``2026.10.12`` is valid semver; the policy must not take it."""
+        now = datetime.datetime(2026, 10, 12, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                'v0.1.0',
+                project_deployments._suggest_version(
+                    '2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]
+                ),
+            )
+
     def test_suggest_version_honours_the_tag_policy(self) -> None:
         calver = [r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$']
         today = datetime.datetime.now(datetime.UTC).date()

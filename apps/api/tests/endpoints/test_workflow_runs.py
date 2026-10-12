@@ -4,6 +4,8 @@ These run against the live Postgres that ``root:services`` boots. The
 engine is not running: a started run stays ``queued``.
 """
 
+import collections.abc
+import contextlib
 import datetime
 import typing
 import uuid
@@ -46,7 +48,7 @@ def _node(
     }
 
 
-def _graph(team: str) -> dict[str, typing.Any]:
+def _graph(team: str, project: str) -> dict[str, typing.Any]:
     """wait -> model decision -> deploy -> email, and an email branch."""
     email = {
         'to': [{'kind': 'team', 'id': team}],
@@ -74,7 +76,7 @@ def _graph(team: str) -> dict[str, typing.Any]:
                 'ship',
                 'deploy',
                 {
-                    'project_id': 'p1',
+                    'project_id': project,
                     'environment': 'staging',
                     'version': '{{ trigger.version }}',
                 },
@@ -92,12 +94,48 @@ def _graph(team: str) -> dict[str, typing.Any]:
     }
 
 
+class _OneConnection:
+    """A pool that hands out one connection, inside its transaction."""
+
+    def __init__(self, conn: typing.Any) -> None:
+        self.conn = conn
+
+    @contextlib.asynccontextmanager
+    async def connection(self) -> collections.abc.AsyncIterator[typing.Any]:
+        yield self.conn
+
+
+class HeldRunStore(workflows.RunStore):
+    """Leases each new run to no one in the transaction that writes it.
+
+    Engines of other worktrees share the test database; without this
+    they claim and execute the runs that these tests leave queued.
+    """
+
+    async def create(
+        self, run: workflows.NewRun
+    ) -> tuple[workflows.Row, bool]:
+        async with self._pool.connection() as conn, conn.transaction():
+            row, created = await workflows.RunStore(
+                typing.cast(typing.Any, _OneConnection(conn))
+            ).create(run)
+            if created:
+                await conn.execute(
+                    'INSERT INTO workflow_runtime.leases'
+                    ' (run_id, worker_id, expires_at)'
+                    " VALUES (%s, 'test-hold', NOW() + INTERVAL '1 hour')",
+                    (row['id'],),
+                )
+            return row, created
+
+
 class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         suffix = uuid.uuid4().hex[:10]
         self.org = f'wfr-{suffix}'
         self.team = f'team-{suffix}'
+        self.project = f'proj-{suffix}'
         self.email = f'dev-{suffix}@example.com'
         self.base = f'/organizations/{self.org}/workflows'
         await graph.initialize()
@@ -107,7 +145,7 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
         self.pool = workflows.create_pool()
         await self.pool.open()
         self.store = workflows.WorkflowStore(self.pool)
-        self.runs = workflows.RunStore(self.pool)
+        self.runs = HeldRunStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
         await self.graph.execute(
             """
@@ -118,9 +156,16 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
                              display_name: 'Dev', is_active: true}})
             CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(o)
             CREATE (u)-[:MEMBER_OF]->(t)
+            CREATE (p:Project {{id: {project}, slug: {project}, name: 'P'}})
+            CREATE (p)-[:OWNED_BY]->(t)
             RETURN o.id AS id
             """,
-            {'org': self.org, 'team': self.team, 'email': self.email},
+            {
+                'org': self.org,
+                'team': self.team,
+                'email': self.email,
+                'project': self.project,
+            },
             ['id'],
         )
         user = models.User(
@@ -158,7 +203,7 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
             DETACH DELETE n
             RETURN 1 AS ok
             """,
-            {'ids': [self.org, self.team, self.email]},
+            {'ids': [self.org, self.team, self.email, self.project]},
             ['ok'],
         )
         async with self.pool.connection() as conn:
@@ -179,7 +224,7 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
             json={
                 'name': 'Deploy guard',
                 'owner_team_slug': self.team,
-                'graph': _graph(self.team),
+                'graph': _graph(self.team, self.project),
             },
         )
         self.assertEqual(response.status_code, 201, response.text)
@@ -191,10 +236,11 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
         return f'{self.base}/deploy-guard'
 
     async def _forget(self, key: str) -> None:
+        """Delete the side effects whose caller key contains ``key``."""
         async with self.pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM workflow_runtime.side_effects WHERE key = %s',
-                (key,),
+                'DELETE FROM workflow_runtime.side_effects WHERE key LIKE %s',
+                (f'%{key}%',),
             )
 
     async def _counts(self) -> dict[str, int]:
@@ -317,6 +363,69 @@ class ManualRunTestCase(WorkflowRunTestCase):
         response = await self.client.post(f'{url}/runs/{run["id"]}/cancel')
         self.assertEqual(response.status_code, 409)
 
+    async def test_one_key_starts_one_run_per_workflow(self) -> None:
+        """One webhook delivery can start runs of two workflows."""
+
+        def new_run(workflow_id: uuid.UUID) -> workflows.NewRun:
+            return workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=workflow_id,
+                version=1,
+                trigger_node_id='hook',
+                origin_kind='webhook',
+                origin_id='wh-1',
+                idempotency_key='delivery-1',
+                payload={},
+                concurrency_key=None,
+                activated_by=self.email,
+            )
+
+        first, second = uuid.uuid4(), uuid.uuid4()
+        a, created_a = await self.runs.create(new_run(first))
+        b, created_b = await self.runs.create(new_run(second))
+        again, created_again = await self.runs.create(new_run(first))
+        self.assertTrue(created_a and created_b)
+        self.assertNotEqual(a['id'], b['id'])
+        self.assertEqual(b['workflow_id'], second)
+        self.assertFalse(created_again)
+        self.assertEqual(again['id'], a['id'])
+
+    async def test_cancel_needs_the_start_gate(self) -> None:
+        url = await self._workflow()
+        response = await self.client.post(
+            f'{url}/runs', json={'inputs': {'version': '1'}}
+        )
+        run_id = response.json()['id']
+        await self.graph.execute(
+            """
+            MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->(:Team)
+            DELETE m
+            RETURN 1 AS ok
+            """,
+            {'email': self.email},
+            ['ok'],
+        )
+        response = await self.client.post(f'{url}/runs/{run_id}/cancel')
+        self.assertEqual(response.status_code, 403, response.text)
+        run = await self.client.get(f'{url}/runs/{run_id}')
+        self.assertFalse(run.json()['cancel_requested'])
+
+        user = models.User(
+            id=self.email,
+            email=self.email,
+            display_name='Dev',
+            is_active=True,
+            is_admin=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            lambda: permissions.AuthContext(
+                user=user, auth_method='jwt', permissions=set(PERMISSIONS)
+            )
+        )
+        response = await self.client.post(f'{url}/runs/{run_id}/cancel')
+        self.assertEqual(response.status_code, 202, response.text)
+
     async def test_refusals(self) -> None:
         url = await self._workflow(activate=False)
         response = await self.client.post(
@@ -377,7 +486,7 @@ class DeployIdempotencyTestCase(WorkflowRunTestCase):
             plugin_id='p',
             plugin_slug='github',
         )
-        self.addAsyncCleanup(self._forget, f'unknown:{key}')
+        self.addAsyncCleanup(self._forget, key)
         with (
             mock.patch.object(
                 project_deployments, 'run_store', return_value=self.runs
@@ -395,7 +504,7 @@ class DeployIdempotencyTestCase(WorkflowRunTestCase):
 
     async def test_refusal_forgets_and_unknown_is_409(self) -> None:
         key = f'run-{uuid.uuid4()}:ship'
-        self.addAsyncCleanup(self._forget, f'unknown:{key}')
+        self.addAsyncCleanup(self._forget, key)
         with (
             mock.patch.object(
                 project_deployments, 'run_store', return_value=self.runs
@@ -473,7 +582,7 @@ class EngineEmailTestCase(WorkflowRunTestCase):
         patcher = mock.patch.object(email, '_save_audit', mock.AsyncMock())
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.addAsyncCleanup(self._forget, f'imbi-workflows:{self.run_id}:k')
+        self.addAsyncCleanup(self._forget, str(self.run_id))
 
     async def test_step_email_once(self) -> None:
         url = f'{self.url}/runs/{self.run_id}/steps/tell/email'
@@ -492,6 +601,27 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             headers=headers,
         )
         self.assertEqual(response.status_code, 404)
+
+    async def test_one_key_on_two_routes_does_not_meet(self) -> None:
+        headers = {'Idempotency-Key': f'{self.run_id}:k'}
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/steps/tell/email', headers=headers
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'failed'"
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/failure-notice', headers=headers
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [m.subject for m in self.sent],
+            ['Shipped 1', 'Workflow Deploy guard failed'],
+        )
 
     async def test_only_the_engine(self) -> None:
         overrides = self.test_app.dependency_overrides

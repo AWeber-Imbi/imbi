@@ -2736,7 +2736,7 @@ async def trigger_deployment(
 
     return DeploymentTriggerResponse.model_validate(
         await run_store().once(
-            f'{auth.principal_name}:{idempotency_key}', call
+            auth.principal_name, 'deployment', idempotency_key, call
         )
     )
 
@@ -5442,7 +5442,16 @@ def _suggest_version(
     candidates: list[str] = []
     # Calver first: an unpadded date (``2026.9.17``) is also valid semver,
     # and a project tagging by date wants the next date, not ``.18``.
-    if last_tag and versioning.is_calver_tag(last_tag):
+    # Advance the date only when the policy accepts the last tag. A date
+    # such as ``2026.10.12`` is valid semver, so without this check a
+    # semver-only policy would accept the next date on some days only.
+    if (
+        last_tag
+        and versioning.is_calver_tag(last_tag)
+        and (
+            not patterns or versioning.matches_tag_formats(last_tag, patterns)
+        )
+    ):
         candidates.append(versioning.next_calver_tag(last_tag, today))
     if last_tag and versioning.is_semver_tag(last_tag):
         candidates.append(_bump_semver(last_tag, bump))

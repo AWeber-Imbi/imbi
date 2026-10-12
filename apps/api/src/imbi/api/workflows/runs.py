@@ -5,6 +5,7 @@ A change to a run and its event commit in one transaction.
 """
 
 import dataclasses
+import json
 import typing
 import uuid
 from collections import abc
@@ -15,6 +16,12 @@ from psycopg.types import json as pg_json
 
 from imbi.api.workflows import store
 from imbi.common.workflows import history, runtime
+
+
+def side_effect_key(principal: str, action: str, idempotency_key: str) -> str:
+    """Return the ``side_effects`` key. JSON, so no part can run into
+    the next one."""
+    return json.dumps([principal, action, idempotency_key])
 
 
 @dataclasses.dataclass(frozen=True)
@@ -48,7 +55,8 @@ class RunStore:
     async def create(self, run: NewRun) -> tuple[store.Row, bool]:
         """Write a queued run. Return it, and ``False`` for a repeat.
 
-        A repeat of an idempotency key returns the first run.
+        A repeat of an idempotency key for the same workflow returns
+        the first run.
         """
         async with (
             self._pool.connection() as conn,
@@ -61,8 +69,8 @@ class RunStore:
                 ' origin_id, idempotency_key, payload, concurrency_key,'
                 ' activated_by) VALUES'
                 ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-                ' ON CONFLICT (organization_id, origin_kind, origin_id,'
-                ' idempotency_key) DO NOTHING RETURNING *',
+                ' ON CONFLICT (organization_id, workflow_id, origin_kind,'
+                ' origin_id, idempotency_key) DO NOTHING RETURNING *',
                 (
                     uuid.uuid4(),
                     run.organization_id,
@@ -81,10 +89,12 @@ class RunStore:
             if created is None:
                 await cur.execute(
                     'SELECT * FROM workflow_runtime.runs'
-                    ' WHERE organization_id = %s AND origin_kind = %s'
-                    ' AND origin_id = %s AND idempotency_key = %s',
+                    ' WHERE organization_id = %s AND workflow_id = %s'
+                    ' AND origin_kind = %s AND origin_id = %s'
+                    ' AND idempotency_key = %s',
                     (
                         run.organization_id,
+                        run.workflow_id,
                         run.origin_kind,
                         run.origin_id,
                         run.idempotency_key,
@@ -228,10 +238,16 @@ class RunStore:
 
     async def once(
         self,
-        key: str,
+        principal: str,
+        action: str,
+        idempotency_key: str,
         call: abc.Callable[[], abc.Awaitable[dict[str, typing.Any]]],
     ) -> dict[str, typing.Any]:
-        """Run ``call`` once per ``key``. A repeat returns the first result.
+        """Run ``call`` once per key. A repeat returns the first result.
+
+        The stored key is the principal, the action, and the caller's
+        key together (:func:`side_effect_key`), so the same caller key
+        on two routes, or from two principals, never meets.
 
         A refusal (``4xx``) acts before the side effect, so the key is
         released and a repeat may try again. Any other failure can come
@@ -243,6 +259,7 @@ class RunStore:
                 not have acted.
 
         """
+        key = side_effect_key(principal, action, idempotency_key)
         async with self._pool.connection() as conn:
             cur = await conn.execute(
                 'INSERT INTO workflow_runtime.side_effects (key)'

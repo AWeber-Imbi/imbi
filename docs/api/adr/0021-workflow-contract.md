@@ -70,7 +70,7 @@ A version's graph is JSON validated by a Pydantic model:
     the node's output in references. It defaults to a slug of the title and
     keeps its value when the title changes.
   - `join` is `any` or `all` (below). Default `any`.
-- **Edge**: `from` (node id), `port` (output index), `to` (node id).
+- **Edge**: `source` (node id), `port` (output index), `target` (node id).
 
 Each step type declares its ports. A type with one output has one unnamed
 port. A branching type names its ports: deploy has `Succeeded` and
@@ -101,7 +101,8 @@ v1 types: `manual`, `schedule`, `webhook` (triggers), `wait`,
 
 ### Validation
 
-Save accepts a graph with warnings. Activation requires a graph with no
+Save stores any graph within the size limits, with its validation result,
+so a draft can hold errors. Activation re-validates and requires a graph with no
 errors and no warnings. Checks:
 
 - Every node type is in the registry, and its `params` match

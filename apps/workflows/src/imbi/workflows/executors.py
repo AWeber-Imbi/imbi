@@ -19,6 +19,7 @@ import datetime
 import logging
 import re
 import typing
+import urllib.parse
 import uuid
 
 import httpx
@@ -38,6 +39,13 @@ from imbi.common.workflows.registry import (
 from imbi.workflows import settings
 
 LOGGER = logging.getLogger(__name__)
+
+#: Parameters can come from a trigger payload, so the values that name
+#: a path or a ref are checked before a call, and every path segment is
+#: quoted. A project and an environment are an id or a slug; a version
+#: is a tag or a commit, with no ``/`` and no ``..``.
+_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$')
+_REF = re.compile(r'^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 
 _DURATION = re.compile(r'^([1-9][0-9]*)([smhd])$')
 _UNITS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
@@ -317,8 +325,17 @@ class Executors:
         org = await self._org_slug(call.organization_id)
         sent = await self.api.request(
             'POST',
-            f'/organizations/{org}/workflows/{call.workflow_slug}/runs/'
-            f'{call.run_id}/steps/{call.node.id}/email',
+            _path(
+                'organizations',
+                org,
+                'workflows',
+                call.workflow_slug,
+                'runs',
+                call.run_id,
+                'steps',
+                call.node.id,
+                'email',
+            ),
             headers={'Idempotency-Key': call.idempotency_key},
         )
         return Outcome(output={'recipients': sent['recipients']})
@@ -330,9 +347,17 @@ class Executors:
         org = await self._org_slug(organization_id)
         await self.api.request(
             'POST',
-            f'/organizations/{org}/workflows/{slug}/runs/{run_id}'
-            '/failure-notice',
-            headers={'Idempotency-Key': f'{run_id}:on_failure'},
+            _path(
+                'organizations',
+                org,
+                'workflows',
+                slug,
+                'runs',
+                run_id,
+                'failure-notice',
+            ),
+            # A node key has no '/', so no step can make this key.
+            headers={'Idempotency-Key': f'{run_id}/failure-notice'},
         )
 
     async def _deploy(self, call: Call) -> Outcome:
@@ -343,6 +368,8 @@ class Executors:
 
     async def _rollback(self, call: Call) -> Outcome:
         params = _params(rollback.Params, call)
+        _check('project_id', params.project_id, _ID)
+        _check('environment', params.environment, _ID)
         version = call.state.get('version') or params.version
         if params.target != 'version' and 'run_id' not in call.state:
             version = await self._earlier_release(
@@ -411,10 +438,15 @@ class Executors:
         version: str,
         action: str = 'deploy',
     ) -> Outcome:
+        _check('project_id', project_id, _ID)
+        _check('environment', environment, _ID)
+        _check('version', version, _REF)
         base = await self._deployments_path(call.organization_id, project_id)
         run_id = call.state.get('run_id')
         if run_id is None:
-            commit = await self.api.request('GET', f'{base}/commits/{version}')
+            commit = await self.api.request(
+                'GET', base + _path('commits', version)
+            )
             started = await self.api.request(
                 'POST',
                 base,
@@ -428,7 +460,7 @@ class Executors:
             )
             run: dict[str, typing.Any] = started['run']
         else:
-            run = await self.api.request('GET', f'{base}/runs/{run_id}')
+            run = await self.api.request('GET', base + _path('runs', run_id))
         state = {'run_id': str(run['run_id']), 'version': version}
         port = _DEPLOYMENT_PORTS.get(str(run.get('status')))
         if port is None:
@@ -450,7 +482,9 @@ class Executors:
         self, organization_id: str, project_id: str
     ) -> str:
         org = await self._org_slug(organization_id)
-        return f'/organizations/{org}/projects/{project_id}/deployments'
+        return _path(
+            'organizations', org, 'projects', project_id, 'deployments'
+        )
 
     async def _org_slug(self, organization_id: str) -> str:
         found = await _values(
@@ -459,6 +493,17 @@ class Executors:
         if not found:
             raise StepError('organization_not_found', retry=False)
         return str(found[0]['slug'])
+
+
+def _check(name: str, value: str | None, pattern: re.Pattern[str]) -> None:
+    """Refuse a value that is not safe in a URL or a ref. Not retried."""
+    if value is not None and not pattern.match(value):
+        raise StepError(f'invalid_{name}', retry=False)
+
+
+def _path(*segments: object) -> str:
+    """Return ``/a/b/c`` with every segment quoted."""
+    return ''.join('/' + urllib.parse.quote(str(s), safe='') for s in segments)
 
 
 def _params[T: pydantic.BaseModel](model: type[T], call: Call) -> T:
