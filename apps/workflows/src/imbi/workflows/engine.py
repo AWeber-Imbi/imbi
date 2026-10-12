@@ -239,9 +239,7 @@ class Engine:
                 input=params,
                 started_at=_now(),
             )
-            await runtime.append_event(
-                conn, run['id'], 'step.started', _event(steps[node_id], 1)
-            )
+            await _step_event(conn, run['id'], node_id, 'step.started')
         return _now()
 
     async def _activator_allowed(
@@ -336,6 +334,17 @@ class Engine:
                 started_at=_now(),
             )
             await runtime.append_event(conn, run['id'], 'run.started', {})
+            # Trigger steps get their status here, not from a call, so
+            # history has an event for each of them too.
+            for node in wf_graph.nodes:
+                if registry.STEP_TYPES[node.type].trigger:
+                    started = node.id == run['trigger_node_id']
+                    await _step_event(
+                        conn,
+                        run['id'],
+                        node.id,
+                        'step.succeeded' if started else 'step.skipped',
+                    )
 
     # --- Calls ---------------------------------------------------------
 
@@ -451,11 +460,8 @@ class Engine:
                 call_started_at=None,
                 started_at=_now(),
             )
-            await runtime.append_event(
-                conn,
-                run['id'],
-                'step.started',
-                {**_event(step, attempt), 'retry_of': code},
+            await _step_event(
+                conn, run['id'], step['node_id'], 'step.started', retry_of=code
             )
         return _now() + datetime.timedelta(
             seconds=RETRY_BACKOFF * 2 ** (attempt - 2)
@@ -488,12 +494,7 @@ class Engine:
             call_started_at=None,
             finished_at=_now(),
         )
-        await runtime.append_event(
-            conn,
-            run['id'],
-            f'step.{status}',
-            {**_event(step, step['attempt']), 'port': port, 'error': error},
-        )
+        await _step_event(conn, run['id'], step['node_id'], f'step.{status}')
 
     # --- Close ---------------------------------------------------------
 
@@ -545,17 +546,34 @@ class Engine:
             )
 
 
+# --- Events --------------------------------------------------------------
+
+
+async def _step_event(
+    conn: store.Conn,
+    run_id: typing.Any,
+    node_id: str,
+    event_type: str,
+    **extra: typing.Any,
+) -> None:
+    """Write a step event that holds a snapshot of the step row.
+
+    History rebuilds the step records from these snapshots alone
+    (ADR 0021), so read the row after the change it records.
+    """
+    cur = await conn.execute(
+        "SELECT to_jsonb(s) - ARRAY['run_id', 'state', 'call_started_at']"
+        ' FROM workflow_runtime.step_runs AS s'
+        ' WHERE run_id = %s AND node_id = %s',
+        (run_id, node_id),
+    )
+    row = await cur.fetchone()
+    if row is None:
+        raise LookupError(f'Run {run_id} has no step {node_id}')
+    await runtime.append_event(conn, run_id, event_type, {**row[0], **extra})
+
+
 # --- References ----------------------------------------------------------
-
-
-def _event(step: store.Row, attempt: int) -> dict[str, typing.Any]:
-    return {
-        'node_id': step['node_id'],
-        'node_key': step['node_key'],
-        'node_type': step['node_type'],
-        'title': step['title'],
-        'attempt': attempt,
-    }
 
 
 def _scope(

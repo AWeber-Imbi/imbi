@@ -49,6 +49,8 @@ TOPICS: dict[str, tuple[str, ...]] = {
     'scheduler_runs': ('scheduler',),
     'score_history': ('scoring',),
     'tags': ('github',),
+    'workflow_run_events': ('workflows',),
+    'workflow_runs': ('workflows',),
 }
 
 # Start each publish counter series at zero. Without that, the first

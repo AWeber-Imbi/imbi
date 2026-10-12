@@ -17,7 +17,7 @@ import pydantic
 import typer
 
 import imbi.workflows
-from imbi.common import graph, lifespan, server
+from imbi.common import graph, iggy, lifespan, server
 from imbi.common import settings as common_settings
 from imbi.common.prompts import pool as prompt_pool
 from imbi.workflows import bindings, engine, executors, settings, store
@@ -75,6 +75,26 @@ async def engine_lifespan() -> abc.AsyncGenerator[engine.Engine]:
         await db.close()
 
 
+@contextlib.asynccontextmanager
+async def iggy_lifespan() -> abc.AsyncGenerator[None]:
+    """Connect to Iggy, which takes run history to ClickHouse.
+
+    Runs go on without it: the archive sweep of imbi-api publishes what
+    the engine could not (ADR 0021, Run history).
+    """
+    try:
+        connected = await iggy.initialize()
+    except Exception:  # noqa: BLE001 -- the sweep publishes later
+        LOGGER.warning('Iggy initialization failed', exc_info=True)
+        connected = False
+    if not connected:
+        LOGGER.warning('Iggy is not available; the sweep publishes history')
+    try:
+        yield
+    finally:
+        await iggy.aclose()
+
+
 class Status(pydantic.BaseModel):
     service: str = 'imbi-workflows'
     status: typing.Literal['ok']
@@ -86,7 +106,9 @@ def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         version=imbi.workflows.version,
         started_at=datetime.datetime.now(datetime.UTC),
-        lifespan=lifespan.Lifespan(prompt_pool.pool_lifespan, engine_lifespan),
+        lifespan=lifespan.Lifespan(
+            prompt_pool.pool_lifespan, iggy_lifespan, engine_lifespan
+        ),
     )
 
     @app.get('/status', operation_id='getStatus')

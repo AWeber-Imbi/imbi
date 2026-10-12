@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, ChevronUp } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FlaskConical, Play } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
@@ -11,6 +11,8 @@ import {
   activateWorkflow,
   createWorkflow,
   pauseWorkflow,
+  startWorkflowRun,
+  testRunWorkflow,
   updateWorkflow,
   validateWorkflow,
 } from '@/api/endpoints'
@@ -39,16 +41,26 @@ import {
   updateNode,
   type View,
 } from './graph'
-import { EdgePanel, NodePanel, SettingsPanel } from './Inspector'
+import {
+  EdgePanel,
+  type InspectorTab,
+  NodePanel,
+  SettingsPanel,
+} from './Inspector'
 import { Palette } from './Palette'
+import { type PanelTab, RunPanel } from './RunPanel'
+import { manualTrigger, runResults, testResults } from './runs'
 import { paramSummary } from './schemaFields'
+import { StartRunDialog } from './StartRunDialog'
 import type {
   StepType,
+  TestRunResult,
   ValidationIssue,
   Workflow,
   WorkflowGraph,
   WorkflowWrite,
 } from './types'
+import { useWorkflowRun, useWorkflowVersion } from './workflowQueries'
 import { StatusBadge } from './WorkflowStatusBadge'
 
 const NEW_SETTINGS: WorkflowWrite['settings'] = {
@@ -98,6 +110,18 @@ export function WorkflowEditor({
   )
   const viewportRef = useRef<HTMLDivElement>(null)
   const slug = current?.slug
+  const canRun = useHasPermission('workflow:run')
+  // `?run=<id>` opens that run, as the attention list links to it.
+  const [searchParams] = useSearchParams()
+  const [runId, setRunId] = useState<null | string>(searchParams.get('run'))
+  const [panel, setPanel] = useState<{ open: boolean; tab: PanelTab }>({
+    open: !!runId,
+    tab: runId ? 'runs' : 'test',
+  })
+  const [testRun, setTestRun] = useState<null | TestRunResult>(null)
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('params')
+  const [startOpen, setStartOpen] = useState(false)
+  const runDetail = useWorkflowRun(orgSlug, slug ?? '', runId)
 
   const change = (patch: Partial<WorkflowWrite>) => {
     setDraft((d) => ({ ...d, ...patch }))
@@ -216,6 +240,50 @@ export function WorkflowEditor({
     onSuccess: stored,
   })
 
+  const test = useMutation({
+    mutationFn: () => testRunWorkflow(orgSlug, slug!),
+    onError: (error) =>
+      toast.error(`The test run failed: ${extractApiErrorDetail(error)}`),
+    onMutate: () => setPanel({ open: true, tab: 'test' }),
+    onSuccess: setTestRun,
+  })
+
+  // A run starts the active version, which may not be the version in
+  // the editor: read its manual trigger from that version.
+  const activeVersion = current?.active_version ?? null
+  const otherVersion = useWorkflowVersion(
+    orgSlug,
+    slug,
+    activeVersion !== null && activeVersion !== current?.latest_version
+      ? activeVersion
+      : null,
+  )
+  const activeGraph =
+    activeVersion === null
+      ? null
+      : activeVersion === current?.latest_version
+        ? current.version.graph
+        : (otherVersion.data?.graph ?? null)
+  const trigger = activeGraph ? manualTrigger(activeGraph) : null
+  const start = useMutation({
+    mutationFn: (inputs: Record<string, boolean | number | string>) =>
+      startWorkflowRun(orgSlug, slug!, inputs),
+    onError: (error) =>
+      toast.error(`Failed to start the run: ${extractApiErrorDetail(error)}`),
+    onSuccess: (run) => {
+      setStartOpen(false)
+      setRunId(run.id)
+      setPanel({ open: true, tab: 'runs' })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.workflowRuns(orgSlug, slug!),
+      })
+    },
+  })
+  const onRun = () => {
+    if (trigger?.inputs.length) setStartOpen(true)
+    else start.mutate({})
+  }
+
   const onSave = () => {
     if (!draft.name.trim()) {
       toast.error('Give the workflow a name.')
@@ -288,6 +356,18 @@ export function WorkflowEditor({
       .map((i) => i.node_id),
   ).size
 
+  const showRun = panel.tab === 'runs' && !!runId && !!runDetail.data
+  const results = showRun
+    ? runResults(runDetail.data!.steps, draft.graph, types)
+    : panel.tab === 'test' && testRun
+      ? testResults(testRun)
+      : {}
+  const resultSource = showRun
+    ? 'run'
+    : panel.tab === 'test' && testRun
+      ? 'test'
+      : null
+
   const selectedNode =
     selection?.kind === 'node'
       ? draft.graph.nodes.find((n) => n.id === selection.id)
@@ -333,6 +413,40 @@ export function WorkflowEditor({
           </span>
         )}
         <div className="flex-1" />
+        {current && canRun && (
+          <Button
+            disabled={dirty || test.isPending}
+            onClick={() => test.mutate()}
+            size="sm"
+            title={
+              dirty
+                ? 'Save first: a test run walks the saved workflow.'
+                : 'Walk the workflow with sample output. Nothing is sent.'
+            }
+            variant="outline"
+          >
+            <FlaskConical />
+            Test run
+          </Button>
+        )}
+        {current && canRun && (
+          <Button
+            disabled={status !== 'active' || !trigger || start.isPending}
+            onClick={onRun}
+            size="sm"
+            title={
+              status !== 'active'
+                ? 'Activate the workflow to run it.'
+                : trigger
+                  ? 'Start a run of the active version.'
+                  : 'The active version has no manual trigger.'
+            }
+            variant="outline"
+          >
+            <Play />
+            Run
+          </Button>
+        )}
         {current && canWrite && (
           <label
             className="flex items-center gap-2 text-sm"
@@ -390,15 +504,27 @@ export function WorkflowEditor({
             view={view}
             viewportRef={viewportRef}
           />
-          <div className="border-tertiary bg-primary flex h-10 shrink-0 items-center gap-2.5 border-t px-4">
-            <span className="text-tertiary flex items-center gap-1.5 text-sm font-medium">
-              <ChevronUp className="size-3.5" />
-              Test run
-            </span>
-            <span className="text-tertiary truncate text-xs">
-              Test runs arrive with the workflow engine.
-            </span>
-          </div>
+          <RunPanel
+            canRun={canRun}
+            onClearTest={() => setTestRun(null)}
+            onRunId={setRunId}
+            onSelectNode={(id) => {
+              setSelection({ id, kind: 'node' })
+              setInspectorTab('output')
+            }}
+            onTab={(tab) => setPanel({ open: true, tab })}
+            onToggle={() => setPanel((p) => ({ ...p, open: !p.open }))}
+            open={panel.open}
+            orgSlug={orgSlug}
+            results={results}
+            run={runDetail.data}
+            runId={runId}
+            slug={slug}
+            tab={panel.tab}
+            testPending={test.isPending}
+            testRun={testRun}
+            types={types}
+          />
         </div>
         <aside className="border-tertiary bg-primary flex w-80 shrink-0 flex-col border-l">
           {selectedNode ? (
@@ -432,8 +558,12 @@ export function WorkflowEditor({
                       }),
                 )
               }
+              onTab={setInspectorTab}
               orgSlug={orgSlug}
               readOnly={readOnly}
+              result={results[selectedNode.id] ?? null}
+              resultSource={resultSource}
+              tab={inspectorTab}
               types={types}
             />
           ) : selection?.kind === 'edge' ? (
@@ -455,6 +585,15 @@ export function WorkflowEditor({
           )}
         </aside>
       </div>
+      {trigger && startOpen && (
+        <StartRunDialog
+          inputs={trigger.inputs}
+          onClose={() => setStartOpen(false)}
+          onStart={(inputs) => start.mutate(inputs)}
+          open
+          pending={start.isPending}
+        />
+      )}
     </div>
   )
 }

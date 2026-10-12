@@ -17,6 +17,7 @@ Every route needs the caller to be a member of the organization
 """
 
 import datetime
+import logging
 import re
 import typing
 from collections import abc
@@ -30,7 +31,9 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph
 from imbi.common.workflows import graph as wf
-from imbi.common.workflows import registry, validation
+from imbi.common.workflows import history, registry, validation
+
+LOGGER = logging.getLogger(__name__)
 
 OrgId = organizations.MemberOrgId
 
@@ -68,6 +71,11 @@ class WorkflowSummary(pydantic.BaseModel):
     agent_ids: list[str] = []
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    #: From ClickHouse ``workflow_runs``. ``None`` when ClickHouse is
+    #: not available.
+    runs_30d: int | None = None
+    last_run_at: datetime.datetime | None = None
+    last_run_status: str | None = None
 
 
 class TriggerBinding(pydantic.BaseModel):
@@ -450,9 +458,28 @@ async def list_workflows(
     store: workflows.Store,
     _: ReadAuth,
 ) -> list[dict[str, typing.Any]]:
+    """Return the workflows with their runs in 30 days and last run.
+
+    The run figures read ClickHouse. When it is not available, they are
+    ``None`` and the list still loads (ADR 0021).
+    """
     rows = await store.list_all(org_id)
     team_slugs = await _team_slugs(db, org_id, rows)
-    return [_workflow(row, team_slugs) for row in rows]
+    try:
+        stats = await history.stats(org_id)
+    except Exception:  # noqa: BLE001 -- the list loads without them
+        LOGGER.warning('Workflow run stats are not available', exc_info=True)
+        stats = None
+    found: list[dict[str, typing.Any]] = []
+    for row in rows:
+        item = _workflow(row, team_slugs)
+        if stats is not None:
+            run = stats.get(str(row['id']), {})
+            item['runs_30d'] = run.get('runs_30d', 0)
+            item['last_run_at'] = run.get('last_run_at')
+            item['last_run_status'] = run.get('last_status')
+        found.append(item)
+    return found
 
 
 @workflows_router.post('/', status_code=201, response_model=Workflow)

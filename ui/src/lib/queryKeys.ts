@@ -95,6 +95,12 @@ export const queryKeys = {
   // Nested under `workflows` so a list invalidation refreshes each one.
   workflow: (orgSlug: string, slug: string) =>
     ['workflows', orgSlug, slug] as const,
+  workflowAttention: (orgSlug: string) =>
+    ['workflowAttention', orgSlug] as const,
+  workflowRun: (orgSlug: string, slug: string, runId: string) =>
+    ['workflows', orgSlug, slug, 'runs', runId] as const,
+  workflowRuns: (orgSlug: string, slug: string) =>
+    ['workflows', orgSlug, slug, 'runs'] as const,
   workflows: (orgSlug: string) => ['workflows', orgSlug] as const,
   workflowStepTypes: (orgSlug: string) =>
     ['workflowStepTypes', orgSlug] as const,

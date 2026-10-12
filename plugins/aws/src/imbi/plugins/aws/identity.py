@@ -71,6 +71,8 @@ REFRESH_SCOPE = 'sso:account:access'
 #: directly by :meth:`AWSIdentity.authorization_request`.
 DEFAULT_SCOPES = [REFRESH_SCOPE]
 
+CLIENT_EXPIRY_MARGIN = datetime.timedelta(days=1)
+
 
 def _oidc_url(region: str, path: str) -> str:
     return f'https://oidc.{region}.amazonaws.com{path}'
@@ -99,7 +101,8 @@ class AWSIdentity(IdentityCapability):
         """Begin a device-flow authorization.
 
         Auto-registers an OIDC client when ``credentials`` is missing
-        ``client_id`` / ``client_secret``.  The host is expected to
+        ``client_id`` / ``client_secret`` or the cached client secret
+        is expired or about to expire.  The host is expected to
         round-trip the new client id/secret back to the Integration's
         encrypted credential blob (via
         :attr:`AuthorizationRequest.registered_credentials`); this
@@ -118,11 +121,21 @@ class AWSIdentity(IdentityCapability):
         # refresh token; force a re-register so the sweeper has
         # something to work with.
         scopes_stale = not _scopes_cover(cached_scopes, requested_scopes)
+        client_expired = _client_expired(
+            credentials.get('client_secret_expires_at')
+        )
         registered: dict[str, str] | None = None
-        if not client_id or not client_secret or scopes_stale:
-            client_id, client_secret = await self._register_client(
-                region, requested_scopes
-            )
+        if (
+            not client_id
+            or not client_secret
+            or scopes_stale
+            or client_expired
+        ):
+            (
+                client_id,
+                client_secret,
+                client_secret_expires_at,
+            ) = await self._register_client(region, requested_scopes)
             # Surface the freshly-minted client back to the host so it
             # can persist them; otherwise the matching CreateToken call
             # (which only sees ``credentials`` from storage) would
@@ -133,6 +146,7 @@ class AWSIdentity(IdentityCapability):
                 'client_id': client_id,
                 'client_secret': client_secret,
                 'client_scopes': ' '.join(requested_scopes),
+                'client_secret_expires_at': client_secret_expires_at,
             }
 
         async with httpx.AsyncClient(timeout=10.0) as http:
@@ -425,10 +439,11 @@ class AWSIdentity(IdentityCapability):
 
     async def _register_client(
         self, region: str, scopes: list[str] | None = None
-    ) -> tuple[str, str]:
-        """One-time OIDC client registration.
+    ) -> tuple[str, str, str]:
+        """OIDC client registration.
 
-        Returns ``(client_id, client_secret)``.  The host is expected
+        Returns ``(client_id, client_secret, client_secret_expires_at)``
+        where the expiry is epoch seconds.  The host is expected
         to persist these into the Integration credential blob so the
         next call sees them in ``credentials``.  ``scopes`` is the list
         of OAuth scopes the client will be allowed to request — IAM IC
@@ -451,7 +466,11 @@ class AWSIdentity(IdentityCapability):
                 f'{response.status_code} {response.text}'
             )
         data = typing.cast(dict[str, typing.Any], response.json())
-        return str(data['clientId']), str(data['clientSecret'])
+        return (
+            str(data['clientId']),
+            str(data['clientSecret']),
+            str(data['clientSecretExpiresAt']),
+        )
 
     def _handle_token_response(
         self,
@@ -532,6 +551,24 @@ def _expires_at(token: dict[str, typing.Any]) -> datetime.datetime | None:
     return datetime.datetime.now(datetime.UTC) + datetime.timedelta(
         seconds=int(token['expiresIn'])
     )
+
+
+def _client_expired(raw: str | None) -> bool:
+    """True when the cached client secret is unknown or near expiry.
+
+    IAM IC client secrets expire (about 90 days after registration),
+    after which ``StartDeviceAuthorization`` returns 401
+    ``invalid_client``.  A missing or malformed value is treated as
+    expired so clients registered before expiry tracking re-register.
+    """
+    if not raw:
+        return True
+    try:
+        expires_at = datetime.datetime.fromtimestamp(int(raw), datetime.UTC)
+    except (ValueError, OverflowError, OSError):
+        return True
+    now = datetime.datetime.now(datetime.UTC)
+    return expires_at - CLIENT_EXPIRY_MARGIN <= now
 
 
 def _parse_cached_scopes(raw: str | None) -> frozenset[str]:
