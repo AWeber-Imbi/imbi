@@ -268,9 +268,14 @@ provision_internal_credentials() {
     if [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] && \
        [ -z "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
         # A fixed client_id so a restart re-points the same credential
-        # instead of accumulating one node per boot.
+        # instead of accumulating one node per boot. The secret is derived
+        # from IMBI_AUTH_JWT_SECRET, not random: every 'all'-mode replica
+        # seeds it at boot, and with a random one the last replica to seed
+        # would lock the others out. The JWT secret is shared by every
+        # replica, and a holder of it can already mint any token, so
+        # deriving from it exposes nothing new.
         export IMBI_SCHEDULER_SA_CLIENT_ID="cc_imbi_scheduler_all_mode"
-        IMBI_SCHEDULER_SA_CLIENT_SECRET="$(random_token)"
+        IMBI_SCHEDULER_SA_CLIENT_SECRET="$(printf 'imbi-scheduler-all-mode:%s' "$IMBI_AUTH_JWT_SECRET" | sha256sum | cut -d' ' -f1)"
         export IMBI_SCHEDULER_SA_CLIENT_SECRET
         minted_scheduler=1
     elif [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] || \
