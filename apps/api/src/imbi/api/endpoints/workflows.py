@@ -181,39 +181,6 @@ RETURN r.id AS id
 """,
 }
 
-_PROJECT_SLUGS_QUERY: typing.LiteralString = """
-MATCH (p:Project) WHERE p.id IN {ids}
-RETURN p.slug AS slug
-"""
-
-
-async def _lacks_project_deployment(
-    db: graph.Graph, auth: permissions.AuthContext, wf_graph: wf.Graph
-) -> bool:
-    """Return whether the caller lacks deployment access to a project.
-
-    Each literal ``project_id`` of a deploy or rollback step needs a
-    ``CAN_ACCESS`` grant of ``deployment:write`` on that project, in
-    addition to the global ``project:deployment:write``. A reference is
-    left for the engine to check when the step runs.
-    """
-    ids = sorted({v for _, v in _resource_ids(wf_graph).get('project', [])})
-    if not ids:
-        return False
-    if auth.user is None:
-        return True
-    records = await db.execute(_PROJECT_SLUGS_QUERY, {'ids': ids}, ['slug'])
-    slugs = [str(graph.parse_agtype(r['slug'])) for r in records]
-    if len(slugs) != len(ids):
-        return True
-    for slug in slugs:
-        if not await permissions.check_resource_permission(
-            db, auth.user.email, 'Project', slug, 'deployment:write'
-        ):
-            return True
-    return False
-
-
 _TEAM_MEMBER_QUERY: typing.LiteralString = """
 MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(t:Team {{id: {team}}})
 RETURN t.id AS id
@@ -593,9 +560,7 @@ async def activate_workflow(
 
     Raises:
         403: ``missing_permissions``: the caller does not hold every
-            permission that the steps of the version need, or has no
-            ``deployment:write`` grant on a project that a deploy or
-            rollback step names.
+            permission that the steps of the version need.
         404: No such workflow or version.
         422: ``validation_failed``: the version has issues.
 
@@ -625,10 +590,6 @@ async def activate_workflow(
         step = registry.STEP_TYPES[node.type]
         required |= step.required_permissions(node.params)
     missing = set[str]() if auth.is_admin else required - auth.permissions
-    if not auth.is_admin and await _lacks_project_deployment(
-        db, auth, wf_graph
-    ):
-        missing.add('project:deployment:write')
     if missing:
         raise fastapi.HTTPException(
             status_code=403,
