@@ -5018,7 +5018,8 @@ export interface paths {
          *
          *     Raises:
          *         409: The slug is in use in the org.
-         *         422: The graph is too large, or the team is not in the org.
+         *         422: The graph is too large, the team is not in the org, or
+         *             the name gives an empty slug and no slug is supplied.
          */
         post: operations["create_workflow_api_organizations__org_slug__workflows__post"];
         delete?: never;
@@ -27242,6 +27243,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                slug: string;
                 org_slug: string;
             };
             cookie?: never;
