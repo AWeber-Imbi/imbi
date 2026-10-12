@@ -1,0 +1,52 @@
+# Relational schema for workflow definitions (ADR 0021).
+#
+# The initializer (imbi.common.relational) walks this file and issues
+# idempotent DDL. Rows refer to graph nodes (organization, team) by id.
+# People are referred to by email, as everywhere in this API.
+#
+# The schema name is fixed: `workflows`.
+
+# One row per workflow. Save moves `latest_version`; activation sets
+# `active_version`, the only version that triggers run.
+[[tables]]
+name = "workflows"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+slug = "TEXT NOT NULL"
+name = "TEXT NOT NULL"
+description = "TEXT NOT NULL DEFAULT ''"
+owner_team_id = "TEXT NOT NULL"
+status = "TEXT NOT NULL DEFAULT 'draft'"
+latest_version = "INTEGER NOT NULL DEFAULT 1"
+active_version = "INTEGER"
+activated_by = "TEXT"
+activated_at = "TIMESTAMP WITH TIME ZONE"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "workflows_organization_slug_key"
+columns = ["organization_id", "slug"]
+unique = true
+
+# One immutable row per saved version.
+[[tables]]
+name = "workflow_versions"
+
+[tables.columns]
+workflow_id = "UUID NOT NULL REFERENCES workflows.workflows (id) ON DELETE CASCADE"
+version = "INTEGER NOT NULL"
+graph = "JSONB NOT NULL"
+settings = "JSONB NOT NULL"
+validation = "JSONB NOT NULL"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["workflow_id", "version"]
