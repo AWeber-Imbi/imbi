@@ -325,6 +325,34 @@ class WebhookTestCase(ReconcilerTestCase):
         self.assertEqual(await self._rules(), [])
         self.assertEqual(await self._bindings(), [])
 
+    async def test_rule_matches_only_its_own_binding_field(self) -> None:
+        """A node id that equals another binding's id matches nothing."""
+        await self._activate(self._trigger())
+        [first] = await self._bindings()
+        await self._activate(
+            self._trigger(),
+            workflows.Trigger(
+                str(first['id']), 'webhook', {'webhook_id': self.webhook}
+            ),
+        )
+        await self.reconciler.reconcile()
+        before = await self._rule_ids()
+        self.assertEqual(len(before), 2)
+        # A second pass finds both rules as they are: it writes nothing.
+        await self.reconciler.reconcile()
+        self.assertEqual(await self._rule_ids(), before)
+
+    async def _rule_ids(self) -> list[int]:
+        records = await self.graph.execute(
+            """
+            MATCH (r:WebhookRule)-[:ACTIONS]->(:Webhook {{id: {webhook}}})
+            RETURN id(r) AS id
+            """,
+            {'webhook': self.webhook},
+            ['id'],
+        )
+        return sorted(int(graph.parse_agtype(r['id'])) for r in records)
+
     async def test_webhook_outside_the_org_fails(self) -> None:
         await self._activate(
             workflows.Trigger('hook', 'webhook', {'webhook_id': 'elsewhere'})

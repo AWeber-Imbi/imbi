@@ -262,10 +262,11 @@ async def _service_trigger(
     """Return the schedule or webhook trigger that the service names.
 
     A schedule run must come from the scheduler task that the trigger's
-    binding records, so a scheduler task that a person made cannot
-    start the workflow. A webhook run must name, from its gateway rule,
-    the synced and enabled binding of the trigger on that webhook, so a
-    ``start_workflow`` rule that a person made cannot start it.
+    enabled and synced binding records, so a scheduler task that a
+    person made cannot start the workflow. A webhook run must name, from
+    its gateway rule, the enabled and synced binding of the trigger on
+    that webhook, so a ``start_workflow`` rule that a person made cannot
+    start it.
 
     Raises:
         403: The scheduler task or the rule is not the binding's.
@@ -291,22 +292,15 @@ async def _service_trigger(
             status_code=409,
             detail=f'The active version has no such {origin.kind} trigger',
         )
-    bindings = await store.bindings(workflow['id'])
-    if origin.kind == 'schedule':
-        allowed = any(
-            b['node_id'] == node.id and b['target_id'] == origin.id
-            for b in bindings
-        )
-    else:
-        allowed = any(
-            str(b['id']) == data.binding
-            and b['node_id'] == node.id
-            and b['type'] == 'webhook'
-            and b['enabled']
-            and b['sync_state'] == 'synced'
-            and b['target_id'] == origin.id
-            for b in bindings
-        )
+    allowed = any(
+        b['node_id'] == node.id
+        and b['type'] == origin.kind
+        and b['enabled']
+        and b['sync_state'] == 'synced'
+        and b['target_id'] == origin.id
+        and (origin.kind == 'schedule' or str(b['id']) == data.binding)
+        for b in await store.bindings(workflow['id'])
+    )
     if not allowed:
         raise fastapi.HTTPException(
             status_code=403,

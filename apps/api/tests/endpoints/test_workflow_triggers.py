@@ -243,6 +243,19 @@ class ScheduleRunTestCase(TriggerTestCase):
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(await self._run_count(), 0)
 
+    async def test_binding_that_is_not_synced_is_refused(self) -> None:
+        await self._sync('tick', 'task-1')
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflows.trigger_bindings SET sync_state = 'failed'"
+                " WHERE organization_id = %s AND node_id = 'tick'",
+                (self.org,),
+            )
+        self._as('imbi-scheduler')
+        response = await self._post()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(await self._run_count(), 0)
+
     async def test_paused_workflow_starts_no_run(self) -> None:
         await self._sync('tick', 'task-1')
         response = await self.client.post(f'{self.url}/pause')

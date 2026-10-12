@@ -256,7 +256,13 @@ class Reconciler:
         The rule is found by the binding id in its config, so a rule on a
         Webhook that the trigger no longer names is removed too.
         """
-        marker = {'handler': HANDLER, 'binding': str(binding['id'])}
+        # The exact field, as json.dumps writes it here and in the
+        # webhooks API: an id elsewhere in the config (a trigger node id
+        # can be any string) must not match.
+        marker = {
+            'handler': HANDLER,
+            'binding': f'"binding": "{binding["id"]}"',
+        }
         if binding['removed']:
             await self.steps.db.execute(_DELETE_RULES, marker, ['ok'])
             return None
