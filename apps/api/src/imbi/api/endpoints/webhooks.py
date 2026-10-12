@@ -101,6 +101,55 @@ async def _check_identifier_collision(
         )
 
 
+#: The gateway action that starts a workflow run (ADR 0021). Only
+#: imbi-workflows writes its rules, from the active version of a
+#: workflow: a rule that a person wrote could start the workflow on
+#: deliveries that its activator did not approve.
+_WORKFLOW_HANDLER = 'gateway-actions#start_workflow'
+
+_WORKFLOWS_ACCOUNT = 'imbi-workflows'
+
+
+def _workflow_rules(rules: list[dict[str, typing.Any]]) -> list[str]:
+    """Return the ``start_workflow`` rules in ``rules``, comparable."""
+    return sorted(
+        json.dumps(
+            [r['filter_expression'], r.get('handler_config')], sort_keys=True
+        )
+        for r in rules
+        if r['handler'] == _WORKFLOW_HANDLER
+    )
+
+
+def _guard_workflow_rules(
+    auth: permissions.AuthContext,
+    before: list[dict[str, typing.Any]],
+    after: list[dict[str, typing.Any]],
+) -> None:
+    """Refuse a change to ``start_workflow`` rules by anyone else.
+
+    A rule that only round-trips unchanged through a patch is allowed,
+    so a person can still edit the other rules of the webhook.
+
+    Raises:
+        403: The caller is not imbi-workflows and adds, changes, or
+            removes a ``start_workflow`` rule.
+
+    """
+    account = auth.service_account
+    if account is not None and account.slug == _WORKFLOWS_ACCOUNT:
+        return
+    if _workflow_rules(before) != _workflow_rules(after):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'workflow_rule_forbidden',
+                'message': 'Only imbi-workflows writes start_workflow '
+                'rules; activate the workflow to change them.',
+            },
+        )
+
+
 def _rules_create_clauses(
     rules: list[dict[str, str | int]],
 ) -> tuple[str, dict[str, typing.Any]]:
@@ -231,6 +280,7 @@ async def create_webhook(
     - id: nanoid (21-char URL-safe string, stable surrogate key)
     - notification_path: ``/{id}``
     """
+    _guard_workflow_rules(auth, [], [rule.model_dump() for rule in data.rules])
     encryptor = encryption.TokenEncryption.get_instance()
 
     webhook_id = _generate_id()
@@ -576,6 +626,9 @@ async def patch_webhook(
             status_code=400,
             detail=f'Validation error: {exc.errors()}',
         ) from exc
+    _guard_workflow_rules(
+        auth, patchable['rules'], [rule.model_dump() for rule in data.rules]
+    )
 
     props: dict[str, typing.Any] = {
         'name': data.name,

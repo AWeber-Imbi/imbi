@@ -96,3 +96,25 @@ class ConcurrencyKeyTestCase(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, 'concurrency_key_missing'):
             validation.concurrency_key(settings, 'w', {})
+
+    def test_nested_field(self) -> None:
+        settings = graph.Settings(
+            concurrency_mode='one_per_key',
+            concurrency_key='{{ trigger.payload.repository.name }}',
+        )
+        payload = {'payload': {'repository': {'name': 'imbi'}}}
+        self.assertEqual(
+            validation.concurrency_key(settings, 'w', payload), 'imbi'
+        )
+        for missing in (
+            {},
+            {'payload': []},
+            {'payload': {'repository': 'imbi'}},
+            {'payload': {'repository': {'name': ''}}},
+            {'payload': {'repository': {'name': {'x': 1}}}},
+        ):
+            with (
+                self.subTest(payload=missing),
+                self.assertRaisesRegex(ValueError, 'concurrency_key_missing'),
+            ):
+                validation.concurrency_key(settings, 'w', missing)

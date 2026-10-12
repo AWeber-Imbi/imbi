@@ -2,7 +2,8 @@
 
 Wraps the bundled actions (``update_project``, ``create_release``,
 ``add_deployment_event``, ``publish_release``, ``block_release``,
-``update_release_drift``, ``ingest_sbom``, ``create_agent_task``) as a
+``update_release_drift``, ``ingest_sbom``, ``create_agent_task``,
+``start_workflow``) as a
 :class:`~imbi.common.plugins.base.WebhookActionsCapability` on a single
 :class:`~imbi.common.plugins.base.Plugin` (slug ``gateway-actions``) so
 they participate in the same discovery, validation, and dispatch flow as
@@ -133,6 +134,18 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                 callable_path='imbi.gateway.actions:create_agent_task',
                 model_path='imbi.gateway.actions:CreateAgentTaskConfig',
             ),
+            _descriptor(
+                name='start_workflow',
+                label='Start Workflow from Webhook',
+                description=(
+                    'Starts a run of a workflow with a webhook trigger. '
+                    'imbi-workflows writes this rule when it activates the '
+                    'workflow. Only for signed deliveries. A redelivery '
+                    'starts no second run.'
+                ),
+                callable_path='imbi.gateway.actions:start_workflow',
+                model_path='imbi.gateway.actions:StartWorkflowConfig',
+            ),
         ]
 
 
@@ -146,8 +159,8 @@ class GatewayActionsPlugin(plugin_base.Plugin):
             'Webhook actions shipped with imbi-gateway: update project '
             'facts, create a release, append a deployment event, publish '
             'or block a release on the deployment outcome, ingest drift '
-            'verdicts from git-notes pushes, ingest CycloneDX SBoMs, and '
-            'start agent tasks.'
+            'verdicts from git-notes pushes, ingest CycloneDX SBoMs, '
+            'start agent tasks, and start workflow runs.'
         ),
         auth_type='none',
         credentials=[],

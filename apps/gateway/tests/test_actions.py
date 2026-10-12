@@ -3258,3 +3258,109 @@ class ImbiClientCreateAgentTaskTests(helpers.TestCase):
             json={'a': 1},
             headers={'X-Imbi-Webhook': 'wh-1', 'X-Imbi-Delivery': 'd-1'},
         )
+
+
+class StartWorkflowTests(helpers.TestCase):
+    config = actions.StartWorkflowConfig(
+        workflow_slug='nightly', trigger='hook', binding='b-1'
+    )
+
+    def _delivery(self, delivery_id: str = 'd-1') -> dict[str, typing.Any]:
+        return _event(
+            {'action': 'opened'},
+            metadata={
+                'webhook_id': 'wh-1',
+                'headers': {'x-github-delivery': delivery_id},
+            },
+            signature_verified=True,
+        )
+
+    async def _run(self, event: dict[str, typing.Any]) -> typing.Any:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'start_workflow',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(202),
+            ) as mock_start,
+        ):
+            await actions.start_workflow(
+                ctx=_ctx(org_slug='myorg'),
+                credentials={},
+                external_identifier='',
+                action_config=self.config,
+                event=event,
+            )
+        return mock_start
+
+    async def test_delivery_starts_the_trigger(self) -> None:
+        mock_start = await self._run(self._delivery())
+        mock_start.assert_called_once_with(
+            'myorg',
+            'nightly',
+            'wh-1',
+            'd-1',
+            {
+                'trigger': 'hook',
+                'binding': 'b-1',
+                'payload': {'payload': {'action': 'opened'}},
+            },
+        )
+
+    async def test_redelivery_sends_the_same_delivery_id(self) -> None:
+        """The API returns the first run for a repeated delivery id."""
+        ids = [
+            (await self._run(event)).call_args.args[3]
+            for event in (self._delivery(), self._delivery())
+        ]
+        self.assertEqual(ids, ['d-1', 'd-1'])
+
+    async def test_unverified_or_unidentified_delivery_is_skipped(
+        self,
+    ) -> None:
+        unsigned = self._delivery()
+        unsigned['signature_verified'] = False
+        no_id = self._delivery()
+        no_id['metadata']['headers'] = {}
+        for event in (unsigned, no_id):
+            with self.assertLogs('imbi.gateway.actions', 'WARNING'):
+                mock_start = await self._run(event)
+            mock_start.assert_not_called()
+
+
+class ImbiClientStartWorkflowTests(helpers.TestCase):
+    async def _start(self, status: int) -> unittest.mock.AsyncMock:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(status),
+            ) as mock_post,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.start_workflow(
+                    'myorg', 'nightly', 'wh-1', 'd-1', {'a': 1}
+                )
+        return mock_post
+
+    async def test_origin_and_key_go_in_headers(self) -> None:
+        mock_post = await self._start(202)
+        mock_post.assert_called_once_with(
+            '/organizations/myorg/workflows/nightly/runs',
+            json={'a': 1},
+            headers={
+                'X-Imbi-Webhook': 'wh-1',
+                'X-Imbi-Delivery': 'd-1',
+                'Idempotency-Key': 'd-1',
+            },
+        )
+
+    async def test_paused_workflow_is_no_effect(self) -> None:
+        with self.assertLogs('imbi.gateway.actions', 'INFO') as cm:
+            await self._start(409)
+        self.assertTrue(
+            all(r.levelname == 'INFO' for r in cm.records), cm.output
+        )

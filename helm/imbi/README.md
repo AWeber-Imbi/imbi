@@ -42,4 +42,6 @@ to render without them. See
 call imbi-api with a service-account credential
 (`workflows.serviceAccount.clientId` / `clientSecret`). Running it as its own
 release (`service.mode: workflows`) requires `service.internalApiUrl` and
-`service.publicApiUrl`, as for the scheduler.
+`service.publicApiUrl`, as for the scheduler, and `workflows.schedulerUrl`
+(for example `http://imbi-scheduler.<namespace>.svc.cluster.local:8005/api`)
+for schedule triggers.

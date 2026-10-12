@@ -14,6 +14,7 @@ import datetime
 import logging
 import re
 import typing
+from collections import abc
 
 from psycopg import sql
 from psycopg.types import json as pg_json
@@ -113,19 +114,31 @@ class Engine:
                 waiter.cancel()
             await asyncio.gather(*waiters, return_exceptions=True)
 
-    async def listen(self) -> None:
-        """Wake on ``NOTIFY``. A hint only: the workers always poll."""
+    async def listen(
+        self, bindings: abc.Callable[[], None] = lambda: None
+    ) -> None:
+        """Wake on ``NOTIFY``. A hint only: the workers always poll.
+
+        ``bindings`` is called for a notice on the trigger bindings.
+        """
         while True:
             try:
                 async with self.store.pool.connection() as conn:
                     await conn.set_autocommit(True)
-                    await conn.execute(
-                        sql.SQL('LISTEN {}').format(
-                            sql.Identifier(runtime.NOTIFY_CHANNEL)
+                    for channel in (
+                        runtime.NOTIFY_CHANNEL,
+                        runtime.BINDINGS_CHANNEL,
+                    ):
+                        await conn.execute(
+                            sql.SQL('LISTEN {}').format(
+                                sql.Identifier(channel)
+                            )
                         )
-                    )
-                    async for _ in conn.notifies():
-                        self.notify()
+                    async for note in conn.notifies():
+                        if note.channel == runtime.BINDINGS_CHANNEL:
+                            bindings()
+                        else:
+                            self.notify()
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 -- polling covers the gap
@@ -247,6 +260,7 @@ class Engine:
                 ' updated_at = NOW() WHERE id = %s',
                 (run['workflow_id'],),
             )
+            await runtime.pause_bindings(conn, run['workflow_id'])
             await self._close_in(
                 conn, run, {}, 'failed', 'activator_lacks_permission'
             )

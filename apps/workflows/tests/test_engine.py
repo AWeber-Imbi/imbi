@@ -270,7 +270,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         )
         await self.definitions.activate(
-            self.org, slug, 1, activated_by or self.email
+            self.org, slug, 1, activated_by or self.email, []
         )
         row = await self.definitions.get(self.org, slug)
         assert row is not None
@@ -290,6 +290,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
                 trigger_node_id='start',
                 origin_kind='human',
                 origin_id=self.email,
+                origin={},
                 idempotency_key=None,
                 payload=payload or {},
                 concurrency_key=None,
@@ -602,6 +603,47 @@ class SecurityTestCase(EngineTestCase):
                 self.assertEqual(ship['status'], 'failed')
                 self.assertEqual(ship['error'], 'invalid_version')
                 self.assertEqual(ship['attempt'], 1)
+        self.assertEqual(self.api.paths, [])
+        self.assertEqual(self.api.dispatches, 0)
+
+    async def test_webhook_payload_cannot_change_the_url(self) -> None:
+        """A webhook run's payload is the sender's body (ADR 0021)."""
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'webhook', {'webhook_id': 'wh-1'}),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': '{{ trigger.payload.repo }}',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
+            ],
+            [_edge('start', 'ship')],
+        )
+        # The run as the run endpoint writes it for a gateway delivery.
+        row, _ = await self.runs.create(
+            workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=workflow_id,
+                version=1,
+                trigger_node_id='start',
+                origin_kind='webhook',
+                origin_id='wh-1',
+                origin={'kind': 'webhook', 'webhook_id': 'wh-1'},
+                idempotency_key='d-1',
+                payload={'payload': {'repo': '../../admin?x=1'}},
+                concurrency_key=None,
+                activated_by=self.email,
+            )
+        )
+        run = await self._drive(row['id'])
+        ship = run['steps']['ship']
+        self.assertEqual(ship['status'], 'failed')
+        self.assertEqual(ship['error'], 'invalid_project_id')
+        self.assertEqual(ship['attempt'], 1)
         self.assertEqual(self.api.paths, [])
         self.assertEqual(self.api.dispatches, 0)
 

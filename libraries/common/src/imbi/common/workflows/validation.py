@@ -28,7 +28,11 @@ LIMIT_CODES = frozenset(
     {'too_many_nodes', 'too_many_edges', 'graph_too_large'}
 )
 
-_CONCURRENCY_KEY = re.compile(r'^\{\{\s*trigger\.([a-z_][a-z0-9_]*)\s*\}\}$')
+#: ``{{ trigger.<name> }}``, or a nested field of the trigger payload
+#: such as ``{{ trigger.payload.repository.name }}``.
+_CONCURRENCY_KEY = re.compile(
+    r'^\{\{\s*trigger\.([a-z_][a-z0-9_]*(?:\.[A-Za-z0-9_-]+)*)\s*\}\}$'
+)
 
 #: Only parses templates, to find the names they refer to.
 _JINJA = jinja2.Environment(autoescape=False)  # noqa: S701
@@ -115,8 +119,8 @@ def _check_concurrency(
             'one_per_key needs a concurrency key',
         )
         return
-    match = _CONCURRENCY_KEY.match(settings.concurrency_key)
-    if match is None:
+    path = concurrency_path(settings.concurrency_key)
+    if path is None:
         issues.add(
             'error',
             'invalid_concurrency_key',
@@ -124,7 +128,7 @@ def _check_concurrency(
             'value, such as {{ trigger.service }}',
         )
         return
-    name = match.group(1)
+    name = '.'.join(path)
     for node in wf_graph.nodes:
         if node.type == 'schedule':
             issues.add(
@@ -151,6 +155,16 @@ def _check_concurrency(
                 )
 
 
+def concurrency_path(key: str | None) -> list[str] | None:
+    """Return the trigger fields that a concurrency key names, in order.
+
+    ``None`` when the key is not one reference to a trigger value.
+    Validation and :func:`concurrency_key` both read keys with it.
+    """
+    match = _CONCURRENCY_KEY.match(key or '')
+    return match.group(1).split('.') if match else None
+
+
 def concurrency_key(
     settings: graph.Settings, workflow_id: str, payload: dict[str, typing.Any]
 ) -> str | None:
@@ -165,9 +179,16 @@ def concurrency_key(
         return None
     if settings.concurrency_mode == 'one_at_a_time':
         return workflow_id
-    match = _CONCURRENCY_KEY.match(settings.concurrency_key or '')
-    value = payload.get(match.group(1)) if match else None
-    if value is None or value == '':
+    path = concurrency_path(settings.concurrency_key)
+    value: typing.Any = payload if path else None
+    for name in path or []:
+        value = (
+            typing.cast(dict[str, typing.Any], value).get(name)
+            if isinstance(value, dict)
+            else None
+        )
+    # A mapping or a list is not a key: only a value that it holds is.
+    if value is None or value == '' or isinstance(value, dict | list):
         raise ValueError('concurrency_key_missing')
     return str(value)
 

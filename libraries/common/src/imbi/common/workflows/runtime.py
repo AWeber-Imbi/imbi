@@ -19,6 +19,26 @@ NOTIFY_CHANNEL = 'workflow_runs'
 #: Run statuses that are final.
 CLOSED = ('succeeded', 'failed', 'cancelled', 'timed_out')
 
+#: ``NOTIFY`` channel that wakes the trigger reconciler. A hint only: it
+#: also runs on a schedule.
+BINDINGS_CHANNEL = 'workflow_bindings'
+
+
+async def pause_bindings(
+    conn: psycopg.AsyncConnection[typing.Any], workflow_id: uuid.UUID
+) -> None:
+    """Disable the trigger bindings of a workflow that pauses.
+
+    Call it in the transaction that pauses the workflow.
+    """
+    await conn.execute(
+        'UPDATE workflows.trigger_bindings SET enabled = FALSE,'
+        " sync_state = 'pending', updated_at = NOW()"
+        ' WHERE workflow_id = %s',
+        (workflow_id,),
+    )
+    await conn.execute(f'NOTIFY {BINDINGS_CHANNEL}')
+
 
 async def append_event(
     conn: psycopg.AsyncConnection[typing.Any],

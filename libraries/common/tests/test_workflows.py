@@ -241,6 +241,27 @@ class ValidationTestCase(unittest.TestCase):
         ]
         self.assertEqual(_check(nodes, [('start', 0, 'a')], settings), [])
 
+    def test_one_per_key_on_a_nested_webhook_field(self) -> None:
+        settings = {
+            'concurrency_mode': 'one_per_key',
+            'concurrency_key': '{{ trigger.payload.repository.name }}',
+        }
+        hook = _node('hook', 'webhook', {'webhook_id': 'wh-1'})
+        wait = _node('a', 'wait', {'duration': '1m'})
+        self.assertEqual(
+            _check([hook, wait], [('hook', 0, 'a')], settings), []
+        )
+        # A manual input is a scalar: it has no nested field.
+        start = _node('start', 'manual', {'inputs': [{'name': 'payload'}]})
+        codes = _codes(
+            _check(
+                [hook, start, wait],
+                [('hook', 0, 'a'), ('start', 0, 'a')],
+                settings,
+            )
+        )
+        self.assertIn('concurrency_key_input_missing', codes)
+
     def test_size_limit(self) -> None:
         nodes = [_node('start', 'manual')] + [
             _node(f'n{i}', 'wait', {'duration': '1m'})

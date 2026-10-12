@@ -9,9 +9,11 @@ Activation needs a version with no validation issues, and a caller who
 holds every permission that the version's steps need, so a workflow
 cannot do more than the person who activated it.
 
+Activation and pause also write the desired trigger bindings; the
+reconciler in imbi-workflows syncs the scheduler and the gateway.
+
 Every route needs the caller to be a member of the organization
-(``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`. Nothing runs a
-workflow yet.
+(``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
 
 import datetime
@@ -36,6 +38,9 @@ LOGGER = logging.getLogger(__name__)
 OrgId = organizations.MemberOrgId
 
 Status = typing.Literal['draft', 'active', 'paused']
+
+#: Trigger types that need a scheduler task or a gateway rule.
+BOUND_TRIGGERS = ('schedule', 'webhook')
 
 
 # --- Schemas -----------------------------------------------------------
@@ -73,9 +78,27 @@ class WorkflowSummary(pydantic.BaseModel):
     last_run_status: str | None = None
 
 
+class TriggerBinding(pydantic.BaseModel):
+    """The scheduler task or gateway rule of a trigger (ADR 0021).
+
+    The reconciler in imbi-workflows syncs it after each activation and
+    pause, and on a schedule. A trigger whose binding is not ``synced``
+    does not start runs.
+    """
+
+    node_id: str
+    type: str
+    enabled: bool
+    sync_state: typing.Literal['pending', 'synced', 'failed']
+    error: str | None
+    target_id: str | None
+    synced_at: datetime.datetime | None
+
+
 class Workflow(WorkflowSummary):
     activated_by: str | None
     activated_at: datetime.datetime | None
+    bindings: list[TriggerBinding]
     #: The latest version.
     version: WorkflowVersion
 
@@ -354,7 +377,10 @@ async def _get(
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
-    return _workflow(row, await _team_slugs(db, org_id, [row]))
+    return {
+        **_workflow(row, await _team_slugs(db, org_id, [row])),
+        'bindings': await store.bindings(row['id']),
+    }
 
 
 async def _definition(
@@ -687,7 +713,17 @@ async def activate_workflow(
                 'permissions': sorted(missing),
             },
         )
-    await store.activate(org_id, slug, number, auth.principal_name)
+    await store.activate(
+        org_id,
+        slug,
+        number,
+        auth.principal_name,
+        [
+            workflows.Trigger(node.id, node.type, node.params)
+            for node in wf_graph.nodes
+            if node.type in BOUND_TRIGGERS
+        ],
+    )
     return await _get(store, db, org_id, slug)
 
 
