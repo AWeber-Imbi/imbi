@@ -15,7 +15,7 @@ import fastapi
 
 from imbi.api.agent_tasks import create_pool
 from imbi.api.workflows import runs
-from imbi.api.workflows.runs import NewRun, RunStore
+from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
     SCHEMA,
     Definition,
@@ -84,6 +84,7 @@ __all__ = [
     'SCHEMA',
     'Definition',
     'NewRun',
+    'NotActive',
     'Pool',
     'Row',
     'RunStore',

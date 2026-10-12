@@ -14,6 +14,8 @@ import psycopg_pool
 from psycopg import rows
 from psycopg.types import json as pg_json
 
+from imbi.common.workflows import runtime
+
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
 ]
@@ -154,14 +156,35 @@ class WorkflowStore:
             )
         return True
 
-    async def delete(self, organization_id: str, slug: str) -> bool:
-        async with self._pool.connection() as conn:
+    async def delete(
+        self, organization_id: str, slug: str
+    ) -> typing.Literal['deleted', 'missing', 'open_runs']:
+        """Delete a workflow that has no open runs.
+
+        The ``FOR UPDATE`` lock waits for a run that is being written
+        (it holds ``FOR SHARE``), and the open-run check runs after it,
+        so no run can be written between the check and the delete.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
-                'DELETE FROM workflows.workflows'
-                ' WHERE organization_id = %s AND slug = %s',
+                'SELECT id FROM workflows.workflows'
+                ' WHERE organization_id = %s AND slug = %s FOR UPDATE',
                 (organization_id, slug),
             )
-            return cur.rowcount > 0
+            row = await cur.fetchone()
+            if row is None:
+                return 'missing'
+            cur = await conn.execute(
+                'SELECT 1 FROM workflow_runtime.runs'
+                ' WHERE workflow_id = %s AND NOT (status = ANY(%s)) LIMIT 1',
+                (row[0], list(runtime.CLOSED)),
+            )
+            if await cur.fetchone() is not None:
+                return 'open_runs'
+            await conn.execute(
+                'DELETE FROM workflows.workflows WHERE id = %s', (row[0],)
+            )
+            return 'deleted'
 
     async def versions(self, organization_id: str, slug: str) -> list[Row]:
         """Return the versions of a workflow, newest first."""

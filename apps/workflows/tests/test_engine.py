@@ -41,6 +41,8 @@ class FakeApi:
         self.bodies: list[dict[str, typing.Any]] = []
         #: The paths of the email calls that sent.
         self.emails: list[str] = []
+        #: Addresses that the email endpoint reports as failed.
+        self.failed: list[str] = []
         #: The raw path of every request.
         self.paths: list[str] = []
 
@@ -58,7 +60,7 @@ class FakeApi:
 
     def _email(self, request: httpx.Request) -> dict[str, typing.Any]:
         self.emails.append(request.url.path)
-        return {'recipients': [self.recipient]}
+        return {'recipients': [self.recipient], 'failed': self.failed}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.paths.append(request.url.raw_path.decode())
@@ -714,6 +716,31 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(run['steps']['tell']['attempt'], 1)
         self.assertEqual(len(self.api.emails), 1)
 
+    async def test_failed_recipient_fails_the_step(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'tell',
+                    'email',
+                    {
+                        'to': [{'kind': 'team', 'id': self.team}],
+                        'subject': 'Hello',
+                        'body': 'Hello',
+                    },
+                ),
+            ],
+            [_edge('start', 'tell')],
+            {'on_failure': 'none'},
+        )
+        self.api.failed = ['gone@example.com']
+        run = await self._drive(await self._start(workflow_id))
+        self.assertEqual(run['status'], 'failed')
+        tell = run['steps']['tell']
+        self.assertEqual(tell['error'], 'email_failed: gone@example.com')
+        self.assertEqual(tell['attempt'], 1)
+        self.assertEqual(len(self.api.emails), 1)
+
     async def test_unknown_outcome_fails_without_retry(self) -> None:
         workflow_id = await self._workflow(
             [
@@ -743,7 +770,7 @@ class CrashTestCase(EngineTestCase):
         )
         self.assertEqual(
             self.api.by_key[f'{run_id}/failure-notice'],
-            {'recipients': [self.email]},
+            {'recipients': [self.email], 'failed': []},
         )
 
     async def test_node_keyed_on_failure_keeps_the_notice(self) -> None:
@@ -987,8 +1014,20 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json()['service'], 'imbi-workflows')
 
     async def test_engine_lifespan_starts_and_stops(self) -> None:
-        with mock.patch.dict(
-            'os.environ', {'IMBI_WORKFLOWS_POLL_INTERVAL': '0.1'}
+        real_store = store.Store
+        with (
+            mock.patch.dict(
+                'os.environ', {'IMBI_WORKFLOWS_POLL_INTERVAL': '0.1'}
+            ),
+            # An organization with no runs: this engine must not take
+            # runs from other tests that share the database.
+            mock.patch.object(
+                store,
+                'Store',
+                lambda pool, worker_id: real_store(
+                    pool, worker_id, f'none-{uuid.uuid4().hex}'
+                ),
+            ),
         ):
             async with app.engine_lifespan() as runner:
                 await asyncio.sleep(0.3)

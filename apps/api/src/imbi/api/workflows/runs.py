@@ -24,6 +24,10 @@ def side_effect_key(principal: str, action: str, idempotency_key: str) -> str:
     return json.dumps([principal, action, idempotency_key])
 
 
+class NotActive(LookupError):
+    """The workflow of a new run is gone or not active."""
+
+
 @dataclasses.dataclass(frozen=True)
 class NewRun:
     organization_id: str
@@ -57,12 +61,28 @@ class RunStore:
 
         A repeat of an idempotency key for the same workflow returns
         the first run.
+
+        The workflow row is locked ``FOR SHARE`` first, so a delete,
+        which locks it ``FOR UPDATE``, cannot pass between its open-run
+        check and its ``DELETE`` while a run is written.
+
+        Raises:
+            NotActive: The workflow is gone or not active.
+
         """
         async with (
             self._pool.connection() as conn,
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await cur.execute(
+                'SELECT status FROM workflows.workflows WHERE id = %s'
+                ' FOR SHARE',
+                (run.workflow_id,),
+            )
+            workflow = await cur.fetchone()
+            if workflow is None or workflow['status'] != 'active':
+                raise NotActive(str(run.workflow_id))
             await cur.execute(
                 'INSERT INTO workflow_runtime.runs (id, organization_id,'
                 ' workflow_id, version, trigger_node_id, origin_kind,'
@@ -150,14 +170,6 @@ class RunStore:
                 return False
             await conn.execute(f'NOTIFY {runtime.NOTIFY_CHANNEL}')
             return True
-
-    async def has_open_runs(self, workflow_id: uuid.UUID) -> bool:
-        found = await self._all(
-            'SELECT 1 FROM workflow_runtime.runs'
-            ' WHERE workflow_id = %s AND NOT (status = ANY(%s)) LIMIT 1',
-            (workflow_id, list(runtime.CLOSED)),
-        )
-        return bool(found)
 
     async def once(
         self,
