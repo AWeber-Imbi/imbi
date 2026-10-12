@@ -352,6 +352,20 @@ class WebhookTestCase(ReconcilerTestCase):
         )
         return sorted(int(graph.parse_agtype(r['id'])) for r in records)
 
+    async def test_failed_replacement_keeps_the_rule(self) -> None:
+        """The delete and the create of a rule commit together."""
+        await self._activate(self._trigger())
+        await self.reconciler.reconcile()
+        before = await self._rule_ids()
+        self.assertEqual(len(before), 1)
+        await self._activate(
+            workflows.Trigger('hook', 'webhook', {'webhook_id': 'elsewhere'})
+        )
+        await self.reconciler.reconcile()
+        [binding] = await self._bindings()
+        self.assertEqual(binding['sync_state'], 'failed')
+        self.assertEqual(await self._rule_ids(), before)
+
     async def test_webhook_outside_the_org_fails(self) -> None:
         await self._activate(
             workflows.Trigger('hook', 'webhook', {'webhook_id': 'elsewhere'})

@@ -26,6 +26,7 @@ import httpx
 from psycopg import rows
 
 from imbi.common import graph
+from imbi.common.graph import cypher
 from imbi.workflows import executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
@@ -293,22 +294,30 @@ class Reconciler:
         ]
         if current == [(params['webhook_id'], rule_filter, config)]:
             return str(params['webhook_id'])
-        await self.steps.db.execute(_DELETE_RULES, marker, ['ok'])
-        created = await self.steps.db.execute(
-            _CREATE_RULE,
-            {
-                **marker,
-                'webhook': params['webhook_id'],
-                'org': binding['organization_id'],
-                'filter': rule_filter,
-                'config': json.dumps(config),
-            },
-            ['id'],
-        )
-        if not created:
+        # One transaction, delete first: the gateway never sees the
+        # webhook without the rule, and a webhook outside the org rolls
+        # the delete back.
+        try:
+            await self.steps.db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+                [
+                    cypher.Statement(_DELETE_RULES, marker),
+                    cypher.Statement(
+                        _CREATE_RULE,
+                        {
+                            **marker,
+                            'webhook': params['webhook_id'],
+                            'org': binding['organization_id'],
+                            'filter': rule_filter,
+                            'config': json.dumps(config),
+                        },
+                        expect_rows=True,
+                    ),
+                ]
+            )
+        except graph.StatementMatchedNothing as e:
             raise SyncError(
                 f'Webhook {params["webhook_id"]!r} is not in the organization'
-            )
+            ) from e
         return str(params['webhook_id'])
 
 
