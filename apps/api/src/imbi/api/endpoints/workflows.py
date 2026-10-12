@@ -581,6 +581,9 @@ async def get_workflow_version(
 @workflows_router.post('/{slug}/validate', response_model=wf.ValidationResult)
 async def validate_workflow(
     org_id: OrgId,
+    # Unused: validation needs no stored workflow. Declared so the
+    # OpenAPI schema lists the path parameter.
+    _slug: typing.Annotated[str, fastapi.Path(alias='slug')],
     data: WorkflowValidate,
     db: graph.Pool,
     _: ReadAuth,

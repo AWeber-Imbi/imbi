@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
+import { WorkflowsManagement } from '@/components/workflows/WorkflowsManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { cn } from '@/lib/utils'
 
@@ -15,7 +16,6 @@ import {
   type AgentsSection,
   isAgentsSection,
 } from './agentsNav'
-import { ComingSoon } from './ComingSoon'
 import { DashboardPage } from './DashboardPage'
 import { useWaitingTaskCount } from './taskQueries'
 import { TasksPage } from './TasksPage'
@@ -51,7 +51,7 @@ export function AgentsArea() {
         ) : current === 'usage' ? (
           <UsagePage />
         ) : (
-          <ComingSoon section={current} />
+          <WorkflowsManagement />
         )}
       </div>
     </div>

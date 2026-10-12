@@ -4996,6 +4996,197 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflows/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workflows */
+        get: operations["list_workflows_api_organizations__org_slug__workflows__get"];
+        put?: never;
+        /**
+         * Create Workflow
+         * @description Make a workflow in ``draft`` with its version 1.
+         *
+         *     Raises:
+         *         409: The slug is in use in the org.
+         *         422: The graph is too large, the team is not in the org, or
+         *             the name gives an empty slug and no slug is supplied.
+         */
+        post: operations["create_workflow_api_organizations__org_slug__workflows__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow */
+        get: operations["get_workflow_api_organizations__org_slug__workflows__slug__get"];
+        /**
+         * Save Workflow
+         * @description Save a new version. The active version does not change.
+         *
+         *     The version is stored with its validation issues.
+         *
+         *     Only an admin or a member of the current owner team can change the
+         *     owner team, because the owner team controls the runs.
+         *
+         *     Raises:
+         *         403: ``owner_team_forbidden``: the caller changes the owner team
+         *             and is not an admin or a member of the current owner team.
+         *         404: No such workflow.
+         *         409: ``conflict``: the workflow changed owner team or was
+         *             deleted between the check and the save.
+         *         422: The graph is too large, or the team is not in the org.
+         */
+        put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
+        post?: never;
+        /** Delete Workflow */
+        delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Versions
+         * @description Return the versions of a workflow, newest first.
+         */
+        get: operations["list_workflow_versions_api_organizations__org_slug__workflows__slug__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow Version */
+        get: operations["get_workflow_version_api_organizations__org_slug__workflows__slug__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Workflow
+         * @description Return the issues of a graph. Nothing is written.
+         */
+        post: operations["validate_workflow_api_organizations__org_slug__workflows__slug__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Workflow
+         * @description Make a version the active version.
+         *
+         *     The version is validated again, because the step types can change
+         *     after a save.
+         *
+         *     Raises:
+         *         403: ``missing_permissions``: the caller does not hold every
+         *             permission that the steps of the version need.
+         *         404: No such workflow or version.
+         *         422: ``validation_failed``: the version has issues.
+         */
+        post: operations["activate_workflow_api_organizations__org_slug__workflows__slug__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Workflow
+         * @description Pause an active workflow. Its triggers start no runs.
+         *
+         *     Raises:
+         *         404: No such workflow.
+         *         409: The workflow is not active.
+         */
+        post: operations["pause_workflow_api_organizations__org_slug__workflows__slug__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflow-step-types/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Step Types
+         * @description Return the step types that a workflow can use.
+         */
+        get: operations["list_step_types_api_organizations__org_slug__workflow_step_types__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/configuration/": {
         parameters: {
             query?: never;
@@ -11297,6 +11488,18 @@ export interface components {
             icon: string;
         };
         /**
+         * Edge
+         * @description An edge from output ``port`` of ``source`` to ``target``.
+         */
+        Edge: {
+            /** Source */
+            source: string;
+            /** Port */
+            port: number;
+            /** Target */
+            target: string;
+        };
+        /**
          * EdgePutBody
          * @description Request body for the PUT-edge endpoint.
          *
@@ -11571,6 +11774,19 @@ export interface components {
             previous_score?: number | null;
             /** Change Reason */
             change_reason?: string | null;
+        };
+        /** Graph */
+        Graph: {
+            /**
+             * Nodes
+             * @default []
+             */
+            nodes: components["schemas"]["Node"][];
+            /**
+             * Edges
+             * @default []
+             */
+            edges: components["schemas"]["Edge"][];
         };
         /**
          * GraphEdge
@@ -13045,6 +13261,31 @@ export interface components {
             /** Project Count */
             project_count: number;
         };
+        /** Node */
+        Node: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Type */
+            type: string;
+            /** Title */
+            title: string;
+            position: components["schemas"]["Position"];
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
+            /**
+             * Join
+             * @default any
+             * @enum {string}
+             */
+            join: "any" | "all";
+        };
         /**
          * NoulCriteria
          * @description What a yes and a no mean for a ``noul`` question.
@@ -13685,6 +13926,13 @@ export interface components {
             interval: number;
             /** Expires In */
             expires_in: number;
+        };
+        /** Position */
+        Position: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
         };
         /**
          * PresencePolicy
@@ -16435,6 +16683,28 @@ export interface components {
             /** Close Reason */
             close_reason?: string | null;
         };
+        /** Settings */
+        Settings: {
+            /**
+             * Concurrency Mode
+             * @default unlimited
+             * @enum {string}
+             */
+            concurrency_mode: "unlimited" | "one_at_a_time" | "one_per_key";
+            /** Concurrency Key */
+            concurrency_key?: string | null;
+            /**
+             * Max Run Time Seconds
+             * @default 7200
+             */
+            max_run_time_seconds: number;
+            /**
+             * On Failure
+             * @default notify_owner_team
+             * @enum {string}
+             */
+            on_failure: "notify_owner_team" | "none";
+        };
         /** StatsResponse */
         StatsResponse: {
             /**
@@ -16470,6 +16740,43 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "initializing" | "error";
+        };
+        /** StepType */
+        StepType: {
+            /** Type */
+            type: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "trigger" | "logic" | "action" | "agent";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Trigger */
+            trigger: boolean;
+            /**
+             * Ports
+             * @description None: one port per entry of params.branches.
+             */
+            ports: string[] | null;
+            /** Params Schema */
+            params_schema: {
+                [key: string]: unknown;
+            };
+            /** Output Schema */
+            output_schema: {
+                [key: string]: unknown;
+            };
+            /** Sample Output */
+            sample_output: {
+                [key: string]: unknown;
+            };
+            /** Side Effect */
+            side_effect: boolean;
+            /** Idempotent */
+            idempotent: boolean;
         };
         /** SurfaceCount */
         SurfaceCount: {
@@ -16966,6 +17273,30 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** ValidationIssue */
+        ValidationIssue: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Node Id */
+            node_id?: string | null;
+            /** Edge Index */
+            edge_index?: number | null;
+        };
+        /** ValidationResult */
+        ValidationResult: {
+            /**
+             * Issues
+             * @default []
+             */
+            issues: components["schemas"]["ValidationIssue"][];
+        };
         /**
          * WebhookCreate
          * @description Request model for creating a webhook.
@@ -17081,6 +17412,152 @@ export interface components {
             handler_config?: {
                 [key: string]: unknown;
             } | unknown[];
+        };
+        /** Workflow */
+        Workflow: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Owner Team Slug
+             * @description None when the owner team was deleted.
+             */
+            owner_team_slug: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "paused";
+            /** Latest Version */
+            latest_version: number;
+            /** Active Version */
+            active_version: number | null;
+            /** Trigger Types */
+            trigger_types: string[];
+            /**
+             * Agent Ids
+             * @default []
+             */
+            agent_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Activated By */
+            activated_by: string | null;
+            /** Activated At */
+            activated_at: string | null;
+            version: components["schemas"]["WorkflowVersion"];
+        };
+        /** WorkflowActivate */
+        WorkflowActivate: {
+            /**
+             * Version
+             * @description Defaults to the latest version.
+             */
+            version?: number | null;
+        };
+        /** WorkflowCreate */
+        WorkflowCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Owner Team Slug */
+            owner_team_slug: string;
+            graph?: components["schemas"]["Graph"];
+            settings?: components["schemas"]["Settings"];
+            /**
+             * Slug
+             * @description Defaults to a slug of the name.
+             */
+            slug?: string | null;
+        };
+        /** WorkflowSave */
+        WorkflowSave: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Owner Team Slug */
+            owner_team_slug: string;
+            graph?: components["schemas"]["Graph"];
+            settings?: components["schemas"]["Settings"];
+        };
+        /** WorkflowSummary */
+        WorkflowSummary: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Owner Team Slug
+             * @description None when the owner team was deleted.
+             */
+            owner_team_slug: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "paused";
+            /** Latest Version */
+            latest_version: number;
+            /** Active Version */
+            active_version: number | null;
+            /** Trigger Types */
+            trigger_types: string[];
+            /**
+             * Agent Ids
+             * @default []
+             */
+            agent_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkflowValidate */
+        WorkflowValidate: {
+            graph: components["schemas"]["Graph"];
+            settings?: components["schemas"]["Settings"];
+        };
+        /** WorkflowVersion */
+        WorkflowVersion: {
+            /** Version */
+            version: number;
+            graph: components["schemas"]["Graph"];
+            settings: components["schemas"]["Settings"];
+            validation: components["schemas"]["ValidationResult"];
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** Environment */
         EnvironmentBlueprintRequest: {
@@ -26058,6 +26535,370 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentUsage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflows_api_organizations__org_slug__workflows__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workflow_api_organizations__org_slug__workflows__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_api_organizations__org_slug__workflows__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_workflow_api_organizations__org_slug__workflows__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workflow_api_organizations__org_slug__workflows__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_versions_api_organizations__org_slug__workflows__slug__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersion"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_version_api_organizations__org_slug__workflows__slug__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                version: number;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_workflow_api_organizations__org_slug__workflows__slug__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowValidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_workflow_api_organizations__org_slug__workflows__slug__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkflowActivate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_workflow_api_organizations__org_slug__workflows__slug__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_step_types_api_organizations__org_slug__workflow_step_types__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepType"][];
                 };
             };
             /** @description Validation Error */
