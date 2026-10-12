@@ -194,8 +194,12 @@ async def _check_who(
     trigger: wf.Node,
     workflow: workflows.Row,
     auth: permissions.AuthContext,
+    action: str = 'start',
 ) -> None:
-    """Apply the ``who`` parameter of the manual trigger."""
+    """Apply the ``who`` parameter of the trigger.
+
+    A trigger without ``who`` (schedule, webhook) allows the owner team.
+    """
     who = trigger.params.get('who', 'owner_team')
     if auth.is_admin or who == 'anyone':
         return
@@ -207,7 +211,7 @@ async def _check_who(
         return
     raise fastapi.HTTPException(
         status_code=403,
-        detail=f'Only {who.replace("_", " ")} can start this workflow',
+        detail=f'Only {who.replace("_", " ")} can {action} this workflow',
     )
 
 
@@ -432,19 +436,34 @@ async def cancel_run(
     org_id: OrgId,
     slug: str,
     run_id: uuid.UUID,
+    db: graph.Pool,
     store: workflows.Store,
     runs: workflows.Runs,
-    _: RunAuth,
+    auth: RunAuth,
 ) -> workflows.Row:
     """Ask the engine to stop a run before its next step.
 
+    The caller needs the same ``who`` as the trigger that started the
+    run, in the run's pinned version.
+
     Raises:
+        403: The trigger's ``who`` does not include the caller.
         404: No such workflow or run.
         409: The run is closed.
 
     """
     workflow = await _workflow(store, org_id, slug)
-    await _run(runs, workflow, run_id)
+    run = await _run(runs, workflow, run_id)
+    wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
+    trigger = next(
+        (n for n in wf_graph.nodes if n.id == run['trigger_node_id']), None
+    )
+    if trigger is not None:
+        await _check_who(db, trigger, workflow, auth, 'cancel')
+    elif not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403, detail='Only admins can cancel this run'
+        )
     if not await runs.cancel(run_id):
         raise fastapi.HTTPException(
             status_code=409, detail=f'Run {run_id} is closed'

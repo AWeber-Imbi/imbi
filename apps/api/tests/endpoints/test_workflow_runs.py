@@ -317,6 +317,42 @@ class ManualRunTestCase(WorkflowRunTestCase):
         response = await self.client.post(f'{url}/runs/{run["id"]}/cancel')
         self.assertEqual(response.status_code, 409)
 
+    async def test_cancel_needs_the_start_gate(self) -> None:
+        url = await self._workflow()
+        response = await self.client.post(
+            f'{url}/runs', json={'inputs': {'version': '1'}}
+        )
+        run_id = response.json()['id']
+        await self.graph.execute(
+            """
+            MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->(:Team)
+            DELETE m
+            RETURN 1 AS ok
+            """,
+            {'email': self.email},
+            ['ok'],
+        )
+        response = await self.client.post(f'{url}/runs/{run_id}/cancel')
+        self.assertEqual(response.status_code, 403, response.text)
+        run = await self.client.get(f'{url}/runs/{run_id}')
+        self.assertFalse(run.json()['cancel_requested'])
+
+        user = models.User(
+            id=self.email,
+            email=self.email,
+            display_name='Dev',
+            is_active=True,
+            is_admin=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            lambda: permissions.AuthContext(
+                user=user, auth_method='jwt', permissions=set(PERMISSIONS)
+            )
+        )
+        response = await self.client.post(f'{url}/runs/{run_id}/cancel')
+        self.assertEqual(response.status_code, 202, response.text)
+
     async def test_refusals(self) -> None:
         url = await self._workflow(activate=False)
         response = await self.client.post(

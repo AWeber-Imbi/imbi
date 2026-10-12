@@ -19,7 +19,6 @@ from psycopg import sql
 from psycopg.types import json as pg_json
 
 from imbi.common import graph, models
-from imbi.common.auth import permissions
 from imbi.common.prompts import pool as render_pool
 from imbi.common.prompts import rendering
 from imbi.common.workflows import graph as wf
@@ -35,9 +34,23 @@ _WHOLE_REFERENCE = re.compile(
     r'^\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*\}\}$'
 )
 
+#: The activator, only when an active member of the run's organization.
 _ACTIVATOR_QUERY: typing.LiteralString = """
-MATCH (u:User {{email: {email}}})
-RETURN u.is_active AS is_active, u.is_admin AS is_admin
+MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->(:Organization {{id: {org}}})
+WHERE u.is_active = true
+RETURN u.is_admin AS is_admin, m.role AS role
+"""
+
+#: The permissions of one role and the roles it inherits from, as in
+#: ``imbi.common.auth.permissions.load_principal_permissions``.
+_ROLE_PERMISSIONS_QUERY: typing.LiteralString = """
+MATCH (r:Role {{slug: {role}}})
+OPTIONAL MATCH (r)-[:INHERITS_FROM*1..]->(ancestor:Role)
+WITH r, collect(DISTINCT ancestor) AS ancestors
+UNWIND ancestors + [r] AS role
+WITH DISTINCT role
+OPTIONAL MATCH (role)-[:GRANTS]->(perm:Permission)
+RETURN collect(DISTINCT perm.name) AS permissions
 """
 
 
@@ -223,32 +236,12 @@ class Engine:
     ) -> bool:
         """Check the activator again. Fail the run and pause if not.
 
-        The person who activated the version must still be active and
-        hold every permission that its steps need (ADR 0021).
+        The person who activated the version must still be an active
+        member of the run's organization and hold, through that
+        membership, every permission that its steps need (ADR 0021).
+        An admin passes only as a member too.
         """
-        found = await self.steps.db.execute(
-            _ACTIVATOR_QUERY,
-            {'email': run['activated_by']},
-            ['is_active', 'is_admin'],
-        )
-        active = (
-            bool(found)
-            and graph.parse_agtype(found[0]['is_active']) is not False
-        )
-        if active and graph.parse_agtype(found[0]['is_admin']) is True:
-            return True
-        required: set[str] = set()
-        for node in wf_graph.nodes:
-            step = registry.STEP_TYPES[node.type]
-            required |= step.required_permissions(node.params)
-        held = (
-            await permissions.load_principal_permissions(
-                self.steps.db, 'User', 'email', run['activated_by']
-            )
-            if active
-            else set[str]()
-        )
-        if active and required <= held:
+        if await self._activator_holds(run, wf_graph):
             return True
         async with self.store.write(run['id']) as conn:
             await conn.execute(
@@ -260,6 +253,39 @@ class Engine:
                 conn, run, {}, 'failed', 'activator_lacks_permission'
             )
         return False
+
+    async def _activator_holds(
+        self, run: store.Row, wf_graph: wf.Graph
+    ) -> bool:
+        found = await self.steps.db.execute(
+            _ACTIVATOR_QUERY,
+            {'email': run['activated_by'], 'org': run['organization_id']},
+            ['is_admin', 'role'],
+        )
+        if not found:
+            return False
+        if graph.parse_agtype(found[0]['is_admin']) is True:
+            return True
+        required: set[str] = set()
+        for node in wf_graph.nodes:
+            step = registry.STEP_TYPES[node.type]
+            required |= step.required_permissions(node.params)
+        if not required:
+            return True
+        records = await self.steps.db.execute(
+            _ROLE_PERMISSIONS_QUERY,
+            {'role': graph.parse_agtype(found[0]['role'])},
+            ['permissions'],
+        )
+        raw: typing.Any = (
+            graph.parse_agtype(records[0]['permissions']) if records else []
+        )
+        held = (
+            {str(p) for p in typing.cast('list[typing.Any]', raw)}  # type: ignore[redundant-cast]
+            if isinstance(raw, list)
+            else set[str]()
+        )
+        return required <= held
 
     async def _start(self, run: store.Row, wf_graph: wf.Graph) -> None:
         """Write a step row per node and mark the run ``running``."""

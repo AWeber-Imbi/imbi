@@ -40,6 +40,8 @@ class FakeApi:
         self.bodies: list[dict[str, typing.Any]] = []
         #: The paths of the email calls that sent.
         self.emails: list[str] = []
+        #: The raw path of every request.
+        self.paths: list[str] = []
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -58,6 +60,7 @@ class FakeApi:
         return {'recipients': [self.recipient]}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.paths.append(request.url.raw_path.decode())
         path = request.url.path
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
@@ -496,6 +499,93 @@ class ManualRunTestCase(EngineTestCase):
                 (workflow_id,),
             )
             self.assertEqual(await cur.fetchone(), ('paused',))
+
+
+class SecurityTestCase(EngineTestCase):
+    async def test_payload_cannot_change_the_url(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node(
+                    'start',
+                    'manual',
+                    {'inputs': [{'name': 'version', 'type': 'string'}]},
+                ),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': 'p1',
+                        'environment': 'staging',
+                        'version': '{{ trigger.version }}',
+                    },
+                ),
+            ],
+            [_edge('start', 'ship')],
+        )
+        for bad in ('../../admin?x=1', '1.0/../../x', 'a..b', '%2e%2e'):
+            with self.subTest(version=bad):
+                run_id = await self._start(workflow_id, {'version': bad})
+                run = await self._drive(run_id)
+                ship = run['steps']['ship']
+                self.assertEqual(ship['status'], 'failed')
+                self.assertEqual(ship['error'], 'invalid_version')
+                self.assertEqual(ship['attempt'], 1)
+        self.assertEqual(self.api.paths, [])
+        self.assertEqual(self.api.dispatches, 0)
+
+    def test_path_quotes_every_segment(self) -> None:
+        self.assertEqual(
+            executors._path('organizations', 'a/../b', 'x?y#z'),
+            '/organizations/a%2F..%2Fb/x%3Fy%23z',
+        )
+
+    async def test_activator_who_left_the_organization(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node('hold', 'wait', {'duration': '1s'}),
+            ],
+            [_edge('start', 'hold')],
+        )
+        await self.graph.execute(
+            """
+            MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->(:Organization)
+            DELETE m
+            RETURN 1 AS ok
+            """,
+            {'email': self.email},
+            ['ok'],
+        )
+        run_id = await self._start(workflow_id)
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'activator_lacks_permission')
+        self.assertEqual(run['steps'], {})
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT status FROM workflows.workflows WHERE id = %s',
+                (workflow_id,),
+            )
+            self.assertEqual(await cur.fetchone(), ('paused',))
+
+    async def test_inactive_admin_activator(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node('hold', 'wait', {'duration': '1s'}),
+            ],
+            [_edge('start', 'hold')],
+        )
+        await self.graph.execute(
+            """
+            MATCH (u:User {{email: {email}}}) SET u.is_active = false
+            RETURN 1 AS ok
+            """,
+            {'email': self.email},
+            ['ok'],
+        )
+        run = await self._drive(await self._start(workflow_id))
+        self.assertEqual(run['error'], 'activator_lacks_permission')
 
 
 class CrashTestCase(EngineTestCase):
