@@ -151,11 +151,20 @@ def _check_concurrency(
                 )
 
 
-def _exclusive(a: frozenset[_Branch], b: frozenset[_Branch]) -> bool:
-    """Return whether two sets of required branches cannot both hold."""
-    return any(
-        x[0] == y[0] and x[1] != y[1] for x, y in itertools.product(a, b)
-    )
+def _by_node(branches: frozenset[_Branch]) -> dict[str, set[str]]:
+    """Return the ports in ``branches``, by branching node."""
+    index: dict[str, set[str]] = {}
+    for node_id, port in branches:
+        index.setdefault(node_id, set()).add(port)
+    return index
+
+
+def _exclusive(a: dict[str, set[str]], b: frozenset[_Branch]) -> bool:
+    """Return whether two sets of required branches cannot both hold.
+
+    ``a`` is one set indexed with :func:`_by_node`. Linear in ``b``.
+    """
+    return any(a.get(node_id, {port}) - {port} for node_id, port in b)
 
 
 def validate(
@@ -245,7 +254,18 @@ class _Validator:
             )
 
     def _check_edges(self) -> None:
+        seen: set[tuple[str, int, str]] = set()
         for index, edge in enumerate(self.graph.edges):
+            identity = (edge.source, edge.port, edge.target)
+            if identity in seen:
+                self.issues.add(
+                    'error',
+                    'duplicate_edge',
+                    'The same connection is in the graph more than once',
+                    edge_index=index,
+                )
+                continue
+            seen.add(identity)
             if edge.source not in self.nodes or edge.target not in self.nodes:
                 self.issues.add(
                     'error',
@@ -369,7 +389,9 @@ class _Validator:
             node = self.nodes[node_id]
             if node.join == 'any' and any(
                 not _exclusive(a, b)
-                for a, b in itertools.combinations(incoming, 2)
+                for (a, _), (_, b) in itertools.combinations(
+                    [(_by_node(i), i) for i in incoming], 2
+                )
             ):
                 self.issues.add(
                     'warning',

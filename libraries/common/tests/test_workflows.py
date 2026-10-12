@@ -1,5 +1,6 @@
 """Tests for the workflow graph validation and step type registry."""
 
+import time
 import typing
 import unittest
 
@@ -229,6 +230,35 @@ class ValidationTestCase(unittest.TestCase):
             for i in range(validation.MAX_NODES)
         ]
         self.assertEqual(_codes(_check(nodes, [])), {'too_many_nodes'})
+
+    def test_duplicate_edge(self) -> None:
+        issues = _check(
+            [_node('start', 'manual'), _node('a', 'wait', {'duration': '1m'})],
+            [('start', 0, 'a'), ('start', 0, 'a')],
+        )
+        self.assertEqual(
+            [(i.code, i.edge_index) for i in issues], [('duplicate_edge', 1)]
+        )
+
+    def test_wide_any_join_at_limits_is_fast(self) -> None:
+        # A chain of decisions, each with its second port into one join:
+        # 100 nodes, 197 edges, and branch sets of up to 98 entries.
+        count = validation.MAX_NODES - 2
+        nodes = [
+            _node('start', 'manual'),
+            _node('join', 'wait', {'duration': '1m'}),
+        ]
+        nodes += [
+            _node(f'd{i}', 'model_decision', DECIDE) for i in range(count)
+        ]
+        edges = [('start', 0, 'd0')]
+        edges += [(f'd{i}', 0, f'd{i + 1}') for i in range(count - 1)]
+        edges += [(f'd{i}', 1, 'join') for i in range(count)]
+        edges.append((f'd{count - 1}', 0, 'join'))
+        started = time.monotonic()
+        issues = _check(nodes, edges)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual(issues, [])
 
 
 class RegistryTestCase(unittest.TestCase):
