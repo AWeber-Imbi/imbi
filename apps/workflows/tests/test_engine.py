@@ -6,6 +6,7 @@ contract of the deploy and email endpoints; TypeSafe is patched.
 """
 
 import asyncio
+import collections
 import json
 import typing
 import unittest
@@ -13,10 +14,14 @@ import uuid
 from unittest import mock
 
 import httpx
+import orjson
+from psycopg import rows
 
 from imbi.api import workflows
-from imbi.common import graph
+from imbi.api.endpoints import workflow_runs
+from imbi.common import graph, iggy
 from imbi.common.auth import encryption
+from imbi.common.workflows import history
 from imbi.workflows import app, engine, executors, settings, store
 
 CLOSED = {'succeeded', 'failed', 'cancelled', 'timed_out'}
@@ -141,6 +146,21 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
         self.definitions = workflows.WorkflowStore(self.pool)
         self.runs = workflows.RunStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
+        # What the engine and the run store publish, by stream.
+        self.published: dict[str, list[dict[str, typing.Any]]] = (
+            collections.defaultdict(list)
+        )
+
+        async def publish_rows(
+            stream: str, topic: str, rows: list[dict[str, typing.Any]]
+        ) -> None:
+            self.published[stream] += rows
+
+        patcher = mock.patch.object(
+            iggy, 'publish_rows', mock.AsyncMock(side_effect=publish_rows)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         await self.graph.execute(
             """
             CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})
@@ -284,6 +304,8 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
         for _ in range(300):
             run = await self._run(run_id)
             if done(run):
+                if run['status'] in CLOSED:
+                    await self._check_history(run)
                 return run
             if not await runner.tick():
                 await asyncio.sleep(0.05)
@@ -312,6 +334,53 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
             rows = await cur.fetchall()
         self.assertEqual([r[0] for r in rows], list(range(1, len(rows) + 1)))
         return [r[1] for r in rows]
+
+    async def _check_history(self, run: dict[str, typing.Any]) -> None:
+        """History shows the steps of a closed run as Postgres does.
+
+        Run detail rebuilds the steps from the events once the sweep
+        archives the run (ADR 0021, Run history). Check that for the
+        events in Postgres, and for the rows that went to ClickHouse.
+        """
+        async with (
+            self.pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'SELECT * FROM workflow_runtime.run_events WHERE run_id = %s',
+                (run['id'],),
+            )
+            events = await cur.fetchall()
+        want = [
+            workflow_runs.StepRun.model_validate(s)
+            for s in await self.runs.steps(run['id'])
+        ]
+
+        def rebuilt(found: list[dict[str, typing.Any]]) -> list[typing.Any]:
+            return [
+                workflow_runs.StepRun.model_validate(s)
+                for s in history.steps(found)
+            ]
+
+        self.assertEqual(rebuilt(events), want)
+        sent = [
+            {**r, 'payload': orjson.loads(r['payload'])}
+            for r in self.published[history.EVENTS_STREAM]
+            if r['run_id'] == str(run['id'])
+        ]
+        self.assertEqual(
+            sorted(r['seq'] for r in sent),
+            list(range(1, run['last_seq'] + 1)),
+        )
+        self.assertEqual(rebuilt(sent), want)
+        summaries = [
+            r
+            for r in self.published[history.RUNS_STREAM]
+            if r['run_id'] == str(run['id'])
+        ]
+        latest = max(summaries, key=lambda r: r['_row_version'])
+        self.assertEqual(latest['status'], run['status'])
+        self.assertEqual(latest['_row_version'], run['last_seq'])
 
     def _states(self, run: dict[str, typing.Any]) -> dict[str, str]:
         return {n: s['status'] for n, s in run['steps'].items()}
@@ -695,6 +764,16 @@ class CancelTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'cancelled')
         self.assertEqual(
             self._states(run),
+            {'start': 'succeeded', 'hold': 'cancelled', 'tell': 'cancelled'},
+        )
+        # The history that ClickHouse gets shows the cancelled steps.
+        sent = [
+            {**r, 'payload': orjson.loads(r['payload'])}
+            for r in self.published[history.EVENTS_STREAM]
+            if r['run_id'] == str(run_id)
+        ]
+        self.assertEqual(
+            {s['node_id']: s['status'] for s in history.steps(sent)},
             {'start': 'succeeded', 'hold': 'cancelled', 'tell': 'cancelled'},
         )
         self.assertEqual(self.api.emails, [])

@@ -41,6 +41,8 @@ class TopicsTestCase(unittest.TestCase):
                 'scheduler_runs',
                 'score_history',
                 'tags',
+                'workflow_run_events',
+                'workflow_runs',
             },
             set(iggy.TOPICS),
         )

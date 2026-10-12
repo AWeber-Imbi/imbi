@@ -59,7 +59,7 @@ from .search import search_router
 from .tags import tags_router
 from .teams import teams_router
 from .webhooks import project_services_router, webhooks_router
-from .workflow_runs import workflow_runs_router
+from .workflow_runs import workflow_attention_router, workflow_runs_router
 from .workflows import step_types_router, workflows_router
 
 LOGGER = logging.getLogger(__name__)
@@ -207,6 +207,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     step_types_router,
     prefix='/{org_slug}/workflow-step-types',
+)
+organizations_router.include_router(
+    workflow_attention_router,
+    prefix='/{org_slug}/workflow-runs',
 )
 organizations_router.include_router(
     project_configuration_router,

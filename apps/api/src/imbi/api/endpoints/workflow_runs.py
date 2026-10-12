@@ -5,6 +5,10 @@ claims and executes it. Cancel only asks: the engine stops the run
 before its next step. A test run walks the graph with the sample output
 of each step type and writes nothing.
 
+Run detail reads the step records from Postgres until the archive sweep
+moves the run's log to ClickHouse, and from ClickHouse after that
+(ADR 0021, Run history).
+
 The two email routes are for the engine only. imbi-api holds the email
 client, so the engine asks it to send what a run recorded: the input of
 a running email step, or the failure notice of a failed run. Both take
@@ -26,7 +30,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.common import graph, lifespan
 from imbi.common.workflows import graph as wf
-from imbi.common.workflows import registry, validation, walk
+from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import email as email_step
 
 OrgId = organizations.MemberOrgId
@@ -76,10 +80,19 @@ class Run(pydantic.BaseModel):
     created_at: datetime.datetime
     started_at: datetime.datetime | None
     closed_at: datetime.datetime | None
+    log_archived_at: datetime.datetime | None
 
 
 class RunDetail(Run):
     steps: list[StepRun]
+
+
+class AttentionRun(Run):
+    workflow_slug: str
+    workflow_name: str
+    reason: typing.Literal['failed', 'stuck']
+    worker_id: str | None
+    lease_expires_at: datetime.datetime | None
 
 
 class TestRunCreate(pydantic.BaseModel):
@@ -419,10 +432,24 @@ async def get_run(
     runs: workflows.Runs,
     _: ReadAuth,
 ) -> dict[str, typing.Any]:
-    """Return a run with its step records."""
+    """Return a run with its step records.
+
+    Raises:
+        404: No such workflow or run.
+        503: The run's log is archived and ClickHouse is not available.
+
+    """
     workflow = await _workflow(store, org_id, slug)
     row = await _run(runs, workflow, run_id)
-    return {**row, 'steps': await runs.steps(run_id)}
+    if row['log_archived_at'] is None:
+        return {**row, 'steps': await runs.steps(run_id)}
+    try:
+        steps = await history.archived_steps(row)
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=503, detail='The run history is not available'
+        ) from e
+    return {**row, 'steps': steps}
 
 
 @workflow_runs_router.post(
@@ -450,6 +477,26 @@ async def cancel_run(
             status_code=409, detail=f'Run {run_id} is closed'
         )
     return await _run(runs, workflow, run_id)
+
+
+workflow_attention_router = fastapi.APIRouter(
+    tags=['Workflows'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
+
+
+@workflow_attention_router.get('/attention', response_model=list[AttentionRun])
+async def list_attention_runs(
+    org_id: OrgId,
+    runs: workflows.Runs,
+    _: ReadAuth,
+) -> list[workflows.Row]:
+    """Return the failed runs of the last 7 days and the stuck runs.
+
+    A stuck run is open and no engine works on it: see
+    :meth:`imbi.api.workflows.RunStore.attention`.
+    """
+    return await runs.attention(org_id)
 
 
 @workflow_runs_router.post(
