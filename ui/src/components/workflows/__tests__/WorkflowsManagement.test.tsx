@@ -127,7 +127,7 @@ describe('WorkflowsManagement', () => {
         {
           code: 'missing_param',
           edge_index: null,
-          message: 'duration_seconds is required',
+          message: 'duration is required',
           node_id: 'b',
           severity: 'warning',
         },

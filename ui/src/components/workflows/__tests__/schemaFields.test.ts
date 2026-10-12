@@ -3,73 +3,106 @@ import { describe, expect, it } from 'vitest'
 import { paramFields, paramSummary } from '../schemaFields'
 
 describe('paramFields', () => {
-  it('builds one field per property, in schema order', () => {
+  it('builds fields from a Pydantic schema, in schema order', () => {
+    // The shape `model_json_schema()` gives for W1's step params.
     const fields = paramFields({
-      properties: {
-        branches: { items: { type: 'string' }, type: 'array' },
-        min_confidence: { title: 'Minimum confidence', type: 'number' },
-        model_id: { type: 'string' },
-        notify: { type: 'boolean' },
-        prompt: { description: 'What to decide', type: 'string' },
-        recipients: { type: 'object' },
-        strategy: { enum: ['rolling', 'canary'], type: 'string' },
-        subject: { type: ['string', 'null'] },
+      $defs: {
+        Recipient: {
+          properties: {
+            id: { title: 'Id', type: 'string' },
+            kind: { enum: ['user', 'team'], title: 'Kind', type: 'string' },
+          },
+          type: 'object',
+        },
       },
-      required: ['prompt'],
+      properties: {
+        branches: {
+          items: { type: 'string' },
+          title: 'Branches',
+          type: 'array',
+        },
+        context: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+          default: null,
+          title: 'Context',
+        },
+        environment: { title: 'Environment', type: 'string' },
+        min_confidence: {
+          default: 0.7,
+          title: 'Min Confidence',
+          type: 'number',
+        },
+        model_id: {
+          description: 'A decision model.',
+          title: 'Model Id',
+          type: 'string',
+        },
+        notify: { type: 'boolean' },
+        target: {
+          default: 'last_healthy',
+          enum: ['last_healthy', 'previous'],
+          title: 'Target',
+          type: 'string',
+        },
+        to: {
+          items: { $ref: '#/$defs/Recipient' },
+          title: 'To',
+          type: 'array',
+        },
+        version: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+          title: 'Version',
+        },
+        webhook: { type: 'object' },
+      },
+      required: ['model_id'],
       type: 'object',
     })
     expect(fields).toEqual([
       { kind: 'list', label: 'Branches', name: 'branches', required: false },
       {
-        kind: 'number',
-        label: 'Minimum confidence',
-        name: 'min_confidence',
+        kind: 'multiline',
+        label: 'Context',
+        mono: false,
+        name: 'context',
         required: false,
       },
       {
         kind: 'source',
+        label: 'Environment',
+        name: 'environment',
+        required: false,
+        source: 'environment',
+      },
+      {
+        kind: 'number',
+        label: 'Min confidence',
+        name: 'min_confidence',
+        required: false,
+      },
+      {
+        description: 'A decision model.',
+        kind: 'source',
         label: 'Model',
         name: 'model_id',
-        required: false,
+        required: true,
         source: 'model',
       },
       { kind: 'boolean', label: 'Notify', name: 'notify', required: false },
       {
-        description: 'What to decide',
-        kind: 'multiline',
-        label: 'Prompt',
-        mono: false,
-        name: 'prompt',
-        required: true,
-      },
-      {
-        kind: 'json',
-        label: 'Recipients',
-        name: 'recipients',
-        required: false,
-      },
-      {
         kind: 'select',
-        label: 'Strategy',
-        name: 'strategy',
-        options: ['rolling', 'canary'],
+        label: 'Target',
+        name: 'target',
+        options: [
+          { label: 'Last healthy', value: 'last_healthy' },
+          { label: 'Previous', value: 'previous' },
+        ],
         required: false,
       },
-      { kind: 'text', label: 'Subject', name: 'subject', required: false },
+      { kind: 'recipients', label: 'To', name: 'to', required: false },
+      { kind: 'text', label: 'Version', name: 'version', required: false },
+      { kind: 'json', label: 'Webhook', name: 'webhook', required: false },
     ])
-  })
-
-  it('maps live-data parameters to their source', () => {
-    const fields = paramFields({
-      properties: {
-        environment: { type: 'string' },
-        project_id: { type: 'string' },
-        webhook_id: { type: 'string' },
-      },
-    })
-    expect(
-      fields.map((f) => (f.kind === 'source' ? f.source : f.kind)),
-    ).toEqual(['environment', 'project', 'webhook'])
   })
 })
 
@@ -78,7 +111,7 @@ describe('paramSummary', () => {
     expect(
       paramSummary({
         branches: ['Yes', 'No'],
-        model_id: '0b7c6f5e-1d2a-4c3b-9e8f-7a6b5c4d3e2f',
+        model_id: 'a1b2c3',
         prompt: 'Roll back?\nMore text',
         timeout: 'not shown',
       }),

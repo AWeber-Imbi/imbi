@@ -99,8 +99,8 @@ function stepType(overrides: Partial<StepType> = {}): StepType {
     label: 'Wait',
     output_schema: {},
     params_schema: {
-      properties: { duration_seconds: { default: 600, type: 'integer' } },
-      required: ['duration_seconds'],
+      properties: { duration: { default: '10m', type: 'string' } },
+      required: ['duration'],
       type: 'object',
     },
     ports: [''],

@@ -122,7 +122,7 @@ function TriggerCell({
   const Icon = stepIcon(types[0], 'trigger')
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="bg-teal text-teal flex size-6 shrink-0 items-center justify-center rounded-md">
+      <span className="bg-tertiary text-secondary flex size-6 shrink-0 items-center justify-center rounded-md">
         <Icon className="size-3.5" />
       </span>
       <span className="truncate text-sm">

@@ -11,9 +11,14 @@ export type FieldSource =
   | 'webhook'
 
 export type ParamField =
-  | (FieldBase & { kind: 'boolean' | 'json' | 'list' | 'number' | 'text' })
+  | (FieldBase & {
+      kind: 'boolean' | 'json' | 'list' | 'number' | 'recipients' | 'text'
+    })
   | (FieldBase & { kind: 'multiline'; mono: boolean })
-  | (FieldBase & { kind: 'select'; options: string[] })
+  | (FieldBase & {
+      kind: 'select'
+      options: { label: string; value: string }[]
+    })
   | (FieldBase & { kind: 'source'; source: FieldSource })
 
 interface FieldBase {
@@ -23,46 +28,51 @@ interface FieldBase {
   required: boolean
 }
 
-// Parameters that hold the id or slug of a live record, by name.
+// Parameters that hold the graph node id (or, for environments, the
+// slug) of a live record, by name. They match the W1 step registry.
 const SOURCES: Record<string, FieldSource> = {
   environment: 'environment',
-  environment_slug: 'environment',
   model_id: 'model',
   project_id: 'project',
-  team_slug: 'team',
   webhook_id: 'webhook',
 }
 
 const MULTILINE = new Set(['body', 'context', 'filter', 'prompt'])
 const MONO = new Set(['filter'])
-const UUID =
-  /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i
 
 export function paramFields(schema: JsonSchema): ParamField[] {
   const required = new Set(schema.required ?? [])
-  return Object.entries(schema.properties ?? {}).map(([name, prop]) => {
+  return Object.entries(schema.properties ?? {}).map(([name, raw]) => {
+    const prop = resolve(schema, raw)
+    // Pydantic titles every property ("Model Id"), so the label comes
+    // from the name instead.
     const base: FieldBase = {
       description: prop.description,
-      label: prop.title ?? humanize(name),
+      label: humanize(name),
       name,
       required: required.has(name),
     }
-    const type = Array.isArray(prop.type)
-      ? prop.type.find((t) => t !== 'null')
-      : prop.type
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (prop.enum) {
-      return { ...base, kind: 'select', options: prop.enum.map(String) }
+      const options = prop.enum.map((v) => ({
+        label: humanize(String(v)),
+        value: String(v),
+      }))
+      return { ...base, kind: 'select', options }
     }
-    if (type === 'boolean') return { ...base, kind: 'boolean' }
-    if (type === 'integer' || type === 'number') {
+    if (prop.type === 'boolean') return { ...base, kind: 'boolean' }
+    if (prop.type === 'integer' || prop.type === 'number') {
       return { ...base, kind: 'number' }
     }
-    if (type === 'array' && prop.items?.type === 'string') {
-      return { ...base, kind: 'list' }
+    if (prop.type === 'array' && prop.items) {
+      const item = resolve(schema, prop.items)
+      if (item.type === 'string') return { ...base, kind: 'list' }
+      if (item.properties?.kind && item.properties.id) {
+        return { ...base, kind: 'recipients' }
+      }
     }
-    if (type === 'string') {
-      if (prop.format === 'multiline' || MULTILINE.has(name)) {
+    if (prop.type === 'string') {
+      if (MULTILINE.has(name)) {
         return { ...base, kind: 'multiline', mono: MONO.has(name) }
       }
       return { ...base, kind: 'text' }
@@ -79,7 +89,7 @@ export function paramSummary(params: Record<string, unknown>): string {
       parts.push(`${value.length} ${name.replace(/_/g, ' ')}`)
     } else if (
       // Ids of live records read as noise on the card.
-      (typeof value === 'string' && value.trim() && !UUID.test(value)) ||
+      (typeof value === 'string' && value.trim() && !name.endsWith('_id')) ||
       typeof value === 'number'
     ) {
       parts.push(String(value).split('\n')[0])
@@ -90,6 +100,15 @@ export function paramSummary(params: Record<string, unknown>): string {
 }
 
 function humanize(name: string): string {
-  const words = name.replace(/_id$|_slug$/, '').replace(/_/g, ' ')
+  const words = name.replace(/_id$/, '').replace(/_/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** Follow a local `$ref`, and take the non-null branch of `X | None`. */
+function resolve(root: JsonSchema, prop: JsonSchema): JsonSchema {
+  if (prop.$ref) {
+    return root.$defs?.[prop.$ref.replace('#/$defs/', '')] ?? prop
+  }
+  const branch = prop.anyOf?.find((s) => s.type !== 'null')
+  return branch ? { ...prop, ...branch, anyOf: undefined } : prop
 }

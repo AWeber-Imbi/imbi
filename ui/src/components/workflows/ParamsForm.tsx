@@ -1,7 +1,9 @@
 import { useState } from 'react'
 
+import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
 
+import { listTeams } from '@/api/endpoints'
 import { Combobox } from '@/components/ui/combobox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
@@ -14,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 
 import type { FieldSource, ParamField } from './schemaFields'
@@ -27,6 +30,12 @@ interface ParamsFormProps {
   onRemoveItem: (name: string, index: number) => void
   orgSlug: string
   params: Record<string, unknown>
+}
+
+/** An email recipient: a team or a user, by graph node id. */
+interface Recipient {
+  id: string
+  kind: 'team' | 'user'
 }
 
 /** The inspector form for a node's `params`, built from its type's schema. */
@@ -149,12 +158,21 @@ function FieldControl({
           value={typeof value === 'number' ? value : ''}
         />
       )
+    case 'recipients':
+      return (
+        <RecipientsField
+          id={id}
+          onChange={onChange}
+          orgSlug={orgSlug}
+          value={Array.isArray(value) ? (value as Recipient[]) : []}
+        />
+      )
     case 'select':
       return (
         <SelectField
           id={id}
           onChange={onChange}
-          options={field.options.map((o) => ({ label: o, value: o }))}
+          options={field.options}
           value={typeof value === 'string' ? value : ''}
         />
       )
@@ -264,6 +282,86 @@ function ListField({
       >
         <Plus className="size-3.5" />
         Add
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Email recipients: teams by graph node id from the teams list. No
+ * org-scoped endpoint lists users with their ids, so a user recipient
+ * takes a typed id.
+ */
+function RecipientsField({
+  id,
+  onChange,
+  orgSlug,
+  value,
+}: {
+  id: string
+  onChange: (value: Recipient[]) => void
+  orgSlug: string
+  value: Recipient[]
+}) {
+  const teams = useQuery({
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
+    queryKey: queryKeys.teams(orgSlug),
+    select: (rows) => rows.map((t) => ({ label: t.name, value: t.id ?? '' })),
+  })
+  const set = (index: number, patch: Partial<Recipient>) =>
+    onChange(value.map((r, i) => (i === index ? { ...r, ...patch } : r)))
+  return (
+    <div className="flex flex-col gap-2" id={id}>
+      {value.map((recipient, i) => (
+        <div className="flex items-center gap-1.5" key={i}>
+          <div className="w-24 shrink-0">
+            <SelectField
+              id={`${id}-${i}-kind`}
+              onChange={(kind) =>
+                set(i, { id: '', kind: kind as Recipient['kind'] })
+              }
+              options={[
+                { label: 'Team', value: 'team' },
+                { label: 'User', value: 'user' },
+              ]}
+              value={recipient.kind}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            {recipient.kind === 'team' ? (
+              <SelectField
+                id={`${id}-${i}-id`}
+                onChange={(teamId) => set(i, { id: teamId })}
+                options={teams.data ?? []}
+                value={recipient.id}
+              />
+            ) : (
+              <Input
+                aria-label={`Recipient ${i + 1} user id`}
+                className="font-mono text-xs"
+                onChange={(e) => set(i, { id: e.target.value })}
+                placeholder="User id"
+                value={recipient.id}
+              />
+            )}
+          </div>
+          <button
+            aria-label={`Remove recipient ${i + 1}`}
+            className="text-secondary hover:bg-secondary flex size-7 shrink-0 items-center justify-center rounded-md"
+            onClick={() => onChange(value.filter((_, j) => j !== i))}
+            type="button"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
+      <button
+        className="border-input text-secondary hover:border-amber-border hover:text-primary flex h-8.5 items-center justify-center gap-1.5 rounded-md border border-dashed text-sm"
+        onClick={() => onChange([...value, { id: '', kind: 'team' }])}
+        type="button"
+      >
+        <Plus className="size-3.5" />
+        Add recipient
       </button>
     </div>
   )

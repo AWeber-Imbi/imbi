@@ -23,7 +23,7 @@ const [manual, wait, decision] = STEP_TYPES
 describe('createNode', () => {
   it('takes defaults from the schema and a key from the label', () => {
     const n = createNode({ edges: [], nodes: [] }, wait, { x: 33, y: 9 })
-    expect(n.params).toEqual({ duration_seconds: 600 })
+    expect(n.params).toEqual({ duration: '10m' })
     expect(n.key).toBe('wait')
     expect(n.position).toEqual({ x: 40, y: 0 })
   })

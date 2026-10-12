@@ -3795,7 +3795,7 @@ export const listWorkflows = async (
   signal?: AbortSignal,
 ): Promise<WorkflowSummary[]> => {
   const response = await apiClient.get<WorkflowSummary[]>(
-    workflowsPath(orgSlug),
+    `${workflowsPath(orgSlug)}/`,
     undefined,
     signal,
   )
@@ -3809,7 +3809,7 @@ export const getWorkflow = (
 ) => apiClient.get<Workflow>(workflowPath(orgSlug, slug), undefined, signal)
 
 export const createWorkflow = (orgSlug: string, workflow: WorkflowWrite) =>
-  apiClient.post<Workflow>(workflowsPath(orgSlug), workflow)
+  apiClient.post<Workflow>(`${workflowsPath(orgSlug)}/`, workflow)
 
 export const updateWorkflow = (
   orgSlug: string,
@@ -3840,7 +3840,7 @@ export const listWorkflowStepTypes = async (
   signal?: AbortSignal,
 ): Promise<StepType[]> => {
   const response = await apiClient.get<StepType[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/workflow-step-types`,
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-step-types/`,
     undefined,
     signal,
   )

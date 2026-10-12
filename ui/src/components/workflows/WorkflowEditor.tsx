@@ -54,7 +54,7 @@ import { StatusBadge } from './WorkflowStatusBadge'
 const NEW_SETTINGS: WorkflowWrite['settings'] = {
   concurrency_key: null,
   concurrency_mode: 'unlimited',
-  max_run_time_seconds: 3600,
+  max_run_time_seconds: 7200,
   on_failure: 'notify_owner_team',
 }
 
@@ -205,7 +205,14 @@ export function WorkflowEditor({
   const toggleActive = useMutation({
     mutationFn: (active: boolean) =>
       active ? activateWorkflow(orgSlug, slug!) : pauseWorkflow(orgSlug, slug!),
-    onError: (error, active) => toast.error(activationError(error, active)),
+    onError: (error, active) => {
+      const detail =
+        error instanceof ApiError
+          ? (error.data as { detail?: { issues?: ValidationIssue[] } })?.detail
+          : undefined
+      if (detail?.issues) setIssues(detail.issues)
+      toast.error(activationError(error, active))
+    },
     onSuccess: stored,
   })
 
@@ -271,7 +278,7 @@ export function WorkflowEditor({
   const edgeErrors = useMemo(
     () =>
       new Set(
-        issues.flatMap((i) => (i.edge_index === null ? [] : [i.edge_index])),
+        issues.flatMap((i) => (i.edge_index == null ? [] : [i.edge_index])),
       ),
     [issues],
   )
@@ -440,7 +447,7 @@ export function WorkflowEditor({
           ) : (
             <SettingsPanel
               draft={draft}
-              issues={issues.filter((i) => i.node_id === null)}
+              issues={issues.filter((i) => !i.node_id)}
               onChange={change}
               orgSlug={orgSlug}
               readOnly={readOnly}
