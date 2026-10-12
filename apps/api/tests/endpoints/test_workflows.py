@@ -487,3 +487,44 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.json()['name'], 'Deploy guard')
         self.assertEqual(response.json()['latest_version'], 1)
+
+    async def test_activate_needs_project_deployment_grant(self) -> None:
+        wf_graph = {
+            **DEPLOY_GRAPH,
+            'nodes': [
+                DEPLOY_GRAPH['nodes'][0],
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': self.project,
+                        'environment': 'staging',
+                        'version': '1.0',
+                    },
+                ),
+            ],
+        }
+        await self._create(graph=wf_graph)
+        url = f'{self.base}/deploy-guard/activate'
+        response = await self.client.post(url)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            {
+                'error': 'missing_permissions',
+                'permissions': ['project:deployment:write'],
+            },
+        )
+
+        await self.graph.execute(
+            """
+            MATCH (u:User {{id: {email}}}), (p:Project {{id: {project}}})
+            CREATE (u)-[:CAN_ACCESS {{actions: ['deployment:write']}}]->(p)
+            RETURN p.id AS id
+            """,
+            {'email': self.email, 'project': self.project},
+            ['id'],
+        )
+        response = await self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'active')
