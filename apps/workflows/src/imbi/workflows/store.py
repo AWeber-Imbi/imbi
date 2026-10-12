@@ -25,13 +25,13 @@ type Pool = psycopg_pool.AsyncConnectionPool[
 type Row = dict[str, typing.Any]
 type Conn = psycopg.AsyncConnection[typing.Any]
 
-#: A queued run starts when no run with its concurrency key is running
-#: and no older run with the key is queued, so runs with one key start
-#: in creation order. A run with a cancel request is always claimable,
-#: so that it can close.
-_CLAIM = """
-SELECT r.* FROM workflow_runtime.runs AS r
- WHERE r.status IN ('queued', 'running') AND r.due_at <= NOW()
+#: The runs that a worker can claim, whatever their ``due_at``. A queued
+#: run starts when no run with its concurrency key is running and no
+#: older run with the key is queued, so runs with one key start in
+#: creation order. A run with a cancel request is always claimable, so
+#: that it can close.
+_CLAIMABLE = """
+ WHERE r.status IN ('queued', 'running')
    AND NOT EXISTS (SELECT 1 FROM workflow_runtime.leases AS l
                     WHERE l.run_id = r.id AND l.expires_at > NOW())
    AND (r.status = 'running' OR r.cancel_requested
@@ -44,10 +44,25 @@ SELECT r.* FROM workflow_runtime.runs AS r
              AND (o.status = 'running'
                   OR (o.status = 'queued'
                       AND (o.created_at, o.id) < (r.created_at, r.id)))))
+"""
+
+# Both queries are built from module constants only.
+_CLAIM = (
+    'SELECT r.* FROM workflow_runtime.runs AS r'  # noqa: S608
+    + _CLAIMABLE
+    + """   AND r.due_at <= NOW()
  ORDER BY r.due_at
  LIMIT 1
    FOR UPDATE OF r SKIP LOCKED
 """
+)
+
+#: The earliest due time of a claimable run. A run that is leased or
+#: blocked by its concurrency key does not wake idle workers.
+_NEXT_DUE = (
+    'SELECT MIN(r.due_at) FROM workflow_runtime.runs AS r'  # noqa: S608
+    + _CLAIMABLE
+)
 
 
 class LeaseLost(Exception):
@@ -87,19 +102,23 @@ class Store:
     async def release(
         self, run_id: uuid.UUID, due_at: datetime.datetime | None
     ) -> None:
-        """Drop the lease. ``due_at`` is when the run is claimable next."""
+        """Drop the lease. ``due_at`` is when the run is claimable next.
+
+        ``due_at`` changes only when this worker still held the lease:
+        a run that another worker took over keeps its schedule.
+        """
         async with self.pool.connection() as conn, conn.transaction():
-            if due_at is not None:
+            cur = await conn.execute(
+                'DELETE FROM workflow_runtime.leases'
+                ' WHERE run_id = %s AND worker_id = %s RETURNING 1',
+                (run_id, self.worker_id),
+            )
+            if due_at is not None and await cur.fetchone() is not None:
                 await conn.execute(
                     'UPDATE workflow_runtime.runs SET due_at = %s'
                     ' WHERE id = %s',
                     (due_at, run_id),
                 )
-            await conn.execute(
-                'DELETE FROM workflow_runtime.leases'
-                ' WHERE run_id = %s AND worker_id = %s',
-                (run_id, self.worker_id),
-            )
 
     async def load(self, run: Row) -> tuple[dict[str, Row], Row]:
         """Return the step rows by node id, and the pinned version with
@@ -130,10 +149,7 @@ class Store:
 
     async def next_due(self) -> datetime.datetime | None:
         async with self.pool.connection() as conn:
-            cur = await conn.execute(
-                'SELECT MIN(due_at) FROM workflow_runtime.runs'
-                " WHERE status IN ('queued', 'running')"
-            )
+            cur = await conn.execute(_NEXT_DUE)
             row = await cur.fetchone()
             return row[0] if row else None
 

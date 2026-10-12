@@ -6,6 +6,7 @@ contract of the deploy and email endpoints; TypeSafe is patched.
 """
 
 import asyncio
+import datetime
 import json
 import typing
 import unittest
@@ -586,6 +587,41 @@ class SecurityTestCase(EngineTestCase):
         )
         run = await self._drive(await self._start(workflow_id))
         self.assertEqual(run['error'], 'activator_lacks_permission')
+
+
+class StoreTestCase(EngineTestCase):
+    async def test_release_after_takeover_keeps_the_schedule(self) -> None:
+        workflow_id = await self._workflow([_node('start', 'manual')], [])
+        run_id = await self._start(workflow_id)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET due_at = NOW() + INTERVAL'
+                " '1 hour' WHERE id = %s",
+                (run_id,),
+            )
+            # Worker b took the run over after the lease of a expired.
+            await conn.execute(
+                'INSERT INTO workflow_runtime.leases'
+                ' (run_id, worker_id, expires_at)'
+                " VALUES (%s, 'b', NOW() + INTERVAL '1 hour')",
+                (run_id,),
+            )
+            cur = await conn.execute(
+                'SELECT due_at FROM workflow_runtime.runs WHERE id = %s',
+                (run_id,),
+            )
+            before = await cur.fetchone()
+        await store.Store(self.pool, 'a').release(
+            run_id, datetime.datetime.now(datetime.UTC)
+        )
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT r.due_at, l.worker_id FROM workflow_runtime.runs r'
+                ' JOIN workflow_runtime.leases l ON l.run_id = r.id'
+                ' WHERE r.id = %s',
+                (run_id,),
+            )
+            self.assertEqual(await cur.fetchone(), (before[0], 'b'))
 
 
 class CrashTestCase(EngineTestCase):
