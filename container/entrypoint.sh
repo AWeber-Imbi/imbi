@@ -246,18 +246,14 @@ start_caddy() {
     caddy run --config /etc/caddy/Caddyfile &
 }
 
-random_token() {
-    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "${1:-43}"
-}
-
 # 'all' mode only. imbi-scheduler and imbi-gateway authenticate to imbi-api
 # as their own service accounts, so both need a credential before they can
 # do anything: without one every api-target firing is skipped, and every
 # gateway action gets a 401. `setup-service-accounts` seeds whatever the
 # environment supplies, so a deployment that already holds these secrets
-# keeps them. One that does not gets a pair minted here -- in a single
-# container nothing outside it ever needs to know the values, so generating
-# them per boot is cheaper than asking an operator to invent them.
+# keeps them. One that does not gets a pair minted here -- nothing outside
+# the container ever needs to know the values, so deriving them is cheaper
+# than asking an operator to invent them.
 provision_internal_credentials() {
     minted_scheduler=0
     minted_gateway=0
@@ -289,8 +285,10 @@ provision_internal_credentials() {
         # creates another APIKey node, leaving a live unrevoked credential
         # behind per restart. No underscore past the `ik_` prefix -- the
         # token is split on the first two, so one here would land inside
-        # the key_id and change where the secret starts.
-        IMBI_GATEWAY_API_TOKEN="ik_imbigatewayallmode_$(random_token)"
+        # the key_id and change where the secret starts. The secret is
+        # derived from IMBI_AUTH_JWT_SECRET for the same reason as the
+        # scheduler's above, with its own label so the two differ.
+        IMBI_GATEWAY_API_TOKEN="ik_imbigatewayallmode_$(printf 'imbi-gateway-all-mode:%s' "$IMBI_AUTH_JWT_SECRET" | sha256sum | cut -d' ' -f1)"
         export IMBI_GATEWAY_API_TOKEN
         minted_gateway=1
     fi
