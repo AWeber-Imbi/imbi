@@ -8,7 +8,8 @@ replicaCount: 1
 
 # Service mode:
 # - "all": run all services in one pod (uses replicaCount above)
-# - "api" | "assistant" | "gateway" | "mcp" | "scheduler" | "slackbot":
+# - "api" | "assistant" | "gateway" | "mcp" | "scheduler" | "slackbot" |
+#   "workflows":
 #   run a single service
 # - "ui": run only the bundled Caddy, serving the UI and reverse-proxying to
 #   the other services through .service.ui.upstreams
@@ -44,6 +45,11 @@ service:
     # lock does a different job -- enforcing execution.max_running_instances
     # and ordering a lease against a task delete -- and is not what arbitrates
     # firing. See docs/scheduler/adr/0001-trigger-engine-on-psycopg.md.
+    replicas: 1
+  workflows:
+    # More than one replica is safe: a replica claims a run with FOR UPDATE
+    # SKIP LOCKED and holds it with a lease, so replicas work on different
+    # runs (ADR 0021).
     replicas: 1
   slackbot:
     # Socket mode: each replica opens its own connection to Slack and Slack
@@ -85,6 +91,17 @@ scheduler:
     clientId: ""
     clientSecret: ""
 
+# Workflow engine configuration
+workflows:
+  # Deploy and rollback steps call imbi-api as this service account (ADR 0021).
+  # Seeded by `imbi-api setup` exactly like the scheduler credential above, and
+  # both or neither in the same way. The account can deploy only after an
+  # operator grants it `integration:act-as-service` and the target environment
+  # has `allow_autonomous` (ADR 0017).
+  serviceAccount:
+    clientId: ""
+    clientSecret: ""
+
 # Gateway configuration
 gateway:
   # The gateway calls back into imbi-api to patch projects and record releases,
@@ -110,11 +127,13 @@ gateway:
 #     imbi-api answers 503 and the runtime exits.
 # Those two refs are not optional, so a secret missing a key the deployment
 # asks for will fail the pod. The scheduler's scheduler-sa-client-id and
-# scheduler-sa-client-secret are read whenever existingSecret is set, as is the
-# gateway's gateway-sa-token, and all three are marked optional -- so what a
+# scheduler-sa-client-secret are read whenever existingSecret is set, as are the
+# workflow engine's workflows-sa-client-id and workflows-sa-client-secret and
+# the gateway's gateway-sa-token, and all are marked optional -- so what a
 # missing one costs depends on the mode:
 #   - service.mode "scheduler": require_scheduler_vars() demands both scheduler
 #     keys, so the container exits at startup and the pod CrashLoopBackOffs.
+#   - service.mode "workflows": the same, for the two workflows keys.
 #   - service.mode "all": neither is required. The entrypoint seeds a credential
 #     for each service itself when the environment does not supply one.
 #   - any other mode: nothing reads them, and nothing is affected.

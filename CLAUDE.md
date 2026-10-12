@@ -22,6 +22,7 @@ PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 | `apps/mcp/` | `imbi-mcp` (:8001) | `imbi.mcp` |
 | `apps/scheduler/` | `imbi-scheduler` (:8005) | `imbi.scheduler` |
 | `apps/slackbot/` | `imbi-slackbot` (:8004) | `imbi.slackbot` |
+| `apps/workflows/` | `imbi-workflows` (:8006) | `imbi.workflows` |
 | `ui/` | npm package (Vite :5173) | — |
 | `plugins/<name>/` | `imbi-plugin-<name>` | `imbi.plugins.<name>` |
 | root `pyproject.toml` | `imbi` meta-package (installs everything) | — |

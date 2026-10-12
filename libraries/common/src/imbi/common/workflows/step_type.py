@@ -31,6 +31,11 @@ class StepType:
     trigger: bool = False
     side_effect: bool = False
     idempotent: bool = True
+    #: Seconds a step may run before it fails with ``timeout``. ``None``
+    #: means no limit. A node can set its own.
+    timeout_seconds: int | None = 300
+    #: Retries after an error. A node can set its own.
+    retries: int = 0
     required_permissions: abc.Callable[[dict[str, typing.Any]], set[str]] = (
         _no_permissions
     )
@@ -57,4 +62,6 @@ class StepType:
             'sample_output': self.sample_output,
             'side_effect': self.side_effect,
             'idempotent': self.idempotent,
+            'timeout_seconds': self.timeout_seconds,
+            'retries': self.retries,
         }

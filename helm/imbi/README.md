@@ -35,3 +35,11 @@ tasks. Running it as its own release (`service.mode: scheduler`) additionally
 requires `service.internalApiUrl` and `service.publicApiUrl`; the chart fails
 to render without them. See
 [the scheduler configuration guide](../../docs/scheduler/configuration.md).
+
+## Workflows
+
+`imbi-workflows` runs workflow runs (ADR 0021). Its deploy and rollback steps
+call imbi-api with a service-account credential
+(`workflows.serviceAccount.clientId` / `clientSecret`). Running it as its own
+release (`service.mode: workflows`) requires `service.internalApiUrl` and
+`service.publicApiUrl`, as for the scheduler.

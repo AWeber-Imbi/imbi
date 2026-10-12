@@ -10,6 +10,7 @@ The module uses SMTP for email delivery with retry logic. All emails are
 rendered using Jinja2 templates with both HTML and plain text versions.
 """
 
+import html
 import logging
 from urllib import parse
 
@@ -30,6 +31,7 @@ __all__ = [
     'TemplateManager',
     'send_password_reset',
     'send_welcome_email',
+    'send_workflow_email',
 ]
 
 
@@ -151,6 +153,31 @@ async def send_password_reset(
     )
 
     return token_model, audit
+
+
+async def send_workflow_email(
+    email_client: EmailClient,
+    *,
+    to_email: str,
+    subject: str,
+    body: str,
+) -> models.EmailAudit:
+    """Send the plain-text message of a workflow email step (ADR 0021).
+
+    The caller resolves the recipients: Imbi users and teams of the
+    workflow's organization only.
+    """
+    audit = await email_client.send_email(
+        models.EmailMessage(
+            to_email=to_email,
+            subject=subject,
+            text_body=body,
+            html_body='<pre>' + html.escape(body) + '</pre>',
+            template_name='workflow',
+        )
+    )
+    await _save_audit(audit)
+    return audit
 
 
 async def _save_audit(audit: models.EmailAudit) -> None:

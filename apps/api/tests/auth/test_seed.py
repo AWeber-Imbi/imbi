@@ -157,6 +157,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
                 'readonly',
                 'imbi-scheduler',
                 'imbi-gateway',
+                'imbi-workflows',
             },
         )
 
@@ -242,7 +243,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         here costs the service that grant silently rather than failing.
         """
         perm_names = {p[0] for p in seed.STANDARD_PERMISSIONS}
-        for slug in ('imbi-scheduler', 'imbi-gateway'):
+        for slug in ('imbi-scheduler', 'imbi-gateway', 'imbi-workflows'):
             with self.subTest(role=slug):
                 role = next(r for r in seed.DEFAULT_ROLES if r[0] == slug)
                 self.assertLessEqual(set(role[4]), perm_names)

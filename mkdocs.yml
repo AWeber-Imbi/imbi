@@ -153,6 +153,7 @@ plugins:
             - apps/mcp/src
             - apps/scheduler/src
             - apps/slackbot/src
+            - apps/workflows/src
             - plugins/aws/src
             - plugins/github/src
             - plugins/google/src

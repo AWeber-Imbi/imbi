@@ -32,5 +32,8 @@ STEP = step_type.StepType(
     sample_output={'deployment_id': 'sample', 'status': 'success'},
     ports=('Succeeded', 'Failed'),
     side_effect=True,
+    # Covers the rollout too: the step waits for the deployment.
+    timeout_seconds=3600,
+    retries=2,
     required_permissions=required_permissions,
 )

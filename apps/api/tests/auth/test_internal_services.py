@@ -118,24 +118,21 @@ class InternalServiceSeedTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_accounts_and_memberships_created(self) -> None:
-        """A fresh install creates both accounts and both memberships."""
+        """A fresh install creates every account and membership."""
         db = FakeGraph({'MERGE (s)-[m:MEMBER_OF]->(o)': [{'m': 'edge'}]})
 
         results = await internal_services.seed_internal_services(
             db, 'aweber', {}
         )
 
-        self.assertEqual(len(results), 2)
-        self.assertEqual(
-            [result.service.slug for result in results],
-            ['imbi-scheduler', 'imbi-gateway'],
-        )
+        slugs = ['imbi-scheduler', 'imbi-gateway', 'imbi-workflows']
+        self.assertEqual([result.service.slug for result in results], slugs)
         self.assertTrue(all(result.account_created for result in results))
         self.assertEqual(
             [node.slug for node in db.created],  # pyright: ignore[reportAttributeAccessIssue]
-            ['imbi-scheduler', 'imbi-gateway'],
+            slugs,
         )
-        self.assertEqual(len(db.issued('MERGE (s)-[m:MEMBER_OF]->(o)')), 2)
+        self.assertEqual(len(db.issued('MERGE (s)-[m:MEMBER_OF]->(o)')), 3)
 
     async def test_existing_membership_is_left_alone(self) -> None:
         """A role an operator widened is not reset to the seeded one."""

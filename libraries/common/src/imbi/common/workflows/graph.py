@@ -21,6 +21,9 @@ class Node(pydantic.BaseModel):
     position: Position
     params: dict[str, typing.Any] = {}
     join: typing.Literal['any', 'all'] = 'any'
+    #: Override the step type's timeout and retries.
+    timeout_seconds: int | None = pydantic.Field(default=None, gt=0)
+    retries: int | None = pydantic.Field(default=None, ge=0, le=10)
 
 
 class Edge(pydantic.BaseModel):
