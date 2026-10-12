@@ -50,3 +50,45 @@ created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
 columns = ["workflow_id", "version"]
+
+# One row per schedule or webhook trigger of the active version: the
+# desired state of the scheduler task or the gateway rule that it needs
+# (ADR 0021, Triggers). Activation and pause write these rows in their
+# own transaction; the reconciler in imbi-workflows then writes the
+# scheduler and the gateway to match, and records `sync_state`.
+#
+# No foreign key to `workflows`: a workflow's delete marks its bindings
+# `removed`, and the reconciler deletes each row after it removes the
+# scheduler task or the gateway rule.
+[[tables]]
+name = "trigger_bindings"
+
+[tables.columns]
+id = "UUID NOT NULL"
+workflow_id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+node_id = "TEXT NOT NULL"
+# `schedule` or `webhook`.
+type = "TEXT NOT NULL"
+# The trigger node's params.
+params = "JSONB NOT NULL"
+# False while the workflow is paused.
+enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
+# True when the active version no longer has the trigger, or the
+# workflow was deleted.
+removed = "BOOLEAN NOT NULL DEFAULT FALSE"
+# `pending`, `synced`, or `failed`.
+sync_state = "TEXT NOT NULL DEFAULT 'pending'"
+error = "TEXT"
+# The scheduler task id, or the webhook id, after a sync.
+target_id = "TEXT"
+synced_at = "TIMESTAMP WITH TIME ZONE"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "trigger_bindings_workflow_node_key"
+columns = ["workflow_id", "node_id", "type"]
+unique = true

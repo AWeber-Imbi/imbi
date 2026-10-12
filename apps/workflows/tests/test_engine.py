@@ -247,7 +247,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         )
         await self.definitions.activate(
-            self.org, slug, 1, activated_by or self.email
+            self.org, slug, 1, activated_by or self.email, []
         )
         row = await self.definitions.get(self.org, slug)
         assert row is not None
@@ -267,6 +267,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
                 trigger_node_id='start',
                 origin_kind='human',
                 origin_id=self.email,
+                origin={},
                 idempotency_key=None,
                 payload=payload or {},
                 concurrency_key=None,

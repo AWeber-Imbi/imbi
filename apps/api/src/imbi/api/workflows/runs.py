@@ -25,6 +25,9 @@ class NewRun:
     trigger_node_id: str
     origin_kind: str
     origin_id: str
+    #: The origin record: the user, the scheduler task id, or the
+    #: webhook id and the delivery id.
+    origin: dict[str, typing.Any]
     idempotency_key: str | None
     payload: dict[str, typing.Any]
     concurrency_key: str | None
@@ -58,9 +61,9 @@ class RunStore:
             await cur.execute(
                 'INSERT INTO workflow_runtime.runs (id, organization_id,'
                 ' workflow_id, version, trigger_node_id, origin_kind,'
-                ' origin_id, idempotency_key, payload, concurrency_key,'
-                ' activated_by) VALUES'
-                ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+                ' origin_id, origin, idempotency_key, payload,'
+                ' concurrency_key, activated_by) VALUES'
+                ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
                 ' ON CONFLICT (organization_id, origin_kind, origin_id,'
                 ' idempotency_key) DO NOTHING RETURNING *',
                 (
@@ -71,6 +74,7 @@ class RunStore:
                     run.trigger_node_id,
                     run.origin_kind,
                     run.origin_id,
+                    pg_json.Jsonb(run.origin),
                     run.idempotency_key,
                     pg_json.Jsonb(run.payload),
                     run.concurrency_key,

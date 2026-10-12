@@ -14,6 +14,8 @@ import psycopg_pool
 from psycopg import rows
 from psycopg.types import json as pg_json
 
+from imbi.common.workflows import runtime
+
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
 ]
@@ -50,6 +52,15 @@ class Definition:
     settings: dict[str, typing.Any]
     validation: dict[str, typing.Any]
     author: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Trigger:
+    """A schedule or webhook trigger of the version that activates."""
+
+    node_id: str
+    type: str
+    params: dict[str, typing.Any]
 
 
 class WorkflowStore:
@@ -144,13 +155,24 @@ class WorkflowStore:
         return True
 
     async def delete(self, organization_id: str, slug: str) -> bool:
-        async with self._pool.connection() as conn:
+        """Delete a workflow and mark its trigger bindings ``removed``."""
+        async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
                 'DELETE FROM workflows.workflows'
-                ' WHERE organization_id = %s AND slug = %s',
+                ' WHERE organization_id = %s AND slug = %s RETURNING id',
                 (organization_id, slug),
             )
-            return cur.rowcount > 0
+            row = await cur.fetchone()
+            if row is None:
+                return False
+            await conn.execute(
+                'UPDATE workflows.trigger_bindings SET removed = TRUE,'
+                " sync_state = 'pending', updated_at = NOW()"
+                ' WHERE workflow_id = %s',
+                (row[0],),
+            )
+            await conn.execute(f'NOTIFY {runtime.BINDINGS_CHANNEL}')
+            return True
 
     async def versions(self, organization_id: str, slug: str) -> list[Row]:
         """Return the versions of a workflow, newest first."""
@@ -174,25 +196,77 @@ class WorkflowStore:
         )
 
     async def activate(
-        self, organization_id: str, slug: str, version: int, email: str
+        self,
+        organization_id: str,
+        slug: str,
+        version: int,
+        email: str,
+        triggers: list[Trigger],
     ) -> None:
-        async with self._pool.connection() as conn:
-            await conn.execute(
+        """Make ``version`` active and write the desired trigger bindings.
+
+        Postgres only (ADR 0021, Triggers): one binding per trigger of
+        the version, enabled, and the bindings of triggers that the
+        version does not have marked ``removed``. The reconciler in
+        imbi-workflows then writes the scheduler and the gateway.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
                 "UPDATE workflows.workflows SET status = 'active',"
                 ' active_version = %s, activated_by = %s,'
                 ' activated_at = NOW(), updated_at = NOW()'
-                ' WHERE organization_id = %s AND slug = %s',
+                ' WHERE organization_id = %s AND slug = %s RETURNING id',
                 (version, email, organization_id, slug),
             )
+            row = await cur.fetchone()
+            if row is None:
+                return
+            for trigger in triggers:
+                await conn.execute(
+                    'INSERT INTO workflows.trigger_bindings (id,'
+                    ' workflow_id, organization_id, node_id, type, params)'
+                    ' VALUES (%s, %s, %s, %s, %s, %s)'
+                    ' ON CONFLICT (workflow_id, node_id, type) DO UPDATE'
+                    ' SET params = EXCLUDED.params, enabled = TRUE,'
+                    " removed = FALSE, sync_state = 'pending',"
+                    ' updated_at = NOW()',
+                    (
+                        uuid.uuid4(),
+                        row[0],
+                        organization_id,
+                        trigger.node_id,
+                        trigger.type,
+                        pg_json.Jsonb(trigger.params),
+                    ),
+                )
+            await conn.execute(
+                'UPDATE workflows.trigger_bindings SET removed = TRUE,'
+                " sync_state = 'pending', updated_at = NOW()"
+                " WHERE workflow_id = %s AND NOT (node_id || ':' || type"
+                ' = ANY(%s))',
+                (row[0], [f'{t.node_id}:{t.type}' for t in triggers]),
+            )
+            await conn.execute(f'NOTIFY {runtime.BINDINGS_CHANNEL}')
 
     async def pause(self, organization_id: str, slug: str) -> None:
-        async with self._pool.connection() as conn:
-            await conn.execute(
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
                 "UPDATE workflows.workflows SET status = 'paused',"
                 ' updated_at = NOW()'
-                ' WHERE organization_id = %s AND slug = %s',
+                ' WHERE organization_id = %s AND slug = %s RETURNING id',
                 (organization_id, slug),
             )
+            row = await cur.fetchone()
+            if row is not None:
+                await runtime.pause_bindings(conn, row[0])
+
+    async def bindings(self, workflow_id: uuid.UUID) -> list[Row]:
+        """Return the trigger bindings of a workflow, by node id."""
+        return await self._all(
+            'SELECT * FROM workflows.trigger_bindings'
+            ' WHERE workflow_id = %s AND NOT removed ORDER BY node_id',
+            (workflow_id,),
+        )
 
 
 def _version_values(

@@ -110,7 +110,7 @@ class Api:
         self._expires_at = _now()
         self._lock = asyncio.Lock()
 
-    async def _bearer(self) -> str:
+    async def bearer(self) -> str:
         async with self._lock:
             if self._token and _now() < self._expires_at:
                 return self._token
@@ -160,7 +160,7 @@ class Api:
                 self._config.api_base_url + path,
                 json=json,
                 headers={
-                    'Authorization': f'Bearer {await self._bearer()}',
+                    'Authorization': f'Bearer {await self.bearer()}',
                     **(headers or {}),
                 },
             )
@@ -322,7 +322,7 @@ class Executors:
 
     async def _email(self, call: Call) -> Outcome:
         _params(email.Params, call)
-        org = await self._org_slug(call.organization_id)
+        org = await self.org_slug(call.organization_id)
         sent = await self.api.request(
             'POST',
             _path(
@@ -344,7 +344,7 @@ class Executors:
         self, organization_id: str, slug: str, run_id: uuid.UUID
     ) -> None:
         """Ask imbi-api to tell the owner team that a run failed."""
-        org = await self._org_slug(organization_id)
+        org = await self.org_slug(organization_id)
         await self.api.request(
             'POST',
             _path(
@@ -480,12 +480,12 @@ class Executors:
     async def _deployments_path(
         self, organization_id: str, project_id: str
     ) -> str:
-        org = await self._org_slug(organization_id)
+        org = await self.org_slug(organization_id)
         return _path(
             'organizations', org, 'projects', project_id, 'deployments'
         )
 
-    async def _org_slug(self, organization_id: str) -> str:
+    async def org_slug(self, organization_id: str) -> str:
         found = await _values(
             self.db, _ORG_SLUG_QUERY, {'org': organization_id}, ['slug']
         )

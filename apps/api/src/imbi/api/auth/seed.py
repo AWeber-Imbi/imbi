@@ -885,6 +885,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # origin (ADR 0020).
             'agent_task:create',
             'agent_task:read',
+            # The task of a workflow's schedule trigger starts its runs
+            # (ADR 0021).
+            'workflow:run',
             'blueprint:read',
             'document:read',
             'document_template:read',
@@ -923,6 +926,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # The `create_agent_task` action, with a `webhook` origin
             # (ADR 0020).
             'agent_task:create',
+            # The `start_workflow` action, with a `webhook` origin
+            # (ADR 0021).
+            'workflow:run',
         ],
         False,
     ),
@@ -930,12 +936,19 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         'imbi-workflows',
         'Imbi Workflows',
         'Service role for imbi-workflows: deploy and roll back the '
-        'projects that workflow steps name (ADR 0021)',
+        'projects that workflow steps name, and keep the scheduler tasks '
+        'of schedule triggers (ADR 0021)',
         900,
         [
             'project:read',
             'project:deployment:read',
             'project:deployment:write',
+            # The reconciler writes the scheduler task of each schedule
+            # trigger (ADR 0021, Triggers).
+            'scheduled_task:read',
+            'scheduled_task:create',
+            'scheduled_task:write',
+            'scheduled_task:delete',
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.
         ],

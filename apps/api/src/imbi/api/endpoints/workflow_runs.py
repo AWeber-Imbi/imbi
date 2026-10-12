@@ -24,6 +24,7 @@ import pydantic
 from imbi.api import email, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
+from imbi.api.endpoints import agent_tasks
 from imbi.common import graph, lifespan
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import registry, validation, walk
@@ -43,8 +44,13 @@ class RunCreate(pydantic.BaseModel):
     inputs: dict[str, str | int | float | bool] = {}
     trigger: str | None = pydantic.Field(
         default=None,
-        description='The id of a manual trigger node. Defaults to the '
-        'only manual trigger.',
+        description='The id of the trigger node. Defaults to the only '
+        'manual trigger.',
+    )
+    payload: dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict,
+        description='The trigger payload that the scheduler or the '
+        'gateway sends. A person sends inputs.',
     )
 
 
@@ -69,6 +75,10 @@ class Run(pydantic.BaseModel):
     trigger_node_id: str
     origin_kind: str
     origin_id: str
+    origin: dict[str, typing.Any] = pydantic.Field(
+        description='The scheduler task id, the webhook id and delivery '
+        'id, or the person.'
+    )
     payload: dict[str, typing.Any]
     status: RunStatus
     error: str | None
@@ -237,6 +247,59 @@ def _check_inputs(
         raise fastapi.HTTPException(status_code=422, detail=errors)
 
 
+async def _service_trigger(
+    store: workflows.WorkflowStore,
+    workflow: workflows.Row,
+    wf_graph: wf.Graph,
+    node_id: str | None,
+    origin: agent_tasks.TaskOrigin,
+) -> wf.Node:
+    """Return the schedule or webhook trigger that the service names.
+
+    A schedule run must come from the scheduler task that the trigger's
+    binding records, so a scheduler task that a person made cannot
+    start the workflow. A webhook run must come from the webhook that
+    the trigger names.
+
+    Raises:
+        403: The scheduler task is not the binding's.
+        409: The active version has no such trigger: the binding is out
+            of date (ADR 0021, Triggers).
+
+    """
+    node = next(
+        (
+            n
+            for n in wf_graph.nodes
+            if n.id == node_id
+            and n.type == origin.kind
+            and (
+                origin.kind != 'webhook'
+                or n.params.get('webhook_id') == origin.id
+            )
+        ),
+        None,
+    )
+    if node is None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'The active version has no such {origin.kind} trigger',
+        )
+    if origin.kind == 'schedule' and not any(
+        b['node_id'] == node.id and b['target_id'] == origin.id
+        for b in await store.bindings(workflow['id'])
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'origin_forbidden',
+                'message': f'Scheduled task {origin.id!r} is not the '
+                'binding of this trigger',
+            },
+        )
+    return node
+
+
 async def _run(
     runs: workflows.RunStore, workflow: workflows.Row, run_id: uuid.UUID
 ) -> workflows.Row:
@@ -337,6 +400,13 @@ EngineAuth = typing.Annotated[
 EmailClient = typing.Annotated[
     email_client.EmailClient, fastapi.Depends(_email_client)
 ]
+
+
+def _header(name: str) -> typing.Any:
+    """Return an optional origin header of at most 200 characters."""
+    return fastapi.Header(alias=name, min_length=1, max_length=200)
+
+
 IdempotencyKey = typing.Annotated[
     str, fastapi.Header(alias='Idempotency-Key', max_length=256)
 ]
@@ -354,19 +424,34 @@ async def start_run(
     idempotency_key: typing.Annotated[
         str | None, fastapi.Header(alias='Idempotency-Key', max_length=256)
     ] = None,
+    scheduled_task: typing.Annotated[
+        str | None, _header('X-Imbi-Scheduled-Task')
+    ] = None,
+    webhook: typing.Annotated[str | None, _header('X-Imbi-Webhook')] = None,
+    delivery: typing.Annotated[str | None, _header('X-Imbi-Delivery')] = None,
 ) -> workflows.Row:
-    """Start a manual run of the active version.
+    """Start a run of the active version.
 
-    A repeat of the ``Idempotency-Key`` header by the same person
+    A person starts a manual trigger. The scheduler starts a schedule
+    trigger, and the gateway a webhook trigger, with the origin in
+    headers (see :func:`agent_tasks.task_origin`). The idempotency key
+    is the ``Idempotency-Key`` header (the scheduler sends its run id),
+    or the delivery id for a webhook. A repeat by the same origin
     returns the first run.
 
     Raises:
-        403: The trigger's ``who`` does not include the caller.
+        403: The trigger's ``who`` does not include the caller, a person
+            names an origin, the caller is a service account other than
+            the scheduler or the gateway, or the scheduler task is not
+            the one that the trigger's binding records.
         404: No such workflow.
-        409: The workflow is not active.
-        422: No such manual trigger, or the inputs do not match it.
+        409: The workflow is not active, or its active version has no
+            such schedule or webhook trigger.
+        422: No such manual trigger, the inputs do not match it, or
+            ``concurrency_key_missing``.
 
     """
+    origin = agent_tasks.task_origin(auth, scheduled_task, webhook, delivery)
     workflow = await _workflow(store, org_id, slug)
     if workflow['status'] != 'active' or workflow['active_version'] is None:
         raise fastapi.HTTPException(
@@ -375,24 +460,40 @@ async def start_run(
     wf_graph, settings = await _version_graph(
         store, org_id, slug, workflow['active_version']
     )
-    trigger = _manual_trigger(wf_graph, data.trigger)
-    await _check_who(db, trigger, workflow, auth)
-    _check_inputs(trigger, data.inputs)
-    # Validation makes a one_per_key workflow declare its key input,
-    # and every input is required, so the key is always there.
-    key = validation.concurrency_key(
-        settings, str(workflow['id']), dict(data.inputs)
-    )
+    if origin.kind == agent_tasks.HUMAN_ORIGIN:
+        trigger = _manual_trigger(wf_graph, data.trigger)
+        await _check_who(db, trigger, workflow, auth)
+        _check_inputs(trigger, data.inputs)
+        payload: dict[str, typing.Any] = dict(data.inputs)
+        origin_id = auth.principal_name
+    else:
+        trigger = await _service_trigger(
+            store, workflow, wf_graph, data.trigger, origin
+        )
+        payload, origin_id = data.payload, origin.id
+        idempotency_key = delivery or idempotency_key
+    try:
+        key = validation.concurrency_key(
+            settings, str(workflow['id']), payload
+        )
+    except ValueError as e:
+        # Only a webhook payload can lack the key: validation makes a
+        # one_per_key workflow declare it as a manual input, and refuses
+        # one_per_key with a schedule trigger.
+        raise fastapi.HTTPException(
+            status_code=422, detail={'error': str(e)}
+        ) from e
     row, _created = await runs.create(
         workflows.NewRun(
             organization_id=org_id,
             workflow_id=workflow['id'],
             version=workflow['active_version'],
             trigger_node_id=trigger.id,
-            origin_kind='human',
-            origin_id=auth.principal_name,
+            origin_kind=origin.kind,
+            origin_id=origin_id,
+            origin=origin.record,
             idempotency_key=idempotency_key,
-            payload=dict(data.inputs),
+            payload=payload,
             concurrency_key=key,
             activated_by=workflow['activated_by'],
         )

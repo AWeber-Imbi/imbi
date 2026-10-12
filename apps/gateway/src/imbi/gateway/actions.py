@@ -390,6 +390,39 @@ class ImbiClient(httpx.AsyncClient):
             )
         return response
 
+    async def start_workflow(
+        self,
+        org_slug: str,
+        workflow_slug: str,
+        webhook_id: str,
+        delivery_id: str,
+        body: abc.Mapping[str, object],
+    ) -> httpx.Response:
+        """Start a workflow run with a ``webhook`` origin (ADR 0021).
+
+        The delivery id is the idempotency key. A ``409`` means that the
+        workflow is paused or no longer has the trigger: the delivery has
+        no effect, and the sender must not retry it.
+        """
+        url = f'/organizations/{org_slug}/workflows/{workflow_slug}/runs'
+        LOGGER.debug('Starting workflow run %s', url)
+        response = await self.post(
+            url,
+            json=body,
+            headers={
+                'X-Imbi-Webhook': webhook_id,
+                'X-Imbi-Delivery': delivery_id,
+                'Idempotency-Key': delivery_id,
+            },
+        )
+        if response.status_code == http.HTTPStatus.CONFLICT:
+            LOGGER.info('No workflow run from %r: %s', url, response.text)
+        elif response.is_error:
+            LOGGER.warning(
+                'Failed to start workflow run %r: %s', url, response.text
+            )
+        return response
+
 
 class CreateReleaseConfig(pydantic.BaseModel):
     """Validates ``handler_config`` for :func:`create_release`.
@@ -590,6 +623,25 @@ class CreateAgentTaskConfig(pydantic.BaseModel):
     agent_slug: str
     title_expression: str
     description_expression: str
+    delivery_id_selector: json_pointer.JsonPointer = pydantic.Field(
+        default_factory=lambda: jsonpointer.JsonPointer(
+            '/metadata/headers/x-github-delivery'
+        )
+    )
+
+
+class StartWorkflowConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`start_workflow`.
+
+    imbi-workflows writes it from the workflow's active version.
+    ``binding`` is the id of the trigger binding, so imbi-workflows can
+    find the rule again. ``delivery_id_selector`` is as for
+    :class:`CreateAgentTaskConfig`.
+    """
+
+    workflow_slug: str
+    trigger: str
+    binding: str
     delivery_id_selector: json_pointer.JsonPointer = pydantic.Field(
         default_factory=lambda: jsonpointer.JsonPointer(
             '/metadata/headers/x-github-delivery'
@@ -1352,6 +1404,37 @@ def _signature_verified(event: object) -> bool:
     )
 
 
+def _signed_delivery(
+    event: object, selector: json_pointer.JsonPointer, project_id: str
+) -> tuple[str, str] | None:
+    """Return the webhook id and the delivery id of a signed delivery.
+
+    ``None``, with a warning, when the signature did not verify or the
+    delivery has no valid id. Without an id, a redelivery would act a
+    second time. The webhook id comes from the event context, which the
+    gateway sets from the request path, never from the payload.
+    """
+    if not _signature_verified(event):
+        LOGGER.warning(
+            'Skipping a delivery for project %s: it has no verified signature',
+            project_id,
+        )
+        return None
+    webhook_id = _WEBHOOK_ID.resolve(event, None)
+    delivery_id = selector.resolve(event, None)
+    if not webhook_id or not (
+        isinstance(delivery_id, str)
+        and _DELIVERY_ID_PATTERN.fullmatch(delivery_id)
+    ):
+        LOGGER.warning(
+            'Skipping a delivery for project %s: no valid delivery id at %r',
+            project_id,
+            str(selector),
+        )
+        return None
+    return str(webhook_id), delivery_id
+
+
 def _untrusted_description(
     text: str, webhook_id: str, delivery_id: str, agent_slug: str
 ) -> str:
@@ -1401,32 +1484,19 @@ async def create_agent_task(
     external actor to an agent.
     """
     del credentials, external_identifier
-    if not _signature_verified(event):
-        LOGGER.warning(
-            'Skipping agent task for project %s: the delivery has no '
-            'verified signature',
-            ctx.project_id,
-        )
+    delivery = _signed_delivery(
+        event, action_config.delivery_id_selector, ctx.project_id
+    )
+    if delivery is None:
         return
-    webhook_id = _WEBHOOK_ID.resolve(event, None)
-    delivery_id = action_config.delivery_id_selector.resolve(event, None)
-    if not webhook_id or not (
-        isinstance(delivery_id, str)
-        and _DELIVERY_ID_PATTERN.fullmatch(delivery_id)
-    ):
-        LOGGER.warning(
-            'Skipping agent task for project %s: no valid delivery id at %r',
-            ctx.project_id,
-            str(action_config.delivery_id_selector),
-        )
-        return
+    webhook_id, delivery_id = delivery
     title = _evaluate_cel(action_config.title_expression, event) or ''
     text = _evaluate_cel(action_config.description_expression, event) or ''
     body = {
         'agent_slug': action_config.agent_slug,
         'title': ' '.join(title.split())[:_TITLE_LIMIT],
         'description': _untrusted_description(
-            text, str(webhook_id), str(delivery_id), action_config.agent_slug
+            text, webhook_id, delivery_id, action_config.agent_slug
         ),
         'project_id': ctx.project_id,
         'idempotency_key': (
@@ -1435,5 +1505,42 @@ async def create_agent_task(
     }
     async with ImbiClient() as client:
         await client.create_agent_task(
-            ctx.org_slug, str(webhook_id), str(delivery_id), body
+            ctx.org_slug, webhook_id, delivery_id, body
+        )
+
+
+async def start_workflow(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: StartWorkflowConfig,
+    event: object,
+) -> None:
+    """Start a run of a workflow's webhook trigger (ADR 0021).
+
+    imbi-workflows writes this rule for each ``webhook`` trigger of an
+    active workflow; a person does not. The run has a ``webhook``
+    origin, and the delivery id is its idempotency key, so a redelivery
+    starts no second run. When a delivery matches more than one project,
+    every call after the first returns the first run.
+
+    A delivery without a verified signature or a valid id is skipped.
+    The run's trigger payload is the webhook body.
+    """
+    del credentials, external_identifier
+    delivery = _signed_delivery(
+        event, action_config.delivery_id_selector, ctx.project_id
+    )
+    if delivery is None:
+        return
+    webhook_id, delivery_id = delivery
+    body = typing.cast('dict[str, typing.Any]', event).get('payload')
+    async with ImbiClient() as client:
+        await client.start_workflow(
+            ctx.org_slug,
+            action_config.workflow_slug,
+            webhook_id,
+            delivery_id,
+            {'trigger': action_config.trigger, 'payload': {'payload': body}},
         )

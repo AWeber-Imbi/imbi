@@ -90,6 +90,10 @@ scheduler:
   serviceAccount:
     clientId: ""
     clientSecret: ""
+  # imbi-scheduler's task API, with its route prefix. The engine writes the
+  # scheduler task of each schedule trigger here. Empty uses the in-pod
+  # default (http://localhost:8005/api), which works in "all" mode only.
+  schedulerUrl: ""
 
 # Workflow engine configuration
 workflows:

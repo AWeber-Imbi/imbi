@@ -46,6 +46,16 @@ class Workflows(pydantic_settings.BaseSettings):
     deploy_poll_seconds: int = pydantic.Field(
         default=15, gt=0, description='Seconds between deployment polls'
     )
+    scheduler_url: str = pydantic.Field(
+        default='http://localhost:8005/api',
+        description="imbi-scheduler's task API, with its route prefix",
+    )
+    reconcile_interval: float = pydantic.Field(
+        default=300.0,
+        gt=0,
+        description='Seconds between passes of the trigger reconciler. '
+        'imbi-api also wakes it after each activation and pause.',
+    )
 
     @property
     def api_base_url(self) -> str:

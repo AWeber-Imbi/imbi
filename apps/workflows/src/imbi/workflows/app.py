@@ -20,7 +20,7 @@ import imbi.workflows
 from imbi.common import graph, lifespan, server
 from imbi.common import settings as common_settings
 from imbi.common.prompts import pool as prompt_pool
-from imbi.workflows import engine, executors, settings, store
+from imbi.workflows import bindings, engine, executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,22 +51,25 @@ async def engine_lifespan() -> abc.AsyncGenerator[engine.Engine]:
     worker_id = f'{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}'
     try:
         async with httpx.AsyncClient(timeout=60) as client:
-            runner = engine.Engine(
-                store.Store(pool, worker_id),
-                executors.Executors(executors.Api(client, config), db, config),
-                config,
+            steps = executors.Executors(
+                executors.Api(client, config), db, config
             )
-            listener = asyncio.create_task(runner.listen())
+            runner = engine.Engine(store.Store(pool, worker_id), steps, config)
+            reconciler = bindings.Reconciler(pool, client, steps, config)
+            listener = asyncio.create_task(runner.listen(reconciler.notify))
             loop = asyncio.create_task(runner.run_forever(stop))
+            sync = asyncio.create_task(reconciler.run_forever(stop))
             try:
                 yield runner
             finally:
                 stop.set()
                 runner.notify()
                 await asyncio.wait({loop}, timeout=SHUTDOWN_DRAIN_TIMEOUT)
-                for task in (loop, listener):
+                for task in (loop, listener, sync):
                     task.cancel()
-                await asyncio.gather(loop, listener, return_exceptions=True)
+                await asyncio.gather(
+                    loop, listener, sync, return_exceptions=True
+                )
     finally:
         await pool.close()
         await db.close()

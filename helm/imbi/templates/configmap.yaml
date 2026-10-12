@@ -46,6 +46,9 @@ data:
   {{- end }}
   {{- end }}
   {{- end }}
+  {{- if .Values.workflows.schedulerUrl }}
+  IMBI_WORKFLOWS_SCHEDULER_URL: {{ .Values.workflows.schedulerUrl | quote }}
+  {{- end }}
   IMBI_EMAIL_ENABLED: {{ .Values.email.enabled | quote }}
   {{- if .Values.email.enabled }}
   IMBI_EMAIL_SMTP_HOST: {{ .Values.email.smtp.host | quote }}

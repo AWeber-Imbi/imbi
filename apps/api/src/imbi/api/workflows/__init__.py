@@ -21,6 +21,7 @@ from imbi.api.workflows.store import (
     Definition,
     Pool,
     Row,
+    Trigger,
     WorkflowStore,
 )
 from imbi.common import lifespan, relational
@@ -89,6 +90,7 @@ __all__ = [
     'RunStore',
     'Runs',
     'Store',
+    'Trigger',
     'WorkflowStore',
     'create_pool',
     'initialize',
