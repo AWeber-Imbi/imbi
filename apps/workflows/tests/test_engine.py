@@ -534,6 +534,47 @@ class SecurityTestCase(EngineTestCase):
         self.assertEqual(self.api.paths, [])
         self.assertEqual(self.api.dispatches, 0)
 
+    async def test_webhook_payload_cannot_change_the_url(self) -> None:
+        """A webhook run's payload is the sender's body (ADR 0021)."""
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'webhook', {'webhook_id': 'wh-1'}),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': '{{ trigger.payload.repo }}',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
+            ],
+            [_edge('start', 'ship')],
+        )
+        # The run as the run endpoint writes it for a gateway delivery.
+        row, _ = await self.runs.create(
+            workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=workflow_id,
+                version=1,
+                trigger_node_id='start',
+                origin_kind='webhook',
+                origin_id='wh-1',
+                origin={'kind': 'webhook', 'webhook_id': 'wh-1'},
+                idempotency_key='d-1',
+                payload={'payload': {'repo': '../../admin?x=1'}},
+                concurrency_key=None,
+                activated_by=self.email,
+            )
+        )
+        run = await self._drive(row['id'])
+        ship = run['steps']['ship']
+        self.assertEqual(ship['status'], 'failed')
+        self.assertEqual(ship['error'], 'invalid_project_id')
+        self.assertEqual(ship['attempt'], 1)
+        self.assertEqual(self.api.paths, [])
+        self.assertEqual(self.api.dispatches, 0)
+
     def test_path_quotes_every_segment(self) -> None:
         self.assertEqual(
             executors._path('organizations', 'a/../b', 'x?y#z'),
