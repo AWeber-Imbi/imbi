@@ -5,6 +5,7 @@ A change to a run and its event commit in one transaction.
 """
 
 import dataclasses
+import json
 import typing
 import uuid
 from collections import abc
@@ -15,6 +16,12 @@ from psycopg.types import json as pg_json
 
 from imbi.api.workflows import store
 from imbi.common.workflows import runtime
+
+
+def side_effect_key(principal: str, action: str, idempotency_key: str) -> str:
+    """Return the ``side_effects`` key. JSON, so no part can run into
+    the next one."""
+    return json.dumps([principal, action, idempotency_key])
 
 
 @dataclasses.dataclass(frozen=True)
@@ -155,10 +162,16 @@ class RunStore:
 
     async def once(
         self,
-        key: str,
+        principal: str,
+        action: str,
+        idempotency_key: str,
         call: abc.Callable[[], abc.Awaitable[dict[str, typing.Any]]],
     ) -> dict[str, typing.Any]:
-        """Run ``call`` once per ``key``. A repeat returns the first result.
+        """Run ``call`` once per key. A repeat returns the first result.
+
+        The stored key is the principal, the action, and the caller's
+        key together (:func:`side_effect_key`), so the same caller key
+        on two routes, or from two principals, never meets.
 
         A refusal (``4xx``) acts before the side effect, so the key is
         released and a repeat may try again. Any other failure can come
@@ -170,6 +183,7 @@ class RunStore:
                 not have acted.
 
         """
+        key = side_effect_key(principal, action, idempotency_key)
         async with self._pool.connection() as conn:
             cur = await conn.execute(
                 'INSERT INTO workflow_runtime.side_effects (key)'
