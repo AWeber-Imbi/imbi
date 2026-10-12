@@ -18,6 +18,14 @@ class Params(pydantic.BaseModel):
         'the step takes the last branch.',
     )
 
+    @pydantic.field_validator('branches')
+    @classmethod
+    def _unique_branches(cls, value: list[str]) -> list[str]:
+        # Each branch names one output port, so a repeat is ambiguous.
+        if len(set(value)) != len(value):
+            raise ValueError('branch names must be unique')
+        return value
+
 
 class Output(pydantic.BaseModel):
     choice: str
