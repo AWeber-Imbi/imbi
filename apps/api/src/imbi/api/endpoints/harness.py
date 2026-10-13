@@ -821,10 +821,13 @@ async def claim_harness_task(
     """
     if runner['state'] != 'idle':
         raise _conflict('runner_busy', 'The runner holds a chain')
-    agents, limits = await eligible_agents(db)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + wait
     while True:
+        # Read the agents again on each attempt, so an agent disabled or
+        # changed during the long poll is not dispatched. They are in the
+        # graph, not in the claim transaction; the gap is one query.
+        agents, limits = await eligible_agents(db)
         try:
             claimed = await store.claim(runner, agents, limits)
         except harness.RunnerBusy as err:

@@ -302,6 +302,29 @@ class ClaimTests(RunnerTestCase):
         )
         self.assertIsNotNone(await self.claim(runner))
 
+    async def test_agent_disabled_during_a_long_poll(self) -> None:
+        self.act_as_user()
+        await self.client.post(self.url('T-1/pause'))
+        self.act_as(self.account)
+        runner = await self.register()
+        poll = asyncio.create_task(
+            self.runner_post(runner, 'claim', params={'wait': 3})
+        )
+        await asyncio.sleep(0.5)
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}}) SET a.enabled = false'
+            ' RETURN a.id AS id',
+            {'id': self.agent_id},
+            ['id'],
+        )
+        self.act_as_user()
+        response = await self.client.post(self.url('T-1/resume'))
+        self.act_as(self.account)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((await self.task_row())['status'], 'queued')
+        response = await poll
+        self.assertEqual(response.status_code, 204, response.text)
+
     async def test_disabled_agent_is_not_claimed(self) -> None:
         await self.graph.execute(
             'MATCH (a:Agent {{id: {id}}}) SET a.enabled = false'
