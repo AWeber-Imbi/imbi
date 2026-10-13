@@ -751,7 +751,7 @@ async def register_harness_runner(
         runner_id=runner['id'],
         runner_token=runner_token,
         executor_token=executor_token,
-        labels=runner['labels'],
+        labels=pool['labels'],
         lease_seconds=harness_store.LEASE_SECONDS,
         lease_expires_at=runner['lease_expires_at'],
     )

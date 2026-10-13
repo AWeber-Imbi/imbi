@@ -103,14 +103,16 @@ SELECT t.*
    FOR UPDATE OF t SKIP LOCKED
 """
 
-#: The runners that are not offline, with their chain and its root task.
+#: The runners that are not offline, with the current labels of their
+#: pool, their chain, and its root task.
 _RUNNERS_QUERY: typing.LiteralString = """
-SELECT r.id, r.pool, r.instance, r.labels, r.state, r.chain_id,
+SELECT r.id, r.pool, r.instance, p.labels, r.state, r.chain_id,
        r.image_version, r.registered_at, r.last_heartbeat,
        r.lease_expires_at, c.attempt, c.state AS chain_state,
        c.organization_id AS chain_organization_id, c.fence_error,
        t.short_id AS chain_short_id
   FROM harness.runners AS r
+  JOIN harness.pools AS p ON p.name = r.pool
   LEFT JOIN harness.chains AS c ON c.root_task_id = r.chain_id
   LEFT JOIN agent_runtime.tasks AS t ON t.id = r.chain_id
  WHERE r.state <> 'offline'
@@ -229,25 +231,23 @@ class HarnessStore:
     ) -> tuple[Row, str, str]:
         """Register a runner of ``pool``.
 
-        The runner row keeps a copy of the labels and the allowlist of
-        the pool for display; a claim reads the pool. Return
-        the runner, its runner credential, and its executor credential.
+        A runner has the labels and the allowlist of its pool as they
+        are at each claim. Return the runner, its runner credential, and
+        its executor credential.
         """
         runner_token, runner_hash = tokens.new_secret(tokens.RUNNER_PREFIX)
         executor_token, executor_hash = tokens.new_secret(
             tokens.EXECUTOR_PREFIX
         )
         row = await self._fetch_one(
-            'INSERT INTO harness.runners (id, pool, instance, labels,'
-            ' organization_ids, image_version, runner_token_hash,'
-            ' executor_token_hash, lease_expires_at) VALUES (%s, %s, %s, %s,'
-            ' %s, %s, %s, %s, NOW() + make_interval(secs => %s)) RETURNING *',
+            'INSERT INTO harness.runners (id, pool, instance, image_version,'
+            ' runner_token_hash, executor_token_hash, lease_expires_at)'
+            ' VALUES (%s, %s, %s, %s, %s, %s,'
+            ' NOW() + make_interval(secs => %s)) RETURNING *',
             (
                 uuid.uuid4(),
                 pool['name'],
                 instance,
-                pool['labels'],
-                pool['organization_ids'],
                 image_version,
                 runner_hash,
                 executor_hash,

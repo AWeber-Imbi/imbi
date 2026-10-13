@@ -201,6 +201,16 @@ class RegisterTests(RunnerTestCase):
         self.assertTrue(runner['runner_token'].startswith('ihr_'))
         self.assertTrue(runner['executor_token'].startswith('ihe_'))
         self.assertEqual(runner['labels'], ['general'])
+        # The runner list shows the labels of the pool as they are now.
+        await self.harness.update_pool(
+            self.pool_name, {'labels': ['general', 'gpu']}
+        )
+        (row,) = [
+            r
+            for r in await self.harness.runners([self.pool_name])
+            if str(r['id']) == runner['runner_id']
+        ]
+        self.assertEqual(row['labels'], ['general', 'gpu'])
 
     async def test_runner_credential_is_checked(self) -> None:
         runner = await self.register()
