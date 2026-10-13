@@ -17,6 +17,7 @@ from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
 from imbi.api.secret_broker import audit, providers, store
 from imbi.common import clickhouse, graph
+from imbi.common.clickhouse import client as ch_client
 
 ALL_PERMISSIONS = frozenset(
     {
@@ -589,6 +590,18 @@ class SecretEndpointTestCase(
         self.assertEqual(response.status_code, 403)
 
     async def test_audit_paging_keeps_events_with_one_time(self) -> None:
+        # The ClickHouse client is a process-wide singleton bound to the
+        # loop that opened it, and each test has its own loop. Take a
+        # private instance and give the old one back, as
+        # test_component_facts does.
+        previous = ch_client.Clickhouse._instance
+        ch_client.Clickhouse._instance = None
+
+        async def restore() -> None:
+            await clickhouse.aclose()
+            ch_client.Clickhouse._instance = previous
+
+        self.addAsyncCleanup(restore)
         await clickhouse.initialize()
         await clickhouse.setup_schema()
         at = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -626,7 +639,7 @@ class SecretEndpointTestCase(
             organization_id=self.org, type='secret_materialized'
         )
         with mock.patch.object(
-            audit.clickhouse,
+            clickhouse,
             'query',
             mock.AsyncMock(return_value=[event.model_dump()]),
         ) as query:
@@ -641,7 +654,7 @@ class SecretEndpointTestCase(
         self.assertEqual(params['type'], 'secret_materialized')
         self.assertEqual(params['limit'], 5)
         with mock.patch.object(
-            audit.clickhouse, 'query', mock.AsyncMock(side_effect=OSError)
+            clickhouse, 'query', mock.AsyncMock(side_effect=OSError)
         ):
             response = await self.client.get(
                 self.base + '/secret-audit-events/'
