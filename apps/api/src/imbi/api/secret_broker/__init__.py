@@ -19,12 +19,14 @@ from collections import abc
 import fastapi
 
 from imbi.api.agent_tasks import create_pool
-from imbi.api.secret_broker import audit, broker, providers, store
+from imbi.api.secret_broker import audit, broker, github_app, providers, store
 from imbi.common import lifespan, relational
 
 LOGGER = logging.getLogger(__name__)
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
+
+providers.PROVIDERS[github_app.GitHubApp.type] = github_app.GitHubApp()
 
 #: How often the expiry sweep runs.
 SWEEP_INTERVAL_SECONDS = 30
@@ -101,6 +103,7 @@ __all__ = [
     'audit',
     'broker',
     'get_broker',
+    'github_app',
     'initialize',
     'providers',
     'run_sweeper',

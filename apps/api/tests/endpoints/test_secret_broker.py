@@ -160,7 +160,7 @@ class SecretEndpointTestCase(
         response = await self.client.get(self.base + '/secret-providers/types')
         self.assertEqual(
             {t['type'] for t in response.json()},
-            {'fake', 'aws_secrets_manager'},
+            {'fake', 'aws_secrets_manager', 'github_app'},
         )
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)
