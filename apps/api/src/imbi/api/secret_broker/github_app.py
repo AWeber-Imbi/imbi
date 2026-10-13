@@ -283,9 +283,13 @@ async def project_repositories(host: str, project_id: str | None) -> list[str]:
 def _expiry(value: object) -> datetime.datetime:
     if isinstance(value, str):
         try:
-            return datetime.datetime.fromisoformat(value)
+            parsed = datetime.datetime.fromisoformat(value)
         except ValueError:
             pass
+        else:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=datetime.UTC)
+            return parsed
     return datetime.datetime.now(datetime.UTC) + _DEFAULT_TTL
 
 

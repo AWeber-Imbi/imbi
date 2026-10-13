@@ -3,6 +3,7 @@
 GitHub is mocked with respx: no request leaves the test.
 """
 
+import datetime
 import json
 import os
 import typing
@@ -107,6 +108,26 @@ class HostAllowlistTestCase(unittest.TestCase):
                 self.assertFalse(github_app.allowed_host(host), host)
         with mock.patch.dict(os.environ, {github_app.GHES_HOSTS_ENV: ''}):
             self.assertFalse(github_app.allowed_host('ghes.example.com'))
+
+
+class ExpiryTestCase(unittest.TestCase):
+    def test_expiry_is_always_aware(self) -> None:
+        expiry = github_app._expiry  # pyright: ignore[reportPrivateUsage]
+        utc = datetime.UTC
+        self.assertEqual(
+            expiry('2099-01-01T00:00:00'),
+            datetime.datetime(2099, 1, 1, tzinfo=utc),
+        )
+        self.assertEqual(
+            expiry('2099-01-01T00:00:00Z'),
+            datetime.datetime(2099, 1, 1, tzinfo=utc),
+        )
+        self.assertEqual(
+            expiry('2099-01-01T02:00:00+02:00'),
+            datetime.datetime(2099, 1, 1, tzinfo=utc),
+        )
+        for value in ('not a date', None):
+            self.assertIsNotNone(expiry(value).tzinfo)
 
 
 class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
