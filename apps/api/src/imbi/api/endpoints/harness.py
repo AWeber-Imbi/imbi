@@ -333,6 +333,48 @@ async def _bundle(
     )
 
 
+class _NoServiceAccount(LookupError):
+    """The service account of a claimed task is gone."""
+
+
+#: The actor of the outcome of a task that cannot run.
+_SYSTEM = agent_tasks.Actor('system', 'imbi', 'harness')
+
+
+async def _deliver(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    tasks: agent_tasks.TaskStore,
+    runner: dict[str, typing.Any],
+    claimed: tuple[dict[str, typing.Any], dict[str, typing.Any]],
+    *,
+    pinned: bool,
+) -> Claim | None:
+    """Return the claim response, or undo the claim when it fails.
+
+    A task whose service account is gone can never run, so it closes
+    with ``unhandled_no_actor`` and ``None`` is returned: the caller
+    claims again. Any other error undoes the claim and is raised again,
+    so the runner is not left busy with a chain that it does not know.
+    """
+    task, chain = claimed
+    try:
+        return await _claim(db, runner, task, chain)
+    except _NoServiceAccount:
+        await tasks.set_outcome(
+            task['organization_id'],
+            task['short_id'],
+            'unhandled_no_actor',
+            'service_account_missing',
+            _SYSTEM,
+        )
+        await store.release_claim(runner['id'], task, chain, pinned=pinned)
+        return None
+    except BaseException:
+        await store.release_claim(runner['id'], task, chain, pinned=pinned)
+        raise
+
+
 async def _claim(
     db: graph.Graph,
     runner: dict[str, typing.Any],
@@ -344,13 +386,7 @@ async def _claim(
         models.ServiceAccount, {'id': task['service_account_id']}
     )
     if not accounts:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail={
-                'error': 'service_account_missing',
-                'message': f'Task {task["short_id"]} has no service account',
-            },
-        )
+        raise _NoServiceAccount(task['short_id'])
     org_slugs = await _org_slugs(db, [task['organization_id']])
     grant = tokens.AgentGrant(
         chain_id=chain['root_task_id'],
@@ -533,7 +569,18 @@ async def list_harness_pools(
 
     """
     org_id: str | None = None
-    if organization is not None:
+    if organization is not None and auth.is_admin:
+        # A platform administrator needs no membership.
+        records = await db.execute(
+            _ORGS_BY_SLUG_QUERY, {'slugs': [organization]}, ['id', 'slug']
+        )
+        if not records:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'Organization with slug {organization!r} not found',
+            )
+        org_id = str(graph.parse_agtype(records[0]['id']))
+    elif organization is not None:
         org_id = await organizations.check_member(organization, db, auth)
     if not auth.is_admin:
         if 'harness_pool:read' not in auth.permissions:
@@ -751,6 +798,7 @@ async def claim_harness_task(
     runner: harness_auth.Runner,
     db: graph.Pool,
     store: harness.Store,
+    tasks: agent_tasks.Store,
     wait: typing.Annotated[
         int,
         fastapi.Query(
@@ -784,7 +832,12 @@ async def claim_harness_task(
         except harness.RunnerBusy as err:
             raise _conflict('runner_busy', 'The runner holds a chain') from err
         if claimed is not None:
-            return await _claim(db, runner, *claimed)
+            delivered = await _deliver(
+                db, store, tasks, runner, claimed, pinned=True
+            )
+            if delivered is not None:
+                return delivered
+            continue
         remaining = deadline - loop.time()
         if remaining <= 0:
             return fastapi.Response(status_code=204)
@@ -797,7 +850,10 @@ async def claim_harness_task(
     responses={204: {'description': 'No child task waits.'}},
 )
 async def claim_harness_child_task(
-    runner: harness_auth.Runner, db: graph.Pool, store: harness.Store
+    runner: harness_auth.Runner,
+    db: graph.Pool,
+    store: harness.Store,
+    tasks: agent_tasks.Store,
 ) -> Claim | fastapi.Response:
     """Claim the oldest queued child task of the runner's chain.
 
@@ -807,10 +863,13 @@ async def claim_harness_child_task(
         401: ``invalid_runner_credential``.
 
     """
-    claimed = await store.claim_child(runner)
-    if claimed is None:
-        return fastapi.Response(status_code=204)
-    return await _claim(db, runner, *claimed)
+    while (claimed := await store.claim_child(runner)) is not None:
+        delivered = await _deliver(
+            db, store, tasks, runner, claimed, pinned=False
+        )
+        if delivered is not None:
+            return delivered
+    return fastapi.Response(status_code=204)
 
 
 @harness_router.post(

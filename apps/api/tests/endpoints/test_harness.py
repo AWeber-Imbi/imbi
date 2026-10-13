@@ -9,6 +9,7 @@ import asyncio
 import json
 import typing
 import uuid
+from unittest import mock
 
 import httpx
 
@@ -17,6 +18,7 @@ from apps.api.tests.endpoints.test_agent_task_log import ClickHouseTestCase
 from imbi.api import models
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agent_task_harness
+from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import sweeper
 
 new_id = test_agent_task_harness.new_id
@@ -305,6 +307,57 @@ class ClaimTests(RunnerTestCase):
         self.assertIsNone(await self.claim(await self.register()))
 
 
+class FailedClaimTests(RunnerTestCase):
+    async def runner_row(self, runner: dict[str, typing.Any]) -> typing.Any:
+        (row,) = [
+            r
+            for r in await self.harness.runners([self.pool_name])
+            if str(r['id']) == runner['runner_id']
+        ]
+        return row
+
+    async def test_task_without_service_account_is_closed(self) -> None:
+        await self.graph.execute(
+            'MATCH (s:ServiceAccount {{id: {id}}}) DETACH DELETE s'
+            ' RETURN 1 AS ok',
+            {'id': self.account.id},
+            ['ok'],
+        )
+        runner = await self.register()
+        self.assertIsNone(await self.claim(runner))
+        task = await self.task_row()
+        self.assertEqual(task['status'], 'closed')
+        self.assertEqual(task['outcome'], 'unhandled_no_actor')
+        self.assertEqual(task['outcome_reason'], 'service_account_missing')
+        row = await self.runner_row(runner)
+        self.assertEqual(row['state'], 'idle')
+        self.assertIsNone(row['chain_id'])
+        chain = await self.harness.chain(uuid.UUID(self.task['id']))
+        assert chain is not None
+        self.assertEqual(chain['state'], 'done')
+
+    async def test_failed_response_releases_the_claim(self) -> None:
+        runner = await self.register()
+        with (
+            mock.patch.object(
+                harness_api, '_bundle', side_effect=RuntimeError('boom')
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.runner_post(runner, 'claim')
+        row = await self.runner_row(runner)
+        self.assertEqual(row['state'], 'idle')
+        chain = await self.harness.chain(uuid.UUID(self.task['id']))
+        assert chain is not None
+        self.assertEqual(chain['state'], 'queued')
+        self.assertEqual((await self.task_row())['status'], 'queued')
+        # The same runner claims the task when the error is gone.
+        claim = await self.claim(runner)
+        assert claim is not None
+        self.assertEqual(claim['task']['short_id'], 'T-1')
+        self.assertEqual(claim['attempt'], 1)
+
+
 class LabelTests(RunnerTestCase):
     agent_settings: typing.ClassVar[dict[str, typing.Any]] = {
         'task_budget': '1',
@@ -571,6 +624,49 @@ class FencingTests(RunnerTestCase):
         await sweeper.sweep_once(self.harness)
         self.assertEqual((await self.chain())['state'], 'queued')
         self.assertEqual((await self.task_row())['status'], 'queued')
+
+    async def test_stalled_fencer_times_out_as_a_failure(self) -> None:
+        async def stall(runner_id: uuid.UUID) -> bool:
+            await asyncio.sleep(5)
+            return True
+
+        sweeper.register_fencer(stall)
+        self.addCleanup(sweeper.unregister_fencer, stall)
+        await self.expire(self.runner)
+        with mock.patch.object(sweeper, 'FENCER_TIMEOUT_SECONDS', 0.05):
+            await sweeper.sweep_once(self.harness)
+        chain = await self.chain()
+        self.assertEqual(chain['state'], 'stuck')
+        self.assertIn('stall', chain['fence_error'])
+
+    async def test_one_bad_chain_does_not_block_the_rest(self) -> None:
+        self.fencer(True)
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        other = await self.register()
+        claim = await self.claim(other)
+        assert claim is not None
+        await self.expire(self.runner)
+        await self.expire(other)
+        real = self.harness.set_fence_result
+
+        async def fail_first(
+            chain: dict[str, typing.Any], error: str | None
+        ) -> typing.Any:
+            if str(chain['root_task_id']) == self.chain_id:
+                raise RuntimeError('bad chain')
+            return await real(chain, error)
+
+        with mock.patch.object(
+            self.harness, 'set_fence_result', side_effect=fail_first
+        ):
+            await sweeper.sweep_once(self.harness)
+        bad = await self.chain()
+        good = await self.harness.chain(uuid.UUID(claim['chain_id']))
+        assert good is not None
+        self.assertIsNone(bad['fencers_ok_at'])
+        self.assertIsNotNone(good['fencers_ok_at'])
 
     async def test_finish_after_all_tasks_close_is_done(self) -> None:
         response = await self.as_agent(
@@ -886,6 +982,17 @@ class PoolApiTests(RunnerTestCase):
         self.assertEqual(item['chain']['short_id'], 'T-1')
         self.assertEqual(item['chain']['organization_slug'], self.org)
         self.assertIsNone(pools[self.pool_name]['service_account'])
+        # A platform administrator needs no membership.
+        self.user.is_admin = True
+        response = await self.client.get(
+            '/harness/pools', params={'organization': self.foreign_org}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.client.get(
+            '/harness/pools', params={'organization': 'no-such-org'}
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+        self.user.is_admin = False
         response = await self.client.get(
             '/harness/pools', params={'organization': self.foreign_org}
         )

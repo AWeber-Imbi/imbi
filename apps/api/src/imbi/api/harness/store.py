@@ -373,6 +373,41 @@ class HarnessStore:
             await _record_claim(conn, task, chain, runner['id'])
         return task, chain
 
+    async def release_claim(
+        self, runner_id: uuid.UUID, task: Row, chain: Row, *, pinned: bool
+    ) -> None:
+        """Undo a claim that the runner did not receive.
+
+        The task can be claimed again in this attempt. With ``pinned``
+        (the claim pinned the chain), the chain is unpinned: ``queued``
+        when a task of it is open, else ``done``, and the runner is
+        ``idle`` again.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            await conn.execute(
+                'DELETE FROM harness.claims WHERE task_id = %s'
+                ' AND attempt = %s',
+                (task['id'], chain['attempt']),
+            )
+            if not pinned:
+                return
+            state: ChainState = (
+                'queued'
+                if await _chain_open(conn, chain['root_task_id'])
+                else 'done'
+            )
+            await conn.execute(
+                'UPDATE harness.chains SET state = %s, runner_id = NULL,'
+                ' updated_at = NOW() WHERE root_task_id = %s'
+                ' AND runner_id = %s',
+                (state, chain['root_task_id'], runner_id),
+            )
+            await conn.execute(
+                "UPDATE harness.runners SET state = 'idle', chain_id = NULL"
+                " WHERE id = %s AND state = 'busy'",
+                (runner_id,),
+            )
+
     async def finish(self, runner: Row) -> Row | None:
         """End the work of a runner; return its chain, if it had one.
 

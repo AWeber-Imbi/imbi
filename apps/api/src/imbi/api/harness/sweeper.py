@@ -30,6 +30,9 @@ LOGGER = logging.getLogger(__name__)
 
 #: How often the sweep runs.
 SWEEP_INTERVAL_SECONDS = 10
+#: The longest wait for one fencer. A timeout is a failure, so the
+#: chain is ``stuck`` and the next round tries again.
+FENCER_TIMEOUT_SECONDS = 30
 
 #: A fencer gets the id of a lost runner and returns ``True`` when
 #: everything that the runner holds outside imbi-api is revoked.
@@ -56,7 +59,9 @@ async def run_fencers(runner_id: uuid.UUID) -> str | None:
     for fencer in list(_fencers):
         name = getattr(fencer, '__qualname__', repr(fencer))
         try:
-            if not await fencer(runner_id):
+            async with asyncio.timeout(FENCER_TIMEOUT_SECONDS):
+                ok = await fencer(runner_id)
+            if not ok:
                 failed.append(name)
         except Exception:  # noqa: BLE001 - a fencer error keeps it fenced
             LOGGER.warning(
@@ -70,28 +75,46 @@ async def run_fencers(runner_id: uuid.UUID) -> str | None:
 
 
 async def sweep_once(store: harness_store.HarnessStore) -> None:
-    """Run one round of the lease sweep."""
+    """Run one round of the lease sweep.
+
+    An error on one chain is logged, and the round goes on with the
+    next chain.
+    """
     await store.expire_leases()
     for chain in await store.fencing_chains():
-        if chain['fencers_ok_at'] is None:
-            error = (
-                'runner unknown'
-                if chain['runner_id'] is None
-                else await run_fencers(chain['runner_id'])
-            )
-            updated = await store.set_fence_result(chain, error)
-            if error is not None:
-                LOGGER.warning(
-                    'Chain %s is stuck: %s', chain['root_task_id'], error
-                )
-            if updated is None or error is not None:
-                continue
-        if await store.requeue(chain['root_task_id']):
-            LOGGER.info(
-                'Chain %s is back in the queue (attempt %s)',
+        try:
+            await _sweep_chain(store, chain)
+        except Exception:  # noqa: BLE001 - the next chain still sweeps
+            LOGGER.warning(
+                'Lease sweep failed for chain %s',
                 chain['root_task_id'],
-                chain['attempt'],
+                exc_info=True,
             )
+
+
+async def _sweep_chain(
+    store: harness_store.HarnessStore, chain: harness_store.Row
+) -> None:
+    """Run the fencers of one fenced chain, then requeue it when ready."""
+    if chain['fencers_ok_at'] is None:
+        error = (
+            'runner unknown'
+            if chain['runner_id'] is None
+            else await run_fencers(chain['runner_id'])
+        )
+        updated = await store.set_fence_result(chain, error)
+        if error is not None:
+            LOGGER.warning(
+                'Chain %s is stuck: %s', chain['root_task_id'], error
+            )
+        if updated is None or error is not None:
+            return
+    if await store.requeue(chain['root_task_id']):
+        LOGGER.info(
+            'Chain %s is back in the queue (attempt %s)',
+            chain['root_task_id'],
+            chain['attempt'],
+        )
 
 
 async def run_sweeper(
