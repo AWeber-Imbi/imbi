@@ -238,30 +238,34 @@ _TEMPLATE_MARKERS = ('{{', '{%', '{#')
 
 #: Resource kinds that must be a literal id: activation binds a webhook
 #: before any run, and the Agents delete lock reads the agent ids in
-#: the graph.
+#: the graph. Every id of an agent step must be literal too, so that
+#: run input cannot choose what the agent works on.
 _LITERAL_ONLY = frozenset({'webhook', 'agent'})
 
 
 def _resource_ids(
     wf_graph: wf.Graph,
-) -> tuple[dict[str, list[tuple[str, str]]], list[tuple[str, str]]]:
+) -> tuple[dict[str, list[tuple[str, str]]], list[tuple[str, str, bool]]]:
     """Return the literal resource ids in step params, and bad templates.
 
     The ids are by kind, each entry (node id, resource id). A plain
     reference is left out: the engine checks its value when the step
-    runs. Any other template is returned as (node id, kind), because
-    it could render to an id from another organization.
+    runs. Any other template is returned as (node id, kind, literal
+    only), because it could render to an id from another organization.
     """
     found: dict[str, list[tuple[str, str]]] = {}
-    invalid: list[tuple[str, str]] = []
+    invalid: list[tuple[str, str, bool]] = []
 
-    def add(kind: str, node_id: str, value: typing.Any) -> None:
+    def add(
+        kind: str, node_id: str, value: typing.Any, literal: bool = False
+    ) -> None:
         if not isinstance(value, str) or not value:
             return
+        literal = literal or kind in _LITERAL_ONLY
         if not any(m in value for m in _TEMPLATE_MARKERS):
             found.setdefault(kind, []).append((node_id, value))
-        elif kind in _LITERAL_ONLY or not _PLAIN_REFERENCE.fullmatch(value):
-            invalid.append((node_id, kind))
+        elif literal or not _PLAIN_REFERENCE.fullmatch(value):
+            invalid.append((node_id, kind, literal))
 
     for node in wf_graph.nodes:
         params = node.params
@@ -271,7 +275,7 @@ def _resource_ids(
             add('webhook', node.id, params.get('webhook_id'))
         elif node.type == 'agent':
             add('agent', node.id, params.get('agent_id'))
-            add('project', node.id, params.get('project_id'))
+            add('project', node.id, params.get('project_id'), literal=True)
         elif node.type == 'email':
             raw: typing.Any = params.get('to')
             if not isinstance(raw, list):
@@ -302,14 +306,14 @@ async def _validate(
     if any(i.code in validation.LIMIT_CODES for i in result.issues):
         return result
     found, invalid = _resource_ids(wf_graph)
-    for node_id, kind in invalid:
+    for node_id, kind, literal in invalid:
         result.issues.append(
             wf.ValidationIssue(
                 severity='error',
                 code='invalid_reference',
                 message=(
                     f'The {kind} id must be a literal id'
-                    if kind in _LITERAL_ONLY
+                    if literal
                     else f'The {kind} id must be a literal id or one '
                     'reference such as {{ trigger.project }}'
                 ),

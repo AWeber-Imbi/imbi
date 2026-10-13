@@ -4665,7 +4665,8 @@ export interface paths {
          *         409: The agent is disabled.
          *         422: The agent or the project is not in the org, the budget is
          *             more than the agent's task budget, a service does not name
-         *             its origin, or the webhook does not exist.
+         *             its origin, the webhook does not exist, or the key has the
+         *             shape of a workflow step key (``<uuid>:<node_key>``).
          */
         post: operations["create_agent_task_api_organizations__org_slug__agent_tasks__post"];
         delete?: never;
@@ -5532,6 +5533,10 @@ export interface paths {
          * Get Run
          * @description Return a run with its step records.
          *
+         *     The ``reason`` and ``summary`` of an agent step's output come from
+         *     the agent task. Only a caller who can read agent tasks
+         *     (``agent_task:read``) gets them.
+         *
          *     Raises:
          *         404: No such workflow or run.
          *         503: The run's log is archived and ClickHouse is not available.
@@ -5647,13 +5652,18 @@ export interface paths {
          *     workflow owns the task, and must still be able to make agent tasks
          *     in the org. The engine polls this route until the task is closed.
          *
+         *     The agent and the project come from the pinned version (see
+         *     :func:`_pinned_agent_ids`). A task with the key that this step did
+         *     not make, or that has another agent, is refused.
+         *
          *     Raises:
          *         403: ``owner_forbidden``: the activator cannot make agent tasks.
          *         404: No such workflow, run, or step.
-         *         409: The step is not a running agent step, or the agent is
-         *             disabled.
-         *         422: ``agent_not_found``, or the project or the budget is not
-         *             valid (see :func:`agent_tasks.make_task`).
+         *         409: The step is not a running agent step, the agent is
+         *             disabled, or ``task_key_conflict``.
+         *         422: ``agent_not_found``, ``agent_params_not_literal``, or the
+         *             project or the budget is not valid (see
+         *             :func:`agent_tasks.make_task`).
          */
         post: operations["step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_post"];
         delete?: never;

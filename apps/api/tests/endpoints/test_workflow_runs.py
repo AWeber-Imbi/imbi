@@ -813,12 +813,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         await self.task_pool.open()
         self.tasks = agent_tasks.TaskStore(self.task_pool)
         self.addAsyncCleanup(self._cleanup_tasks)
-        self.url = await self._workflow()
-        response = await self.client.post(
-            f'{self.url}/runs', json={'inputs': {'version': '1'}}
-        )
-        self.run_id = response.json()['id']
-        await self._agent_step({'agent_id': self.agent, 'instruction': 'Go.'})
+        await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         engine = permissions.AuthContext(
             service_account=models.ServiceAccount(
                 slug='imbi-workflows', display_name='Imbi Workflows'
@@ -830,7 +825,59 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         overrides[permissions.get_current_user] = lambda: engine
         overrides[organizations.member_org_id] = lambda: self.org
         overrides[agent_tasks._inject_store] = lambda: self.tasks
+
+    async def _agent_run(
+        self,
+        pinned: dict[str, typing.Any],
+        params: dict[str, typing.Any] | None = None,
+    ) -> None:
+        """Start a run of a workflow whose agent step has ``pinned``.
+
+        ``params`` is the rendered input of the step; it defaults to
+        ``pinned``.
+        """
+        slug = f'agent-{uuid.uuid4().hex[:8]}'
+        await self.store.create(
+            self.org,
+            slug,
+            workflows.Definition(
+                name='Agent guard',
+                description='',
+                owner_team_id=self.team,
+                graph={
+                    'nodes': [
+                        _node('start', 'manual'),
+                        _node('ask', 'agent', pinned),
+                    ],
+                    'edges': [{'source': 'start', 'port': 0, 'target': 'ask'}],
+                },
+                settings={},
+                validation={'issues': []},
+                author=self.email,
+            ),
+        )
+        await self.store.activate(self.org, slug, 1, self.admin, [])
+        workflow = await self.store.get(self.org, slug)
+        assert workflow is not None
+        run, _ = await self.runs.create(
+            workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=workflow['id'],
+                version=1,
+                trigger_node_id='start',
+                origin_kind='human',
+                origin_id=self.email,
+                origin={'kind': 'human', 'user': self.email},
+                idempotency_key=None,
+                payload={},
+                concurrency_key=None,
+                activated_by=self.admin,
+            )
+        )
+        self.url = f'{self.base}/{slug}'
+        self.run_id = str(run['id'])
         self.step_url = f'{self.url}/runs/{self.run_id}/steps/ask/agent-task'
+        await self._agent_step(params or pinned)
 
     async def _agent_step(
         self, params: dict[str, typing.Any], activated_by: str | None = None
@@ -938,13 +985,14 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             f'{self.url}/runs/{self.run_id}/steps/start/agent-task'
         )
         self.assertEqual(response.status_code, 404)
-        await self._agent_step({'agent_id': 'nope', 'instruction': 'Go.'})
+        await self._agent_run({'agent_id': 'nope', 'instruction': 'Go.'})
         response = await self.client.post(self.step_url)
         self.assertEqual(response.status_code, 422)
         self.assertEqual(
             response.json()['detail'], {'error': 'agent_not_found'}
         )
         # The activator is a member with no agent_task:create.
+        await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         await self._agent_step(
             {'agent_id': self.agent, 'instruction': 'Go.'},
             activated_by=self.plain,
@@ -963,3 +1011,128 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             response = await self.client.post(self.step_url + path)
             self.assertEqual(response.status_code, 403)
         self.assertEqual(await self._count(), 0)
+
+    async def test_ids_come_from_the_pinned_version(self) -> None:
+        # Run input renders a template to a literal id; it is refused.
+        await self._agent_run(
+            {'agent_id': '{{ trigger.agent }}', 'instruction': 'Go.'},
+            {'agent_id': self.agent, 'instruction': 'Go.'},
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'agent_params_not_literal'}
+        )
+        # Rendered input that names another agent does not change it.
+        await self._agent_run(
+            {'agent_id': self.agent, 'instruction': 'Go.'},
+            {'agent_id': 'other', 'instruction': 'Go.'},
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        self.assertEqual(task['agent_id'], self.agent)
+
+    async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
+        """Make a task with the step's origin and key, not by the step."""
+        task, _ = await self.tasks.create(
+            agent_tasks.NewTask(
+                organization_id=self.org,
+                agent_id=agent,
+                agent_version=1,
+                prompt_version=None,
+                service_account_id='sa',
+                project_id=None,
+                project_slug=None,
+                title='Planted',
+                description='Planted',
+                origin_kind='human',
+                origin_id=self.email,
+                origin=origin,
+                idempotency_key=f'{self.run_id}:ask',
+                owner=self.email,
+                budget=None,
+            ),
+            agent_tasks.Actor('human', self.email, 'web'),
+            {},
+        )
+        return task['short_id']
+
+    async def test_task_with_the_key_not_made_by_the_step(self) -> None:
+        short_id = await self._plant(
+            {'kind': 'human', 'user': self.email}, self.agent
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'task_key_conflict'}
+        )
+        response = await self.client.post(self.step_url + '/cancel')
+        self.assertEqual(response.status_code, 204)
+        task = await self.tasks.get(self.org, short_id)
+        assert task is not None
+        self.assertEqual(task['control'], 'run')
+
+    async def test_task_with_another_agent(self) -> None:
+        await self._plant(
+            {
+                'kind': 'human',
+                'user': self.email,
+                'workflow_run_id': self.run_id,
+                'node_key': 'ask',
+            },
+            'other-agent',
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'task_key_conflict'}
+        )
+
+    async def test_run_detail_hides_task_content(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.step_runs SET status = 'failed',"
+                ' port = 1, output = %s'
+                " WHERE run_id = %s AND node_id = 'ask'",
+                (
+                    workflows.runs.pg_json.Jsonb(
+                        {
+                            'task_id': 'T-1',
+                            'outcome': 'failed_external',
+                            'reason': 'secret_reason',
+                            'summary': 'Secret summary.',
+                        }
+                    ),
+                    self.run_id,
+                ),
+            )
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = self.user_auth
+        url = f'{self.url}/runs/{self.run_id}'
+
+        async def output() -> dict[str, typing.Any]:
+            response = await self.client.get(url)
+            self.assertEqual(response.status_code, 200, response.text)
+            (ask,) = [
+                s for s in response.json()['steps'] if s['node_id'] == 'ask'
+            ]
+            return ask['output']
+
+        self.assertEqual(
+            await output(), {'task_id': 'T-1', 'outcome': 'failed_external'}
+        )
+        user = await self.user_auth()
+
+        async def reader() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                user=user.user,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions={*user.permissions, 'agent_task:read'},
+            )
+
+        overrides[permissions.get_current_user] = reader
+        self.assertEqual((await output())['summary'], 'Secret summary.')
+        self.assertEqual((await output())['reason'], 'secret_reason')

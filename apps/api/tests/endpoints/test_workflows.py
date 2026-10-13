@@ -581,7 +581,6 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         )
         for agent_id, project, expected in (
             (agent, self.project, 0),
-            (agent, '{{ trigger.project }}', 0),
             (foreign, None, 1),
             (agent, self.foreign['project'], 1),
         ):
@@ -594,10 +593,13 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
                 },
             )
             self.assertEqual(len(issues), expected, (agent_id, project))
-        codes = await self._codes(
-            'agent', {'agent_id': '{{ trigger.agent }}', 'instruction': 'x'}
-        )
-        self.assertIn('invalid_reference', codes)
+        # Run input must not choose the agent or the project.
+        for params in (
+            {'agent_id': '{{ trigger.agent }}'},
+            {'agent_id': agent, 'project_id': '{{ trigger.project }}'},
+        ):
+            codes = await self._codes('agent', {**params, 'instruction': 'x'})
+            self.assertIn('invalid_reference', codes, params)
 
         graph_ = {
             'nodes': [

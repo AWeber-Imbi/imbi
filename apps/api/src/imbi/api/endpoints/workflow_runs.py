@@ -473,6 +473,71 @@ async def _agent_step(
     return run, step, origin, f'{run_id}:{step["node_key"]}'
 
 
+async def _pinned_agent_ids(
+    store: workflows.WorkflowStore,
+    org_id: str,
+    slug: str,
+    run: workflows.Row,
+    node_id: str,
+) -> tuple[str, str | None]:
+    """Return the agent id and project id of the node in the run's version.
+
+    They come from the pinned version, not from the rendered step
+    input, so run input cannot choose the agent or the project.
+
+    Raises:
+        422: ``agent_params_not_literal``: an id is a template.
+
+    """
+    wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
+    node = next((n for n in wf_graph.nodes if n.id == node_id), None)
+    params = node.params if node is not None else {}
+    agent_id, project_id = params.get('agent_id'), params.get('project_id')
+    if not isinstance(agent_id, str) or any(
+        isinstance(value, str) and ('{{' in value or '{%' in value)
+        for value in (agent_id, project_id)
+    ):
+        raise fastapi.HTTPException(
+            status_code=422, detail={'error': 'agent_params_not_literal'}
+        )
+    return agent_id, project_id
+
+
+def _made_by_step(
+    task: dict[str, typing.Any], run_id: uuid.UUID, node_key: str
+) -> bool:
+    """Return whether the agent step of ``run_id`` made ``task``.
+
+    A person can make a task with the same origin and key first. Only
+    this route writes ``workflow_run_id`` in an origin record.
+    """
+    origin: dict[str, typing.Any] = task['origin'] or {}
+    return (
+        origin.get('workflow_run_id') == str(run_id)
+        and origin.get('node_key') == node_key
+    )
+
+
+def _task_key_conflict() -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409, detail={'error': 'task_key_conflict'}
+    )
+
+
+def _without_task_content(
+    step: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    """Remove the agent task content from the output of an agent step."""
+    if step['node_type'] != 'agent' or not step['output']:
+        return step
+    output = {
+        k: v
+        for k, v in step['output'].items()
+        if k not in ('reason', 'summary')
+    }
+    return {**step, 'output': output}
+
+
 def _step_agent_task(
     task: dict[str, typing.Any], summary: str | None = None
 ) -> dict[str, typing.Any]:
@@ -643,9 +708,13 @@ async def get_run(
     run_id: uuid.UUID,
     store: workflows.Store,
     runs: workflows.Runs,
-    _: ReadAuth,
+    auth: ReadAuth,
 ) -> dict[str, typing.Any]:
     """Return a run with its step records.
+
+    The ``reason`` and ``summary`` of an agent step's output come from
+    the agent task. Only a caller who can read agent tasks
+    (``agent_task:read``) gets them.
 
     Raises:
         404: No such workflow or run.
@@ -655,13 +724,16 @@ async def get_run(
     workflow = await _workflow(store, org_id, slug)
     row = await _run(runs, workflow, run_id)
     if row['log_archived_at'] is None:
-        return {**row, 'steps': await runs.steps(run_id)}
-    try:
-        steps = await history.archived_steps(row)
-    except Exception as e:
-        raise fastapi.HTTPException(
-            status_code=503, detail='The run history is not available'
-        ) from e
+        steps = await runs.steps(run_id)
+    else:
+        try:
+            steps = await history.archived_steps(row)
+        except Exception as e:
+            raise fastapi.HTTPException(
+                status_code=503, detail='The run history is not available'
+            ) from e
+    if not (auth.is_admin or 'agent_task:read' in auth.permissions):
+        steps = [_without_task_content(s) for s in steps]
     return {**row, 'steps': steps}
 
 
@@ -858,17 +930,25 @@ async def step_agent_task(
     workflow owns the task, and must still be able to make agent tasks
     in the org. The engine polls this route until the task is closed.
 
+    The agent and the project come from the pinned version (see
+    :func:`_pinned_agent_ids`). A task with the key that this step did
+    not make, or that has another agent, is refused.
+
     Raises:
         403: ``owner_forbidden``: the activator cannot make agent tasks.
         404: No such workflow, run, or step.
-        409: The step is not a running agent step, or the agent is
-            disabled.
-        422: ``agent_not_found``, or the project or the budget is not
-            valid (see :func:`agent_tasks.make_task`).
+        409: The step is not a running agent step, the agent is
+            disabled, or ``task_key_conflict``.
+        422: ``agent_not_found``, ``agent_params_not_literal``, or the
+            project or the budget is not valid (see
+            :func:`agent_tasks.make_task`).
 
     """
     workflow = await _workflow(store, org_id, slug)
     run, step, origin, key = await _agent_step(runs, workflow, run_id, node_id)
+    agent_id, project_id = await _pinned_agent_ids(
+        store, org_id, slug, run, node_id
+    )
     task = await tasks.find_by_idempotency_key(
         org_id, origin.kind, origin.id, key
     )
@@ -884,7 +964,7 @@ async def step_agent_task(
                 status_code=403, detail={'error': 'owner_forbidden'}
             )
         records = await db.execute(
-            _AGENT_SLUG_QUERY, {'id': params.agent_id, 'org': org_id}, ['slug']
+            _AGENT_SLUG_QUERY, {'id': agent_id, 'org': org_id}, ['slug']
         )
         if not records:
             raise fastapi.HTTPException(
@@ -895,7 +975,7 @@ async def step_agent_task(
                 agent_slug=str(graph.parse_agtype(records[0]['slug'])),
                 title=f'{workflow["name"]}: {step["title"]}',
                 description=params.instruction,
-                project_id=params.project_id,
+                project_id=project_id,
                 budget=None
                 if params.budget is None
                 else decimal.Decimal(str(params.budget)),
@@ -915,6 +995,11 @@ async def step_agent_task(
             run['activated_by'],
             agent_runtime.Actor('system', auth.principal_name, 'api'),
         )
+    if (
+        not _made_by_step(task, run_id, step['node_key'])
+        or task['agent_id'] != agent_id
+    ):
+        raise _task_key_conflict()
     summary = (
         await tasks.last_agent_turn(task['id'])
         if task['status'] == 'closed'
@@ -949,11 +1034,16 @@ async def cancel_step_agent_task(
 
     """
     workflow = await _workflow(store, org_id, slug)
-    _, _, origin, key = await _agent_step(runs, workflow, run_id, node_id)
+    _, step, origin, key = await _agent_step(runs, workflow, run_id, node_id)
     task = await tasks.find_by_idempotency_key(
         org_id, origin.kind, origin.id, key
     )
-    if task is None or task['status'] == 'closed':
+    # A task that the step did not make is never cancelled here.
+    if (
+        task is None
+        or task['status'] == 'closed'
+        or not _made_by_step(task, run_id, step['node_key'])
+    ):
         return
     try:
         await tasks.set_control(

@@ -21,6 +21,7 @@ import contextlib
 import datetime
 import decimal
 import logging
+import re
 import typing
 import uuid
 from collections import abc
@@ -59,6 +60,13 @@ SERVICE_ORIGINS: dict[str, typing.Literal['schedule', 'webhook']] = {
     'imbi-scheduler': 'schedule',
     'imbi-gateway': 'webhook',
 }
+
+
+#: The key shape of the task of a workflow agent step,
+#: ``<run_id>:<node_key>``. Only that step makes it.
+_STEP_KEY = re.compile(
+    r'^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}:[a-z][a-z0-9_]*$'
+)
 
 
 def _header(name: str) -> typing.Any:
@@ -813,13 +821,18 @@ async def create_agent_task(
         409: The agent is disabled.
         422: The agent or the project is not in the org, the budget is
             more than the agent's task budget, a service does not name
-            its origin, or the webhook does not exist.
+            its origin, the webhook does not exist, or the key has the
+            shape of a workflow step key (``<uuid>:<node_key>``).
 
     """
     origin = task_origin(
         auth, scheduled_task, webhook, delivery, scheduled_by, scheduled_org
     )
     key = data.idempotency_key or idempotency_key
+    if key is not None and _STEP_KEY.match(key):
+        raise _unprocessable(
+            'The idempotency key has the shape of a workflow step key'
+        )
     if key is not None:
         existing = await store.find_by_idempotency_key(
             org_id, origin.kind, origin.id, key
