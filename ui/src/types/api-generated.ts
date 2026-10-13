@@ -8536,6 +8536,12 @@ export interface paths {
         /**
          * Delete Service Account
          * @description Delete a service account and all related credentials.
+         *
+         *     Raises:
+         *         404: No such service account.
+         *         409: ``service_account_in_use``: the service account is the pool
+         *             credential of a runner pool (ADR 0022). Change the pool
+         *             first.
          */
         delete: operations["delete_service_account_api_service_accounts__slug__delete"];
         options?: never;

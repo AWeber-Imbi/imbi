@@ -9,8 +9,12 @@
 
 # One row per runner pool. The Kubernetes Deployment of the pool has the
 # same name. `organization_ids` is the allowlist; empty means all
-# organizations. `service_account` is the slug of the service account
-# whose client credential (the pool credential) registers runners.
+# organizations. `service_account_id` is the immutable id of the service
+# account whose client credential (the pool credential) registers
+# runners; registration compares it, so a new service account with the
+# slug of a deleted one cannot register. `service_account` is its slug,
+# for display. A pool made before the id column has no id and refuses
+# every registration until an update sets the service account again.
 [[tables]]
 name = "pools"
 
@@ -20,6 +24,7 @@ description = "TEXT"
 labels = "TEXT[] NOT NULL DEFAULT '{}'"
 organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
 service_account = "TEXT NOT NULL"
+service_account_id = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 

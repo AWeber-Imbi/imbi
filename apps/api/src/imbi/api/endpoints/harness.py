@@ -295,9 +295,12 @@ async def _org_ids(db: graph.Graph, slugs: list[str]) -> list[str]:
     return sorted({found[slug] for slug in slugs})
 
 
-async def _check_service_account(db: graph.Graph, slug: str) -> None:
-    if not await db.match(models.ServiceAccount, {'slug': slug}):
+async def _service_account_id(db: graph.Graph, slug: str) -> str:
+    """Return the immutable id of a service account, or raise 422."""
+    accounts = await db.match(models.ServiceAccount, {'slug': slug})
+    if not accounts:
         raise _unprocessable(f'Service account {slug!r} not found')
+    return accounts[0].id
 
 
 async def _bundle(
@@ -628,7 +631,7 @@ async def create_harness_pool(
 
     """
     org_ids = await _org_ids(db, data.organizations)
-    await _check_service_account(db, data.service_account)
+    account_id = await _service_account_id(db, data.service_account)
     try:
         pool = await store.create_pool(
             data.name,
@@ -636,6 +639,7 @@ async def create_harness_pool(
             labels=sorted(set(data.labels)),
             organization_ids=org_ids,
             service_account=data.service_account,
+            service_account_id=account_id,
         )
     except harness.PoolExists as err:
         raise _conflict('pool_exists', f'Pool {data.name!r} exists') from err
@@ -670,7 +674,9 @@ async def update_harness_pool(
     if data.organizations is not None:
         changes['organization_ids'] = await _org_ids(db, data.organizations)
     if data.service_account is not None:
-        await _check_service_account(db, data.service_account)
+        changes['service_account_id'] = await _service_account_id(
+            db, data.service_account
+        )
         changes['service_account'] = data.service_account
     pool = await store.update_pool(name, changes)
     if pool is None:
@@ -737,7 +743,9 @@ async def register_harness_runner(
     if (
         pool is None
         or account is None
-        or account.slug != (pool['service_account'])
+        # The id, not the slug: a new service account can take the
+        # slug of a deleted one.
+        or account.id != pool['service_account_id']
     ):
         raise autonomous.forbidden(
             'pool_forbidden',

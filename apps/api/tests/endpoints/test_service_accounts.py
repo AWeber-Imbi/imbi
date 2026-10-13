@@ -7,7 +7,7 @@ import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
-from imbi.api import models
+from imbi.api import harness, models
 from imbi.api.auth import password
 from imbi.common import graph
 
@@ -47,6 +47,13 @@ class ServiceAccountsEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = (
             lambda: self.mock_db
+        )
+
+        # No runner pool uses a service account of these tests.
+        self.runners = mock.AsyncMock(spec=harness.HarnessStore)
+        self.runners.pool_names_of_service_account.return_value = []
+        self.test_app.dependency_overrides[harness._inject_store] = (
+            lambda: self.runners
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -207,6 +214,16 @@ class ServiceAccountsEndpointsTestCase(support.SharedAppTestCase):
             )
 
         self.assertEqual(response.status_code, 204)
+
+    def test_delete_refused_while_a_pool_uses_it(self) -> None:
+        """A pool credential cannot be deleted (ADR 0022)."""
+        self.runners.pool_names_of_service_account.return_value = ['general']
+        response = self.client.delete('/service-accounts/test-bot')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()['detail']['error'], 'service_account_in_use'
+        )
+        self.mock_db.execute.assert_not_called()
 
     def test_delete_service_account_not_found(self) -> None:
         """Test deleting nonexistent SA returns 404."""

@@ -87,6 +87,7 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
             labels=labels,
             organization_ids=orgs,
             service_account=self.pool_account.slug,
+            service_account_id=self.pool_account.id,
         )
         return str(pool['name'])
 
@@ -211,6 +212,43 @@ class RegisterTests(RunnerTestCase):
             if str(r['id']) == runner['runner_id']
         ]
         self.assertEqual(row['labels'], ['general', 'gpu'])
+
+    async def test_recreated_service_account_cannot_register(self) -> None:
+        # The pool credential cannot be deleted while a pool uses it.
+        self.act_as_user()
+        self.permissions.add('service_account:delete')
+        response = await self.client.delete(
+            f'/service-accounts/{self.pool_account.slug}'
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'service_account_in_use'
+        )
+        # A service account deleted another way and made again with the
+        # same slug has a new id, and the pool refuses it.
+        await self.graph.execute(
+            'MATCH (s:ServiceAccount {{slug: {slug}}}) DETACH DELETE s'
+            ' RETURN 1 AS ok',
+            {'slug': self.pool_account.slug},
+            ['ok'],
+        )
+        await self.graph.execute(
+            'CREATE (s:ServiceAccount {{id: {id}, slug: {slug},'
+            ' display_name: {slug}, is_active: true}}) RETURN s.id AS id',
+            {'id': f'new-{self.org}', 'slug': self.pool_account.slug},
+            ['id'],
+        )
+        impostor = models.ServiceAccount(
+            id=f'new-{self.org}',
+            slug=self.pool_account.slug,
+            display_name='Pool',
+        )
+        self.act_as(impostor)
+        response = await self.client.post(
+            '/harness/runners', json={'pool': self.pool_name}
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'pool_forbidden')
 
     async def test_runner_credential_is_checked(self) -> None:
         runner = await self.register()

@@ -161,6 +161,7 @@ class HarnessStore:
         labels: list[str],
         organization_ids: list[str],
         service_account: str,
+        service_account_id: str,
     ) -> Row:
         """Insert a pool.
 
@@ -171,15 +172,32 @@ class HarnessStore:
         try:
             row = await self._fetch_one(
                 'INSERT INTO harness.pools (name, description, labels,'
-                ' organization_ids, service_account)'
-                ' VALUES (%s, %s, %s, %s, %s) RETURNING *',
-                (name, description, labels, organization_ids, service_account),
+                ' organization_ids, service_account, service_account_id)'
+                ' VALUES (%s, %s, %s, %s, %s, %s) RETURNING *',
+                (
+                    name,
+                    description,
+                    labels,
+                    organization_ids,
+                    service_account,
+                    service_account_id,
+                ),
             )
         except psycopg.errors.UniqueViolation as err:
             raise PoolExists(name) from err
         if row is None:  # pragma: no cover - RETURNING yields a row
             raise RuntimeError('pool insert returned no row')
         return row
+
+    async def pool_names_of_service_account(self, slug: str) -> list[str]:
+        """Return the pools whose pool credential is the service account
+        ``slug``."""
+        rows = await self._fetch_all(
+            'SELECT name FROM harness.pools WHERE service_account = %s'
+            ' ORDER BY name',
+            (slug,),
+        )
+        return [str(row['name']) for row in rows]
 
     async def update_pool(self, name: str, changes: Row) -> Row | None:
         """Change columns of the pool ``name``; ``None`` when not found.

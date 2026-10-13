@@ -7,7 +7,7 @@ import typing
 import fastapi
 import pydantic
 
-from imbi.api import models
+from imbi.api import harness, models
 from imbi.api.auth import permissions
 from imbi.api.endpoints import _helpers
 from imbi.common import graph
@@ -296,6 +296,7 @@ async def patch_service_account(
 async def delete_service_account(
     slug: str,
     db: graph.Pool,
+    runners: harness.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -303,7 +304,27 @@ async def delete_service_account(
         ),
     ],
 ) -> None:
-    """Delete a service account and all related credentials."""
+    """Delete a service account and all related credentials.
+
+    Raises:
+        404: No such service account.
+        409: ``service_account_in_use``: the service account is the pool
+            credential of a runner pool (ADR 0022). Change the pool
+            first.
+
+    """
+    pools = await runners.pool_names_of_service_account(slug)
+    if pools:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'service_account_in_use',
+                'message': (
+                    f'Service account {slug!r} registers the runners of '
+                    f'the pools {", ".join(pools)}'
+                ),
+            },
+        )
     query: typing.LiteralString = """
     MATCH (s:ServiceAccount {{slug: {slug}}})
     OPTIONAL MATCH (s)<-[:OWNED_BY]-(owned)
