@@ -634,7 +634,7 @@ class EventTests(HarnessTestCase):
                     },
                     {
                         'event_id': new_id(),
-                        'type': 'turn',
+                        'type': 'todos.updated',
                         'payload': {'body': big},
                     },
                 ]

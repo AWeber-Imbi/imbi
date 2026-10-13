@@ -1,0 +1,130 @@
+# Relational schema for the runner pool and dispatch (ADR 0022).
+#
+# The initializer (imbi.common.relational) walks this file and issues
+# idempotent DDL, like the `agent_runtime` schema. Rows refer to graph
+# nodes (organization, service account) by id or slug, and to agent
+# tasks by their `agent_runtime.tasks` id.
+#
+# The schema name is fixed: `harness`.
+
+# One row per runner pool. The Kubernetes Deployment of the pool has the
+# same name. `organization_ids` is the allowlist; empty means all
+# organizations. `service_account` is the slug of the service account
+# whose client credential (the pool credential) registers runners.
+[[tables]]
+name = "pools"
+
+[tables.columns]
+name = "TEXT NOT NULL"
+description = "TEXT"
+labels = "TEXT[] NOT NULL DEFAULT '{}'"
+organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+service_account = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["name"]
+
+# One row per registered runner (one pod). `state` is `idle`, `busy`,
+# `offline`, or `fenced`: a busy runner whose lease expired is `fenced`
+# until its chain is back in the queue, then `offline`. The runner and
+# executor credentials are stored only as SHA-256 hashes; they have 256
+# random bits, so no key or salt is needed.
+[[tables]]
+name = "runners"
+
+[tables.columns]
+id = "UUID NOT NULL"
+pool = "TEXT NOT NULL REFERENCES harness.pools (name) ON DELETE CASCADE"
+instance = "TEXT"
+labels = "TEXT[] NOT NULL DEFAULT '{}'"
+organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+state = "TEXT NOT NULL DEFAULT 'idle'"
+chain_id = "UUID"
+image_version = "TEXT"
+runner_token_hash = "TEXT NOT NULL"
+executor_token_hash = "TEXT NOT NULL"
+registered_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+last_heartbeat = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+lease_expires_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+offline_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "runners_runner_token_key"
+columns = ["runner_token_hash"]
+unique = true
+
+[[tables.indexes]]
+name = "runners_executor_token_key"
+columns = ["executor_token_hash"]
+unique = true
+
+[[tables.indexes]]
+name = "runners_state_lease_idx"
+columns = ["state", "lease_expires_at"]
+
+# One row per chain that a runner claimed: the chain pin. The key is
+# the id of the root task. `attempt` goes up when the runner is lost, so
+# the agent tokens of the old attempt stop working at once.
+#
+# `state`:
+#   running  pinned to `runner_id`
+#   fencing  the runner is lost; the fencers run, then the grace period
+#   stuck    a fencer failed; the sweep tries again each round
+#   queued   back in the queue; the next claim pins it again
+#   done     every task is closed
+[[tables]]
+name = "chains"
+
+[tables.columns]
+root_task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+organization_id = "TEXT NOT NULL"
+runner_id = "UUID REFERENCES harness.runners (id) ON DELETE SET NULL"
+attempt = "INTEGER NOT NULL DEFAULT 1"
+state = "TEXT NOT NULL DEFAULT 'running'"
+claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+fenced_at = "TIMESTAMP WITH TIME ZONE"
+fencers_ok_at = "TIMESTAMP WITH TIME ZONE"
+fence_error = "TEXT"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["root_task_id"]
+
+[[tables.indexes]]
+name = "chains_state_idx"
+columns = ["state"]
+
+# The tasks that a runner claimed in each attempt of a chain, so that a
+# claim never returns a task two times in one attempt.
+[[tables]]
+name = "claims"
+
+[tables.columns]
+task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+attempt = "INTEGER NOT NULL"
+chain_id = "UUID NOT NULL"
+runner_id = "UUID NOT NULL"
+claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["task_id", "attempt"]
+
+# Tool call counters for `AgentToolConfig.rate_limit`, across all
+# runners. One row per agent, tool, period, and window start.
+[[tables]]
+name = "tool_call_counts"
+
+[tables.columns]
+agent_id = "TEXT NOT NULL"
+tool_key = "TEXT NOT NULL"
+period = "TEXT NOT NULL"
+window_start = "TIMESTAMP WITH TIME ZONE NOT NULL"
+count = "INTEGER NOT NULL"
+
+[tables.primary_key]
+columns = ["agent_id", "tool_key", "period", "window_start"]

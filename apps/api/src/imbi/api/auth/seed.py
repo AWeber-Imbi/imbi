@@ -505,6 +505,20 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'run',
         'Start manual and test runs of workflows, and cancel runs',
     ),
+    # Runner pools (ADR 0022). `harness_pool:write` is for platform
+    # administrators (`is_admin`), so no default role grants it.
+    (
+        'harness_pool:read',
+        'harness_pool',
+        'read',
+        'View the runner pools and runners that serve the organization',
+    ),
+    (
+        'harness_pool:write',
+        'harness_pool',
+        'write',
+        'Create and change runner pools',
+    ),
     # Plugin management
     (
         'admin:plugins:read',
@@ -699,6 +713,9 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ),
 ]
 
+#: Permissions that only platform administrators (``is_admin``) hold.
+PLATFORM_PERMISSIONS = frozenset({'harness_pool:write'})
+
 # Permissions retired by the ThirdPartyService -> Integration rename.
 # Installs seeded before the rename retain these orphaned Permission
 # nodes (and any GRANTS edges); ``cleanup_retired_permissions`` removes
@@ -722,7 +739,12 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         'Administrator',
         'Full system access with all permissions',
         1000,
-        [perm[0] for perm in STANDARD_PERMISSIONS],  # All permissions
+        # All permissions but those of platform administrators
+        [
+            perm[0]
+            for perm in STANDARD_PERMISSIONS
+            if perm[0] not in PLATFORM_PERMISSIONS
+        ],
         False,
     ),
     (

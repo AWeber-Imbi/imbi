@@ -8,6 +8,7 @@ from uvicorn.middleware import proxy_headers
 from imbi.api import (
     agent_tasks,
     endpoints,
+    harness,
     lifespans,
     openapi,
     settings,
@@ -42,6 +43,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.iggy_metrics_hook,
             graph.graph_lifespan,
             agent_tasks.store_lifespan,
+            harness.store_lifespan,
             workflows.store_lifespan,
             prompt_pool.pool_lifespan,
             lifespans.email_hook,

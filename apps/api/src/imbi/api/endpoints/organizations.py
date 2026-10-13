@@ -9,6 +9,7 @@ import pydantic
 
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.harness import auth as harness_auth
 from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
@@ -186,11 +187,12 @@ organizations_router.include_router(
     prefix='/{org_slug}/agent-tasks',
 )
 # The harness routes take the organization-membership dependency of the
-# task routes, so no route under /agent-tasks can skip it.
+# task routes, in the variant that also accepts an agent token (ADR
+# 0022), so no route under /agent-tasks can skip it.
 organizations_router.include_router(
     agent_task_harness_router,
     prefix='/{org_slug}/agent-tasks',
-    dependencies=agent_tasks_router.dependencies,
+    dependencies=[fastapi.Depends(harness_auth.harness_member_org_id)],
 )
 organizations_router.include_router(
     agent_usage_router,

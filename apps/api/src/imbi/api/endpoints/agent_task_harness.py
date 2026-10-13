@@ -6,9 +6,14 @@ model usage, opens requests, and sets the terminal outcome.
 
 Only the service account of the task's agent can call these routes.
 Every other caller, people included, gets ``403``. The router is
-mounted with the router dependencies of the agent task routes, which
-include :func:`imbi.api.auth.organizations.member_org_id`, so the
-service account must also be a member of the organization.
+mounted with :func:`imbi.api.harness.auth.harness_member_org_id`, so
+the service account must also be a member of the organization.
+
+A runner calls them with the agent token of its claim (ADR 0022). That
+token works only for the tasks of its chain, in its organization, while
+the chain attempt is current; an older attempt gets ``401
+stale_attempt``. While a runner holds a chain, its tasks refuse every
+other credential with ``403 chain_pinned``.
 
 A closed task refuses every write with ``409 task_closed``. Errors that
 a harness branches on have a ``detail.error`` code.
@@ -16,8 +21,12 @@ a harness branches on have a ``detail.error`` code.
 Imbi stores payloads as the harness sends them. The harness redacts
 them before it sends them (CC8); Imbi does not redact again.
 
-Not in this version: payloads larger than :data:`MAX_PAYLOAD_BYTES` are
-refused rather than moved to object storage.
+A ``turn`` or ``tool.called`` payload can be up to
+:data:`MAX_LARGE_PAYLOAD_BYTES`. The harness splits a larger one into
+continuation events with the same ``call_id`` and ``part`` and
+``parts``. Every other payload is limited to :data:`MAX_PAYLOAD_BYTES`.
+Not in this version: larger payloads are refused rather than moved to
+object storage.
 """
 
 import datetime
@@ -28,14 +37,24 @@ import uuid
 import fastapi
 import pydantic
 
-from imbi.api import agent_tasks
+from imbi.api import agent_tasks, harness
 from imbi.api.agent_tasks import store as task_store
-from imbi.api.auth import autonomous, organizations, permissions
+from imbi.api.auth import autonomous
 from imbi.api.endpoints import agent_tasks as tasks_api
+from imbi.api.harness import auth as harness_auth
+from imbi.api.harness import store as harness_store
 from imbi.common import graph, models
 
 #: The largest inline event payload, in bytes of JSON.
 MAX_PAYLOAD_BYTES = tasks_api.MAX_PAYLOAD_BYTES
+#: The largest ``turn`` or ``tool.called`` payload (ADR 0022).
+MAX_LARGE_PAYLOAD_BYTES = 1024 * 1024
+#: The largest payload total of one batch of events.
+MAX_BATCH_PAYLOAD_BYTES = 4 * MAX_LARGE_PAYLOAD_BYTES
+#: The event types that can have a large payload and continuations.
+LARGE_EVENT_TYPES = frozenset({'turn', 'tool.called'})
+#: The most continuation parts of one call.
+MAX_PARTS = 1000
 
 #: The event types that a harness writes. Imbi writes all others.
 HarnessEventType = typing.Literal[
@@ -95,6 +114,32 @@ class HarnessEvent(pydantic.BaseModel):
             isinstance(phase, str) and phase
         ):
             raise ValueError('phase.changed needs a payload.phase string')
+        return self
+
+    @pydantic.model_validator(mode='after')
+    def _check_continuation(self) -> typing.Self:
+        """A continuation has ``call_id`` and ``1 <= part <= parts``."""
+        payload = self.payload
+        if 'part' not in payload and 'parts' not in payload:
+            return self
+        if self.type not in LARGE_EVENT_TYPES:
+            raise ValueError(f'{self.type} cannot have parts')
+        call_id, part, parts = (
+            payload.get('call_id'),
+            payload.get('part'),
+            payload.get('parts'),
+        )
+        if not (isinstance(call_id, str) and call_id):
+            raise ValueError('a continuation needs a payload.call_id string')
+        if not (
+            type(part) is int
+            and type(parts) is int
+            and 1 <= part <= parts <= MAX_PARTS
+        ):
+            raise ValueError(
+                f'a continuation needs integers 1 <= part <= parts <= '
+                f'{MAX_PARTS}'
+            )
         return self
 
 
@@ -283,17 +328,22 @@ _PRICE_COLUMNS = (
 
 
 async def _harness_task(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     short_id: str,
     store: agent_tasks.Store,
-    auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
-    ],
+    runners: harness.Store,
+    caller: harness_auth.Caller,
 ) -> dict[str, typing.Any]:
     """Return the task when the caller is the service account of its agent.
 
+    With an agent token, the task must be in the chain of the token.
+    With another credential, no runner may hold the chain of the task.
+
     Raises:
-        403: The caller is not the service account of the task's agent.
+        403: The caller is not the service account of the task's agent
+            (``agent_task_forbidden``), the task is not in the chain of
+            the agent token (``chain_forbidden``), or a runner holds the
+            chain of the task (``chain_pinned``).
         404: No such task.
 
     """
@@ -302,6 +352,7 @@ async def _harness_task(
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         )
+    auth = caller.auth
     account = auth.service_account
     if account is None or account.id != task['service_account_id']:
         raise autonomous.forbidden(
@@ -311,6 +362,21 @@ async def _harness_task(
                 f'account of the agent of task {task["short_id"]}.'
             ),
         )
+    chain_id = task['chain_id'] or task['id']
+    if caller.grant is not None:
+        if caller.grant.chain_id != chain_id:
+            raise autonomous.forbidden(
+                'chain_forbidden',
+                f'Task {task["short_id"]} is not in the chain of the token.',
+            )
+    else:
+        chain = await runners.chain(chain_id)
+        if chain is not None and chain['state'] in harness_store.PINNED:
+            raise autonomous.forbidden(
+                'chain_pinned',
+                f'A runner holds the chain of task {task["short_id"]}; '
+                'only its agent token can change it.',
+            )
     return task
 
 
@@ -457,7 +523,7 @@ agent_task_harness_router = fastapi.APIRouter(tags=['Agent Task Harness'])
     },
 )
 async def open_agent_task_session(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     data: SessionOpen,
     response: fastapi.Response,
@@ -502,7 +568,7 @@ async def open_agent_task_session(
     '/{short_id}/sessions/{session_id}/heartbeat', response_model=TaskState
 )
 async def heartbeat_agent_task_session(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     session_id: uuid.UUID,
     db: graph.Pool,
@@ -539,7 +605,7 @@ async def heartbeat_agent_task_session(
     '/{short_id}/sessions/{session_id}/close', response_model=TaskState
 )
 async def close_agent_task_session(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     session_id: uuid.UUID,
     data: SessionClose,
@@ -582,7 +648,7 @@ async def close_agent_task_session(
     },
 )
 async def append_agent_task_events(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     data: EventBatch,
     response: fastapi.Response,
@@ -603,13 +669,33 @@ async def append_agent_task_events(
         404: No such task or session.
         409: ``task_closed``, ``session_closed``, or
             ``event_id_conflict`` (another task has the event id).
-        413: A payload is larger than :data:`MAX_PAYLOAD_BYTES`.
-        422: An event type that Imbi writes, or a bad envelope.
+        413: A payload is larger than its limit
+            (:data:`MAX_LARGE_PAYLOAD_BYTES` for ``turn`` and
+            ``tool.called``, else :data:`MAX_PAYLOAD_BYTES`), or the
+            batch is larger than :data:`MAX_BATCH_PAYLOAD_BYTES`.
+        422: An event type that Imbi writes, a bad envelope, or a bad
+            continuation (``call_id``, ``part``, ``parts``).
 
     """
+    total = 0
     for index, event in enumerate(data.events):
-        tasks_api.check_payload_size(
-            f'The payload of event {index}', event.payload
+        total += tasks_api.check_payload_size(
+            f'The payload of event {index}',
+            event.payload,
+            MAX_LARGE_PAYLOAD_BYTES
+            if event.type in LARGE_EVENT_TYPES
+            else MAX_PAYLOAD_BYTES,
+        )
+    if total > MAX_BATCH_PAYLOAD_BYTES:
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail={
+                'error': 'payload_too_large',
+                'message': (
+                    f'The batch is {total} bytes; the limit is '
+                    f'{MAX_BATCH_PAYLOAD_BYTES}'
+                ),
+            },
         )
     try:
         _row, written, duplicates = await store.append_events(
@@ -655,7 +741,7 @@ async def append_agent_task_events(
     },
 )
 async def report_agent_task_usage(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     data: UsageReport,
     response: fastapi.Response,
@@ -716,7 +802,7 @@ async def report_agent_task_usage(
     },
 )
 async def open_agent_task_request(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     data: RequestCreate,
     response: fastapi.Response,
@@ -772,7 +858,7 @@ async def open_agent_task_request(
     '/{short_id}/outcome', response_model=TaskState
 )
 async def set_agent_task_outcome(
-    org_id: organizations.MemberOrgId,
+    org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     data: OutcomeSet,
     store: agent_tasks.Store,

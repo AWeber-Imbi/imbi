@@ -55,9 +55,23 @@ created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 closed_at = "TIMESTAMP WITH TIME ZONE"
 log_archived_at = "TIMESTAMP WITH TIME ZONE"
+# The id of the root task of the chain (ADR 0022): the task itself for a
+# root task, the chain of the parent for a child task (origin `task`).
+# NULL for tasks made before this column existed; read it as
+# `COALESCE(chain_id, id)`.
+chain_id = "UUID"
 
 [tables.primary_key]
 columns = ["id"]
+
+[[tables.indexes]]
+name = "tasks_chain_idx"
+columns = ["chain_id"]
+
+# The claim query's access path: the oldest queued task.
+[[tables.indexes]]
+name = "tasks_status_created_idx"
+columns = ["status", "created_at", "id"]
 
 [[tables.indexes]]
 name = "tasks_short_id_key"

@@ -19,9 +19,10 @@ import httpx
 from psycopg import sql
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, models
+from imbi.api import agent_tasks, harness, models
 from imbi.api.auth import permissions
 from imbi.api.graph_sql import props_template
+from imbi.api.harness import auth as harness_auth
 from imbi.common import graph
 
 ALL_PERMISSIONS = frozenset(
@@ -54,11 +55,13 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
 
         await graph.initialize()
         await agent_tasks.initialize()
+        await harness.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
         self.pool = agent_tasks.create_pool()
         await self.pool.open()
         self.store = agent_tasks.TaskStore(self.pool)
+        self.harness = harness.HarnessStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
 
         await self.graph.execute(
@@ -119,6 +122,26 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         overrides[permissions.get_current_user] = current_user
         overrides[graph._inject_graph] = lambda: self.graph
         overrides[agent_tasks._inject_store] = lambda: self.store
+        overrides[harness._inject_store] = lambda: self.harness
+
+        async def harness_caller(
+            db: graph.Pool,
+            store: harness.Store,
+            credentials: harness_auth.Credentials,
+        ) -> harness_auth.HarnessCaller:
+            # A real agent token takes the real path; anything else is
+            # the caller of the get_current_user override.
+            if credentials and harness.tokens.is_agent_token(
+                credentials.credentials
+            ):
+                return await harness_auth.harness_caller(
+                    db, store, credentials
+                )
+            return harness_auth.HarnessCaller(
+                await overrides[permissions.get_current_user]()
+            )
+
+        overrides[harness_auth.harness_caller] = harness_caller
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.test_app),
             base_url='http://test',
