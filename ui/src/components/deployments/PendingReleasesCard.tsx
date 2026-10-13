@@ -22,11 +22,13 @@ import {
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { DriftIndicator } from '@/components/releases/DriftIndicator'
 import { TagBadge } from '@/components/releases/TagBadge'
+import { useReleaseBlockMutation } from '@/components/releases/useReleaseBlockMutation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CommitSubject } from '@/components/ui/commit-subject'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import type { ChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
@@ -108,6 +110,16 @@ export function PendingReleasesCard({
   useEffect(() => {
     setCiAcknowledged(false)
   }, [active?.sha])
+  // Unblock lives here rather than behind a pointer elsewhere: this card
+  // only renders on the Deployments tab, where there is no Releases tab,
+  // and the Recent releases list below may not carry the blocked tag.
+  const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
+    orgSlug,
+    projectId,
+  })
+  // What the API's unblock endpoint requires. ``canTrigger`` is
+  // integration readiness, not permission, so it can't stand in.
+  const canUnblock = useHasPermission('project:deployment:write')
 
   if (pending.length === 0 || !active) {
     return <UpToDateCard upstreamName={upstreamName} />
@@ -221,13 +233,26 @@ export function PendingReleasesCard({
         )}
 
         {blocked ? (
-          <div className="border-danger bg-danger text-danger flex gap-2 rounded-md border px-3 py-2.5">
+          <div className="border-danger bg-danger text-danger flex items-start gap-2 rounded-md border px-3 py-2.5">
             <Ban className="mt-0.5 size-3.5 shrink-0" />
             <span className="text-xs leading-relaxed">
               <span className="font-mono">{active.tag}</span> is blocked
               {active.blocked_reason ? <> — {active.blocked_reason}</> : null}.
-              Unblock it on the Releases tab to deploy it.
+              {canUnblock
+                ? ' Unblock it to deploy it.'
+                : ' Ask someone with deploy access on this project to unblock it.'}
             </span>
+            {canUnblock ? (
+              <Button
+                className="text-danger hover:bg-danger ml-auto h-auto shrink-0 px-2 py-0.5 text-xs"
+                disabled={unblockPending}
+                onClick={() => unblock(active.tag)}
+                type="button"
+                variant="ghost"
+              >
+                Unblock
+              </Button>
+            ) : null}
           </div>
         ) : null}
 

@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
+import * as releasesApi from '@/api/releases'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -27,6 +29,15 @@ vi.mock('@/api/endpoints', async () => {
     getCommitCheckStatus: vi.fn(),
   }
 })
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/releases', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/api/releases')>('@/api/releases')
+  return { ...actual, unblockRelease: vi.fn() }
+})
+
+vi.mock('@/hooks/useHasPermission', () => ({ useHasPermission: vi.fn() }))
 
 const ENV = {
   can_deploy: true,
@@ -174,6 +185,7 @@ const compareResult = (
 describe('PendingReleasesCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(useHasPermission).mockReturnValue(true)
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'pass',
       committish: 'ccc333c',
@@ -324,6 +336,47 @@ describe('PendingReleasesCard', () => {
     ).toBeDisabled()
   })
 
+  it('unblocks a blocked release in place', async () => {
+    vi.mocked(releasesApi.unblockRelease).mockResolvedValue(
+      // Only ``tag`` is read, for the success toast.
+      { tag: 'v6.5.1' } as Awaited<
+        ReturnType<typeof releasesApi.unblockRelease>
+      >,
+    )
+    renderCard([
+      {
+        ...entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix'),
+        blocked: true,
+        blocked_reason: 'Regression in the checkout flow',
+      },
+    ])
+    // The Deployments tab has no Releases tab to send the operator to.
+    expect(screen.queryByText(/Releases tab/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Unblock' }))
+    await waitFor(() => {
+      expect(releasesApi.unblockRelease).toHaveBeenCalledWith(
+        'acme',
+        'p1',
+        'v6.5.1',
+      )
+    })
+  })
+
+  it('says who can unblock when the viewer lacks deployment write', () => {
+    vi.mocked(useHasPermission).mockReturnValue(false)
+    renderCard([
+      {
+        ...entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix'),
+        blocked: true,
+        blocked_reason: 'Regression in the checkout flow',
+      },
+    ])
+    expect(
+      screen.getByText(/Ask someone with deploy access on this project/),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull()
+  })
+
   it('marks blocked releases in the selectable stack', async () => {
     renderCard([
       entry('v6.5.2', 'ccc333ccc333', 'Net-zero patch'),
@@ -382,6 +435,7 @@ describe('PendingReleasesCard — failing CI on the release commit', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(useHasPermission).mockReturnValue(true)
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'fail',
       committish: 'bbb222b',
