@@ -161,6 +161,9 @@ class ResolveContext:
     purpose: str
     ttl_seconds: int
     credential_class: CredentialClass
+    #: The binding that asks. A provider that reads its own key from
+    #: another binding names this one as the consumer.
+    binding_id: uuid.UUID | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -245,6 +248,22 @@ class Provider:
 
         """
 
+    async def check_locator(
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        organization_id: str,
+    ) -> None:
+        """Check a validated locator against other bindings.
+
+        Called when a binding is written, and for each binding of a
+        provider when its configuration changes.
+
+        Raises:
+            InvalidConfiguration: The locator is not safe to use.
+
+        """
+
     async def health(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> Health:
@@ -255,6 +274,7 @@ class Provider:
         config: dict[str, typing.Any],
         locator: dict[str, typing.Any],
         organization_id: str,
+        binding_id: uuid.UUID | None = None,
     ) -> dict[str, typing.Any]:
         """Return metadata of the bound secret, never its value."""
         raise BrokerError('operation_not_supported')
@@ -346,6 +366,7 @@ class FakeProvider(Provider):
         config: dict[str, typing.Any],
         locator: dict[str, typing.Any],
         organization_id: str,
+        binding_id: uuid.UUID | None = None,
     ) -> dict[str, typing.Any]:
         return {'exists': locator['key'] in self.values}
 
@@ -658,6 +679,7 @@ class AwsSecretsManager(Provider):
         config: dict[str, typing.Any],
         locator: dict[str, typing.Any],
         organization_id: str,
+        binding_id: uuid.UUID | None = None,
     ) -> dict[str, typing.Any]:
         found = await self._call(
             config,

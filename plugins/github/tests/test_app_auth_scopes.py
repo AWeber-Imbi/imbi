@@ -141,6 +141,18 @@ class ScopedMintTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @respx.mock
+    async def test_repositories_reach_the_mint_body(self) -> None:
+        route = _mock_token()
+        async with httpx.AsyncClient(base_url=_BASE) as client:
+            await _app_auth._mint(  # pyright: ignore[reportPrivateUsage]
+                client, '42', _app_auth.freeze_scope({}), ['demo']
+            )
+        self.assertEqual(
+            {'permissions': {}, 'repositories': ['demo']},
+            httpx.Response(200, content=route.calls[0].request.content).json(),
+        )
+
+    @respx.mock
     async def test_same_scope_is_served_from_cache(self) -> None:
         route = _mock_token()
         first = await self._token({'contents': 'read'})

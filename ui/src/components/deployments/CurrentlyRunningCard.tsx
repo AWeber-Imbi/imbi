@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import type { ChipColors } from '@/lib/chip-colors'
 import { cn, sanitizeHttpUrl } from '@/lib/utils'
 
@@ -81,6 +82,9 @@ export function CurrentlyRunningCard({
     orgSlug,
     projectId,
   })
+  // What the API's block/unblock endpoints require. ``canTrigger`` is
+  // integration readiness, not permission, so it can't stand in.
+  const canBlock = useHasPermission('project:deployment:write')
   const release = stage.current?.release ?? null
   // The tag the env is running. Prefer the history entry: when the deploy was
   // recorded against an untagged release, the entry is the one resolved by
@@ -189,6 +193,7 @@ export function CurrentlyRunningCard({
             {stage.recentReleases.map((row) => (
               <ReleaseRow
                 blockPending={blockPending}
+                canBlock={canBlock}
                 canTrigger={canTrigger}
                 isOpen={openTag === row.entry.tag}
                 key={row.entry.tag}
@@ -301,6 +306,7 @@ function confirmCopy(
 // fallow-ignore-next-line complexity
 function ReleaseRow({
   blockPending,
+  canBlock,
   canTrigger,
   isOpen,
   onBlock,
@@ -311,6 +317,7 @@ function ReleaseRow({
   unreachedLabel,
 }: {
   blockPending: boolean
+  canBlock: boolean
   canTrigger: boolean
   isOpen: boolean
   onBlock: () => void
@@ -358,13 +365,17 @@ function ReleaseRow({
           row={row}
           unreachedLabel={unreachedLabel}
         />
-        {blocked ? (
+        {blocked || !canBlock ? (
           // Keep the glyph in the slot so rows stay aligned; red, and inert
           // because the Blocked badge already names the state and Unblock
-          // lives with the reason in the expanded row.
+          // lives with the reason in the expanded row. Without permission
+          // to block, the slot is held but left empty.
           <span
             aria-hidden="true"
-            className="text-danger flex h-7 items-center px-2"
+            className={cn(
+              'flex h-7 items-center px-2',
+              blocked ? 'text-danger' : 'invisible',
+            )}
           >
             <Ban className="size-3.5" />
           </span>
@@ -393,15 +404,17 @@ function ReleaseRow({
                 {rel.blocked_reason ? <> — {rel.blocked_reason}</> : null}
                 {rel.blocked_by ? <> · by {rel.blocked_by}</> : null}
               </span>
-              <Button
-                className="text-danger hover:bg-danger ml-auto h-auto shrink-0 px-2 py-0.5 text-xs"
-                disabled={blockPending}
-                onClick={onUnblock}
-                type="button"
-                variant="ghost"
-              >
-                Unblock
-              </Button>
+              {canBlock ? (
+                <Button
+                  className="text-danger hover:bg-danger ml-auto h-auto shrink-0 px-2 py-0.5 text-xs"
+                  disabled={blockPending}
+                  onClick={onUnblock}
+                  type="button"
+                  variant="ghost"
+                >
+                  Unblock
+                </Button>
+              ) : null}
             </div>
           ) : null}
           <ReleaseNotesMarkdown notes={rel.notes_markdown} />
