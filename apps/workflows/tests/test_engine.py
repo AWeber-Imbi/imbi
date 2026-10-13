@@ -23,6 +23,7 @@ from psycopg import rows
 from imbi.api import agent_tasks, models, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
+from imbi.api.workflows import sweeper
 from imbi.common import graph, iggy
 from imbi.common.auth import encryption
 from imbi.common.workflows import history
@@ -1175,6 +1176,8 @@ class AgentStepTestCase(EngineTestCase):
         #: Status codes to answer instead of the next agent task calls,
         #: after the route ran.
         self.fail_with: list[int] = []
+        #: A status code that every cancel call gets, when set.
+        self.fail_cancel: int | None = None
         self.api.agent = self._agent_route
 
     async def _cleanup_tasks(self) -> None:
@@ -1215,6 +1218,8 @@ class AgentStepTestCase(EngineTestCase):
             'auth': self.engine_auth,
         }
         try:
+            if parts[-1] == 'cancel' and self.fail_cancel:
+                return httpx.Response(self.fail_cancel, json={})
             if parts[-1] == 'cancel':
                 await workflow_runs.cancel_step_agent_task(**args)
                 response = httpx.Response(204)
@@ -1418,6 +1423,57 @@ class AgentStepTestCase(EngineTestCase):
             ('cancel', 'closed', 'cancelled_by_human'),
         )
         self.assertEqual(len(await self._org_tasks()), 1)
+
+    async def _control(self, short_id: str) -> tuple[str, str]:
+        task = await self.tasks.get(self.org, short_id)
+        assert task is not None
+        return task['control'], task['status']
+
+    async def test_failed_cancel_at_close_is_reconciled(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1'}
+        )
+        task = await self._task(run_id)
+        self.fail_cancel = 503
+        self.assertTrue(await self.runs.cancel(run_id))
+        run = await self._drive(run_id)
+        # The run closes although the cancel call failed.
+        self.assertEqual(run['status'], 'cancelled')
+        self.assertEqual(
+            await self._control(task['short_id']), ('run', 'queued')
+        )
+        await sweeper.cancel_orphan_agent_tasks(self.runs, self.tasks)
+        self.assertEqual(
+            await self._control(task['short_id']), ('cancel', 'closed')
+        )
+
+    async def test_failed_cancel_at_step_failure_is_reconciled(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(timeout_seconds=1, retries=0),
+            {'version': '1'},
+        )
+        task = await self._task(run_id)
+        self.fail_cancel = 403
+        await asyncio.sleep(1.1)
+        run = await self._drive(run_id)
+        self.assertEqual(run['steps']['ask']['status'], 'failed')
+        self.assertEqual(
+            await self._control(task['short_id']), ('run', 'queued')
+        )
+        await sweeper.cancel_orphan_agent_tasks(self.runs, self.tasks)
+        self.assertEqual(
+            await self._control(task['short_id']), ('cancel', 'closed')
+        )
+
+    async def test_reconcile_keeps_a_running_step_task(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1'}
+        )
+        task = await self._task(run_id)
+        await sweeper.cancel_orphan_agent_tasks(self.runs, self.tasks)
+        self.assertEqual(
+            await self._control(task['short_id']), ('run', 'queued')
+        )
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

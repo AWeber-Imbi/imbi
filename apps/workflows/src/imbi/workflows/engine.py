@@ -452,7 +452,7 @@ class Engine:
         """Retry the step after a backoff, or fail it.
 
         A retry keeps the agent task of the step; a failure cancels it
-        first, so the task does not outlive the step.
+        first (best effort), so the task does not outlive the step.
         """
         step_type = registry.STEP_TYPES[node.type]
         retries = step_type.retries if node.retries is None else node.retries
@@ -515,10 +515,11 @@ class Engine:
     async def _cancel_agent_tasks(
         self, run: store.Row, steps: dict[str, store.Row], slug: str
     ) -> None:
-        """Cancel the task of each running agent step, before a close.
+        """Cancel the task of each running agent step. Best effort.
 
-        An error that a retry can fix raises, so the run closes on a
-        later pass. Any other error leaves the task open.
+        An error is logged and never stops the close of the step or the
+        run. The reconcile in imbi-api cancels a task that is still open
+        (:func:`imbi.api.workflows.sweeper.cancel_orphan_agent_tasks`).
         """
         for step in steps.values():
             if step['node_type'] != 'agent' or step['status'] != 'running':
@@ -527,14 +528,12 @@ class Engine:
                 await self.steps.cancel_agent_task(
                     run['organization_id'], slug, run['id'], step['node_id']
                 )
-            except executors.StepError as e:
-                if e.retry:
-                    raise
+            except Exception:  # noqa: BLE001 -- the reconcile cancels it
                 LOGGER.warning(
-                    'Run %s: could not cancel the task of %s: %s',
+                    'Run %s: could not cancel the task of %s',
                     run['id'],
                     step['node_key'],
-                    e.code,
+                    exc_info=True,
                 )
 
     async def _close(

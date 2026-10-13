@@ -223,6 +223,30 @@ class RunStore:
             (*(after or ('', uuid.UUID(int=0))), limit),
         )
 
+    async def orphan_agent_tasks(self) -> list[store.Row]:
+        """Return the open agent tasks whose agent step has ended.
+
+        An agent step writes its run id and node key in the origin of
+        its task (ADR 0021). A task is an orphan when its run is closed
+        or gone, or its step is not ``running``. The engine cancels the
+        task when the step ends, but only as best effort. A task that
+        waits for a cancel already is left out.
+        """
+        return await self._all(
+            'SELECT t.organization_id, t.short_id'
+            ' FROM agent_runtime.tasks AS t'
+            ' LEFT JOIN workflow_runtime.runs AS r'
+            " ON r.id::text = t.origin->>'workflow_run_id'"
+            ' AND r.organization_id = t.organization_id'
+            ' LEFT JOIN workflow_runtime.step_runs AS s'
+            " ON s.run_id = r.id AND s.node_key = t.origin->>'node_key'"
+            " WHERE t.status <> 'closed' AND t.control <> 'cancel'"
+            " AND t.origin ? 'workflow_run_id'"
+            ' AND (r.id IS NULL OR r.status = ANY(%s)'
+            " OR s.status IS DISTINCT FROM 'running')",
+            (list(runtime.CLOSED),),
+        )
+
     async def events_with_seqs(
         self, run_id: uuid.UUID, seqs: list[int]
     ) -> list[store.Row]:
