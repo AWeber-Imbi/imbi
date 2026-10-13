@@ -8,26 +8,38 @@ revokes it with ``DELETE /installation/token``.
 The App private key is not in Imbi: the binding names the ``secret://``
 reference of another binding (for example an ``aws_secrets_manager``
 binding), and imbi-api reads the key through the broker for each call.
+That key binding must be marked as a provider key for the same host and
+App id, and must list the requesting binding as a consumer
+(:meth:`Broker.check_provider_key` and :meth:`Broker.provider_key`).
+
+The GitHub host comes from an allowlist, never from free tenant input:
+``github.com``, a GHEC tenant (``<tenant>.ghe.com``), or a GHES host that
+the operator lists in ``IMBI_SECRETS_GITHUB_GHES_HOSTS``. A JWT signed
+with an App key goes only to such a host.
 
 The JWT and the token exchange come from the GitHub plugin
 (:mod:`imbi.plugins.github._app_auth`). Its process-wide token cache is
 not used: each resolution gets its own token, so that release can
 revoke it.
 
-The token is the lease id, because GitHub revokes a token only with the
-token itself. The broker keeps lease ids encrypted.
+The lease id holds the token and the host it came from, because GitHub
+revokes a token only with the token itself, and only at that host. The
+broker keeps lease ids encrypted.
 """
 
 import collections.abc
 import contextlib
 import datetime
+import ipaddress
 import logging
+import os
 import re
 import typing
 import uuid
 
 import httpx
 import jwt
+import orjson
 import pydantic
 
 from imbi.api.secret_broker import broker, providers
@@ -58,6 +70,12 @@ _TIMEOUT_SECONDS = 10.0
 #: When GitHub gives no expiry, assume less than its one hour.
 _DEFAULT_TTL = datetime.timedelta(minutes=55)
 _REPOSITORY = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
+_GHEC_TENANT = re.compile(r'[a-z0-9][a-z0-9-]*\.ghe\.com')
+#: The only project link that names the repository of a project. Other
+#: links are free text and give no access.
+REPOSITORY_LINK = 'github-repository'
+#: The operator's GHES hosts, comma separated. Never tenant input.
+GHES_HOSTS_ENV = 'IMBI_SECRETS_GITHUB_GHES_HOSTS'
 
 #: GitHub status codes, by safe reason code.
 _HTTP_REASONS = {
@@ -66,6 +84,56 @@ _HTTP_REASONS = {
     404: 'installation_not_found',
     422: 'permission_or_repository_not_granted',
 }
+
+
+def _internal_address(host: str) -> bool:
+    """True for a private, loopback, link-local, or other non-public IP."""
+    try:
+        address = ipaddress.ip_address(host.strip('[]'))
+    except ValueError:
+        return False
+    return not address.is_global
+
+
+def ghes_hosts() -> frozenset[str]:
+    """The GHES hosts of :data:`GHES_HOSTS_ENV`, without IP addresses
+    that are not public."""
+    hosts: set[str] = set()
+    for raw in os.environ.get(GHES_HOSTS_ENV, '').split(','):
+        if not raw.strip():
+            continue
+        try:
+            host = _hosts.normalize_host(raw, GHES_HOSTS_ENV).lower()
+        except ValueError:
+            LOGGER.warning('%s: a value is not a host', GHES_HOSTS_ENV)
+            continue
+        if _internal_address(host):
+            LOGGER.warning(
+                '%s: %s is not a public address', GHES_HOSTS_ENV, host
+            )
+            continue
+        hosts.add(host)
+    return frozenset(hosts)
+
+
+def allowed_host(host: str) -> bool:
+    """True for github.com, a GHEC tenant, or an operator GHES host."""
+    return (
+        host == 'github.com'
+        or _GHEC_TENANT.fullmatch(host) is not None
+        or host in ghes_hosts()
+    )
+
+
+def check_host(value: str) -> str:
+    """Return the normalized host, or raise ``ValueError``."""
+    host = _hosts.normalize_host(value, 'host').lower()
+    if not allowed_host(host):
+        raise ValueError(
+            'use github.com, a <tenant>.ghe.com host, or a GHES host in '
+            + GHES_HOSTS_ENV
+        )
+    return host
 
 
 class _Config(pydantic.BaseModel):
@@ -79,7 +147,7 @@ class _Config(pydantic.BaseModel):
     @pydantic.field_validator('host')
     @classmethod
     def _host(cls, value: str) -> str:
-        return _hosts.normalize_host(value, 'host').lower()
+        return check_host(value)
 
 
 class _Locator(pydantic.BaseModel):
@@ -110,8 +178,20 @@ class _Locator(pydantic.BaseModel):
         return value
 
 
-def _api_base(config: dict[str, typing.Any]) -> str:
-    return _hosts.host_to_api_base(config.get('host', 'github.com'))
+def _host(config: dict[str, typing.Any]) -> str:
+    return str(config.get('host', 'github.com'))
+
+
+def _api_base(host: str) -> str:
+    """The API base of an allowed host. The allowlist is checked again
+    at each call, because the operator list can change."""
+    if not allowed_host(host):
+        raise providers.BrokerError('secret_access_denied', 'host_not_allowed')
+    return _hosts.host_to_api_base(host)
+
+
+def _lease(host: str, token: str) -> str:
+    return orjson.dumps({'host': host, 'token': token}).decode()
 
 
 @contextlib.contextmanager
@@ -146,23 +226,38 @@ def _github_errors(code: str) -> collections.abc.Generator[None]:
 
 
 async def private_key(
-    organization_id: str, reference: str, task_id: uuid.UUID | None
+    organization_id: str,
+    locator: dict[str, typing.Any],
+    *,
+    host: str,
+    consumer: uuid.UUID | None,
+    task_id: uuid.UUID | None,
 ) -> str:
-    """Read the App private key through the broker."""
+    """Read the App private key through the broker, for one consumer
+    binding, host, and App id."""
     from imbi.api import secret_broker
 
     material = await secret_broker.get_broker().provider_key(
-        organization_id, reference, task_id
+        organization_id,
+        locator['private_key'],
+        consumer=consumer,
+        host=host,
+        app_id=locator['app_id'],
+        task_id=task_id,
     )
     return material.value.decode()
 
 
 async def project_repositories(host: str, project_id: str | None) -> list[str]:
-    """Return the ``owner/name`` repositories of a project on ``host``.
+    """Return the ``owner/name`` repository of a project on ``host``.
 
-    Only a project link counts (the ``github-repository`` link first).
-    The project-type slug fallback of the GitHub plugin is a naming
-    convention, not a fact, so it does not give access.
+    Only the :data:`REPOSITORY_LINK` link counts. No other link, and not
+    the project-type slug fallback of the GitHub plugin, gives access.
+
+    Raises:
+        BrokerError: ``project_repository_missing`` when the project has
+            no such link on ``host``.
+
     """
     if project_id is None:
         return []
@@ -174,10 +269,15 @@ async def project_repositories(host: str, project_id: str | None) -> list[str]:
         raise providers.BrokerError(
             'secret_provider_unavailable', 'graph_unavailable'
         )
-    found = _repos.derive_owner_repo_from_links(
-        await _helpers.lookup_project_links(db, project_id), host
+    url = (await _helpers.lookup_project_links(db, project_id)).get(
+        REPOSITORY_LINK
     )
-    return [] if found is None else [f'{found[0]}/{found[1]}']
+    found = None if url is None else _repos.parse_owner_repo(url, host)
+    if found is None:
+        raise providers.BrokerError(
+            'secret_access_denied', 'project_repository_missing'
+        )
+    return [f'{found[0]}/{found[1]}']
 
 
 def _expiry(value: object) -> datetime.datetime:
@@ -218,23 +318,54 @@ class GitHubApp(providers.Provider):
             _Locator, locator
         )
 
+    async def check_locator(
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        organization_id: str,
+    ) -> None:
+        """The key binding must be a provider key for this host and App."""
+        from imbi.api import secret_broker
+
+        try:
+            await secret_broker.get_broker().check_provider_key(
+                organization_id,
+                locator['private_key'],
+                host=_host(config),
+                app_id=locator['app_id'],
+            )
+        except providers.BrokerError as err:
+            raise providers.InvalidConfiguration(
+                'private_key must name a provider key binding for host '
+                f'{_host(config)} and App {locator["app_id"]}',
+                code=err.reason,
+            ) from None
+
     @contextlib.asynccontextmanager
     async def _app_client(
         self,
         config: dict[str, typing.Any],
         locator: dict[str, typing.Any],
         organization_id: str,
+        *,
+        consumer: uuid.UUID | None,
         task_id: uuid.UUID | None,
     ) -> collections.abc.AsyncGenerator[httpx.AsyncClient]:
         """A client that authenticates as the App (a JWT)."""
+        host = _host(config)
+        base = _api_base(host)
         key = await private_key(
-            organization_id, locator['private_key'], task_id
+            organization_id,
+            locator,
+            host=host,
+            consumer=consumer,
+            task_id=task_id,
         )
         app_jwt = _app_auth._app_jwt(  # pyright: ignore[reportPrivateUsage]
             locator['app_id'], key
         )
         async with httpx.AsyncClient(
-            base_url=_api_base(config),
+            base_url=base,
             headers=_auth_headers(app_jwt),
             timeout=_TIMEOUT_SECONDS,
         ) as client:
@@ -268,24 +399,25 @@ class GitHubApp(providers.Provider):
         """Check that the GitHub API answers. No credentials are used."""
         try:
             async with httpx.AsyncClient(
-                base_url=_api_base(config),
+                base_url=_api_base(_host(config)),
                 headers=_accept_header(),
                 timeout=_TIMEOUT_SECONDS,
             ) as client:
                 response = await client.get('/meta')
+        except providers.BrokerError as err:
+            return providers.Health('unhealthy', err.reason)
         except httpx.TransportError:
             return providers.Health('unhealthy', 'unreachable')
         if response.status_code != 200:
             return providers.Health('unhealthy', 'provider_error')
-        return providers.Health(
-            'healthy', identity={'host': config.get('host', 'github.com')}
-        )
+        return providers.Health('healthy', identity={'host': _host(config)})
 
     async def validate_binding(
         self,
         config: dict[str, typing.Any],
         locator: dict[str, typing.Any],
         organization_id: str,
+        binding_id: uuid.UUID | None = None,
     ) -> dict[str, typing.Any]:
         """Mint a token and return its metadata only, never the token.
 
@@ -294,7 +426,11 @@ class GitHubApp(providers.Provider):
         """
         with _github_errors('secret_materialization_failed'):
             async with self._app_client(
-                config, locator, organization_id, None
+                config,
+                locator,
+                organization_id,
+                consumer=binding_id,
+                task_id=None,
             ) as client:
                 installation = await self._installation(
                     client, locator['installation_id']
@@ -304,7 +440,7 @@ class GitHubApp(providers.Provider):
                 )
             try:
                 async with httpx.AsyncClient(
-                    base_url=_api_base(config),
+                    base_url=_api_base(_host(config)),
                     headers=_auth_headers(token),
                     timeout=_TIMEOUT_SECONDS,
                 ) as client:
@@ -317,7 +453,7 @@ class GitHubApp(providers.Provider):
                         dict[str, typing.Any], response.json()
                     )
             finally:
-                await self.revoke(config, token)
+                await _revoke_token(_host(config), token)
         return {
             'app_slug': installation.get('app_slug'),
             'installation_id': locator['installation_id'],
@@ -357,7 +493,7 @@ class GitHubApp(providers.Provider):
             repositories = list(locator.get('repositories', []))
         else:
             repositories = await project_repositories(
-                config.get('host', 'github.com'), context.project_id
+                _host(config), context.project_id
             )
         # An empty list never reaches GitHub: no repositories would give
         # a token for every repository of the installation.
@@ -367,7 +503,11 @@ class GitHubApp(providers.Provider):
             )
         with _github_errors('secret_materialization_failed'):
             async with self._app_client(
-                config, locator, context.organization_id, context.task_id
+                config,
+                locator,
+                context.organization_id,
+                consumer=context.binding_id,
+                task_id=context.task_id,
             ) as client:
                 installation = await self._installation(
                     client, locator['installation_id']
@@ -381,33 +521,50 @@ class GitHubApp(providers.Provider):
         return providers.Material(
             token.encode(),
             credential_expires_at=expires_at,
-            lease_id=token,
+            lease_id=_lease(_host(config), token),
             revocable=True,
         )
 
     async def revoke(
         self, config: dict[str, typing.Any], lease_id: str
     ) -> None:
-        """Revoke a token. A 401 means it no longer works: success."""
+        """Revoke a token at the host that issued it, from the lease.
+
+        The provider configuration is not used: its host can change
+        after the token was minted.
+        """
         try:
-            async with httpx.AsyncClient(
-                base_url=_api_base(config),
-                headers=_auth_headers(lease_id),
-                timeout=_TIMEOUT_SECONDS,
-            ) as client:
-                response = await client.delete('/installation/token')
-        except httpx.TransportError as err:
-            LOGGER.warning('GitHub token revocation: %s', type(err).__name__)
+            lease = typing.cast(dict[str, str], orjson.loads(lease_id))
+            host, token = lease['host'], lease['token']
+        except (orjson.JSONDecodeError, KeyError, TypeError):
             raise providers.BrokerError(
-                'provider_revocation_failed', 'unreachable'
+                'provider_revocation_failed', 'invalid_lease'
             ) from None
-        if response.status_code not in (204, 401):
-            LOGGER.warning(
-                'GitHub token revocation: HTTP %d', response.status_code
-            )
-            raise providers.BrokerError(
-                'provider_revocation_failed', 'provider_error'
-            )
+        await _revoke_token(host, token)
+
+
+async def _revoke_token(host: str, token: str) -> None:
+    """Revoke a token. A 401 means it no longer works: success."""
+    base = _api_base(host)
+    try:
+        async with httpx.AsyncClient(
+            base_url=base,
+            headers=_auth_headers(token),
+            timeout=_TIMEOUT_SECONDS,
+        ) as client:
+            response = await client.delete('/installation/token')
+    except httpx.TransportError as err:
+        LOGGER.warning('GitHub token revocation: %s', type(err).__name__)
+        raise providers.BrokerError(
+            'provider_revocation_failed', 'unreachable'
+        ) from None
+    if response.status_code not in (204, 401):
+        LOGGER.warning(
+            'GitHub token revocation: HTTP %d', response.status_code
+        )
+        raise providers.BrokerError(
+            'provider_revocation_failed', 'provider_error'
+        )
 
 
 def _names(

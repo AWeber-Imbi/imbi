@@ -405,6 +405,14 @@ def _check_binding(binding: Row | None, reference: Reference) -> Row:
     return binding
 
 
+def _refuse_provider_key(binding: Row) -> None:
+    """A provider key is for imbi-api only: no grant gives it to a task."""
+    if binding['provider_key_usage']:
+        raise providers.BrokerError(
+            'secret_access_denied', 'provider_key_binding'
+        )
+
+
 def _check_provider(provider: Row | None, binding: Row) -> Row:
     if provider is None or not provider['enabled']:
         raise providers.BrokerError('secret_provider_disabled')
@@ -452,6 +460,7 @@ async def evaluate(
         ),
         reference,
     )
+    _refuse_provider_key(binding)
     provider = _check_provider(
         await _fetch_one(
             conn,
@@ -838,6 +847,7 @@ class Broker:
             ),
             reference,
         )
+        _refuse_provider_key(binding)
         if (
             binding['reference'] != reference.binding
             or binding['provider_id'] != row['provider_id']
@@ -893,6 +903,7 @@ class Broker:
                     purpose=row['purpose'],
                     ttl_seconds=row['ttl_seconds'],
                     credential_class=decision.binding['credential_class'],
+                    binding_id=decision.binding['id'],
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)
@@ -1262,40 +1273,90 @@ class Broker:
             await self._revoke(row)
         return len(expired)
 
-    async def provider_key(
+    async def check_provider_key(
         self,
         organization_id: str,
         reference: str,
-        task_id: uuid.UUID | None = None,
-    ) -> providers.Material:
-        """Return the material of a binding for a provider's own use.
+        *,
+        host: str,
+        app_id: str,
+    ) -> Row:
+        """Return the key binding when it is a provider key for the App.
 
-        A ``github_app`` binding signs with a private key that another
-        binding holds (plan 9.8). Only imbi-api reads that key: no
-        runner, executor, or model gets it, so no grant applies. The key
-        binding must be in the organization, enabled, and not
-        ``dynamic``, so a provider cannot ask for its own credentials.
+        A key binding has ``provider_key_usage``, which only a principal
+        with ``secret_binding:write`` can set. It names the GitHub host
+        and the App id that may sign with the key. Called when a
+        ``github_app`` binding or provider is written, and again for
+        each use.
 
         Raises:
-            BrokerError: The reference or the binding is not usable, or
-                the provider failed.
+            BrokerError: ``secret_access_denied`` when the binding is not
+                a provider key for this host and App.
 
         """
         parsed = parse_reference(reference)
         async with self._pool.connection() as conn:
-            binding = _check_binding(
-                await _fetch_one(
-                    conn,
-                    'SELECT * FROM secrets.bindings'
-                    ' WHERE organization_id = %s AND reference = %s',
-                    (organization_id, parsed.binding),
-                ),
-                parsed,
+            binding = await _fetch_one(
+                conn,
+                'SELECT * FROM secrets.bindings'
+                ' WHERE organization_id = %s AND reference = %s',
+                (organization_id, parsed.binding),
             )
-            if binding['credential_class'] == 'dynamic':
-                raise providers.BrokerError(
-                    'secret_access_denied', 'dynamic_key_binding'
-                )
+        if binding is None:
+            raise providers.BrokerError('secret_binding_not_found')
+        usage: dict[str, typing.Any] | None = binding['provider_key_usage']
+        if not usage:
+            raise providers.BrokerError(
+                'secret_access_denied', 'not_a_provider_key'
+            )
+        if binding['credential_class'] == 'dynamic':
+            raise providers.BrokerError(
+                'secret_access_denied', 'dynamic_key_binding'
+            )
+        if (usage.get('host'), usage.get('app_id')) != (host, app_id):
+            raise providers.BrokerError(
+                'secret_access_denied', 'provider_key_mismatch'
+            )
+        return binding
+
+    async def provider_key(
+        self,
+        organization_id: str,
+        reference: str,
+        *,
+        consumer: uuid.UUID | None,
+        host: str,
+        app_id: str,
+        task_id: uuid.UUID | None = None,
+    ) -> providers.Material:
+        """Return the material of a provider key for one consumer.
+
+        A ``github_app`` binding signs with a private key that another
+        binding holds (plan 9.8). Only imbi-api reads that key: no
+        runner, executor, or model gets it, so no grant applies. The key
+        binding must pass :meth:`check_provider_key`, be enabled, and
+        list the requesting binding (``consumer``) in its
+        ``provider_key_usage``.
+
+        Raises:
+            BrokerError: The binding is not a key for this consumer,
+                host, and App, or the provider failed.
+
+        """
+        parsed = parse_reference(reference)
+        binding = _check_binding(
+            await self.check_provider_key(
+                organization_id, reference, host=host, app_id=app_id
+            ),
+            parsed,
+        )
+        if consumer is None or str(consumer) not in binding[
+            'provider_key_usage'
+        ].get('consumers', []):
+            raise providers.BrokerError(
+                'secret_access_denied', 'provider_key_consumer'
+            )
+        async with self._pool.connection() as conn:
             provider = _check_provider(
                 await _fetch_one(
                     conn,

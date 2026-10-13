@@ -57,6 +57,11 @@ allowed_delivery_targets = "TEXT[] NOT NULL DEFAULT '{}'"
 max_ttl_seconds = "INTEGER NOT NULL"
 enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
 description = "TEXT NOT NULL DEFAULT ''"
+# Set only on a provider key, for example a GitHub App private key:
+# {"host": ..., "app_id": ..., "consumers": [<binding id>, ...]}. Only
+# imbi-api reads such a binding, for the listed consumer bindings; no
+# grant gives it to a task.
+provider_key_usage = "JSONB"
 created_by = "TEXT NOT NULL"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"

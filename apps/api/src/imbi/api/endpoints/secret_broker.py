@@ -27,7 +27,13 @@ from imbi.api.endpoints._helpers import (
     conflict_on_unique_violation,
     fetch_or_404,
 )
-from imbi.api.secret_broker import audit, broker, providers, store
+from imbi.api.secret_broker import (
+    audit,
+    broker,
+    github_app,
+    providers,
+    store,
+)
 
 OrgId = organizations.MemberOrgId
 
@@ -175,6 +181,29 @@ class SecretProviderTest(pydantic.BaseModel):
     identity: dict[str, str]
 
 
+class ProviderKeyUsage(pydantic.BaseModel):
+    """Marks a binding as a provider key, for example a GitHub App key.
+
+    Only imbi-api reads such a binding, for the listed ``github_app``
+    bindings on this host and App id. No grant gives it to a task.
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    host: str = pydantic.Field(
+        description='github.com, <tenant>.ghe.com, or an operator GHES host'
+    )
+    app_id: str = pydantic.Field(pattern=r'^[0-9]{1,20}$')
+    consumers: list[uuid.UUID] = pydantic.Field(
+        default=[], description='The github_app bindings that may use the key'
+    )
+
+    @pydantic.field_validator('host')
+    @classmethod
+    def _host(cls, value: str) -> str:
+        return github_app.check_host(value)
+
+
 class SecretBindingCreate(pydantic.BaseModel):
     reference: str = pydantic.Field(
         description='secret://<scope>/<path>, without a field'
@@ -192,6 +221,7 @@ class SecretBindingCreate(pydantic.BaseModel):
     max_ttl_seconds: Ttl = 900
     enabled: bool = True
     description: str = ''
+    provider_key_usage: ProviderKeyUsage | None = None
 
 
 class SecretBindingPatch(pydantic.BaseModel):
@@ -205,6 +235,7 @@ class SecretBindingPatch(pydantic.BaseModel):
     max_ttl_seconds: Ttl | None = None
     enabled: bool | None = None
     description: str | None = None
+    provider_key_usage: ProviderKeyUsage | None = None
 
 
 class SecretBinding(pydantic.BaseModel):
@@ -219,6 +250,7 @@ class SecretBinding(pydantic.BaseModel):
     max_ttl_seconds: int
     enabled: bool
     description: str
+    provider_key_usage: dict[str, typing.Any] | None = None
     created_by: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -495,9 +527,18 @@ async def update_provider(
     current = await get_provider(org_id, provider_id, secrets, auth)
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
     if 'config' in changes:
-        changes['config'] = await _config(
-            _plugin(current['type']), changes['config'], org_id
-        )
+        plugin = _plugin(current['type'])
+        changes['config'] = await _config(plugin, changes['config'], org_id)
+        # The bindings of the provider must hold for the new configuration.
+        for binding in await secrets.list_all('bindings', org_id):
+            if binding['provider_id'] != provider_id:
+                continue
+            try:
+                await plugin.check_locator(
+                    changes['config'], binding['locator'], org_id
+                )
+            except providers.InvalidConfiguration as err:
+                raise _invalid(str(err), err.code) from None
     if not changes:
         return current
     with (
@@ -616,9 +657,22 @@ async def _locator(
             f'A {credential_class} binding needs the {needed} capability'
         )
     try:
-        return plugin.validate_locator(locator, credential_class)
+        locator = plugin.validate_locator(locator, credential_class)
+        await plugin.check_locator(provider['config'], locator, org_id)
     except providers.InvalidConfiguration as err:
-        raise _invalid(str(err)) from None
+        raise _invalid(str(err), err.code) from None
+    return locator
+
+
+def _key_usage(
+    usage: ProviderKeyUsage | None, credential_class: str
+) -> dict[str, typing.Any] | None:
+    """The stored form of a provider key mark. A key is not dynamic."""
+    if usage is None:
+        return None
+    if credential_class == 'dynamic':
+        raise _invalid('A provider key binding cannot be dynamic')
+    return usage.model_dump(mode='json')
 
 
 @bindings_router.get('/', response_model=list[SecretBinding])
@@ -650,6 +704,9 @@ async def create_binding(
     values['reference'] = str(reference)
     values['locator'] = await _locator(
         secrets, org_id, data.provider_id, data.locator, data.credential_class
+    )
+    values['provider_key_usage'] = _key_usage(
+        data.provider_key_usage, data.credential_class
     )
     values['created_by'] = auth.principal_name
     with conflict_on_unique_violation(f'{reference} is bound already'):
@@ -704,6 +761,11 @@ async def update_binding(
                 providers.CredentialClass,
                 changes.get('credential_class', current['credential_class']),
             ),
+        )
+    if data.provider_key_usage is not None:
+        changes['provider_key_usage'] = _key_usage(
+            data.provider_key_usage,
+            str(changes.get('credential_class', current['credential_class'])),
         )
     if not changes:
         return current
@@ -767,7 +829,10 @@ async def validate_binding(
         raise fastapi.HTTPException(status_code=404, detail='No provider')
     try:
         metadata = await _plugin(provider['type']).validate_binding(
-            provider['config'], binding['locator'], org_id
+            provider['config'],
+            binding['locator'],
+            org_id,
+            binding_id=binding['id'],
         )
     except providers.BrokerError as err:
         return {'valid': False, 'reason': err.reason}
