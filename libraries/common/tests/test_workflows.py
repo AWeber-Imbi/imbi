@@ -315,6 +315,7 @@ class RegistryTestCase(unittest.TestCase):
                 'email',
                 'deploy',
                 'rollback',
+                'agent',
             },
         )
         self.assertIsNone(described['model_decision']['ports'])
@@ -330,6 +331,10 @@ class RegistryTestCase(unittest.TestCase):
             )
         self.assertEqual(
             registry.STEP_TYPES['wait'].required_permissions({}), set()
+        )
+        self.assertEqual(
+            registry.STEP_TYPES['agent'].required_permissions({}),
+            {'agent_task:create'},
         )
 
     def test_sample_outputs_match_output_schema(self) -> None:
