@@ -155,7 +155,8 @@ function RunnerRow({ runner }: { runner: HarnessRunner }) {
       <td className="px-4 py-2 text-xs">
         {!chain ? (
           <span className="text-tertiary">
-            {runner.state === 'idle' ? '—' : 'Another organization'}
+            {/* Only a busy runner holds a chain that can be hidden. */}
+            {runner.state === 'busy' ? 'Another organization' : '—'}
           </span>
         ) : (
           <span className="flex flex-wrap items-center gap-2">

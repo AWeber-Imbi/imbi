@@ -52,6 +52,17 @@ function pool(): HarnessPool {
       },
       {
         chain: null,
+        id: 'r-3',
+        image_version: null,
+        instance: 'general-ghi',
+        labels: ['general'],
+        last_heartbeat: NOW,
+        lease_expires_at: NOW,
+        registered_at: NOW,
+        state: 'fenced',
+      },
+      {
+        chain: null,
         id: 'r-2',
         image_version: null,
         instance: 'general-def',
@@ -89,7 +100,7 @@ describe('RunnersPage', () => {
     expect(screen.getByText('stuck')).toBeInTheDocument()
     expect(screen.getByText('attempt 2')).toBeInTheDocument()
     // A busy runner with a chain of another organization.
-    expect(screen.getByText('Another organization')).toBeInTheDocument()
+    expect(screen.getAllByText('Another organization')).toHaveLength(1)
   })
 
   it('keeps the last data when a refresh fails', async () => {
