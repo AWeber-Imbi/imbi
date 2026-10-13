@@ -12,9 +12,11 @@ Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
 
+import contextlib
 import datetime
 import typing
 import uuid
+from collections import abc
 
 import fastapi
 import pydantic
@@ -99,10 +101,12 @@ def _error(err: providers.BrokerError) -> fastapi.HTTPException:
     )
 
 
-def _invalid(message: str) -> fastapi.HTTPException:
+def _invalid(
+    message: str, code: str = 'invalid_configuration'
+) -> fastapi.HTTPException:
     return fastapi.HTTPException(
         status_code=422,
-        detail={'error': 'invalid_configuration', 'message': message},
+        detail={'error': code, 'message': message},
     )
 
 
@@ -368,13 +372,30 @@ def _plugin(provider_type: str) -> providers.Provider:
         raise _invalid(f'Unknown provider type {provider_type!r}') from None
 
 
-def _config(
-    plugin: providers.Provider, config: dict[str, typing.Any]
-) -> dict[str, typing.Any]:
+@contextlib.contextmanager
+def _role_conflict() -> abc.Generator[None]:
+    """Translate :class:`store.RoleInUse` into a 409."""
     try:
-        return plugin.validate_config(config)
+        yield
+    except store.RoleInUse as err:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={'error': 'role_arn_in_use', 'message': str(err)},
+        ) from None
+
+
+async def _config(
+    plugin: providers.Provider,
+    config: dict[str, typing.Any],
+    org_id: str,
+) -> dict[str, typing.Any]:
+    """Validate a configuration, then check it against the provider."""
+    try:
+        config = plugin.validate_config(config)
+        await plugin.check_config(config, org_id)
     except providers.InvalidConfiguration as err:
-        raise _invalid(str(err)) from None
+        raise _invalid(str(err), err.code) from None
+    return config
 
 
 @providers_router.get('/types', response_model=list[SecretProviderType])
@@ -406,12 +427,19 @@ async def create_provider(
     """Create a provider. Its configuration holds no credentials.
 
     Raises:
-        409: The name is in use.
-        422: Unknown type, or the configuration is not valid.
+        409: The name is in use, or another organization uses the
+            role (``role_arn_in_use``).
+        422: Unknown type, or the configuration is not valid, or the
+            role does not require the ExternalId
+            (``role_does_not_require_external_id``).
 
     """
     plugin = _plugin(data.type)
-    with conflict_on_unique_violation(f'Provider {data.name!r} exists'):
+    config = await _config(plugin, data.config, org_id)
+    with (
+        conflict_on_unique_violation(f'Provider {data.name!r} exists'),
+        _role_conflict(),
+    ):
         row = await secrets.create(
             'providers',
             org_id,
@@ -419,7 +447,7 @@ async def create_provider(
                 'name': data.name,
                 'type': data.type,
                 'enabled': data.enabled,
-                'config': _config(plugin, data.config),
+                'config': config,
                 'capabilities': sorted(plugin.capabilities),
                 'created_by': auth.principal_name,
             },
@@ -458,19 +486,24 @@ async def update_provider(
 
     Raises:
         404: No such provider.
-        409: The name is in use.
-        422: The configuration is not valid.
+        409: The name is in use, or another organization uses the
+            role (``role_arn_in_use``).
+        422: The configuration is not valid, or the role does not
+            require the ExternalId.
 
     """
     current = await get_provider(org_id, provider_id, secrets, auth)
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
     if 'config' in changes:
-        changes['config'] = _config(
-            _plugin(current['type']), changes['config']
+        changes['config'] = await _config(
+            _plugin(current['type']), changes['config'], org_id
         )
     if not changes:
         return current
-    with conflict_on_unique_violation('The provider name is in use'):
+    with (
+        conflict_on_unique_violation('The provider name is in use'),
+        _role_conflict(),
+    ):
         row = await fetch_or_404(
             secrets.update,
             'providers',

@@ -64,18 +64,25 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
         self.session = FakeSession(
             {'secretsmanager': self.sm, 'sts': self.sts}
         )
-        self.sts.assume_role.return_value = {
+        self.sts.assume_role.side_effect = self._assume_role
+        patcher = mock.patch.object(
+            providers.aioboto3, 'Session', self.session
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    async def _assume_role(**kwargs: typing.Any) -> dict[str, typing.Any]:
+        """A role whose trust policy requires the ExternalId."""
+        if kwargs['ExternalId'].startswith('imbi:probe-'):
+            raise _client_error('AccessDenied')
+        return {
             'Credentials': {
                 'AccessKeyId': 'AKIA',
                 'SecretAccessKey': 'secret',
                 'SessionToken': 'token',
             }
         }
-        patcher = mock.patch.object(
-            providers.aioboto3, 'Session', self.session
-        )
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     async def _resolve(
         self,
@@ -263,6 +270,41 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
             AWS.validate_config(CONFIG | {'account_id': '123456789012'}),
             CONFIG | {'account_id': '123456789012'},
         )
+
+    async def test_role_must_require_the_external_id(self) -> None:
+        await AWS.check_config(CONFIG, 'org')
+        probe = self.sts.assume_role.call_args.kwargs['ExternalId']
+        self.assertTrue(probe.startswith('imbi:probe-'))
+        self.assertNotEqual(probe, providers.external_id('org'))
+
+        # A trust policy without the ExternalId condition.
+        self.sts.assume_role.side_effect = None
+        self.sts.assume_role.return_value = {
+            'Credentials': {
+                'AccessKeyId': 'AKIA',
+                'SecretAccessKey': 'secret',
+                'SessionToken': 'token',
+            }
+        }
+        with self.assertRaises(providers.InvalidConfiguration) as ctx:
+            await AWS.check_config(CONFIG, 'org')
+        self.assertEqual(
+            ctx.exception.code, 'role_does_not_require_external_id'
+        )
+        self.assertIn('imbi:org', str(ctx.exception))
+        health = await AWS.health(CONFIG, 'org')
+        self.assertEqual(
+            (health.status, health.reason),
+            ('unhealthy', 'role_does_not_require_external_id'),
+        )
+
+        # The check fails closed when AWS cannot answer.
+        self.sts.assume_role.side_effect = (
+            botocore_exceptions.EndpointConnectionError(endpoint_url='x')
+        )
+        with self.assertRaises(providers.InvalidConfiguration) as ctx:
+            await AWS.check_config(CONFIG, 'org')
+        self.assertEqual(ctx.exception.code, 'role_not_verified')
 
     async def test_endpoint_is_an_operator_setting(self) -> None:
         self.sm.get_secret_value.return_value = {'SecretString': 'x'}

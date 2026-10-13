@@ -15,6 +15,7 @@ import dataclasses
 import datetime
 import logging
 import os
+import secrets
 import typing
 import uuid
 
@@ -93,8 +94,15 @@ class BrokerError(Exception):
 class InvalidConfiguration(ValueError):
     """Provider configuration or a binding locator is not valid.
 
-    The message names the problem only, never a value.
+    The message names the problem only, never a value. ``code`` is the
+    error code that the API returns.
     """
+
+    def __init__(
+        self, message: str, code: str = 'invalid_configuration'
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class Material:
@@ -223,6 +231,19 @@ class Provider:
 
         """
         raise NotImplementedError
+
+    async def check_config(
+        self, config: dict[str, typing.Any], organization_id: str
+    ) -> None:
+        """Check a validated configuration against the provider.
+
+        Called when a provider is created and when its configuration
+        changes.
+
+        Raises:
+            InvalidConfiguration: The configuration is not safe to use.
+
+        """
 
     async def health(
         self, config: dict[str, typing.Any], organization_id: str
@@ -510,6 +531,56 @@ class AwsSecretsManager(Provider):
             region_name=config['region'],
         )
 
+    async def _external_id_problem(
+        self, config: dict[str, typing.Any]
+    ) -> str | None:
+        """Return ``None`` when the role refuses a wrong ExternalId.
+
+        The probe assumes the role with a random ExternalId that no
+        trust policy names. If AWS allows it, the trust policy does not
+        require the ExternalId, and any organization could use the role.
+        """
+        probe = f'imbi:probe-{secrets.token_hex(8)}'
+        try:
+            session: typing.Any = aioboto3.Session(
+                region_name=config['region']
+            )
+            async with session.client(
+                'sts', endpoint_url=_endpoint_url()
+            ) as sts:
+                await sts.assume_role(
+                    RoleArn=config['role_arn'],
+                    RoleSessionName='imbi-secrets-probe',
+                    ExternalId=probe,
+                    DurationSeconds=900,
+                )
+        except botocore_exceptions.ClientError as err:
+            code = str(
+                err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            )
+            if code in ('AccessDenied', 'AccessDeniedException'):
+                return None
+            return 'role_not_verified'
+        except Exception as err:  # noqa: BLE001 - fail closed
+            LOGGER.warning('AWS role probe failed: %s', type(err).__name__)
+            return 'role_not_verified'
+        return 'role_does_not_require_external_id'
+
+    async def check_config(
+        self, config: dict[str, typing.Any], organization_id: str
+    ) -> None:
+        """Refuse a role whose trust policy does not require the
+        ExternalId, or that cannot be checked."""
+        problem = await self._external_id_problem(config)
+        if problem is not None:
+            raise InvalidConfiguration(
+                'The role trust policy must require sts:ExternalId '
+                f'"{external_id(organization_id)}"'
+                if problem == 'role_does_not_require_external_id'
+                else 'The role could not be checked; try again',
+                code=problem,
+            )
+
     async def _call(
         self,
         config: dict[str, typing.Any],
@@ -545,6 +616,9 @@ class AwsSecretsManager(Provider):
     async def health(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> Health:
+        problem = await self._external_id_problem(config)
+        if problem is not None:
+            return Health('unhealthy', problem)
         try:
             identity = await self._call(
                 config, organization_id, 'sts', 'get_caller_identity'

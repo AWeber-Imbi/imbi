@@ -30,6 +30,10 @@ class InUse(ValueError):
     """The row is in use. The message says by what."""
 
 
+class RoleInUse(ValueError):
+    """A provider in another organization uses the role."""
+
+
 class UnknownBindings(ValueError):
     """A grant names a binding that is not in the organization."""
 
@@ -107,6 +111,8 @@ class SecretStore:
                 await _lock_bindings(
                     cur, organization_id, values['binding_ids']
                 )
+            if table == 'providers':
+                await _check_role(cur, organization_id, values.get('config'))
             await cur.execute(query, [_value(v) for v in values.values()])
             return typing.cast(Row, await cur.fetchone())
 
@@ -143,6 +149,8 @@ class SecretStore:
                 await _lock_bindings(
                     cur, organization_id, changes['binding_ids']
                 )
+            if table == 'providers':
+                await _check_role(cur, organization_id, changes.get('config'))
             await cur.execute(
                 query,
                 [
@@ -275,6 +283,32 @@ async def _check_binding_unused(
     )
     if await cur.fetchone() is not None:
         raise InUse('An active resolution uses the binding')
+
+
+async def _check_role(
+    cur: psycopg.AsyncCursor[Row],
+    organization_id: str,
+    config: dict[str, typing.Any] | None,
+) -> None:
+    """One AWS role belongs to one organization.
+
+    A transaction lock on the role name serializes two organizations
+    that write the same role at the same time.
+    """
+    role = (config or {}).get('role_arn')
+    if not role:
+        return
+    await cur.execute(
+        'SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
+        (f'secrets.role_arn:{role}',),
+    )
+    await cur.execute(
+        "SELECT 1 FROM secrets.providers WHERE config->>'role_arn' = %s"
+        ' AND organization_id <> %s LIMIT 1',
+        (role, organization_id),
+    )
+    if await cur.fetchone() is not None:
+        raise RoleInUse('Another organization uses this role')
 
 
 async def _lock_bindings(

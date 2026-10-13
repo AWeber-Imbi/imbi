@@ -15,7 +15,7 @@ import httpx
 from apps.api.tests import secret_support, support
 from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
-from imbi.api.secret_broker import audit
+from imbi.api.secret_broker import audit, providers, store
 from imbi.common import graph
 
 ALL_PERMISSIONS = frozenset(
@@ -81,6 +81,15 @@ class SecretEndpointTestCase(
             base_url='http://test',
         )
         self.base = f'/organizations/{self.org}'
+        # No AWS here: the role probe has its own tests.
+        self.check_config = mock.AsyncMock()
+        patcher = mock.patch.object(
+            providers.PROVIDERS['aws_secrets_manager'],
+            'check_config',
+            self.check_config,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     async def asyncTearDown(self) -> None:
         await self.client.aclose()
@@ -105,7 +114,7 @@ class SecretEndpointTestCase(
                 'type': 'aws_secrets_manager',
                 'config': {
                     'region': 'us-east-1',
-                    'role_arn': 'arn:aws:iam::123456789012:role/x',
+                    'role_arn': f'arn:aws:iam::123456789012:role/{self.org}',
                 },
             },
         )
@@ -154,6 +163,82 @@ class SecretEndpointTestCase(
         )
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)
+
+    async def test_role_without_external_id_is_refused(self) -> None:
+        self.check_config.side_effect = providers.InvalidConfiguration(
+            'The role trust policy must require sts:ExternalId',
+            code='role_does_not_require_external_id',
+        )
+        response = await self._post(
+            '/secret-providers/',
+            {
+                'name': 'aws',
+                'type': 'aws_secrets_manager',
+                'config': {
+                    'region': 'us-east-1',
+                    'role_arn': 'arn:aws:iam::123456789012:role/open',
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            response.json()['detail']['error'],
+            'role_does_not_require_external_id',
+        )
+        self.assertEqual(self.check_config.call_args.args[1], self.org)
+
+    async def test_role_of_another_organization_is_refused(self) -> None:
+        role = f'arn:aws:iam::123456789012:role/r-{uuid.uuid4().hex[:8]}'
+        other_org = f'other-{uuid.uuid4().hex[:8]}'
+        config = {'region': 'us-east-1', 'role_arn': role}
+        other = await self.store.create(
+            'providers',
+            other_org,
+            {
+                'name': 'aws',
+                'type': 'aws_secrets_manager',
+                'config': config,
+                'created_by': 'test',
+            },
+        )
+        try:
+            body = {
+                'name': 'aws',
+                'type': 'aws_secrets_manager',
+                'config': config,
+            }
+            response = await self._post('/secret-providers/', body)
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(
+                response.json()['detail']['error'], 'role_arn_in_use'
+            )
+            # A role of its own is accepted, and the same organization
+            # can use one role in two providers.
+            mine = config | {'role_arn': role + '-mine'}
+            for name in ('aws-1', 'aws-2'):
+                response = await self._post(
+                    '/secret-providers/', body | {'name': name, 'config': mine}
+                )
+                self.assertEqual(response.status_code, 201, response.text)
+            # An update to the other organization's role is refused too.
+            response = await self.client.patch(
+                self.base + f'/secret-providers/{response.json()["id"]}',
+                json={'config': config},
+            )
+            self.assertEqual(response.status_code, 409)
+            with self.assertRaises(store.RoleInUse):
+                await self.store.create(
+                    'providers',
+                    f'third-{uuid.uuid4().hex[:8]}',
+                    {
+                        'name': 'aws',
+                        'type': 'aws_secrets_manager',
+                        'config': mine,
+                        'created_by': 'test',
+                    },
+                )
+        finally:
+            await self.store.delete('providers', other_org, other['id'])
 
     async def test_provider_test(self) -> None:
         response = await self._post(
@@ -216,7 +301,7 @@ class SecretEndpointTestCase(
                 'type': 'aws_secrets_manager',
                 'config': {
                     'region': 'us-east-1',
-                    'role_arn': 'arn:aws:iam::123456789012:role/x',
+                    'role_arn': f'arn:aws:iam::123456789012:role/{self.org}',
                 },
             },
         )
