@@ -471,6 +471,19 @@ def external_id(organization_id: str) -> str:
     return f'imbi:{organization_id}'
 
 
+def _assume_role_args(
+    config: dict[str, typing.Any], external: str
+) -> dict[str, typing.Any]:
+    """The AssumeRole arguments. The probe and the real call share them,
+    so only the ExternalId can make the probe fail."""
+    return {
+        'RoleArn': config['role_arn'],
+        'RoleSessionName': 'imbi-secrets-broker',
+        'ExternalId': external,
+        'DurationSeconds': 900,
+    }
+
+
 def _endpoint_url() -> str | None:
     """An operator override for AWS endpoints, for LocalStack in tests
     and development. Never from tenant configuration."""
@@ -518,10 +531,7 @@ class AwsSecretsManager(Provider):
         session: typing.Any = aioboto3.Session(region_name=config['region'])
         async with session.client('sts', endpoint_url=_endpoint_url()) as sts:
             response: dict[str, typing.Any] = await sts.assume_role(
-                RoleArn=config['role_arn'],
-                RoleSessionName='imbi-secrets-broker',
-                ExternalId=external_id(organization_id),
-                DurationSeconds=900,
+                **_assume_role_args(config, external_id(organization_id))
             )
         credentials: dict[str, str] = response['Credentials']
         return aioboto3.Session(
@@ -548,12 +558,7 @@ class AwsSecretsManager(Provider):
             async with session.client(
                 'sts', endpoint_url=_endpoint_url()
             ) as sts:
-                await sts.assume_role(
-                    RoleArn=config['role_arn'],
-                    RoleSessionName='imbi-secrets-probe',
-                    ExternalId=probe,
-                    DurationSeconds=900,
-                )
+                await sts.assume_role(**_assume_role_args(config, probe))
         except botocore_exceptions.ClientError as err:
             code = str(
                 err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]

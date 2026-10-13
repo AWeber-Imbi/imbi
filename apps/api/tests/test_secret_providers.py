@@ -275,11 +275,14 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
         await AWS.check_config(CONFIG, 'org')
         # First a random wrong ExternalId, then the organization's own.
         probe, own = (
-            call.kwargs['ExternalId']
-            for call in self.sts.assume_role.call_args_list
+            call.kwargs for call in self.sts.assume_role.call_args_list
         )
-        self.assertTrue(probe.startswith('imbi:probe-'))
-        self.assertEqual(own, providers.external_id('org'))
+        self.assertTrue(probe.pop('ExternalId').startswith('imbi:probe-'))
+        self.assertEqual(own.pop('ExternalId'), providers.external_id('org'))
+        # Only the ExternalId differs, so a trust policy condition on
+        # the session name cannot deny the probe.
+        self.assertEqual(probe, own)
+        self.assertEqual(own['RoleSessionName'], 'imbi-secrets-broker')
 
         # A trust policy without the ExternalId condition.
         self.sts.assume_role.side_effect = None
