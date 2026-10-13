@@ -255,7 +255,10 @@ async def _discover_installation_id(
 
 
 async def _mint(
-    client: httpx.AsyncClient, installation_id: str, scope: FrozenScope
+    client: httpx.AsyncClient,
+    installation_id: str,
+    scope: FrozenScope,
+    repositories: collections.abc.Sequence[str] | None = None,
 ) -> tuple[str, object]:
     """Exchange the App JWT for an installation access token.
 
@@ -265,6 +268,9 @@ async def _mint(
     installation does not hold is a ``422``, which is the right failure:
     a capability asking for authority the App was never given should say
     so rather than act with less.
+
+    ``repositories`` (names without the owner) limits the token to those
+    repositories of the installation.
     """
     # ``is not None`` rather than truthiness: ``freeze_scope({})`` is an
     # empty tuple, and asking GitHub for *no* permissions must send
@@ -274,6 +280,8 @@ async def _mint(
     body: dict[str, typing.Any] | None = (
         {'permissions': dict(scope)} if scope is not None else None
     )
+    if repositories is not None:
+        body = {**(body or {}), 'repositories': list(repositories)}
     resp = await client.post(
         f'/app/installations/{installation_id}/access_tokens', json=body
     )

@@ -160,7 +160,7 @@ class SecretEndpointTestCase(
         response = await self.client.get(self.base + '/secret-providers/types')
         self.assertEqual(
             {t['type'] for t in response.json()},
-            {'fake', 'aws_secrets_manager'},
+            {'fake', 'aws_secrets_manager', 'github_app'},
         )
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)
@@ -298,6 +298,124 @@ class SecretEndpointTestCase(
             json={'max_ttl_seconds': 60},
         )
         self.assertEqual(response.json()['max_ttl_seconds'], 60)
+
+    async def test_github_app_key_rules(self) -> None:
+        """A github_app provider takes allowed hosts only, and its
+        binding must name a provider key for the same host and App."""
+        patcher = mock.patch.object(secret_broker, '_broker', self.broker)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        response = await self._post(
+            '/secret-providers/',
+            {
+                'name': 'evil',
+                'type': 'github_app',
+                'config': {'host': 'evil.example'},
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self._post(
+            '/secret-providers/',
+            {'name': 'gh', 'type': 'github_app', 'config': {}},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        provider_id = response.json()['id']
+        key: dict[str, typing.Any] = {
+            'reference': 'secret://production/gh/key',
+            'provider_id': str(self.provider['id']),
+            'credential_class': 'static',
+            'locator': {'key': 'plain'},
+            'allowed_delivery_modes': ['stdin'],
+            'provider_key_usage': {'host': 'github.com', 'app_id': '7'},
+        }
+        for change in (
+            {'provider_key_usage': {'host': 'evil.example', 'app_id': '7'}},
+            {'credential_class': 'dynamic'},
+        ):
+            with self.subTest(change=change):
+                response = await self._post('/secret-bindings/', key | change)
+                self.assertEqual(response.status_code, 422, response.text)
+        response = await self._post('/secret-bindings/', key)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            response.json()['provider_key_usage'],
+            {'host': 'github.com', 'app_id': '7', 'consumers': []},
+        )
+        app: dict[str, typing.Any] = {
+            'reference': 'secret://production/gh/app',
+            'provider_id': provider_id,
+            'credential_class': 'dynamic',
+            'allowed_delivery_modes': ['stdin'],
+            'locator': {
+                'app_id': '7',
+                'installation_id': '42',
+                'private_key': 'secret://production/gh/key',
+            },
+        }
+        for locator, error in (
+            # Any other static binding of the org is not a key.
+            (
+                {'private_key': 'secret://production/github/token'},
+                'not_a_provider_key',
+            ),
+            ({'app_id': '8'}, 'provider_key_mismatch'),
+        ):
+            with self.subTest(locator=locator):
+                response = await self._post(
+                    '/secret-bindings/',
+                    app | {'locator': app['locator'] | locator},
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(response.json()['detail']['error'], error)
+        response = await self._post('/secret-bindings/', app)
+        self.assertEqual(response.status_code, 201, response.text)
+        # The key's host is github.com: the provider cannot move.
+        response = await self.client.patch(
+            self.base + f'/secret-providers/{provider_id}',
+            json={'config': {'host': 'aweber.ghe.com'}},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'provider_key_mismatch'
+        )
+
+    async def test_patch_provider_key_mark(self) -> None:
+        """A key stays static while marked; an explicit null clears the
+        mark, and an omitted field keeps it."""
+        response = await self._post(
+            '/secret-bindings/',
+            {
+                'reference': 'secret://production/gh/key',
+                'provider_id': str(self.provider['id']),
+                'credential_class': 'static',
+                'locator': {'key': 'plain'},
+                'allowed_delivery_modes': ['stdin'],
+                'provider_key_usage': {'host': 'github.com', 'app_id': '7'},
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        url = self.base + f'/secret-bindings/{response.json()["id"]}'
+        response = await self.client.patch(
+            url, json={'credential_class': 'dynamic'}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.client.patch(url, json={'max_ttl_seconds': 60})
+        self.assertEqual(
+            response.json()['provider_key_usage'],
+            {'host': 'github.com', 'app_id': '7', 'consumers': []},
+        )
+        response = await self.client.patch(
+            url, json={'provider_key_usage': None}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()['provider_key_usage'])
+        response = await self.client.get(url)
+        self.assertIsNone(response.json()['provider_key_usage'])
+        # Without the mark, the binding can become dynamic.
+        response = await self.client.patch(
+            url, json={'credential_class': 'dynamic'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
 
     async def test_dynamic_binding_needs_the_capability(self) -> None:
         response = await self._post(
