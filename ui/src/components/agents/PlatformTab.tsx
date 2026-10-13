@@ -1,16 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 
-import {
-  getAgentPlatformConfig,
-  listAgentMarketplaces,
-  listSecretBindings,
-} from '@/api/endpoints'
+import { getAgentPlatformConfig, listAgentMarketplaces } from '@/api/endpoints'
+import { GitHubAppBindingSelect } from '@/components/admin/secrets/GitHubAppBindingSelect'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentMarketplace, AgentPlugin } from '@/types'
 
@@ -47,12 +42,6 @@ export function PlatformTab({
   const marketplaces = useQuery({
     queryFn: ({ signal }) => listAgentMarketplaces(orgSlug, signal),
     queryKey: queryKeys.agentMarketplaces(orgSlug),
-  })
-  const canReadBindings = useHasPermission('secret_binding:read')
-  const bindings = useQuery({
-    enabled: canReadBindings,
-    queryFn: ({ signal }) => listSecretBindings(orgSlug, signal),
-    queryKey: ['secret-bindings', orgSlug],
   })
 
   const allowed = new Set(config.data?.config.allowed_marketplaces ?? [])
@@ -150,23 +139,16 @@ export function PlatformTab({
         </Field>
         <Field
           error={errors.githubAppBinding}
-          help="The secret binding of the agent's own GitHub App."
+          help="An enabled github_app binding: the agent's own GitHub App."
           htmlFor="agent-github-app"
           label="GitHub App binding"
         >
-          <Input
-            className="font-mono text-xs"
+          <GitHubAppBindingSelect
             id="agent-github-app"
-            list="agent-github-app-bindings"
-            onChange={(e) => set({ githubAppBinding: e.target.value })}
-            placeholder="No GitHub App"
-            value={value.githubAppBinding}
+            onChange={(reference) => set({ githubAppBinding: reference ?? '' })}
+            orgSlug={orgSlug}
+            value={value.githubAppBinding || null}
           />
-          <datalist id="agent-github-app-bindings">
-            {(bindings.data ?? []).map((b) => (
-              <option key={b.id} value={b.reference} />
-            ))}
-          </datalist>
         </Field>
       </div>
     </div>

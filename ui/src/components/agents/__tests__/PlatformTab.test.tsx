@@ -14,6 +14,7 @@ vi.mock('@/api/endpoints', () => ({
   getAgentPlatformConfig: vi.fn(),
   listAgentMarketplaces: vi.fn(),
   listSecretBindings: vi.fn(),
+  listSecretProviders: vi.fn(),
 }))
 
 const auth = vi.hoisted(() => ({
@@ -92,6 +93,8 @@ describe('PlatformTab', () => {
     vi.mocked(endpoints.listAgentMarketplaces).mockResolvedValue([
       marketplace(),
     ])
+    vi.mocked(endpoints.listSecretBindings).mockResolvedValue([])
+    vi.mocked(endpoints.listSecretProviders).mockResolvedValue([])
   })
 
   it('lists the plugins of the allowed marketplaces', async () => {
@@ -102,7 +105,20 @@ describe('PlatformTab', () => {
     expect(screen.getByLabelText('commit-commands')).toBeDisabled()
     // A plugin outside the marketplace repository cannot be pinned.
     expect(screen.getByLabelText('remote')).toBeDisabled()
-    expect(endpoints.listSecretBindings).not.toHaveBeenCalled()
+  })
+
+  it('shows the GitHub App binding in the P4 select', async () => {
+    render(
+      <Harness
+        initial={{
+          ...emptyDraft().settings,
+          githubAppBinding: 'secret://gh/bot',
+        }}
+      />,
+    )
+    expect(
+      await screen.findByRole('combobox', { name: 'GitHub App binding' }),
+    ).toHaveTextContent('secret://gh/bot')
   })
 
   it('adds a plugin without a sha, so the API pins it', async () => {
