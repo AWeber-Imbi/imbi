@@ -123,8 +123,10 @@ class SecretEndpointTestCase(
         provider = response.json()
         self.assertIn('static_retrieval', provider['capabilities'])
         self.assertNotIn('dynamic_issuance', provider['capabilities'])
-        self.assertEqual(self.events[-1].type, 'secret_provider_created')
-        self.assertEqual(self.events[-1].actor, self.email)
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'secret_provider_created'
+        )
+        self.assertEqual((await self.audit_events())[-1].actor, self.email)
 
         response = await self._post(
             '/secret-providers/',
@@ -252,7 +254,9 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['status'], 'healthy')
-        self.assertEqual(self.events[-1].type, 'secret_provider_tested')
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'secret_provider_tested'
+        )
         response = await self.client.get(
             self.base + f'/secret-providers/{self.provider["id"]}'
         )
@@ -614,8 +618,10 @@ class SecretEndpointTestCase(
             )
             for index in range(5)
         ]
+        # Through the outbox, as the broker sweep publishes it.
+        await audit.record(self.pool, events)
         with support.sink_to_clickhouse():
-            await audit.publish(events)
+            await self.broker.flush_audit()
         found: list[str] = []
         cursor: dict[str, str] = {}
         for _ in range(4):

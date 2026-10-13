@@ -49,13 +49,14 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         fake.fail_revoke = False
         fake.unavailable = False
 
-        self.events: list[audit.Event] = []
+        #: The events that the outbox published to Iggy.
+        self.published: list[audit.Event] = []
 
         async def capture(
             stream: str, topic: str, models: list[typing.Any], **_: typing.Any
         ) -> None:
             self.assertEqual((stream, topic), (audit.STREAM, audit.TOPIC))
-            self.events.extend(models)
+            self.published.extend(models)
 
         patcher = mock.patch.object(
             audit.iggy, 'publish', mock.AsyncMock(side_effect=capture)
@@ -80,6 +81,11 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
 
     async def _cleanup(self) -> None:
         async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM secrets.audit_outbox'
+                " WHERE event->>'organization_id' = %s",
+                (self.org,),
+            )
             for table in ('resolutions', 'grants', 'bindings', 'providers'):
                 await conn.execute(
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
@@ -90,6 +96,18 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                 (self.org,),
             )
         await self.pool.close()
+
+    async def audit_events(self) -> list[audit.Event]:
+        """Return the outbox events of this organization, in order."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT event FROM secrets.audit_outbox'
+                " WHERE event->>'organization_id' = %s ORDER BY seq",
+                (self.org,),
+            )
+            return [
+                audit.Event.model_validate(r[0]) for r in await cur.fetchall()
+            ]
 
     async def add_binding(self, **values: typing.Any) -> store.Row:
         return await self.store.create(

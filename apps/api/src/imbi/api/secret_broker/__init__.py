@@ -5,8 +5,8 @@ secret values. The ``secrets`` schema holds providers, bindings,
 grants, and resolutions. It is a plain Postgres schema, managed like
 ``agent_runtime``: the declarative schemata are applied on every start.
 
-The store lifespan also runs the expiry sweep, because it needs the
-pool.
+The store lifespan also runs the expiry sweep and publishes the audit
+outbox, because both need the pool.
 """
 
 import asyncio
@@ -42,7 +42,8 @@ async def initialize() -> None:
 
 
 async def run_sweeper(service: broker.Broker, *, stop: asyncio.Event) -> None:
-    """Expire resolutions every :data:`SWEEP_INTERVAL_SECONDS`."""
+    """Expire resolutions and publish the audit outbox every
+    :data:`SWEEP_INTERVAL_SECONDS`."""
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=SWEEP_INTERVAL_SECONDS)
@@ -54,6 +55,10 @@ async def run_sweeper(service: broker.Broker, *, stop: asyncio.Event) -> None:
             await service.sweep()
         except Exception:  # noqa: BLE001
             LOGGER.warning('Secret resolution sweep failed', exc_info=True)
+        try:
+            await service.flush_audit()
+        except Exception:  # noqa: BLE001 - the rows stay for the next sweep
+            LOGGER.warning('Secret audit publish failed', exc_info=True)
 
 
 @contextlib.asynccontextmanager

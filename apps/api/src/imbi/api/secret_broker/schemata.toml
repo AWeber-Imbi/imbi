@@ -185,3 +185,23 @@ created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
 columns = ["nonce_hash"]
+
+# The transactional outbox of secret audit events. An operation writes
+# its events here in its own transaction; the broker sweep publishes
+# them to Iggy by `event_id` and deletes each row after Iggy accepts it.
+# `seq` keeps the order of the events.
+[[tables]]
+name = "audit_outbox"
+
+[tables.columns]
+event_id = "TEXT NOT NULL"
+seq = "BIGINT GENERATED ALWAYS AS IDENTITY"
+event = "JSONB NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["event_id"]
+
+[[tables.indexes]]
+name = "audit_outbox_seq_idx"
+columns = ["seq"]

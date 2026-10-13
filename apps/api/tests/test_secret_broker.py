@@ -16,7 +16,7 @@ import orjson
 
 from apps.api.tests import secret_support
 from apps.api.tests.secret_support import MATERIAL
-from imbi.api.secret_broker import broker, providers, store
+from imbi.api.secret_broker import audit, broker, providers, store
 from imbi.common.auth import encryption
 
 
@@ -154,8 +154,10 @@ class CreateResolutionTestCase(secret_support.SecretCase):
                 context or self.context(), request or self.request()
             )
         self.assertEqual(ctx.exception.code, code, ctx.exception.reason)
-        self.assertEqual(self.events[-1].type, 'secret_resolution_denied')
-        self.assertEqual(self.events[-1].result, 'denied')
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'secret_resolution_denied'
+        )
+        self.assertEqual((await self.audit_events())[-1].result, 'denied')
         return ctx.exception
 
     async def test_allowed(self) -> None:
@@ -172,7 +174,9 @@ class CreateResolutionTestCase(secret_support.SecretCase):
         self.assertEqual(row['runner_id'], self.runner)
         self.assertNotEqual(row['handle_hash'], created.handle.encode())
         self.assertEqual(len(row['handle_hash']), 32)
-        self.assertEqual(self.events[-1].type, 'secret_resolution_allowed')
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'secret_resolution_allowed'
+        )
 
     async def test_missing_context_is_denied(self) -> None:
         for change in ({'agent_id': ''}, {'runner_id': ''}):
@@ -493,10 +497,10 @@ class MaterializeTestCase(secret_support.SecretCase):
             'resolution_already_used', self.materialize_request(created.handle)
         )
         self.assertEqual(
-            [e.type for e in self.events[-2:]],
+            [e.type for e in (await self.audit_events())[-2:]],
             ['secret_materialized', 'secret_materialized'],
         )
-        self.assertEqual(self.events[-1].result, 'denied')
+        self.assertEqual((await self.audit_events())[-1].result, 'denied')
         self.assertEqual(
             broker.NO_STORE_HEADERS,
             {
@@ -654,7 +658,8 @@ class MaterializeTestCase(secret_support.SecretCase):
             ('released', 'task_closed', None),
         )
         self.assertIn(
-            'secret_resolution_released', [e.type for e in self.events]
+            'secret_resolution_released',
+            [e.type for e in await self.audit_events()],
         )
 
     async def test_deleted_grant_invalidates_handle(self) -> None:
@@ -682,7 +687,8 @@ class MaterializeTestCase(secret_support.SecretCase):
         self.assertEqual(row['state'], 'expired')
         self.assertIsNone(row['handle_hash'])
         self.assertIn(
-            'secret_resolution_expired', [e.type for e in self.events]
+            'secret_resolution_expired',
+            [e.type for e in await self.audit_events()],
         )
         await self._refused(
             'resolution_not_found', self.materialize_request(created.handle)
@@ -698,7 +704,7 @@ class MaterializeTestCase(secret_support.SecretCase):
         row = await self.broker.get(created.resolution_id)
         assert row is not None
         self.assertEqual(row['state'], 'failed')
-        self.assertEqual(self.events[-1].result, 'failed')
+        self.assertEqual((await self.audit_events())[-1].result, 'failed')
 
 
 class LeaseTestCase(secret_support.SecretCase):
@@ -735,7 +741,7 @@ class LeaseTestCase(secret_support.SecretCase):
         self.assertEqual(released['state'], 'released')
         self.assertEqual(released['revocation_state'], 'succeeded')
         self.assertEqual(self.fake.revoked, [lease_id])
-        types = [e.type for e in self.events]
+        types = [e.type for e in await self.audit_events()]
         self.assertIn('secret_resolution_released', types)
         self.assertIn('secret_lease_revoked', types)
         # Idempotent: a second release changes nothing.
@@ -754,7 +760,8 @@ class LeaseTestCase(secret_support.SecretCase):
         self.assertEqual(released['state'], 'released')
         self.assertEqual(released['revocation_state'], 'failed')
         self.assertEqual(
-            self.events[-1].type, 'secret_lease_revocation_failed'
+            (await self.audit_events())[-1].type,
+            'secret_lease_revocation_failed',
         )
         with self.assertRaises(providers.BrokerError) as ctx:
             await self.broker.revoke_provider_lease(
@@ -944,7 +951,69 @@ class NoLeakTestCase(secret_support.SecretCase):
             self.assertNotIn(value, stored)
 
         published = orjson.dumps(
-            [e.model_dump(mode='json') for e in self.events]
+            [e.model_dump(mode='json') for e in await self.audit_events()]
         ).decode()
         for value in secrets:
             self.assertNotIn(value, published)
+
+
+class AuditOutboxTestCase(secret_support.SecretCase):
+    async def outbox_ids(self) -> list[str]:
+        return [e.event_id for e in await self.audit_events()]
+
+    async def test_iggy_down_keeps_the_rows(self) -> None:
+        await self.broker.create_resolution(self.context(), self.request())
+        pending = await self.outbox_ids()
+        self.assertEqual(len(pending), 1)
+        with (
+            mock.patch.object(
+                audit.iggy, 'publish', side_effect=ConnectionError('down')
+            ),
+            self.assertRaises(ConnectionError),
+        ):
+            await self.broker.flush_audit()
+        self.assertEqual(await self.outbox_ids(), pending)
+        self.assertEqual(self.published, [])
+
+    async def test_iggy_up_publishes_each_row_once(self) -> None:
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        await self.broker.release(
+            created.resolution_id, reason='done', actor='runner:x'
+        )
+        pending = await self.outbox_ids()
+        self.assertEqual(len(pending), 2)
+        # Two instances flush at the same time.
+        await asyncio.gather(
+            self.broker.flush_audit(), self.broker.flush_audit()
+        )
+        self.assertEqual(await self.outbox_ids(), [])
+        mine = [e for e in self.published if e.organization_id == self.org]
+        self.assertEqual([e.event_id for e in mine], pending)
+        self.assertEqual(
+            [e.type for e in mine],
+            ['secret_resolution_allowed', 'secret_resolution_released'],
+        )
+        await self.broker.flush_audit()
+        self.assertEqual(
+            len([e for e in self.published if e.organization_id == self.org]),
+            2,
+        )
+
+    async def test_event_commits_with_its_operation(self) -> None:
+        with (
+            mock.patch.object(
+                audit, 'write', side_effect=RuntimeError('outbox down')
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.broker.create_resolution(self.context(), self.request())
+        # The audit row is in the transaction of the resolution, so
+        # neither is saved.
+        self.assertEqual(
+            await self.store.resolutions(
+                self.org, state=None, task_id=None, limit=10
+            ),
+            [],
+        )

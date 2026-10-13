@@ -111,22 +111,21 @@ def _invalid(
 
 
 async def _audit(
+    secrets: store.SecretStore,
     event_type: audit.EventType,
     org_id: str,
     auth: permissions.AuthContext,
     **ids: typing.Any,
 ) -> None:
-    await audit.publish(
-        [
-            audit.Event.model_validate(
-                {
-                    'organization_id': org_id,
-                    'type': event_type,
-                    'actor': auth.principal_name,
-                }
-                | {k: str(v) for k, v in ids.items()}
-            )
-        ]
+    await secrets.audit(
+        audit.Event.model_validate(
+            {
+                'organization_id': org_id,
+                'type': event_type,
+                'actor': auth.principal_name,
+            }
+            | {k: str(v) for k, v in ids.items()}
+        )
     )
 
 
@@ -453,7 +452,7 @@ async def create_provider(
             },
         )
     await _audit(
-        'secret_provider_created', org_id, auth, provider_id=row['id']
+        secrets, 'secret_provider_created', org_id, auth, provider_id=row['id']
     )
     return row
 
@@ -513,7 +512,11 @@ async def update_provider(
             detail='Provider not found',
         )
     await _audit(
-        'secret_provider_updated', org_id, auth, provider_id=provider_id
+        secrets,
+        'secret_provider_updated',
+        org_id,
+        auth,
+        provider_id=provider_id,
     )
     return row
 
@@ -541,7 +544,11 @@ async def delete_provider(
             status_code=404, detail='Provider not found'
         )
     await _audit(
-        'secret_provider_deleted', org_id, auth, provider_id=provider_id
+        secrets,
+        'secret_provider_deleted',
+        org_id,
+        auth,
+        provider_id=provider_id,
     )
 
 
@@ -570,17 +577,15 @@ async def test_provider(
     row = await secrets.set_health(
         org_id, provider_id, health.status, health.reason
     )
-    await audit.publish(
-        [
-            audit.Event(
-                organization_id=org_id,
-                type='secret_provider_tested',
-                result='succeeded' if health.status == 'healthy' else 'failed',
-                reason=health.reason or '',
-                actor=auth.principal_name,
-                provider_id=str(provider_id),
-            )
-        ]
+    await secrets.audit(
+        audit.Event(
+            organization_id=org_id,
+            type='secret_provider_tested',
+            result='succeeded' if health.status == 'healthy' else 'failed',
+            reason=health.reason or '',
+            actor=auth.principal_name,
+            provider_id=str(provider_id),
+        )
     )
     return {
         'status': health.status,
@@ -654,7 +659,9 @@ async def create_binding(
     values['created_by'] = auth.principal_name
     with conflict_on_unique_violation(f'{reference} is bound already'):
         row = await secrets.create('bindings', org_id, values)
-    await _audit('secret_binding_created', org_id, auth, binding_id=row['id'])
+    await _audit(
+        secrets, 'secret_binding_created', org_id, auth, binding_id=row['id']
+    )
     return row
 
 
@@ -715,7 +722,9 @@ async def update_binding(
         changes,
         detail='Binding not found',
     )
-    await _audit('secret_binding_updated', org_id, auth, binding_id=binding_id)
+    await _audit(
+        secrets, 'secret_binding_updated', org_id, auth, binding_id=binding_id
+    )
     return row
 
 
@@ -743,7 +752,9 @@ async def delete_binding(
         raise fastapi.HTTPException(
             status_code=404, detail='Binding not found'
         )
-    await _audit('secret_binding_deleted', org_id, auth, binding_id=binding_id)
+    await _audit(
+        secrets, 'secret_binding_deleted', org_id, auth, binding_id=binding_id
+    )
 
 
 @bindings_router.post(
@@ -814,7 +825,9 @@ async def create_grant(
         )
     except store.UnknownBindings:
         raise _unknown_bindings() from None
-    await _audit('secret_grant_created', org_id, auth, grant_id=row['id'])
+    await _audit(
+        secrets, 'secret_grant_created', org_id, auth, grant_id=row['id']
+    )
     return row
 
 
@@ -892,7 +905,9 @@ async def update_grant(
         )
     except store.UnknownBindings:
         raise _unknown_bindings() from None
-    await _audit('secret_grant_updated', org_id, auth, grant_id=grant_id)
+    await _audit(
+        secrets, 'secret_grant_updated', org_id, auth, grant_id=grant_id
+    )
     return row
 
 
@@ -906,7 +921,9 @@ async def delete_grant(
     """Delete a grant. Unused handles that it allowed stop working."""
     if not await secrets.delete('grants', org_id, grant_id):
         raise fastapi.HTTPException(status_code=404, detail='Grant not found')
-    await _audit('secret_grant_deleted', org_id, auth, grant_id=grant_id)
+    await _audit(
+        secrets, 'secret_grant_deleted', org_id, auth, grant_id=grant_id
+    )
 
 
 # --- Resolutions ---------------------------------------------------------

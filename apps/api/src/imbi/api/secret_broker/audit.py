@@ -6,8 +6,12 @@ delivery mode, result, and a safe reason code. It never holds material,
 field values, handles, lease ids, authorization headers, or command
 arguments: :class:`Event` has no field for any of them.
 
-Events go after the Postgres commit. A publish failure is logged and
-does not fail the operation.
+An event is not lost when Iggy is down: the operation writes it to the
+outbox table ``secrets.audit_outbox`` in its own transaction
+(:func:`write`). The broker sweep publishes the outbox rows
+(:func:`flush`) and deletes each row only after Iggy accepts it. A row
+that is published two times collapses in ClickHouse, which keys the
+table on ``event_id``.
 """
 
 import datetime
@@ -15,7 +19,10 @@ import logging
 import typing
 import uuid
 
+import psycopg
+import psycopg_pool
 import pydantic
+from psycopg.types import json as pg_json
 
 from imbi.common import clickhouse, iggy
 
@@ -70,19 +77,73 @@ class Event(pydantic.BaseModel):
     delivery_mode: str = ''
 
 
-async def publish(events: list[Event]) -> None:
-    """Publish audit events. Never raises."""
+type Conn = psycopg.AsyncConnection[typing.Any]
+type Pool = psycopg_pool.AsyncConnectionPool[Conn]
+
+#: The most outbox rows that one publish sends.
+FLUSH_BATCH = 500
+
+
+async def write(conn: Conn, events: list[Event]) -> None:
+    """Add events to the outbox in the transaction of ``conn``."""
     if not events:
         return
-    try:
-        await iggy.publish(STREAM, TOPIC, list[pydantic.BaseModel](events))
-    except Exception:  # noqa: BLE001 - audit must not fail the operation
-        LOGGER.warning(
-            'Secret audit publish failed for %d events (%s)',
-            len(events),
-            ', '.join(sorted({e.type for e in events})),
-            exc_info=True,
+    async with conn.cursor() as cur:
+        await cur.executemany(
+            'INSERT INTO secrets.audit_outbox (event_id, event)'
+            ' VALUES (%s, %s)',
+            [
+                (e.event_id, pg_json.Jsonb(e.model_dump(mode='json')))
+                for e in events
+            ],
         )
+
+
+async def record(pool: Pool, events: list[Event]) -> None:
+    """Add events to the outbox in a transaction of their own.
+
+    For an event whose operation has no transaction that commits (a
+    denial), or that committed before the event was known.
+    """
+    if not events:
+        return
+    async with pool.connection() as conn, conn.transaction():
+        await write(conn, events)
+
+
+async def flush(pool: Pool) -> int:
+    """Publish the outbox to Iggy, oldest first; return the count.
+
+    Each batch is locked ``FOR UPDATE SKIP LOCKED``, so two instances
+    do not publish one row, and is deleted only after Iggy accepts it.
+
+    Raises:
+        Exception: Iggy refused a batch. Its rows stay in the outbox.
+
+    """
+    total = 0
+    while True:
+        async with pool.connection() as conn, conn.transaction():
+            cur = await conn.execute(
+                'SELECT event_id, event FROM secrets.audit_outbox'
+                ' ORDER BY seq LIMIT %s FOR UPDATE SKIP LOCKED',
+                (FLUSH_BATCH,),
+            )
+            found = await cur.fetchall()
+            if not found:
+                return total
+            await iggy.publish(
+                STREAM,
+                TOPIC,
+                [Event.model_validate(event) for _, event in found],
+            )
+            await conn.execute(
+                'DELETE FROM secrets.audit_outbox WHERE event_id = ANY(%s)',
+                ([event_id for event_id, _ in found],),
+            )
+        total += len(found)
+        if len(found) < FLUSH_BATCH:
+            return total
 
 
 _QUERY = """

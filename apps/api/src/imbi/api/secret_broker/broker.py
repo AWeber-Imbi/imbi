@@ -581,7 +581,7 @@ class Broker:
         try:
             for attempt in (1, 2):
                 try:
-                    created, row = await self._create(context, request)
+                    created, _ = await self._create(context, request)
                     break
                 except psycopg.errors.UniqueViolation as err:
                     # A concurrent create with the same key won the race:
@@ -595,18 +595,15 @@ class Broker:
             else:  # pragma: no cover - the loop breaks or raises
                 raise RuntimeError('unreachable')
         except providers.BrokerError as err:
-            await audit.publish(
-                [
-                    _event(
-                        'secret_resolution_denied',
-                        context_row,
-                        result='denied',
-                        reason=err.reason,
-                    )
-                ]
+            await self._record(
+                _event(
+                    'secret_resolution_denied',
+                    context_row,
+                    result='denied',
+                    reason=err.reason,
+                )
             )
             raise
-        await audit.publish([_event('secret_resolution_allowed', row)])
         return created
 
     async def _create(
@@ -636,7 +633,7 @@ class Broker:
                     (context.task_id, request.idempotency_key),
                 )
                 if existing is not None:
-                    return await self._repeat(
+                    repeat = await self._repeat(
                         conn,
                         existing,
                         context,
@@ -644,6 +641,10 @@ class Broker:
                         str(reference),
                         handle,
                     )
+                    await audit.write(
+                        conn, [_event('secret_resolution_allowed', repeat[1])]
+                    )
+                    return repeat
             decision = await evaluate(
                 conn,
                 context.organization_id,
@@ -685,8 +686,9 @@ class Broker:
                     request.ttl_seconds,
                 ),
             )
-        if row is None:  # pragma: no cover - RETURNING always yields a row
-            raise RuntimeError('resolution insert returned no row')
+            if row is None:  # pragma: no cover - RETURNING yields a row
+                raise RuntimeError('resolution insert returned no row')
+            await audit.write(conn, [_event('secret_resolution_allowed', row)])
         return _created(row, handle), row
 
     async def _repeat(
@@ -766,19 +768,16 @@ class Broker:
                 )
         except providers.BrokerError as err:
             if row is not None:
-                await audit.publish(
-                    [
-                        _event(
-                            'secret_materialized',
-                            row,
-                            result='denied',
-                            reason=err.reason,
-                        )
-                    ]
+                await self._record(
+                    _event(
+                        'secret_materialized',
+                        row,
+                        result='denied',
+                        reason=err.reason,
+                    )
                 )
             raise
         material = await self._resolve(row, decision)
-        await audit.publish([_event('secret_materialized', row)])
         return Materialization(row, material)
 
     async def _check_materialize(
@@ -896,11 +895,12 @@ class Broker:
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)
-            await self._finish(row, plugin, config, material)
-            if (
+            expired = (
                 material.credential_expires_at is not None
                 and material.credential_expires_at <= now
-            ):
+            )
+            await self._finish(row, plugin, config, material, expired)
+            if expired:
                 raise providers.BrokerError(
                     'secret_materialization_failed', 'credential_expired'
                 )
@@ -927,6 +927,7 @@ class Broker:
         plugin: providers.Provider,
         config: dict[str, typing.Any],
         material: providers.Material,
+        expired: bool,
     ) -> None:
         """Check the state again after the provider call; keep the lease.
 
@@ -934,7 +935,8 @@ class Broker:
         ran during the provider call is seen here. When the resolution is
         no longer ``active``, the new lease is revoked at once and the
         material is not returned. When the lease cannot be saved, it is
-        revoked at once too.
+        revoked at once too. The audit event of a materialization that
+        succeeds (``active`` and not ``expired``) commits with the lease.
         """
         lease_id = material.lease_id
         try:
@@ -964,6 +966,10 @@ class Broker:
                             material.credential_expires_at,
                             row['id'],
                         ),
+                    )
+                if active and not expired:
+                    await audit.write(
+                        conn, [_event('secret_materialized', row)]
                     )
         except Exception as exc:  # noqa: BLE001 - revoked and reported
             # No traceback anywhere here: frames hold the lease id.
@@ -1008,22 +1014,23 @@ class Broker:
                     ' handle_hash = NULL WHERE id = %s',
                     (err.reason, row['id']),
                 )
+                await audit.write(
+                    conn,
+                    [
+                        _event(
+                            'secret_materialized',
+                            row,
+                            result='failed',
+                            reason=err.reason,
+                        )
+                    ],
+                )
         except Exception as exc:  # noqa: BLE001 - the handle is used up
             LOGGER.error(
                 'Resolution %s: state not saved: %s',
                 row['id'],
                 type(exc).__name__,
             )
-        await audit.publish(
-            [
-                _event(
-                    'secret_materialized',
-                    row,
-                    result='failed',
-                    reason=err.reason,
-                )
-            ]
-        )
 
     async def release(
         self,
@@ -1069,11 +1076,17 @@ class Broker:
                     ' release_reason = %s WHERE id = %s RETURNING *',
                     (reason, resolution_id),
                 )
+                await audit.write(
+                    conn,
+                    [
+                        _event(
+                            'secret_resolution_released',
+                            typing.cast(Row, row),
+                            actor=actor,
+                        )
+                    ],
+                )
         row = typing.cast(Row, row)
-        if released:
-            await audit.publish(
-                [_event('secret_resolution_released', row, actor=actor)]
-            )
         if row['revocation_state'] in ('pending', 'failed'):
             await self._revoke(row, actor)
         return typing.cast(Row, await self.get(row['id']))
@@ -1136,19 +1149,20 @@ class Broker:
                 ' WHERE id = %s',
                 ('failed' if reason else 'succeeded', reason, row['id']),
             )
-        await audit.publish(
-            [
-                _event(
-                    'secret_lease_revocation_failed'
-                    if reason
-                    else 'secret_lease_revoked',
-                    row,
-                    result='failed' if reason else 'succeeded',
-                    reason=reason or '',
-                    actor=actor,
-                )
-            ]
-        )
+            await audit.write(
+                conn,
+                [
+                    _event(
+                        'secret_lease_revocation_failed'
+                        if reason
+                        else 'secret_lease_revoked',
+                        row,
+                        result='failed' if reason else 'succeeded',
+                        reason=reason or '',
+                        actor=actor,
+                    )
+                ],
+            )
         return reason is None
 
     async def release_runner_resolutions(self, runner_id: str) -> bool:
@@ -1185,12 +1199,13 @@ class Broker:
                 'secs => %s) LIMIT 1',
                 (runner_id, MATERIALIZE_TIMEOUT),
             )
-        await audit.publish(
-            [
-                _event('secret_resolution_released', row, actor='system')
-                for row in released
-            ]
-        )
+            await audit.write(
+                conn,
+                [
+                    _event('secret_resolution_released', row, actor='system')
+                    for row in released
+                ],
+            )
         ok = not in_flight
         for row in pending:
             ok = await self._revoke(row) and ok
@@ -1245,22 +1260,42 @@ class Broker:
                 ' FOR UPDATE SKIP LOCKED) RETURNING *',
                 (),
             )
-        await audit.publish(
-            [
-                _event('secret_resolution_expired', row, actor='system')
-                for row in expired
-            ]
-            + [
-                _event('secret_resolution_released', row, actor='system')
-                for row in closed
-            ]
-        )
+            await audit.write(
+                conn,
+                [
+                    _event('secret_resolution_expired', row, actor='system')
+                    for row in expired
+                ]
+                + [
+                    _event('secret_resolution_released', row, actor='system')
+                    for row in closed
+                ],
+            )
         for row in expired + closed:
             if row['revocation_state'] == 'pending':
                 await self._revoke(row)
         for row in retry:
             await self._revoke(row)
         return len(expired)
+
+    async def flush_audit(self) -> int:
+        """Publish the audit outbox; see :func:`audit.flush`."""
+        return await audit.flush(self._pool)
+
+    async def _record(self, event: audit.Event) -> None:
+        """Write an audit event in a transaction of its own.
+
+        For a denial, whose transaction rolls back. Never raises: the
+        operation already has its result.
+        """
+        try:
+            await audit.record(self._pool, [event])
+        except Exception as exc:  # noqa: BLE001 - logged, not raised
+            LOGGER.error(
+                'Secret audit event %s not saved: %s',
+                event.type,
+                type(exc).__name__,
+            )
 
     async def get(self, resolution_id: uuid.UUID) -> Row | None:
         async with self._pool.connection() as conn:

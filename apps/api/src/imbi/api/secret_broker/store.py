@@ -12,6 +12,7 @@ Every query is scoped to one organization. Deletion rules (plan 9.3):
   the check and the delete.
 """
 
+import logging
 import typing
 import uuid
 
@@ -20,7 +21,9 @@ import psycopg.errors
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
-from imbi.api.secret_broker import broker
+from imbi.api.secret_broker import audit, broker
+
+LOGGER = logging.getLogger(__name__)
 
 SCHEMA = 'secrets'
 
@@ -61,6 +64,21 @@ class SecretStore:
         ):
             await cur.execute(query, params)  # pyright: ignore[reportArgumentType]
             return await cur.fetchall()
+
+    async def audit(self, event: audit.Event) -> None:
+        """Write a management audit event to the outbox.
+
+        The change committed already, so the event has a transaction of
+        its own. A failure is logged: the change stays.
+        """
+        try:
+            await audit.record(self._pool, [event])
+        except Exception as exc:  # noqa: BLE001 - logged, not raised
+            LOGGER.error(
+                'Secret audit event %s not saved: %s',
+                event.type,
+                type(exc).__name__,
+            )
 
     async def list_all(self, table: Table, organization_id: str) -> list[Row]:
         order = 'reference' if table == 'bindings' else 'created_at'
