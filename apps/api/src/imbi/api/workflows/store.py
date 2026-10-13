@@ -302,18 +302,23 @@ class WorkflowStore:
     ) -> int:
         """Return how many workflows use the agent.
 
-        A workflow uses the agent when an agent step of its latest or
-        active version names it. Other versions cannot start runs.
+        A workflow uses the agent when an agent step names it in its
+        latest or active version, or in the pinned version of a run
+        that is not closed. Other versions cannot run.
         """
         row = await self._one(
             'SELECT COUNT(DISTINCT w.id) AS n FROM workflows.workflows AS w'
             ' JOIN workflows.workflow_versions AS v ON v.workflow_id = w.id'
-            ' AND v.version IN (w.latest_version, w.active_version)'
-            ' WHERE w.organization_id = %s AND EXISTS (SELECT 1'
+            ' WHERE w.organization_id = %s'
+            ' AND (v.version IN (w.latest_version, w.active_version)'
+            ' OR EXISTS (SELECT 1 FROM workflow_runtime.runs AS r'
+            ' WHERE r.workflow_id = w.id AND r.version = v.version'
+            ' AND NOT (r.status = ANY(%s))))'
+            ' AND EXISTS (SELECT 1'
             " FROM jsonb_array_elements(v.graph->'nodes') AS n"
             " WHERE n->>'type' = 'agent'"
             " AND n->'params'->>'agent_id' = %s)",
-            (organization_id, agent_id),
+            (organization_id, list(runtime.CLOSED), agent_id),
         )
         return int(row['n']) if row else 0
 

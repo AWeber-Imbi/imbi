@@ -1147,3 +1147,39 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         overrides[permissions.get_current_user] = reader
         self.assertEqual((await output())['summary'], 'Secret summary.')
         self.assertEqual((await output())['reason'], 'secret_reason')
+
+    async def test_open_run_keeps_the_agent_in_use(self) -> None:
+        # The run is open on version 1. Version 2 has no agent step.
+        slug = self.url.rsplit('/', 1)[1]
+        self.assertEqual(
+            await self.store.agent_references(self.org, self.agent), 1
+        )
+        self.assertTrue(
+            await self.store.save(
+                self.org,
+                slug,
+                workflows.Definition(
+                    name='Agent guard',
+                    description='',
+                    owner_team_id=self.team,
+                    graph={'nodes': [_node('start', 'manual')], 'edges': []},
+                    settings={},
+                    validation={'issues': []},
+                    author=self.email,
+                ),
+                self.team,
+            )
+        )
+        await self.store.activate(self.org, slug, 2, self.admin, [])
+        self.assertEqual(
+            await self.store.agent_references(self.org, self.agent), 1
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'succeeded'"
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        self.assertEqual(
+            await self.store.agent_references(self.org, self.agent), 0
+        )
