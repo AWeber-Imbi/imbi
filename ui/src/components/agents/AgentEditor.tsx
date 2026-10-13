@@ -25,6 +25,7 @@ import { usePromptResolution } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ModelTab } from './ModelTab'
 import { OverviewTab } from './OverviewTab'
+import { PlatformTab } from './PlatformTab'
 import { saveAgent } from './saveAgent'
 import { SettingsTab } from './SettingsTab'
 import { SubagentsTab } from './SubagentsTab'
@@ -35,6 +36,7 @@ import { VersionHistoryTab } from './VersionHistoryTab'
 type TabKey =
   | 'model'
   | 'overview'
+  | 'platform'
   | 'prompt'
   | 'settings'
   | 'subagents'
@@ -48,8 +50,11 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'model', label: 'Model' },
   { key: 'subagents', label: 'Subagents' },
   { key: 'settings', label: 'Settings' },
+  { key: 'platform', label: 'Plugins and secrets' },
   { key: 'versions', label: 'Version history' },
 ]
+
+const PLATFORM_FIELDS = new Set(['githubAppBinding', 'secrets'])
 
 const SETTINGS_FIELDS = new Set([
   'maxConcurrentTasks',
@@ -163,7 +168,9 @@ function AgentEditorForm({
           ? 'model'
           : SETTINGS_FIELDS.has(first)
             ? 'settings'
-            : 'overview',
+            : PLATFORM_FIELDS.has(first)
+              ? 'platform'
+              : 'overview',
       )
       return
     }
@@ -274,6 +281,14 @@ function AgentEditorForm({
         <SettingsTab
           errors={errors}
           onChange={(settings) => update({ settings })}
+          value={draft.settings}
+        />
+      )}
+      {tab === 'platform' && (
+        <PlatformTab
+          errors={errors}
+          onChange={(settings) => update({ settings })}
+          orgSlug={orgSlug}
           value={draft.settings}
         />
       )}
