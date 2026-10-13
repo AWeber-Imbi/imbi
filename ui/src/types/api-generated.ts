@@ -5528,11 +5528,13 @@ export interface paths {
         post?: never;
         /**
          * Delete Binding
-         * @description Delete a binding that no grant and no active resolution uses.
+         * @description Delete a binding that no grant, no active resolution, and no
+         *     unrevoked provider lease uses.
          *
          *     Raises:
          *         404: No such binding.
-         *         409: A grant or an active resolution uses the binding.
+         *         409: A grant, an active resolution, or an unrevoked provider
+         *             lease uses the binding.
          */
         delete: operations["delete_binding_api_organizations__org_slug__secret_bindings__binding_id__delete"];
         options?: never;
@@ -5741,7 +5743,11 @@ export interface paths {
         };
         /**
          * List Audit Events
-         * @description Return audit events, newest first. Page with ``before``.
+         * @description Return audit events, newest first.
+         *
+         *     To page, send the ``at`` and ``event_id`` of the last event as
+         *     ``before`` and ``before_event_id``. Events with the same ``at`` are
+         *     then not skipped.
          *
          *     Raises:
          *         503: ClickHouse is not available.
@@ -17565,8 +17571,11 @@ export interface components {
             reference: string;
             /** Purpose */
             purpose: string;
-            /** Delivery Mode */
-            delivery_mode: string;
+            /**
+             * Delivery Mode
+             * @enum {string}
+             */
+            delivery_mode: "file_descriptor" | "stdin" | "file" | "environment";
             /**
              * Ttl Seconds
              * @default 300
@@ -29243,6 +29252,7 @@ export interface operations {
                 resolution_id?: string | null;
                 type?: string;
                 before?: string | null;
+                before_event_id?: string;
                 limit?: number;
             };
             header?: never;

@@ -3,11 +3,13 @@
 Every query is scoped to one organization. Deletion rules (plan 9.3):
 
 - A provider that a binding uses cannot be deleted: the foreign key
-  from ``bindings`` refuses it.
-- A binding that a grant or an active resolution uses cannot be
-  deleted. The delete locks the binding row ``FOR UPDATE``; a new
-  resolution and a grant write lock it ``FOR SHARE``, so nothing starts
-  to use the binding between the check and the delete.
+  from ``bindings`` refuses it. A binding can only use a provider of
+  its own organization.
+- A binding that a grant, an active resolution, or a resolution with
+  an unrevoked provider lease uses cannot be deleted. The delete locks
+  the binding row ``FOR UPDATE``; a new resolution and a grant write
+  lock it ``FOR SHARE``, so nothing starts to use the binding between
+  the check and the delete.
 """
 
 import typing
@@ -32,6 +34,10 @@ class InUse(ValueError):
 
 class RoleInUse(ValueError):
     """A provider in another organization uses the role."""
+
+
+class UnknownProvider(ValueError):
+    """A binding names a provider that is not in the organization."""
 
 
 class UnknownBindings(ValueError):
@@ -113,6 +119,10 @@ class SecretStore:
                 )
             if table == 'providers':
                 await _check_role(cur, organization_id, values.get('config'))
+            if table == 'bindings':
+                await _check_provider(
+                    cur, organization_id, values['provider_id']
+                )
             await cur.execute(query, [_value(v) for v in values.values()])
             return typing.cast(Row, await cur.fetchone())
 
@@ -151,6 +161,10 @@ class SecretStore:
                 )
             if table == 'providers':
                 await _check_role(cur, organization_id, changes.get('config'))
+            if table == 'bindings' and 'provider_id' in changes:
+                await _check_provider(
+                    cur, organization_id, changes['provider_id']
+                )
             await cur.execute(
                 query,
                 [
@@ -278,11 +292,32 @@ async def _check_binding_unused(
         raise InUse('A grant uses the binding')
     cur = await conn.execute(
         'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
-        " AND state IN ('pending', 'active') LIMIT 1",
+        " AND (state IN ('pending', 'active')"
+        " OR revocation_state IN ('pending', 'failed')) LIMIT 1",
         (binding_id,),
     )
     if await cur.fetchone() is not None:
-        raise InUse('An active resolution uses the binding')
+        # A lease that is not revoked yet needs the binding, and through
+        # it the provider, until the revocation succeeds.
+        raise InUse(
+            'An active resolution or an unrevoked provider lease uses '
+            'the binding'
+        )
+
+
+async def _check_provider(
+    cur: psycopg.AsyncCursor[Row],
+    organization_id: str,
+    provider_id: uuid.UUID,
+) -> None:
+    """A binding uses a provider of its own organization only."""
+    await cur.execute(
+        'SELECT 1 FROM secrets.providers'
+        ' WHERE organization_id = %s AND id = %s FOR SHARE',
+        (organization_id, provider_id),
+    )
+    if await cur.fetchone() is None:
+        raise UnknownProvider('The provider is not in the organization')
 
 
 async def _check_role(

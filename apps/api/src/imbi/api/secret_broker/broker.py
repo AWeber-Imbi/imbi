@@ -455,8 +455,9 @@ async def evaluate(
     provider = _check_provider(
         await _fetch_one(
             conn,
-            'SELECT * FROM secrets.providers WHERE id = %s',
-            (binding['provider_id'],),
+            'SELECT * FROM secrets.providers'
+            ' WHERE id = %s AND organization_id = %s',
+            (binding['provider_id'], organization_id),
         ),
         binding,
     )
@@ -831,8 +832,9 @@ class Broker:
         binding = _check_binding(
             await _fetch_one(
                 conn,
-                'SELECT * FROM secrets.bindings WHERE id = %s',
-                (row['binding_id'],),
+                'SELECT * FROM secrets.bindings'
+                ' WHERE id = %s AND organization_id = %s',
+                (row['binding_id'], row['organization_id']),
             ),
             reference,
         )
@@ -848,8 +850,9 @@ class Broker:
         provider = _check_provider(
             await _fetch_one(
                 conn,
-                'SELECT * FROM secrets.providers WHERE id = %s',
-                (row['provider_id'],),
+                'SELECT * FROM secrets.providers'
+                ' WHERE id = %s AND organization_id = %s',
+                (row['provider_id'], row['organization_id']),
             ),
             binding,
         )
@@ -1104,8 +1107,9 @@ class Broker:
             async with self._pool.connection() as conn:
                 provider = await _fetch_one(
                     conn,
-                    'SELECT * FROM secrets.providers WHERE id = %s',
-                    (row['provider_id'],),
+                    'SELECT * FROM secrets.providers'
+                    ' WHERE id = %s AND organization_id = %s',
+                    (row['provider_id'], row['organization_id']),
                 )
             if provider is None:
                 raise providers.BrokerError(
@@ -1203,7 +1207,11 @@ class Broker:
             expired = await _fetch(
                 conn,
                 "UPDATE secrets.resolutions SET state = 'expired',"
-                ' handle_hash = NULL'
+                ' handle_hash = NULL,'
+                # Claims a pending revocation for this sweep, so the
+                # retry below and other replicas leave it alone.
+                ' revocation_attempted_at = CASE WHEN revocation_state ='
+                " 'pending' THEN NOW() ELSE revocation_attempted_at END"
                 " WHERE state IN ('pending', 'active')"
                 ' AND expires_at <= NOW() RETURNING *',
                 (),
@@ -1220,14 +1228,21 @@ class Broker:
                 " AND r.state IN ('pending', 'active') RETURNING r.*",
                 (),
             )
+            # Claim the retries: SKIP LOCKED keeps two replicas off one
+            # row, and the new revocation_attempted_at keeps the row out
+            # of every sweep for the next 60 seconds. The rows that this
+            # sweep expired or released are recent, so they are not here.
             retry = await _fetch(
                 conn,
-                'SELECT * FROM secrets.resolutions'
+                'UPDATE secrets.resolutions'
+                ' SET revocation_attempted_at = NOW()'
+                ' WHERE id IN (SELECT id FROM secrets.resolutions'
                 " WHERE revocation_state IN ('pending', 'failed')"
                 " AND state IN ('released', 'expired', 'failed')"
                 ' AND COALESCE(revocation_attempted_at, released_at,'
                 " expires_at) < NOW() - INTERVAL '60 seconds'"
-                ' ORDER BY created_at LIMIT 100',
+                ' ORDER BY created_at LIMIT 100'
+                ' FOR UPDATE SKIP LOCKED) RETURNING *',
                 (),
             )
         await audit.publish(

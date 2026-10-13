@@ -277,10 +277,10 @@ class SecretGrantEvaluate(pydantic.BaseModel):
     agent_id: Id
     project_id: Id | None = None
     reference: str
-    purpose: str
-    delivery_mode: str
-    ttl_seconds: int = 300
-    delivery_target: str | None = None
+    purpose: Purpose
+    delivery_mode: DeliveryMode
+    ttl_seconds: Ttl = 300
+    delivery_target: DeliveryTarget | None = None
 
 
 class SecretGrantDecision(pydantic.BaseModel):
@@ -726,11 +726,13 @@ async def delete_binding(
     secrets: secret_broker.Store,
     auth: BindingWrite,
 ) -> None:
-    """Delete a binding that no grant and no active resolution uses.
+    """Delete a binding that no grant, no active resolution, and no
+    unrevoked provider lease uses.
 
     Raises:
         404: No such binding.
-        409: A grant or an active resolution uses the binding.
+        409: A grant, an active resolution, or an unrevoked provider
+            lease uses the binding.
 
     """
     try:
@@ -1018,9 +1020,14 @@ async def list_audit_events(
     resolution_id: uuid.UUID | None = None,
     event_type: typing.Annotated[str, fastapi.Query(alias='type')] = '',
     before: datetime.datetime | None = None,
+    before_event_id: str = '',
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=500)] = 100,
 ) -> list[dict[str, typing.Any]]:
-    """Return audit events, newest first. Page with ``before``.
+    """Return audit events, newest first.
+
+    To page, send the ``at`` and ``event_id`` of the last event as
+    ``before`` and ``before_event_id``. Events with the same ``at`` are
+    then not skipped.
 
     Raises:
         503: ClickHouse is not available.
@@ -1032,6 +1039,7 @@ async def list_audit_events(
             resolution_id=str(resolution_id) if resolution_id else '',
             event_type=event_type,
             before=before,
+            before_event_id=before_event_id,
             limit=limit,
         )
     except Exception:  # noqa: BLE001 - ClickHouse is down

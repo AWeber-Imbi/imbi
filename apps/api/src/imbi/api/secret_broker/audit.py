@@ -91,7 +91,10 @@ FROM imbi.secret_audit_events
 WHERE organization_id = {organization_id:String}
   AND ({resolution_id:String} = '' OR resolution_id = {resolution_id:String})
   AND ({type:String} = '' OR type = {type:String})
-  AND at < {before:DateTime64(6, 'UTC')}
+  AND (at < {before:DateTime64(6, 'UTC')}
+       OR ({before_event_id:String} != ''
+           AND at = {before:DateTime64(6, 'UTC')}
+           AND event_id > {before_event_id:String}))
 ORDER BY at DESC, event_id
 LIMIT {limit:UInt32}
 """
@@ -103,9 +106,15 @@ async def search(
     resolution_id: str = '',
     event_type: str = '',
     before: datetime.datetime | None = None,
+    before_event_id: str = '',
     limit: int = 100,
 ) -> list[dict[str, typing.Any]]:
-    """Return the newest events of an organization first."""
+    """Return the newest events of an organization first.
+
+    The cursor is ``(before, before_event_id)``, in the order of the
+    query (``at`` descending, then ``event_id``). Without an event id,
+    ``before`` is strict.
+    """
     rows = await clickhouse.query(
         _QUERY,
         {
@@ -113,6 +122,7 @@ async def search(
             'resolution_id': resolution_id,
             'type': event_type,
             'before': before or datetime.datetime.now(datetime.UTC),
+            'before_event_id': before_event_id,
             'limit': limit,
         },
     )

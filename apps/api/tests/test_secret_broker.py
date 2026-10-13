@@ -16,7 +16,7 @@ import orjson
 
 from apps.api.tests import secret_support
 from apps.api.tests.secret_support import MATERIAL
-from imbi.api.secret_broker import broker, providers
+from imbi.api.secret_broker import broker, providers, store
 from imbi.common.auth import encryption
 
 
@@ -350,6 +350,44 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             {'delivery_modes': ['stdin']},
         )
         await self._denied('secret_access_denied')
+
+    async def test_provider_of_another_organization(self) -> None:
+        other_org = f'other-{uuid.uuid4().hex[:8]}'
+        other = await self.store.create(
+            'providers',
+            other_org,
+            {'name': 'x', 'type': 'fake', 'created_by': 'test'},
+        )
+        try:
+            with self.assertRaises(store.UnknownProvider):
+                await self.add_binding(
+                    reference='secret://production/other',
+                    provider_id=other['id'],
+                )
+            with self.assertRaises(store.UnknownProvider):
+                await self.store.update(
+                    'bindings',
+                    self.org,
+                    self.binding['id'],
+                    {'provider_id': other['id']},
+                )
+            # A row written around the store: the broker still reads
+            # providers of the binding's own organization only.
+            async with self.pool.connection() as conn:
+                await conn.execute(
+                    'UPDATE secrets.bindings SET provider_id = %s'
+                    ' WHERE id = %s',
+                    (other['id'], self.binding['id']),
+                )
+            await self._denied('secret_provider_disabled')
+        finally:
+            async with self.pool.connection() as conn:
+                await conn.execute(
+                    'UPDATE secrets.bindings SET provider_id = %s'
+                    ' WHERE id = %s',
+                    (self.provider['id'], self.binding['id']),
+                )
+            await self.store.delete('providers', other_org, other['id'])
 
     async def test_capability_enforcement(self) -> None:
         aws = await self.store.create(
@@ -728,6 +766,25 @@ class LeaseTestCase(secret_support.SecretCase):
             self.org, resolution_id, 'admin'
         )
         self.assertEqual(row['revocation_state'], 'succeeded')
+
+    async def test_sweeps_revoke_an_expired_lease_once(self) -> None:
+        resolution_id = await self._materialized()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.resolutions'
+                " SET expires_at = NOW() - INTERVAL '5 minutes'"
+                ' WHERE id = %s',
+                (resolution_id,),
+            )
+        # Two replicas sweep at the same time, then one sweeps again.
+        await asyncio.gather(self.broker.sweep(), self.broker.sweep())
+        await self.broker.sweep()
+        self.assertEqual(len(self.fake.revoked), 1)
+        row = await self.broker.get(resolution_id)
+        assert row is not None
+        self.assertEqual(
+            (row['state'], row['revocation_state']), ('expired', 'succeeded')
+        )
 
     async def test_release_runner_resolutions(self) -> None:
         resolution_id = await self._materialized()

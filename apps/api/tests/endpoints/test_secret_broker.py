@@ -16,7 +16,7 @@ from apps.api.tests import secret_support, support
 from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
 from imbi.api.secret_broker import audit, providers, store
-from imbi.common import graph
+from imbi.common import clickhouse, graph
 
 ALL_PERMISSIONS = frozenset(
     {
@@ -352,6 +352,56 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.status_code, 204)
 
+    async def test_unrevoked_lease_blocks_binding_delete(self) -> None:
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.binding['id'],
+            {'credential_class': 'dynamic'},
+        )
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        await self.broker.materialize(
+            self.executor(), self.materialize_request(created.handle)
+        )
+        self.fake.fail_revoke = True
+        await self.broker.release(
+            created.resolution_id, reason='done', actor='test'
+        )
+        await self.store.delete('grants', self.org, self.grant['id'])
+        url = self.base + f'/secret-bindings/{self.binding["id"]}'
+        response = await self.client.delete(url)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('unrevoked provider lease', response.text)
+        self.fake.fail_revoke = False
+        await self.broker.revoke_provider_lease(
+            self.org, created.resolution_id, 'test'
+        )
+        response = await self.client.delete(url)
+        self.assertEqual(response.status_code, 204)
+
+    async def test_evaluate_uses_the_create_constraints(self) -> None:
+        request = {
+            'agent_id': self.agent,
+            'reference': 'secret://production/github/token',
+            'purpose': 'github_write',
+            'delivery_mode': 'environment',
+            'delivery_target': 'GH_TOKEN',
+        }
+        for change in (
+            {'ttl_seconds': 0},
+            {'ttl_seconds': 99999},
+            {'delivery_mode': 'argument'},
+            {'purpose': 'Not A Purpose'},
+            {'delivery_target': '../x'},
+        ):
+            with self.subTest(change=change):
+                response = await self._post(
+                    '/secret-grants/evaluate', request | change
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+
     async def test_grants_and_evaluate(self) -> None:
         body = {
             'agent_ids': ['agent-x'],
@@ -537,6 +587,39 @@ class SecretEndpointTestCase(
         )
         response = await self.client.get(self.base + '/secret-providers/')
         self.assertEqual(response.status_code, 403)
+
+    async def test_audit_paging_keeps_events_with_one_time(self) -> None:
+        await clickhouse.initialize()
+        await clickhouse.setup_schema()
+        at = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        events = [
+            audit.Event(
+                organization_id=self.org,
+                type='secret_materialized',
+                at=at,
+                event_id=f'{index:02d}-{uuid.uuid4()}',
+            )
+            for index in range(5)
+        ]
+        with support.sink_to_clickhouse():
+            await audit.publish(events)
+        found: list[str] = []
+        cursor: dict[str, str] = {}
+        for _ in range(4):
+            response = await self.client.get(
+                self.base + '/secret-audit-events/',
+                params={'limit': 2} | cursor,
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            page = response.json()
+            if not page:
+                break
+            found += [e['event_id'] for e in page]
+            cursor = {
+                'before': page[-1]['at'],
+                'before_event_id': page[-1]['event_id'],
+            }
+        self.assertEqual(found, sorted(e.event_id for e in events))
 
     async def test_audit_events(self) -> None:
         event = audit.Event(

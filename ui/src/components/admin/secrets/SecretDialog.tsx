@@ -68,8 +68,8 @@ export function SecretDialog({
     try {
       onSubmit(toBody(fields, values))
       setParseError(null)
-    } catch {
-      setParseError('A JSON field is not valid JSON')
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -192,6 +192,20 @@ export function SecretDialog({
 const initialValue = (field: FieldSpec): string | string[] =>
   field.initial ?? (field.kind === 'multi' ? [] : '')
 
+/** A JSON field must hold a plain object, e.g. a provider config. */
+function parseObject(label: string, value: string): Record<string, unknown> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw new Error(`${label} is not valid JSON`)
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object`)
+  }
+  return parsed as Record<string, unknown>
+}
+
 // fallow-ignore-next-line complexity
 function toBody(
   fields: FieldSpec[],
@@ -212,7 +226,7 @@ function toBody(
     } else if (field.kind === 'number') {
       body[field.name] = Number(value)
     } else if (field.kind === 'json') {
-      body[field.name] = JSON.parse(value) as unknown
+      body[field.name] = parseObject(field.label, value)
     } else {
       body[field.name] = value.trim()
     }
