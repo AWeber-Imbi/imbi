@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
 import * as releases from '@/api/releases'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -36,6 +37,8 @@ vi.mock('@/api/endpoints', async () => {
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
+
+vi.mock('@/hooks/useHasPermission', () => ({ useHasPermission: vi.fn() }))
 
 const addReleaseBlocker = vi.mocked(releases.addReleaseBlocker)
 const unblockRelease = vi.mocked(releases.unblockRelease)
@@ -162,6 +165,7 @@ describe('CurrentlyRunningCard', () => {
       type: 'manual',
     })
     unblockRelease.mockResolvedValue({ blocked: false, tag: 'v6.4.0' })
+    vi.mocked(useHasPermission).mockReturnValue(true)
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'pass',
       committish: '0009990',
@@ -311,11 +315,35 @@ describe('CurrentlyRunningCard', () => {
     await user.click(screen.getByRole('button', { name: 'Unblock' }))
     expect(unblockRelease).toHaveBeenCalledWith('acme', 'p1', 'v6.4.0')
   })
+
+  it('offers neither Block nor Unblock without deployment write', async () => {
+    vi.mocked(useHasPermission).mockReturnValue(false)
+    const user = userEvent.setup()
+    renderCard({
+      ...STAGE,
+      recentReleases: [
+        behind(ROLLBACK),
+        behind({
+          ...ROLLBACK,
+          blocked: true,
+          blocked_reason: 'Regression in checkout',
+          sha: '000888000888',
+          short_sha: '0008880',
+          tag: 'v6.3.0',
+        }),
+      ],
+    })
+    expect(screen.queryByRole('button', { name: /^Block v6\.4\.0/ })).toBeNull()
+    await user.click(rowToggle('v6.3.0'))
+    expect(screen.getByText(/Regression in checkout/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull()
+  })
 })
 
 describe('CurrentlyRunningCard — failing CI on the release being shipped', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(useHasPermission).mockReturnValue(true)
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'fail',
       committish: '0009990',
