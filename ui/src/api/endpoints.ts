@@ -112,6 +112,7 @@ import type {
   EnvironmentCreate,
   GraphQueryResult,
   GraphSchema,
+  HarnessPool,
   IdentityConnectionPollResponse,
   IdentityConnectionResponse,
   IdentityConnectionStartRequest,
@@ -3611,6 +3612,14 @@ export const getAgentUsage = (
   apiClient.get<AgentUsage>(
     `/organizations/${encodeURIComponent(orgSlug)}/agent-usage/`,
     { ...params },
+    signal,
+  )
+
+// The runner pools that serve the organization, with their runners.
+export const listHarnessPools = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<HarnessPool[]>(
+    '/harness/pools',
+    { organization: orgSlug },
     signal,
   )
 

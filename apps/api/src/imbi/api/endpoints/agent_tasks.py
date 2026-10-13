@@ -160,6 +160,8 @@ class AgentTaskResponse(pydantic.BaseModel):
     updated_at: datetime.datetime
     closed_at: datetime.datetime | None = None
     log_archived_at: datetime.datetime | None = None
+    #: The id of the root task of the chain (ADR 0022).
+    chain_id: uuid.UUID | None = None
 
 
 class AgentTaskListItem(AgentTaskResponse):
@@ -361,24 +363,27 @@ def _unprocessable(detail: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=422, detail=detail)
 
 
-def check_payload_size(what: str, payload: typing.Any) -> None:
-    """Raise 413 when ``payload`` as JSON is larger than the limit.
+def check_payload_size(
+    what: str, payload: typing.Any, limit: int = MAX_PAYLOAD_BYTES
+) -> int:
+    """Raise 413 when ``payload`` as JSON is larger than ``limit``.
+
+    Return the size in bytes.
 
     Raises:
         413: ``payload_too_large``.
 
     """
     size = len(orjson.dumps(payload))
-    if size > MAX_PAYLOAD_BYTES:
+    if size > limit:
         raise fastapi.HTTPException(
             status_code=413,
             detail={
                 'error': 'payload_too_large',
-                'message': (
-                    f'{what} is {size} bytes; the limit is {MAX_PAYLOAD_BYTES}'
-                ),
+                'message': f'{what} is {size} bytes; the limit is {limit}',
             },
         )
+    return size
 
 
 def _conflict(
@@ -416,7 +421,7 @@ def _ids(value: typing.Any) -> list[str]:
     return [str(item) for item in items]
 
 
-def _task_budget(
+def task_budget(
     settings: models.AgentSettings, requested: decimal.Decimal | None
 ) -> decimal.Decimal | None:
     """Return the budget of a new task, or raise 422.
@@ -607,7 +612,7 @@ async def _set_control(
         ) from e
 
 
-async def _may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
+async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
     """Return whether the person can make agent tasks in the org.
 
     The person must be an active member of the org, and an admin or a
@@ -681,7 +686,7 @@ async def _owner(
             f'The {origin.kind} {origin.id!r} records no person who set it; '
             'edit it to make agent tasks from it.',
         )
-    if not await _may_create(db, org_slug, str(creator)):
+    if not await may_create(db, org_slug, str(creator)):
         raise autonomous.forbidden(
             'owner_forbidden',
             f'{creator!r} cannot make agent tasks in organization '
@@ -834,7 +839,7 @@ async def create_agent_task(
         if isinstance(raw_settings, str)
         else models.AgentSettings.model_validate(raw_settings)
     )
-    budget = _task_budget(settings, data.budget)
+    budget = task_budget(settings, data.budget)
     project_slug: str | None = None
     if data.project_id is not None:
         project_slug = await _project_slug(db, org_slug, data.project_id)

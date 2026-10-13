@@ -909,6 +909,15 @@ class PromptVersion(GraphModel):
         return _parse_json(value)
 
 
+#: A runner pool label (ADR 0022): a lower-case slug.
+RunnerLabel = typing.Annotated[
+    str,
+    pydantic.StringConstraints(
+        pattern=r'^[a-z0-9][a-z0-9_.-]*$', max_length=63
+    ),
+]
+
+
 class AgentSettings(pydantic.BaseModel):
     """Operational limits for an agent. ``None`` means no limit."""
 
@@ -925,6 +934,15 @@ class AgentSettings(pydantic.BaseModel):
     max_concurrent_tasks: int | None = pydantic.Field(default=None, gt=0)
     task_timeout_seconds: int | None = pydantic.Field(default=None, gt=0)
     response_sla: typing.Literal['4h', '8h', '24h', '3d', 'none'] | None = None
+    #: The labels that a runner needs to run the tasks of the agent
+    #: (ADR 0022). Empty means any runner.
+    required_labels: list[RunnerLabel] = []
+
+    @pydantic.field_validator('required_labels')
+    @classmethod
+    def _sort_labels(cls, value: list[str]) -> list[str]:
+        """Sort and remove duplicates, so equal settings compare equal."""
+        return sorted(set(value))
 
 
 class AgentRateLimit(pydantic.BaseModel):

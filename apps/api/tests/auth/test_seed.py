@@ -169,6 +169,12 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             len(seed.STANDARD_PERMISSIONS),
         )
 
+    def test_pool_writes_are_not_a_permission(self) -> None:
+        """Only ``is_admin`` changes runner pools; no role can grant it."""
+        names = {p[0] for p in seed.STANDARD_PERMISSIONS}
+        self.assertIn('harness_pool:read', names)
+        self.assertNotIn('harness_pool:write', names)
+
     def test_exactly_one_role_is_default(self) -> None:
         """Exactly one seeded role is the auto-assignment target."""
         defaults = [r for r in seed.DEFAULT_ROLES if r[5]]

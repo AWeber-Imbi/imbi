@@ -38,6 +38,19 @@ async def member_org_id(
         404: No such organization.
 
     """
+    return await check_member(org_slug, db, auth)
+
+
+async def check_member(
+    org_slug: str, db: graph.Graph, auth: permissions.AuthContext
+) -> str:
+    """Return the id of the organization when ``auth`` is a member.
+
+    Raises:
+        403: The caller is not a member of the organization.
+        404: No such organization.
+
+    """
     records = await db.execute(
         _ORG_MEMBER_QUERY,
         {

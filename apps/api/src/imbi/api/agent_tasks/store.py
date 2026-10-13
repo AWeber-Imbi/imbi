@@ -188,6 +188,9 @@ class NewTask:
     owner: str
     budget: decimal.Decimal | None
     project_slug: str | None = None
+    #: The root task of the chain of a child task. ``None`` makes the
+    #: task the root of its own chain.
+    chain_id: uuid.UUID | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -420,8 +423,9 @@ class TaskStore:
                     ' short_id, agent_id, agent_version, prompt_version,'
                     ' service_account_id, project_id, project_slug, title,'
                     ' description, origin_kind, origin_id, origin,'
-                    ' idempotency_key, owner, budget) VALUES (%s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+                    ' idempotency_key, owner, budget, chain_id) VALUES (%s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s)',
                     (
                         task_id,
                         task.organization_id,
@@ -440,6 +444,7 @@ class TaskStore:
                         task.idempotency_key,
                         task.owner,
                         task.budget,
+                        task.chain_id or task_id,
                     ),
                 )
                 event = await _append_event(
@@ -1589,6 +1594,65 @@ class TaskStore:
         async with self._write(organization_id, short_id) as write:
             await _close(write, outcome, reason, actor)
         return write.task
+
+
+async def requeue_chain(
+    conn: Conn, chain_id: uuid.UUID, attempt: int, actor: Actor
+) -> list[tuple[Row, list[Row]]]:
+    """Put the open tasks of a chain back in the queue (ADR 0022).
+
+    Use this in the transaction that unpins the chain from a lost
+    runner. For each task that is not closed, in task id order: close
+    its open sessions (reason ``runner_lost``), write ``attempt_marker``
+    with the new ``attempt``, and set the status as for a task with no
+    session (see :meth:`TaskStore.close_session`): ``cancel`` closes
+    it, ``pause`` makes it ``paused``, an open request makes it
+    ``blocked``, else it is ``queued``.
+
+    Return each task and its events, to publish after the commit.
+    """
+    async with conn.cursor(row_factory=rows.dict_row) as cursor:
+        await cursor.execute(
+            'SELECT * FROM agent_runtime.tasks'
+            ' WHERE (chain_id = %s OR (chain_id IS NULL AND id = %s))'
+            " AND status <> 'closed' ORDER BY id FOR UPDATE",
+            (chain_id, chain_id),
+        )
+        tasks = await cursor.fetchall()
+    published: list[tuple[Row, list[Row]]] = []
+    for task in tasks:
+        write = _Write(conn, task)
+        cursor = await conn.execute(
+            'UPDATE agent_runtime.sessions'
+            " SET closed_at = NOW(), close_reason = 'runner_lost'"
+            ' WHERE task_id = %s AND closed_at IS NULL RETURNING id',
+            (task['id'],),
+        )
+        for (session_id,) in await cursor.fetchall():
+            await write.event(
+                'session.closed',
+                {'session_id': str(session_id), 'reason': 'runner_lost'},
+                actor,
+                session_id=session_id,
+            )
+        await write.event(
+            'attempt_marker',
+            {'attempt': attempt, 'reason': 'runner_lost'},
+            actor,
+        )
+        status: Status = 'queued'
+        if task['control'] == 'pause':
+            status = 'paused'
+        elif await _request_open(conn, task['id']):
+            status = 'blocked'
+        if task['control'] == 'cancel':
+            await _close(
+                write, 'cancelled_by_human', CANCELLED_WITHOUT_SESSION, actor
+            )
+        elif task['status'] != status:
+            await _set_status(write, status, 'runner_lost', actor)
+        published.append((await _fetch_task(conn, task['id']), write.events))
+    return published
 
 
 async def _apply_control(

@@ -1243,6 +1243,11 @@ export interface GraphSchema {
   property_keys: string[]
 }
 
+// A runner pool and its runners that are not offline (ADR 0022).
+export type HarnessPool = Schemas['PoolResponse']
+
+export type HarnessRunner = Schemas['RunnerResponse']
+
 export interface IdentityConnectionPollResponse {
   return_to?: null | string
   status: 'complete' | 'pending'

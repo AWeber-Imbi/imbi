@@ -60,6 +60,7 @@ export const queryKeys = {
   documentVersions: (orgSlug: string, documentId: string) =>
     ['documentVersions', orgSlug, documentId] as const,
   environments: (orgSlug: string) => ['environments', orgSlug] as const,
+  harnessPools: (orgSlug: string) => ['harnessPools', orgSlug] as const,
   identityPlugins: (orgSlug: string) => ['identity-plugins', orgSlug] as const,
   integration: (orgSlug: string, slug: string) =>
     ['integration', orgSlug, slug] as const,

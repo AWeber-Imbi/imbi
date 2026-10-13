@@ -9,7 +9,12 @@ import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
-import type { Agent, AgentSubagentRef, AgentUsage } from '@/types'
+import type {
+  Agent,
+  AgentSettings,
+  AgentSubagentRef,
+  AgentUsage,
+} from '@/types'
 
 import { formatDuration, formatMoney, slaLabel, wordCount } from './agentDraft'
 import { AgentLabels } from './AgentLabelChip'
@@ -41,7 +46,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const Icon = useIcon(agent.icon, Bot)
   const prompt = usePromptResolution(agent.prompt_ref)
   const version = prompt.data ?? null
-  const settings = agent.settings ?? {}
+  const settings: Partial<AgentSettings> = agent.settings ?? {}
   const { data: usage } = useAgentUsage(agent.organization.slug, {
     agent_id: agent.id,
   })
@@ -81,6 +86,11 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         settings.task_timeout_seconds == null
           ? 'No limit'
           : formatDuration(settings.task_timeout_seconds),
+    },
+    {
+      mono: true,
+      name: 'Runner labels',
+      value: settings.required_labels?.join(', ') || 'Any runner',
     },
     {
       name: 'Human response SLA',

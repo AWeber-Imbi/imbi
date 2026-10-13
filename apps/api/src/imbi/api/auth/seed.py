@@ -505,6 +505,15 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'run',
         'Start manual and test runs of workflows, and cancel runs',
     ),
+    # Runner pools (ADR 0022). Only platform administrators
+    # (`is_admin`) change pools. That is not a permission, because an
+    # organization administrator could grant a permission to a role.
+    (
+        'harness_pool:read',
+        'harness_pool',
+        'read',
+        'View the runner pools and runners that serve the organization',
+    ),
     # Secrets broker (ADR 0022). Granted to no non-admin default role.
     (
         'secret_provider:read',

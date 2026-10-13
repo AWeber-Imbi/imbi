@@ -78,6 +78,19 @@ export function SettingsTab({ errors, onChange, value }: SettingsTabProps) {
           />
         </Field>
         <Field
+          error={errors.requiredLabels}
+          help="A runner needs every label to run the tasks of this agent. Separate labels with commas."
+          htmlFor="agent-labels"
+          label="Required runner labels"
+        >
+          <Input
+            id="agent-labels"
+            onChange={(e) => set({ requiredLabels: e.target.value })}
+            placeholder="Any runner"
+            value={value.requiredLabels}
+          />
+        </Field>
+        <Field
           help="How long a task may sit waiting on a person before it escalates."
           htmlFor="agent-sla"
           label="Human response SLA"

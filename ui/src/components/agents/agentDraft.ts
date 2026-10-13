@@ -57,6 +57,8 @@ export type ResponseSla = NonNullable<AgentSettings['response_sla']>
 export interface SettingsDraft {
   maxConcurrentTasks: string
   monthlyCostCap: string
+  /** Runner labels, separated by commas. */
+  requiredLabels: string
   responseSla: '' | ResponseSla
   taskBudget: string
   taskTimeout: string
@@ -120,6 +122,9 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
     errors.maxConcurrentTasks = 'Enter a whole number above 0'
   if (s.taskTimeout.trim() && parseDuration(s.taskTimeout) === null)
     errors.taskTimeout = 'Enter a duration, for example 30m or 2h'
+  if (parseLabels(s.requiredLabels).some((l) => !RUNNER_LABEL.test(l)))
+    errors.requiredLabels =
+      'Use lower-case letters, digits, ".", "_", and "-", for example gpu'
   for (const key of Object.keys(PARAM_FIELDS) as ParamKey[]) {
     const p = draft.prompt.params[key]
     if (!p.on || p.value === PARAM_OFF) continue
@@ -135,7 +140,7 @@ export function draftFromAgent(
   agent: Agent,
   prompt: null | PromptVersion,
 ): AgentDraft {
-  const settings = agent.settings ?? {}
+  const settings: Partial<AgentSettings> = agent.settings ?? {}
   return {
     description: agent.description ?? '',
     icon: agent.icon ?? '',
@@ -150,6 +155,7 @@ export function draftFromAgent(
         settings.monthly_cost_cap == null
           ? ''
           : formatMoney(settings.monthly_cost_cap),
+      requiredLabels: (settings.required_labels ?? []).join(', '),
       responseSla: settings.response_sla ?? '',
       taskBudget:
         settings.task_budget == null
@@ -190,6 +196,7 @@ export function emptyDraft(): AgentDraft {
     settings: {
       maxConcurrentTasks: '',
       monthlyCostCap: '',
+      requiredLabels: '',
       responseSla: '',
       taskBudget: '',
       taskTimeout: '',
@@ -357,12 +364,25 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
       ? Number(draft.maxConcurrentTasks)
       : null,
     monthly_cost_cap: cap,
+    required_labels: parseLabels(draft.requiredLabels),
     response_sla: draft.responseSla || null,
     task_budget: draft.taskBudget.trim() ? parseMoney(draft.taskBudget) : null,
     task_timeout_seconds: draft.taskTimeout.trim()
       ? parseDuration(draft.taskTimeout)
       : null,
   }
+}
+
+/** A runner label, as the API accepts it. */
+const RUNNER_LABEL = /^[a-z0-9][a-z0-9_.-]*$/
+
+/** The sorted, distinct labels in a comma-separated list. */
+export function parseLabels(value: string): string[] {
+  const labels = value
+    .split(',')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return [...new Set(labels)].sort()
 }
 
 export function slaLabel(value: null | string | undefined): null | string {

@@ -20,6 +20,7 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
     settings: {
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
+      required_labels: [],
       response_sla: '4h',
       task_budget: '5.00',
       task_timeout_seconds: 1800,
