@@ -243,17 +243,17 @@ def _settings(raw: typing.Any) -> models.AgentSettings:
 
 
 async def eligible_agents(
-    db: graph.Graph, labels: list[str]
-) -> tuple[list[str], dict[str, int]]:
-    """Return the agents that a runner with ``labels`` may run, and the
+    db: graph.Graph,
+) -> tuple[dict[str, list[str]], dict[str, int]]:
+    """Return the enabled agents with their required labels, and the
     ``max_concurrent_tasks`` of those that have one.
 
-    An agent is eligible when it is enabled and the runner has every
-    label in its ``settings.required_labels``.
+    The claim compares the labels with the labels of the runner's pool
+    in its transaction.
     """
     # ponytail: reads every agent per claim; filter by the pool's
     # organizations in the query when the agent count grows.
-    agents: list[str] = []
+    agents: dict[str, list[str]] = {}
     limits: dict[str, int] = {}
     for record in await db.execute(
         _AGENTS_QUERY, {}, ['id', 'enabled', 'settings']
@@ -261,10 +261,8 @@ async def eligible_agents(
         if graph.parse_agtype(record['enabled']) is False:
             continue
         settings = _settings(graph.parse_agtype(record['settings']))
-        if not set(settings.required_labels) <= set(labels):
-            continue
         agent_id = str(graph.parse_agtype(record['id']))
-        agents.append(agent_id)
+        agents[agent_id] = settings.required_labels
         if settings.max_concurrent_tasks is not None:
             limits[agent_id] = settings.max_concurrent_tasks
     return agents, limits
@@ -654,8 +652,8 @@ async def update_harness_pool(
         permissions.AuthContext, fastapi.Depends(_require_write)
     ],
 ) -> PoolResponse:
-    """Change a runner pool. Runners keep the labels and allowlist that
-    they registered with; new runners get the new ones.
+    """Change a runner pool. The next claim of each runner of the pool
+    uses the new labels and allowlist.
 
     Raises:
         403: Not a platform administrator.
@@ -823,7 +821,7 @@ async def claim_harness_task(
     """
     if runner['state'] != 'idle':
         raise _conflict('runner_busy', 'The runner holds a chain')
-    agents, limits = await eligible_agents(db, runner['labels'])
+    agents, limits = await eligible_agents(db)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + wait
     while True:

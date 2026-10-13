@@ -291,6 +291,17 @@ class ClaimTests(RunnerTestCase):
         self.assertIsNone(await self.claim(await self.register(pool)))
         self.assertIsNotNone(await self.claim(await self.register()))
 
+    async def test_pool_changes_apply_to_live_runners(self) -> None:
+        runner = await self.register()
+        await self.harness.update_pool(
+            self.pool_name, {'organization_ids': [self.other_org]}
+        )
+        self.assertIsNone(await self.claim(runner))
+        await self.harness.update_pool(
+            self.pool_name, {'organization_ids': [self.org]}
+        )
+        self.assertIsNotNone(await self.claim(runner))
+
     async def test_disabled_agent_is_not_claimed(self) -> None:
         await self.graph.execute(
             'MATCH (a:Agent {{id: {id}}}) SET a.enabled = false'
@@ -370,6 +381,12 @@ class LabelTests(RunnerTestCase):
         claim = await self.claim(await self.register(pool))
         assert claim is not None
         self.assertEqual(claim['task']['short_id'], 'T-1')
+
+    async def test_label_removed_from_the_pool_applies_at_once(self) -> None:
+        pool = await self.make_pool(['general', 'gpu'], [self.org], 'gpu')
+        runner = await self.register(pool)
+        await self.harness.update_pool(pool, {'labels': ['general']})
+        self.assertIsNone(await self.claim(runner))
 
 
 class ConcurrencyTests(RunnerTestCase):

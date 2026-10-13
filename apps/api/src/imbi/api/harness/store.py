@@ -182,7 +182,8 @@ class HarnessStore:
     async def update_pool(self, name: str, changes: Row) -> Row | None:
         """Change columns of the pool ``name``; ``None`` when not found.
 
-        A runner keeps the labels and allowlist that it registered with.
+        A claim reads the labels and allowlist of the pool, so the change
+        applies to runners that registered before it.
         """
         if not changes:
             return await self.pool(name)
@@ -228,7 +229,8 @@ class HarnessStore:
     ) -> tuple[Row, str, str]:
         """Register a runner of ``pool``.
 
-        The runner gets the labels and the allowlist of the pool. Return
+        The runner row keeps a copy of the labels and the allowlist of
+        the pool for display; a claim reads the pool. Return
         the runner, its runner credential, and its executor credential.
         """
         runner_token, runner_hash = tokens.new_secret(tokens.RUNNER_PREFIX)
@@ -287,29 +289,36 @@ class HarnessStore:
     async def chain(self, chain_id: uuid.UUID) -> Row | None:
         """Return a chain with the ``runner_state`` of its runner."""
         return await self._fetch_one(
-            'SELECT c.*, r.state AS runner_state, r.labels AS runner_labels'
+            'SELECT c.*, r.state AS runner_state, p.labels AS runner_labels'
             ' FROM harness.chains AS c'
             ' LEFT JOIN harness.runners AS r ON r.id = c.runner_id'
+            ' LEFT JOIN harness.pools AS p ON p.name = r.pool'
             ' WHERE c.root_task_id = %s',
             (chain_id,),
         )
 
     async def claim(
-        self, runner: Row, agents: list[str], limits: dict[str, int]
+        self,
+        runner: Row,
+        agents: dict[str, list[str]],
+        limits: dict[str, int],
     ) -> tuple[Row, Row] | None:
         """Pin the chain of the oldest task that ``runner`` may run.
 
-        ``agents`` are the agents that the runner may run: enabled, and
-        with required labels that the runner has. ``limits`` maps an
-        agent id to its ``max_concurrent_tasks``. Return the task and
-        the chain, or ``None`` when no task waits.
+        ``agents`` maps each enabled agent to its required labels.
+        ``limits`` maps an agent id to its ``max_concurrent_tasks``.
+        The labels and the organization allowlist come from the pool of
+        the runner as it is now, in this transaction, so a change to the
+        pool applies to runners that registered before it. Return the
+        task and the chain, or ``None`` when no task waits.
 
         Raises:
             RunnerBusy: The runner is not idle.
 
         """
         async with self._pool.connection() as conn, conn.transaction():
-            await self._lock_idle(conn, runner['id'])
+            pool = await self._lock_idle(conn, runner['id'])
+            labels = set(pool['labels'])
             await conn.execute(
                 'SELECT pg_advisory_xact_lock(hashtext(%s))', (_CLAIM_LOCK,)
             )
@@ -317,8 +326,12 @@ class HarnessStore:
                 conn,
                 _CLAIM_QUERY,
                 {
-                    'agents': agents,
-                    'orgs': runner['organization_ids'],
+                    'agents': [
+                        agent_id
+                        for agent_id, required in agents.items()
+                        if set(required) <= labels
+                    ],
+                    'orgs': pool['organization_ids'],
                     'limits': pg_json.Jsonb(limits),
                     'pinned': list(PINNED),
                 },
@@ -452,7 +465,7 @@ class HarnessStore:
         return chain
 
     async def runner_labels(self, chain_id: uuid.UUID) -> list[str] | None:
-        """Return the labels of the runner that holds a running chain."""
+        """Return the pool labels of the runner of a running chain."""
         chain = await self.chain(chain_id)
         if chain is None or chain['state'] != 'running':
             return None
@@ -616,14 +629,20 @@ class HarnessStore:
 
     # --- Helpers -------------------------------------------------------
 
-    async def _lock_idle(self, conn: Conn, runner_id: uuid.UUID) -> None:
-        cursor = await conn.execute(
-            'SELECT state FROM harness.runners WHERE id = %s FOR UPDATE',
+    async def _lock_idle(self, conn: Conn, runner_id: uuid.UUID) -> Row:
+        """Lock an idle runner; return the labels and allowlist of its
+        pool as they are now."""
+        row = await _fetch_one(
+            conn,
+            'SELECT r.state, p.labels, p.organization_ids'
+            ' FROM harness.runners AS r'
+            ' JOIN harness.pools AS p ON p.name = r.pool'
+            ' WHERE r.id = %s FOR UPDATE OF r FOR SHARE OF p',
             (runner_id,),
         )
-        row = await cursor.fetchone()
-        if row is None or row[0] != 'idle':
+        if row is None or row['state'] != 'idle':
             raise RunnerBusy(str(runner_id))
+        return row
 
     async def _fetch_one(
         self, query: _Query, params: typing.Any
