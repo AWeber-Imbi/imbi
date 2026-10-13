@@ -174,6 +174,7 @@ class Engine:
         wf_graph = wf.Graph.model_validate(version['graph'])
         wf_settings = wf.Settings.model_validate(version['settings'])
         if run['cancel_requested']:
+            await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'cancelled')
             return None
         if run['status'] == 'queued':
@@ -185,6 +186,7 @@ class Engine:
             seconds=wf_settings.max_run_time_seconds
         )
         if _now() > deadline:
+            await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'timed_out')
             return None
         # A failure with no Failed port fails the run at once: the steps
@@ -497,6 +499,31 @@ class Engine:
         await _step_event(conn, run['id'], step['node_id'], f'step.{status}')
 
     # --- Close ---------------------------------------------------------
+
+    async def _cancel_agent_tasks(
+        self, run: store.Row, steps: dict[str, store.Row], slug: str
+    ) -> None:
+        """Cancel the task of each running agent step, before a close.
+
+        An error that a retry can fix raises, so the run closes on a
+        later pass. Any other error leaves the task open.
+        """
+        for step in steps.values():
+            if step['node_type'] != 'agent' or step['status'] != 'running':
+                continue
+            try:
+                await self.steps.cancel_agent_task(
+                    run['organization_id'], slug, run['id'], step['node_id']
+                )
+            except executors.StepError as e:
+                if e.retry:
+                    raise
+                LOGGER.warning(
+                    'Run %s: could not cancel the task of %s: %s',
+                    run['id'],
+                    step['node_key'],
+                    e.code,
+                )
 
     async def _close(
         self,

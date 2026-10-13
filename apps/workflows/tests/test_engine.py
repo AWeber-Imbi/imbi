@@ -14,11 +14,13 @@ import unittest
 import uuid
 from unittest import mock
 
+import fastapi
 import httpx
 import orjson
 from psycopg import rows
 
-from imbi.api import workflows
+from imbi.api import agent_tasks, models, workflows
+from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.common import graph, iggy
 from imbi.common.auth import encryption
@@ -50,6 +52,11 @@ class FakeApi:
         self.failed: list[str] = []
         #: The raw path of every request.
         self.paths: list[str] = []
+        #: Takes the agent task calls when set.
+        self.agent: (
+            typing.Callable[[httpx.Request], typing.Awaitable[httpx.Response]]
+            | None
+        ) = None
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -67,9 +74,13 @@ class FakeApi:
         self.emails.append(request.url.path)
         return {'recipients': [self.recipient], 'failed': self.failed}
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(
+        self, request: httpx.Request
+    ) -> httpx.Response | typing.Awaitable[httpx.Response]:
         self.paths.append(request.url.raw_path.decode())
         path = request.url.path
+        if '/agent-task' in path and self.agent is not None:
+            return self.agent(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/auth/token'):
@@ -1122,6 +1133,264 @@ class TimeoutTestCase(EngineTestCase):
         run = await self._drive(run_id)
         self.assertEqual(run['status'], 'timed_out')
         self.assertEqual(run['steps']['hold']['status'], 'cancelled')
+
+
+class AgentStepTestCase(EngineTestCase):
+    """The agent step, with the real agent task routes and store.
+
+    The fake imbi-api passes the agent task calls to the route
+    functions of imbi-api, so the step makes real ADR 0020 tasks. The
+    test closes a task with the store, as the harness routes do.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.config.agent_poll_seconds = 1
+        await agent_tasks.initialize()
+        self.task_pool = agent_tasks.create_pool()
+        await self.task_pool.open()
+        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.addAsyncCleanup(self._cleanup_tasks)
+        self.agent_id = f'agent-{uuid.uuid4().hex[:8]}'
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (a:Agent {{id: {id}, slug: {id}, name: 'Fixer',
+                              enabled: true, settings: '{{}}',
+                              version: 2, org_id: {org}}})
+            CREATE (a)-[:BELONGS_TO]->(o)
+            RETURN a.id AS id
+            """,
+            {'org': self.org, 'id': self.agent_id},
+            ['id'],
+        )
+        self.engine_auth = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-workflows', display_name='Imbi Workflows'
+            ),
+            auth_method='client_credentials',
+        )
+        #: Status codes to answer instead of the next agent task calls,
+        #: after the route ran.
+        self.fail_with: list[int] = []
+        self.api.agent = self._agent_route
+
+    async def _cleanup_tasks(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (a:Agent {{id: {id}}})
+            OPTIONAL MATCH (a)-[:ACTS_AS]->(s:ServiceAccount)
+            DETACH DELETE s, a
+            RETURN 1 AS ok
+            """,
+            {'id': self.agent_id},
+            ['ok'],
+        )
+        async with self.task_pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                (self.org,),
+            )
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_id_sequences'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+        await self.task_pool.close()
+
+    async def _agent_route(self, request: httpx.Request) -> httpx.Response:
+        parts = request.url.path.split('/')
+        # /organizations/{org}/workflows/{slug}/runs/{run}/steps/{node}/...
+        org, slug, run_id, node_id = parts[2], parts[4], parts[6], parts[8]
+        args: dict[str, typing.Any] = {
+            'org_id': self.org,
+            'slug': slug,
+            'run_id': uuid.UUID(run_id),
+            'node_id': node_id,
+            'store': self.definitions,
+            'runs': self.runs,
+            'tasks': self.tasks,
+            'auth': self.engine_auth,
+        }
+        try:
+            if parts[-1] == 'cancel':
+                await workflow_runs.cancel_step_agent_task(**args)
+                response = httpx.Response(204)
+            else:
+                body = await workflow_runs.step_agent_task(
+                    org_slug=org, db=self.graph, **args
+                )
+                response = httpx.Response(200, json=body)
+        except fastapi.HTTPException as e:
+            response = httpx.Response(e.status_code, json={'detail': e.detail})
+        if self.fail_with:
+            return httpx.Response(self.fail_with.pop(0), json={})
+        return response
+
+    async def _agent_workflow(self) -> uuid.UUID:
+        return await self._workflow(
+            [
+                _node(
+                    'start',
+                    'manual',
+                    {'inputs': [{'name': 'version', 'type': 'string'}]},
+                ),
+                _node(
+                    'ask',
+                    'agent',
+                    {
+                        'agent_id': self.agent_id,
+                        'instruction': 'Check {{ trigger.version }}.',
+                    },
+                ),
+                _node('ok', 'wait', {'duration': '1s'}),
+                _node('bad', 'wait', {'duration': '1s'}),
+            ],
+            [
+                _edge('start', 'ask'),
+                _edge('ask', 'ok', 0),
+                _edge('ask', 'bad', 1),
+            ],
+        )
+
+    async def _task(self, run_id: uuid.UUID) -> dict[str, typing.Any]:
+        """Tick until the agent step has its task; return the task."""
+        run = await self._drive(
+            run_id,
+            until=lambda r: bool(r['steps'].get('ask', {}).get('state')),
+        )
+        task = await self.tasks.get(
+            self.org, run['steps']['ask']['state']['task_id']
+        )
+        assert task is not None
+        return task
+
+    async def _org_tasks(self) -> list[dict[str, typing.Any]]:
+        async with (
+            self.task_pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'SELECT * FROM agent_runtime.tasks WHERE organization_id = %s',
+                (self.org,),
+            )
+            return await cur.fetchall()
+
+    def _agent(self) -> agent_tasks.Actor:
+        return agent_tasks.Actor('agent', self.agent_id, 'harness')
+
+    async def test_task_done_takes_succeeded(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1.2'}
+        )
+        task = await self._task(run_id)
+        self.assertEqual(task['status'], 'queued')
+        self.assertEqual(task['description'], 'Check 1.2.')
+        self.assertEqual(task['title'], 'Deploy guard: Ask')
+        self.assertEqual(task['owner'], self.email)
+        self.assertEqual(task['agent_version'], 2)
+        self.assertEqual(task['idempotency_key'], f'{run_id}:ask')
+        self.assertEqual(
+            (task['origin_kind'], task['origin_id']), ('human', self.email)
+        )
+        self.assertEqual(
+            task['origin'],
+            {
+                'kind': 'human',
+                'workflow_run_id': str(run_id),
+                'node_key': 'ask',
+            },
+        )
+        await self.tasks.reply(
+            self.org, task['short_id'], 'Version 1.2 is fine.', self._agent()
+        )
+        await self.tasks.set_outcome(
+            self.org, task['short_id'], 'done_acted', None, self._agent()
+        )
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run)
+        ask = run['steps']['ask']
+        self.assertEqual(
+            (ask['status'], ask['port'], ask['attempt']), ('succeeded', 0, 1)
+        )
+        self.assertEqual(
+            ask['output'],
+            {
+                'task_id': task['short_id'],
+                'outcome': 'done_acted',
+                'reason': None,
+                'summary': 'Version 1.2 is fine.',
+            },
+        )
+        self.assertEqual(
+            self._states(run),
+            {
+                'start': 'succeeded',
+                'ask': 'succeeded',
+                'ok': 'succeeded',
+                'bad': 'skipped',
+            },
+        )
+        self.assertEqual(len(await self._org_tasks()), 1)
+
+    async def test_failed_outcome_takes_failed(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1'}
+        )
+        task = await self._task(run_id)
+        await self.tasks.set_outcome(
+            self.org,
+            task['short_id'],
+            'failed_external',
+            'ci_down',
+            self._agent(),
+        )
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run)
+        ask = run['steps']['ask']
+        self.assertEqual((ask['status'], ask['port']), ('failed', 1))
+        self.assertEqual(ask['output']['reason'], 'ci_down')
+        self.assertIsNone(ask['output']['summary'])
+        self.assertEqual(run['steps']['ok']['status'], 'skipped')
+        self.assertEqual(run['steps']['bad']['status'], 'succeeded')
+
+    async def test_cancel_run_cancels_task(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1'}
+        )
+        task = await self._task(run_id)
+        self.assertTrue(await self.runs.cancel(run_id))
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'cancelled')
+        self.assertEqual(run['steps']['ask']['status'], 'cancelled')
+        closed = await self.tasks.get(self.org, task['short_id'])
+        assert closed is not None
+        self.assertEqual(closed['control'], 'cancel')
+        # No harness session is open, so the cancel closes it at once.
+        self.assertEqual(
+            (closed['status'], closed['outcome']),
+            ('closed', 'cancelled_by_human'),
+        )
+
+    async def test_retry_does_not_make_a_second_task(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1'}
+        )
+        # The first call makes the task, and its answer is lost.
+        self.fail_with = [503]
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            task = await self._task(run_id)
+        run = await self._run(run_id)
+        self.assertEqual(run['steps']['ask']['attempt'], 2)
+        self.assertEqual(len(await self._org_tasks()), 1)
+        await self.tasks.set_outcome(
+            self.org, task['short_id'], 'done_acted', None, self._agent()
+        )
+        run = await self._drive(run_id)
+        self.assertEqual(
+            run['steps']['ask']['output']['task_id'], task['short_id']
+        )
+        self.assertEqual(len(await self._org_tasks()), 1)
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

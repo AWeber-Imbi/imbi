@@ -11,6 +11,10 @@ deployments, and imbi-api sends email only to users and teams of the
 organization. They send the idempotency key ``<run_id>:<node_key>``:
 after a crash the engine calls them again, and imbi-api returns the
 first result instead of acting again, or ``409 outcome_unknown``.
+
+An agent step asks imbi-api for the agent task of the step: imbi-api
+makes it with the key ``<run_id>:<node_key>`` the first time, and
+returns it after that. The step polls it until it is closed.
 """
 
 import asyncio
@@ -30,6 +34,7 @@ from imbi.common.auth import encryption
 from imbi.common.llm import drivers, typesafe
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows.registry import (
+    agent,
     deploy,
     email,
     model_decision,
@@ -180,6 +185,8 @@ class Api:
                 f'http_{response.status_code}',
                 retry=response.status_code >= HTTP_SERVER_ERROR,
             )
+        if not response.content:  # 204
+            return {}
         return typing.cast('dict[str, typing.Any]', response.json())
 
 
@@ -236,6 +243,8 @@ class Executors:
                 return await self._deploy(call)
             case 'rollback':
                 return await self._rollback(call)
+            case 'agent':
+                return await self._agent(call)
             case other:
                 raise StepError(f'unknown_type:{other}', retry=False)
 
@@ -344,6 +353,69 @@ class Executors:
             # the other recipients already have the message.
             raise StepError('email_failed: ' + ', '.join(failed), retry=False)
         return Outcome(output={'recipients': sent['recipients']})
+
+    async def _agent(self, call: Call) -> Outcome:
+        _params(agent.Params, call)
+        task = await self.api.request(
+            'POST',
+            await self._agent_task_path(
+                call.organization_id,
+                call.workflow_slug,
+                call.run_id,
+                call.node.id,
+            ),
+        )
+        if task['outcome'] is None:
+            return Outcome(
+                resume_at=_now()
+                + datetime.timedelta(seconds=self.config.agent_poll_seconds),
+                state={'task_id': task['task_id']},
+            )
+        port = 0 if task['outcome'] in agent.SUCCEEDED else 1
+        return Outcome(
+            output={
+                'task_id': task['task_id'],
+                'outcome': task['outcome'],
+                'reason': task['reason'],
+                'summary': task['summary'],
+            },
+            port=port,
+            failed=port == 1,
+            state={'task_id': task['task_id']},
+        )
+
+    async def cancel_agent_task(
+        self,
+        organization_id: str,
+        slug: str,
+        run_id: uuid.UUID,
+        node_id: str,
+    ) -> None:
+        """Ask imbi-api to cancel the task of an agent step, if open."""
+        await self.api.request(
+            'POST',
+            await self._agent_task_path(organization_id, slug, run_id, node_id)
+            + '/cancel',
+        )
+
+    async def _agent_task_path(
+        self,
+        organization_id: str,
+        slug: str,
+        run_id: uuid.UUID,
+        node_id: str,
+    ) -> str:
+        return _path(
+            'organizations',
+            await self.org_slug(organization_id),
+            'workflows',
+            slug,
+            'runs',
+            run_id,
+            'steps',
+            node_id,
+            'agent-task',
+        )
 
     async def notify_failure(
         self, organization_id: str, slug: str, run_id: uuid.UUID
