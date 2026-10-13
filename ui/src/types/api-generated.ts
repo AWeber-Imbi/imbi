@@ -4520,7 +4520,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such agent.
-         *         409: Other agents delegate to this agent.
+         *         409: Other agents delegate to this agent, or workflows use it.
          */
         delete: operations["delete_agent_api_organizations__org_slug__agents__slug__delete"];
         options?: never;
@@ -5623,6 +5623,67 @@ export interface paths {
          *             ``notify_owner_team``.
          */
         post: operations["send_failure_notice_api_organizations__org_slug__workflows__slug__runs__run_id__failure_notice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step Agent Task
+         * @description Make the task of a running agent step, or return it. Engine only.
+         *
+         *     A repeat, after a crash or for a retry of the step, returns the
+         *     first task: the key is the same. The person who activated the
+         *     workflow owns the task, and must still be able to make agent tasks
+         *     in the org. The engine polls this route until the task is closed.
+         *
+         *     Raises:
+         *         403: ``owner_forbidden``: the activator cannot make agent tasks.
+         *         404: No such workflow, run, or step.
+         *         409: The step is not a running agent step, or the agent is
+         *             disabled.
+         *         422: ``agent_not_found``, or the project or the budget is not
+         *             valid (see :func:`agent_tasks.make_task`).
+         */
+        post: operations["step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Step Agent Task
+         * @description Cancel the task of an agent step, when it is open. Engine only.
+         *
+         *     The engine calls this when it closes a run whose agent step is
+         *     running. A step with no task, or with a closed task, is not an
+         *     error.
+         *
+         *     Raises:
+         *         404: No such workflow, run, or step.
+         *         409: The step is not an agent step.
+         */
+        post: operations["cancel_step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -18517,6 +18578,19 @@ export interface components {
              */
             status: "ok" | "initializing" | "error";
         };
+        /** StepAgentTask */
+        StepAgentTask: {
+            /** Task Id */
+            task_id: string;
+            /** Status */
+            status: string;
+            /** Outcome */
+            outcome: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Summary */
+            summary: string | null;
+        };
         /** StepRun */
         StepRun: {
             /** Node Id */
@@ -29386,6 +29460,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EmailResult"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                run_id: string;
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepAgentTask"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                run_id: string;
+                node_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

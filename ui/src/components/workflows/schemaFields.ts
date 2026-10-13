@@ -4,6 +4,7 @@ import type { JsonSchema } from './types'
 
 /** Live data that a select field takes its options from. */
 export type FieldSource =
+  | 'agent'
   | 'environment'
   | 'model'
   | 'project'
@@ -31,13 +32,20 @@ interface FieldBase {
 // Parameters that hold the graph node id (or, for environments, the
 // slug) of a live record, by name. They match the W1 step registry.
 const SOURCES: Record<string, FieldSource> = {
+  agent_id: 'agent',
   environment: 'environment',
   model_id: 'model',
   project_id: 'project',
   webhook_id: 'webhook',
 }
 
-const MULTILINE = new Set(['body', 'context', 'filter', 'prompt'])
+const MULTILINE = new Set([
+  'body',
+  'context',
+  'filter',
+  'instruction',
+  'prompt',
+])
 const MONO = new Set(['filter'])
 
 export function paramFields(schema: JsonSchema): ParamField[] {
