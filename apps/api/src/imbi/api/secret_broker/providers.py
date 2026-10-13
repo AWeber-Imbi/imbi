@@ -569,15 +569,30 @@ class AwsSecretsManager(Provider):
     async def check_config(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> None:
-        """Refuse a role whose trust policy does not require the
-        ExternalId, or that cannot be checked."""
+        """Refuse a role that the organization does not control.
+
+        Two calls: the role must refuse a wrong ExternalId, and it must
+        accept the organization's own ExternalId. The second call stops
+        an organization from claiming a role that only another
+        organization can assume.
+        """
         problem = await self._external_id_problem(config)
+        if problem is None:
+            try:
+                await self._session(config, organization_id)
+            except Exception as err:  # noqa: BLE001 - fail closed
+                LOGGER.warning(
+                    'AWS role ownership check failed: %s',
+                    type(err).__name__,
+                )
+                problem = 'role_not_verified'
         if problem is not None:
             raise InvalidConfiguration(
                 'The role trust policy must require sts:ExternalId '
                 f'"{external_id(organization_id)}"'
                 if problem == 'role_does_not_require_external_id'
-                else 'The role could not be checked; try again',
+                else 'The role cannot be assumed with sts:ExternalId '
+                f'"{external_id(organization_id)}"',
                 code=problem,
             )
 

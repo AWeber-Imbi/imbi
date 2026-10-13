@@ -308,7 +308,8 @@ async def _check_role(
         (role, organization_id),
     )
     if await cur.fetchone() is not None:
-        raise RoleInUse('Another organization uses this role')
+        # Generic: the message must not say that another tenant has it.
+        raise RoleInUse('This role cannot be used')
 
 
 async def _lock_bindings(

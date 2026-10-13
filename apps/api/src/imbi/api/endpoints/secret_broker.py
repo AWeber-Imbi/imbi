@@ -427,8 +427,8 @@ async def create_provider(
     """Create a provider. Its configuration holds no credentials.
 
     Raises:
-        409: The name is in use, or another organization uses the
-            role (``role_arn_in_use``).
+        409: The name is in use, or the role cannot be used
+            (``role_arn_in_use``).
         422: Unknown type, or the configuration is not valid, or the
             role does not require the ExternalId
             (``role_does_not_require_external_id``).
@@ -486,8 +486,8 @@ async def update_provider(
 
     Raises:
         404: No such provider.
-        409: The name is in use, or another organization uses the
-            role (``role_arn_in_use``).
+        409: The name is in use, or the role cannot be used
+            (``role_arn_in_use``).
         422: The configuration is not valid, or the role does not
             require the ExternalId.
 

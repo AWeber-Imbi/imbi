@@ -210,8 +210,13 @@ class SecretEndpointTestCase(
             response = await self._post('/secret-providers/', body)
             self.assertEqual(response.status_code, 409)
             self.assertEqual(
-                response.json()['detail']['error'], 'role_arn_in_use'
+                response.json()['detail'],
+                {
+                    'error': 'role_arn_in_use',
+                    'message': 'This role cannot be used',
+                },
             )
+            self.assertNotIn(other_org, response.text)
             # A role of its own is accepted, and the same organization
             # can use one role in two providers.
             mine = config | {'role_arn': role + '-mine'}

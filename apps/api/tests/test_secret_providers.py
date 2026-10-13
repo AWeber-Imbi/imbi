@@ -273,9 +273,13 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_role_must_require_the_external_id(self) -> None:
         await AWS.check_config(CONFIG, 'org')
-        probe = self.sts.assume_role.call_args.kwargs['ExternalId']
+        # First a random wrong ExternalId, then the organization's own.
+        probe, own = (
+            call.kwargs['ExternalId']
+            for call in self.sts.assume_role.call_args_list
+        )
         self.assertTrue(probe.startswith('imbi:probe-'))
-        self.assertNotEqual(probe, providers.external_id('org'))
+        self.assertEqual(own, providers.external_id('org'))
 
         # A trust policy without the ExternalId condition.
         self.sts.assume_role.side_effect = None
@@ -305,6 +309,21 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(providers.InvalidConfiguration) as ctx:
             await AWS.check_config(CONFIG, 'org')
         self.assertEqual(ctx.exception.code, 'role_not_verified')
+
+    async def test_role_must_accept_the_organization(self) -> None:
+        # The role requires an ExternalId, but another organization's:
+        # a squatter cannot claim it.
+        async def other_org_role(**kwargs: typing.Any) -> typing.Any:
+            if kwargs['ExternalId'] != providers.external_id('owner'):
+                raise _client_error('AccessDenied')
+            return await self._assume_role(**kwargs)
+
+        self.sts.assume_role.side_effect = other_org_role
+        with self.assertRaises(providers.InvalidConfiguration) as ctx:
+            await AWS.check_config(CONFIG, 'squatter')
+        self.assertEqual(ctx.exception.code, 'role_not_verified')
+        self.assertIn('imbi:squatter', str(ctx.exception))
+        await AWS.check_config(CONFIG, 'owner')
 
     async def test_endpoint_is_an_operator_setting(self) -> None:
         self.sm.get_secret_value.return_value = {'SecretString': 'x'}
