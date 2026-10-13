@@ -6,18 +6,19 @@ marketplace sync reads a saved real ``marketplace.json``; GitHub is not
 called.
 """
 
+import json
 import typing
 import uuid
 from unittest import mock
 
 import httpx
+from psycopg.types import json as pg_json
 
 from apps.api.tests import test_agent_platform as unit
 from apps.api.tests.endpoints import test_harness
 from imbi.api import secret_broker
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces
-from imbi.api.secret_broker import providers as secret_providers
 
 SHA_1 = '1' * 40
 SHA_2 = '2' * 40
@@ -48,6 +49,45 @@ class PlatformTestCase(test_harness.RunnerTestCase):
                 'DELETE FROM secrets.providers WHERE organization_id = %s',
             ):
                 await conn.execute(statement, (self.org,))
+
+    async def add_binding(
+        self,
+        reference: str,
+        *,
+        provider_type: str = 'github_app',
+        enabled: bool = True,
+        host: str = 'github.com',
+    ) -> None:
+        """Insert a provider and a binding, as the broker stores them."""
+        provider = uuid.uuid4()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO secrets.providers (id, organization_id, name,'
+                ' type, config, created_by)'
+                " VALUES (%s, %s, %s, %s, %s, 'test')",
+                (
+                    provider,
+                    self.org,
+                    reference,
+                    provider_type,
+                    pg_json.Jsonb({'host': host}),
+                ),
+            )
+            await conn.execute(
+                'INSERT INTO secrets.bindings (id, organization_id,'
+                ' reference, provider_id, credential_class,'
+                ' max_ttl_seconds, enabled, created_by) VALUES (%s, %s,'
+                " %s, %s, 'dynamic', 60, %s, 'test')",
+                (uuid.uuid4(), self.org, reference, provider, enabled),
+            )
+
+    async def set_links(self, links: dict[str, str]) -> None:
+        await self.graph.execute(
+            'MATCH (p:Project {{id: {id}}}) SET p.links = {links}'
+            ' RETURN p.id AS id',
+            {'id': self.project_id, 'links': json.dumps(links)},
+            ['id'],
+        )
 
     def org_url(self, path: str) -> str:
         return f'/organizations/{self.org}/{path}'
@@ -275,28 +315,16 @@ class AgentFieldTests(PlatformTestCase):
         )
         self.assertEqual(response.status_code, 422, response.text)
         self.assertIn('not found', response.text)
-        provider = uuid.uuid4()
-        async with self.pool.connection() as conn:
-            await conn.execute(
-                'INSERT INTO secrets.providers (id, organization_id, name,'
-                " type, created_by) VALUES (%s, %s, 'fake', 'fake', 'test')",
-                (provider, self.org),
-            )
-            await conn.execute(
-                'INSERT INTO secrets.bindings (id, organization_id,'
-                ' reference, provider_id, credential_class,'
-                ' max_ttl_seconds, created_by) VALUES (%s, %s,'
-                " 'secret://gh/bot', %s, 'static', 60, 'test')",
-                (uuid.uuid4(), self.org, provider),
-            )
-        with mock.patch.dict(
-            secret_providers.PROVIDERS, {'github_app': mock.Mock()}
+        await self.add_binding('secret://gh/fake', provider_type='fake')
+        await self.add_binding('secret://gh/off', enabled=False)
+        await self.add_binding('secret://gh/bot')
+        for reference, error in (
+            ('secret://gh/fake', 'not a github_app binding'),
+            ('secret://gh/off', 'disabled'),
         ):
-            response = await self.create_agent(
-                github_app_binding='secret://gh/bot'
-            )
-        self.assertEqual(response.status_code, 422, response.text)
-        self.assertIn('github_app', response.text)
+            response = await self.create_agent(github_app_binding=reference)
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertIn(error, response.text)
         response = await self.create_agent(
             github_app_binding='secret://gh/bot',
             secrets=['secret://ci/token#value'],
@@ -316,7 +344,7 @@ class BundleTests(PlatformTestCase):
         self.assertIsNone(bundle['platform_config_version'])
         self.assertEqual(bundle['config']['permission_mode'], 'default')
         self.assertEqual(bundle['config']['plugins'], [])
-        self.assertEqual(bundle['repositories'], {})
+        self.assertEqual(bundle['repositories'], [])
         self.assertNotIn('secret', str(bundle['config']['model_upstream']))
 
     async def test_bundle_of_a_pinned_version_does_not_change(self) -> None:
@@ -328,15 +356,7 @@ class BundleTests(PlatformTestCase):
                 {'marketplace': 'claude-code', 'plugin': 'code-review'}
             ],
         )
-        await self.graph.execute(
-            'MATCH (p:Project {{id: {id}}}) SET p.links = {links}'
-            ' RETURN p.id AS id',
-            {
-                'id': self.project_id,
-                'links': '{"github-repository": "https://github.com/a/b"}',
-            },
-            ['id'],
-        )
+        await self.set_links({'github-repository': 'https://github.com/a/b'})
         response = await self.create_task(project_id=self.project_id)
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['platform_config_version'], 1)
@@ -350,8 +370,14 @@ class BundleTests(PlatformTestCase):
         self.assertEqual(before.config.plugins[0].sha, SHA_1)
         self.assertEqual(before.config.plugins[0].url, URL)
         self.assertEqual(
-            before.repositories,
-            {'github-repository': 'https://github.com/a/b'},
+            [r.model_dump() for r in before.repositories],
+            [
+                {
+                    'host': 'github.com',
+                    'name': 'a/b',
+                    'url': 'https://github.com/a/b',
+                }
+            ],
         )
 
         await self.put_config(system_prompt_prefix='two')
@@ -362,3 +388,32 @@ class BundleTests(PlatformTestCase):
         # A new task pins the new version.
         response = await self.create_task()
         self.assertEqual(response.json()['platform_config_version'], 2)
+
+    async def test_repositories_use_the_github_app_host(self) -> None:
+        await self.add_binding('secret://gh/bot', host='acme.ghe.com')
+        await self.make_version(
+            {'settings': {'github_app_binding': 'secret://gh/bot'}}
+        )
+        await self.set_links(
+            {
+                'github-repository': 'https://acme.ghe.com/ops/billing.git',
+                'docs': 'https://github.com/ops/docs',
+            }
+        )
+        response = await self.create_task(project_id=self.project_id)
+        task = await self.task_row(response.json()['short_id'])
+        bundle = await harness_api._identity(
+            self.graph, self.harness, task, self.org
+        )
+        self.assertEqual(
+            [(r.host, r.name) for r in bundle.repositories],
+            [('acme.ghe.com', 'ops/billing')],
+        )
+        # A link on another host than the provider's gives nothing.
+        await self.set_links(
+            {'github-repository': 'https://github.com/ops/billing'}
+        )
+        bundle = await harness_api._identity(
+            self.graph, self.harness, task, self.org
+        )
+        self.assertEqual(bundle.repositories, [])

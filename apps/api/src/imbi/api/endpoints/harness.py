@@ -32,9 +32,11 @@ from imbi.api.endpoints import agents as agents_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
+from imbi.api.secret_broker import github_app
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
+from imbi.plugins.github import _repos
 
 #: The longest wait of a claim long poll, in seconds.
 MAX_CLAIM_WAIT_SECONDS = 20
@@ -159,6 +161,15 @@ class BundlePrompt(pydantic.BaseModel):
     )
 
 
+class BundleRepository(pydantic.BaseModel):
+    """A repository of the task's project."""
+
+    host: str
+    #: ``owner/name``.
+    name: str
+    url: str
+
+
 class IdentityBundle(pydantic.BaseModel):
     """The pinned identity of a task's agent. Holds no secret."""
 
@@ -179,9 +190,11 @@ class IdentityBundle(pydantic.BaseModel):
     #: The organization configuration with the agent's settings
     #: applied. Each plugin has its marketplace URL and commit.
     config: platform.MergedConfig | None = None
-    #: The links of the task's project (link key to URL), among them
-    #: its repositories. Empty for a task with no project.
-    repositories: dict[str, str] = {}
+    #: The repository of the task's project: its ``github-repository``
+    #: link on the host of the agent's GitHub App provider, as the
+    #: ``github_app`` provider reads it. Empty when the task has no
+    #: project or the project has no such link.
+    repositories: list[BundleRepository] = []
 
 
 class Claim(pydantic.BaseModel):
@@ -417,6 +430,37 @@ async def _rendered_prompt(
     )
 
 
+async def _repositories(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    task: dict[str, typing.Any],
+    settings: models.AgentSettings,
+) -> list[BundleRepository]:
+    """Return the project repository, from the same source as the
+    ``github_app`` provider: only the ``github-repository`` link, on
+    the host of the agent's GitHub App provider (``github.com`` when
+    the agent has none)."""
+    if not task.get('project_id'):
+        return []
+    host = 'github.com'
+    if settings.github_app_binding is not None:
+        provider = await store.binding_provider(
+            task['organization_id'], settings.github_app_binding
+        )
+        if provider is not None and provider['type'] == 'github_app':
+            config: dict[str, typing.Any] = provider['config'] or {}
+            host = str(config.get('host', host))
+    url = (await _helpers.lookup_project_links(db, task['project_id'])).get(
+        github_app.REPOSITORY_LINK
+    )
+    found = None if url is None else _repos.parse_owner_repo(url, host)
+    if url is None or found is None:
+        return []
+    return [
+        BundleRepository(host=host, name=f'{found[0]}/{found[1]}', url=url)
+    ]
+
+
 async def _identity(
     db: graph.Graph,
     store: harness.HarnessStore,
@@ -444,11 +488,7 @@ async def _identity(
             'prompt_error': prompt_error,
             'platform_config_version': version,
             'config': platform.merge(config, settings),
-            'repositories': (
-                await _helpers.lookup_project_links(db, task['project_id'])
-                if task.get('project_id')
-                else {}
-            ),
+            'repositories': await _repositories(db, store, task, settings),
         }
     )
 

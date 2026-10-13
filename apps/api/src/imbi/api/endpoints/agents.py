@@ -40,7 +40,6 @@ from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.api.harness import platform
 from imbi.api.scoring import OptionalValkeyClient
-from imbi.api.secret_broker import providers as secret_providers
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
@@ -837,9 +836,9 @@ async def _check_platform(
     keeps its ``sha`` keeps its pin.
 
     Raises:
-        422: A secret reference does not parse, the GitHub App binding
-            is not a binding of the org (or not a ``github_app``
-            binding), the settings widen the organization's agent
+        422: A secret reference does not parse, a new GitHub App
+            binding is not an enabled ``github_app`` binding of the
+            org, the settings widen the organization's agent
             platform configuration, or a plugin cannot be pinned.
 
     """
@@ -850,23 +849,20 @@ async def _check_platform(
             platform.check_reference(settings.github_app_binding, field=False)
     except ValueError as err:
         raise _unprocessable(str(err)) from err
-    if settings.github_app_binding is not None:
-        provider_type = await store.binding_provider_type(
-            org_id, settings.github_app_binding
-        )
-        if provider_type is None:
+    binding = settings.github_app_binding
+    if binding is not None and binding != (
+        current.github_app_binding if current else None
+    ):
+        provider = await store.binding_provider(org_id, binding)
+        if provider is None:
+            raise _unprocessable(f'Secret binding {binding!r} not found')
+        if provider['type'] != 'github_app':
             raise _unprocessable(
-                f'Secret binding {settings.github_app_binding!r} not found'
+                f'Secret binding {binding!r} is not a github_app binding'
             )
-        # ponytail: the github_app provider arrives in P4; until then
-        # any binding is accepted.
-        if (
-            'github_app' in secret_providers.PROVIDERS
-            and provider_type != 'github_app'
-        ):
+        if not provider['enabled']:
             raise _unprocessable(
-                f'Secret binding {settings.github_app_binding!r} is not '
-                'a github_app binding'
+                f'Secret binding {binding!r} or its provider is disabled'
             )
     _version, config = await platform.load(store, org_id)
     problems = platform.widenings(config, settings)

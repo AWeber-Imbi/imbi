@@ -11164,6 +11164,18 @@ export interface components {
             params?: components["schemas"]["PromptParams"];
         };
         /**
+         * BundleRepository
+         * @description A repository of the task's project.
+         */
+        BundleRepository: {
+            /** Host */
+            host: string;
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+        };
+        /**
          * CapabilityAssignment
          * @description One project-type assignment of an Integration's capability.
          *
@@ -13243,11 +13255,9 @@ export interface components {
             config?: components["schemas"]["MergedConfig"] | null;
             /**
              * Repositories
-             * @default {}
+             * @default []
              */
-            repositories: {
-                [key: string]: string;
-            };
+            repositories: components["schemas"]["BundleRepository"][];
         };
         /**
          * IdentityConnectionPollRequest

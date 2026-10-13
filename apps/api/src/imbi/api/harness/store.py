@@ -644,18 +644,20 @@ class HarnessStore:
             )
             return cursor.rowcount > 0
 
-    async def binding_provider_type(
+    async def binding_provider(
         self, organization_id: str, reference: str
-    ) -> str | None:
-        """Return the provider type of a secret binding, or ``None``
-        when the organization has no binding with ``reference``."""
-        row = await self._fetch_one(
-            'SELECT p.type FROM secrets.bindings AS b'
+    ) -> Row | None:
+        """Return the provider of a secret binding (``type``, ``config``)
+        and ``enabled``: the binding and its provider are both enabled.
+        ``None`` when the organization has no binding with
+        ``reference``."""
+        return await self._fetch_one(
+            'SELECT p.type, p.config, b.enabled AND p.enabled AS enabled'
+            ' FROM secrets.bindings AS b'
             ' JOIN secrets.providers AS p ON p.id = b.provider_id'
             ' WHERE b.organization_id = %s AND b.reference = %s',
             (organization_id, reference),
         )
-        return None if row is None else str(row['type'])
 
     # --- Lease sweep ---------------------------------------------------
 
