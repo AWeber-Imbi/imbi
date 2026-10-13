@@ -56,6 +56,19 @@ from .prompts import prompt_render_router
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
+from .secret_broker import (
+    audit_router as secret_audit_router,
+)
+from .secret_broker import (
+    bindings_router as secret_bindings_router,
+)
+from .secret_broker import grants_router as secret_grants_router
+from .secret_broker import (
+    providers_router as secret_providers_router,
+)
+from .secret_broker import (
+    resolutions_router as secret_resolutions_router,
+)
 from .tags import tags_router
 from .teams import teams_router
 from .webhooks import project_services_router, webhooks_router
@@ -211,6 +224,26 @@ organizations_router.include_router(
 organizations_router.include_router(
     workflow_attention_router,
     prefix='/{org_slug}/workflow-runs',
+)
+organizations_router.include_router(
+    secret_providers_router,
+    prefix='/{org_slug}/secret-providers',
+)
+organizations_router.include_router(
+    secret_bindings_router,
+    prefix='/{org_slug}/secret-bindings',
+)
+organizations_router.include_router(
+    secret_grants_router,
+    prefix='/{org_slug}/secret-grants',
+)
+organizations_router.include_router(
+    secret_resolutions_router,
+    prefix='/{org_slug}/secret-resolutions',
+)
+organizations_router.include_router(
+    secret_audit_router,
+    prefix='/{org_slug}/secret-audit-events',
 )
 organizations_router.include_router(
     project_configuration_router,
