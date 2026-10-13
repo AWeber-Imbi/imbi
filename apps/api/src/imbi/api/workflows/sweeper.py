@@ -157,6 +157,13 @@ async def cancel_orphan_agent_tasks(
             agent_tasks.CancelPending,
         ):
             continue
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Failed to cancel agent task %s of an ended step',
+                task['short_id'],
+                exc_info=True,
+            )
+            continue
         cancelled += 1
     if cancelled:
         LOGGER.info('Cancelled %d agent tasks of ended steps', cancelled)
