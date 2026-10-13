@@ -284,6 +284,7 @@ class SecretEndpointTestCase(
             'reference': 'secret://production/github/token',
             'purpose': 'github_write',
             'delivery_mode': 'environment',
+            'delivery_target': 'GH_TOKEN',
         }
         response = await self._post('/secret-grants/evaluate', request)
         self.assertEqual(

@@ -205,6 +205,7 @@ class SecretStore:
         purpose: str,
         delivery_mode: str,
         ttl_seconds: int,
+        delivery_target: str | None = None,
     ) -> broker.Decision:
         """The grant decision for a request. No provider call.
 
@@ -222,6 +223,7 @@ class SecretStore:
                 purpose,
                 delivery_mode,
                 ttl_seconds,
+                delivery_target,
             )
 
     async def resolutions(

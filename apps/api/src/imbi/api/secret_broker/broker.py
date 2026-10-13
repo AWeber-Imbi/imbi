@@ -57,6 +57,10 @@ DELIVERY_MODES: tuple[DeliveryMode, ...] = typing.get_args(DeliveryMode)
 #: The upper limit of any resolution lifetime, in seconds.
 MAX_TTL_SECONDS = 3600
 
+#: Seconds after which an unfinished materialization counts as crashed
+#: and no longer keeps a runner fenced.
+MATERIALIZE_TIMEOUT = 300
+
 #: Response headers of a materialization (plan 9.1, rule 13). The route
 #: also turns off body capture.
 NO_STORE_HEADERS: dict[str, str] = {
@@ -84,17 +88,22 @@ _UNSAFE_ENV = frozenset(
     {
         'BASH_ENV',
         'CURL_CA_BUNDLE',
+        'EDITOR',
         'ENV',
         'HOME',
         'IFS',
+        'PAGER',
         'PATH',
+        'PERL5LIB',
         'PERL5OPT',
         'PROMPT_COMMAND',
         'PS4',
         'REQUESTS_CA_BUNDLE',
+        'RUBYLIB',
         'RUBYOPT',
         'SHELL',
         'SHELLOPTS',
+        'VISUAL',
     }
 )
 _UNSAFE_ENV_PREFIXES = (
@@ -107,6 +116,7 @@ _UNSAFE_ENV_PREFIXES = (
     'LD_',
     'NODE_',
     'PYTHON',
+    'SSH_',
     'SSL_CERT_',
 )
 _UNSAFE_ENV_SUFFIXES = ('_PROXY',)
@@ -351,6 +361,12 @@ _GRANT_MATCH = (
 )
 
 
+def _target_allowed(binding: Row, target: str | None) -> bool:
+    """A binding with a target list allows only those targets."""
+    targets: list[str] = binding['allowed_delivery_targets']
+    return target is None or not targets or target in targets
+
+
 def required_capability(credential_class: str) -> providers.Capability:
     return (
         'dynamic_issuance'
@@ -410,6 +426,7 @@ async def evaluate(
     purpose: str,
     delivery_mode: str,
     ttl_seconds: int,
+    delivery_target: str | None = None,
 ) -> Decision:
     """Return the decision for a request, or raise the denial.
 
@@ -445,6 +462,10 @@ async def evaluate(
     )
     if delivery_mode not in binding['allowed_delivery_modes']:
         raise providers.BrokerError('delivery_mode_not_allowed')
+    if not _target_allowed(binding, delivery_target):
+        raise providers.BrokerError(
+            'delivery_mode_not_allowed', 'target_not_allowed'
+        )
     if ttl_seconds > binding['max_ttl_seconds']:
         raise providers.BrokerError('requested_ttl_too_large')
     grants = await _fetch(
@@ -631,6 +652,7 @@ class Broker:
                 request.purpose,
                 request.delivery_mode,
                 request.ttl_seconds,
+                target,
             )
             row = await _fetch_one(
                 conn,
@@ -737,7 +759,8 @@ class Broker:
                 await conn.execute(
                     'UPDATE secrets.resolutions'
                     ' SET materialization_count = materialization_count + 1,'
-                    ' last_materialized_at = NOW() WHERE id = %s',
+                    ' last_materialized_at = NOW(),'
+                    ' materializing_since = NOW() WHERE id = %s',
                     (row['id'],),
                 )
         except providers.BrokerError as err:
@@ -817,6 +840,7 @@ class Broker:
             binding['reference'] != reference.binding
             or binding['provider_id'] != row['provider_id']
             or row['delivery_mode'] not in binding['allowed_delivery_modes']
+            or not _target_allowed(binding, row['delivery_target'])
         ):
             raise providers.BrokerError(
                 'secret_access_denied', 'binding_changed'
@@ -869,8 +893,7 @@ class Broker:
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)
-            if material.lease_id is not None:
-                await self._save_lease(row, plugin, config, material)
+            await self._finish(row, plugin, config, material)
             if (
                 material.credential_expires_at is not None
                 and material.credential_expires_at <= now
@@ -895,28 +918,50 @@ class Broker:
             raise failure from None
         return material
 
-    async def _save_lease(
+    async def _finish(
         self,
         row: Row,
         plugin: providers.Provider,
         config: dict[str, typing.Any],
         material: providers.Material,
     ) -> None:
-        """Store the encrypted lease id. If that fails, revoke at once."""
-        lease_id = typing.cast(str, material.lease_id)
+        """Check the state again after the provider call; keep the lease.
+
+        The row is locked ``FOR UPDATE``, so fencing or a release that
+        ran during the provider call is seen here. When the resolution is
+        no longer ``active``, the new lease is revoked at once and the
+        material is not returned. When the lease cannot be saved, it is
+        revoked at once too.
+        """
+        lease_id = material.lease_id
         try:
-            async with self._pool.connection() as conn:
-                await conn.execute(
-                    'UPDATE secrets.resolutions SET lease_id = %s,'
-                    ' revocation_state = %s, credential_expires_at = %s'
-                    ' WHERE id = %s',
-                    (
-                        encryption.encrypt_token(lease_id),
-                        'pending' if material.revocable else 'not_applicable',
-                        material.credential_expires_at,
-                        row['id'],
-                    ),
+            async with self._pool.connection() as conn, conn.transaction():
+                cur = await conn.execute(
+                    'SELECT state FROM secrets.resolutions'
+                    ' WHERE id = %s FOR UPDATE',
+                    (row['id'],),
                 )
+                current = await cur.fetchone()
+                active = current is not None and current[0] == 'active'
+                await conn.execute(
+                    'UPDATE secrets.resolutions'
+                    ' SET materializing_since = NULL WHERE id = %s',
+                    (row['id'],),
+                )
+                if active and lease_id is not None:
+                    await conn.execute(
+                        'UPDATE secrets.resolutions SET lease_id = %s,'
+                        ' revocation_state = %s, credential_expires_at = %s'
+                        ' WHERE id = %s',
+                        (
+                            encryption.encrypt_token(lease_id),
+                            'pending'
+                            if material.revocable
+                            else 'not_applicable',
+                            material.credential_expires_at,
+                            row['id'],
+                        ),
+                    )
         except Exception as exc:  # noqa: BLE001 - revoked and reported
             # No traceback anywhere here: frames hold the lease id.
             LOGGER.error(
@@ -924,24 +969,40 @@ class Broker:
                 row['id'],
                 type(exc).__name__,
             )
-            if material.revocable:
-                try:
-                    await plugin.revoke(config, lease_id)
-                except Exception:  # noqa: BLE001 - reported below
-                    LOGGER.error(
-                        'Resolution %s: unsaved lease not revoked', row['id']
-                    )
+            await self._revoke_unsaved(row, plugin, config, material)
             raise providers.BrokerError(
                 'secret_materialization_failed', 'lease_not_saved'
             ) from None
+        if not active:
+            await self._revoke_unsaved(row, plugin, config, material)
+            raise providers.BrokerError(
+                'secret_materialization_failed', 'resolution_released'
+            )
+
+    async def _revoke_unsaved(
+        self,
+        row: Row,
+        plugin: providers.Provider,
+        config: dict[str, typing.Any],
+        material: providers.Material,
+    ) -> None:
+        """Revoke a lease that no row records."""
+        if material.lease_id is None or not material.revocable:
+            return
+        try:
+            await plugin.revoke(config, material.lease_id)
+        except Exception:  # noqa: BLE001 - reported below
+            LOGGER.error('Resolution %s: unsaved lease not revoked', row['id'])
 
     async def _fail(self, row: Row, err: providers.BrokerError) -> None:
         try:
             async with self._pool.connection() as conn:
                 await conn.execute(
-                    "UPDATE secrets.resolutions SET state = 'failed',"
-                    ' failure_reason = %s, handle_hash = NULL'
-                    " WHERE id = %s AND state = 'active'",
+                    'UPDATE secrets.resolutions SET materializing_since ='
+                    " NULL, state = CASE WHEN state = 'active' THEN 'failed'"
+                    ' ELSE state END, failure_reason = CASE WHEN state ='
+                    " 'active' THEN %s ELSE failure_reason END,"
+                    ' handle_hash = NULL WHERE id = %s',
                     (err.reason, row['id']),
                 )
         except Exception as exc:  # noqa: BLE001 - the handle is used up
@@ -1090,7 +1151,12 @@ class Broker:
         """Release every open resolution of a runner and revoke leases.
 
         For fencing (ADR 0022): return ``True`` only when no provider
-        lease of the runner is left unrevoked.
+        lease of the runner is left unrevoked and no materialization of
+        the runner is in flight. A materialization that finishes after
+        this release sees the new state and revokes its own lease
+        (:meth:`_finish`), so the fencer calls again until ``True``.
+        A mark older than :data:`MATERIALIZE_TIMEOUT` is a crashed call
+        and does not hold the chain.
         """
         async with self._pool.connection() as conn:
             released = await _fetch(
@@ -1108,13 +1174,20 @@ class Broker:
                 " AND revocation_state IN ('pending', 'failed')",
                 (runner_id,),
             )
+            in_flight = await _fetch(
+                conn,
+                'SELECT id FROM secrets.resolutions WHERE runner_id = %s'
+                ' AND materializing_since > NOW() - make_interval('
+                'secs => %s) LIMIT 1',
+                (runner_id, MATERIALIZE_TIMEOUT),
+            )
         await audit.publish(
             [
                 _event('secret_resolution_released', row, actor='system')
                 for row in released
             ]
         )
-        ok = True
+        ok = not in_flight
         for row in pending:
             ok = await self._revoke(row) and ok
         return ok

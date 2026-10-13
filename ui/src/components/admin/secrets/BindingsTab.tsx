@@ -117,7 +117,11 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
           {
             header: 'Delivery',
             key: 'delivery',
-            render: (row) => row.allowed_delivery_modes.join(', '),
+            render: (row) =>
+              row.allowed_delivery_modes.join(', ') +
+              (row.allowed_delivery_targets.length
+                ? ` (${row.allowed_delivery_targets.join(', ')})`
+                : ''),
           },
           {
             cellAlign: 'right',
@@ -201,6 +205,13 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               name: 'allowed_delivery_modes',
               options: asOptions(DELIVERY_MODES),
               required: true,
+            },
+            {
+              description:
+                'Comma separated, e.g. GH_TOKEN. Empty allows any safe target.',
+              kind: 'list',
+              label: 'Allowed delivery targets',
+              name: 'allowed_delivery_targets',
             },
             {
               initial: '900',

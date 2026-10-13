@@ -17368,6 +17368,8 @@ export interface components {
             allowed_fields: string[];
             /** Allowed Delivery Modes */
             allowed_delivery_modes: string[];
+            /** Allowed Delivery Targets */
+            allowed_delivery_targets: string[];
             /** Max Ttl Seconds */
             max_ttl_seconds: number;
             /** Enabled */
@@ -17416,6 +17418,12 @@ export interface components {
             /** Allowed Delivery Modes */
             allowed_delivery_modes: ("file_descriptor" | "stdin" | "file" | "environment")[];
             /**
+             * Allowed Delivery Targets
+             * @description When not empty, the only targets allowed. The denylist of unsafe environment names still applies.
+             * @default []
+             */
+            allowed_delivery_targets: string[];
+            /**
              * Max Ttl Seconds
              * @default 900
              */
@@ -17441,6 +17449,8 @@ export interface components {
             } | null;
             /** Allowed Fields */
             allowed_fields?: string[] | null;
+            /** Allowed Delivery Targets */
+            allowed_delivery_targets?: string[] | null;
             /** Allowed Delivery Modes */
             allowed_delivery_modes?: ("file_descriptor" | "stdin" | "file" | "environment")[] | null;
             /** Max Ttl Seconds */
@@ -17562,6 +17572,8 @@ export interface components {
              * @default 300
              */
             ttl_seconds: number;
+            /** Delivery Target */
+            delivery_target?: string | null;
         };
         /** SecretGrantPatch */
         SecretGrantPatch: {

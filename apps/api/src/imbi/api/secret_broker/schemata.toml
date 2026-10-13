@@ -51,6 +51,9 @@ credential_class = "TEXT NOT NULL"
 locator = "JSONB NOT NULL DEFAULT '{}'"
 allowed_fields = "TEXT[] NOT NULL DEFAULT '{}'"
 allowed_delivery_modes = "TEXT[] NOT NULL DEFAULT '{}'"
+# When not empty, the only delivery targets (environment names, file
+# names, descriptors) a resolution may use. The denylist still applies.
+allowed_delivery_targets = "TEXT[] NOT NULL DEFAULT '{}'"
 max_ttl_seconds = "INTEGER NOT NULL"
 enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
 description = "TEXT NOT NULL DEFAULT ''"
@@ -126,6 +129,9 @@ idempotency_key = "TEXT"
 materialization_limit = "INTEGER NOT NULL DEFAULT 1"
 materialization_count = "INTEGER NOT NULL DEFAULT 0"
 last_materialized_at = "TIMESTAMP WITH TIME ZONE"
+# Set while a provider call for this resolution is in flight. Fencing
+# waits for it (release_runner_resolutions).
+materializing_since = "TIMESTAMP WITH TIME ZONE"
 credential_expires_at = "TIMESTAMP WITH TIME ZONE"
 lease_id = "TEXT"
 revocation_state = "TEXT NOT NULL DEFAULT 'not_applicable'"

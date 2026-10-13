@@ -36,6 +36,9 @@ Purpose = typing.Annotated[
 FieldName = typing.Annotated[
     str, pydantic.StringConstraints(pattern=r'^[A-Za-z0-9_-]{1,128}$')
 ]
+DeliveryTarget = typing.Annotated[
+    str, pydantic.StringConstraints(pattern=r'^[A-Za-z0-9_.-]{1,128}$')
+]
 Ttl = typing.Annotated[int, pydantic.Field(ge=1, le=broker.MAX_TTL_SECONDS)]
 Name = typing.Annotated[
     str, pydantic.StringConstraints(pattern=r'^[a-z0-9][a-z0-9_-]{0,99}$')
@@ -177,6 +180,11 @@ class SecretBindingCreate(pydantic.BaseModel):
     locator: dict[str, typing.Any]
     allowed_fields: list[FieldName] = []
     allowed_delivery_modes: list[DeliveryMode] = pydantic.Field(min_length=1)
+    allowed_delivery_targets: list[DeliveryTarget] = pydantic.Field(
+        default=[],
+        description='When not empty, the only targets allowed. The '
+        'denylist of unsafe environment names still applies.',
+    )
     max_ttl_seconds: Ttl = 900
     enabled: bool = True
     description: str = ''
@@ -186,6 +194,7 @@ class SecretBindingPatch(pydantic.BaseModel):
     credential_class: providers.CredentialClass | None = None
     locator: dict[str, typing.Any] | None = None
     allowed_fields: list[FieldName] | None = None
+    allowed_delivery_targets: list[DeliveryTarget] | None = None
     allowed_delivery_modes: list[DeliveryMode] | None = pydantic.Field(
         default=None, min_length=1
     )
@@ -202,6 +211,7 @@ class SecretBinding(pydantic.BaseModel):
     locator: dict[str, typing.Any]
     allowed_fields: list[str]
     allowed_delivery_modes: list[str]
+    allowed_delivery_targets: list[str]
     max_ttl_seconds: int
     enabled: bool
     description: str
@@ -266,6 +276,7 @@ class SecretGrantEvaluate(pydantic.BaseModel):
     purpose: str
     delivery_mode: str
     ttl_seconds: int = 300
+    delivery_target: str | None = None
 
 
 class SecretGrantDecision(pydantic.BaseModel):
@@ -783,6 +794,9 @@ async def evaluate_grants(
     no resolution."""
     try:
         reference = broker.parse_reference(data.reference)
+        target = broker.check_delivery(
+            data.delivery_mode, data.delivery_target
+        )
         decision = await secrets.evaluate(
             org_id,
             data.agent_id,
@@ -791,6 +805,7 @@ async def evaluate_grants(
             data.purpose,
             data.delivery_mode,
             data.ttl_seconds,
+            target,
         )
     except providers.BrokerError as err:
         return {'allowed': False, 'error': err.code, 'reason': err.reason}

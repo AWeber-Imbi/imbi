@@ -90,6 +90,16 @@ class ReferenceTestCase(unittest.TestCase):
             ('environment', 'REQUESTS_CA_BUNDLE'),
             ('environment', 'CURL_CA_BUNDLE'),
             ('environment', '_LEADING'),
+            ('environment', '_JAVA_OPTIONS'),
+            ('environment', 'SSH_ASKPASS'),
+            ('environment', 'SSH_AUTH_SOCK'),
+            ('environment', 'GIT_ASKPASS'),
+            ('environment', 'EDITOR'),
+            ('environment', 'VISUAL'),
+            ('environment', 'PAGER'),
+            ('environment', 'PERL5LIB'),
+            ('environment', 'RUBYLIB'),
+            ('environment', 'PYTHONWARNINGS'),
             ('environment', 'gh_token'),
             ('environment', None),
             ('file', '../token'),
@@ -271,6 +281,46 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             self.executor(), self.materialize_request(created.handle)
         )
         self.assertEqual(result.material, MATERIAL)
+
+    async def test_binding_pins_delivery_targets(self) -> None:
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.binding['id'],
+            {'allowed_delivery_targets': ['GITHUB_TOKEN']},
+        )
+        error = await self._denied('delivery_mode_not_allowed')
+        self.assertEqual(error.reason, 'target_not_allowed')
+        created = await self.broker.create_resolution(
+            self.context(), self.request(delivery_target='GITHUB_TOKEN')
+        )
+        # stdin has no target, so the list does not apply to it.
+        await self.broker.create_resolution(
+            self.context(),
+            self.request(delivery_mode='stdin', delivery_target=None),
+        )
+        # A list changed after create invalidates the unused handle.
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.binding['id'],
+            {'allowed_delivery_targets': ['OTHER']},
+        )
+        with self.assertRaises(providers.BrokerError):
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        # The denylist applies even to a pinned name.
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.binding['id'],
+            {'allowed_delivery_targets': ['LD_PRELOAD']},
+        )
+        await self._denied(
+            'delivery_mode_not_allowed',
+            request=self.request(delivery_target='LD_PRELOAD'),
+        )
 
     async def test_delivery_mode_and_ttl_limits(self) -> None:
         await self._denied(
@@ -701,6 +751,47 @@ class LeaseTestCase(secret_support.SecretCase):
             await self.broker.materialize(
                 self.executor(), self.materialize_request(unused.handle)
             )
+
+    async def test_fencing_during_a_slow_provider_call(self) -> None:
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        started = asyncio.Event()
+        proceed = asyncio.Event()
+        resolve = self.fake.resolve
+
+        async def slow(*args: object, **kwargs: object) -> providers.Material:
+            started.set()
+            await proceed.wait()
+            return await resolve(*args, **kwargs)  # type: ignore[arg-type]
+
+        with mock.patch.object(self.fake, 'resolve', slow):
+            call = asyncio.create_task(
+                self.broker.materialize(
+                    self.executor(), self.materialize_request(created.handle)
+                )
+            )
+            await started.wait()
+            # In flight: the chain must stay fenced.
+            self.assertFalse(
+                await self.broker.release_runner_resolutions(self.runner)
+            )
+            proceed.set()
+            with self.assertRaises(providers.BrokerError) as ctx:
+                await call
+        self.assertEqual(ctx.exception.reason, 'resolution_released')
+        # The lease issued after the release is revoked, and no row
+        # keeps it.
+        self.assertEqual(len(self.fake.revoked), 1)
+        self.assertEqual(self.fake.leases, set())
+        row = await self.broker.get(created.resolution_id)
+        assert row is not None
+        self.assertEqual(row['state'], 'released')
+        self.assertIsNone(row['lease_id'])
+        self.assertIsNone(row['materializing_since'])
+        self.assertTrue(
+            await self.broker.release_runner_resolutions(self.runner)
+        )
 
     async def test_unsaved_lease_is_revoked_at_once(self) -> None:
         created = await self.broker.create_resolution(
