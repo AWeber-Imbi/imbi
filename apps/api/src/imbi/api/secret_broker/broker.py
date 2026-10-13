@@ -1230,10 +1230,14 @@ class Broker:
             )
         return reason is None
 
-    async def release_runner_resolutions(self, runner_id: str) -> bool:
+    async def release_runner_resolutions(
+        self, runner_id: str | uuid.UUID
+    ) -> bool:
         """Release every open resolution of a runner and revoke leases.
 
-        For fencing (ADR 0022): return ``True`` only when no provider
+        The fencer of the lease sweep (ADR 0022,
+        :func:`imbi.api.harness.sweeper.register_fencer`): return
+        ``True`` only when no provider
         lease of the runner is left unrevoked and no materialization of
         the runner is in flight. A materialization that finishes after
         this release sees the new state and revokes its own lease
@@ -1241,6 +1245,7 @@ class Broker:
         A mark older than :data:`MATERIALIZE_TIMEOUT` is a crashed call
         and does not hold the chain.
         """
+        runner_id = str(runner_id)
         async with self._pool.connection() as conn:
             released = await _fetch(
                 conn,
@@ -1271,6 +1276,30 @@ class Broker:
             ok = await self._revoke(row) and ok
         return ok
 
+    async def release_task_resolutions(self, task: Row) -> None:
+        """Release the open resolutions of a task that closed, and
+        revoke their provider leases.
+
+        The close hook of the task store
+        (:func:`imbi.api.agent_tasks.store.register_close_hook`). When it
+        fails, the sweep releases them.
+        """
+        async with self._pool.connection() as conn:
+            released = await _fetch(
+                conn,
+                "UPDATE secrets.resolutions SET state = 'released',"
+                ' handle_hash = NULL, released_at = NOW(),'
+                " release_reason = 'task_closed'"
+                " WHERE task_id = %s AND state IN ('pending', 'active')"
+                ' RETURNING *',
+                (task['id'],),
+            )
+            task_events = await _release_events(conn, released)
+        await _publish(task_events)
+        for row in released:
+            if row['revocation_state'] == 'pending':
+                await self._revoke(row)
+
     async def sweep(self) -> int:
         """Expire resolutions past ``expires_at``, release the open
         resolutions of closed tasks, and retry revocations.
@@ -1291,8 +1320,9 @@ class Broker:
                 ' AND expires_at <= NOW() RETURNING *',
                 (),
             )
-            # No hook runs when a task closes, so the sweep releases
-            # what its task left open. Materialize refuses them already.
+            # The close hook (release_task_resolutions) releases these at
+            # once; this catches a task whose hook failed. Materialize
+            # refuses them already.
             closed = await _fetch(
                 conn,
                 "UPDATE secrets.resolutions AS r SET state = 'released',"

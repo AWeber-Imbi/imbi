@@ -16,6 +16,9 @@ import orjson
 
 from apps.api.tests import secret_support
 from apps.api.tests.secret_support import MATERIAL
+from imbi.api import secret_broker
+from imbi.api.agent_tasks import store as task_store
+from imbi.api.harness import sweeper
 from imbi.api.secret_broker import audit, broker, providers, store
 from imbi.common.auth import encryption
 
@@ -1097,3 +1100,17 @@ class TaskEventTestCase(secret_support.SecretCase):
         )
         self.assertIsNotNone(created.resolution_id)
         self.assertEqual(await self.task_events(), [])
+
+
+class LifespanTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_registers_the_fencer_and_the_close_hook(self) -> None:
+        async with secret_broker.store_lifespan():
+            service = secret_broker.get_broker()
+            self.assertIn(service.release_runner_resolutions, sweeper._fencers)
+            self.assertIn(
+                service.release_task_resolutions, task_store._close_hooks
+            )
+        self.assertNotIn(service.release_runner_resolutions, sweeper._fencers)
+        self.assertNotIn(
+            service.release_task_resolutions, task_store._close_hooks
+        )

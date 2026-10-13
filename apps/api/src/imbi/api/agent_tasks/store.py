@@ -13,13 +13,15 @@ After the transaction commits, the events it wrote (and the budget
 ledger rows) go to the permanent log in ClickHouse: see
 :mod:`imbi.api.agent_tasks.log`. They go after the commit, never inside
 the transaction, so ClickHouse never holds an event that Postgres rolled
-back.
+back. When the transaction closed the task, the close hooks run next
+(:func:`register_close_hook`).
 """
 
 import contextlib
 import dataclasses
 import datetime
 import decimal
+import logging
 import typing
 import uuid
 from collections import abc
@@ -38,7 +40,43 @@ type Pool = psycopg_pool.AsyncConnectionPool[
 type Row = dict[str, typing.Any]
 type Conn = psycopg.AsyncConnection[typing.Any]
 
+LOGGER = logging.getLogger(__name__)
+
 SCHEMA = 'agent_runtime'
+
+#: A close hook gets the task row after the transaction that closed the
+#: task commits. The secrets broker registers its release here.
+type CloseHook = abc.Callable[[Row], abc.Awaitable[None]]
+
+_close_hooks: list[CloseHook] = []
+
+
+def register_close_hook(hook: CloseHook) -> None:
+    """Add a close hook."""
+    if hook not in _close_hooks:
+        _close_hooks.append(hook)
+
+
+def unregister_close_hook(hook: CloseHook) -> None:
+    """Remove a close hook."""
+    if hook in _close_hooks:
+        _close_hooks.remove(hook)
+
+
+async def _run_close_hooks(task: Row) -> None:
+    """Call every close hook. A failure is logged; the task stays
+    closed."""
+    for hook in list(_close_hooks):
+        try:
+            await hook(task)
+        except Exception:  # noqa: BLE001 - the close committed already
+            LOGGER.warning(
+                'Close hook %s failed for task %s',
+                getattr(hook, '__qualname__', repr(hook)),
+                task['id'],
+                exc_info=True,
+            )
+
 
 Status = typing.Literal['queued', 'running', 'blocked', 'paused', 'closed']
 Control = typing.Literal['run', 'pause', 'cancel']
@@ -391,6 +429,9 @@ class TaskStore:
                     # Event writes change ``last_seq``.
                     write.task = await _fetch_task(conn, write.task['id'])
         await log.publish(write.task, write.events, write.ledger)
+        # The lock refuses a closed task, so this write closed it.
+        if write.task['status'] == 'closed':
+            await _run_close_hooks(write.task)
 
     async def find_by_idempotency_key(
         self, organization_id: str, origin_kind: str, origin_id: str, key: str

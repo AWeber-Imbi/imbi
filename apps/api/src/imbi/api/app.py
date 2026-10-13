@@ -44,9 +44,11 @@ def create_app() -> fastapi.FastAPI:
             lifespans.iggy_metrics_hook,
             graph.graph_lifespan,
             agent_tasks.store_lifespan,
+            # Before harness: its fencer must be registered before the
+            # lease sweep starts, and stay until the sweep stops.
+            secret_broker.store_lifespan,
             harness.store_lifespan,
             workflows.store_lifespan,
-            secret_broker.store_lifespan,
             prompt_pool.pool_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
