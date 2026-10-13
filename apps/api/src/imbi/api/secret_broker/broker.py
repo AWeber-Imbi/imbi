@@ -1262,6 +1262,85 @@ class Broker:
             await self._revoke(row)
         return len(expired)
 
+    async def provider_key(
+        self,
+        organization_id: str,
+        reference: str,
+        task_id: uuid.UUID | None = None,
+    ) -> providers.Material:
+        """Return the material of a binding for a provider's own use.
+
+        A ``github_app`` binding signs with a private key that another
+        binding holds (plan 9.8). Only imbi-api reads that key: no
+        runner, executor, or model gets it, so no grant applies. The key
+        binding must be in the organization, enabled, and not
+        ``dynamic``, so a provider cannot ask for its own credentials.
+
+        Raises:
+            BrokerError: The reference or the binding is not usable, or
+                the provider failed.
+
+        """
+        parsed = parse_reference(reference)
+        async with self._pool.connection() as conn:
+            binding = _check_binding(
+                await _fetch_one(
+                    conn,
+                    'SELECT * FROM secrets.bindings'
+                    ' WHERE organization_id = %s AND reference = %s',
+                    (organization_id, parsed.binding),
+                ),
+                parsed,
+            )
+            if binding['credential_class'] == 'dynamic':
+                raise providers.BrokerError(
+                    'secret_access_denied', 'dynamic_key_binding'
+                )
+            provider = _check_provider(
+                await _fetch_one(
+                    conn,
+                    'SELECT * FROM secrets.providers'
+                    ' WHERE id = %s AND organization_id = %s',
+                    (binding['provider_id'], organization_id),
+                ),
+                binding,
+            )
+        event = audit.Event(
+            organization_id=organization_id,
+            type='secret_materialized',
+            actor='system',
+            reason='provider_key',
+            task_id='' if task_id is None else str(task_id),
+            provider_id=str(provider['id']),
+            binding_id=str(binding['id']),
+            purpose='provider_key',
+        )
+        try:
+            material = await providers.get(provider['type']).resolve(
+                provider['config'],
+                binding['locator'],
+                parsed.field,
+                providers.ResolveContext(
+                    organization_id=organization_id,
+                    task_id=task_id or uuid.UUID(int=0),
+                    project_id=None,
+                    purpose='provider_key',
+                    ttl_seconds=MAX_TTL_SECONDS,
+                    credential_class=binding['credential_class'],
+                ),
+            )
+        except providers.BrokerError as err:
+            await audit.publish(
+                [
+                    event.model_copy(
+                        update={'result': 'failed', 'reason': err.reason}
+                    )
+                ]
+            )
+            raise
+        await audit.publish([event])
+        return material
+
     async def get(self, resolution_id: uuid.UUID) -> Row | None:
         async with self._pool.connection() as conn:
             return await _fetch_one(
