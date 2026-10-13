@@ -59,12 +59,21 @@ export function RunnersPage() {
     )
   }
 
+  // A failed refresh keeps the last data on the page, with a warning.
   return (
     <div className="flex flex-col gap-4 p-8">
-      {pools.error ? (
-        <ErrorBanner error={pools.error} title="Failed to load runners" />
-      ) : !pools.data ? (
-        <p className="text-tertiary text-sm">Loading…</p>
+      {pools.error && (
+        <ErrorBanner
+          error={pools.error}
+          title={
+            pools.data
+              ? 'Failed to refresh runners; this is the last data'
+              : 'Failed to load runners'
+          }
+        />
+      )}
+      {!pools.data ? (
+        !pools.error && <p className="text-tertiary text-sm">Loading…</p>
       ) : pools.data.length === 0 ? (
         <p className="text-tertiary text-sm">
           No runner pool serves this organization.

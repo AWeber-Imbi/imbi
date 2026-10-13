@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -89,6 +90,26 @@ describe('RunnersPage', () => {
     expect(screen.getByText('attempt 2')).toBeInTheDocument()
     // A busy runner with a chain of another organization.
     expect(screen.getByText('Another organization')).toBeInTheDocument()
+  })
+
+  it('keeps the last data when a refresh fails', async () => {
+    vi.mocked(endpoints.listHarnessPools)
+      .mockResolvedValueOnce([pool()])
+      .mockRejectedValue(new Error('down'))
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RunnersPage />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('general-abc')).toBeInTheDocument()
+    await queryClient.refetchQueries()
+    expect(
+      await screen.findByText(/Failed to refresh runners/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('general-abc')).toBeInTheDocument()
   })
 
   it('needs the read permission', () => {
