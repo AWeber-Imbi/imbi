@@ -1636,6 +1636,23 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, namespace, committish
         raise NotImplementedError
 
+    async def get_file(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        path: str,
+        ref: str,
+    ) -> str | None:
+        """Return the text of the file ``path`` at ``ref``.
+
+        Returns ``None`` when the file does not exist at ``ref``.
+
+        Optional -- capabilities that cannot read files raise
+        :class:`NotImplementedError`.
+        """
+        del ctx, credentials, path, ref
+        raise NotImplementedError
+
     async def list_commit_notes(
         self,
         ctx: PluginContext,
