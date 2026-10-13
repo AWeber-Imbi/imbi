@@ -6,7 +6,8 @@ Skipped unless these environment variables are set:
 - ``IMBI_LIVE_GITHUB_INSTALLATION_ID``: its installation id
 - ``IMBI_LIVE_GITHUB_PRIVATE_KEY_FILE``: the path of its private key (PEM)
 - ``IMBI_LIVE_GITHUB_REPOSITORY``: a sandbox repository, ``owner/name``
-- ``IMBI_LIVE_GITHUB_HOST``: optional, ``github.com`` by default
+- ``IMBI_LIVE_GITHUB_HOST``: optional, ``github.com`` by default. A GHES
+  host must also be in ``IMBI_SECRETS_GITHUB_GHES_HOSTS``.
 
 The App needs ``contents``, ``pull_requests``, and ``issues`` write on
 the sandbox repository. The test pushes one branch and deletes it.
@@ -68,6 +69,7 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.workdir = pathlib.Path(tempfile.mkdtemp())
+        self.leases: dict[str, str] = {}
         self.url = f'https://{self.config["host"]}/{ENV["REPOSITORY"]}.git'
 
     async def _token(self, purpose: str) -> str:
@@ -84,9 +86,10 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
                 credential_class='dynamic',
             ),
         )
-        token = material.value.decode()
-        self.addAsyncCleanup(self.app.revoke, self.config, token)
-        return token
+        assert material.lease_id is not None
+        self.leases[material.value.decode()] = material.lease_id
+        self.addAsyncCleanup(self.app.revoke, self.config, material.lease_id)
+        return material.value.decode()
 
     def _git(self, token: str, *args: str) -> subprocess.CompletedProcess[str]:
         """Run git with the token in a header, never in a URL or log."""
@@ -132,9 +135,9 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
         delete = self._git(write, 'push', 'origin', '--delete', branch)
         self.assertEqual(delete.returncode, 0, 'branch not deleted')
 
-        await self.app.revoke(self.config, write)
+        await self.app.revoke(self.config, self.leases[write])
         async with httpx.AsyncClient(
-            base_url=github_app._api_base(self.config),  # pyright: ignore[reportPrivateUsage]
+            base_url=github_app._api_base(self.config['host']),  # pyright: ignore[reportPrivateUsage]
             headers={'Authorization': f'Bearer {write}'},
         ) as client:
             response = await client.get('/installation/repositories')
