@@ -16,7 +16,7 @@ import fastapi
 import httpx
 
 from apps.api.tests import support
-from imbi.api import email, models, workflows
+from imbi.api import agent_tasks, email, models, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
 from imbi.common import graph
@@ -774,3 +774,192 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             response.json(), {'recipients': [self.email], 'failed': []}
         )
         self.assertEqual(self.sent[0].subject, 'Workflow Deploy guard failed')
+
+
+class EngineAgentTaskTestCase(WorkflowRunTestCase):
+    """The engine-only agent task routes of an agent step."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.admin = f'admin-{uuid.uuid4().hex[:8]}@example.com'
+        self.agent = f'agent-{uuid.uuid4().hex[:8]}'
+        self.plain = f'plain-{uuid.uuid4().hex[:8]}@example.com'
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (u:User {{id: {admin}, email: {admin},
+                             display_name: 'Admin', is_active: true,
+                             is_admin: true}})
+            CREATE (u)-[:MEMBER_OF {{role: 'admin'}}]->(o)
+            CREATE (p:User {{id: {plain}, email: {plain},
+                             display_name: 'Plain', is_active: true}})
+            CREATE (p)-[:MEMBER_OF {{role: 'no-such-role'}}]->(o)
+            CREATE (a:Agent {{id: {agent}, slug: {agent}, name: 'Fixer',
+                              enabled: true, settings: '{{"task_budget": 5}}',
+                              version: 1, org_id: {org}}})
+            CREATE (a)-[:BELONGS_TO]->(o)
+            RETURN o.id AS id
+            """,
+            {
+                'org': self.org,
+                'admin': self.admin,
+                'plain': self.plain,
+                'agent': self.agent,
+            },
+            ['id'],
+        )
+        await agent_tasks.initialize()
+        self.task_pool = agent_tasks.create_pool()
+        await self.task_pool.open()
+        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.addAsyncCleanup(self._cleanup_tasks)
+        self.url = await self._workflow()
+        response = await self.client.post(
+            f'{self.url}/runs', json={'inputs': {'version': '1'}}
+        )
+        self.run_id = response.json()['id']
+        await self._agent_step({'agent_id': self.agent, 'instruction': 'Go.'})
+        engine = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-workflows', display_name='Imbi Workflows'
+            ),
+            auth_method='client_credentials',
+        )
+        overrides = self.test_app.dependency_overrides
+        self.user_auth = overrides[permissions.get_current_user]
+        overrides[permissions.get_current_user] = lambda: engine
+        overrides[organizations.member_org_id] = lambda: self.org
+        overrides[agent_tasks._inject_store] = lambda: self.tasks
+        self.step_url = f'{self.url}/runs/{self.run_id}/steps/ask/agent-task'
+
+    async def _agent_step(
+        self, params: dict[str, typing.Any], activated_by: str | None = None
+    ) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM workflow_runtime.step_runs'
+                " WHERE run_id = %s AND node_id = 'ask'",
+                (self.run_id,),
+            )
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, input) VALUES (%s,'
+                " 'ask', 'ask', 'agent', 'Ask', 'running', %s)",
+                (self.run_id, workflows.runs.pg_json.Jsonb(params)),
+            )
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET activated_by = %s'
+                ' WHERE id = %s',
+                (activated_by or self.admin, self.run_id),
+            )
+
+    async def _cleanup_tasks(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids}
+            OPTIONAL MATCH (n)-[:ACTS_AS]->(s:ServiceAccount)
+            DETACH DELETE s, n
+            RETURN 1 AS ok
+            """,
+            {'ids': [self.admin, self.plain, self.agent]},
+            ['ok'],
+        )
+        async with self.task_pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                (self.org,),
+            )
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_id_sequences'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+        await self.task_pool.close()
+
+    async def _count(self) -> int:
+        async with self.task_pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT COUNT(*) FROM agent_runtime.tasks'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+            row = await cur.fetchone()
+        return row[0] if row else 0
+
+    async def test_make_once_then_cancel(self) -> None:
+        first = await self.client.post(self.step_url)
+        self.assertEqual(first.status_code, 200, first.text)
+        again = await self.client.post(self.step_url)
+        self.assertEqual(again.json(), first.json())
+        self.assertEqual(
+            first.json(),
+            {
+                'task_id': first.json()['task_id'],
+                'status': 'queued',
+                'outcome': None,
+                'reason': None,
+                'summary': None,
+            },
+        )
+        self.assertEqual(await self._count(), 1)
+        task = await self.tasks.get(self.org, first.json()['task_id'])
+        assert task is not None
+        self.assertEqual(task['owner'], self.admin)
+        self.assertEqual(str(task['budget']), '5.000000')
+        self.assertEqual(task['idempotency_key'], f'{self.run_id}:ask')
+        self.assertEqual(
+            task['origin'],
+            {
+                'kind': 'human',
+                'user': self.email,
+                'workflow_run_id': self.run_id,
+                'node_key': 'ask',
+            },
+        )
+        for _ in range(2):
+            response = await self.client.post(self.step_url + '/cancel')
+            self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.post(self.step_url)
+        self.assertEqual(
+            (response.json()['status'], response.json()['outcome']),
+            ('closed', 'cancelled_by_human'),
+        )
+
+    async def test_budget_above_the_agent_is_422(self) -> None:
+        await self._agent_step(
+            {'agent_id': self.agent, 'instruction': 'Go.', 'budget': 6}
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(await self._count(), 0)
+
+    async def test_refusals(self) -> None:
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/steps/start/agent-task'
+        )
+        self.assertEqual(response.status_code, 404)
+        await self._agent_step({'agent_id': 'nope', 'instruction': 'Go.'})
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'agent_not_found'}
+        )
+        # The activator is a member with no agent_task:create.
+        await self._agent_step(
+            {'agent_id': self.agent, 'instruction': 'Go.'},
+            activated_by=self.plain,
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'owner_forbidden'}
+        )
+        self.assertEqual(await self._count(), 0)
+
+    async def test_only_the_engine(self) -> None:
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = self.user_auth
+        for path in ('', '/cancel'):
+            response = await self.client.post(self.step_url + path)
+            self.assertEqual(response.status_code, 403)
+        self.assertEqual(await self._count(), 0)

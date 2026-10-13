@@ -828,6 +828,35 @@ async def create_agent_task(
             response.status_code = 200
             return existing
     owner = await _owner(db, org_slug, auth, origin)
+    task, created = await make_task(
+        db, store, org_slug, org_id, data, origin, key, owner, _actor(auth)
+    )
+    if not created:
+        response.status_code = 200
+    return task
+
+
+async def make_task(
+    db: graph.Graph,
+    store: agent_tasks.TaskStore,
+    org_slug: str,
+    org_id: str,
+    data: AgentTaskCreate,
+    origin: TaskOrigin,
+    key: str | None,
+    owner: str,
+    actor: agent_tasks.Actor,
+) -> tuple[dict[str, typing.Any], bool]:
+    """Make a task with the agent and prompt versions that it has now.
+
+    Return the task, and ``False`` when a task with the key exists.
+
+    Raises:
+        409: The agent is disabled.
+        422: The agent or the project is not in the org, or the budget
+            is more than the agent's task budget.
+
+    """
     agent = await _fetch_agent(db, org_slug, data.agent_slug)
     if not agent.get('enabled', True):
         raise fastapi.HTTPException(
@@ -849,7 +878,7 @@ async def create_agent_task(
     )
     agent_version = int(agent.get('version') or 1)
     prompt_version = agent.get('prompt_version')
-    task, created = await store.create(
+    return await store.create(
         agent_tasks.NewTask(
             organization_id=org_id,
             agent_id=agent_id,
@@ -867,7 +896,7 @@ async def create_agent_task(
             owner=owner,
             budget=budget,
         ),
-        _actor(auth),
+        actor,
         {
             'title': data.title,
             'description': data.description,
@@ -877,9 +906,6 @@ async def create_agent_task(
             'prompt_version': prompt_version,
         },
     )
-    if not created:
-        response.status_code = 200
-    return task
 
 
 @agent_tasks_router.get('/', response_model=list[AgentTaskListItem])
