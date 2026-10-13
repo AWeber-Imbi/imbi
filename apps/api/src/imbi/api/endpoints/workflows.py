@@ -66,8 +66,7 @@ class WorkflowSummary(pydantic.BaseModel):
     latest_version: int
     active_version: int | None
     trigger_types: list[str]
-    #: The agents that the latest version dispatches to. Always empty
-    #: until the agent step type ships.
+    #: The agents that the agent steps of the latest version use.
     agent_ids: list[str] = []
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -213,6 +212,11 @@ MATCH (r:User)-[:MEMBER_OF]->(:Organization {{id: {org}}})
 WHERE r.id IN {ids}
 RETURN r.id AS id
 """,
+    'agent': """
+MATCH (r:Agent)-[:BELONGS_TO]->(:Organization {{id: {org}}})
+WHERE r.id IN {ids}
+RETURN r.id AS id
+""",
 }
 
 _TEAM_MEMBER_QUERY: typing.LiteralString = """
@@ -232,9 +236,10 @@ _PLAIN_REFERENCE = re.compile(
 #: Jinja delimiters. A value with none of them renders to itself.
 _TEMPLATE_MARKERS = ('{{', '{%', '{#')
 
-#: Resource kinds that must be a literal id, because activation binds
-#: them before any run.
-_LITERAL_ONLY = frozenset({'webhook'})
+#: Resource kinds that must be a literal id: activation binds a webhook
+#: before any run, and the Agents delete lock reads the agent ids in
+#: the graph.
+_LITERAL_ONLY = frozenset({'webhook', 'agent'})
 
 
 def _resource_ids(
@@ -264,6 +269,9 @@ def _resource_ids(
             add('project', node.id, params.get('project_id'))
         elif node.type == 'webhook':
             add('webhook', node.id, params.get('webhook_id'))
+        elif node.type == 'agent':
+            add('agent', node.id, params.get('agent_id'))
+            add('project', node.id, params.get('project_id'))
         elif node.type == 'email':
             raw: typing.Any = params.get('to')
             if not isinstance(raw, list):
@@ -285,8 +293,9 @@ async def _validate(
     """Return the issues of a graph, with the checks that need the org.
 
     A literal id in step params must name a resource in the org: a
-    project, a gateway Webhook, a team, or a user who is a member. AI
-    models are a global catalog, so ``model_id`` is not checked here.
+    project, a gateway Webhook, a team, an agent, or a user who is a
+    member. AI models are a global catalog, so ``model_id`` is not
+    checked here.
     One graph query runs for each kind of resource.
     """
     result = validation.validate(wf_graph, settings)
@@ -354,7 +363,7 @@ def _workflow(
         **row,
         'owner_team_slug': team_slugs.get(row['owner_team_id']),
         'trigger_types': _trigger_types(row['graph']),
-        'agent_ids': [],
+        'agent_ids': workflows.agent_ids(row['graph']),
         'version': _version(
             {
                 **row,

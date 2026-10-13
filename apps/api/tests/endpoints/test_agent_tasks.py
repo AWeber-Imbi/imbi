@@ -19,7 +19,7 @@ import httpx
 from psycopg import sql
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, harness, models
+from imbi.api import agent_tasks, harness, models, workflows
 from imbi.api.auth import permissions
 from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
@@ -1136,6 +1136,10 @@ class ServiceAccountTests(AgentTaskTestCase):
         self.assertNotEqual(one['id'], two['id'])
 
     async def test_agent_delete_removes_service_account(self) -> None:
+        await workflows.initialize()
+        self.test_app.dependency_overrides[workflows._inject_store] = (
+            lambda: workflows.WorkflowStore(self.pool)
+        )
         agent = await self.create_agent('triage')
         (account,) = await self.service_accounts(agent['id'])
         response = await self.client.delete(

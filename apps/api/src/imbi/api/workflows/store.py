@@ -297,6 +297,36 @@ class WorkflowStore:
             (workflow_id,),
         )
 
+    async def agent_references(
+        self, organization_id: str, agent_id: str
+    ) -> int:
+        """Return how many workflows use the agent.
+
+        A workflow uses the agent when an agent step of its latest or
+        active version names it. Other versions cannot start runs.
+        """
+        row = await self._one(
+            'SELECT COUNT(DISTINCT w.id) AS n FROM workflows.workflows AS w'
+            ' JOIN workflows.workflow_versions AS v ON v.workflow_id = w.id'
+            ' AND v.version IN (w.latest_version, w.active_version)'
+            ' WHERE w.organization_id = %s AND EXISTS (SELECT 1'
+            " FROM jsonb_array_elements(v.graph->'nodes') AS n"
+            " WHERE n->>'type' = 'agent'"
+            " AND n->'params'->>'agent_id' = %s)",
+            (organization_id, agent_id),
+        )
+        return int(row['n']) if row else 0
+
+
+def agent_ids(graph: dict[str, typing.Any]) -> list[str]:
+    """Return the agent ids of the agent steps in a version's graph."""
+    found: list[str] = []
+    for node in graph.get('nodes', []):
+        agent_id = node.get('params', {}).get('agent_id')
+        if node.get('type') == 'agent' and agent_id not in (None, *found):
+            found.append(str(agent_id))
+    return found
+
 
 def _version_values(
     workflow_id: uuid.UUID, version: int, definition: Definition

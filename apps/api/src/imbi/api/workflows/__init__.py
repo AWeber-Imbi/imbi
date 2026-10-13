@@ -27,6 +27,7 @@ from imbi.api.workflows.store import (
     Row,
     Trigger,
     WorkflowStore,
+    agent_ids,
 )
 from imbi.common import lifespan, relational
 from imbi.common.workflows import runtime
@@ -105,6 +106,7 @@ __all__ = [
     'Store',
     'Trigger',
     'WorkflowStore',
+    'agent_ids',
     'create_pool',
     'initialize',
     'run_store',
