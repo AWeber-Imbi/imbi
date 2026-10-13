@@ -1,4 +1,20 @@
 import type {
+  SecretAuditEvent,
+  SecretBinding,
+  SecretBindingCreate,
+  SecretBindingPatch,
+  SecretBindingValidation,
+  SecretGrant,
+  SecretGrantCreate,
+  SecretGrantPatch,
+  SecretProvider,
+  SecretProviderCreate,
+  SecretProviderPatch,
+  SecretProviderTest,
+  SecretProviderType,
+  SecretResolution,
+} from '@/components/admin/secrets/types'
+import type {
   AttentionRun,
   StepType,
   TestRunResult,
@@ -3933,3 +3949,136 @@ export const listWorkflowStepTypes = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+// --- Secrets broker (ADR 0022) ------------------------------------------
+
+const secretsPath = (orgSlug: string, kind: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/${kind}`
+
+const listOf = async <T>(
+  orgSlug: string,
+  kind: string,
+  params?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T[]> => {
+  const response = await apiClient.get<T[]>(
+    `${secretsPath(orgSlug, kind)}/`,
+    params,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const listSecretProviderTypes = (
+  orgSlug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<SecretProviderType[]>(
+    `${secretsPath(orgSlug, 'secret-providers')}/types`,
+    undefined,
+    signal,
+  )
+
+export const listSecretProviders = (orgSlug: string, signal?: AbortSignal) =>
+  listOf<SecretProvider>(orgSlug, 'secret-providers', undefined, signal)
+
+export const createSecretProvider = (
+  orgSlug: string,
+  body: SecretProviderCreate,
+) =>
+  apiClient.post<SecretProvider>(
+    `${secretsPath(orgSlug, 'secret-providers')}/`,
+    body,
+  )
+
+export const updateSecretProvider = (
+  orgSlug: string,
+  id: string,
+  body: SecretProviderPatch,
+) =>
+  apiClient.patch<SecretProvider>(
+    `${secretsPath(orgSlug, 'secret-providers')}/${id}`,
+    body,
+  )
+
+export const deleteSecretProvider = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-providers')}/${id}`)
+
+export const testSecretProvider = (orgSlug: string, id: string) =>
+  apiClient.post<SecretProviderTest>(
+    `${secretsPath(orgSlug, 'secret-providers')}/${id}/test`,
+  )
+
+export const listSecretBindings = (orgSlug: string, signal?: AbortSignal) =>
+  listOf<SecretBinding>(orgSlug, 'secret-bindings', undefined, signal)
+
+export const createSecretBinding = (
+  orgSlug: string,
+  body: SecretBindingCreate,
+) =>
+  apiClient.post<SecretBinding>(
+    `${secretsPath(orgSlug, 'secret-bindings')}/`,
+    body,
+  )
+
+export const updateSecretBinding = (
+  orgSlug: string,
+  id: string,
+  body: SecretBindingPatch,
+) =>
+  apiClient.patch<SecretBinding>(
+    `${secretsPath(orgSlug, 'secret-bindings')}/${id}`,
+    body,
+  )
+
+export const deleteSecretBinding = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-bindings')}/${id}`)
+
+export const validateSecretBinding = (orgSlug: string, id: string) =>
+  apiClient.post<SecretBindingValidation>(
+    `${secretsPath(orgSlug, 'secret-bindings')}/${id}/validate`,
+  )
+
+export const listSecretGrants = (orgSlug: string, signal?: AbortSignal) =>
+  listOf<SecretGrant>(orgSlug, 'secret-grants', undefined, signal)
+
+export const createSecretGrant = (orgSlug: string, body: SecretGrantCreate) =>
+  apiClient.post<SecretGrant>(`${secretsPath(orgSlug, 'secret-grants')}/`, body)
+
+export const updateSecretGrant = (
+  orgSlug: string,
+  id: string,
+  body: SecretGrantPatch,
+) =>
+  apiClient.patch<SecretGrant>(
+    `${secretsPath(orgSlug, 'secret-grants')}/${id}`,
+    body,
+  )
+
+export const deleteSecretGrant = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-grants')}/${id}`)
+
+export const listSecretResolutions = (
+  orgSlug: string,
+  state?: string,
+  signal?: AbortSignal,
+) =>
+  listOf<SecretResolution>(
+    orgSlug,
+    'secret-resolutions',
+    state ? { state } : undefined,
+    signal,
+  )
+
+export const releaseSecretResolution = (orgSlug: string, id: string) =>
+  apiClient.post<SecretResolution>(
+    `${secretsPath(orgSlug, 'secret-resolutions')}/${id}/release`,
+  )
+
+export const revokeSecretProviderLease = (orgSlug: string, id: string) =>
+  apiClient.post<SecretResolution>(
+    `${secretsPath(orgSlug, 'secret-resolutions')}/${id}/revoke-provider-lease`,
+  )
+
+export const listSecretAuditEvents = (orgSlug: string, signal?: AbortSignal) =>
+  listOf<SecretAuditEvent>(orgSlug, 'secret-audit-events', undefined, signal)

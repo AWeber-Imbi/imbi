@@ -664,3 +664,38 @@ PARTITION BY toYYYYMM(run_created_at)
 ORDER BY (organization_id, workflow_id, run_id);
 """
 enabled = true
+
+# The secrets broker audit trail (ADR 0022). One row per step: provider,
+# binding, and grant changes, resolutions allowed and denied,
+# materializations, releases, expiry, and lease revocation. A row holds
+# ids, purpose, delivery mode, result, and a safe reason code, never
+# material, field values, handles, or lease ids.
+#
+# `event_id` is unique, so a repeated publish collapses into one row. No
+# TTL: this is an audit trail. If a retention decision is made, the TTL
+# goes on `at`, which every row has.
+[secret_audit_events]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.secret_audit_events {on_cluster}(
+  event_id         String,
+  at               DateTime64(6, 'UTC'),
+  organization_id  LowCardinality(String),
+  type             LowCardinality(String),
+  result           LowCardinality(String),
+  reason           LowCardinality(String) DEFAULT '',
+  actor            String DEFAULT '',
+  agent_id         String DEFAULT '',
+  project_id       String DEFAULT '',
+  task_id          String DEFAULT '',
+  runner_id        String DEFAULT '',
+  provider_id      String DEFAULT '',
+  binding_id       String DEFAULT '',
+  grant_id         String DEFAULT '',
+  resolution_id    String DEFAULT '',
+  purpose          LowCardinality(String) DEFAULT '',
+  delivery_mode    LowCardinality(String) DEFAULT ''
+) ENGINE = {replicated}ReplacingMergeTree()
+PARTITION BY toYYYYMM(at)
+ORDER BY (organization_id, at, event_id);
+"""
+enabled = true

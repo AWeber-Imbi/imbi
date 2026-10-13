@@ -48,6 +48,7 @@ TOPICS: dict[str, tuple[str, ...]] = {
     'release_components': ('sbom',),
     'scheduler_runs': ('scheduler',),
     'score_history': ('scoring',),
+    'secret_audit_events': ('secrets',),
     'tags': ('github',),
     'workflow_run_events': ('workflows',),
     'workflow_runs': ('workflows',),

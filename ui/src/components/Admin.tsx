@@ -16,6 +16,7 @@ import {
   Layers,
   LayoutDashboard,
   Link2,
+  LockKeyhole,
   Network,
   Puzzle,
   Shield,
@@ -49,6 +50,7 @@ import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
+import { SecretsManagement } from './admin/secrets/SecretsManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
@@ -74,6 +76,7 @@ type AdminSection =
   | 'prompts'
   | 'roles'
   | 'scoring-policies'
+  | 'secrets'
   | 'service-accounts'
   | 'teams'
   | 'users'
@@ -101,6 +104,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'prompts',
   'roles',
   'scoring-policies',
+  'secrets',
   'service-accounts',
   'teams',
   'users',
@@ -197,6 +201,13 @@ export function Admin() {
       icon: Target,
       id: 'scoring-policies',
       label: 'Scoring Policies',
+      scope: 'org',
+    },
+    {
+      description: 'Secret providers, bindings, grants, and their audit',
+      icon: LockKeyhole,
+      id: 'secrets',
+      label: 'Secrets',
       scope: 'org',
     },
     {
@@ -448,6 +459,7 @@ export function Admin() {
             {currentSection === 'scoring-policies' && (
               <ScoringPolicyManagement />
             )}
+            {currentSection === 'secrets' && <SecretsManagement />}
             {currentSection === 'ai-models' && <AIModelsManagement />}
             {currentSection === 'prompts' && <PromptLibrary />}
             {currentSection === 'assistant' && <AssistantManagement />}
