@@ -423,6 +423,14 @@ def _check_binding(binding: Row | None, reference: Reference) -> Row:
     return binding
 
 
+def _refuse_provider_key(binding: Row) -> None:
+    """A provider key is for imbi-api only: no grant gives it to a task."""
+    if binding['provider_key_usage']:
+        raise providers.BrokerError(
+            'secret_access_denied', 'provider_key_binding'
+        )
+
+
 def _check_provider(provider: Row | None, binding: Row) -> Row:
     if provider is None or not provider['enabled']:
         raise providers.BrokerError('secret_provider_disabled')
@@ -470,6 +478,7 @@ async def evaluate(
         ),
         reference,
     )
+    _refuse_provider_key(binding)
     provider = _check_provider(
         await _fetch_one(
             conn,
@@ -908,6 +917,7 @@ class Broker:
             ),
             reference,
         )
+        _refuse_provider_key(binding)
         if (
             binding['reference'] != reference.binding
             or binding['provider_id'] != row['provider_id']
@@ -963,6 +973,7 @@ class Broker:
                     purpose=row['purpose'],
                     ttl_seconds=row['ttl_seconds'],
                     credential_class=decision.binding['credential_class'],
+                    binding_id=decision.binding['id'],
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)
@@ -1393,6 +1404,145 @@ class Broker:
             )
             return
         await _publish(task_events)
+
+    async def _record_event(self, event: audit.Event) -> None:
+        """Write an audit event that has no resolution row to the
+        outbox, in a transaction of its own. Never raises."""
+        try:
+            await audit.record(self._pool, [event])
+        except Exception as exc:  # noqa: BLE001 - logged, not raised
+            LOGGER.error(
+                'Secret audit event %s not saved: %s',
+                event.type,
+                type(exc).__name__,
+            )
+
+    async def check_provider_key(
+        self,
+        organization_id: str,
+        reference: str,
+        *,
+        host: str,
+        app_id: str,
+    ) -> Row:
+        """Return the key binding when it is a provider key for the App.
+
+        A key binding has ``provider_key_usage``, which only a principal
+        with ``secret_binding:write`` can set. It names the GitHub host
+        and the App id that may sign with the key. Called when a
+        ``github_app`` binding or provider is written, and again for
+        each use.
+
+        Raises:
+            BrokerError: ``secret_access_denied`` when the binding is not
+                a provider key for this host and App.
+
+        """
+        parsed = parse_reference(reference)
+        async with self._pool.connection() as conn:
+            binding = await _fetch_one(
+                conn,
+                'SELECT * FROM secrets.bindings'
+                ' WHERE organization_id = %s AND reference = %s',
+                (organization_id, parsed.binding),
+            )
+        if binding is None:
+            raise providers.BrokerError('secret_binding_not_found')
+        usage: dict[str, typing.Any] | None = binding['provider_key_usage']
+        if not usage:
+            raise providers.BrokerError(
+                'secret_access_denied', 'not_a_provider_key'
+            )
+        if binding['credential_class'] == 'dynamic':
+            raise providers.BrokerError(
+                'secret_access_denied', 'dynamic_key_binding'
+            )
+        if (usage.get('host'), usage.get('app_id')) != (host, app_id):
+            raise providers.BrokerError(
+                'secret_access_denied', 'provider_key_mismatch'
+            )
+        return binding
+
+    async def provider_key(
+        self,
+        organization_id: str,
+        reference: str,
+        *,
+        consumer: uuid.UUID | None,
+        host: str,
+        app_id: str,
+        task_id: uuid.UUID | None = None,
+    ) -> providers.Material:
+        """Return the material of a provider key for one consumer.
+
+        A ``github_app`` binding signs with a private key that another
+        binding holds (plan 9.8). Only imbi-api reads that key: no
+        runner, executor, or model gets it, so no grant applies. The key
+        binding must pass :meth:`check_provider_key`, be enabled, and
+        list the requesting binding (``consumer``) in its
+        ``provider_key_usage``.
+
+        Raises:
+            BrokerError: The binding is not a key for this consumer,
+                host, and App, or the provider failed.
+
+        """
+        parsed = parse_reference(reference)
+        binding = _check_binding(
+            await self.check_provider_key(
+                organization_id, reference, host=host, app_id=app_id
+            ),
+            parsed,
+        )
+        if consumer is None or str(consumer) not in binding[
+            'provider_key_usage'
+        ].get('consumers', []):
+            raise providers.BrokerError(
+                'secret_access_denied', 'provider_key_consumer'
+            )
+        async with self._pool.connection() as conn:
+            provider = _check_provider(
+                await _fetch_one(
+                    conn,
+                    'SELECT * FROM secrets.providers'
+                    ' WHERE id = %s AND organization_id = %s',
+                    (binding['provider_id'], organization_id),
+                ),
+                binding,
+            )
+        event = audit.Event(
+            organization_id=organization_id,
+            type='secret_materialized',
+            actor='system',
+            reason='provider_key',
+            task_id='' if task_id is None else str(task_id),
+            provider_id=str(provider['id']),
+            binding_id=str(binding['id']),
+            purpose='provider_key',
+        )
+        try:
+            material = await providers.get(provider['type']).resolve(
+                provider['config'],
+                binding['locator'],
+                parsed.field,
+                providers.ResolveContext(
+                    organization_id=organization_id,
+                    task_id=task_id or uuid.UUID(int=0),
+                    project_id=None,
+                    purpose='provider_key',
+                    ttl_seconds=MAX_TTL_SECONDS,
+                    credential_class=binding['credential_class'],
+                ),
+            )
+        except providers.BrokerError as err:
+            await self._record_event(
+                event.model_copy(
+                    update={'result': 'failed', 'reason': err.reason}
+                )
+            )
+            raise
+        await self._record_event(event)
+        return material
 
     async def get(self, resolution_id: uuid.UUID) -> Row | None:
         async with self._pool.connection() as conn:

@@ -16189,6 +16189,28 @@ export interface components {
              */
             labels: string[];
         };
+        /**
+         * ProviderKeyUsage
+         * @description Marks a binding as a provider key, for example a GitHub App key.
+         *
+         *     Only imbi-api reads such a binding, for the listed ``github_app``
+         *     bindings on this host and App id. No grant gives it to a task.
+         */
+        ProviderKeyUsage: {
+            /**
+             * Host
+             * @description github.com, <tenant>.ghe.com, or an operator GHES host
+             */
+            host: string;
+            /** App Id */
+            app_id: string;
+            /**
+             * Consumers
+             * @description The github_app bindings that may use the key
+             * @default []
+             */
+            consumers: string[];
+        };
         /** PullRequestListResponse */
         PullRequestListResponse: {
             /** Data */
@@ -18036,6 +18058,10 @@ export interface components {
             enabled: boolean;
             /** Description */
             description: string;
+            /** Provider Key Usage */
+            provider_key_usage?: {
+                [key: string]: unknown;
+            } | null;
             /** Created By */
             created_by: string;
             /**
@@ -18098,6 +18124,7 @@ export interface components {
              * @default
              */
             description: string;
+            provider_key_usage?: components["schemas"]["ProviderKeyUsage"] | null;
         };
         /** SecretBindingPatch */
         SecretBindingPatch: {
@@ -18119,6 +18146,7 @@ export interface components {
             enabled?: boolean | null;
             /** Description */
             description?: string | null;
+            provider_key_usage?: components["schemas"]["ProviderKeyUsage"] | null;
         };
         /** SecretBindingValidation */
         SecretBindingValidation: {
