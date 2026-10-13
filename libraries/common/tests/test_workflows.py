@@ -337,6 +337,32 @@ class RegistryTestCase(unittest.TestCase):
             {'agent_task:create'},
         )
 
+    def test_agent_budget_follows_the_task_budget(self) -> None:
+        # The limits of AgentTaskCreate.budget: 14 digits, 6 places.
+        for budget, codes in (
+            (0.5, set()),
+            ('12345678.123456', set()),
+            (0.0000001, {'invalid_param'}),
+            ('123456789.5', {'invalid_param'}),
+            (-1, {'invalid_param'}),
+        ):
+            issues = _check(
+                [
+                    _node('start', 'manual'),
+                    _node(
+                        'ask',
+                        'agent',
+                        {
+                            'agent_id': 'a1',
+                            'instruction': 'Go.',
+                            'budget': budget,
+                        },
+                    ),
+                ],
+                [('start', 0, 'ask')],
+            )
+            self.assertEqual(_codes(issues), codes, budget)
+
     def test_sample_outputs_match_output_schema(self) -> None:
         for step in registry.STEP_TYPES.values():
             step.output.model_validate(step.sample_output)

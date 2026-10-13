@@ -5,6 +5,7 @@ The task is an ADR 0020 agent task with the root origin of the run
 when the outcome is in :data:`SUCCEEDED`, else ``Failed``.
 """
 
+import decimal
 import typing
 
 import pydantic
@@ -28,9 +29,12 @@ class Params(pydantic.BaseModel):
     project_id: str | None = pydantic.Field(
         default=None, description='The primary project of the task.'
     )
-    budget: float | None = pydantic.Field(
+    #: The same limits as the budget of an ADR 0020 task.
+    budget: decimal.Decimal | None = pydantic.Field(
         default=None,
         ge=0,
+        max_digits=14,
+        decimal_places=6,
         description="USD. Defaults to the agent's task budget. It cannot "
         'be more than that budget.',
     )
