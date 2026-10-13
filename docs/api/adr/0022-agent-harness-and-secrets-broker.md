@@ -329,7 +329,7 @@ run cancels the task.
 | Permission | Allows | Holder |
 |---|---|---|
 | `harness_pool:read` | Read pools and runners. Organization members see only pools that serve their organization. | Organization administrators |
-| `harness_pool:write` | Create and change pools | Platform administrators |
+| (none: `is_admin`) | Create and change pools. This is not a permission, so an organization administrator cannot grant it to a role. | Platform administrators |
 | `agent_platform_config:write` | Change the organization base configuration and marketplaces | Organization administrators |
 | `secret_provider:read`, `secret_provider:write` | Providers, including the test action | Organization administrators |
 | `secret_binding:read`, `secret_binding:write` | Bindings, including validation | Organization administrators |
