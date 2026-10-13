@@ -379,6 +379,44 @@ class SecretEndpointTestCase(
             response.json()['detail']['error'], 'provider_key_mismatch'
         )
 
+    async def test_patch_provider_key_mark(self) -> None:
+        """A key stays static while marked; an explicit null clears the
+        mark, and an omitted field keeps it."""
+        response = await self._post(
+            '/secret-bindings/',
+            {
+                'reference': 'secret://production/gh/key',
+                'provider_id': str(self.provider['id']),
+                'credential_class': 'static',
+                'locator': {'key': 'plain'},
+                'allowed_delivery_modes': ['stdin'],
+                'provider_key_usage': {'host': 'github.com', 'app_id': '7'},
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        url = self.base + f'/secret-bindings/{response.json()["id"]}'
+        response = await self.client.patch(
+            url, json={'credential_class': 'dynamic'}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.client.patch(url, json={'max_ttl_seconds': 60})
+        self.assertEqual(
+            response.json()['provider_key_usage'],
+            {'host': 'github.com', 'app_id': '7', 'consumers': []},
+        )
+        response = await self.client.patch(
+            url, json={'provider_key_usage': None}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()['provider_key_usage'])
+        response = await self.client.get(url)
+        self.assertIsNone(response.json()['provider_key_usage'])
+        # Without the mark, the binding can become dynamic.
+        response = await self.client.patch(
+            url, json={'credential_class': 'dynamic'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
     async def test_dynamic_binding_needs_the_capability(self) -> None:
         response = await self._post(
             '/secret-providers/',

@@ -762,11 +762,16 @@ async def update_binding(
                 changes.get('credential_class', current['credential_class']),
             ),
         )
-    if data.provider_key_usage is not None:
+    credential_class = str(
+        changes.get('credential_class', current['credential_class'])
+    )
+    if 'provider_key_usage' in data.model_fields_set:
+        # An explicit null clears the mark.
         changes['provider_key_usage'] = _key_usage(
-            data.provider_key_usage,
-            str(changes.get('credential_class', current['credential_class'])),
+            data.provider_key_usage, credential_class
         )
+    elif current['provider_key_usage'] and credential_class == 'dynamic':
+        raise _invalid('A provider key binding cannot be dynamic')
     if not changes:
         return current
     row = await fetch_or_404(
