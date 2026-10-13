@@ -75,28 +75,41 @@ _REFERENCE = re.compile(
 )
 _MAX_REFERENCE_LENGTH = 512
 PURPOSE = re.compile(r'[a-z][a-z0-9_]{0,63}')
-_ENV_NAME = re.compile(r'[A-Z_][A-Z0-9_]{0,127}')
+_ENV_NAME = re.compile(r'[A-Z][A-Z0-9_]{0,127}')
 _FILE_NAME = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}')
-#: Environment names that change how a process loads or runs.
+#: Environment names that change how a process loads, runs, trusts TLS,
+#: or routes its traffic. A name is refused when it is in this set,
+#: starts with a prefix, or ends with a suffix below.
 _UNSAFE_ENV = frozenset(
     {
         'BASH_ENV',
+        'CURL_CA_BUNDLE',
         'ENV',
         'HOME',
         'IFS',
-        'NODE_OPTIONS',
         'PATH',
         'PERL5OPT',
         'PROMPT_COMMAND',
         'PS4',
-        'PYTHONPATH',
-        'PYTHONSTARTUP',
+        'REQUESTS_CA_BUNDLE',
         'RUBYOPT',
         'SHELL',
         'SHELLOPTS',
     }
 )
-_UNSAFE_ENV_PREFIXES = ('LD_', 'DYLD_')
+_UNSAFE_ENV_PREFIXES = (
+    'BASH_FUNC_',
+    'DYLD_',
+    'GCONV_',
+    'GIT_',
+    'JAVA_',
+    'JDK_',
+    'LD_',
+    'NODE_',
+    'PYTHON',
+    'SSL_CERT_',
+)
+_UNSAFE_ENV_SUFFIXES = ('_PROXY',)
 
 
 # --- References and request syntax ---------------------------------------
@@ -161,6 +174,7 @@ def check_delivery(mode: str, target: str | None) -> str | None:
             and _ENV_NAME.fullmatch(target) is not None
             and target not in _UNSAFE_ENV
             and not target.startswith(_UNSAFE_ENV_PREFIXES)
+            and not target.endswith(_UNSAFE_ENV_SUFFIXES)
         )
     elif mode == 'file':
         ok = target is not None and _FILE_NAME.fullmatch(target) is not None
@@ -778,7 +792,18 @@ class Broker:
             raise providers.BrokerError(
                 'resolution_already_used', 'nonce_replay'
             )
-        # The current state of every resource, not the state at create.
+        # The current state of the task and every resource, not the
+        # state at create.
+        await _check_task(
+            conn,
+            ResolutionContext(
+                organization_id=row['organization_id'],
+                agent_id=row['agent_id'],
+                project_id=row['project_id'],
+                task_id=row['task_id'],
+                runner_id=row['runner_id'],
+            ),
+        )
         reference = parse_reference(row['reference'])
         binding = _check_binding(
             await _fetch_one(
@@ -1095,10 +1120,11 @@ class Broker:
         return ok
 
     async def sweep(self) -> int:
-        """Expire resolutions past ``expires_at`` and retry revocations.
+        """Expire resolutions past ``expires_at``, release the open
+        resolutions of closed tasks, and retry revocations.
 
         Return the number expired. A row is returned by one ``UPDATE``
-        only, so concurrent sweeps do not expire a row twice.
+        only, so concurrent sweeps do not change a row twice.
         """
         async with self._pool.connection() as conn:
             expired = await _fetch(
@@ -1107,6 +1133,18 @@ class Broker:
                 ' handle_hash = NULL'
                 " WHERE state IN ('pending', 'active')"
                 ' AND expires_at <= NOW() RETURNING *',
+                (),
+            )
+            # No hook runs when a task closes, so the sweep releases
+            # what its task left open. Materialize refuses them already.
+            closed = await _fetch(
+                conn,
+                "UPDATE secrets.resolutions AS r SET state = 'released',"
+                ' handle_hash = NULL, released_at = NOW(),'
+                " release_reason = 'task_closed'"
+                ' FROM agent_runtime.tasks AS t'
+                " WHERE t.id = r.task_id AND t.status = 'closed'"
+                " AND r.state IN ('pending', 'active') RETURNING r.*",
                 (),
             )
             retry = await _fetch(
@@ -1124,8 +1162,12 @@ class Broker:
                 _event('secret_resolution_expired', row, actor='system')
                 for row in expired
             ]
+            + [
+                _event('secret_resolution_released', row, actor='system')
+                for row in closed
+            ]
         )
-        for row in expired:
+        for row in expired + closed:
             if row['revocation_state'] == 'pending':
                 await self._revoke(row)
         for row in retry:

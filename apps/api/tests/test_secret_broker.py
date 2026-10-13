@@ -76,6 +76,20 @@ class ReferenceTestCase(unittest.TestCase):
             ('environment', 'PATH'),
             ('environment', 'LD_PRELOAD'),
             ('environment', 'DYLD_INSERT_LIBRARIES'),
+            ('environment', 'HTTPS_PROXY'),
+            ('environment', 'NO_PROXY'),
+            ('environment', 'GIT_SSH_COMMAND'),
+            ('environment', 'GIT_CONFIG_GLOBAL'),
+            ('environment', 'PYTHONHOME'),
+            ('environment', 'NODE_EXTRA_CA_CERTS'),
+            ('environment', 'JAVA_TOOL_OPTIONS'),
+            ('environment', 'JDK_JAVA_OPTIONS'),
+            ('environment', 'BASH_FUNC_X'),
+            ('environment', 'GCONV_PATH'),
+            ('environment', 'SSL_CERT_FILE'),
+            ('environment', 'REQUESTS_CA_BUNDLE'),
+            ('environment', 'CURL_CA_BUNDLE'),
+            ('environment', '_LEADING'),
             ('environment', 'gh_token'),
             ('environment', None),
             ('file', '../token'),
@@ -494,6 +508,66 @@ class MaterializeTestCase(secret_support.SecretCase):
                 await self.broker.materialize(
                     self.executor(), self.materialize_request(created.handle)
                 )
+
+    async def test_task_is_checked_again_at_materialize(self) -> None:
+        for column, value in (
+            ('status', 'closed'),
+            ('agent_id', 'other-agent'),
+            ('project_id', 'other-project'),
+            ('organization_id', 'other-org'),
+        ):
+            with self.subTest(column=column):
+                created = await self._create()
+                async with self.pool.connection() as conn:
+                    row = await conn.execute(
+                        f'SELECT {column} FROM agent_runtime.tasks'
+                        ' WHERE id = %s',
+                        (self.task_id,),
+                    )
+                    before = (await row.fetchone() or [None])[0]
+                    await conn.execute(
+                        f'UPDATE agent_runtime.tasks SET {column} = %s'
+                        ' WHERE id = %s',
+                        (value, self.task_id),
+                    )
+                with self.assertRaises(providers.BrokerError) as ctx:
+                    await self.broker.materialize(
+                        self.executor(),
+                        self.materialize_request(created.handle),
+                    )
+                self.assertIn(
+                    ctx.exception.code,
+                    {'secret_access_denied', 'resolution_context_mismatch'},
+                )
+                async with self.pool.connection() as conn:
+                    await conn.execute(
+                        f'UPDATE agent_runtime.tasks SET {column} = %s'
+                        ' WHERE id = %s',
+                        (before, self.task_id),
+                    )
+                # The refusal used nothing: the handle still works.
+                await self.broker.materialize(
+                    self.executor(), self.materialize_request(created.handle)
+                )
+
+    async def test_sweep_releases_resolutions_of_closed_tasks(self) -> None:
+        created = await self._create()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE agent_runtime.tasks SET status = 'closed'"
+                ' WHERE id = %s',
+                (self.task_id,),
+            )
+        await self.broker.sweep()
+        row = await self.broker.get(created.resolution_id)
+        assert row is not None
+        self.assertEqual(
+            (row['state'], row['release_reason'], row['handle_hash']),
+            ('released', 'task_closed', None),
+        )
+        self.assertIn(
+            'secret_resolution_released', [e.type for e in self.events]
+        )
 
     async def test_deleted_grant_invalidates_handle(self) -> None:
         created = await self._create()
