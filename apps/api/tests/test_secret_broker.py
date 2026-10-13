@@ -943,8 +943,11 @@ class NoLeakTestCase(secret_support.SecretCase):
                 ' UNION ALL SELECT row_to_json(b)::TEXT'
                 ' FROM secrets.bindings AS b WHERE organization_id = %s'
                 ' UNION ALL SELECT row_to_json(p)::TEXT'
-                ' FROM secrets.providers AS p WHERE organization_id = %s',
-                (self.org,) * 4,
+                ' FROM secrets.providers AS p WHERE organization_id = %s'
+                ' UNION ALL SELECT row_to_json(e)::TEXT'
+                ' FROM agent_runtime.events AS e JOIN agent_runtime.tasks'
+                ' AS t ON t.id = e.task_id WHERE t.organization_id = %s',
+                (self.org,) * 5,
             )
             stored = '\n'.join(r[0] for r in await cur.fetchall())
         for value in secrets:
@@ -1017,3 +1020,80 @@ class AuditOutboxTestCase(secret_support.SecretCase):
             ),
             [],
         )
+
+
+class TaskEventTestCase(secret_support.SecretCase):
+    async def test_each_step_writes_a_task_event(self) -> None:
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        await self.broker.materialize(
+            self.executor(), self.materialize_request(created.handle)
+        )
+        await self.broker.release(
+            created.resolution_id,
+            reason='done',
+            actor=f'runner:{self.runner}',
+        )
+        with self.assertRaises(providers.BrokerError):
+            await self.broker.create_resolution(
+                self.context(), self.request(purpose='deploy')
+            )
+        events = await self.task_events()
+        self.assertEqual(
+            [(e['action'], e['result']) for e in events],
+            [
+                ('created', 'succeeded'),
+                ('materialized', 'succeeded'),
+                ('released', 'succeeded'),
+                ('created', 'denied'),
+            ],
+        )
+        for event in events:
+            self.assertEqual(
+                event['reference'], 'secret://production/github/token'
+            )
+            self.assertEqual(event['actor_kind'], 'agent')
+        self.assertEqual(
+            [e['resolution_id'] for e in events],
+            [str(created.resolution_id)] * 3 + [None],
+        )
+        self.assertEqual(events[0]['purpose'], 'github_write')
+        self.assertEqual(events[3]['purpose'], 'deploy')
+        self.assertEqual(events[3]['reason'], 'no_grant')
+        text = orjson.dumps(events).decode()
+        self.assertNotIn(MATERIAL, text)
+        self.assertNotIn(created.handle, text)
+        # Each event goes to the task log after its commit.
+        self.assertEqual(self.task_log.await_count, 4)
+
+    async def test_sweep_and_fencing_releases_write_task_events(
+        self,
+    ) -> None:
+        await self.broker.create_resolution(self.context(), self.request())
+        other_task = await self.add_task()
+        await self.broker.create_resolution(
+            self.context(task_id=other_task), self.request()
+        )
+        self.assertTrue(
+            await self.broker.release_runner_resolutions(self.runner)
+        )
+        for task_id in (self.task_id, other_task):
+            events = await self.task_events(task_id)
+            self.assertEqual(
+                [(e['action'], e['actor_kind']) for e in events],
+                [('created', 'agent'), ('released', 'system')],
+            )
+
+    async def test_archived_task_gets_no_event(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                ' WHERE id = %s',
+                (self.task_id,),
+            )
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        self.assertIsNotNone(created.resolution_id)
+        self.assertEqual(await self.task_events(), [])

@@ -1655,6 +1655,34 @@ async def requeue_chain(
     return published
 
 
+async def append_event(
+    conn: Conn,
+    organization_id: str,
+    task_id: uuid.UUID,
+    event_type: str,
+    payload: Row,
+    actor: Actor,
+) -> tuple[Row, Row] | None:
+    """Write one event on a task in the transaction of ``conn``.
+
+    For a change in another schema that the task shows, such as a
+    secret resolution (ADR 0022). The task row is locked until the
+    transaction ends. A closed task gets the event while its log is not
+    archived. Return the task and the event, to publish after the
+    commit, or ``None`` when the organization has no such task or its
+    log is archived.
+    """
+    task = await _fetch_one(
+        conn,
+        'SELECT * FROM agent_runtime.tasks WHERE id = %s'
+        ' AND organization_id = %s AND log_archived_at IS NULL FOR UPDATE',
+        (task_id, organization_id),
+    )
+    if task is None:
+        return None
+    return task, await _append_event(conn, task_id, event_type, payload, actor)
+
+
 async def _apply_control(
     write: _Write, control: Control, actor: Actor, short_id: str
 ) -> None:

@@ -63,6 +63,11 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        #: The task log publish of the ADR 0020 task events.
+        self.task_log = mock.AsyncMock()
+        patcher = mock.patch.object(broker.log, 'publish', self.task_log)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.provider = await self.store.create(
             'providers',
@@ -107,6 +112,21 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
             )
             return [
                 audit.Event.model_validate(r[0]) for r in await cur.fetchall()
+            ]
+
+    async def task_events(
+        self, task_id: uuid.UUID | None = None
+    ) -> list[dict[str, typing.Any]]:
+        """Return the secret events of a task, in order."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT actor_kind, payload FROM agent_runtime.events'
+                ' WHERE task_id = %s AND type = %s ORDER BY seq',
+                (task_id or self.task_id, broker.TASK_EVENT_TYPE),
+            )
+            return [
+                {'actor_kind': kind, **payload}
+                for kind, payload in await cur.fetchall()
             ]
 
     async def add_binding(self, **values: typing.Any) -> store.Row:
