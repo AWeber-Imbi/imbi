@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Server,
+  SlidersHorizontal,
   Workflow,
 } from 'lucide-react'
 
@@ -22,6 +23,7 @@ export interface AgentsNavItem {
 export type AgentsSection =
   | 'dashboard'
   | 'manage'
+  | 'platform'
   | 'runners'
   | 'tasks'
   | 'usage'
@@ -64,6 +66,13 @@ export const AGENTS_NAV: AgentsNavItem[] = [
     id: 'workflows',
     label: 'Workflows',
     note: 'Multi-step runs built from agents',
+  },
+  {
+    group: 'Settings',
+    icon: SlidersHorizontal,
+    id: 'platform',
+    label: 'Platform',
+    note: 'Base configuration and plugin marketplaces',
   },
   {
     group: 'Settings',

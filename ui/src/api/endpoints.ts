@@ -38,6 +38,9 @@ import type {
   Advisory,
   Agent,
   AgentCreate,
+  AgentMarketplace,
+  AgentPlatformConfig,
+  AgentPlatformConfigResponse,
   AgentTask,
   AgentTaskCreate,
   AgentTaskEvent,
@@ -3613,6 +3616,57 @@ export const getAgentUsage = (
     `/organizations/${encodeURIComponent(orgSlug)}/agent-usage/`,
     { ...params },
     signal,
+  )
+
+// The agent platform configuration of the organization (ADR 0022).
+const agentPlatformPath = (orgSlug: string, kind: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/${kind}`
+
+export const getAgentPlatformConfig = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<AgentPlatformConfigResponse>(
+    `${agentPlatformPath(orgSlug, 'agent-platform-config')}/`,
+    undefined,
+    signal,
+  )
+
+export const putAgentPlatformConfig = (
+  orgSlug: string,
+  config: AgentPlatformConfig,
+) =>
+  apiClient.put<AgentPlatformConfigResponse>(
+    `${agentPlatformPath(orgSlug, 'agent-platform-config')}/`,
+    config,
+  )
+
+export const listAgentMarketplaces = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<AgentMarketplace[]> => {
+  const response = await apiClient.get<AgentMarketplace[]>(
+    `${agentPlatformPath(orgSlug, 'agent-marketplaces')}/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createAgentMarketplace = (
+  orgSlug: string,
+  body: { slug: string; url: string },
+) =>
+  apiClient.post<AgentMarketplace>(
+    `${agentPlatformPath(orgSlug, 'agent-marketplaces')}/`,
+    body,
+  )
+
+export const syncAgentMarketplace = (orgSlug: string, slug: string) =>
+  apiClient.post<AgentMarketplace>(
+    `${agentPlatformPath(orgSlug, 'agent-marketplaces')}/${encodeURIComponent(slug)}/sync`,
+  )
+
+export const deleteAgentMarketplace = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `${agentPlatformPath(orgSlug, 'agent-marketplaces')}/${encodeURIComponent(slug)}`,
   )
 
 // The runner pools that serve the organization, with their runners.

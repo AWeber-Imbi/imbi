@@ -4452,8 +4452,9 @@ export interface paths {
          *         404: No such organization.
          *         409: The org has an agent with this slug.
          *         422: The team, a tag, a tool environment, or a subagent is not
-         *             in the org, a subagent is given two times, or
-         *             ``prompt_ref`` does not parse.
+         *             in the org, a subagent is given two times,
+         *             ``prompt_ref`` does not parse, or a platform field is not
+         *             valid (see :func:`_check_platform`).
          */
         post: operations["create_agent_api_organizations__org_slug__agents__post"];
         delete?: never;
@@ -5084,6 +5085,118 @@ export interface paths {
          *         409: ``task_archived``.
          */
         delete: operations["dissociate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-platform-config/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Platform Config
+         * @description Return the newest configuration version of the organization.
+         */
+        get: operations["get_agent_platform_config_api_organizations__org_slug__agent_platform_config__get"];
+        /**
+         * Put Agent Platform Config
+         * @description Write a new configuration version when the configuration changes.
+         *
+         *     Default plugins are pinned like agent plugins: a plugin that keeps
+         *     its ``sha`` keeps its pin, any other is pinned to the synced
+         *     catalog.
+         *
+         *     Raises:
+         *         409: A concurrent write took the version.
+         *         422: An allowed marketplace is not registered, or a default
+         *             plugin is not in an allowed marketplace's catalog.
+         */
+        put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-marketplaces/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Marketplaces
+         * @description List the marketplaces of the organization with their catalogs.
+         */
+        get: operations["list_agent_marketplaces_api_organizations__org_slug__agent_marketplaces__get"];
+        put?: never;
+        /**
+         * Create Agent Marketplace
+         * @description Register a marketplace by git URL and sync it.
+         *
+         *     A failed sync does not stop the registration; the response has
+         *     ``sync_error``.
+         *
+         *     Raises:
+         *         409: The organization has a marketplace with this slug.
+         */
+        post: operations["create_agent_marketplace_api_organizations__org_slug__agent_marketplaces__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-marketplaces/{slug}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Agent Marketplace
+         * @description Read the marketplace file at the default branch head again.
+         *
+         *     Agent versions keep the commit that they pinned. A new version, or
+         *     a plugin given without ``sha``, pins the new head.
+         */
+        post: operations["sync_agent_marketplace_api_organizations__org_slug__agent_marketplaces__slug__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-marketplaces/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Agent Marketplace
+         * @description Delete a marketplace.
+         *
+         *     Pinned plugins keep the URL and the commit, so tasks of existing
+         *     agent versions still run them.
+         *
+         *     Raises:
+         *         409: The newest configuration allows the marketplace.
+         */
+        delete: operations["delete_agent_marketplace_api_organizations__org_slug__agent_marketplaces__slug__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9660,6 +9773,74 @@ export interface components {
             version_summary?: string | null;
         };
         /**
+         * AgentPlatformConfig
+         * @description The base agent configuration of an organization.
+         */
+        AgentPlatformConfig: {
+            model_upstream?: components["schemas"]["ModelUpstream"];
+            /**
+             * Allowed Marketplaces
+             * @default []
+             */
+            allowed_marketplaces: string[];
+            /**
+             * Default Plugins
+             * @default []
+             */
+            default_plugins: components["schemas"]["AgentPlugin"][];
+            /** Allowed Tools */
+            allowed_tools?: string[] | null;
+            /**
+             * Denied Tools
+             * @default []
+             */
+            denied_tools: string[];
+            /**
+             * Permission Mode
+             * @default default
+             * @enum {string}
+             */
+            permission_mode: "plan" | "default" | "acceptEdits" | "bypassPermissions";
+            sandbox?: components["schemas"]["AgentSandbox"];
+            /**
+             * System Prompt Prefix
+             * @default
+             */
+            system_prompt_prefix: string;
+            /**
+             * Hooks
+             * @default {}
+             */
+            hooks: {
+                [key: string]: unknown;
+            };
+            /**
+             * Approval Tools
+             * @default []
+             */
+            approval_tools: string[];
+        };
+        /**
+         * AgentPlugin
+         * @description A plugin from a registered marketplace (ADR 0022).
+         *
+         *     The caller sets ``marketplace`` and ``plugin``. Imbi sets ``url``,
+         *     ``sha``, and ``path`` when it writes a version, from the synced
+         *     catalog, so the version pins the plugin.
+         */
+        AgentPlugin: {
+            /** Marketplace */
+            marketplace: string;
+            /** Plugin */
+            plugin: string;
+            /** Url */
+            url?: string | null;
+            /** Sha */
+            sha?: string | null;
+            /** Path */
+            path?: string | null;
+        };
+        /**
          * AgentRateLimit
          * @description The maximum number of calls to one tool in one period.
          */
@@ -9730,6 +9911,22 @@ export interface components {
             organization: components["schemas"]["OrganizationRef"];
         };
         /**
+         * AgentSandbox
+         * @description The Agent SDK ``sandbox`` settings that Imbi controls.
+         */
+        AgentSandbox: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Allow Unsandboxed Commands
+             * @default true
+             */
+            allow_unsandboxed_commands: boolean;
+        };
+        /**
          * AgentSettings
          * @description Operational limits for an agent. ``None`` means no limit.
          */
@@ -9749,6 +9946,31 @@ export interface components {
              * @default []
              */
             required_labels: string[];
+            /**
+             * Plugins
+             * @default []
+             */
+            plugins: components["schemas"]["AgentPlugin"][];
+            /** Github App Binding */
+            github_app_binding?: string | null;
+            /**
+             * Secrets
+             * @default []
+             */
+            secrets: string[];
+            /** Permission Mode */
+            permission_mode?: ("plan" | "default" | "acceptEdits" | "bypassPermissions") | null;
+            sandbox?: components["schemas"]["AgentSandbox"] | null;
+            /**
+             * Denied Tools
+             * @default []
+             */
+            denied_tools: string[];
+            /**
+             * Approval Tools
+             * @default []
+             */
+            approval_tools: string[];
         };
         /**
          * AgentSettings
@@ -9770,6 +9992,31 @@ export interface components {
              * @default []
              */
             required_labels: string[];
+            /**
+             * Plugins
+             * @default []
+             */
+            plugins: components["schemas"]["AgentPlugin"][];
+            /** Github App Binding */
+            github_app_binding?: string | null;
+            /**
+             * Secrets
+             * @default []
+             */
+            secrets: string[];
+            /** Permission Mode */
+            permission_mode?: ("plan" | "default" | "acceptEdits" | "bypassPermissions") | null;
+            sandbox?: components["schemas"]["AgentSandbox"] | null;
+            /**
+             * Denied Tools
+             * @default []
+             */
+            denied_tools: string[];
+            /**
+             * Approval Tools
+             * @default []
+             */
+            approval_tools: string[];
         };
         /**
          * AgentSnapshot
@@ -9940,6 +10187,8 @@ export interface components {
             agent_version: number;
             /** Prompt Version */
             prompt_version?: number | null;
+            /** Platform Config Version */
+            platform_config_version?: number | null;
             /** Service Account Id */
             service_account_id: string;
             /** Project Id */
@@ -10106,6 +10355,8 @@ export interface components {
             agent_version: number;
             /** Prompt Version */
             prompt_version?: number | null;
+            /** Platform Config Version */
+            platform_config_version?: number | null;
             /** Service Account Id */
             service_account_id: string;
             /** Project Id */
@@ -10893,6 +11144,26 @@ export interface components {
             refresh_token?: string | null;
         };
         /**
+         * BundlePrompt
+         * @description The pinned prompt version of a task, rendered.
+         */
+        BundlePrompt: {
+            /** Ref */
+            ref: string;
+            /** System */
+            system: string;
+            /**
+             * Messages
+             * @default []
+             */
+            messages: components["schemas"]["PromptMessage"][];
+            /** Model */
+            model?: string | null;
+            /** Model Id */
+            model_id?: string | null;
+            params?: components["schemas"]["PromptParams"];
+        };
+        /**
          * CapabilityAssignment
          * @description One project-type assignment of an Integration's capability.
          *
@@ -10938,6 +11209,26 @@ export interface components {
             options?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * CatalogPlugin
+         * @description One plugin entry of a marketplace.
+         */
+        CatalogPlugin: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Version */
+            version?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Source */
+            source: string | {
+                [key: string]: unknown;
+            };
+            /** Path */
+            path?: string | null;
         };
         /** ChildTaskCreate */
         ChildTaskCreate: {
@@ -12944,6 +13235,19 @@ export interface components {
             prompt_ref?: string | null;
             /** Prompt Version */
             prompt_version?: number | null;
+            prompt?: components["schemas"]["BundlePrompt"] | null;
+            /** Prompt Error */
+            prompt_error?: string | null;
+            /** Platform Config Version */
+            platform_config_version?: number | null;
+            config?: components["schemas"]["MergedConfig"] | null;
+            /**
+             * Repositories
+             * @default {}
+             */
+            repositories: {
+                [key: string]: string;
+            };
         };
         /**
          * IdentityConnectionPollRequest
@@ -14250,6 +14554,58 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** MarketplaceCreate */
+        MarketplaceCreate: {
+            /** Slug */
+            slug: string;
+            /**
+             * Url
+             * Format: uri
+             * @description The git URL of the repository, for example https://github.com/anthropics/claude-code.
+             */
+            url: string;
+        };
+        /** MarketplaceResponse */
+        MarketplaceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Url */
+            url: string;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Default Branch */
+            default_branch?: string | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /**
+             * Plugins
+             * @default []
+             */
+            plugins: components["schemas"]["CatalogPlugin"][];
+            /** Synced At */
+            synced_at?: string | null;
+            /** Sync Error */
+            sync_error?: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * MatchedNeighbour
          * @description A dependency that satisfied a condition's relationship predicate.
@@ -14267,6 +14623,37 @@ export interface components {
             slug?: string | null;
         };
         /**
+         * MergedConfig
+         * @description The configuration that a runner applies to one task.
+         */
+        MergedConfig: {
+            model_upstream: components["schemas"]["ModelUpstream"];
+            /** Plugins */
+            plugins: components["schemas"]["AgentPlugin"][];
+            /** Allowed Tools */
+            allowed_tools: string[] | null;
+            /** Denied Tools */
+            denied_tools: string[];
+            /**
+             * Permission Mode
+             * @enum {string}
+             */
+            permission_mode: "plan" | "default" | "acceptEdits" | "bypassPermissions";
+            sandbox: components["schemas"]["AgentSandbox"];
+            /** System Prompt Prefix */
+            system_prompt_prefix: string;
+            /** Hooks */
+            hooks: {
+                [key: string]: unknown;
+            };
+            /** Approval Tools */
+            approval_tools: string[];
+            /** Secrets */
+            secrets: string[];
+            /** Github App Binding */
+            github_app_binding: string | null;
+        };
+        /**
          * MetricSeries
          * @description A windowed count plus per-day counts (oldest day first).
          */
@@ -14275,6 +14662,22 @@ export interface components {
             total: number;
             /** Daily */
             daily: number[];
+        };
+        /**
+         * ModelUpstream
+         * @description Where the runner's model proxy sends model calls.
+         */
+        ModelUpstream: {
+            /**
+             * Kind
+             * @default anthropic
+             * @enum {string}
+             */
+            kind: "anthropic" | "litellm";
+            /** Base Url */
+            base_url?: string | null;
+            /** Key Ref */
+            key_ref?: string | null;
         };
         /** MonthlyImprovementRow */
         MonthlyImprovementRow: {
@@ -14746,6 +15149,16 @@ export interface components {
             action: string;
             /** Description */
             description?: string | null;
+        };
+        /** PlatformConfigResponse */
+        PlatformConfigResponse: {
+            /** Version */
+            version?: number | null;
+            config: components["schemas"]["AgentPlatformConfig"];
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
         };
         /**
          * PluginAssignmentResponse
@@ -28556,6 +28969,200 @@ export interface operations {
             path: {
                 short_id: string;
                 project_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_platform_config_api_organizations__org_slug__agent_platform_config__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPlatformConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_marketplaces_api_organizations__org_slug__agent_marketplaces__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_marketplace_api_organizations__org_slug__agent_marketplaces__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketplaceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_agent_marketplace_api_organizations__org_slug__agent_marketplaces__slug__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_marketplace_api_organizations__org_slug__agent_marketplaces__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
                 org_slug: string;
             };
             cookie?: never;
