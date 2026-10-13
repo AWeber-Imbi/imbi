@@ -6,8 +6,10 @@ from unittest import mock
 from imbi.common import sentry
 
 
-def _event(url: str) -> dict[str, typing.Any]:
-    frame = {'function': 'materialize', 'vars': {'handle': 'imh_secret'}}
+def _event(
+    url: str, module: str = 'imbi.api.endpoints.harness'
+) -> dict[str, typing.Any]:
+    frame = {'module': module, 'vars': {'handle': 'imh_secret'}}
     return {
         'request': {'url': url, 'data': {'handle': 'imh_secret'}},
         'exception': {'values': [{'stacktrace': {'frames': [dict(frame)]}}]},
@@ -15,34 +17,75 @@ def _event(url: str) -> dict[str, typing.Any]:
     }
 
 
-class BeforeSendTestCase(unittest.TestCase):
-    def test_private_route_loses_body_and_frame_variables(self) -> None:
-        for url in (
-            'http://imbi/harness/executor/secret-materializations',
-            'http://imbi/api/harness/executor/secret-materializations/',
+def _transaction(url: str) -> dict[str, typing.Any]:
+    return {
+        'type': 'transaction',
+        'transaction': '/harness/secret-resolutions',
+        'request': {'url': url, 'data': {'handle': 'imh_secret'}},
+    }
+
+
+class ScrubTestCase(unittest.TestCase):
+    def assert_no_vars(self, event: dict[str, typing.Any]) -> None:
+        for key in ('exception', 'threads'):
+            (value,) = event[key]['values']
+            (frame,) = value['stacktrace']['frames']
+            self.assertNotIn('vars', frame)
+
+    def test_private_routes_lose_body_and_frame_variables(self) -> None:
+        for path in (
+            '/harness/executor/secret-materializations',
+            '/api/harness/executor/secret-materializations/',
+            '/api/harness/executor/secret-resolutions/1/release',
+            '/harness/secret-resolutions',
+            '/api/harness/secret-resolutions/',
         ):
-            with self.subTest(url=url):
-                event = sentry._before_send(_event(url), {})
+            with self.subTest(path=path):
+                event = sentry._scrub(_event('http://imbi' + path), {})
                 self.assertNotIn('data', event['request'])
-                for key in ('exception', 'threads'):
-                    (value,) = event[key]['values']
-                    (frame,) = value['stacktrace']['frames']
-                    self.assertEqual(frame, {'function': 'materialize'})
+                self.assert_no_vars(event)
+
+    def test_private_transactions_lose_the_body(self) -> None:
+        for path in (
+            '/api/harness/secret-resolutions',
+            '/api/harness/executor/secret-materializations',
+        ):
+            with self.subTest(path=path):
+                event = sentry._scrub(_transaction('http://imbi' + path), {})
+                self.assertNotIn('data', event['request'])
+
+    def test_broker_frames_lose_variables_on_any_route(self) -> None:
+        event = sentry._scrub(
+            _event(
+                'http://imbi/api/organizations/o/secret-resolutions/',
+                module='imbi.api.secret_broker.broker',
+            ),
+            {},
+        )
+        self.assert_no_vars(event)
+        # Not a private route: the body stays.
+        self.assertIn('data', event['request'])
 
     def test_other_routes_keep_their_event(self) -> None:
-        event = _event('http://imbi/harness/secret-resolutions')
-        self.assertEqual(
-            sentry._before_send(event, {}),
-            _event('http://imbi/harness/secret-resolutions'),
-        )
-        self.assertEqual(sentry._before_send({}, {}), {})
+        for path in (
+            '/api/harness/tasks/T-1/events',
+            '/api/harness/secret-resolutionsx',
+            '/api/organizations/o/secret-resolutions/',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    sentry._scrub(_event('http://imbi' + path), {}),
+                    _event('http://imbi' + path),
+                )
+        self.assertEqual(sentry._scrub({}, {}), {})
 
-    def test_init_sets_before_send(self) -> None:
+    def test_init_scrubs_errors_and_transactions(self) -> None:
         with (
             mock.patch.dict(os.environ, {'SENTRY_DSN': 'https://k@s/1'}),
             mock.patch('sentry_sdk.init') as init,
         ):
             sentry.init('test')
-        self.assertIs(
-            init.call_args.kwargs['before_send'], sentry._before_send
-        )
+        kwargs = init.call_args.kwargs
+        self.assertIs(kwargs['before_send'], sentry._scrub)
+        self.assertIs(kwargs['before_send_transaction'], sentry._scrub)
+        self.assertEqual(kwargs['max_request_body_size'], 'never')
