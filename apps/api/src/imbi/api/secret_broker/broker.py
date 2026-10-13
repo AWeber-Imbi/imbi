@@ -3,8 +3,8 @@
 These are functions for trusted callers, not routes. The caller gives a
 :class:`ResolutionContext` that it took from the agent token and the
 chain pin (organization, agent, project, task, runner); a request can
-never set them. The harness routes that call this service come with the
-runner tokens (plan phase P2).
+never set them. The harness routes (:mod:`imbi.api.endpoints.harness`)
+call this service.
 
 Rules that this module keeps:
 

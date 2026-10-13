@@ -4,8 +4,9 @@ Providers, bindings, grants, resolutions, and audit events of one
 organization. No response contains secret material, a handle, or a
 provider lease id: the response models have no field for them.
 
-The runtime routes (create, materialize, release by the executor) need
-the runner tokens and come with the harness (plan phase P2). They call
+The runtime routes (create, materialize, release by the executor) are
+in :mod:`imbi.api.endpoints.harness`, behind the agent token and the
+executor credential. They call
 :class:`imbi.api.secret_broker.broker.Broker`.
 
 Every route needs the caller to be a member of the organization
