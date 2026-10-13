@@ -12,6 +12,7 @@ import json
 import typing
 import unittest
 import uuid
+from collections import abc
 from unittest import mock
 
 import fastapi
@@ -54,8 +55,7 @@ class FakeApi:
         self.paths: list[str] = []
         #: Takes the agent task calls when set.
         self.agent: (
-            typing.Callable[[httpx.Request], typing.Awaitable[httpx.Response]]
-            | None
+            abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
 
     def _once(
@@ -76,7 +76,7 @@ class FakeApi:
 
     def __call__(
         self, request: httpx.Request
-    ) -> httpx.Response | typing.Awaitable[httpx.Response]:
+    ) -> httpx.Response | abc.Awaitable[httpx.Response]:
         self.paths.append(request.url.raw_path.decode())
         path = request.url.path
         if '/agent-task' in path and self.agent is not None:
@@ -510,7 +510,9 @@ class ManualRunTestCase(EngineTestCase):
     async def test_failed_deployment_takes_failed_port(self) -> None:
         original = FakeApi.__call__
 
-        def failing(api: FakeApi, request: httpx.Request) -> httpx.Response:
+        def failing(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
             if '/runs/' in request.url.path:
                 return httpx.Response(
                     200, json={'run_id': 'r1', 'status': 'failure'}
