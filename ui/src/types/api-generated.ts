@@ -5390,6 +5390,371 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/secret-providers/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Provider Types */
+        get: operations["list_provider_types_api_organizations__org_slug__secret_providers_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-providers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_organizations__org_slug__secret_providers__get"];
+        put?: never;
+        /**
+         * Create Provider
+         * @description Create a provider. Its configuration holds no credentials.
+         *
+         *     Raises:
+         *         409: The name is in use.
+         *         422: Unknown type, or the configuration is not valid.
+         */
+        post: operations["create_provider_api_organizations__org_slug__secret_providers__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Provider */
+        get: operations["get_provider_api_organizations__org_slug__secret_providers__provider_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Provider
+         * @description Delete a provider that no binding uses.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         409: A binding uses the provider.
+         */
+        delete: operations["delete_provider_api_organizations__org_slug__secret_providers__provider_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Provider
+         * @description Change a provider. Disabling it stops every unused handle.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         409: The name is in use.
+         *         422: The configuration is not valid.
+         */
+        patch: operations["update_provider_api_organizations__org_slug__secret_providers__provider_id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-providers/{provider_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description Check the provider: identity metadata, health, and capabilities.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         422: The provider has no health check.
+         */
+        post: operations["test_provider_api_organizations__org_slug__secret_providers__provider_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-bindings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Bindings */
+        get: operations["list_bindings_api_organizations__org_slug__secret_bindings__get"];
+        put?: never;
+        /**
+         * Create Binding
+         * @description Map a reference to a provider location.
+         *
+         *     Raises:
+         *         409: The reference is bound already.
+         *         422: The reference, provider, or locator is not valid.
+         */
+        post: operations["create_binding_api_organizations__org_slug__secret_bindings__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-bindings/{binding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Binding */
+        get: operations["get_binding_api_organizations__org_slug__secret_bindings__binding_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Binding
+         * @description Delete a binding that no grant and no active resolution uses.
+         *
+         *     Raises:
+         *         404: No such binding.
+         *         409: A grant or an active resolution uses the binding.
+         */
+        delete: operations["delete_binding_api_organizations__org_slug__secret_bindings__binding_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Binding
+         * @description Change a binding. The reference and the provider do not change.
+         *
+         *     Raises:
+         *         404: No such binding.
+         *         422: The locator is not valid.
+         */
+        patch: operations["update_binding_api_organizations__org_slug__secret_bindings__binding_id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-bindings/{binding_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Binding
+         * @description Ask the provider for metadata of the bound secret, not its value.
+         *
+         *     Raises:
+         *         404: No such binding.
+         */
+        post: operations["validate_binding_api_organizations__org_slug__secret_bindings__binding_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-grants/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Grants */
+        get: operations["list_grants_api_organizations__org_slug__secret_grants__get"];
+        put?: never;
+        /**
+         * Create Grant
+         * @description Create an allow rule with exact ids.
+         *
+         *     Raises:
+         *         422: A binding is not in the organization.
+         */
+        post: operations["create_grant_api_organizations__org_slug__secret_grants__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-grants/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Grants
+         * @description Say whether the grants allow a request. No provider call, and
+         *     no resolution.
+         */
+        post: operations["evaluate_grants_api_organizations__org_slug__secret_grants_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-grants/{grant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Grant */
+        get: operations["get_grant_api_organizations__org_slug__secret_grants__grant_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Grant
+         * @description Delete a grant. Unused handles that it allowed stop working.
+         */
+        delete: operations["delete_grant_api_organizations__org_slug__secret_grants__grant_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Grant
+         * @description Change a grant. Disabling it stops every unused handle.
+         *
+         *     Raises:
+         *         404: No such grant.
+         *         422: A binding is not in the organization.
+         */
+        patch: operations["update_grant_api_organizations__org_slug__secret_grants__grant_id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-resolutions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Resolutions
+         * @description Return resolutions, newest first.
+         */
+        get: operations["list_resolutions_api_organizations__org_slug__secret_resolutions__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-resolutions/{resolution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Resolution */
+        get: operations["get_resolution_api_organizations__org_slug__secret_resolutions__resolution_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-resolutions/{resolution_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Resolution
+         * @description Release a resolution and revoke its provider lease. Idempotent.
+         *
+         *     A failed revocation shows in ``provider_lease.revocation_state``.
+         *
+         *     Raises:
+         *         404: No such resolution.
+         */
+        post: operations["release_resolution_api_organizations__org_slug__secret_resolutions__resolution_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-resolutions/{resolution_id}/revoke-provider-lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Provider Lease
+         * @description Revoke the provider lease of a resolution, or retry a failure.
+         *
+         *     Raises:
+         *         404: No such resolution.
+         *         409: The resolution has no revocable lease.
+         *         502: The provider did not revoke the lease.
+         */
+        post: operations["revoke_provider_lease_api_organizations__org_slug__secret_resolutions__resolution_id__revoke_provider_lease_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-audit-events/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit Events
+         * @description Return audit events, newest first. Page with ``before``.
+         *
+         *     Raises:
+         *         503: ClickHouse is not available.
+         */
+        get: operations["list_audit_events_api_organizations__org_slug__secret_audit_events__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/configuration/": {
         parameters: {
             query?: never;
@@ -16941,6 +17306,457 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
         };
+        /** SecretAuditEvent */
+        SecretAuditEvent: {
+            /** Event Id */
+            event_id: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Type */
+            type: string;
+            /** Result */
+            result: string;
+            /** Reason */
+            reason: string;
+            /** Actor */
+            actor: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Task Id */
+            task_id: string;
+            /** Runner Id */
+            runner_id: string;
+            /** Provider Id */
+            provider_id: string;
+            /** Binding Id */
+            binding_id: string;
+            /** Grant Id */
+            grant_id: string;
+            /** Resolution Id */
+            resolution_id: string;
+            /** Purpose */
+            purpose: string;
+            /** Delivery Mode */
+            delivery_mode: string;
+        };
+        /** SecretBinding */
+        SecretBinding: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /**
+             * Provider Id
+             * Format: uuid
+             */
+            provider_id: string;
+            /** Credential Class */
+            credential_class: string;
+            /** Locator */
+            locator: {
+                [key: string]: unknown;
+            };
+            /** Allowed Fields */
+            allowed_fields: string[];
+            /** Allowed Delivery Modes */
+            allowed_delivery_modes: string[];
+            /** Max Ttl Seconds */
+            max_ttl_seconds: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Description */
+            description: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SecretBindingCreate */
+        SecretBindingCreate: {
+            /**
+             * Reference
+             * @description secret://<scope>/<path>, without a field
+             */
+            reference: string;
+            /**
+             * Provider Id
+             * Format: uuid
+             */
+            provider_id: string;
+            /**
+             * Credential Class
+             * @enum {string}
+             */
+            credential_class: "static" | "rotated" | "dynamic";
+            /** Locator */
+            locator: {
+                [key: string]: unknown;
+            };
+            /**
+             * Allowed Fields
+             * @default []
+             */
+            allowed_fields: string[];
+            /** Allowed Delivery Modes */
+            allowed_delivery_modes: ("file_descriptor" | "stdin" | "file" | "environment")[];
+            /**
+             * Max Ttl Seconds
+             * @default 900
+             */
+            max_ttl_seconds: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
+        /** SecretBindingPatch */
+        SecretBindingPatch: {
+            /** Credential Class */
+            credential_class?: ("static" | "rotated" | "dynamic") | null;
+            /** Locator */
+            locator?: {
+                [key: string]: unknown;
+            } | null;
+            /** Allowed Fields */
+            allowed_fields?: string[] | null;
+            /** Allowed Delivery Modes */
+            allowed_delivery_modes?: ("file_descriptor" | "stdin" | "file" | "environment")[] | null;
+            /** Max Ttl Seconds */
+            max_ttl_seconds?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Description */
+            description?: string | null;
+        };
+        /** SecretBindingValidation */
+        SecretBindingValidation: {
+            /** Valid */
+            valid: boolean;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Metadata
+             * @default {}
+             */
+            metadata: {
+                [key: string]: unknown;
+            };
+        };
+        /** SecretGrant */
+        SecretGrant: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string;
+            /** Agent Ids */
+            agent_ids: string[];
+            /** Project Ids */
+            project_ids: string[];
+            /** Binding Ids */
+            binding_ids: string[];
+            /** Purposes */
+            purposes: string[];
+            /** Delivery Modes */
+            delivery_modes: string[];
+            /** Max Ttl Seconds */
+            max_ttl_seconds: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SecretGrantCreate */
+        SecretGrantCreate: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Agent Ids */
+            agent_ids: string[];
+            /**
+             * Project Ids
+             * @description Empty allows any project, and no project.
+             * @default []
+             */
+            project_ids: string[];
+            /** Binding Ids */
+            binding_ids: string[];
+            /** Purposes */
+            purposes: string[];
+            /** Delivery Modes */
+            delivery_modes: ("file_descriptor" | "stdin" | "file" | "environment")[];
+            /**
+             * Max Ttl Seconds
+             * @default 900
+             */
+            max_ttl_seconds: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** SecretGrantDecision */
+        SecretGrantDecision: {
+            /** Allowed */
+            allowed: boolean;
+            /** Error */
+            error?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Grant Id */
+            grant_id?: string | null;
+            /** Binding Id */
+            binding_id?: string | null;
+        };
+        /** SecretGrantEvaluate */
+        SecretGrantEvaluate: {
+            /** Agent Id */
+            agent_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Reference */
+            reference: string;
+            /** Purpose */
+            purpose: string;
+            /** Delivery Mode */
+            delivery_mode: string;
+            /**
+             * Ttl Seconds
+             * @default 300
+             */
+            ttl_seconds: number;
+        };
+        /** SecretGrantPatch */
+        SecretGrantPatch: {
+            /** Description */
+            description?: string | null;
+            /** Agent Ids */
+            agent_ids?: string[] | null;
+            /** Project Ids */
+            project_ids?: string[] | null;
+            /** Binding Ids */
+            binding_ids?: string[] | null;
+            /** Purposes */
+            purposes?: string[] | null;
+            /** Delivery Modes */
+            delivery_modes?: ("file_descriptor" | "stdin" | "file" | "environment")[] | null;
+            /** Max Ttl Seconds */
+            max_ttl_seconds?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+        };
+        /** SecretProvider */
+        SecretProvider: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Capabilities */
+            capabilities: string[];
+            /** Health Status */
+            health_status: string | null;
+            /** Health Reason */
+            health_reason: string | null;
+            /** Health Checked At */
+            health_checked_at: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SecretProviderCreate */
+        SecretProviderCreate: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Config
+             * @default {}
+             */
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SecretProviderLease
+         * @description Lease state only. The lease id never leaves imbi-api.
+         */
+        SecretProviderLease: {
+            /** Present */
+            present: boolean;
+            /** Revocation State */
+            revocation_state: string;
+            /** Revocation Reason */
+            revocation_reason: string | null;
+            /** Revocation Attempted At */
+            revocation_attempted_at: string | null;
+        };
+        /** SecretProviderPatch */
+        SecretProviderPatch: {
+            /** Name */
+            name?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** SecretProviderTest */
+        SecretProviderTest: {
+            /** Status */
+            status: string;
+            /** Reason */
+            reason: string | null;
+            /** Checked At */
+            checked_at: string | null;
+            /** Capabilities */
+            capabilities: string[];
+            /** Identity */
+            identity: {
+                [key: string]: string;
+            };
+        };
+        /** SecretProviderType */
+        SecretProviderType: {
+            /** Type */
+            type: string;
+            /** Label */
+            label: string;
+            /** Capabilities */
+            capabilities: string[];
+        };
+        /** SecretResolution */
+        SecretResolution: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Binding Id
+             * Format: uuid
+             */
+            binding_id: string;
+            /**
+             * Grant Id
+             * Format: uuid
+             */
+            grant_id: string;
+            /**
+             * Provider Id
+             * Format: uuid
+             */
+            provider_id: string;
+            /** Reference */
+            reference: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Runner Id */
+            runner_id: string;
+            /** Purpose */
+            purpose: string;
+            /** Delivery Mode */
+            delivery_mode: string;
+            /** Delivery Target */
+            delivery_target: string | null;
+            /** State */
+            state: string;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /** Materialization Limit */
+            materialization_limit: number;
+            /** Materialization Count */
+            materialization_count: number;
+            /** Last Materialized At */
+            last_materialized_at: string | null;
+            /** Credential Expires At */
+            credential_expires_at: string | null;
+            provider_lease: components["schemas"]["SecretProviderLease"];
+            /** Release Reason */
+            release_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Released At */
+            released_at: string | null;
+        };
         /**
          * ServiceAccountCreate
          * @description Request model for creating service accounts.
@@ -27643,6 +28459,795 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttentionRun"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_provider_types_api_organizations__org_slug__secret_providers_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProviderType"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_organizations__org_slug__secret_providers__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProvider"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_provider_api_organizations__org_slug__secret_providers__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_provider_api_organizations__org_slug__secret_providers__provider_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_api_organizations__org_slug__secret_providers__provider_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_provider_api_organizations__org_slug__secret_providers__provider_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretProviderPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_provider_api_organizations__org_slug__secret_providers__provider_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProviderTest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_bindings_api_organizations__org_slug__secret_bindings__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretBinding"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_binding_api_organizations__org_slug__secret_bindings__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretBindingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretBinding"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_binding_api_organizations__org_slug__secret_bindings__binding_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                binding_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretBinding"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_binding_api_organizations__org_slug__secret_bindings__binding_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                binding_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_binding_api_organizations__org_slug__secret_bindings__binding_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                binding_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretBindingPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretBinding"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_binding_api_organizations__org_slug__secret_bindings__binding_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                binding_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretBindingValidation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_grants_api_organizations__org_slug__secret_grants__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretGrant"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_grant_api_organizations__org_slug__secret_grants__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretGrantCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_grants_api_organizations__org_slug__secret_grants_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretGrantEvaluate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretGrantDecision"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_grant_api_organizations__org_slug__secret_grants__grant_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_grant_api_organizations__org_slug__secret_grants__grant_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_grant_api_organizations__org_slug__secret_grants__grant_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretGrantPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_resolutions_api_organizations__org_slug__secret_resolutions__get: {
+        parameters: {
+            query?: {
+                state?: ("active" | "released" | "expired" | "failed") | null;
+                task_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResolution"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resolution_api_organizations__org_slug__secret_resolutions__resolution_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resolution_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_resolution_api_organizations__org_slug__secret_resolutions__resolution_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resolution_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_provider_lease_api_organizations__org_slug__secret_resolutions__resolution_id__revoke_provider_lease_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resolution_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_events_api_organizations__org_slug__secret_audit_events__get: {
+        parameters: {
+            query?: {
+                resolution_id?: string | null;
+                type?: string;
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretAuditEvent"][];
                 };
             };
             /** @description Validation Error */
