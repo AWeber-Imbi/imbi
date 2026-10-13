@@ -161,7 +161,7 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
             },
             {
               description:
-                'For AWS: {"region": "us-east-1", "role_arn": "..."}. No access keys.',
+                'For AWS: {"region": "us-east-1", "role_arn": "..."}. role_arn is required; its trust policy must require sts:ExternalId "imbi:<organization id>". No access keys.',
               initial: '{}',
               kind: 'json',
               label: 'Configuration',

@@ -18,7 +18,8 @@ from botocore import (  # pyright: ignore[reportMissingTypeStubs]
 from imbi.api.secret_broker import providers
 
 AWS = providers.PROVIDERS['aws_secrets_manager']
-CONFIG = {'region': 'us-east-1'}
+ROLE = 'arn:aws:iam::123456789012:role/imbi-secrets'
+CONFIG = {'region': 'us-east-1', 'role_arn': ROLE}
 CONTEXT = providers.ResolveContext(
     organization_id='org',
     task_id=uuid.uuid4(),
@@ -35,6 +36,7 @@ class FakeSession:
     def __init__(self, clients: dict[str, mock.AsyncMock]) -> None:
         self.clients = clients
         self.sessions: list[dict[str, typing.Any]] = []
+        self.endpoints: list[str | None] = []
 
     def __call__(self, **kwargs: typing.Any) -> FakeSession:
         self.sessions.append(kwargs)
@@ -42,8 +44,9 @@ class FakeSession:
 
     @contextlib.asynccontextmanager
     async def client(
-        self, service: str, **_: typing.Any
+        self, service: str, **kwargs: typing.Any
     ) -> abc.AsyncGenerator[mock.AsyncMock]:
+        self.endpoints.append(kwargs.get('endpoint_url'))
         yield self.clients[service]
 
 
@@ -61,6 +64,13 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
         self.session = FakeSession(
             {'secretsmanager': self.sm, 'sts': self.sts}
         )
+        self.sts.assume_role.return_value = {
+            'Credentials': {
+                'AccessKeyId': 'AKIA',
+                'SecretAccessKey': 'secret',
+                'SessionToken': 'token',
+            }
+        }
         patcher = mock.patch.object(
             providers.aioboto3, 'Session', self.session
         )
@@ -183,21 +193,14 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('raw provider text', str(ctx.exception))
                 self.assertNotIn('raw provider text', '\n'.join(logs.output))
 
-    async def test_role_assumption(self) -> None:
-        self.sts.assume_role.return_value = {
-            'Credentials': {
-                'AccessKeyId': 'AKIA',
-                'SecretAccessKey': 'secret',
-                'SessionToken': 'token',
-            }
-        }
+    async def test_role_assumption_with_external_id(self) -> None:
         self.sm.get_secret_value.return_value = {'SecretString': 'x'}
-        role = 'arn:aws:iam::123456789012:role/imbi-secrets'
-        await self._resolve(config=CONFIG | {'role_arn': role})
+        await self._resolve()
         self.sts.assume_role.assert_awaited_once()
-        self.assertEqual(
-            self.sts.assume_role.call_args.kwargs['RoleArn'], role
-        )
+        kwargs = self.sts.assume_role.call_args.kwargs
+        self.assertEqual(kwargs['RoleArn'], ROLE)
+        self.assertEqual(kwargs['ExternalId'], 'imbi:org')
+        self.assertEqual(providers.external_id('org'), 'imbi:org')
         self.assertEqual(
             self.session.sessions[0], {'region_name': 'us-east-1'}
         )
@@ -210,10 +213,17 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
             'Account': '123456789012',
             'Arn': 'arn:aws:sts::123456789012:assumed-role/imbi/x',
         }
-        health = await AWS.health(CONFIG | {'account_id': '123456789012'})
+        health = await AWS.health(
+            CONFIG | {'account_id': '123456789012'}, 'org'
+        )
         self.assertEqual(health.status, 'healthy')
         self.assertEqual(health.identity['account_id'], '123456789012')
-        health = await AWS.health(CONFIG | {'account_id': '999999999999'})
+        self.assertEqual(
+            self.sts.assume_role.call_args.kwargs['ExternalId'], 'imbi:org'
+        )
+        health = await AWS.health(
+            CONFIG | {'account_id': '999999999999'}, 'org'
+        )
         self.assertEqual(
             (health.status, health.reason), ('unhealthy', 'account_mismatch')
         )
@@ -228,7 +238,7 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
             'VersionIdsToStages': {'v1': ['AWSCURRENT']},
         }
         metadata = await AWS.validate_binding(
-            CONFIG, {'secret_id': 'prod/github'}
+            CONFIG, {'secret_id': 'prod/github'}, 'org'
         )
         self.assertEqual(metadata['name'], 'prod/github')
         self.assertTrue(metadata['rotation_enabled'])
@@ -241,6 +251,8 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
             CONFIG | {'secret_access_key': 'x'},
             {'region': 'Not a region'},
             CONFIG | {'role_arn': 'arn:aws:iam::1:user/x'},
+            {'region': 'us-east-1'},
+            CONFIG | {'endpoint_url': 'http://169.254.169.254/'},
             {},
         ):
             with self.subTest(config=config):
@@ -250,6 +262,19 @@ class AwsSecretsManagerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             AWS.validate_config(CONFIG | {'account_id': '123456789012'}),
             CONFIG | {'account_id': '123456789012'},
+        )
+
+    async def test_endpoint_is_an_operator_setting(self) -> None:
+        self.sm.get_secret_value.return_value = {'SecretString': 'x'}
+        await self._resolve()
+        self.assertEqual(self.session.endpoints, [None, None])
+        with mock.patch.dict(
+            'os.environ',
+            {'IMBI_SECRETS_AWS_ENDPOINT_URL': 'http://localstack:4566'},
+        ):
+            await self._resolve()
+        self.assertEqual(
+            self.session.endpoints[2:], ['http://localstack:4566'] * 2
         )
 
     def test_locator_rules(self) -> None:

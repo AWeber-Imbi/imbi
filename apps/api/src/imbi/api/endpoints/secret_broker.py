@@ -520,7 +520,7 @@ async def test_provider(
     current = await get_provider(org_id, provider_id, secrets, auth)
     plugin = _plugin(current['type'])
     try:
-        health = await plugin.health(current['config'])
+        health = await plugin.health(current['config'], org_id)
     except providers.BrokerError as err:
         raise _error(err) from None
     row = await secrets.set_health(
@@ -721,7 +721,7 @@ async def validate_binding(
         raise fastapi.HTTPException(status_code=404, detail='No provider')
     try:
         metadata = await _plugin(provider['type']).validate_binding(
-            provider['config'], binding['locator']
+            provider['config'], binding['locator'], org_id
         )
     except providers.BrokerError as err:
         return {'valid': False, 'reason': err.reason}

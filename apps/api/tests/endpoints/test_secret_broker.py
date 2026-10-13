@@ -103,7 +103,10 @@ class SecretEndpointTestCase(
             {
                 'name': 'aws-prod',
                 'type': 'aws_secrets_manager',
-                'config': {'region': 'us-east-1'},
+                'config': {
+                    'region': 'us-east-1',
+                    'role_arn': 'arn:aws:iam::123456789012:role/x',
+                },
             },
         )
         self.assertEqual(response.status_code, 201, response.text)
@@ -211,7 +214,10 @@ class SecretEndpointTestCase(
             {
                 'name': 'aws',
                 'type': 'aws_secrets_manager',
-                'config': {'region': 'us-east-1'},
+                'config': {
+                    'region': 'us-east-1',
+                    'role_arn': 'arn:aws:iam::123456789012:role/x',
+                },
             },
         )
         response = await self._post(

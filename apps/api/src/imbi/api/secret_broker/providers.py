@@ -14,6 +14,7 @@ readable ``repr`` and cannot be pickled.
 import dataclasses
 import datetime
 import logging
+import os
 import typing
 import uuid
 
@@ -223,11 +224,16 @@ class Provider:
         """
         raise NotImplementedError
 
-    async def health(self, config: dict[str, typing.Any]) -> Health:
+    async def health(
+        self, config: dict[str, typing.Any], organization_id: str
+    ) -> Health:
         raise BrokerError('operation_not_supported')
 
     async def validate_binding(
-        self, config: dict[str, typing.Any], locator: dict[str, typing.Any]
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        organization_id: str,
     ) -> dict[str, typing.Any]:
         """Return metadata of the bound secret, never its value."""
         raise BrokerError('operation_not_supported')
@@ -307,13 +313,18 @@ class FakeProvider(Provider):
     ) -> dict[str, typing.Any]:
         return _validate(_FakeLocator, locator)
 
-    async def health(self, config: dict[str, typing.Any]) -> Health:
+    async def health(
+        self, config: dict[str, typing.Any], organization_id: str
+    ) -> Health:
         if self.unavailable:
             return Health('unhealthy', 'unreachable')
         return Health('healthy', identity={'provider': 'fake'})
 
     async def validate_binding(
-        self, config: dict[str, typing.Any], locator: dict[str, typing.Any]
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        organization_id: str,
     ) -> dict[str, typing.Any]:
         return {'exists': locator['key'] in self.values}
 
@@ -360,8 +371,11 @@ class FakeProvider(Provider):
 
 
 class _AwsConfig(pydantic.BaseModel):
-    """No access keys: ``extra='forbid'`` refuses them. Credentials come
-    from the default chain (workload identity) or role assumption."""
+    """No access keys and no endpoint: ``extra='forbid'`` refuses them.
+
+    ``role_arn`` is required. imbi-api always assumes the tenant's role,
+    so an organization can never read with Imbi's own AWS identity.
+    """
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
@@ -369,13 +383,9 @@ class _AwsConfig(pydantic.BaseModel):
     account_id: str | None = pydantic.Field(
         default=None, pattern=r'^[0-9]{12}$'
     )
-    role_arn: str | None = pydantic.Field(
-        default=None,
+    role_arn: str = pydantic.Field(
         pattern=r'^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/-]+$',
         max_length=2048,
-    )
-    endpoint_url: str | None = pydantic.Field(
-        default=None, pattern=r'^https?://[^\s?#]+$'
     )
 
 
@@ -430,6 +440,22 @@ def _aws_error(err: Exception) -> BrokerError:
     return BrokerError('secret_provider_unavailable', 'unreachable')
 
 
+def external_id(organization_id: str) -> str:
+    """The ``sts:ExternalId`` of an organization's role assumption.
+
+    An operator puts this value in the trust policy of the role, as the
+    condition ``"StringEquals": {"sts:ExternalId": "imbi:<org id>"}``,
+    so no other organization can assume that role through Imbi.
+    """
+    return f'imbi:{organization_id}'
+
+
+def _endpoint_url() -> str | None:
+    """An operator override for AWS endpoints, for LocalStack in tests
+    and development. Never from tenant configuration."""
+    return os.environ.get('IMBI_SECRETS_AWS_ENDPOINT_URL') or None
+
+
 class AwsSecretsManager(Provider):
     """AWS Secrets Manager: static and rotated secrets.
 
@@ -458,17 +484,22 @@ class AwsSecretsManager(Provider):
     ) -> dict[str, typing.Any]:
         return _validate(_AwsLocator, locator)
 
-    async def _session(self, config: dict[str, typing.Any]) -> typing.Any:
-        """Return a session: the default chain, or an assumed role."""
+    async def _session(
+        self, config: dict[str, typing.Any], organization_id: str
+    ) -> typing.Any:
+        """Return a session for the organization's role.
+
+        imbi-api's own identity (workload identity or the default chain)
+        only calls ``sts:AssumeRole``. The ``ExternalId`` is
+        :func:`external_id` of the organization, so the trust policy of
+        a role can name the one organization that may use it.
+        """
         session: typing.Any = aioboto3.Session(region_name=config['region'])
-        if not config.get('role_arn'):
-            return session
-        async with session.client(
-            'sts', endpoint_url=config.get('endpoint_url')
-        ) as sts:
+        async with session.client('sts', endpoint_url=_endpoint_url()) as sts:
             response: dict[str, typing.Any] = await sts.assume_role(
                 RoleArn=config['role_arn'],
                 RoleSessionName='imbi-secrets-broker',
+                ExternalId=external_id(organization_id),
                 DurationSeconds=900,
             )
         credentials: dict[str, str] = response['Credentials']
@@ -482,6 +513,7 @@ class AwsSecretsManager(Provider):
     async def _call(
         self,
         config: dict[str, typing.Any],
+        organization_id: str,
         service: str,
         method: str,
         **kwargs: typing.Any,
@@ -489,9 +521,9 @@ class AwsSecretsManager(Provider):
         """Call one AWS method. Errors are translated, never logged with
         the response."""
         try:
-            session = await self._session(config)
+            session = await self._session(config, organization_id)
             async with session.client(
-                service, endpoint_url=config.get('endpoint_url')
+                service, endpoint_url=_endpoint_url()
             ) as client:
                 return typing.cast(
                     dict[str, typing.Any],
@@ -510,9 +542,13 @@ class AwsSecretsManager(Provider):
             )
             raise error from None
 
-    async def health(self, config: dict[str, typing.Any]) -> Health:
+    async def health(
+        self, config: dict[str, typing.Any], organization_id: str
+    ) -> Health:
         try:
-            identity = await self._call(config, 'sts', 'get_caller_identity')
+            identity = await self._call(
+                config, organization_id, 'sts', 'get_caller_identity'
+            )
         except BrokerError as err:
             return Health('unhealthy', err.reason)
         account = str(identity.get('Account', ''))
@@ -524,10 +560,14 @@ class AwsSecretsManager(Provider):
         )
 
     async def validate_binding(
-        self, config: dict[str, typing.Any], locator: dict[str, typing.Any]
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        organization_id: str,
     ) -> dict[str, typing.Any]:
         found = await self._call(
             config,
+            organization_id,
             'secretsmanager',
             'describe_secret',
             SecretId=locator['secret_id'],
@@ -562,7 +602,11 @@ class AwsSecretsManager(Provider):
         else:
             kwargs['VersionStage'] = locator.get('version_stage', 'AWSCURRENT')
         found = await self._call(
-            config, 'secretsmanager', 'get_secret_value', **kwargs
+            config,
+            context.organization_id,
+            'secretsmanager',
+            'get_secret_value',
+            **kwargs,
         )
         version = found.get('VersionId')
         if found.get('SecretString') is not None:
