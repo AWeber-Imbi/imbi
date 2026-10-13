@@ -423,9 +423,12 @@ class TaskStore:
                     ' short_id, agent_id, agent_version, prompt_version,'
                     ' service_account_id, project_id, project_slug, title,'
                     ' description, origin_kind, origin_id, origin,'
-                    ' idempotency_key, owner, budget, chain_id) VALUES (%s,'
+                    ' idempotency_key, owner, budget, chain_id,'
+                    ' platform_config_version) VALUES (%s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s)',
+                    ' %s, %s, %s, (SELECT max(version)'
+                    ' FROM harness.platform_configs'
+                    ' WHERE organization_id = %s))',
                     (
                         task_id,
                         task.organization_id,
@@ -445,6 +448,7 @@ class TaskStore:
                         task.owner,
                         task.budget,
                         task.chain_id or task_id,
+                        task.organization_id,
                     ),
                 )
                 event = await _append_event(

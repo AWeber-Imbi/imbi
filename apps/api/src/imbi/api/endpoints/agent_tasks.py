@@ -134,6 +134,9 @@ class AgentTaskResponse(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     prompt_version: int | None = None
+    #: The version of the organization's agent platform configuration
+    #: when the task was made. ``None``: the defaults apply.
+    platform_config_version: int | None = None
     service_account_id: str
     project_id: str | None = None
     #: The slug of the project when the task was made.

@@ -60,6 +60,10 @@ log_archived_at = "TIMESTAMP WITH TIME ZONE"
 # NULL for tasks made before this column existed; read it as
 # `COALESCE(chain_id, id)`.
 chain_id = "UUID"
+# The version of the agent platform configuration of the organization
+# (`harness.platform_configs`) when the task was made. NULL when the
+# organization had no configuration: the defaults apply.
+platform_config_version = "INTEGER"
 
 [tables.primary_key]
 columns = ["id"]
