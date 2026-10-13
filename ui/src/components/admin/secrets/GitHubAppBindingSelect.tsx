@@ -39,13 +39,16 @@ export function GitHubAppBindingSelect({
   })
   const appProviders = new Set(
     (providersQuery.data ?? [])
-      .filter((provider) => provider.type === 'github_app')
+      .filter((provider) => provider.type === 'github_app' && provider.enabled)
       .map((provider) => provider.id),
   )
+  // Only enabled choices: the broker refuses a disabled provider or binding.
   const references = (bindingsQuery.data ?? [])
-    .filter((binding) => appProviders.has(binding.provider_id))
+    .filter(
+      (binding) => binding.enabled && appProviders.has(binding.provider_id),
+    )
     .map((binding) => binding.reference)
-  // Keep a saved value visible after its binding is gone.
+  // Keep a saved value visible after its binding is gone or disabled.
   if (value && !references.includes(value)) references.push(value)
 
   return (

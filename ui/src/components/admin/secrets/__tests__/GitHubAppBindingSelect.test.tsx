@@ -20,12 +20,31 @@ describe('GitHubAppBindingSelect', () => {
     Element.prototype.releasePointerCapture = vi.fn() as never
     Element.prototype.scrollIntoView = vi.fn() as never
     vi.mocked(listSecretProviders).mockResolvedValue([
-      { id: 'p-app', type: 'github_app' } as never,
-      { id: 'p-aws', type: 'aws_secrets_manager' } as never,
-    ])
+      { enabled: true, id: 'p-app', type: 'github_app' },
+      { enabled: false, id: 'p-off', type: 'github_app' },
+      { enabled: true, id: 'p-aws', type: 'aws_secrets_manager' },
+    ] as never)
     vi.mocked(listSecretBindings).mockResolvedValue([
-      { provider_id: 'p-app', reference: 'secret://production/github/app' },
-      { provider_id: 'p-aws', reference: 'secret://production/github/key' },
+      {
+        enabled: true,
+        provider_id: 'p-app',
+        reference: 'secret://production/github/app',
+      },
+      {
+        enabled: false,
+        provider_id: 'p-app',
+        reference: 'secret://production/github/disabled',
+      },
+      {
+        enabled: true,
+        provider_id: 'p-off',
+        reference: 'secret://production/github/off',
+      },
+      {
+        enabled: true,
+        provider_id: 'p-aws',
+        reference: 'secret://production/github/key',
+      },
     ] as never)
   })
 
@@ -42,9 +61,13 @@ describe('GitHubAppBindingSelect', () => {
     const option = await screen.findByRole('option', {
       name: 'secret://production/github/app',
     })
-    expect(
-      screen.queryByRole('option', { name: 'secret://production/github/key' }),
-    ).toBeNull()
+    for (const name of [
+      'secret://production/github/key',
+      'secret://production/github/disabled',
+      'secret://production/github/off',
+    ]) {
+      expect(screen.queryByRole('option', { name })).toBeNull()
+    }
     await userEvent.click(option)
     expect(onChange).toHaveBeenCalledWith('secret://production/github/app')
   })
@@ -63,5 +86,21 @@ describe('GitHubAppBindingSelect', () => {
       await screen.findByRole('option', { name: 'No GitHub App' }),
     )
     expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  it('keeps a saved disabled binding visible', async () => {
+    render(
+      <GitHubAppBindingSelect
+        onChange={vi.fn()}
+        orgSlug="acme"
+        value="secret://production/github/disabled"
+      />,
+    )
+    await userEvent.click(screen.getByLabelText('GitHub App binding'))
+    expect(
+      await screen.findByRole('option', {
+        name: 'secret://production/github/disabled',
+      }),
+    ).toBeInTheDocument()
   })
 })
