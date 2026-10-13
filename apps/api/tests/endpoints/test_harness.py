@@ -40,6 +40,17 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
             {'slug': self.pool_account.slug},
             ['id'],
         )
+        # The owner of a parent task must be able to make agent tasks
+        # (the check of child task creation), as with a seeded role.
+        await self.graph.execute(
+            'MERGE (p:Permission {{name: "agent_task:create"}})'
+            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
+            ' CREATE (r)-[:GRANTS]->(p)'
+            ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
+            ' SET m.role = {role} RETURN 1 AS ok',
+            {'role': f'runner-{self.org}', 'email': self.email},
+            ['ok'],
+        )
         self.addAsyncCleanup(self._cleanup_harness)
         self.pool_name = await self.make_pool(self.pool_labels, [self.org])
 
@@ -57,6 +68,11 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
             'MATCH (s:ServiceAccount {{slug: {slug}}}) DETACH DELETE s'
             ' RETURN 1 AS ok',
             {'slug': self.pool_account.slug},
+            ['ok'],
+        )
+        await self.graph.execute(
+            'MATCH (r:Role {{slug: {role}}}) DETACH DELETE r RETURN 1 AS ok',
+            {'role': f'runner-{self.org}'},
             ['ok'],
         )
 
@@ -140,6 +156,23 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
                 ' WHERE root_task_id = %s',
                 (uuid.UUID(chain_id),),
             )
+
+    async def make_version(
+        self, snapshot: dict[str, typing.Any], agent_id: str | None = None
+    ) -> None:
+        """Make version 3 (the pinned version) of an agent."""
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}})'
+            ' CREATE (v:AgentVersion {{id: {vid}, agent_id: {id}, n: 3,'
+            ' snapshot: {snapshot}, created_by: "x"}})-[:VERSION_OF]->(a)'
+            ' RETURN v.id AS id',
+            {
+                'id': agent_id or self.agent_id,
+                'vid': new_id(),
+                'snapshot': json.dumps(snapshot),
+            },
+            ['id'],
+        )
 
     def fencer(self, result: bool) -> sweeper.Fencer:
         """Register a fencer that returns ``result`` for this test."""
@@ -367,7 +400,8 @@ class AgentTokenTests(RunnerTestCase):
         self.assertEqual(response.status_code, 403, response.text)
 
     async def test_token_of_another_agent_is_refused(self) -> None:
-        await self.make_agent('helper', name='Helper')
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
         response = await self.client.post(
             '/harness/tasks/T-1/children',
             json={
@@ -386,6 +420,22 @@ class AgentTokenTests(RunnerTestCase):
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(
             response.json()['detail']['error'], 'agent_task_forbidden'
+        )
+
+    async def test_harness_task_routes_need_membership(self) -> None:
+        await self.graph.execute(
+            'MATCH (s:ServiceAccount {{id: {id}}})-[m:MEMBER_OF]->()'
+            ' DELETE m RETURN 1 AS ok',
+            {'id': self.account.id},
+            ['ok'],
+        )
+        response = await self.client.get(
+            '/harness/tasks/T-1/events',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'organization_forbidden'
         )
 
     async def test_audience_is_refused_on_other_routes(self) -> None:
@@ -555,17 +605,45 @@ class ChildTaskTests(RunnerTestCase):
         )
 
     async def test_child_needs_the_runner_labels(self) -> None:
-        await self.make_agent(
+        gpu_id = await self.make_agent(
             'gpu-helper', name='GPU', settings={'required_labels': ['gpu']}
         )
+        await self.make_version({'subagents': [{'agent_id': gpu_id}]})
         response = await self.child('gpu-helper')
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(
             response.json()['detail']['error'], 'runner_label_missing'
         )
 
+    async def test_child_agent_must_be_a_subagent(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_agent('stranger', name='Stranger')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.child('stranger')
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'subagent_forbidden'
+        )
+        self.assertEqual(
+            (await self.child('helper')).status_code, 201, 'a subagent'
+        )
+
+    async def test_owner_must_still_make_tasks(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        await self.graph.execute(
+            'MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->'
+            '(:Organization {{slug: {org}}}) DELETE m RETURN 1 AS ok',
+            {'email': self.email, 'org': self.org},
+            ['ok'],
+        )
+        response = await self.child('helper')
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'owner_forbidden')
+
     async def test_only_the_chain_runner_claims_the_child(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
         response = await self.child('helper', idempotency_key='k')
         self.assertEqual(response.status_code, 201, response.text)
         child = response.json()
@@ -749,6 +827,10 @@ class PoolApiTests(RunnerTestCase):
         }
         response = await self.client.post('/harness/pools', json=body)
         self.assertEqual(response.status_code, 403, response.text)
+        # A permission is not enough: an org admin could grant it.
+        self.permissions.add('harness_pool:write')
+        response = await self.client.post('/harness/pools', json=body)
+        self.assertEqual(response.status_code, 403, response.text)
         self.user.is_admin = True
         response = await self.client.post('/harness/pools', json=body)
         self.assertEqual(response.status_code, 201, response.text)
@@ -803,7 +885,48 @@ class PoolApiTests(RunnerTestCase):
         self.assertEqual(item['state'], 'busy')
         self.assertEqual(item['chain']['short_id'], 'T-1')
         self.assertEqual(item['chain']['organization_slug'], self.org)
+        self.assertIsNone(pools[self.pool_name]['service_account'])
         response = await self.client.get(
             '/harness/pools', params={'organization': self.foreign_org}
         )
         self.assertEqual(response.status_code, 403, response.text)
+
+    async def test_members_do_not_see_other_orgs_of_a_pool(self) -> None:
+        shared = await self.make_pool(
+            ['general'], [self.org, self.other_org], 'shared'
+        )
+        own = await self.register(shared)
+        self.assertIsNotNone(await self.claim(own))  # T-1 of org
+        await self.make_agent(org=self.other_org)
+        self.act_as_user()
+        response = await self.create_task(org=self.other_org)
+        self.assertEqual(response.status_code, 201, response.text)
+        foreign = await self.register(shared)
+        claim = await self.claim(foreign)
+        assert claim is not None
+        self.assertEqual(claim['organization_slug'], self.other_org)
+        self.act_as_user()
+        self.permissions.add('harness_pool:read')
+        response = await self.client.get(
+            '/harness/pools', params={'organization': self.org}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (pool,) = [p for p in response.json() if p['name'] == shared]
+        self.assertEqual(pool['organizations'], [self.org])
+        self.assertIsNone(pool['service_account'])
+        runners = {r['id']: r for r in pool['runners']}
+        self.assertEqual(runners[own['runner_id']]['instance'], 'pod-1')
+        self.assertIsNotNone(runners[own['runner_id']]['chain'])
+        hidden = runners[foreign['runner_id']]
+        self.assertEqual(hidden['state'], 'busy')
+        self.assertIsNone(hidden['chain'])
+        self.assertIsNone(hidden['instance'])
+        self.assertIsNone(hidden['image_version'])
+        # A platform administrator sees everything.
+        self.user.is_admin = True
+        response = await self.client.get('/harness/pools')
+        (pool,) = [p for p in response.json() if p['name'] == shared]
+        self.assertEqual(
+            pool['organizations'], sorted([self.org, self.other_org])
+        )
+        self.assertEqual(pool['service_account'], self.pool_account.slug)

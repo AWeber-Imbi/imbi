@@ -1360,7 +1360,7 @@ export interface paths {
          * @description Create a runner pool.
          *
          *     Raises:
-         *         403: No ``harness_pool:write``.
+         *         403: Not a platform administrator.
          *         409: A pool has this name.
          *         422: An unknown organization or service account.
          */
@@ -1386,7 +1386,7 @@ export interface paths {
          * @description Delete a runner pool with no live runner.
          *
          *     Raises:
-         *         403: No ``harness_pool:write``.
+         *         403: Not a platform administrator.
          *         404: No such pool.
          *         409: ``pool_in_use``: a runner of the pool is not offline.
          */
@@ -1399,7 +1399,7 @@ export interface paths {
          *     they registered with; new runners get the new ones.
          *
          *     Raises:
-         *         403: No ``harness_pool:write``.
+         *         403: Not a platform administrator.
          *         404: No such pool.
          *         422: An unknown organization or service account.
          */
@@ -1580,13 +1580,20 @@ export interface paths {
          * Create Harness Child Task
          * @description Make a child task (origin ``task``) in the chain of a task.
          *
+         *     The child agent must be a subagent of the parent's pinned agent
+         *     version.
+         *
          *     The child has the owner and the project of its parent. Only the
          *     runner of the chain can claim it, so its agent must not need a
          *     label that the runner does not have.
          *
          *     Raises:
          *         401: Not a current agent token.
-         *         403: Another chain or another agent.
+         *         403: Another chain or another agent, ``subagent_forbidden`` (the
+         *             child agent is not in the ``subagents`` of the parent's
+         *             pinned agent version), or ``owner_forbidden`` (the owner of
+         *             the parent can no longer make agent tasks in the
+         *             organization).
          *         404: No such task.
          *         409: The parent is closed, the child agent is disabled, or the
          *             runner of the chain does not have a label that the child
@@ -14614,7 +14621,7 @@ export interface components {
             /** Organizations */
             organizations: string[];
             /** Service Account */
-            service_account: string;
+            service_account?: string | null;
             /**
              * Created At
              * Format: date-time

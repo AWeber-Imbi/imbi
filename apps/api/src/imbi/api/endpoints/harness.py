@@ -1,9 +1,11 @@
 """Runner pool, runner, and agent token routes (ADR 0022).
 
-- **Pools** (``/harness/pools``): platform administrators manage them
-  (``harness_pool:write``, which no default role grants). A holder of
-  ``harness_pool:read`` sees the pools that serve an organization that
-  they are a member of, and only the chains of that organization.
+- **Pools** (``/harness/pools``): only platform administrators
+  (``is_admin``) manage them. This is not a permission, because an
+  organization administrator can grant a permission to a role. A holder
+  of ``harness_pool:read`` sees the pools that serve an organization
+  that they are a member of, and only the runners and chains of that
+  organization.
 - **Runners** (``/harness/runners``): a runner registers with its pool
   credential (the client credential of the pool's service account),
   then heartbeats, claims, and finishes with its runner credential.
@@ -101,9 +103,12 @@ class PoolResponse(pydantic.BaseModel):
     name: str
     description: str | None = None
     labels: list[str]
-    #: The slugs of the allowlist. Empty means all organizations.
+    #: The slugs of the allowlist. Empty means all organizations. A
+    #: caller who is not a platform administrator sees only the
+    #: organization that they asked for.
     organizations: list[str]
-    service_account: str
+    #: Shown only to platform administrators.
+    service_account: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     #: The runners that are not offline.
@@ -383,15 +388,22 @@ def _pool_response(
 ) -> PoolResponse:
     """Return a pool and its runners.
 
-    With ``visible_org``, a chain of another organization is hidden.
+    With ``visible_org`` (a caller who is not a platform administrator),
+    the allowlist shows only that organization, the service account is
+    hidden, and a runner with a chain of another organization shows
+    only its state: no chain, instance, or image version.
     """
     items: list[RunnerResponse] = []
     for runner in runners:
         chain: RunnerChain | None = None
-        if runner['chain_id'] is not None and (
-            visible_org is None
-            or runner['chain_organization_id'] == visible_org
-        ):
+        foreign = (
+            visible_org is not None
+            and runner['chain_id'] is not None
+            and runner['chain_organization_id'] != visible_org
+        )
+        if foreign:
+            runner = {**runner, 'instance': None, 'image_version': None}
+        elif runner['chain_id'] is not None:
             chain = RunnerChain(
                 root_task_id=runner['chain_id'],
                 short_id=runner['chain_short_id'],
@@ -403,12 +415,17 @@ def _pool_response(
                 fence_error=runner['fence_error'],
             )
         items.append(RunnerResponse.model_validate({**runner, 'chain': chain}))
+    org_ids = [str(org_id) for org_id in pool['organization_ids']]
+    if visible_org is not None:
+        org_ids = [org_id for org_id in org_ids if org_id == visible_org]
     return PoolResponse.model_validate(
         {
             **pool,
             'organizations': sorted(
-                org_slugs.get(str(org_id), str(org_id))
-                for org_id in pool['organization_ids']
+                org_slugs.get(org_id, org_id) for org_id in org_ids
+            ),
+            'service_account': (
+                pool['service_account'] if visible_org is None else None
             ),
             'runners': items,
         }
@@ -418,18 +435,33 @@ def _pool_response(
 async def _chain_task(
     caller: harness_auth.HarnessCaller,
     short_id: str,
+    db: graph.Graph,
     store: agent_tasks.TaskStore,
 ) -> dict[str, typing.Any]:
     """Return a task of the agent token's chain, of the token's agent.
 
+    The service account must still be a member of the organization of
+    the token, as on the ADR 0020 harness routes.
+
     Raises:
-        403: Another chain or another agent.
+        403: Not a member of the organization, another chain, or
+            another agent.
         404: No such task in the organization of the token.
 
     """
     grant = caller.grant
     if grant is None:  # pragma: no cover - AgentCaller has a grant
         raise RuntimeError('an agent caller has no grant')
+    org_slug = (await _org_slugs(db, [grant.organization_id])).get(
+        grant.organization_id
+    )
+    if org_slug is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        )
+    await autonomous.require_organization_membership(
+        db, caller.auth, org_slug=org_slug
+    )
     task = await store.get(grant.organization_id, short_id.upper())
     if task is None:
         raise fastapi.HTTPException(
@@ -453,7 +485,27 @@ async def _chain_task(
 
 harness_router = fastapi.APIRouter(prefix='/harness', tags=['Agent Harness'])
 
-_require_write = permissions.require_permission('harness_pool:write')
+
+async def _require_platform_admin(
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> permissions.AuthContext:
+    """Return the caller when it is a platform administrator.
+
+    Raises:
+        403: The caller is not a platform administrator.
+
+    """
+    if not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only platform administrators can change runner pools',
+        )
+    return auth
+
+
+_require_write = _require_platform_admin
 
 
 @harness_router.get('/pools', response_model=list[PoolResponse])
@@ -525,7 +577,7 @@ async def create_harness_pool(
     """Create a runner pool.
 
     Raises:
-        403: No ``harness_pool:write``.
+        403: Not a platform administrator.
         409: A pool has this name.
         422: An unknown organization or service account.
 
@@ -559,7 +611,7 @@ async def update_harness_pool(
     they registered with; new runners get the new ones.
 
     Raises:
-        403: No ``harness_pool:write``.
+        403: Not a platform administrator.
         404: No such pool.
         422: An unknown organization or service account.
 
@@ -597,7 +649,7 @@ async def delete_harness_pool(
     """Delete a runner pool with no live runner.
 
     Raises:
-        403: No ``harness_pool:write``.
+        403: Not a platform administrator.
         404: No such pool.
         409: ``pool_in_use``: a runner of the pool is not offline.
 
@@ -788,6 +840,7 @@ async def finish_harness_runner(
 async def list_harness_task_events(
     short_id: str,
     caller: harness_auth.AgentCaller,
+    db: graph.Pool,
     store: agent_tasks.Store,
     after_seq: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=1000)] = 100,
@@ -802,7 +855,7 @@ async def list_harness_task_events(
         404: No such task.
 
     """
-    task = await _chain_task(caller, short_id, store)
+    task = await _chain_task(caller, short_id, db, store)
     if task['log_archived_at'] is not None:
         return await agent_tasks.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
@@ -830,13 +883,20 @@ async def create_harness_child_task(
 ) -> dict[str, typing.Any]:
     """Make a child task (origin ``task``) in the chain of a task.
 
+    The child agent must be a subagent of the parent's pinned agent
+    version.
+
     The child has the owner and the project of its parent. Only the
     runner of the chain can claim it, so its agent must not need a
     label that the runner does not have.
 
     Raises:
         401: Not a current agent token.
-        403: Another chain or another agent.
+        403: Another chain or another agent, ``subagent_forbidden`` (the
+            child agent is not in the ``subagents`` of the parent's
+            pinned agent version), or ``owner_forbidden`` (the owner of
+            the parent can no longer make agent tasks in the
+            organization).
         404: No such task.
         409: The parent is closed, the child agent is disabled, or the
             runner of the chain does not have a label that the child
@@ -844,9 +904,18 @@ async def create_harness_child_task(
         422: No such agent, or a budget over its task budget.
 
     """
-    parent = await _chain_task(caller, short_id, store)
+    parent = await _chain_task(caller, short_id, db, store)
     if parent['status'] == 'closed':
         raise _conflict('task_closed', f'Task {parent["short_id"]} is closed')
+    org_slugs = await _org_slugs(db, [parent['organization_id']])
+    if not await tasks_api.may_create(
+        db, org_slugs.get(parent['organization_id'], ''), parent['owner']
+    ):
+        raise autonomous.forbidden(
+            'owner_forbidden',
+            f'{parent["owner"]!r} can no longer make agent tasks in the '
+            'organization.',
+        )
     origin_id = str(parent['id'])
     if data.idempotency_key is not None:
         existing = await store.find_by_idempotency_key(
@@ -866,6 +935,15 @@ async def create_harness_child_task(
     if not isinstance(agent, dict):
         raise _unprocessable(f'Agent {data.agent_slug!r} not found')
     agent = typing.cast('dict[str, typing.Any]', agent)
+    subagents: list[dict[str, typing.Any]] = (
+        await _bundle(db, parent)
+    ).snapshot.get('subagents') or []
+    if str(agent['id']) not in {str(s.get('agent_id')) for s in subagents}:
+        raise autonomous.forbidden(
+            'subagent_forbidden',
+            f'Agent {data.agent_slug!r} is not a subagent of the pinned '
+            f'version of the agent of task {parent["short_id"]}.',
+        )
     if not agent.get('enabled', True):
         raise _conflict(
             'agent_disabled', f'Agent {data.agent_slug!r} is disabled'
@@ -951,7 +1029,7 @@ async def check_harness_tool_call(
         404: No such task.
 
     """
-    task = await _chain_task(caller, short_id, store)
+    task = await _chain_task(caller, short_id, db, store)
     tools: dict[str, typing.Any] = (await _bundle(db, task)).snapshot.get(
         'tools'
     ) or {}

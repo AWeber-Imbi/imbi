@@ -612,7 +612,7 @@ async def _set_control(
         ) from e
 
 
-async def _may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
+async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
     """Return whether the person can make agent tasks in the org.
 
     The person must be an active member of the org, and an admin or a
@@ -686,7 +686,7 @@ async def _owner(
             f'The {origin.kind} {origin.id!r} records no person who set it; '
             'edit it to make agent tasks from it.',
         )
-    if not await _may_create(db, org_slug, str(creator)):
+    if not await may_create(db, org_slug, str(creator)):
         raise autonomous.forbidden(
             'owner_forbidden',
             f'{creator!r} cannot make agent tasks in organization '
