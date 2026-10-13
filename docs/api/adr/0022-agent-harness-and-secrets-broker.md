@@ -79,10 +79,31 @@ runners are.
   secrets, closes its sessions, reports that it finished, and deletes its
   own pod. The ReplicaSet starts a clean pod. Nothing from one chain stays
   for the next.
-- **Leases.** A runner heartbeats a lease. When the lease expires, imbi-api
-  marks the runner offline, releases its secret resolutions, writes an
-  `attempt_marker` event to each open task in its chain, and puts the chain
-  back in the queue.
+- **Leases and fencing.** A runner heartbeats a lease. A runner that
+  loses only its connection to imbi-api can still reach GitHub, so lease
+  expiry alone must not make its chain claimable. Fencing has three parts:
+  1. **The runner fences itself.** If the runner cannot renew its lease
+     before a safety margin ahead of expiry, it stops every SDK instance,
+     kills every executor child, and exits. The margin is larger than the
+     time it needs to stop.
+  2. **imbi-api fences the credentials.** At expiry, imbi-api marks the
+     runner offline. It revokes every secret resolution and provider lease
+     of that runner. Revocation of a GitHub installation token goes from
+     imbi-api to GitHub, so it works while the runner is cut off. It also
+     invalidates the runner, executor, and agent tokens. Each claim carries
+     an attempt number, and the harness endpoints refuse a write from an
+     older attempt.
+  3. **imbi-api waits, then requeues.** imbi-api makes the chain claimable
+     only after revocation succeeds and a grace period has passed. The grace
+     period is longer than the runner's stop time plus the allowed clock
+     skew. Then it writes an `attempt_marker` event to each open task in
+     the chain and puts the chain back in the queue. If a provider
+     revocation fails, the chain stays fenced and shows as stuck until an
+     operator acts.
+
+  A test covers a partition between the runner and imbi-api only, with
+  GitHub still reachable. The old runner's next GitHub write fails with
+  `401`, and the old runner exits before the new attempt starts.
 
 New Postgres schema `harness`: `pools`, `runners`, and the chain pin. It
 follows the `agent_runtime` and `workflow_runtime` pattern.
@@ -119,11 +140,22 @@ users.
   per-container volumes with mode `0700`.
 - The executor socket allows only the runner. It is in a group that does
   not contain `agent`, and the executor checks the peer uid.
+- **The Kubernetes service account token.** The pod sets
+  `automountServiceAccountToken: false`. A projected service account token
+  is mounted in the `runner` container only, owned by uid 0 with mode
+  `0400`. The runner process runs as `runner`, so it cannot read the file
+  during the chain. It can switch back to uid 0, because it keeps uid 0 as
+  its saved uid (see below). At the end of the chain it does this to read
+  the token and delete its own pod. `agent` processes have no capabilities
+  and a different uid, so they cannot read the token. That token is the
+  only one that can delete pods.
 - Kubernetes gives no added capability to a non-root process. Both
   containers therefore start as uid 0 with only `SETUID` and `SETGID`,
   with `allowPrivilegeEscalation: false`, a read-only root filesystem, and
-  `RuntimeDefault` seccomp. Each process then drops to its own user. The
-  namespace runs at Pod Security level Baseline.
+  `RuntimeDefault` seccomp. Each process then sets its effective uid to its
+  own user. It keeps uid 0 as its saved uid, which it needs to start
+  `agent` processes. A process with saved uid 0 cannot be read through
+  `/proc` by `agent`. The namespace runs at Pod Security level Baseline.
 - Each privileged tool runs in the runner process as an in-process SDK MCP
   tool. The model gives it a secret reference, a purpose, and other
   values that are not secret. It returns only a resolution id, a state,
@@ -333,8 +365,11 @@ token types that only the harness routes accept.
   `attempt_marker`. Side effects already done (a pushed branch, an opened
   pull request) stay, and the agent finds them on the next attempt.
 - Runner pods need Pod Security level Baseline and a Role that can delete
-  pods in the runner namespace. A compromised runner can delete other
-  runners in that namespace.
+  pods in the runner namespace. A compromised runner process, not the
+  model's tools, can delete other runners in that namespace.
+- Fencing makes an expired chain wait for revocation and a grace period
+  before another runner can claim it. A failed provider revocation keeps
+  the chain stuck until an operator acts.
 - Each agent that uses GitHub needs a GitHub App created by hand.
 - A new app (`imbi-harness`), a new namespace, and a Helm chart change.
   The Helm chart has no CI coverage, so `helm template` is checked by hand.
