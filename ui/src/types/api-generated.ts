@@ -1333,6 +1333,303 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Harness Pools
+         * @description List runner pools and their runners that are not offline.
+         *
+         *     A platform administrator sees every pool and chain; with
+         *     ``organization``, only the pools that serve it. Every other caller
+         *     needs ``harness_pool:read`` and ``organization``, must be a member
+         *     of it, and sees only the pools that serve it and its own chains.
+         *
+         *     Raises:
+         *         403: No ``harness_pool:read``, or not a member.
+         *         422: ``organization`` is missing.
+         */
+        get: operations["list_harness_pools_api_harness_pools_get"];
+        put?: never;
+        /**
+         * Create Harness Pool
+         * @description Create a runner pool.
+         *
+         *     Raises:
+         *         403: No ``harness_pool:write``.
+         *         409: A pool has this name.
+         *         422: An unknown organization or service account.
+         */
+        post: operations["create_harness_pool_api_harness_pools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/pools/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Harness Pool
+         * @description Delete a runner pool with no live runner.
+         *
+         *     Raises:
+         *         403: No ``harness_pool:write``.
+         *         404: No such pool.
+         *         409: ``pool_in_use``: a runner of the pool is not offline.
+         */
+        delete: operations["delete_harness_pool_api_harness_pools__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Harness Pool
+         * @description Change a runner pool. Runners keep the labels and allowlist that
+         *     they registered with; new runners get the new ones.
+         *
+         *     Raises:
+         *         403: No ``harness_pool:write``.
+         *         404: No such pool.
+         *         422: An unknown organization or service account.
+         */
+        patch: operations["update_harness_pool_api_harness_pools__name__patch"];
+        trace?: never;
+    };
+    "/api/harness/runners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Harness Runner
+         * @description Register a runner with the pool credential.
+         *
+         *     The caller is the service account of the pool. The runner gets the
+         *     labels and the organization allowlist of the pool. Keep the
+         *     returned credentials: they are not shown again.
+         *
+         *     Raises:
+         *         403: ``pool_forbidden``: the caller is not the service account
+         *             of the pool, or there is no such pool.
+         */
+        post: operations["register_harness_runner_api_harness_runners_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/runners/{runner_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat Harness Runner
+         * @description Renew the lease of the runner.
+         *
+         *     Raises:
+         *         401: ``invalid_runner_credential``: the runner is lost. It
+         *             stops every SDK instance and exits.
+         */
+        post: operations["heartbeat_harness_runner_api_harness_runners__runner_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/runners/{runner_id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Harness Task
+         * @description Claim the oldest task that the runner may run; pin its chain.
+         *
+         *     The task is ``queued``, its agent is enabled and under
+         *     ``max_concurrent_tasks``, the runner has every label that the
+         *     agent requires, and the pool serves its organization. Return the
+         *     task, the identity bundle, and an agent token for the chain, or
+         *     ``204`` when no task comes in ``wait`` seconds.
+         *
+         *     Raises:
+         *         401: ``invalid_runner_credential``.
+         *         409: ``runner_busy``: the runner holds a chain.
+         */
+        post: operations["claim_harness_task_api_harness_runners__runner_id__claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/runners/{runner_id}/chain/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Harness Child Task
+         * @description Claim the oldest queued child task of the runner's chain.
+         *
+         *     Only the runner that holds a chain can claim its child tasks.
+         *
+         *     Raises:
+         *         401: ``invalid_runner_credential``.
+         */
+        post: operations["claim_harness_child_task_api_harness_runners__runner_id__chain_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/runners/{runner_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Harness Runner
+         * @description End the runner. Its credentials and agent tokens stop working.
+         *
+         *     When every task of its chain is closed, the chain is ``done``.
+         *     Otherwise the chain is fenced as for a lost runner, and goes back
+         *     to the queue after the fencers succeed and the grace period passes.
+         *
+         *     Raises:
+         *         401: ``invalid_runner_credential``.
+         */
+        post: operations["finish_harness_runner_api_harness_runners__runner_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/tasks/{short_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Harness Task Events
+         * @description List the events of a task of the chain after ``after_seq``.
+         *
+         *     The harness reads human input here at each turn boundary.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         */
+        get: operations["list_harness_task_events_api_harness_tasks__short_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/tasks/{short_id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Harness Child Task
+         * @description Make a child task (origin ``task``) in the chain of a task.
+         *
+         *     The child has the owner and the project of its parent. Only the
+         *     runner of the chain can claim it, so its agent must not need a
+         *     label that the runner does not have.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         *         409: The parent is closed, the child agent is disabled, or the
+         *             runner of the chain does not have a label that the child
+         *             agent needs (``runner_label_missing``).
+         *         422: No such agent, or a budget over its task budget.
+         */
+        post: operations["create_harness_child_task_api_harness_tasks__short_id__children_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/tasks/{short_id}/tool-calls/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Harness Tool Call
+         * @description Count a call of a tool against its rate limit, across runners.
+         *
+         *     The limit is ``rate_limit`` of the tool in the pinned agent
+         *     version. A tool with no limit is allowed and not counted. A tool
+         *     that is not configured is not allowed. A refused call is not
+         *     counted.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         */
+        post: operations["check_harness_tool_call_api_harness_tasks__short_id__tool_calls_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/local-auth": {
         parameters: {
             query?: never;
@@ -4456,8 +4753,12 @@ export interface paths {
          *         404: No such task or session.
          *         409: ``task_closed``, ``session_closed``, or
          *             ``event_id_conflict`` (another task has the event id).
-         *         413: A payload is larger than :data:`MAX_PAYLOAD_BYTES`.
-         *         422: An event type that Imbi writes, or a bad envelope.
+         *         413: A payload is larger than its limit
+         *             (:data:`MAX_LARGE_PAYLOAD_BYTES` for ``turn`` and
+         *             ``tool.called``, else :data:`MAX_PAYLOAD_BYTES`), or the
+         *             batch is larger than :data:`MAX_BATCH_PAYLOAD_BYTES`.
+         *         422: An event type that Imbi writes, a bad envelope, or a bad
+         *             continuation (``call_id``, ``part``, ``parts``).
          */
         post: operations["append_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_post"];
         delete?: never;
@@ -9059,6 +9360,11 @@ export interface components {
             task_timeout_seconds?: number | null;
             /** Response Sla */
             response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+            /**
+             * Required Labels
+             * @default []
+             */
+            required_labels: string[];
         };
         /**
          * AgentSettings
@@ -9075,6 +9381,11 @@ export interface components {
             task_timeout_seconds?: number | null;
             /** Response Sla */
             response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+            /**
+             * Required Labels
+             * @default []
+             */
+            required_labels: string[];
         };
         /**
          * AgentSnapshot
@@ -9304,6 +9615,8 @@ export interface components {
             closed_at?: string | null;
             /** Log Archived At */
             log_archived_at?: string | null;
+            /** Chain Id */
+            chain_id?: string | null;
             /** Blocked Since */
             blocked_since?: string | null;
         };
@@ -9468,6 +9781,8 @@ export interface components {
             closed_at?: string | null;
             /** Log Archived At */
             log_archived_at?: string | null;
+            /** Chain Id */
+            chain_id?: string | null;
         };
         /** AgentTaskWaiting */
         AgentTaskWaiting: {
@@ -10240,6 +10555,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ChildTaskCreate */
+        ChildTaskCreate: {
+            /** Agent Slug */
+            agent_slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @description The instruction for the agent.
+             */
+            description: string;
+            /**
+             * Budget
+             * @description USD. At most the child agent's task_budget.
+             */
+            budget?: number | string | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+        };
         /**
          * ChoiceQuestion
          * @description Pick one of up to 255 named options.
@@ -10256,6 +10590,27 @@ export interface components {
             criteria: {
                 [key: string]: string | null;
             };
+        };
+        /** Claim */
+        Claim: {
+            /**
+             * Chain Id
+             * Format: uuid
+             */
+            chain_id: string;
+            /** Attempt */
+            attempt: number;
+            /** Organization Slug */
+            organization_slug: string;
+            task: components["schemas"]["AgentTaskResponse"];
+            bundle: components["schemas"]["IdentityBundle"];
+            /** Agent Token */
+            agent_token: string;
+            /**
+             * Agent Token Expires At
+             * Format: date-time
+             */
+            agent_token_expires_at: string;
         };
         /**
          * ClientCredentialCreate
@@ -12185,6 +12540,26 @@ export interface components {
             primary: components["schemas"]["IdentityRecord"] | null;
             /** All */
             all: components["schemas"]["IdentityRecord"][];
+        };
+        /**
+         * IdentityBundle
+         * @description The pinned identity of a task's agent. Holds no secret.
+         */
+        IdentityBundle: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Slug */
+            agent_slug?: string | null;
+            /** Agent Version */
+            agent_version: number;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            /** Prompt Ref */
+            prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
         };
         /**
          * IdentityConnectionPollRequest
@@ -14201,6 +14576,71 @@ export interface components {
             interval: number;
             /** Expires In */
             expires_in: number;
+        };
+        /** PoolCreate */
+        PoolCreate: {
+            /**
+             * Name
+             * @description The name of the Kubernetes Deployment of the pool.
+             */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+            /**
+             * Organizations
+             * @description Organization slugs. Empty means all organizations.
+             * @default []
+             */
+            organizations: string[];
+            /**
+             * Service Account
+             * @description The slug of the service account whose client credential registers runners of the pool.
+             */
+            service_account: string;
+        };
+        /** PoolResponse */
+        PoolResponse: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Labels */
+            labels: string[];
+            /** Organizations */
+            organizations: string[];
+            /** Service Account */
+            service_account: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Runners
+             * @default []
+             */
+            runners: components["schemas"]["RunnerResponse"][];
+        };
+        /** PoolUpdate */
+        PoolUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Labels */
+            labels?: string[] | null;
+            /** Organizations */
+            organizations?: string[] | null;
+            /** Service Account */
+            service_account?: string | null;
         };
         /** Position */
         Position: {
@@ -16549,6 +16989,120 @@ export interface components {
             };
         };
         /**
+         * RunnerChain
+         * @description The chain that a runner holds.
+         */
+        RunnerChain: {
+            /**
+             * Root Task Id
+             * Format: uuid
+             */
+            root_task_id: string;
+            /** Short Id */
+            short_id?: string | null;
+            /** Organization Slug */
+            organization_slug?: string | null;
+            /** Attempt */
+            attempt: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "fencing" | "stuck" | "queued" | "done";
+            /** Fence Error */
+            fence_error?: string | null;
+        };
+        /** RunnerFinished */
+        RunnerFinished: {
+            /** Chain State */
+            chain_state?: ("running" | "fencing" | "stuck" | "queued" | "done") | null;
+        };
+        /** RunnerLease */
+        RunnerLease: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "busy" | "offline" | "fenced";
+            /** Chain Id */
+            chain_id?: string | null;
+            /** Lease Seconds */
+            lease_seconds: number;
+            /**
+             * Lease Expires At
+             * Format: date-time
+             */
+            lease_expires_at: string;
+        };
+        /** RunnerRegister */
+        RunnerRegister: {
+            /** Pool */
+            pool: string;
+            /**
+             * Instance
+             * @description The pod name.
+             */
+            instance?: string | null;
+            /** Image Version */
+            image_version?: string | null;
+        };
+        /** RunnerRegistered */
+        RunnerRegistered: {
+            /**
+             * Runner Id
+             * Format: uuid
+             */
+            runner_id: string;
+            /** Runner Token */
+            runner_token: string;
+            /** Executor Token */
+            executor_token: string;
+            /** Labels */
+            labels: string[];
+            /** Lease Seconds */
+            lease_seconds: number;
+            /**
+             * Lease Expires At
+             * Format: date-time
+             */
+            lease_expires_at: string;
+        };
+        /** RunnerResponse */
+        RunnerResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Instance */
+            instance?: string | null;
+            /** Labels */
+            labels: string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "busy" | "offline" | "fenced";
+            /** Image Version */
+            image_version?: string | null;
+            /**
+             * Registered At
+             * Format: date-time
+             */
+            registered_at: string;
+            /**
+             * Last Heartbeat
+             * Format: date-time
+             */
+            last_heartbeat: string;
+            /**
+             * Lease Expires At
+             * Format: date-time
+             */
+            lease_expires_at: string;
+            chain?: components["schemas"]["RunnerChain"] | null;
+        };
+        /**
          * Schema
          * @description JSON Schema Draft 2020-12 schema object.
          */
@@ -17415,6 +17969,26 @@ export interface components {
             token_type: string;
             /** Expires In */
             expires_in: number;
+        };
+        /** ToolCallCheck */
+        ToolCallCheck: {
+            /** Tool Key */
+            tool_key: string;
+        };
+        /** ToolCallVerdict */
+        ToolCallVerdict: {
+            /** Allowed */
+            allowed: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Count */
+            count?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Per */
+            per?: ("minute" | "hour" | "day") | null;
+            /** Window Start */
+            window_start?: string | null;
         };
         /** TrendPoint */
         TrendPoint: {
@@ -20581,6 +21155,422 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GraphSchemaResponse"];
+                };
+            };
+        };
+    };
+    list_harness_pools_api_harness_pools_get: {
+        parameters: {
+            query?: {
+                /** @description The slug of the organization to see. */
+                organization?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_harness_pool_api_harness_pools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_harness_pool_api_harness_pools__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_harness_pool_api_harness_pools__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_harness_runner_api_harness_runners_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunnerRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnerRegistered"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_harness_runner_api_harness_runners__runner_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnerLease"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_harness_task_api_harness_runners__runner_id__claim_post: {
+        parameters: {
+            query?: {
+                /** @description Seconds to wait for a task (long poll). */
+                wait?: number;
+            };
+            header?: never;
+            path: {
+                runner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Claim"];
+                };
+            };
+            /** @description No task waits for this runner. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_harness_child_task_api_harness_runners__runner_id__chain_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Claim"];
+                };
+            };
+            /** @description No child task waits. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_harness_runner_api_harness_runners__runner_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnerFinished"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_harness_task_events_api_harness_tasks__short_id__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_harness_child_task_api_harness_tasks__short_id__children_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChildTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description A child with this idempotency key exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_harness_tool_call_api_harness_tasks__short_id__tool_calls_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolCallCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolCallVerdict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -36,6 +36,7 @@ describe('agentDraft', () => {
     expect(draft.settings).toEqual({
       maxConcurrentTasks: '3',
       monthlyCostCap: '$400.00',
+      requiredLabels: '',
       responseSla: '4h',
       taskBudget: '$5.00',
       taskTimeout: '30m',
@@ -43,6 +44,7 @@ describe('agentDraft', () => {
     expect(settingsFromDraft(draft.settings)).toEqual({
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
+      required_labels: [],
       response_sla: '4h',
       task_budget: '5.00',
       task_timeout_seconds: 1800,
@@ -50,10 +52,22 @@ describe('agentDraft', () => {
     expect(settingsFromDraft(emptyDraft().settings)).toEqual({
       max_concurrent_tasks: null,
       monthly_cost_cap: null,
+      required_labels: [],
       response_sla: null,
       task_budget: null,
       task_timeout_seconds: null,
     })
+  })
+
+  it('parses and checks the required runner labels', () => {
+    const draft = emptyDraft()
+    draft.settings.requiredLabels = ' gpu, general ,gpu,, '
+    expect(settingsFromDraft(draft.settings).required_labels).toEqual([
+      'general',
+      'gpu',
+    ])
+    draft.settings.requiredLabels = 'GPU'
+    expect(draftErrors(draft).requiredLabels).toBeTruthy()
   })
 
   it('keeps a task budget below one cent', () => {
