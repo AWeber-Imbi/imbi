@@ -40,6 +40,7 @@ class TopicsTestCase(unittest.TestCase):
                 'release_components',
                 'scheduler_runs',
                 'score_history',
+                'secret_audit_events',
                 'tags',
                 'workflow_run_events',
                 'workflow_runs',

@@ -505,6 +505,61 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'run',
         'Start manual and test runs of workflows, and cancel runs',
     ),
+    # Secrets broker (ADR 0022). Granted to no non-admin default role.
+    (
+        'secret_provider:read',
+        'secret_provider',
+        'read',
+        'View secret providers',
+    ),
+    (
+        'secret_provider:write',
+        'secret_provider',
+        'write',
+        'Create, change, delete, and test secret providers',
+    ),
+    (
+        'secret_binding:read',
+        'secret_binding',
+        'read',
+        'View secret bindings',
+    ),
+    (
+        'secret_binding:write',
+        'secret_binding',
+        'write',
+        'Create, change, delete, and validate secret bindings',
+    ),
+    (
+        'secret_grant:read',
+        'secret_grant',
+        'read',
+        'View secret grants and evaluate them',
+    ),
+    (
+        'secret_grant:write',
+        'secret_grant',
+        'write',
+        'Create, change, and delete secret grants',
+    ),
+    (
+        'secret_resolution:read',
+        'secret_resolution',
+        'read',
+        'View secret resolutions',
+    ),
+    (
+        'secret_resolution:manage',
+        'secret_resolution',
+        'manage',
+        'Release secret resolutions and revoke provider leases',
+    ),
+    (
+        'secret_audit:read',
+        'secret_audit',
+        'read',
+        'View secret audit events',
+    ),
     # Plugin management
     (
         'admin:plugins:read',

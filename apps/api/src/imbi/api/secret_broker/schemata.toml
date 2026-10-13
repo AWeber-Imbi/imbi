@@ -1,0 +1,187 @@
+# Relational schema for the secrets broker (ADR 0022, plan section 9).
+#
+# imbi-api applies it on startup, like `agent_runtime`. The broker stores
+# no secret material: providers hold configuration, bindings hold
+# provider locations, and resolutions hold a keyed hash of the handle,
+# never the handle. Every row belongs to one organization.
+#
+# The schema name is fixed: `secrets`.
+
+# An adapter to an external secret system. `capabilities` is a snapshot
+# of the provider type's capabilities when the row was written.
+[[tables]]
+name = "providers"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+name = "TEXT NOT NULL"
+type = "TEXT NOT NULL"
+enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
+config = "JSONB NOT NULL DEFAULT '{}'"
+capabilities = "TEXT[] NOT NULL DEFAULT '{}'"
+# The result of the last test. `health_reason` is a safe reason code.
+health_status = "TEXT"
+health_reason = "TEXT"
+health_checked_at = "TIMESTAMP WITH TIME ZONE"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "providers_organization_name_key"
+columns = ["organization_id", "name"]
+unique = true
+
+# A logical reference (`secret://<scope>/<path>`, without the field)
+# mapped to a provider location. The foreign key stops the deletion of a
+# provider that a binding uses.
+[[tables]]
+name = "bindings"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+reference = "TEXT NOT NULL"
+provider_id = "UUID NOT NULL REFERENCES secrets.providers (id) ON DELETE RESTRICT"
+credential_class = "TEXT NOT NULL"
+locator = "JSONB NOT NULL DEFAULT '{}'"
+allowed_fields = "TEXT[] NOT NULL DEFAULT '{}'"
+allowed_delivery_modes = "TEXT[] NOT NULL DEFAULT '{}'"
+# When not empty, the only delivery targets (environment names, file
+# names, descriptors) a resolution may use. The denylist still applies.
+allowed_delivery_targets = "TEXT[] NOT NULL DEFAULT '{}'"
+max_ttl_seconds = "INTEGER NOT NULL"
+enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
+description = "TEXT NOT NULL DEFAULT ''"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "bindings_organization_reference_key"
+columns = ["organization_id", "reference"]
+unique = true
+
+# An allow rule. Ids are exact: no patterns in rev 1. An empty
+# `project_ids` allows tasks of any project and tasks with no project.
+[[tables]]
+name = "grants"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+description = "TEXT NOT NULL DEFAULT ''"
+agent_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+project_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+binding_ids = "UUID[] NOT NULL DEFAULT '{}'"
+purposes = "TEXT[] NOT NULL DEFAULT '{}'"
+delivery_modes = "TEXT[] NOT NULL DEFAULT '{}'"
+max_ttl_seconds = "INTEGER NOT NULL"
+enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "grants_organization_idx"
+columns = ["organization_id"]
+
+# A short-lived permission for one task, one runner, and one binding.
+#
+# `handle_hash` is the HMAC of the handle. It is NULL after release or
+# expiry, so the handle stops working. `revocation_state` is separate
+# from `state`: releasing a resolution and revoking a provider lease are
+# different results. `lease_id` is encrypted (Fernet) and never leaves
+# imbi-api.
+[[tables]]
+name = "resolutions"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+binding_id = "UUID NOT NULL"
+grant_id = "UUID NOT NULL"
+provider_id = "UUID NOT NULL"
+reference = "TEXT NOT NULL"
+field = "TEXT"
+agent_id = "TEXT NOT NULL"
+project_id = "TEXT"
+task_id = "UUID NOT NULL"
+runner_id = "TEXT NOT NULL"
+purpose = "TEXT NOT NULL"
+delivery_mode = "TEXT NOT NULL"
+delivery_target = "TEXT"
+ttl_seconds = "INTEGER NOT NULL"
+state = "TEXT NOT NULL DEFAULT 'active'"
+failure_reason = "TEXT"
+handle_hash = "BYTEA"
+idempotency_key = "TEXT"
+materialization_limit = "INTEGER NOT NULL DEFAULT 1"
+materialization_count = "INTEGER NOT NULL DEFAULT 0"
+last_materialized_at = "TIMESTAMP WITH TIME ZONE"
+# Set while a provider call for this resolution is in flight. Fencing
+# waits for it (release_runner_resolutions).
+materializing_since = "TIMESTAMP WITH TIME ZONE"
+credential_expires_at = "TIMESTAMP WITH TIME ZONE"
+lease_id = "TEXT"
+revocation_state = "TEXT NOT NULL DEFAULT 'not_applicable'"
+revocation_reason = "TEXT"
+revocation_attempted_at = "TIMESTAMP WITH TIME ZONE"
+release_reason = "TEXT"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+expires_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+released_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "resolutions_handle_hash_key"
+columns = ["handle_hash"]
+unique = true
+
+# A repeat with the same key rotates the handle of the first resolution.
+# NULL keys are distinct.
+[[tables.indexes]]
+name = "resolutions_task_idempotency_key"
+columns = ["task_id", "idempotency_key"]
+unique = true
+
+[[tables.indexes]]
+name = "resolutions_organization_created_idx"
+columns = ["organization_id", "created_at"]
+
+[[tables.indexes]]
+name = "resolutions_state_expires_idx"
+columns = ["state", "expires_at"]
+
+[[tables.indexes]]
+name = "resolutions_runner_state_idx"
+columns = ["runner_id", "state"]
+
+[[tables.indexes]]
+name = "resolutions_binding_state_idx"
+columns = ["binding_id", "state"]
+
+# One row per materialization nonce: a repeat fails the primary key. The
+# nonce is stored as a keyed hash.
+[[tables]]
+name = "nonces"
+
+[tables.columns]
+nonce_hash = "BYTEA NOT NULL"
+resolution_id = "UUID NOT NULL REFERENCES secrets.resolutions (id) ON DELETE CASCADE"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["nonce_hash"]
