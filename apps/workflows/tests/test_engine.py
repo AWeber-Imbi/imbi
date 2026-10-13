@@ -1229,7 +1229,8 @@ class AgentStepTestCase(EngineTestCase):
             return httpx.Response(self.fail_with.pop(0), json={})
         return response
 
-    async def _agent_workflow(self) -> uuid.UUID:
+    async def _agent_workflow(self, **ask: typing.Any) -> uuid.UUID:
+        """``ask`` sets node fields of the agent step, such as retries."""
         return await self._workflow(
             [
                 _node(
@@ -1244,7 +1245,8 @@ class AgentStepTestCase(EngineTestCase):
                         'agent_id': self.agent_id,
                         'instruction': 'Check {{ trigger.version }}.',
                     },
-                ),
+                )
+                | ask,
                 _node('ok', 'wait', {'duration': '1s'}),
                 _node('bad', 'wait', {'duration': '1s'}),
             ],
@@ -1385,12 +1387,35 @@ class AgentStepTestCase(EngineTestCase):
         run = await self._run(run_id)
         self.assertEqual(run['steps']['ask']['attempt'], 2)
         self.assertEqual(len(await self._org_tasks()), 1)
+        # A retry keeps the task open.
+        self.assertEqual(task['control'], 'run')
         await self.tasks.set_outcome(
             self.org, task['short_id'], 'done_acted', None, self._agent()
         )
         run = await self._drive(run_id)
         self.assertEqual(
             run['steps']['ask']['output']['task_id'], task['short_id']
+        )
+        self.assertEqual(len(await self._org_tasks()), 1)
+
+    async def test_step_timeout_cancels_the_task(self) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(timeout_seconds=1, retries=0),
+            {'version': '1'},
+        )
+        task = await self._task(run_id)
+        await asyncio.sleep(1.1)
+        run = await self._drive(run_id)
+        ask = run['steps']['ask']
+        self.assertEqual(
+            (ask['status'], ask['error'], ask['port']),
+            ('failed', 'timeout', 1),
+        )
+        closed = await self.tasks.get(self.org, task['short_id'])
+        assert closed is not None
+        self.assertEqual(
+            (closed['control'], closed['status'], closed['outcome']),
+            ('cancel', 'closed', 'cancelled_by_human'),
         )
         self.assertEqual(len(await self._org_tasks()), 1)
 
