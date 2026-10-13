@@ -1,7 +1,8 @@
 """Runner pools and dispatch in Postgres (ADR 0022).
 
-The ``harness`` schema holds pools, runners, chain pins, claims, and
-tool call counters. It is a plain Postgres schema next to the graph,
+The ``harness`` schema holds pools, runners, chain pins, claims, tool
+call counters, the agent platform configuration of each organization,
+and plugin marketplaces. It is a plain Postgres schema next to the graph,
 managed like ``agent_runtime``: the declarative ``schemata.toml`` is
 applied on every start. Its tables refer to ``agent_runtime.tasks``, so
 it initializes after that schema.
@@ -25,6 +26,7 @@ from imbi.api.harness.store import (
     LEASE_SECONDS,
     SCHEMA,
     HarnessStore,
+    MarketplaceExists,
     PoolExists,
     PoolInUse,
     RunnerBusy,
@@ -77,6 +79,7 @@ __all__ = [
     'LEASE_SECONDS',
     'SCHEMA',
     'HarnessStore',
+    'MarketplaceExists',
     'PoolExists',
     'PoolInUse',
     'RunnerBusy',

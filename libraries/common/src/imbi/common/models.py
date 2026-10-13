@@ -918,6 +918,53 @@ RunnerLabel = typing.Annotated[
 ]
 
 
+#: Agent SDK permission modes, from the strictest to the least strict.
+AGENT_PERMISSION_MODES: tuple[str, ...] = (
+    'plan',
+    'default',
+    'acceptEdits',
+    'bypassPermissions',
+)
+AgentPermissionMode = typing.Literal[
+    'plan', 'default', 'acceptEdits', 'bypassPermissions'
+]
+
+#: A name in a Claude Code plugin marketplace: a plugin or a marketplace.
+PluginName = typing.Annotated[
+    str,
+    pydantic.StringConstraints(
+        pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]*$', max_length=128
+    ),
+]
+
+
+class AgentSandbox(pydantic.BaseModel):
+    """The Agent SDK ``sandbox`` settings that Imbi controls."""
+
+    enabled: bool = False
+    #: A command can ask to run outside the sandbox.
+    allow_unsandboxed_commands: bool = True
+
+
+class AgentPlugin(pydantic.BaseModel):
+    """A plugin from a registered marketplace (ADR 0022).
+
+    The caller sets ``marketplace`` and ``plugin``. Imbi sets ``url``,
+    ``sha``, and ``path`` when it writes a version, from the synced
+    catalog, so the version pins the plugin.
+    """
+
+    #: The slug of the marketplace in the organization.
+    marketplace: str = pydantic.Field(min_length=1)
+    plugin: PluginName
+    #: The git URL of the marketplace.
+    url: str | None = None
+    #: The commit of the marketplace that the version pins.
+    sha: str | None = None
+    #: The plugin directory, relative to the marketplace root.
+    path: str | None = None
+
+
 class AgentSettings(pydantic.BaseModel):
     """Operational limits for an agent. ``None`` means no limit."""
 
@@ -937,8 +984,28 @@ class AgentSettings(pydantic.BaseModel):
     #: The labels that a runner needs to run the tasks of the agent
     #: (ADR 0022). Empty means any runner.
     required_labels: list[RunnerLabel] = []
+    # The fields below narrow the organization's agent platform
+    # configuration (ADR 0022). An agent can only narrow it.
+    #: Plugins in addition to the organization's default plugins.
+    plugins: list[AgentPlugin] = []
+    #: The ``secret://`` reference of the agent's GitHub App binding.
+    github_app_binding: str | None = None
+    #: The ``secret://`` references that the agent may request. A grant
+    #: is still necessary.
+    secrets: list[str] = []
+    #: ``None`` uses the mode of the organization. Stricter only.
+    permission_mode: AgentPermissionMode | None = None
+    #: ``None`` uses the sandbox of the organization. Stricter only.
+    sandbox: AgentSandbox | None = None
+    #: Built-in tools to deny in addition to the organization's.
+    denied_tools: list[str] = []
+    #: Tools that need approval when the task origin is an automation,
+    #: in addition to the organization's.
+    approval_tools: list[str] = []
 
-    @pydantic.field_validator('required_labels')
+    @pydantic.field_validator(
+        'required_labels', 'secrets', 'denied_tools', 'approval_tools'
+    )
     @classmethod
     def _sort_labels(cls, value: list[str]) -> list[str]:
         """Sort and remove duplicates, so equal settings compare equal."""

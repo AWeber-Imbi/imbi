@@ -131,3 +131,51 @@ count = "INTEGER NOT NULL"
 
 [tables.primary_key]
 columns = ["agent_id", "tool_key", "period", "window_start"]
+
+# The agent platform configuration of an organization (ADR 0022). Each
+# change writes a new version; a task pins the newest version when it
+# is made (`agent_runtime.tasks.platform_config_version`).
+[[tables]]
+name = "platform_configs"
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+version = "INTEGER NOT NULL"
+config = "JSONB NOT NULL"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id", "version"]
+
+# A Claude Code plugin marketplace that an organization registered by
+# git URL. The sync reads `.claude-plugin/marketplace.json` at the head
+# of the default branch and stores the plugin catalog in `plugins`.
+# `name` is the name in marketplace.json. A failed sync keeps the last
+# catalog and sets `sync_error`.
+[[tables]]
+name = "marketplaces"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+slug = "TEXT NOT NULL"
+url = "TEXT NOT NULL"
+name = "TEXT"
+description = "TEXT"
+default_branch = "TEXT"
+head_sha = "TEXT"
+plugins = "JSONB NOT NULL DEFAULT '[]'"
+synced_at = "TIMESTAMP WITH TIME ZONE"
+sync_error = "TEXT"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "marketplaces_organization_slug_key"
+columns = ["organization_id", "slug"]
+unique = true

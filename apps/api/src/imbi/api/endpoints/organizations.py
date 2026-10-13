@@ -14,6 +14,10 @@ from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
+from .agent_platform import (
+    agent_marketplaces_router,
+    agent_platform_config_router,
+)
 from .agent_task_harness import agent_task_harness_router
 from .agent_tasks import agent_tasks_router
 from .agent_usage import agent_usage_router
@@ -198,6 +202,14 @@ organizations_router.include_router(
 organizations_router.include_router(
     agent_tasks_router,
     prefix='/{org_slug}/agent-tasks',
+)
+organizations_router.include_router(
+    agent_platform_config_router,
+    prefix='/{org_slug}/agent-platform-config',
+)
+organizations_router.include_router(
+    agent_marketplaces_router,
+    prefix='/{org_slug}/agent-marketplaces',
 )
 # The harness routes take the organization-membership dependency of the
 # task routes, in the variant that also accepts an agent token (ADR
