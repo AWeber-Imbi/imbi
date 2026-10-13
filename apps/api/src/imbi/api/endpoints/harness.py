@@ -12,6 +12,12 @@
 - **Tasks** (``/harness/tasks``): the routes that a runner calls with
   an agent token for a task of its chain: read events, make a child
   task, and check a tool rate limit.
+- **Secrets** (plan 9.3): the runner asks for a resolution with an
+  agent token (``/harness/secret-resolutions``); the executor
+  materializes and releases it with its executor credential
+  (``/harness/executor/...``). The organization, agent, project, task,
+  and runner come from the token, the chain, and the task, never from
+  the request body.
 """
 
 import asyncio
@@ -23,14 +29,17 @@ import uuid
 
 import fastapi
 import pydantic
+from fastapi import responses
 
-from imbi.api import agent_tasks, harness
+from imbi.api import agent_tasks, harness, secret_broker
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.endpoints import agents as agents_api
+from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import store as harness_store
 from imbi.api.harness import tokens
+from imbi.api.secret_broker import broker, providers
 from imbi.common import graph, models
 
 #: The longest wait of a claim long poll, in seconds.
@@ -200,6 +209,65 @@ class ToolCallVerdict(pydantic.BaseModel):
     limit: int | None = None
     per: typing.Literal['minute', 'hour', 'day'] | None = None
     window_start: datetime.datetime | None = None
+
+
+class SecretDelivery(pydantic.BaseModel):
+    mode: secrets_api.DeliveryMode
+    #: An environment name, a file name, or a descriptor number; none
+    #: for ``stdin``.
+    target: str | None = pydantic.Field(default=None, max_length=128)
+
+
+class SecretResolutionCreate(pydantic.BaseModel):
+    short_id: str = pydantic.Field(
+        min_length=1, description='The task of the chain that needs it.'
+    )
+    reference: str = pydantic.Field(
+        min_length=1,
+        max_length=512,
+        description='secret://<scope>/<path>[#<field>]',
+    )
+    purpose: secrets_api.Purpose
+    ttl_seconds: secrets_api.Ttl = 300
+    delivery: SecretDelivery
+
+
+class SecretResolutionCreated(pydantic.BaseModel):
+    resolution_id: uuid.UUID
+    #: For the executor only. The runner never gives it to the model.
+    handle: str
+    state: str
+    expires_at: datetime.datetime
+    delivery: SecretDelivery
+
+
+class SecretMaterializationCreate(pydantic.BaseModel):
+    """The handle and the context of the resolution. The context must
+    be the context of the resolution."""
+
+    handle: pydantic.SecretStr = pydantic.Field(max_length=128)
+    #: New for each call: a repeat is refused.
+    nonce: pydantic.SecretStr = pydantic.Field(min_length=16, max_length=128)
+    task_id: uuid.UUID
+    agent_id: str = pydantic.Field(min_length=1)
+    project_id: str | None = None
+    purpose: secrets_api.Purpose
+
+
+class SecretMaterialization(pydantic.BaseModel):
+    resolution_id: uuid.UUID
+    encoding: typing.Literal['utf8', 'base64']
+    material: str
+    delivery: SecretDelivery
+    resolution_expires_at: datetime.datetime
+    credential_expires_at: datetime.datetime | None = None
+
+
+class SecretResolutionReleased(pydantic.BaseModel):
+    resolution_id: uuid.UUID
+    state: str
+    #: ``failed`` stays visible, and the sweep tries it again.
+    revocation_state: str
 
 
 # --- Graph queries -----------------------------------------------------
@@ -1117,4 +1185,151 @@ async def check_harness_tool_call(
         limit=limit.count,
         per=limit.per,
         window_start=window_start,
+    )
+
+
+def _secret_error(err: providers.BrokerError) -> fastapi.HTTPException:
+    """The broker error envelope, with the no-store headers."""
+    error = secrets_api.broker_error(err)
+    error.headers = dict(broker.NO_STORE_HEADERS)
+    return error
+
+
+@harness_router.post(
+    '/secret-resolutions',
+    status_code=201,
+    response_model=SecretResolutionCreated,
+)
+async def create_harness_secret_resolution(
+    data: SecretResolutionCreate,
+    response: fastapi.Response,
+    caller: harness_auth.AgentCaller,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+    service: secret_broker.Broker,
+    idempotency_key: typing.Annotated[
+        str | None,
+        fastapi.Header(alias='Idempotency-Key', min_length=1, max_length=200),
+    ] = None,
+) -> SecretResolutionCreated:
+    """Ask for a secret resolution for a task of the chain.
+
+    Imbi takes the organization, agent, project, task, and runner from
+    the agent token, the chain, and the task. Exactly one grant must
+    allow the request. A repeat with the same ``Idempotency-Key`` gives
+    the unused resolution a new handle.
+
+    Raises:
+        401: Not a current agent token.
+        403: Another chain or another agent, or the request is denied.
+        404: No such task.
+
+    """
+    task = await _chain_task(caller, data.short_id, db, store)
+    grant = typing.cast(tokens.AgentGrant, caller.grant)
+    try:
+        created = await service.create_resolution(
+            broker.ResolutionContext(
+                organization_id=task['organization_id'],
+                agent_id=task['agent_id'],
+                project_id=task['project_id'],
+                task_id=task['id'],
+                runner_id=str(grant.runner_id),
+            ),
+            broker.ResolutionRequest(
+                reference=data.reference,
+                purpose=data.purpose,
+                ttl_seconds=data.ttl_seconds,
+                delivery_mode=data.delivery.mode,
+                delivery_target=data.delivery.target,
+                idempotency_key=idempotency_key,
+            ),
+        )
+    except providers.BrokerError as err:
+        raise _secret_error(err) from None
+    response.headers.update(broker.NO_STORE_HEADERS)
+    return SecretResolutionCreated(
+        resolution_id=created.resolution_id,
+        handle=created.handle,
+        state=created.state,
+        expires_at=created.expires_at,
+        delivery=SecretDelivery(
+            mode=typing.cast(secrets_api.DeliveryMode, created.delivery_mode),
+            target=created.delivery_target,
+        ),
+    )
+
+
+@harness_router.post(
+    '/executor/secret-materializations', response_model=SecretMaterialization
+)
+async def create_harness_secret_materialization(
+    data: SecretMaterializationCreate,
+    runner: harness_auth.Executor,
+    service: secret_broker.Broker,
+) -> fastapi.Response:
+    """Return the material of a resolution, once, to its runner's
+    executor.
+
+    The response is ``no-store``. Sentry keeps no request body and no
+    local variables of this route (:mod:`imbi.common.sentry`).
+
+    Raises:
+        401: ``invalid_executor_credential``.
+        403: The context does not match, or a resource is disabled.
+        404: No such handle.
+        409: The handle or the nonce was used.
+        410: The resolution expired.
+        502: The provider failed.
+
+    """
+    try:
+        materialization = await service.materialize(
+            broker.ExecutorContext(str(runner['id'])),
+            broker.MaterializeRequest(
+                handle=data.handle.get_secret_value(),
+                nonce=data.nonce.get_secret_value(),
+                task_id=data.task_id,
+                agent_id=data.agent_id,
+                project_id=data.project_id,
+                purpose=data.purpose,
+            ),
+        )
+    except providers.BrokerError as err:
+        raise _secret_error(err) from None
+    return responses.JSONResponse(
+        materialization.body(), headers=broker.NO_STORE_HEADERS
+    )
+
+
+@harness_router.post(
+    '/executor/secret-resolutions/{resolution_id}/release',
+    response_model=SecretResolutionReleased,
+)
+async def release_harness_secret_resolution(
+    resolution_id: uuid.UUID,
+    runner: harness_auth.Executor,
+    service: secret_broker.Broker,
+) -> SecretResolutionReleased:
+    """Release a resolution of this runner and revoke its provider
+    lease. Idempotent.
+
+    Raises:
+        401: ``invalid_executor_credential``.
+        404: No such resolution of this runner.
+
+    """
+    try:
+        row = await service.release(
+            resolution_id,
+            reason='released_by_executor',
+            actor=f'runner:{runner["id"]}',
+            runner_id=str(runner['id']),
+        )
+    except providers.BrokerError as err:
+        raise _secret_error(err) from None
+    return SecretResolutionReleased(
+        resolution_id=row['id'],
+        state=row['state'],
+        revocation_state=row['revocation_state'],
     )

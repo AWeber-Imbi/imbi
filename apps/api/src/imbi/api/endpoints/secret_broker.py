@@ -90,7 +90,7 @@ AuditRead = typing.Annotated[
 ]
 
 
-def _error(err: providers.BrokerError) -> fastapi.HTTPException:
+def broker_error(err: providers.BrokerError) -> fastapi.HTTPException:
     return fastapi.HTTPException(
         status_code=err.status,
         detail={
@@ -573,7 +573,7 @@ async def test_provider(
     try:
         health = await plugin.health(current['config'], org_id)
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     row = await secrets.set_health(
         org_id, provider_id, health.status, health.reason
     )
@@ -650,7 +650,7 @@ async def create_binding(
     try:
         reference = broker.parse_reference(data.reference, field=False)
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     values = data.model_dump()
     values['reference'] = str(reference)
     values['locator'] = await _locator(
@@ -992,7 +992,7 @@ async def release_resolution(
             organization_id=org_id,
         )
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     return _resolution(row)
 
 
@@ -1018,7 +1018,7 @@ async def revoke_provider_lease(
             org_id, resolution_id, auth.principal_name
         )
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     return _resolution(row)
 
 
