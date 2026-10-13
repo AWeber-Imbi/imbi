@@ -33,12 +33,14 @@ import nanoid
 import psycopg.errors
 import pydantic
 
-from imbi.api import agent_tools
+from imbi.api import agent_tools, harness
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.harness import platform
 from imbi.api.scoring import OptionalValkeyClient
+from imbi.api.secret_broker import providers as secret_providers
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
@@ -823,6 +825,68 @@ async def _validate_subagents(
         raise _unprocessable(f'Subagent id(s) not found: {missing!r}')
 
 
+async def _check_platform(
+    store: harness.HarnessStore,
+    org_id: str,
+    settings: models.AgentSettings,
+    current: models.AgentSettings | None,
+) -> models.AgentSettings:
+    """Check the platform fields of ``settings``; pin its plugins.
+
+    ``current`` is the stored settings of the agent, so a plugin that
+    keeps its ``sha`` keeps its pin.
+
+    Raises:
+        422: A secret reference does not parse, the GitHub App binding
+            is not a binding of the org (or not a ``github_app``
+            binding), the settings widen the organization's agent
+            platform configuration, or a plugin cannot be pinned.
+
+    """
+    try:
+        for reference in settings.secrets:
+            platform.check_reference(reference)
+        if settings.github_app_binding is not None:
+            platform.check_reference(settings.github_app_binding, field=False)
+    except ValueError as err:
+        raise _unprocessable(str(err)) from err
+    if settings.github_app_binding is not None:
+        provider_type = await store.binding_provider_type(
+            org_id, settings.github_app_binding
+        )
+        if provider_type is None:
+            raise _unprocessable(
+                f'Secret binding {settings.github_app_binding!r} not found'
+            )
+        # ponytail: the github_app provider arrives in P4; until then
+        # any binding is accepted.
+        if (
+            'github_app' in secret_providers.PROVIDERS
+            and provider_type != 'github_app'
+        ):
+            raise _unprocessable(
+                f'Secret binding {settings.github_app_binding!r} is not '
+                'a github_app binding'
+            )
+    _version, config = await platform.load(store, org_id)
+    problems = platform.widenings(config, settings)
+    if problems:
+        raise _unprocessable(
+            'The agent widens the organization agent platform '
+            'configuration: ' + '; '.join(problems)
+        )
+    if not settings.plugins:
+        return settings
+    found = {row['slug']: row for row in await store.marketplaces(org_id)}
+    try:
+        plugins = platform.pin_plugins(
+            settings.plugins, current.plugins if current else [], found
+        )
+    except ValueError as err:
+        raise _unprocessable(str(err)) from err
+    return settings.model_copy(update={'plugins': plugins})
+
+
 def _version_conflict_detail(n: int) -> str:
     return (
         f'Version {n} of this agent was saved by another request; '
@@ -999,8 +1063,10 @@ async def _execute(
 @agents_router.post('/', status_code=201, response_model=AgentResponse)
 async def create_agent(
     org_slug: str,
+    org_id: organizations.MemberOrgId,
     data: AgentCreate,
     db: graph.Pool,
+    store: harness.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:create')),
@@ -1012,11 +1078,15 @@ async def create_agent(
         404: No such organization.
         409: The org has an agent with this slug.
         422: The team, a tag, a tool environment, or a subagent is not
-            in the org, a subagent is given two times, or
-            ``prompt_ref`` does not parse.
+            in the org, a subagent is given two times,
+            ``prompt_ref`` does not parse, or a platform field is not
+            valid (see :func:`_check_platform`).
 
     """
     snapshot = _snapshot_from(data)
+    snapshot.settings = await _check_platform(
+        store, org_id, snapshot.settings, None
+    )
     team_id = await _team_id(db, org_slug, data.team)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
     await _validate_tool_environments(db, org_slug, snapshot.tools)
@@ -1175,9 +1245,11 @@ async def get_agent(
 @agents_router.put('/{slug}', response_model=AgentResponse)
 async def update_agent(
     org_slug: str,
+    org_id: organizations.MemberOrgId,
     slug: str,
     data: AgentUpdate,
     db: graph.Pool,
+    store: harness.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:write')),
@@ -1194,11 +1266,15 @@ async def update_agent(
         merged = AgentWrite.model_validate(document)
     except pydantic.ValidationError as e:
         raise _unprocessable(f'Validation error: {e.errors()}') from e
+    target = _snapshot_from(merged)
+    target.settings = await _check_platform(
+        store, org_id, target.settings, _snapshot_of(existing).settings
+    )
     return await _apply(
         db,
         org_slug,
         existing,
-        _snapshot_from(merged),
+        target,
         merged.enabled,
         merged.version_summary,
         auth.principal_name,
@@ -1208,9 +1284,11 @@ async def update_agent(
 @agents_router.patch('/{slug}', response_model=AgentResponse)
 async def patch_agent(
     org_slug: str,
+    org_id: organizations.MemberOrgId,
     slug: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
+    store: harness.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:write')),
@@ -1232,11 +1310,15 @@ async def patch_agent(
         raise fastapi.HTTPException(
             status_code=400, detail=f'Validation error: {e.errors()}'
         ) from e
+    target = _snapshot_from(merged)
+    target.settings = await _check_platform(
+        store, org_id, target.settings, _snapshot_of(existing).settings
+    )
     return await _apply(
         db,
         org_slug,
         existing,
-        _snapshot_from(merged),
+        target,
         merged.enabled,
         merged.version_summary,
         auth.principal_name,
