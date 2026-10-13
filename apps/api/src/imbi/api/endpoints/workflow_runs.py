@@ -23,7 +23,6 @@ Every route needs the caller to be a member of the organization
 """
 
 import datetime
-import decimal
 import typing
 import uuid
 
@@ -958,7 +957,6 @@ async def step_agent_task(
                 status_code=409,
                 detail=f'Step {node_id!r} is not a running agent step',
             )
-        params = agent_step.Params.model_validate(step['input'])
         if not await agent_tasks.may_create(db, org_slug, run['activated_by']):
             raise fastapi.HTTPException(
                 status_code=403, detail={'error': 'owner_forbidden'}
@@ -971,14 +969,13 @@ async def step_agent_task(
                 status_code=422, detail={'error': 'agent_not_found'}
             )
         try:
+            params = agent_step.Params.model_validate(step['input'] or {})
             data = agent_tasks.AgentTaskCreate(
                 agent_slug=str(graph.parse_agtype(records[0]['slug'])),
                 title=f'{workflow["name"]}: {step["title"]}',
                 description=params.instruction,
                 project_id=project_id,
-                budget=None
-                if params.budget is None
-                else decimal.Decimal(str(params.budget)),
+                budget=params.budget,
             )
         except pydantic.ValidationError as e:
             raise fastapi.HTTPException(

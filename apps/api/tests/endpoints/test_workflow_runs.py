@@ -972,6 +972,17 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             ('closed', 'cancelled_by_human'),
         )
 
+    async def test_malformed_input_is_422(self) -> None:
+        # Not a 500: the engine would retry it, and it fails each time.
+        for params in ({'agent_id': self.agent}, {'budget': 'x'}):
+            await self._agent_step(params)
+            response = await self.client.post(self.step_url)
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                response.json()['detail'], {'error': 'invalid_params'}
+            )
+        self.assertEqual(await self._count(), 0)
+
     async def test_budget_above_the_agent_is_422(self) -> None:
         await self._agent_step(
             {'agent_id': self.agent, 'instruction': 'Go.', 'budget': 6}
