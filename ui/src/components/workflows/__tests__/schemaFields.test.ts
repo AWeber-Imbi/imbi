@@ -106,6 +106,40 @@ describe('paramFields', () => {
   })
 })
 
+describe('paramFields for the agent step', () => {
+  it('picks the agent from live data and takes a long instruction', () => {
+    const fields = paramFields({
+      properties: {
+        agent_id: { title: 'Agent Id', type: 'string' },
+        budget: {
+          anyOf: [{ minimum: 0, type: 'number' }, { type: 'null' }],
+          default: null,
+        },
+        instruction: { title: 'Instruction', type: 'string' },
+      },
+      required: ['agent_id', 'instruction'],
+      type: 'object',
+    })
+    expect(fields).toEqual([
+      {
+        kind: 'source',
+        label: 'Agent',
+        name: 'agent_id',
+        required: true,
+        source: 'agent',
+      },
+      { kind: 'number', label: 'Budget', name: 'budget', required: false },
+      {
+        kind: 'multiline',
+        label: 'Instruction',
+        mono: false,
+        name: 'instruction',
+        required: true,
+      },
+    ])
+  })
+})
+
 describe('paramSummary', () => {
   it('shows the first two values and skips ids', () => {
     expect(

@@ -19,7 +19,7 @@ import httpx
 from psycopg import sql
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, harness, models
+from imbi.api import agent_tasks, harness, models, workflows
 from imbi.api.auth import permissions
 from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
@@ -446,6 +446,24 @@ class CreateTaskTests(AgentTaskTestCase):
         # The repeat took no short id.
         response = await self.create_task()
         self.assertEqual(response.json()['short_id'], 'T-2')
+
+    async def test_workflow_step_key_is_refused(self) -> None:
+        await self.make_agent()
+        key = f'{uuid.uuid4()}:ask'
+        response = await self.create_task(idempotency_key=key)
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.client.post(
+            self.url(),
+            json={
+                'agent_slug': 'triage',
+                'title': 'T',
+                'description': 'D',
+            },
+            headers={'Idempotency-Key': key},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.create_task(idempotency_key='ask:1')
+        self.assertEqual(response.status_code, 201, response.text)
 
     async def test_idempotency_key_is_per_principal(self) -> None:
         await self.make_agent()
@@ -1136,6 +1154,10 @@ class ServiceAccountTests(AgentTaskTestCase):
         self.assertNotEqual(one['id'], two['id'])
 
     async def test_agent_delete_removes_service_account(self) -> None:
+        await workflows.initialize()
+        self.test_app.dependency_overrides[workflows._inject_store] = (
+            lambda: workflows.WorkflowStore(self.pool)
+        )
         agent = await self.create_agent('triage')
         (account,) = await self.service_accounts(agent['id'])
         response = await self.client.delete(

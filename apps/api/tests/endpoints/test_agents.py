@@ -12,7 +12,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_prompts
-from imbi.api import harness, models
+from imbi.api import harness, models, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.common import graph
 
@@ -73,6 +73,11 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_harness.marketplaces.return_value = []
         self.test_app.dependency_overrides[harness._inject_store] = (
             lambda: self.mock_harness
+        )
+        self.workflow_store = mock.AsyncMock(spec=workflows.WorkflowStore)
+        self.workflow_store.agent_references.return_value = 0
+        self.test_app.dependency_overrides[workflows._inject_store] = (
+            lambda: self.workflow_store
         )
         patcher = mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
@@ -648,6 +653,19 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('DETACH DELETE c, s, a', statements[1].cypher)
         for stmt in statements:
             self.assertEqual(stmt.params, {'id': 'agent-1'})
+
+    def test_delete_used_in_workflows_conflicts(self) -> None:
+        self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
+        for used, text in ((1, '1 workflow.'), (3, '3 workflows.')):
+            self.workflow_store.agent_references.return_value = used
+            response = self.client.delete(BASE + '/triage')
+            self.assertEqual(response.status_code, 409)
+            self.assertIn(f'used in {text}', response.json()['detail'])
+            self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
+        self.workflow_store.agent_references.assert_awaited_with(
+            'engineering', 'agent-1'
+        )
+        self.mock_db._execute_batch.assert_not_awaited()
 
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []
