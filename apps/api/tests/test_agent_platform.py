@@ -133,6 +133,34 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             (marketplaces.MARKETPLACE_FILE, SHA),
         )
 
+    async def test_a_missing_file_tries_the_next_integration(self) -> None:
+        handler = mock.AsyncMock(spec=base.DeploymentCapability)
+        handler.list_refs.return_value = [
+            base.Ref(name='main', kind='default', sha=SHA, is_default=True)
+        ]
+        # The first integration cannot see the file; the second can.
+        handler.get_file.side_effect = [None, '{}']
+        integrations = {
+            f'i{n}': {'slug': f'gh{n}', 'plugin': 'github'} for n in (1, 2)
+        }
+        with (
+            mock.patch.object(
+                assignments, 'org_integrations', return_value=integrations
+            ),
+            mock.patch.object(marketplaces, '_handler', return_value=handler),
+        ):
+            head = await marketplaces.fetch(
+                mock.Mock(), 'acme', 'https://github.com/acme/tools'
+            )
+            self.assertEqual(head.text, '{}')
+            handler.get_file.side_effect = [None, None]
+            with self.assertRaisesRegex(
+                marketplaces.SyncError, 'gh1: .*not found; gh2: '
+            ):
+                await marketplaces.fetch(
+                    mock.Mock(), 'acme', 'https://github.com/acme/tools'
+                )
+
     async def test_no_integration(self) -> None:
         with mock.patch.object(
             assignments, 'org_integrations', return_value={}

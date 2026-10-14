@@ -208,7 +208,11 @@ async def fetch(db: graph.Graph, org_slug: str, url: str) -> Head:
             errors.append(f'{integration.get("slug")}: {err}')
             continue
         if text is None:
-            raise SyncError(f'{MARKETPLACE_FILE} not found in {url}')
+            # Another integration can have access to the repository.
+            errors.append(
+                f'{integration.get("slug")}: {MARKETPLACE_FILE} not found'
+            )
+            continue
         return Head(refs[0].name, refs[0].sha, text)
     if not errors:
         raise SyncError(
