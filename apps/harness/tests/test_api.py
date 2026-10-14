@@ -68,6 +68,24 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
             await self.api.heartbeat('r', 't')
         self.assertEqual(ctx.exception.code, '502')
 
+    async def test_error_with_a_json_body_that_is_not_an_object(self) -> None:
+        for body in (b'null', b'[1]', b'"text"'):
+            with self.subTest(body=body):
+                self.mock.post('/harness/runners/r/finish').respond(
+                    500,
+                    content=body,
+                    headers={'Content-Type': 'application/json'},
+                )
+                with self.assertRaises(api.Refused) as ctx:
+                    await self.api.finish('r', 't')
+                self.assertEqual(ctx.exception.code, '500')
+
+    async def test_heartbeat_reads_only_the_status(self) -> None:
+        self.mock.post('/harness/runners/r/heartbeat').respond(
+            200, text='not json'
+        )
+        self.assertIsNone(await self.api.heartbeat('r', 't'))
+
     async def test_other_routes(self) -> None:
         self.mock.post('/harness/runners/r/heartbeat').respond(
             200, json={'state': 'idle'}
@@ -79,7 +97,7 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock.post(
             '/harness/executor/secret-resolutions/x/release'
         ).respond(200, json={'state': 'released'})
-        self.assertEqual(await self.api.heartbeat('r', 't'), {'state': 'idle'})
+        await self.api.heartbeat('r', 't')
         await self.api.finish('r', 't')
         self.assertEqual(
             await self.api.create_resolution('a', {}), {'handle': 'h'}

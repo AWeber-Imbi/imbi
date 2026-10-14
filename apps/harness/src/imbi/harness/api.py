@@ -34,9 +34,14 @@ class Api:
         if response.is_error:
             code = str(response.status_code)
             try:
-                detail = response.json().get('detail')
+                decoded = response.json()
             except ValueError:
-                detail = None
+                decoded = None
+            detail = (
+                typing.cast('Body', decoded).get('detail')
+                if isinstance(decoded, dict)
+                else None
+            )
             if isinstance(detail, dict):
                 code = str(typing.cast('Body', detail).get('error', code))
             raise Refused(response.status_code, code)
@@ -70,11 +75,9 @@ class Api:
         )
         return _body(response)
 
-    async def heartbeat(self, runner_id: str, token: str) -> Body:
-        response = await self._post(
-            f'/harness/runners/{runner_id}/heartbeat', token
-        )
-        return _body(response)
+    async def heartbeat(self, runner_id: str, token: str) -> None:
+        """Renew the lease. Only the status counts, not the body."""
+        await self._post(f'/harness/runners/{runner_id}/heartbeat', token)
 
     async def claim(
         self, runner_id: str, token: str, wait: int
