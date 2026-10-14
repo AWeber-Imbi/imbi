@@ -64,6 +64,11 @@ DELIVERY_MODES: tuple[DeliveryMode, ...] = typing.get_args(DeliveryMode)
 
 #: The upper limit of any resolution lifetime, in seconds.
 MAX_TTL_SECONDS = 3600
+#: The runner's own setup secrets (ADR 0022, H22). The executor gets
+#: them on a file descriptor and never gives them to a model command.
+SETUP_PURPOSES = frozenset(
+    {'marketplace_fetch', 'model_inference', 'workspace_checkout'}
+)
 
 #: Seconds after which an unfinished materialization counts as crashed
 #: and no longer keeps a runner fenced.
@@ -467,6 +472,12 @@ async def evaluate(
         raise providers.BrokerError('secret_access_denied', 'invalid_purpose')
     if delivery_mode not in DELIVERY_MODES:
         raise providers.BrokerError('delivery_mode_not_allowed')
+    if purpose in SETUP_PURPOSES and delivery_mode != 'file_descriptor':
+        # A backstop to the grants: a setup secret never goes into the
+        # environment of a command that the model chose.
+        raise providers.BrokerError(
+            'delivery_mode_not_allowed', 'setup_purpose_file_descriptor_only'
+        )
     if ttl_seconds < 1 or ttl_seconds > MAX_TTL_SECONDS:
         raise providers.BrokerError('requested_ttl_too_large')
     binding = _check_binding(

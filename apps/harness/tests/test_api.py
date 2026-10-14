@@ -166,3 +166,53 @@ class TaskApiTestCase(unittest.IsolatedAsyncioTestCase):
     def test_items(self) -> None:
         self.assertEqual(api.items({'a': None}, 'a'), [])
         self.assertEqual(api.items({'a': [1]}, 'a'), [1])
+
+
+class SliceTwoRoutesTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.client = api.Api(BASE)
+        self.api = api.TaskApi(self.client, 'iat_token', 'org', 'T-1')
+        self.mock = respx.mock(base_url=BASE, assert_all_called=True)
+        self.mock.start()
+        self.addCleanup(self.mock.stop)
+
+    async def test_routes(self) -> None:
+        events = self.mock.get('/harness/tasks/T-1/events').respond(
+            200, json=[{'seq': 3}]
+        )
+        child = self.mock.post('/harness/tasks/T-1/children').respond(
+            201, json={'short_id': 'T-2'}
+        )
+        check = self.mock.post('/harness/tasks/T-1/tool-calls/check').respond(
+            200, json={'allowed': True}
+        )
+        request = self.mock.post(
+            '/organizations/org/agent-tasks/T-1/requests'
+        ).respond(201, json={'request': {'id': 'q'}})
+        claim = self.mock.post('/harness/runners/r/chain/claim')
+        claim.side_effect = [
+            httpx.Response(200, json={'chain_id': 'c'}),
+            httpx.Response(204),
+        ]
+        self.assertEqual(await self.api.events(2), [{'seq': 3}])
+        self.assertEqual(
+            events.calls.last.request.url.params['after_seq'], '2'
+        )
+        await self.api.create_child({'agent_slug': 'a'})
+        self.assertEqual(
+            json.loads(child.calls.last.request.content), {'agent_slug': 'a'}
+        )
+        await self.api.check_tool('deploy.run')
+        self.assertEqual(
+            json.loads(check.calls.last.request.content),
+            {'tool_key': 'deploy.run'},
+        )
+        await self.api.open_request({'kind': 'feedback'})
+        self.assertEqual(
+            request.calls.last.request.headers['Authorization'],
+            'Bearer iat_token',
+        )
+        self.assertEqual(
+            await self.client.chain_claim('r', 'rt'), {'chain_id': 'c'}
+        )
+        self.assertIsNone(await self.client.chain_claim('r', 'rt'))

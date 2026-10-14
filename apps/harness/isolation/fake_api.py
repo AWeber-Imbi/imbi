@@ -236,29 +236,114 @@ def _wait_for_chain(runner: Row, wait: int) -> Row | None:
                 runner['state'] = 'busy'
                 runner['claims'].append(chain['id'])
                 runner['chain_id'] = chain['id']
-                task = chain['task']
-                return {
-                    'chain_id': chain['id'],
-                    'attempt': chain['attempt'],
-                    'organization_slug': 'test',
-                    'task': {
-                        key: task[key]
-                        for key in (
-                            'id',
-                            'short_id',
-                            'agent_id',
-                            'project_id',
-                            'title',
-                            'description',
-                        )
-                    },
-                    'bundle': _bundle(task),
-                    'agent_token': chain['agent_token'],
-                    'agent_token_expires_at': _iso(time.time() + 3600),
-                }
+                chain['task']['agent_token'] = chain['agent_token']
+                return _claim_body(chain, chain['task'])
         if time.time() >= deadline:
             return None
         time.sleep(0.25)
+
+
+def _claim_body(chain: Row, task: Row) -> Row:
+    return {
+        'chain_id': chain['id'],
+        'attempt': chain['attempt'],
+        'organization_slug': 'test',
+        'task': {
+            key: task[key]
+            for key in (
+                'id',
+                'short_id',
+                'agent_id',
+                'project_id',
+                'title',
+                'description',
+                'origin',
+            )
+        },
+        'bundle': _bundle(task),
+        'agent_token': task['agent_token'],
+        'agent_token_expires_at': _iso(time.time() + 3600),
+    }
+
+
+def _chain_claim(runner: Row) -> Row | None:
+    """The oldest queued child task of the runner's chain."""
+    chain = CHAINS.get(runner['chain_id'] or '')
+    if chain is None or chain['state'] != 'running':
+        return None
+    for task in TASKS.values():
+        if task['chain_id'] == chain['id'] and task['status'] == 'queued':
+            if task['short_id'] == chain['short_id']:
+                continue
+            task['status'] = 'claimed'
+            task['agent_token'] = 'iat_' + secrets.token_urlsafe(32)
+            return _claim_body(chain, task)
+    return None
+
+
+def _task_for_token(token: str) -> Row:
+    """The task of an agent token, while its chain runs."""
+    for task in TASKS.values():
+        if (
+            token
+            and task.get('agent_token') == token
+            and CHAINS[task['chain_id']]['state'] == 'running'
+        ):
+            return task
+    raise Fail(401, 'stale_attempt')
+
+
+def _event(task: Row, kind: str, payload: Row) -> Row:
+    event = {
+        'seq': len(task['events']) + 1,
+        'type': kind,
+        'payload': payload,
+    }
+    task['events'].append(event)
+    return event
+
+
+def _new_task(body: Row, chain_id: str, origin: Row) -> Row:
+    short_id = f'T-{len(TASKS) + 1}'
+    task = {
+        'id': str(uuid.uuid4()),
+        'short_id': short_id,
+        'agent_id': body.get('agent_id', AGENT_ID),
+        'project_id': None,
+        'title': body.get('title', short_id),
+        'description': f'{body.get("instruction", "Work.")}\n\n'
+        f'[[task:{short_id}]]',
+        'origin': origin,
+        'chain_id': chain_id,
+        'script': body.get('script', []),
+        'final_text_bytes': int(body.get('final_text_bytes', 4)),
+        'options': {
+            'repository': bool(body.get('repository')),
+            'plugin': bool(body.get('plugin')),
+            'binding': bool(body.get('binding')),
+            'tools': body.get('tools') or {},
+            'approval_tools': body.get('approval_tools') or [],
+            'child': body.get('child'),
+        },
+        'status': 'queued',
+        'control': 'run',
+        'budget': (
+            None
+            if body.get('budget') is None
+            else decimal.Decimal(str(body['budget']))
+        ),
+        'cost_total': decimal.Decimal(0),
+        'outcome': None,
+        'outcome_reason': None,
+        'sessions': {},
+        'events': [],
+        'usage': [],
+        'requests': {},
+        'tool_counts': {},
+        'agent_token': None,
+    }
+    TASKS[short_id] = task
+    return task
 
 
 def _bundle(task: Row) -> Row:
@@ -286,9 +371,19 @@ def _bundle(task: Row) -> Row:
             }
         )
     return {
-        'agent_id': AGENT_ID,
+        'agent_id': task['agent_id'],
         'agent_version': 1,
-        'snapshot': {},
+        'snapshot': {
+            'tools': options['tools'],
+            'subagents': (
+                [{'agent_id': 'agent-2'}] if options.get('child') else []
+            ),
+        },
+        'subagents': (
+            [{'agent_id': 'agent-2', 'slug': 'reviewer', 'instructions': ''}]
+            if options.get('child')
+            else []
+        ),
         'prompt': {'ref': 'agents/test@1', 'system': 'You are a test.'},
         'repositories': repositories,
         'config': {
@@ -304,7 +399,7 @@ def _bundle(task: Row) -> Row:
             'sandbox': {'enabled': False, 'allow_unsandboxed_commands': True},
             'system_prompt_prefix': '',
             'hooks': {},
-            'approval_tools': [],
+            'approval_tools': options['approval_tools'],
             'secrets': [REFERENCE],
             'github_app_binding': (
                 APP_REFERENCE if options.get('binding') else None
@@ -493,6 +588,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self._json(200, {'key': MODEL_KEY})
             if url.path.startswith('/git/'):
                 return self._git()
+            parts = url.path.strip('/').split('/')
+            if parts[:2] == ['harness', 'tasks'] and parts[3:] == ['events']:
+                with LOCK:
+                    return self._json(
+                        200,
+                        _events_after(
+                            _bearer(self.headers),
+                            parts[2],
+                            int(query.get('after_seq', 0)),
+                        ),
+                    )
             return self._json(404, {'detail': 'not found'})
         except Fail as err:
             return self._json(err.status, {'detail': {'error': err.error}})
@@ -593,6 +699,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 finally:
                     LOCK.acquire()
                 return (204, None) if claim is None else (200, claim)
+            if action == 'chain/claim':
+                claim = _chain_claim(runner)
+                return (204, None) if claim is None else (200, claim)
             if action == 'finish':
                 runner['state'] = 'offline'
                 runner['offline_at'] = time.time()
@@ -601,17 +710,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     chain['state'] = 'done'
                 return 200, {'chain_state': chain and chain['state']}
         if path == '/harness/secret-resolutions':
-            chain = next(
-                (
-                    c
-                    for c in CHAINS.values()
-                    if c['agent_token'] == token and c['state'] == 'running'
-                ),
-                None,
-            )
-            if chain is None:
-                raise Fail(401, 'stale_attempt')
-            task = chain['task']
+            task = _task_for_token(token)
+            chain = CHAINS[task['chain_id']]
             if body.get('short_id') != task['short_id']:
                 raise Fail(403, 'task_forbidden')
             reference = str(body.get('reference'))
@@ -637,6 +737,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'expires_at': _iso(resolution['expires_at']),
                 'delivery': resolution['delivery'],
             }
+        if parts[:2] == ['harness', 'tasks']:
+            return _harness_task_route(
+                token, parts[2], '/'.join(parts[3:]), body
+            )
         if parts[:3] == ['organizations', 'test', 'agent-tasks']:
             return _task_route(token, parts[3], '/'.join(parts[4:]), body)
         if path == '/harness/executor/secret-materializations':
@@ -659,38 +763,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _test_route(self, path: str, body: Row) -> tuple[int, typing.Any]:
         if path == '/test/tasks':
-            short_id = f'T-{len(TASKS) + 1}'
             chain_id = str(uuid.uuid4())
-            task = {
-                'id': str(uuid.uuid4()),
-                'short_id': short_id,
-                'agent_id': AGENT_ID,
-                'project_id': None,
-                'title': body.get('title', short_id),
-                'description': f'{body.get("instruction", "Work.")}\n\n'
-                f'[[task:{short_id}]]',
-                'chain_id': chain_id,
-                'script': body.get('script', []),
-                'final_text_bytes': int(body.get('final_text_bytes', 4)),
-                'options': {
-                    key: bool(body.get(key))
-                    for key in ('repository', 'plugin', 'binding')
-                },
-                'status': 'queued',
-                'control': 'run',
-                'budget': (
-                    None
-                    if body.get('budget') is None
-                    else decimal.Decimal(str(body['budget']))
-                ),
-                'cost_total': decimal.Decimal(0),
-                'outcome': None,
-                'outcome_reason': None,
-                'sessions': {},
-                'events': [],
-                'usage': [],
-            }
-            TASKS[short_id] = task
+            task = _new_task(
+                body, chain_id, {'kind': body.get('origin', 'human')}
+            )
+            short_id = task['short_id']
             CHAINS[chain_id] = {
                 'id': chain_id,
                 'task': task,
@@ -733,6 +810,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'target': body.get('target', 'GH_TOKEN'),
             }
             return 201, resolution
+        if path == '/test/resolve':
+            task = TASKS[body['short_id']]
+            request_id = body.get('request_id') or next(
+                rid
+                for rid, r in task['requests'].items()
+                if r['status'] == 'open'
+            )
+            task['requests'][request_id]['status'] = body['status']
+            _event(
+                task,
+                'request.resolved',
+                {
+                    'request_id': request_id,
+                    'status': body['status'],
+                    'answer': body.get('answer'),
+                },
+            )
+            if task['status'] == 'blocked':
+                task['status'] = 'running'
+            return 200, {'request_id': request_id}
         if path == '/test/control':
             TASKS[body['short_id']]['control'] = body['control']
             return 200, {'control': body['control']}
@@ -896,8 +993,7 @@ def _task_route(
     task = TASKS.get(short_id)
     if task is None:
         raise Fail(404, 'task_not_found')
-    chain = CHAINS[task['chain_id']]
-    if chain['agent_token'] != token or chain['state'] != 'running':
+    if _task_for_token(token) is not task:
         raise Fail(401, 'stale_attempt')
     if action == 'sessions':
         if task['status'] == 'closed':
@@ -927,8 +1023,25 @@ def _task_route(
     if action == 'events':
         for event in body['events']:
             _check_event(event)
-        task['events'].extend(body['events'])
-        return 201, {'written': body['events'], 'duplicates': []}
+        written = [
+            _event(task, e['type'], e.get('payload') or {})
+            | {k: v for k, v in e.items() if k != 'payload'}
+            for e in body['events']
+        ]
+        return 201, {'written': written, 'duplicates': []}
+    if action == 'requests':
+        request_id = str(uuid.uuid4())
+        task['requests'][request_id] = {**body, 'status': 'open'}
+        _event(
+            task,
+            'request.opened',
+            {'request_id': request_id, **body},
+        )
+        task['status'] = 'blocked'
+        return 201, {
+            'request': {'id': request_id, **body},
+            'task': _task_state(task),
+        }
     if action == 'usage':
         tokens = (body.get('tokens_in') or 0) + (body.get('tokens_out') or 0)
         cost = PRICE * tokens
@@ -943,6 +1056,60 @@ def _task_route(
             raise Fail(409, 'task_closed')
         _close(task, body['outcome'], body.get('reason'))
         return 200, _task_state(task)
+    raise Fail(404, 'not_found')
+
+
+def _events_after(token: str, short_id: str, after: int) -> list[Row]:
+    task = TASKS.get(short_id)
+    if task is None or _task_for_token(token) is not task:
+        raise Fail(403, 'chain_forbidden')
+    return [e for e in task['events'] if e['seq'] > after]
+
+
+def _harness_task_route(
+    token: str, short_id: str, action: str, body: Row
+) -> tuple[int, typing.Any]:
+    """The ``/harness/tasks`` routes of ``harness.py``: child tasks and
+    the rate-limit check."""
+    task = TASKS.get(short_id)
+    if task is None or _task_for_token(token) is not task:
+        raise Fail(403, 'chain_forbidden')
+    if action == 'children':
+        child = task['options'].get('child')
+        if body.get('agent_slug') != 'reviewer' or not child:
+            raise Fail(403, 'subagent_forbidden')
+        # The key is unique per parent, as in imbi-api (origin kind
+        # task, origin id the parent).
+        for other in TASKS.values():
+            if other['origin'].get('task_id') == task['id'] and other.get(
+                'idempotency_key'
+            ) == body.get('idempotency_key'):
+                return 200, {'short_id': other['short_id']}
+        new = _new_task(
+            {
+                **child,
+                'agent_id': 'agent-2',
+                'title': body['title'],
+                'instruction': body['description'],
+                'repository': task['options']['repository'],
+            },
+            task['chain_id'],
+            {'kind': 'task', 'task_id': task['id']},
+        )
+        new['idempotency_key'] = body.get('idempotency_key')
+        return 201, {'short_id': new['short_id'], 'id': new['id']}
+    if action == 'tool-calls/check':
+        config = task['options']['tools'].get(body['tool_key'])
+        if config is None:
+            return 200, {'allowed': False, 'reason': 'tool_not_configured'}
+        limit = (config.get('rate_limit') or {}).get('count')
+        if limit is None:
+            return 200, {'allowed': True}
+        count = task['tool_counts'].get(body['tool_key'], 0)
+        if count >= limit:
+            return 200, {'allowed': False, 'reason': 'rate_limited'}
+        task['tool_counts'][body['tool_key']] = count + 1
+        return 200, {'allowed': True, 'count': count + 1, 'limit': limit}
     raise Fail(404, 'not_found')
 
 

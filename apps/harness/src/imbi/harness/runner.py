@@ -86,6 +86,12 @@ class Runner:
         self.claimed = False
         #: For every event of the chain (plan section 6.6).
         self.redactor = redact.Redactor()
+        self.layout: task.Layout | None = None
+        #: The task runs of the chain, by short id.
+        self.runs: dict[str, asyncio.Task[Body]] = {}
+        #: One claimer at a time: a child that one parent claims is in
+        #: :attr:`runs` before another parent looks for its own.
+        self.claiming = asyncio.Lock()
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
@@ -215,17 +221,51 @@ class Runner:
                 _fence('the lease was not renewed')
 
     async def run_chain(self, claim: Body, layout: task.Layout) -> None:
-        """Run the root task of the chain. Child tasks come in slice 2."""
+        """Run the root task, then wait for every child task that it
+        started (plan section 4.2)."""
+        self.layout = layout
+        await self._start(claim, build=True)
+        while pending := [run for run in self.runs.values() if not run.done()]:
+            await asyncio.gather(*pending)
+
+    def _start(self, claim: Body, *, build: bool) -> asyncio.Task[Body]:
+        assert self.layout is not None  # noqa: S101 - set by run_chain
         self.redactor.add(str(claim['agent_token']))
-        await task.TaskRun(
-            self.api,
-            claim,
-            layout,
-            self.redactor,
-            instance=self.settings.instance,
-            transcripts=self.credentials / 'transcripts',
-            model=self.settings.model,
-        ).run()
+        run = asyncio.create_task(
+            task.TaskRun(
+                self.api,
+                claim,
+                self.layout,
+                self.redactor,
+                instance=self.settings.instance,
+                transcripts=self.credentials / 'transcripts',
+                model=self.settings.model,
+                build=build,
+                children=self.run_child,
+            ).run()
+        )
+        self.runs[str(claim['task']['short_id'])] = run
+        return run
+
+    async def run_child(self, short_id: str) -> Body:
+        """Claim child tasks of the chain until ``short_id`` runs, then
+        wait for it (H2: a second SDK instance with the child agent's
+        identity, in the same workspace).
+
+        Two parents can make children at once, so a claim can return
+        the child of the other parent; it starts too, and is in
+        :attr:`runs` before the lock is released. The wait is shielded:
+        a cancel of the parent does not cancel the child.
+        """
+        async with self.claiming:
+            while short_id not in self.runs:
+                claim = await self.api.chain_claim(
+                    self.runner_id, self.runner_token
+                )
+                if claim is None:
+                    return {'short_id': short_id, 'status': 'not_claimed'}
+                self._start(claim, build=False)
+        return await asyncio.shield(self.runs[short_id])
 
 
 def main() -> None:

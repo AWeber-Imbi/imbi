@@ -33,8 +33,16 @@ class Api:
     async def post(
         self, path: str, token: str, **kwargs: typing.Any
     ) -> httpx.Response:
-        response = await self.http.post(
-            path, headers={'Authorization': f'Bearer {token}'}, **kwargs
+        return await self.request('POST', path, token, **kwargs)
+
+    async def request(
+        self, method: str, path: str, token: str, **kwargs: typing.Any
+    ) -> httpx.Response:
+        response = await self.http.request(
+            method,
+            path,
+            headers={'Authorization': f'Bearer {token}'},
+            **kwargs,
         )
         if response.is_error:
             code = str(response.status_code)
@@ -92,6 +100,17 @@ class Api:
             token,
             params={'wait': wait},
             timeout=wait + 10,
+        )
+        return (
+            None
+            if response.status_code == http.HTTPStatus.NO_CONTENT
+            else _body(response)
+        )
+
+    async def chain_claim(self, runner_id: str, token: str) -> Body | None:
+        """Claim the oldest queued child task of the runner's chain."""
+        response = await self.post(
+            f'/harness/runners/{runner_id}/chain/claim', token
         )
         return (
             None
@@ -171,3 +190,31 @@ class TaskApi:
         return await self.client.create_resolution(
             self.token, {'short_id': self.short_id, **body}
         )
+
+    async def open_request(self, body: Body) -> Body:
+        return await self._call('/requests', body)
+
+    async def events(self, after_seq: int) -> list[Body]:
+        """The events after ``after_seq`` (the harness route)."""
+        response = await self.client.request(
+            'GET',
+            f'/harness/tasks/{self.short_id}/events',
+            self.token,
+            params={'after_seq': after_seq, 'limit': 1000},
+        )
+        return typing.cast('list[Body]', response.json())
+
+    async def create_child(self, body: Body) -> Body:
+        response = await self.client.post(
+            f'/harness/tasks/{self.short_id}/children', self.token, json=body
+        )
+        return _body(response)
+
+    async def check_tool(self, tool_key: str) -> Body:
+        """Count a call against the tool's rate limit, across runners."""
+        response = await self.client.post(
+            f'/harness/tasks/{self.short_id}/tool-calls/check',
+            self.token,
+            json={'tool_key': tool_key},
+        )
+        return _body(response)

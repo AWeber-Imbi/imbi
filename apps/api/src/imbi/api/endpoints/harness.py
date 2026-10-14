@@ -180,6 +180,16 @@ class BundleRepository(pydantic.BaseModel):
     url: str
 
 
+class BundleSubagent(pydantic.BaseModel):
+    """An agent that the task's agent can make child tasks for."""
+
+    agent_id: str
+    #: The agent's slug now: ``create_child_task`` names it. ``None``
+    #: when the agent is gone.
+    slug: str | None = None
+    instructions: str = ''
+
+
 class IdentityBundle(pydantic.BaseModel):
     """The pinned identity of a task's agent. Holds no secret."""
 
@@ -205,6 +215,8 @@ class IdentityBundle(pydantic.BaseModel):
     #: ``github_app`` provider reads it. Empty when the task has no
     #: project or the project has no such link.
     repositories: list[BundleRepository] = []
+    #: The subagents of the pinned agent version, with their slugs.
+    subagents: list[BundleSubagent] = []
 
 
 class Claim(pydantic.BaseModel):
@@ -338,6 +350,11 @@ MATCH (v:AgentVersion {{agent_id: {id}, n: {n}}})
 RETURN v.snapshot AS snapshot
 """
 
+_AGENT_SLUGS_QUERY: typing.LiteralString = """
+MATCH (a:Agent) WHERE a.id IN {ids}
+RETURN a.id AS id, a.slug AS slug
+"""
+
 _ORGS_BY_ID_QUERY: typing.LiteralString = """
 MATCH (o:Organization) WHERE o.id IN {ids}
 RETURN o.id AS id, o.slug AS slug
@@ -445,6 +462,33 @@ async def _bundle(
         prompt_ref=snapshot.get('prompt_ref'),
         prompt_version=task['prompt_version'],
     )
+
+
+async def _subagents(
+    db: graph.Graph, snapshot: dict[str, typing.Any]
+) -> list[BundleSubagent]:
+    """The subagents of a version snapshot, with their slugs."""
+    raw: list[typing.Any] = snapshot.get('subagents') or []
+    entries = [models.AgentSubagent.model_validate(entry) for entry in raw]
+    if not entries:
+        return []
+    records = await db.execute(
+        _AGENT_SLUGS_QUERY,
+        {'ids': [entry.agent_id for entry in entries]},
+        ['id', 'slug'],
+    )
+    slugs = {
+        str(graph.parse_agtype(r['id'])): graph.parse_agtype(r['slug'])
+        for r in records
+    }
+    return [
+        BundleSubagent(
+            agent_id=entry.agent_id,
+            slug=slugs.get(entry.agent_id),
+            instructions=entry.instructions,
+        )
+        for entry in entries
+    ]
 
 
 async def _rendered_prompt(
@@ -567,6 +611,7 @@ async def _identity(
             'platform_config_version': version,
             'config': platform.merge(config, settings),
             'repositories': await _repositories(db, store, task, settings),
+            'subagents': await _subagents(db, bundle.snapshot),
         }
     )
 

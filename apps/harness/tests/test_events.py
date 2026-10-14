@@ -200,6 +200,30 @@ class RecorderTestCase(unittest.TestCase):
         self.assertEqual(call['payload']['tool'], 'unknown')
 
 
+class PolicyFieldTestCase(unittest.TestCase):
+    def test_decision_goes_on_the_tool_call(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.decisions['t1'] = {
+            'decision': 'deny',
+            'reason': 'rate_limited',
+        }
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[sdk.ToolUseBlock('t1', 'mcp__deploy__run', {})],
+                model='m',
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(content=[sdk.ToolResultBlock('t1', 'no', True)])
+        )
+        (call,) = recorder.take()
+        self.assertEqual(
+            call['payload']['policy'],
+            {'decision': 'deny', 'reason': 'rate_limited'},
+        )
+        self.assertEqual(recorder.decisions, {})
+
+
 class RequeueTestCase(unittest.TestCase):
     def test_unsent_events_go_first(self) -> None:
         recorder = events.Recorder(redact.Redactor())
