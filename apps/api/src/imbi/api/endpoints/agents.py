@@ -33,7 +33,7 @@ import nanoid
 import psycopg.errors
 import pydantic
 
-from imbi.api import agent_tools
+from imbi.api import agent_tools, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -1246,8 +1246,10 @@ async def patch_agent(
 @agents_router.delete('/{slug}', status_code=204)
 async def delete_agent(
     org_slug: str,
+    org_id: organizations.MemberOrgId,
     slug: str,
     db: graph.Pool,
+    store: workflows.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:delete')),
@@ -1257,7 +1259,7 @@ async def delete_agent(
 
     Raises:
         404: No such agent.
-        409: Other agents delegate to this agent.
+        409: Other agents delegate to this agent, or workflows use it.
 
     """
     records = await db.execute(
@@ -1267,6 +1269,15 @@ async def delete_agent(
         raise _not_found(slug)
     params = {'id': str(graph.parse_agtype(records[0]['id']))}
     await _assert_not_delegated_to(db, org_slug, slug, params['id'])
+    # ponytail: a save between this check and the delete can still add
+    # a reference; the step then fails with agent_not_found.
+    used = await store.agent_references(org_id, params['id'])
+    if used:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Agent {slug!r} is used in {used} workflow'
+            f'{"" if used == 1 else "s"}. Remove it from them first.',
+        )
     # One transaction: the versions and the agent go together, or
     # neither goes. ``_execute_batch`` is the transactional primitive
     # that other endpoints also use.

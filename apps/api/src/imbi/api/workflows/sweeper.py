@@ -18,6 +18,11 @@ it has ``last_seq`` distinct seqs, the lowest is 1, and the highest is
 It runs like the agent task sweep (:mod:`imbi.api.agent_tasks.sweeper`):
 every instance runs the loop, and a Valkey lock gives each round to one
 of them.
+
+The same round cancels the agent tasks whose agent step has ended
+(:func:`cancel_orphan_agent_tasks`). The engine cancels a task when
+its step or its run ends, but only as best effort; this is what makes
+the cancel certain.
 """
 
 import asyncio
@@ -26,6 +31,7 @@ import itertools
 import logging
 import uuid
 
+from imbi.api import agent_tasks
 from imbi.api.workflows import runs as run_store
 from imbi.common import valkey
 from imbi.common.workflows import history, runtime
@@ -130,11 +136,55 @@ async def _sweep_batch(
             )
 
 
-async def sweep_once(store: run_store.RunStore) -> SweepResult:
-    """Republish what ClickHouse does not have and archive complete runs."""
+async def cancel_orphan_agent_tasks(
+    store: run_store.RunStore, tasks: agent_tasks.TaskStore
+) -> int:
+    """Cancel the open tasks of agent steps that ended. Return how many.
+
+    See :meth:`run_store.RunStore.orphan_agent_tasks`. A task that
+    closed or got a cancel since the query is not an error.
+    """
+    actor = agent_tasks.Actor('system', 'imbi-workflows-reconciler', 'api')
+    cancelled = 0
+    for task in await store.orphan_agent_tasks():
+        try:
+            await tasks.set_control(
+                task['organization_id'], task['short_id'], 'cancel', actor
+            )
+        except (
+            agent_tasks.TaskNotFound,
+            agent_tasks.TaskClosed,
+            agent_tasks.CancelPending,
+        ):
+            continue
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Failed to cancel agent task %s of an ended step',
+                task['short_id'],
+                exc_info=True,
+            )
+            continue
+        cancelled += 1
+    if cancelled:
+        LOGGER.info('Cancelled %d agent tasks of ended steps', cancelled)
+    return cancelled
+
+
+async def sweep_once(
+    store: run_store.RunStore, tasks: agent_tasks.TaskStore | None = None
+) -> SweepResult:
+    """Republish what ClickHouse does not have and archive complete runs.
+
+    With ``tasks``, also cancel the tasks of agent steps that ended.
+    """
     result = SweepResult()
     if not await _try_sweep_lock():
         return result
+    if tasks is not None:
+        try:
+            await cancel_orphan_agent_tasks(store, tasks)
+        except Exception:  # noqa: BLE001 -- the next round tries again
+            LOGGER.warning('Agent task reconcile failed', exc_info=True)
     after: tuple[str, uuid.UUID] | None = None
     while page := await store.unarchived(after, PAGE_SIZE):
         after = (page[-1]['organization_id'], page[-1]['id'])
@@ -148,7 +198,10 @@ async def sweep_once(store: run_store.RunStore) -> SweepResult:
 
 
 async def run_sweeper(
-    store: run_store.RunStore, *, stop: asyncio.Event
+    store: run_store.RunStore,
+    tasks: agent_tasks.TaskStore,
+    *,
+    stop: asyncio.Event,
 ) -> None:
     """Sweep every :data:`SWEEP_INTERVAL_SECONDS` until ``stop`` is set.
 
@@ -163,6 +216,6 @@ async def run_sweeper(
         else:
             return
         try:
-            await sweep_once(store)
+            await sweep_once(store, tasks)
         except Exception:  # noqa: BLE001
             LOGGER.warning('Workflow run sweep failed', exc_info=True)

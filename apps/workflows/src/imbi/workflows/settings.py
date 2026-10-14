@@ -46,6 +46,9 @@ class Workflows(pydantic_settings.BaseSettings):
     deploy_poll_seconds: int = pydantic.Field(
         default=15, gt=0, description='Seconds between deployment polls'
     )
+    agent_poll_seconds: int = pydantic.Field(
+        default=30, gt=0, description='Seconds between agent task polls'
+    )
     scheduler_url: str = pydantic.Field(
         default='http://localhost:8005/api',
         description="imbi-scheduler's task API, with its route prefix",

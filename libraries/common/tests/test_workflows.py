@@ -315,6 +315,7 @@ class RegistryTestCase(unittest.TestCase):
                 'email',
                 'deploy',
                 'rollback',
+                'agent',
             },
         )
         self.assertIsNone(described['model_decision']['ports'])
@@ -331,6 +332,36 @@ class RegistryTestCase(unittest.TestCase):
         self.assertEqual(
             registry.STEP_TYPES['wait'].required_permissions({}), set()
         )
+        self.assertEqual(
+            registry.STEP_TYPES['agent'].required_permissions({}),
+            {'agent_task:create'},
+        )
+
+    def test_agent_budget_follows_the_task_budget(self) -> None:
+        # The limits of AgentTaskCreate.budget: 14 digits, 6 places.
+        for budget, codes in (
+            (0.5, set()),
+            ('12345678.123456', set()),
+            (0.0000001, {'invalid_param'}),
+            ('123456789.5', {'invalid_param'}),
+            (-1, {'invalid_param'}),
+        ):
+            issues = _check(
+                [
+                    _node('start', 'manual'),
+                    _node(
+                        'ask',
+                        'agent',
+                        {
+                            'agent_id': 'a1',
+                            'instruction': 'Go.',
+                            'budget': budget,
+                        },
+                    ),
+                ],
+                [('start', 0, 'ask')],
+            )
+            self.assertEqual(_codes(issues), codes, budget)
 
     def test_sample_outputs_match_output_schema(self) -> None:
         for step in registry.STEP_TYPES.values():

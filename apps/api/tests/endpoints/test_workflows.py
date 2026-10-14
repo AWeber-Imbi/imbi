@@ -551,3 +551,67 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertIn('invalid_reference', codes)
         codes = await self._codes('webhook', {'webhook_id': self.webhook})
         self.assertNotIn('invalid_reference', codes)
+
+    async def test_agent_must_be_in_org_and_literal(self) -> None:
+        agent, foreign = (f'agent-{uuid.uuid4().hex[:8]}' for _ in range(2))
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{id: {org}}}),
+                  (fo:Organization {{id: {f_org}}})
+            CREATE (a:Agent {{id: {agent}, slug: {agent}}})
+            CREATE (a)-[:BELONGS_TO]->(o)
+            CREATE (fa:Agent {{id: {foreign}, slug: {foreign}}})
+            CREATE (fa)-[:BELONGS_TO]->(fo)
+            RETURN a.id AS id
+            """,
+            {
+                'org': self.org,
+                'f_org': self.foreign['org'],
+                'agent': agent,
+                'foreign': foreign,
+            },
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (a:Agent) WHERE a.id IN {ids} DETACH DELETE a'
+            ' RETURN 1 AS ok',
+            {'ids': [agent, foreign]},
+            ['ok'],
+        )
+        for agent_id, project, expected in (
+            (agent, self.project, 0),
+            (foreign, None, 1),
+            (agent, self.foreign['project'], 1),
+        ):
+            issues = await self._resource_issues(
+                'agent',
+                {
+                    'agent_id': agent_id,
+                    'instruction': 'Look.',
+                    'project_id': project,
+                },
+            )
+            self.assertEqual(len(issues), expected, (agent_id, project))
+        # Run input must not choose the agent or the project.
+        for params in (
+            {'agent_id': '{{ trigger.agent }}'},
+            {'agent_id': agent, 'project_id': '{{ trigger.project }}'},
+        ):
+            codes = await self._codes('agent', {**params, 'instruction': 'x'})
+            self.assertIn('invalid_reference', codes, params)
+
+        graph_ = {
+            'nodes': [
+                _node('start', 'manual'),
+                _node('x', 'agent', {'agent_id': agent, 'instruction': 'x'}),
+            ],
+            'edges': [{'source': 'start', 'port': 0, 'target': 'x'}],
+        }
+        response = await self._create(graph=graph_)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['agent_ids'], [agent])
+        self.assertEqual(await self.store.agent_references(self.org, agent), 1)
+        self.assertEqual(
+            await self.store.agent_references(self.org, foreign), 0
+        )
