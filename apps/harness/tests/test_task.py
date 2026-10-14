@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 import claude_agent_sdk as sdk
+import httpx
 
 from imbi.harness import api, ipc, privilege, proxy, redact, task
 
@@ -779,3 +780,62 @@ class HeartbeatTestCase(TaskTestCase):
             beat.cancel()
         self.assertTrue(self.run_task.closed)
         self.assertFalse(self.run_task.allowed())
+
+
+class FlushTestCase(TaskTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.run_task.session_id = 's'
+        self.sent: list[list[str]] = []
+        self.failures: list[Exception | None] = []
+
+        async def post(
+            path: str, *_: typing.Any, **kwargs: typing.Any
+        ) -> typing.Any:
+            batch = [e['payload']['body'] for e in kwargs['json']['events']]
+            failure = self.failures.pop(0) if self.failures else None
+            if failure is not None:
+                raise failure
+            self.sent.append(batch)
+            return mock.Mock(json=mock.Mock(return_value={}))
+
+        self.client.post.side_effect = post
+
+    def queue(self, *bodies: str) -> None:
+        self.run_task.recorder.pending = [
+            {'event_id': body, 'type': 'turn', 'payload': {'body': body}}
+            for body in bodies
+        ]
+
+    async def test_network_error_keeps_the_events(self) -> None:
+        self.queue('a', 'b')
+        self.failures = [httpx.ConnectError('down')]
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await self.run_task.flush()
+        self.assertEqual(self.sent, [])
+        self.run_task.recorder.pending.append(
+            {'event_id': 'c', 'type': 'turn', 'payload': {'body': 'c'}}
+        )
+        await self.run_task.flush()
+        self.assertEqual(self.sent, [['a', 'b', 'c']])
+
+    async def test_too_large_batch_is_sent_one_by_one(self) -> None:
+        self.queue('a', 'b', 'c')
+        self.failures = [
+            api.Refused(413, 'payload_too_large'),
+            None,
+            api.Refused(413, 'payload_too_large'),
+            None,
+        ]
+        with self.assertLogs('imbi.harness.task', 'WARNING') as logs:
+            await self.run_task.flush()
+        self.assertEqual(self.sent, [['a'], ['c']])
+        self.assertIn('Dropped 1 events', logs.output[0])
+
+    async def test_other_refusal_drops_the_batch(self) -> None:
+        self.queue('a', 'b')
+        self.failures = [api.Refused(409, 'task_closed')]
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await self.run_task.flush()
+        self.assertEqual(self.sent, [])
+        self.assertEqual(self.run_task.recorder.pending, [])

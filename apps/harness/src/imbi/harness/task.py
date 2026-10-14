@@ -16,6 +16,7 @@ proxy refuses model calls when the remaining budget is zero.
 import asyncio
 import dataclasses
 import decimal
+import http
 import json
 import logging
 import pathlib
@@ -744,14 +745,40 @@ class TaskRun:
             self.stop()
 
     async def flush(self) -> None:
-        """Send the recorded events (plan section 6.6)."""
-        for batch in events.batches(self.recorder.take()):
+        """Send the recorded events (plan section 6.6).
+
+        - A network error puts the unsent events back for the next
+          flush.
+        - A batch that imbi-api refuses as too large (413) is sent again
+          one event at a time, so only the event that fails is lost.
+        - Any other refusal drops the batch.
+        """
+        pending = self.recorder.take()
+        single = 0
+        while pending:
+            batch = pending[:1] if single else events.batches(pending)[0]
             try:
                 await self.api.append_events(self.session_id, batch)
-            except (api.Refused, httpx.HTTPError) as err:
+            except httpx.HTTPError as err:
                 LOGGER.warning(
-                    'Events of %s not written: %s', self.api.short_id, err
+                    'Events of %s not sent: %s', self.api.short_id, err
                 )
+                self.recorder.requeue(pending)
+                return
+            except api.Refused as err:
+                if err.status == http.HTTPStatus.REQUEST_ENTITY_TOO_LARGE and (
+                    len(batch) > 1
+                ):
+                    single = len(batch)
+                    continue
+                LOGGER.warning(
+                    'Dropped %d events of %s: %s',
+                    len(batch),
+                    self.api.short_id,
+                    err,
+                )
+            single = max(0, single - 1)
+            pending = pending[len(batch) :]
 
     # --- run_with_secret ----------------------------------------------
 

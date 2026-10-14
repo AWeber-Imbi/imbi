@@ -18,6 +18,7 @@ order.
 
 import datetime
 import json
+import logging
 import time
 import typing
 import uuid
@@ -29,9 +30,17 @@ if typing.TYPE_CHECKING:
 
 type Event = dict[str, typing.Any]
 
+LOGGER = logging.getLogger(__name__)
+
 #: The largest ``turn`` or ``tool.called`` payload, in bytes of JSON
 #: (imbi-api ``MAX_LARGE_PAYLOAD_BYTES``), less a margin.
 PAYLOAD_LIMIT = 1024 * 1024 - 1024
+#: The largest payload of every other type (imbi-api
+#: ``MAX_PAYLOAD_BYTES``), less a margin.
+SMALL_LIMIT = 64 * 1024 - 1024
+#: The most event bytes that wait for the next flush while imbi-api is
+#: not reachable. Past it, the oldest events are dropped.
+PENDING_LIMIT = 64 * 1024 * 1024
 #: The largest payload total of one batch, less a margin.
 BATCH_LIMIT = 4 * 1024 * 1024 - 4096
 BATCH_EVENTS = 100
@@ -73,11 +82,33 @@ def _pieces(text: str, first: int, rest: int) -> list[str]:
     return pieces or ['']
 
 
+def _preview(event: Event) -> Event:
+    """An event over :data:`SMALL_LIMIT`, as a truncated preview."""
+    payload = event['payload']
+    LOGGER.warning(
+        'Truncated a %s event of %d bytes', event['type'], size(payload)
+    )
+    text = json.dumps(payload, ensure_ascii=False)
+    return {
+        **event,
+        'payload': {
+            'truncated': True,
+            'preview': _pieces(text, SMALL_LIMIT - 64, SMALL_LIMIT)[0],
+        },
+    }
+
+
 def split(event: Event) -> list[Event]:
-    """Return the event, or its continuation events when it is large."""
+    """Return the event, or its continuation events when it is large.
+
+    An event of another type over :data:`SMALL_LIMIT` becomes a
+    truncated preview: imbi-api would refuse its whole batch.
+    """
     payload: dict[str, typing.Any] = event['payload']
     field = _LARGE.get(event['type'])
-    if field is None or size(payload) <= PAYLOAD_LIMIT:
+    if field is None:
+        return [event if size(payload) <= SMALL_LIMIT else _preview(event)]
+    if size(payload) <= PAYLOAD_LIMIT:
         return [event]
     text = payload[field]
     if not isinstance(text, str):
@@ -250,3 +281,31 @@ class Recorder:
     def take(self) -> list[Event]:
         taken, self.pending = self.pending, []
         return taken
+
+    def requeue(self, unsent: list[Event]) -> None:
+        """Put events that were not sent back before the new ones.
+
+        imbi-api ignores an ``event_id`` that it has, so a retry writes
+        nothing twice. Past :data:`PENDING_LIMIT` bytes, the oldest
+        events are dropped, and a warning event says how many.
+        """
+        self.pending = unsent + self.pending
+        sizes = [size(event['payload']) for event in self.pending]
+        total, dropped = sum(sizes), 0
+        while total > PENDING_LIMIT and dropped < len(sizes):
+            total -= sizes[dropped]
+            dropped += 1
+        if dropped:
+            LOGGER.warning(
+                'Dropped %d task events: imbi-api is not reachable', dropped
+            )
+            self.pending = self.pending[dropped:]
+            self._add(
+                'turn',
+                {
+                    'kind': 'warning',
+                    'body': f'{dropped} events of this task were lost while '
+                    'Imbi was not reachable.',
+                },
+                None,
+            )

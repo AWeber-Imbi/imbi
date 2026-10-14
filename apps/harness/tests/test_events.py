@@ -1,6 +1,7 @@
 import json
 import typing
 import unittest
+import unittest.mock
 
 import claude_agent_sdk as sdk
 
@@ -73,8 +74,20 @@ class SplitTestCase(unittest.TestCase):
         )
 
     def test_other_types_are_not_split(self) -> None:
-        todos = event('todos.updated', {'todos': ['x' * (2 * MIB)]})
+        todos = event('todos.updated', {'todos': ['x' * 1000]})
         self.assertEqual(events.split(todos), [todos])
+
+    def test_other_types_over_the_small_limit_are_truncated(self) -> None:
+        todos = event('todos.updated', {'todos': ['"x\u2603' * MIB]})
+        with self.assertLogs('imbi.harness.events', 'WARNING') as logs:
+            (part,) = events.split(todos)
+        payload = part['payload']
+        self.assertTrue(payload['truncated'])
+        self.assertTrue(payload['preview'].startswith('{"todos"'))
+        self.assertLessEqual(events.size(payload), events.SMALL_LIMIT)
+        self.assertEqual(part['event_id'], 'e1')
+        # The log has the type and size only, never the content.
+        self.assertNotIn('\u2603', logs.output[0])
 
     def test_batches(self) -> None:
         big = [event('turn', {'body': 'x' * (MIB - 2048)}) for _ in range(6)]
@@ -185,3 +198,27 @@ class RecorderTestCase(unittest.TestCase):
         )
         (call,) = self.recorder.take()
         self.assertEqual(call['payload']['tool'], 'unknown')
+
+
+class RequeueTestCase(unittest.TestCase):
+    def test_unsent_events_go_first(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        new = event('turn', {'body': 'new'})
+        recorder.pending = [new]
+        old = [event('turn', {'body': 'old'})]
+        recorder.requeue(old)
+        self.assertEqual(recorder.take(), [*old, new])
+
+    def test_bounded_with_a_warning(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        big = [event('turn', {'body': 'x' * 1000}) for _ in range(10)]
+        with (
+            unittest.mock.patch.object(events, 'PENDING_LIMIT', 3500),
+            self.assertLogs('imbi.harness.events', 'WARNING'),
+        ):
+            recorder.requeue(big)
+        kept = recorder.take()
+        self.assertEqual(kept[:3], big[-3:])
+        (warning,) = kept[3:]
+        self.assertEqual(warning['payload']['kind'], 'warning')
+        self.assertIn('7 events', warning['payload']['body'])
