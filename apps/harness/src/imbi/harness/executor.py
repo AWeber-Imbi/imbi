@@ -15,6 +15,19 @@ only materialize and release the resolutions of its runner. For a
 5. releases every resolution of the request, also when the runner goes
    away or the executor gets ``SIGTERM``.
 
+The reply holds the exact values that the command got, for the
+runner's event redactor (plan section 9.6 step 4). The runner holds
+handles and its own credentials already; ``agent`` cannot read it.
+
+Two more requests are for the runner's own setup secrets (H22):
+
+- ``clone`` clones a repository or a marketplace commit as ``agent``.
+  The token goes to git's credential helper through a file descriptor,
+  so ``.git/config``, the command line, and the environment never hold
+  it (plan section 6.2).
+- ``fetch`` returns the material of a ``model_inference`` resolution to
+  the runner, for its model proxy (plan section 6.4).
+
 Rev 1 runs one request at a time (:attr:`Executor.lock`), so every
 ``agent`` process of this container belongs to the current command.
 """
@@ -28,12 +41,14 @@ import pathlib
 import re
 import secrets
 import select
+import shlex
 import signal
 import socket
 import subprocess
 import threading
 import time
 import typing
+import urllib.parse
 
 import httpx
 
@@ -63,6 +78,19 @@ _SHIM = (
     'exec /bin/sh -c "$2"\n'
 )
 _ENV_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$')
+_NAME = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$')
+_SHA = re.compile(r'^[0-9a-f]{7,64}$')
+#: Reads the token from ``IMBI_GIT_TOKEN_FD`` (``apps/harness/
+#: git-credential-fd``). The empty value first removes other helpers.
+#: Only http and https transports: no ``ext::``, ``file://``, or ssh.
+_GIT = (
+    'git -c credential.helper= '
+    '-c credential.helper=/usr/local/libexec/git-credential-fd '
+    '-c protocol.allow=never -c protocol.http.allow=always '
+    '-c protocol.https.allow=always'
+)
+#: Setup secrets that the executor returns to the runner (H22).
+FETCH_PURPOSES = frozenset({'model_inference'})
 
 type Message = ipc.Message
 
@@ -124,6 +152,33 @@ async def _read(
         raise
 
 
+def _git_url(value: typing.Any) -> str:
+    """An http or https URL with no user part: the token never goes in
+    the URL."""
+    url = str(value or '')
+    parts = urllib.parse.urlsplit(url)
+    if (
+        parts.scheme not in {'http', 'https'}
+        or not parts.hostname
+        or '@' in parts.netloc
+        or any(char.isspace() for char in url)
+    ):
+        raise Invalid('invalid_url')
+    return url
+
+
+def _clone_command(url: str, name: str, sha: str | None) -> str:
+    """Clone ``url`` into ``name``; at ``sha`` with only that commit."""
+    url, name = shlex.quote(url), shlex.quote(name)
+    if sha is None:
+        return f'{_GIT} clone --quiet -- {url} {name}'
+    return (
+        f'{_GIT} init --quiet -- {name} && cd -- {name} && '
+        f'{_GIT} fetch --quiet --depth 1 -- {url} {sha} && '
+        'git checkout --quiet --detach FETCH_HEAD'
+    )
+
+
 def _target(secret: Message) -> str:
     delivery: Message = secret.get('delivery') or {}
     target = str(delivery.get('target') or '')
@@ -143,6 +198,20 @@ def _material(body: Message) -> str:
         except UnicodeDecodeError:
             raise Invalid('binary_material_in_environment') from None
     return material
+
+
+def _reply(
+    exit_code: int, output: bytes, dropped: bool, values: list[str]
+) -> Message:
+    reply: Message = {
+        'exit_code': exit_code,
+        'output': redact.redact(
+            output, [value.encode() for value in values], truncated=dropped
+        ),
+    }
+    if values:
+        reply['values'] = values
+    return reply
 
 
 class Executor:
@@ -196,7 +265,7 @@ class Executor:
                 await asyncio.gather(work, return_exceptions=True)
         return None if work.cancelled() else work.result()
 
-    async def dispatch(self, request: Message) -> Message:
+    async def dispatch(self, request: Message) -> Message:  # noqa: PLR0911
         try:
             match request.get('op'):
                 case 'hello':
@@ -204,6 +273,11 @@ class Executor:
                 case 'run':
                     async with self.lock:
                         return await self.run(request)
+                case 'clone':
+                    async with self.lock:
+                        return await self.clone(request)
+                case 'fetch':
+                    return await self.fetch(request)
                 case 'end_chain':
                     async with self.lock:
                         privilege.kill_agent()
@@ -233,6 +307,7 @@ class Executor:
         if not isinstance(command, str) or not command:
             raise Invalid('invalid_command')
         cwd = _workspace(request.get('cwd'))
+        home = _workspace(request.get('home') or f'{cwd}/home')
         timeout = min(
             float(request.get('timeout_seconds') or COMMAND_TIMEOUT),
             COMMAND_TIMEOUT,
@@ -241,21 +316,10 @@ class Executor:
         wanted = list(request.get('secrets') or [])
         targets = [_target(secret) for secret in wanted]
         try:
-            env = {'PATH': PATH, 'HOME': f'{cwd}/home'}
+            env = {'PATH': PATH, 'HOME': home}
             for secret, target in zip(wanted, targets, strict=True):
-                body = await self.api.materialize(
-                    self.token,
-                    {
-                        'handle': secret.get('handle'),
-                        'nonce': secrets.token_urlsafe(32),
-                        'task_id': context.get('task_id'),
-                        'agent_id': context.get('agent_id'),
-                        'project_id': context.get('project_id'),
-                        'purpose': secret.get('purpose'),
-                    },
-                )
-                env[target] = _material(body)
-            values = [env[target].encode() for target in targets]
+                env[target] = await self._materialize(secret, context)
+            values = [env[target] for target in targets]
             exit_code, output, dropped = await self._spawn(
                 command, cwd, env, timeout
             )
@@ -265,13 +329,101 @@ class Executor:
             return {'error': 'imbi_unavailable'}
         finally:
             await self._release(wanted)
-        return {
-            'exit_code': exit_code,
-            'output': redact.redact(output, values, truncated=dropped),
+        return _reply(exit_code, output, dropped, values)
+
+    async def clone(self, request: Message) -> Message:
+        """Clone ``url`` into ``dest`` as ``agent``, with the token of
+        ``secret`` (optional) on a file descriptor."""
+        url = _git_url(request.get('url'))
+        dest = _workspace(request.get('dest'))
+        parent, _, name = dest.rpartition('/')
+        _workspace(parent)
+        sha = request.get('sha')
+        if not _NAME.match(name) or (
+            sha is not None and not _SHA.match(str(sha))
+        ):
+            raise Invalid('invalid_clone')
+        secret: Message | None = request.get('secret')
+        if secret is not None and self.token is None:
+            return {'error': 'no_executor_credential'}
+        env = {
+            'PATH': PATH,
+            'HOME': '/nonexistent',
+            'GIT_CONFIG_NOSYSTEM': '1',
+            'GIT_TERMINAL_PROMPT': '0',
         }
+        values: list[str] = []
+        read = -1
+        try:
+            if secret is not None:
+                token = await self._materialize(
+                    secret, request.get('context') or {}
+                )
+                values.append(token)
+                read, write = os.pipe()
+                # A pipe holds 64 KiB, so the write does not block.
+                with os.fdopen(write, 'w') as out:
+                    out.write(token)
+                env['IMBI_GIT_TOKEN_FD'] = str(read)
+            exit_code, output, dropped = await self._spawn(
+                _clone_command(url, name, sha),
+                parent,
+                env,
+                COMMAND_TIMEOUT,
+                pass_fds=(read,) if read >= 0 else (),
+            )
+        except api.Refused as err:
+            return {'error': err.code}
+        except httpx.HTTPError:
+            return {'error': 'imbi_unavailable'}
+        finally:
+            if read >= 0:
+                os.close(read)
+            await self._release([] if secret is None else [secret])
+        return _reply(exit_code, output, dropped, values)
+
+    async def fetch(self, request: Message) -> Message:
+        """Return the material of a setup secret to the runner."""
+        if self.token is None:
+            return {'error': 'no_executor_credential'}
+        secret: Message = request.get('secret') or {}
+        if secret.get('purpose') not in FETCH_PURPOSES:
+            raise Invalid('purpose_not_allowed')
+        try:
+            material = await self._materialize(
+                secret, request.get('context') or {}
+            )
+        except api.Refused as err:
+            return {'error': err.code}
+        except httpx.HTTPError:
+            return {'error': 'imbi_unavailable'}
+        finally:
+            # A static key: the release ends only Imbi access.
+            await self._release([secret])
+        return {'material': material}
+
+    async def _materialize(self, secret: Message, context: Message) -> str:
+        assert self.token is not None  # noqa: S101 - checked by callers
+        body = await self.api.materialize(
+            self.token,
+            {
+                'handle': secret.get('handle'),
+                'nonce': secrets.token_urlsafe(32),
+                'task_id': context.get('task_id'),
+                'agent_id': context.get('agent_id'),
+                'project_id': context.get('project_id'),
+                'purpose': secret.get('purpose'),
+            },
+        )
+        return _material(body)
 
     async def _spawn(
-        self, command: str, cwd: str, env: dict[str, str], limit: float
+        self,
+        command: str,
+        cwd: str,
+        env: dict[str, str],
+        limit: float,
+        pass_fds: tuple[int, ...] = (),
     ) -> tuple[int, bytes, bool]:
         """Run the command as ``agent`` in its own session.
 
@@ -293,6 +445,7 @@ class Executor:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
+                pass_fds=pass_fds,
             )
         assert process.stdout is not None  # noqa: S101 - stdout=PIPE
         fd = process.stdout.fileno()

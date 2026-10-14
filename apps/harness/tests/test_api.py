@@ -1,3 +1,4 @@
+import json
 import unittest
 
 import httpx
@@ -94,3 +95,56 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(httpx.ConnectError):
             await self.api.heartbeat('r', 't')
+
+
+class TaskApiTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.api = api.TaskApi(api.Api(BASE), 'iat_token', 'org', 'T-1')
+        self.mock = respx.mock(base_url=BASE, assert_all_called=True)
+        self.mock.start()
+        self.addCleanup(self.mock.stop)
+
+    async def test_routes(self) -> None:
+        base = '/organizations/org/agent-tasks/T-1'
+        routes = {
+            name: self.mock.post(base + path).respond(200, json={'ok': name})
+            for name, path in (
+                ('open', '/sessions'),
+                ('heartbeat', '/sessions/s/heartbeat'),
+                ('close', '/sessions/s/close'),
+                ('events', '/events'),
+                ('usage', '/usage'),
+                ('outcome', '/outcome'),
+            )
+        }
+        resolution = self.mock.post('/harness/secret-resolutions').respond(
+            201, json={'handle': 'h'}
+        )
+        await self.api.open_session('k', 'pod')
+        await self.api.heartbeat('s')
+        await self.api.close_session('s', 'stopped')
+        await self.api.append_events('s', [{'type': 'turn'}])
+        await self.api.report_usage({'model_id': 'm'})
+        await self.api.set_outcome('done_acted', None)
+        await self.api.create_resolution({'purpose': 'p'})
+        for route in routes.values():
+            request = route.calls.last.request
+            self.assertEqual(
+                request.headers['Authorization'], 'Bearer iat_token'
+            )
+        self.assertEqual(
+            json.loads(routes['open'].calls.last.request.content),
+            {'session_key': 'k', 'harness_instance': 'pod'},
+        )
+        self.assertEqual(
+            json.loads(routes['events'].calls.last.request.content),
+            {'session_id': 's', 'events': [{'type': 'turn'}]},
+        )
+        self.assertEqual(
+            json.loads(resolution.calls.last.request.content),
+            {'short_id': 'T-1', 'purpose': 'p'},
+        )
+
+    def test_items(self) -> None:
+        self.assertEqual(api.items({'a': None}, 'a'), [])
+        self.assertEqual(api.items({'a': [1]}, 'a'), [1])

@@ -14,13 +14,24 @@ with `allowPrivilegeEscalation: false`. They drop with `setresuid(u, u, 0)`.
 The saved uid 0 is used only to start `agent` processes, to signal them, and
 to make `agent` files.
 
-This is the P5a isolation slice of the harness plan: the pod layout, the
-executor socket, `run_with_secret`, and the SDK start through the `setpriv`
-wrapper. It has no task logic.
+A runner process runs one chain. For its root task it:
 
-A runner process runs one chain. At the end of the chain it kills every
-`agent` process in both containers, removes the chain workspace as `agent`,
-finishes, and exits. P5 then deletes the pod.
+1. opens an ADR 0020 session,
+2. builds `/work/<chain>`: it clones each project repository and each pinned
+   plugin marketplace in the executor, as `agent`, with the token on a file
+   descriptor of git's credential helper (`git-credential-fd`),
+3. gets the model key through a `model_inference` resolution, which the
+   executor materializes and releases,
+4. starts a loopback model proxy for the task (Anthropic or LiteLLM), which
+   reports usage after each call and refuses calls when the budget is spent,
+5. writes the task's `CLAUDE_CONFIG_DIR` (`settings.json`, `CLAUDE.md`),
+6. runs the SDK and sends redacted task events (1 MiB parts for large turns
+   and tool results), and stops at a cancel or a closed task,
+7. sets the outcome.
+
+At the end of the chain it kills every `agent` process in both containers,
+removes the chain workspace as `agent`, finishes, and exits. Child tasks, the
+tool policy, and pod deletion come in later slices.
 
 ## Isolation suite
 

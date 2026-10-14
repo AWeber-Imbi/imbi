@@ -8,6 +8,11 @@ import httpx
 type Body = dict[str, typing.Any]
 
 
+def items(body: Body, key: str) -> list[typing.Any]:
+    """The list at ``key``; empty when it is missing or ``None``."""
+    return typing.cast('list[typing.Any]', body.get(key) or [])
+
+
 def _body(response: httpx.Response) -> Body:
     return typing.cast('Body', response.json())
 
@@ -25,7 +30,7 @@ class Api:
     def __init__(self, base_url: str, timeout: float = 10.0) -> None:
         self.http = httpx.AsyncClient(base_url=base_url, timeout=timeout)
 
-    async def _post(
+    async def post(
         self, path: str, token: str, **kwargs: typing.Any
     ) -> httpx.Response:
         response = await self.http.post(
@@ -59,7 +64,7 @@ class Api:
     async def register(
         self, token: str, pool: str, instance: str, image_version: str
     ) -> Body:
-        response = await self._post(
+        response = await self.post(
             '/harness/runners',
             token,
             json={
@@ -71,7 +76,7 @@ class Api:
         return _body(response)
 
     async def heartbeat(self, runner_id: str, token: str) -> Body:
-        response = await self._post(
+        response = await self.post(
             f'/harness/runners/{runner_id}/heartbeat', token
         )
         return _body(response)
@@ -79,7 +84,7 @@ class Api:
     async def claim(
         self, runner_id: str, token: str, wait: int
     ) -> Body | None:
-        response = await self._post(
+        response = await self.post(
             f'/harness/runners/{runner_id}/claim',
             token,
             params={'wait': wait},
@@ -92,16 +97,16 @@ class Api:
         )
 
     async def finish(self, runner_id: str, token: str) -> None:
-        await self._post(f'/harness/runners/{runner_id}/finish', token)
+        await self.post(f'/harness/runners/{runner_id}/finish', token)
 
     async def create_resolution(self, agent_token: str, body: Body) -> Body:
-        response = await self._post(
+        response = await self.post(
             '/harness/secret-resolutions', agent_token, json=body
         )
         return _body(response)
 
     async def materialize(self, executor_token: str, body: Body) -> Body:
-        response = await self._post(
+        response = await self.post(
             '/harness/executor/secret-materializations',
             executor_token,
             json=body,
@@ -109,8 +114,57 @@ class Api:
         return _body(response)
 
     async def release(self, executor_token: str, resolution_id: str) -> Body:
-        response = await self._post(
+        response = await self.post(
             f'/harness/executor/secret-resolutions/{resolution_id}/release',
             executor_token,
         )
         return _body(response)
+
+
+class TaskApi:
+    """The ADR 0020 harness routes of one task, with its agent token."""
+
+    def __init__(
+        self, client: Api, token: str, organization: str, short_id: str
+    ) -> None:
+        self.client = client
+        self.token = token
+        self.path = f'/organizations/{organization}/agent-tasks/{short_id}'
+        self.short_id = short_id
+
+    async def _call(self, path: str, body: Body | None = None) -> Body:
+        response = await self.client.post(
+            self.path + path, self.token, json=body
+        )
+        return _body(response)
+
+    async def open_session(self, key: str, instance: str) -> Body:
+        return await self._call(
+            '/sessions', {'session_key': key, 'harness_instance': instance}
+        )
+
+    async def heartbeat(self, session_id: str) -> Body:
+        return await self._call(f'/sessions/{session_id}/heartbeat')
+
+    async def close_session(self, session_id: str, reason: str) -> Body:
+        return await self._call(
+            f'/sessions/{session_id}/close', {'reason': reason}
+        )
+
+    async def append_events(self, session_id: str, events: list[Body]) -> Body:
+        return await self._call(
+            '/events', {'session_id': session_id, 'events': events}
+        )
+
+    async def report_usage(self, body: Body) -> Body:
+        return await self._call('/usage', body)
+
+    async def set_outcome(self, outcome: str, reason: str | None) -> Body:
+        return await self._call(
+            '/outcome', {'outcome': outcome, 'reason': reason}
+        )
+
+    async def create_resolution(self, body: Body) -> Body:
+        return await self.client.create_resolution(
+            self.token, {'short_id': self.short_id, **body}
+        )
