@@ -1,8 +1,14 @@
 """The loopback model proxy (plan section 6.4), P5a slice.
 
 The CLI gets the proxy address and a placeholder key. The proxy puts
-the real key on each request and forwards it, with its path and query,
-to the upstream. Usage metering and the budget come in P5.
+the real key on a request and forwards it, with its query, to the
+upstream only for ``POST /v1/messages`` and
+``POST /v1/messages/count_tokens`` with a ``Content-Length`` body. It
+answers ``HEAD /api/hello`` itself. It refuses every other method,
+path (no normalization: ``/v1/messages/../files`` is refused), an
+absolute-form target, and a chunked body, with no upstream call. The
+model's ``Bash`` can reach the proxy too (plan section 6.4), so the
+key opens only these routes. Usage metering and the budget come in P5.
 """
 
 import http.client
@@ -26,6 +32,8 @@ _DROP = frozenset(
         'x-api-key',
     }
 )
+#: The only paths that go upstream, for POST.
+_ROUTES = frozenset({'/v1/messages', '/v1/messages/count_tokens'})
 _HOP = frozenset(
     {
         'connection',
@@ -49,21 +57,42 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
     def do_GET(self) -> None:
-        self._forward()
+        self._refuse(404)
 
     def do_HEAD(self) -> None:
-        self._forward()
+        if self.path == '/api/hello':
+            self.send_response(200)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+        else:
+            self._refuse(404)
 
     def do_POST(self) -> None:
-        self._forward()
+        # An absolute-form (http://host/...) or a //host/... target has
+        # a host part.
+        target = urllib.parse.urlsplit(self.path)
+        if target.scheme or target.netloc or target.path not in _ROUTES:
+            self._refuse(404)
+        elif 'Transfer-Encoding' in self.headers or (
+            not (self.headers.get('Content-Length') or '').isdigit()
+        ):
+            self._refuse(411)
+        else:
+            self._forward()
+
+    def _refuse(self, status: int) -> None:
+        self.send_response(status)
+        self.send_header('Content-Length', '0')
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        self.close_connection = True
 
     def log_message(self, format: str, *args: typing.Any) -> None:  # noqa: A002
         """Log nothing: a request line can hold a prompt fragment."""
 
     def _forward(self) -> None:
         server = typing.cast('_Server', self.server)
-        length = int(self.headers.get('Content-Length') or 0)
-        body = self.rfile.read(length) if length else None
+        body = self.rfile.read(int(self.headers['Content-Length']))
         headers = {
             name: value
             for name, value in self.headers.items()
@@ -88,10 +117,6 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             for name, value in response.getheaders():
                 if name.lower() not in _HOP:
                     self.send_header(name, value)
-            if self.command == 'HEAD':
-                self.send_header('Content-Length', '0')
-                self.end_headers()
-                return
             self.send_header('Transfer-Encoding', 'chunked')
             self.end_headers()
             while chunk := response.read1(65536):
