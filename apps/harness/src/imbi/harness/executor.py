@@ -91,6 +91,11 @@ _GIT = (
 )
 #: Setup secrets that the executor returns to the runner (H22).
 FETCH_PURPOSES = frozenset({'model_inference'})
+#: Setup secrets that git gets on a descriptor (H22).
+CLONE_PURPOSES = frozenset({'marketplace_fetch', 'workspace_checkout'})
+#: The runner's own secrets. ``run`` never delivers them: a command
+#: that the model chose must not get the model key or a setup token.
+SETUP_PURPOSES = FETCH_PURPOSES | CLONE_PURPOSES
 
 type Message = ipc.Message
 
@@ -316,6 +321,11 @@ class Executor:
         wanted = list(request.get('secrets') or [])
         targets = [_target(secret) for secret in wanted]
         try:
+            # In the try, so that the resolution is released. imbi-api
+            # materializes a handle only for the purpose that the
+            # resolution has, so this checks the real purpose.
+            if any(s.get('purpose') in SETUP_PURPOSES for s in wanted):
+                raise Invalid('purpose_not_allowed')
             env = {'PATH': PATH, 'HOME': home}
             for secret, target in zip(wanted, targets, strict=True):
                 env[target] = await self._materialize(secret, context)
@@ -344,6 +354,8 @@ class Executor:
         ):
             raise Invalid('invalid_clone')
         secret: Message | None = request.get('secret')
+        if secret is not None and secret.get('purpose') not in CLONE_PURPOSES:
+            raise Invalid('purpose_not_allowed')
         if secret is not None and self.token is None:
             return {'error': 'no_executor_credential'}
         env = {

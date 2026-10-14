@@ -181,6 +181,24 @@ class RunWithSecretTestCase(TaskTestCase):
         result = await self.run_tool()
         self.assertTrue(result['is_error'])
 
+    async def test_setup_secrets_are_refused(self) -> None:
+        cases = [
+            {'purpose': 'model_inference'},
+            {'purpose': 'workspace_checkout'},
+            {'purpose': 'marketplace_fetch'},
+            {'reference': 'secret://production/anthropic/key'},
+        ]
+        for change in cases:
+            with self.subTest(change=change):
+                secret = self.ARGS['secrets'][0] | change
+                result = await self.run_tool(
+                    {'command': 'echo "$GH_TOKEN"', 'secrets': [secret]}
+                )
+                self.assertTrue(result['is_error'])
+                self.assertIn('harness only', result['content'][0]['text'])
+        self.client.create_resolution.assert_not_called()
+        self.call.assert_not_called()
+
     async def test_invalid_input(self) -> None:
         result = await self.run_tool({'command': 'x', 'secrets': [{}]})
         self.assertTrue(result['is_error'])

@@ -63,6 +63,10 @@ IMBI_TOOLS = ('mcp__imbi__run_with_secret',)
 #: Every setup secret goes to the executor, which hands it over on a
 #: descriptor (git) or to the runner (the model key).
 SETUP_DELIVERY = {'mode': 'file_descriptor', 'target': '3'}
+#: The purposes of the runner's own setup secrets (H22).
+SETUP_PURPOSES = frozenset(
+    {'marketplace_fetch', 'model_inference', 'workspace_checkout'}
+)
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
 _RULES = """\
 # Imbi harness
@@ -767,8 +771,19 @@ class TaskRun:
         """The runner asks for the resolutions and sends the handles to
         the executor. Only the filtered output goes back to the model."""
         resolved: list[Body] = []
+        upstream: Body = self.config.get('model_upstream') or {}
         try:
             wanted: list[Body] = args.get('secrets') or []
+            for secret in wanted:
+                # The runner's own secrets never go to a command that the
+                # model chose. The executor checks the purpose again.
+                if secret['purpose'] in SETUP_PURPOSES or (
+                    secret['reference'] == upstream.get('key_ref')
+                ):
+                    return _tool_error(
+                        'The secret request was refused: '
+                        'the secret is for the harness only'
+                    )
             for secret in wanted:
                 created = await self.api.create_resolution(
                     {

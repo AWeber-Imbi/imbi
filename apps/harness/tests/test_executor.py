@@ -212,6 +212,18 @@ class ExecutorTestCase(BaseTestCase):
                     self.assertEqual(reply, {'error': error})
         self.api.materialize.assert_not_called()
 
+    async def test_setup_purposes_are_never_run(self) -> None:
+        await self.hello()
+        for purpose in sorted(executor.SETUP_PURPOSES):
+            with self.subTest(purpose=purpose):
+                self.api.release.reset_mock()
+                secret = request()['secrets'][0] | {'purpose': purpose}
+                reply = await self.executor.dispatch(request(secrets=[secret]))
+                self.assertEqual(reply, {'error': 'purpose_not_allowed'})
+                self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+        self.api.materialize.assert_not_called()
+        self.spawn.assert_not_called()
+
     async def test_home_in_the_workspace(self) -> None:
         await self.hello()
         await self.executor.dispatch(request(home='/work/chain/tasks/t/home'))
@@ -340,6 +352,12 @@ class CloneTestCase(BaseTestCase):
                 clone(dest='/etc/app'),
                 clone(dest='/work/app'),
                 clone(dest='/work/c/../../etc/app'),
+            ],
+            'purpose_not_allowed': [
+                clone(secret=clone()['secret'] | {'purpose': 'github_write'}),
+                clone(
+                    secret=clone()['secret'] | {'purpose': 'model_inference'}
+                ),
             ],
             'invalid_clone': [
                 clone(dest='/work/chain/repos/-rf'),

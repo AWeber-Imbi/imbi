@@ -498,6 +498,20 @@ class HandleTests(unittest.TestCase):
             'other-runner',
         )
 
+    def test_setup_purpose_is_never_run(self) -> None:
+        resolution = fake_api(
+            'POST', '/test/resolutions', {'purpose': 'model_inference'}
+        )
+        reply = self.send(resolution, 'setup-purpose')
+        self.assert_refused(reply, 'purpose_not_allowed', 'setup-purpose')
+        (row,) = [
+            r
+            for r in fake_api('GET', '/test/state')['resolutions']
+            if r['id'] == resolution['id']
+        ]
+        self.assertEqual(row['count'], 0)
+        self.assertEqual(row['state'], 'released')
+
     def test_peer_that_is_not_the_runner(self) -> None:
         # In the harness-ipc group, so only the SO_PEERCRED check stops it.
         # An unknown op: if the check failed, the reply is an error.
@@ -902,3 +916,41 @@ def run_task_until_done(task: Row, timeout: float = 180) -> None:
             return
         time.sleep(1)
     raise AssertionError(f'task {task["short_id"]} did not end')
+
+
+class ModelKeyRequestTests(unittest.TestCase):
+    """The model asks run_with_secret for the model key: refused, and
+    the key reaches no output, event, or model request."""
+
+    def test_model_key_is_refused(self) -> None:
+        wait_for_runner()
+        step = {
+            'name': 'mcp__imbi__run_with_secret',
+            'input': {
+                'command': 'echo "key=$K"',
+                'secrets': [
+                    {
+                        'reference': 'secret://production/anthropic/key',
+                        'purpose': 'model_inference',
+                        'env': 'K',
+                    }
+                ],
+            },
+        }
+        task = run_task([step])
+        (result,) = tool_results(task)
+        self.assertIn('harness only', result)
+        self.assertNotIn('key=', result)
+        key = model_key()
+        self.assertNotIn(key, json.dumps(task_of(task)['events']))
+        self.assertNotIn(
+            key,
+            json.dumps(
+                fake_api(
+                    'GET', f'/test/model-requests?task={task["short_id"]}'
+                )
+            ),
+        )
+        # Only the runner's own model key resolution exists.
+        (only,) = resolutions_of(task, 'model_inference')
+        self.assertEqual(only['ended_by'], 'executor')
