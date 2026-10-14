@@ -839,3 +839,14 @@ class FlushTestCase(TaskTestCase):
             await self.run_task.flush()
         self.assertEqual(self.sent, [])
         self.assertEqual(self.run_task.recorder.pending, [])
+
+    async def test_a_large_queue_drains_in_linear_work(self) -> None:
+        self.queue(*(f'e{n}' for n in range(1000)))
+        with mock.patch.object(
+            task.events, 'size', wraps=task.events.size
+        ) as size:
+            await self.run_task.flush()
+        self.assertEqual(sum(len(batch) for batch in self.sent), 1000)
+        self.assertEqual(len(self.sent), 10)
+        # One size() per event: the batches are made once.
+        self.assertEqual(size.call_count, 1000)

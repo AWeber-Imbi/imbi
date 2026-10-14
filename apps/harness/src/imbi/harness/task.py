@@ -753,23 +753,22 @@ class TaskRun:
           one event at a time, so only the event that fails is lost.
         - Any other refusal drops the batch.
         """
-        pending = self.recorder.take()
-        single = 0
-        while pending:
-            batch = pending[:1] if single else events.batches(pending)[0]
+        queue = events.batches(self.recorder.take())
+        while queue:
+            batch = queue.pop(0)
             try:
                 await self.api.append_events(self.session_id, batch)
             except httpx.HTTPError as err:
                 LOGGER.warning(
                     'Events of %s not sent: %s', self.api.short_id, err
                 )
-                self.recorder.requeue(pending)
+                self.recorder.requeue([e for b in [batch, *queue] for e in b])
                 return
             except api.Refused as err:
                 if err.status == http.HTTPStatus.REQUEST_ENTITY_TOO_LARGE and (
                     len(batch) > 1
                 ):
-                    single = len(batch)
+                    queue[:0] = [[event] for event in batch]
                     continue
                 LOGGER.warning(
                     'Dropped %d events of %s: %s',
@@ -777,8 +776,6 @@ class TaskRun:
                     self.api.short_id,
                     err,
                 )
-            single = max(0, single - 1)
-            pending = pending[len(batch) :]
 
     # --- run_with_secret ----------------------------------------------
 
