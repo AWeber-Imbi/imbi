@@ -52,3 +52,14 @@ class RedactTestCase(unittest.TestCase):
     def test_no_values(self) -> None:
         self.assertEqual(redact.redact(b'plain', []), 'plain')
         self.assertEqual(redact.redact(b'plain', [b'']), 'plain')
+
+    def test_value_split_by_the_read_limit(self) -> None:
+        # The reader kept MAX_OUTPUT + OVERLAP bytes and cut a value.
+        kept = (b'y' * redact.MAX_OUTPUT + VALUE + b'z' * redact.OVERLAP)[
+            : redact.MAX_OUTPUT + redact.OVERLAP
+        ]
+        kept = kept[: -redact.OVERLAP + 6]  # ends inside a second value
+        kept += VALUE[:6]
+        text = redact.redact(kept, [VALUE], truncated=True)
+        self.assertTrue(text.endswith('[output truncated]'))
+        self.assertNotIn(VALUE[:6].decode(), text)

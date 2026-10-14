@@ -6,14 +6,17 @@ kind suite in ``isolation/`` covers it.
 
 import asyncio
 import base64
+import os
 import pathlib
 import stat
 import tempfile
+import threading
+import time
 import typing
 import unittest
 from unittest import mock
 
-from imbi.harness import api, executor, ipc, privilege
+from imbi.harness import api, executor, ipc, privilege, redact
 
 SECRET = 'ghs_0123456789abcdef0123456789abcdef'
 RUNNER_UID = 10001
@@ -49,7 +52,7 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(privilege, 'uid', return_value=RUNNER_UID):
             self.executor = executor.Executor(self.api, self.credentials)
         self.spawn = mock.AsyncMock(
-            return_value=(0, f'token={SECRET}\n'.encode())
+            return_value=(0, f'token={SECRET}\n'.encode(), False)
         )
         self.executor._spawn = self.spawn  # type: ignore[method-assign]
 
@@ -90,10 +93,18 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body['handle'], 'h')
         self.assertEqual(body['task_id'], 't')
         self.assertGreaterEqual(len(body['nonce']), 16)
-        command, cwd, env = self.spawn.call_args.args
+        command, cwd, env, timeout = self.spawn.call_args.args
         self.assertEqual(command, 'gh pr list')
         self.assertEqual(cwd, '/work/chain')
-        self.assertEqual(env, {'PATH': executor.PATH, 'GH_TOKEN': SECRET})
+        self.assertEqual(
+            env,
+            {
+                'PATH': executor.PATH,
+                'HOME': '/work/chain/home',
+                'GH_TOKEN': SECRET,
+            },
+        )
+        self.assertEqual(timeout, executor.COMMAND_TIMEOUT)
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
 
     async def test_new_nonce_for_each_materialization(self) -> None:
@@ -143,6 +154,27 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
             reply = await self.executor.dispatch(request())
         self.assertEqual(reply['exit_code'], 0)
 
+    async def test_timeout_is_capped(self) -> None:
+        await self.hello()
+        await self.executor.dispatch(request(timeout_seconds=3))
+        self.assertEqual(self.spawn.call_args.args[3], 3)
+        await self.executor.dispatch(request(timeout_seconds=10**6))
+        self.assertEqual(
+            self.spawn.call_args.args[3], executor.COMMAND_TIMEOUT
+        )
+
+    async def test_dropped_output_is_marked(self) -> None:
+        await self.hello()
+        self.spawn.return_value = (0, b'x' * (redact.OVERLAP + 10), True)
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(reply['output'], 'x' * 10 + '\n[output truncated]')
+
+    async def test_end_chain_kills_agent_processes(self) -> None:
+        with mock.patch.object(privilege, 'kill_agent') as kill:
+            reply = await self.executor.dispatch({'op': 'end_chain'})
+        self.assertEqual(reply, {'ok': True})
+        kill.assert_called_once_with()
+
     async def test_invalid_requests(self) -> None:
         await self.hello()
         file_delivery = {'mode': 'file', 'target': 'token'}
@@ -152,6 +184,9 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
                 request(cwd='/etc'),
                 request(cwd='/work'),
                 request(cwd='/work/../etc'),
+                request(cwd='/work/chain/../../etc'),
+                request(cwd='work/chain'),
+                request(cwd=None),
             ],
             'delivery_not_supported': [
                 request(secrets=[{'handle': 'h', 'delivery': file_delivery}]),
@@ -209,7 +244,7 @@ class SocketTestCase(ExecutorTestCase):
         await self.hello()
         started = asyncio.Event()
 
-        async def forever(*_: typing.Any) -> tuple[int, bytes]:
+        async def forever(*_: typing.Any) -> tuple[int, bytes, bool]:
             started.set()
             await asyncio.sleep(3600)
             raise AssertionError('not reached')
@@ -225,3 +260,53 @@ class SocketTestCase(ExecutorTestCase):
             await asyncio.sleep(0.01)
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
         self.assertIsNone(await ipc.read(reader))
+
+
+class CollectTestCase(unittest.TestCase):
+    """The bounded pipe read of ``_spawn``."""
+
+    def pipe(self) -> tuple[int, int]:
+        read, write = os.pipe()
+        self.addCleanup(os.close, read)
+        return read, write
+
+    def test_keeps_at_most_the_limit(self) -> None:
+        read, write = self.pipe()
+
+        def produce() -> None:
+            with os.fdopen(write, 'wb') as out:
+                for _ in range(160):  # 10 MiB
+                    out.write(b'x' * 65536)
+
+        writer = threading.Thread(target=produce)
+        writer.start()
+        kept, dropped, ended = executor._collect(
+            read, time.monotonic() + 30, 1000, threading.Event()
+        )
+        writer.join()
+        self.assertEqual(len(kept), 1000)
+        self.assertTrue(dropped)
+        self.assertTrue(ended)
+
+    def test_returns_at_the_deadline_while_the_pipe_is_open(self) -> None:
+        read, write = self.pipe()
+        self.addCleanup(os.close, write)
+        os.write(write, b'started\n')
+        started = time.monotonic()
+        kept, dropped, ended = executor._collect(
+            read, started + 0.5, 1000, threading.Event()
+        )
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(kept, b'started\n')
+        self.assertFalse(dropped)
+        self.assertFalse(ended)
+
+    def test_stop(self) -> None:
+        read, write = self.pipe()
+        self.addCleanup(os.close, write)
+        stop = threading.Event()
+        stop.set()
+        self.assertEqual(
+            executor._collect(read, time.monotonic() + 30, 10, stop),
+            (b'', False, False),
+        )

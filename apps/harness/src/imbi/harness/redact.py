@@ -15,6 +15,10 @@ if typing.TYPE_CHECKING:
 MARK = b'[REDACTED]'
 #: The largest output, in characters, that the model gets.
 MAX_OUTPUT = 64 * 1024
+#: Bytes after the output limit that the executor keeps, so that a
+#: value that the cut splits is still found. Longer than the longest
+#: encoding of any value it filters.
+OVERLAP = 64 * 1024
 #: A shorter base64 fragment is not matched: it matches too much text.
 MIN_FRAGMENT = 8
 
@@ -44,16 +48,25 @@ def variants(value: bytes) -> set[bytes]:
     return {item for item in found if item}
 
 
-def redact(output: bytes, values: collections.abc.Iterable[bytes]) -> str:
+def redact(
+    output: bytes,
+    values: collections.abc.Iterable[bytes],
+    *,
+    truncated: bool = False,
+) -> str:
     """Replace each value and its encodings, then limit the size.
 
     The size limit comes after the replacement, so a cut cannot leave
-    a part of a value.
+    a part of a value. ``truncated``: the reader dropped bytes after
+    the end of ``output``, so its last :data:`OVERLAP` bytes can hold
+    a part of a value; they are removed.
     """
     patterns = {item for value in values if value for item in variants(value)}
     for pattern in sorted(patterns, key=len, reverse=True):
         output = output.replace(pattern, MARK)
+    if truncated:
+        output = output[:-OVERLAP]
     text = output.decode('utf-8', 'replace')
-    if len(text) > MAX_OUTPUT:
+    if truncated or len(text) > MAX_OUTPUT:
         text = text[:MAX_OUTPUT] + '\n[output truncated]'
     return text
