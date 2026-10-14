@@ -88,6 +88,7 @@ SETUP_DELIVERY = {'mode': 'file_descriptor', 'target': '3'}
 SETUP_PURPOSES = frozenset(
     {'marketplace_fetch', 'model_inference', 'workspace_checkout'}
 )
+_UNTRUSTED_TAG = re.compile(r'<\s*/?\s*untrusted', re.IGNORECASE)
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
 _RULES = """\
 # Imbi harness
@@ -770,7 +771,9 @@ class TaskRun:
         origin: Body = self.task.get('origin') or {}
         if origin.get('kind') != 'webhook':
             return text
-        text = text.replace('</untrusted', '&lt;/untrusted')
+        # Any opening or closing tag, in any case and spacing: the text
+        # can neither close the block nor open a nested one.
+        text = _UNTRUSTED_TAG.sub(lambda m: '&lt;' + m.group(0)[1:], text)
         return f'<untrusted source="webhook">\n{text}\n</untrusted>'
 
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
@@ -991,9 +994,15 @@ class TaskRun:
 
     async def wait_while_paused(self) -> str | None:
         """Hold the next tool call while the control is ``pause``."""
-        while self.control == 'pause':
+        while self.control == 'pause' and not self.stopped:
             await self.nap()
-        return 'task_stopped' if self.control == 'cancel' else None
+        return 'task_stopped' if self.stopped else None
+
+    @property
+    def stopped(self) -> bool:
+        """A person cancelled the task, or it is closed (a budget, a
+        timeout, an expired request): every wait ends."""
+        return self.control == 'cancel' or self.closed
 
     async def approve(
         self, name: str, arguments: Body, tool_use_id: str
@@ -1032,7 +1041,7 @@ class TaskRun:
     async def wait_request(self, request_id: str) -> Body:
         """Read the task events until the request is resolved or
         expired, or the task stops. Return the event payload."""
-        while self.control != 'cancel' and not self.closed:
+        while not self.stopped:
             try:
                 found = await self.api.events(self.seq)
             except (api.Refused, httpx.HTTPError) as err:
@@ -1144,8 +1153,20 @@ class TaskRun:
             return _tool_error('Imbi is not available')
         except (KeyError, TypeError):
             return _tool_error('The input is not valid')
-        summary = await self.children(str(child['short_id']))
-        return {'content': [{'type': 'text', 'text': json.dumps(summary)}]}
+        return await self.wait_child(str(child['short_id']))
+
+    async def wait_child(self, short_id: str) -> Body:
+        """Run the child and return its summary, unless this task stops
+        first: the child then goes on, and the chain waits for it."""
+        assert self.children is not None  # noqa: S101 - checked above
+        waiting = asyncio.ensure_future(self.children(short_id))
+        while not waiting.done() and not self.stopped:
+            await asyncio.wait({waiting}, timeout=REQUEST_POLL)
+        if not waiting.done():
+            return _tool_error('This task stopped; the child task goes on')
+        return {
+            'content': [{'type': 'text', 'text': json.dumps(waiting.result())}]
+        }
 
     # --- run_with_secret ----------------------------------------------
 

@@ -1269,3 +1269,58 @@ class AbandonTestCase(TaskTestCase):
         self.client.post.side_effect = httpx.ConnectError('down')
         with self.assertLogs('imbi.harness.task', 'WARNING'):
             await self.run_task.abandon('runner_stopped')
+
+
+class StoppedTaskTestCase(RoutedTestCase):
+    async def test_closed_task_ends_a_pause(self) -> None:
+        self.run_task.control = 'pause'
+        with mock.patch.object(task, 'REQUEST_POLL', 3600):
+            waiting = asyncio.create_task(self.run_task.wait_while_paused())
+            await asyncio.sleep(0.01)
+            # Closed by Imbi (a budget), with control still pause.
+            self.run_task._state({'status': 'closed', 'control': 'pause'})
+            self.assertEqual(
+                await asyncio.wait_for(waiting, 1), 'task_stopped'
+            )
+
+    async def test_closed_task_ends_a_request_wait(self) -> None:
+        with mock.patch.object(task, 'REQUEST_POLL', 3600):
+            waiting = asyncio.create_task(self.run_task.wait_request('q1'))
+            await asyncio.sleep(0.01)
+            self.run_task._state({'status': 'closed'})
+            self.assertEqual(
+                await asyncio.wait_for(waiting, 1), {'status': 'stopped'}
+            )
+
+    async def test_stopped_parent_stops_waiting_for_its_child(self) -> None:
+        release = asyncio.Event()
+
+        async def child(_short_id: str) -> dict[str, typing.Any]:
+            await release.wait()
+            return {'outcome': 'done_acted'}
+
+        self.run_task.children = child
+        with mock.patch.object(task, 'REQUEST_POLL', 0.01):
+            waiting = asyncio.create_task(self.run_task.wait_child('T-2'))
+            await asyncio.sleep(0.02)
+            self.run_task._state({'status': 'closed'})
+            result = await asyncio.wait_for(waiting, 1)
+        self.assertTrue(result['is_error'])
+        self.assertIn('child task goes on', result['content'][0]['text'])
+        release.set()
+
+
+class UntrustedTagTestCase(TaskTestCase):
+    def test_tags_in_any_case_and_spacing_are_escaped(self) -> None:
+        self.run_task.task['origin'] = {'kind': 'webhook'}
+        for text in (
+            'a </Untrusted> b',
+            'a </ UNTRUSTED > b',
+            'a <untrusted source="x"> b',
+            'a < untrusted> b',
+        ):
+            with self.subTest(text=text):
+                self.run_task.task['description'] = text
+                body = self.run_task.instruction().split('\n')[1]
+                self.assertNotRegex(body, r'(?i)<\s*/?\s*untrusted')
+                self.assertIn('&lt;', body)

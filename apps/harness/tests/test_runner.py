@@ -386,3 +386,40 @@ class EndOfPodTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await subject.shutdown()
         subject.api.finish.assert_not_called()
+
+
+class ConcurrentChildrenTestCase(unittest.IsolatedAsyncioTestCase):
+    async def run_two(self, order: list[str]) -> list[typing.Any]:
+        subject = make_runner()
+        subject.layout = runner.task.Layout(pathlib.Path('/work/c'))
+        subject.api = mock.AsyncMock(spec=api.Api)
+        claims = [
+            {'agent_token': f'iat_{s}_0123456789', 'task': {'short_id': s}}
+            for s in order
+        ]
+
+        async def chain_claim(*_: typing.Any) -> typing.Any:
+            # Let the other parent run between the claim and its start.
+            await asyncio.sleep(0)
+            return claims.pop(0) if claims else None
+
+        subject.api.chain_claim.side_effect = chain_claim
+
+        def make_run(*args: typing.Any, **_: typing.Any) -> typing.Any:
+            short_id = args[1]['task']['short_id']
+            run = mock.Mock()
+            run.run = mock.AsyncMock(return_value={'short_id': short_id})
+            return run
+
+        with mock.patch.object(runner.task, 'TaskRun', side_effect=make_run):
+            return await asyncio.gather(
+                subject.run_child('T-2'), subject.run_child('T-3')
+            )
+
+    async def test_two_parents_in_both_orders(self) -> None:
+        for order in (['T-2', 'T-3'], ['T-3', 'T-2']):
+            with self.subTest(order=order):
+                self.assertEqual(
+                    await self.run_two(order),
+                    [{'short_id': 'T-2'}, {'short_id': 'T-3'}],
+                )
