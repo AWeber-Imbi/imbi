@@ -146,6 +146,11 @@ class ConfigTests(PlatformTestCase):
         response = await self.put_config(permission_mode='acceptEdits')
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['version'], 1)
+        response = await self.client.get(
+            self.org_url('agent-platform-config/')
+        )
+        self.assertEqual(response.json()['version'], 1)
+        self.assertEqual(response.json()['created_by'], self.email)
         # No change, no version.
         response = await self.put_config(permission_mode='acceptEdits')
         self.assertEqual(response.json()['version'], 1)
@@ -417,3 +422,15 @@ class BundleTests(PlatformTestCase):
             self.graph, self.harness, task, self.org
         )
         self.assertEqual(bundle.repositories, [])
+
+    async def test_a_missing_pinned_version_fails_the_claim(self) -> None:
+        await self.put_config(system_prompt_prefix='one')
+        response = await self.create_task()
+        task = await self.task_row(response.json()['short_id'])
+        with self.assertRaisesRegex(LookupError, 'version 9 is missing'):
+            await harness_api._identity(
+                self.graph,
+                self.harness,
+                {**task, 'platform_config_version': 9},
+                self.org,
+            )

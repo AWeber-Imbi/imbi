@@ -477,9 +477,15 @@ async def _identity(
     version: int | None = task.get('platform_config_version')
     config = platform.AgentPlatformConfig()
     if version is not None:
-        _version, config = await platform.load(
+        loaded, config = await platform.load(
             store, task['organization_id'], version
         )
+        if loaded != version:
+            # Never send the defaults as version N: _deliver undoes
+            # the claim.
+            raise LookupError(
+                f'Agent platform configuration version {version} is missing'
+            )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
     return bundle.model_copy(

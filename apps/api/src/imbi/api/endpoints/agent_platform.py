@@ -103,8 +103,13 @@ async def get_agent_platform_config(
 ) -> PlatformConfigResponse:
     """Return the newest configuration version of the organization."""
     row = await store.platform_config(org_id)
-    version, config = await platform.load(store, org_id)
-    return _config_response(version, config, row)
+    if row is None:
+        return _config_response(None, platform.AgentPlatformConfig(), None)
+    return _config_response(
+        int(row['version']),
+        platform.AgentPlatformConfig.model_validate(row['config']),
+        row,
+    )
 
 
 @agent_platform_config_router.put('/', response_model=PlatformConfigResponse)
