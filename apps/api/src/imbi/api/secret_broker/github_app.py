@@ -43,7 +43,8 @@ import orjson
 import pydantic
 
 from imbi.api.secret_broker import broker, providers
-from imbi.plugins.github import _app_auth, _hosts, _repos
+from imbi.common import graph
+from imbi.plugins.github import _app_auth, _hosts
 from imbi.plugins.github.deployment import (
     _accept_header,  # pyright: ignore[reportPrivateUsage]
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
@@ -71,9 +72,17 @@ _TIMEOUT_SECONDS = 10.0
 _DEFAULT_TTL = datetime.timedelta(minutes=55)
 _REPOSITORY = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 _GHEC_TENANT = re.compile(r'[a-z0-9][a-z0-9-]*\.ghe\.com')
-#: The only project link that names the repository of a project. Other
-#: links are free text and give no access.
-REPOSITORY_LINK = 'github-repository'
+_REPOSITORY_ID = re.compile(r'[0-9]{1,20}')
+#: The plugin of the Integrations that verify a project's repository.
+GITHUB_PLUGIN = 'github'
+#: The verified repository ids of a project, one row for each
+#: ``EXISTS_IN`` edge to a GitHub Integration.
+_VERIFIED_REPOSITORIES: typing.LiteralString = (
+    'MATCH (:Project {{id: {project_id}}})-[ei:EXISTS_IN]->'
+    '(i:Integration {{plugin: {plugin}}}) '
+    'RETURN i.options AS options, '
+    'ei.verified_identifier AS repository_id'
+)
 #: The operator's GHES hosts, comma separated. Never tenant input.
 GHES_HOSTS_ENV = 'IMBI_SECRETS_GITHUB_GHES_HOSTS'
 
@@ -248,36 +257,54 @@ async def private_key(
     return material.value.decode()
 
 
-async def project_repositories(host: str, project_id: str | None) -> list[str]:
-    """Return the ``owner/name`` repository of a project on ``host``.
+async def project_repository_ids(
+    host: str, project_id: str | None
+) -> list[int]:
+    """Return the verified GitHub repository ids of a project on ``host``.
 
-    Only the :data:`REPOSITORY_LINK` link counts. No other link, and not
-    the project-type slug fallback of the GitHub plugin, gives access.
+    Only the ``verified_identifier`` of an ``EXISTS_IN`` edge to a GitHub
+    Integration for ``host`` counts. The GitHub plugin writes it from the
+    GitHub API (the lifecycle plugin and the doctor repair). A project
+    link, or an edge identifier that a user edits, gives no access.
 
     Raises:
-        BrokerError: ``project_repository_missing`` when the project has
-            no such link on ``host``.
+        BrokerError: ``project_repository_unverified`` when the project
+            has no verified repository on ``host``.
 
     """
     if project_id is None:
         return []
     from imbi.api import lifespans
-    from imbi.api.endpoints import _helpers
+    from imbi.api.plugins import parse_options
 
     db = lifespans._graph  # pyright: ignore[reportPrivateUsage]
     if db is None:
         raise providers.BrokerError(
             'secret_provider_unavailable', 'graph_unavailable'
         )
-    url = (await _helpers.lookup_project_links(db, project_id)).get(
-        REPOSITORY_LINK
+    records = await db.execute(
+        _VERIFIED_REPOSITORIES,
+        {'project_id': project_id, 'plugin': GITHUB_PLUGIN},
+        ['options', 'repository_id'],
     )
-    found = None if url is None else _repos.parse_owner_repo(url, host)
-    if found is None:
+    found: set[int] = set()
+    for record in records:
+        value = str(graph.parse_agtype(record.get('repository_id')) or '')
+        if _REPOSITORY_ID.fullmatch(value) is None:
+            continue
+        try:
+            integration_host = _hosts.flavor_host(
+                parse_options(record.get('options')), 'github_app'
+            )
+        except ValueError:
+            continue
+        if integration_host.lower() == host:
+            found.add(int(value))
+    if not found:
         raise providers.BrokerError(
-            'secret_access_denied', 'project_repository_missing'
+            'secret_access_denied', 'project_repository_unverified'
         )
-    return [f'{found[0]}/{found[1]}']
+    return sorted(found)
 
 
 def _expiry(value: object) -> datetime.datetime:
@@ -388,12 +415,14 @@ class GitHubApp(providers.Provider):
         installation_id: str,
         permissions: dict[str, str],
         repositories: list[str] | None = None,
+        repository_ids: list[int] | None = None,
     ) -> tuple[str, datetime.datetime]:
         token, expires_at = await _app_auth._mint(  # pyright: ignore[reportPrivateUsage]
             client,
             installation_id,
             _app_auth.freeze_scope(permissions),
             repositories,
+            repository_ids,
         )
         return token, _expiry(expires_at)
 
@@ -480,10 +509,14 @@ class GitHubApp(providers.Provider):
     ) -> providers.Material:
         """Mint a token for the task's repositories and the purpose.
 
+        ``marketplace_fetch`` uses the ``repositories`` of the binding.
+        The other purposes use the verified repository ids of the task's
+        project (:func:`project_repository_ids`).
+
         Raises:
             BrokerError: The purpose is unknown, the task has no
-                repository, a repository is outside the installation,
-                or GitHub refused the request.
+                verified repository, a repository is outside the
+                installation, or GitHub refused the request.
 
         """
         if field is not None:
@@ -493,15 +526,17 @@ class GitHubApp(providers.Provider):
             raise providers.BrokerError(
                 'secret_access_denied', 'purpose_not_supported'
             )
+        repositories: list[str] = []
+        repository_ids: list[int] | None = None
         if context.purpose == 'marketplace_fetch':
             repositories = list(locator.get('repositories', []))
         else:
-            repositories = await project_repositories(
+            repository_ids = await project_repository_ids(
                 _host(config), context.project_id
             )
         # An empty list never reaches GitHub: no repositories would give
         # a token for every repository of the installation.
-        if not repositories:
+        if not repositories and not repository_ids:
             raise providers.BrokerError(
                 'secret_access_denied', 'no_repositories'
             )
@@ -513,14 +548,18 @@ class GitHubApp(providers.Provider):
                 consumer=context.binding_id,
                 task_id=context.task_id,
             ) as client:
-                installation = await self._installation(
-                    client, locator['installation_id']
-                )
+                names = None
+                if repositories:
+                    installation = await self._installation(
+                        client, locator['installation_id']
+                    )
+                    names = _names(installation, repositories)
                 token, expires_at = await self._mint(
                     client,
                     locator['installation_id'],
                     permissions,
-                    _names(installation, repositories),
+                    names,
+                    repository_ids,
                 )
         return providers.Material(
             token.encode(),

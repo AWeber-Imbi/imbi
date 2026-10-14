@@ -6,6 +6,7 @@ Skipped unless these environment variables are set:
 - ``IMBI_LIVE_GITHUB_INSTALLATION_ID``: its installation id
 - ``IMBI_LIVE_GITHUB_PRIVATE_KEY_FILE``: the path of its private key (PEM)
 - ``IMBI_LIVE_GITHUB_REPOSITORY``: a sandbox repository, ``owner/name``
+- ``IMBI_LIVE_GITHUB_REPOSITORY_ID``: its numeric repository id
 - ``IMBI_LIVE_GITHUB_HOST``: optional, ``github.com`` by default. A GHES
   host must also be in ``IMBI_SECRETS_GITHUB_GHES_HOSTS``.
 
@@ -33,6 +34,7 @@ ENV = {
         'INSTALLATION_ID',
         'PRIVATE_KEY_FILE',
         'REPOSITORY',
+        'REPOSITORY_ID',
         'HOST',
     )
 }
@@ -61,8 +63,8 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
         for name, value in (
             ('private_key', mock.AsyncMock(return_value=key)),
             (
-                'project_repositories',
-                mock.AsyncMock(return_value=[ENV['REPOSITORY']]),
+                'project_repository_ids',
+                mock.AsyncMock(return_value=[int(ENV['REPOSITORY_ID'])]),
             ),
         ):
             patcher = mock.patch.object(github_app, name, value)
@@ -110,6 +112,16 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_checkout_write_and_revoke(self) -> None:
         read = await self._token('workspace_checkout')
+        async with httpx.AsyncClient(
+            base_url=github_app._api_base(self.config['host']),  # pyright: ignore[reportPrivateUsage]
+            headers={'Authorization': f'Bearer {read}'},
+        ) as client:
+            response = await client.get('/installation/repositories')
+        self.assertEqual(
+            [repo['id'] for repo in response.json()['repositories']],
+            [int(ENV['REPOSITORY_ID'])],
+            'the token reaches other repositories',
+        )
         clone = self._git(read, 'clone', '--depth', '1', self.url, 'repo')
         self.assertEqual(clone.returncode, 0, 'clone failed')
         self.workdir = self.workdir / 'repo'
