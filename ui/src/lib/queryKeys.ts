@@ -9,6 +9,10 @@ export const queryKeys = {
   adminLocalAuth: () => ['admin', 'local-auth'] as const,
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
+  agentMarketplaces: (orgSlug: string) =>
+    ['agentMarketplaces', orgSlug] as const,
+  agentPlatformConfig: (orgSlug: string) =>
+    ['agentPlatformConfig', orgSlug] as const,
   agents: (orgSlug: string) => ['agents', orgSlug] as const,
   // Without a short id: the prefix for every task of the org.
   agentTask: (orgSlug: string, ...shortId: string[]) =>

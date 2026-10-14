@@ -17,6 +17,7 @@ import {
   isAgentsSection,
 } from './agentsNav'
 import { DashboardPage } from './DashboardPage'
+import { PlatformPage } from './PlatformPage'
 import { RunnersPage } from './RunnersPage'
 import { useWaitingTaskCount } from './taskQueries'
 import { TasksPage } from './TasksPage'
@@ -53,6 +54,8 @@ export function AgentsArea() {
           <UsagePage />
         ) : current === 'runners' ? (
           <RunnersPage />
+        ) : current === 'platform' ? (
+          <PlatformPage />
         ) : (
           <WorkflowsManagement />
         )}

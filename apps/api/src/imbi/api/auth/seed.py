@@ -514,6 +514,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'read',
         'View the runner pools and runners that serve the organization',
     ),
+    (
+        'agent_platform_config:write',
+        'agent_platform_config',
+        'write',
+        'Change the base agent configuration and the plugin marketplaces',
+    ),
     # Secrets broker (ADR 0022). Granted to no non-admin default role.
     (
         'secret_provider:read',

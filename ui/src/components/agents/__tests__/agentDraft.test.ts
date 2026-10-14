@@ -34,14 +34,26 @@ describe('agentDraft', () => {
   it('round-trips the settings', () => {
     const draft = draftFromAgent(agent(), null)
     expect(draft.settings).toEqual({
+      githubAppBinding: '',
+      kept: { approval_tools: [], denied_tools: [] },
       maxConcurrentTasks: '3',
       monthlyCostCap: '$400.00',
+      plugins: [],
       requiredLabels: '',
       responseSla: '4h',
+      secrets: '',
       taskBudget: '$5.00',
       taskTimeout: '30m',
     })
+    const empty = {
+      approval_tools: [],
+      denied_tools: [],
+      github_app_binding: null,
+      plugins: [],
+      secrets: [],
+    }
     expect(settingsFromDraft(draft.settings)).toEqual({
+      ...empty,
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
       required_labels: [],
@@ -50,6 +62,7 @@ describe('agentDraft', () => {
       task_timeout_seconds: 1800,
     })
     expect(settingsFromDraft(emptyDraft().settings)).toEqual({
+      ...empty,
       max_concurrent_tasks: null,
       monthly_cost_cap: null,
       required_labels: [],
@@ -57,6 +70,35 @@ describe('agentDraft', () => {
       task_budget: null,
       task_timeout_seconds: null,
     })
+  })
+
+  it('keeps the platform settings that the editor does not show', () => {
+    const source = agent()
+    source.settings = {
+      ...source.settings,
+      denied_tools: ['WebFetch'],
+      github_app_binding: 'secret://gh/mender',
+      permission_mode: 'plan',
+      plugins: [{ marketplace: 'mp', plugin: 'lint', sha: 'a'.repeat(40) }],
+      secrets: ['secret://ci/token'],
+    }
+    const draft = draftFromAgent(source, null)
+    expect(draft.settings.secrets).toBe('secret://ci/token')
+    const settings = settingsFromDraft(draft.settings)
+    expect(settings.permission_mode).toBe('plan')
+    expect(settings.denied_tools).toEqual(['WebFetch'])
+    expect(settings.plugins).toEqual(source.settings.plugins)
+    expect(settings.github_app_binding).toBe('secret://gh/mender')
+  })
+
+  it('checks the secret references', () => {
+    const draft = draftFromAgent(agent(), null)
+    draft.settings.secrets = 'secret://ci/token#value\n\nsecret://ci/x'
+    expect(draftErrors(draft).secrets).toBeUndefined()
+    draft.settings.secrets = 'ci/token'
+    expect(draftErrors(draft).secrets).toBeTruthy()
+    draft.settings.githubAppBinding = 'secret://gh/bot#field'
+    expect(draftErrors(draft).githubAppBinding).toBeTruthy()
   })
 
   it('parses and checks the required runner labels', () => {

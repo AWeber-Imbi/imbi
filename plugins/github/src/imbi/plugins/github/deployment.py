@@ -1171,6 +1171,27 @@ class GitHubDeployment(DeploymentCapability):
                 return None
             return await self._blob_text(client, blob_sha)
 
+    async def get_file(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        path: str,
+        ref: str,
+    ) -> str | None:
+        """Read ``path`` at ``ref`` through the contents API, raw."""
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
+            response = await client.get(
+                f'/contents/{urllib.parse.quote(path)}',
+                params={'ref': ref},
+                headers={'Accept': 'application/vnd.github.raw+json'},
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.text
+
     async def list_commit_notes(
         self,
         ctx: PluginContext,

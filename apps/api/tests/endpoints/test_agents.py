@@ -12,7 +12,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_prompts
-from imbi.api import models, workflows
+from imbi.api import harness, models, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.common import graph
 
@@ -65,6 +65,14 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = (
             lambda: self.mock_db
+        )
+        # The organization has no agent platform configuration and no
+        # marketplaces. test_agent_platform tests them with Postgres.
+        self.mock_harness = mock.AsyncMock(spec=harness.HarnessStore)
+        self.mock_harness.platform_config.return_value = None
+        self.mock_harness.marketplaces.return_value = []
+        self.test_app.dependency_overrides[harness._inject_store] = (
+            lambda: self.mock_harness
         )
         self.workflow_store = mock.AsyncMock(spec=workflows.WorkflowStore)
         self.workflow_store.agent_references.return_value = 0
@@ -1782,6 +1790,9 @@ class AgentMembershipTests(support.SharedAppAsyncTestCase):
         overrides = self.test_app.dependency_overrides
         overrides[permissions.get_current_user] = current_user
         overrides[graph._inject_graph] = lambda: self.graph
+        store = mock.AsyncMock(spec=harness.HarnessStore)
+        store.platform_config.return_value = None
+        overrides[harness._inject_store] = lambda: store
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.test_app),
             base_url='http://test',

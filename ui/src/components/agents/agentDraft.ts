@@ -1,6 +1,7 @@
 import { slugify } from '@/lib/utils'
 import type {
   Agent,
+  AgentPlugin,
   AgentSettings,
   AgentSubagent,
   AgentToolConfig,
@@ -33,6 +34,17 @@ export type AgentTagChip = Agent['tags'][number]
 
 export type AgentTools = Record<string, AgentToolConfig>
 
+/**
+ * The agent platform settings (ADR 0022) that the editor does not
+ * show. A save keeps them as they are.
+ */
+export type KeptSettings = Partial<
+  Pick<
+    AgentSettings,
+    'approval_tools' | 'denied_tools' | 'permission_mode' | 'sandbox'
+  >
+>
+
 export type ParamKey =
   | 'maxTokens'
   | 'promptCaching'
@@ -55,11 +67,18 @@ export interface PromptDraft {
 export type ResponseSla = NonNullable<AgentSettings['response_sla']>
 
 export interface SettingsDraft {
+  /** The `secret://` reference of the agent's GitHub App binding. */
+  githubAppBinding: string
+  kept: KeptSettings
   maxConcurrentTasks: string
   monthlyCostCap: string
+  /** Plugins from the allowed marketplaces. The API pins each one. */
+  plugins: AgentPlugin[]
   /** Runner labels, separated by commas. */
   requiredLabels: string
   responseSla: '' | ResponseSla
+  /** `secret://` references, one on each line. */
+  secrets: string
   taskBudget: string
   taskTimeout: string
 }
@@ -125,6 +144,10 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
   if (parseLabels(s.requiredLabels).some((l) => !RUNNER_LABEL.test(l)))
     errors.requiredLabels =
       'Use lower-case letters, digits, ".", "_", and "-", for example gpu'
+  if (parseLines(s.secrets).some((r) => !SECRET_REF.test(r)))
+    errors.secrets = 'Use secret://<scope>/<path>, with an optional #field'
+  if (s.githubAppBinding.trim() && !BINDING_REF.test(s.githubAppBinding.trim()))
+    errors.githubAppBinding = 'Use secret://<scope>/<path>'
   for (const key of Object.keys(PARAM_FIELDS) as ParamKey[]) {
     const p = draft.prompt.params[key]
     if (!p.on || p.value === PARAM_OFF) continue
@@ -147,6 +170,13 @@ export function draftFromAgent(
     name: agent.name,
     prompt: promptDraftFromVersion(prompt),
     settings: {
+      githubAppBinding: settings.github_app_binding ?? '',
+      kept: {
+        approval_tools: settings.approval_tools,
+        denied_tools: settings.denied_tools,
+        permission_mode: settings.permission_mode,
+        sandbox: settings.sandbox,
+      },
       maxConcurrentTasks:
         settings.max_concurrent_tasks == null
           ? ''
@@ -155,8 +185,10 @@ export function draftFromAgent(
         settings.monthly_cost_cap == null
           ? ''
           : formatMoney(settings.monthly_cost_cap),
+      plugins: settings.plugins ?? [],
       requiredLabels: (settings.required_labels ?? []).join(', '),
       responseSla: settings.response_sla ?? '',
+      secrets: (settings.secrets ?? []).join('\n'),
       taskBudget:
         settings.task_budget == null
           ? ''
@@ -194,10 +226,14 @@ export function emptyDraft(): AgentDraft {
     name: '',
     prompt: promptDraftFromVersion(null),
     settings: {
+      githubAppBinding: '',
+      kept: {},
       maxConcurrentTasks: '',
       monthlyCostCap: '',
+      plugins: [],
       requiredLabels: '',
       responseSla: '',
+      secrets: '',
       taskBudget: '',
       taskTimeout: '',
     },
@@ -360,12 +396,18 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
     ? parseMoney(draft.monthlyCostCap)
     : null
   return {
+    ...draft.kept,
+    approval_tools: draft.kept.approval_tools ?? [],
+    denied_tools: draft.kept.denied_tools ?? [],
+    github_app_binding: draft.githubAppBinding.trim() || null,
     max_concurrent_tasks: draft.maxConcurrentTasks.trim()
       ? Number(draft.maxConcurrentTasks)
       : null,
     monthly_cost_cap: cap,
+    plugins: draft.plugins,
     required_labels: parseLabels(draft.requiredLabels),
     response_sla: draft.responseSla || null,
+    secrets: parseLines(draft.secrets),
     task_budget: draft.taskBudget.trim() ? parseMoney(draft.taskBudget) : null,
     task_timeout_seconds: draft.taskTimeout.trim()
       ? parseDuration(draft.taskTimeout)
@@ -376,6 +418,12 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
 /** A runner label, as the API accepts it. */
 const RUNNER_LABEL = /^[a-z0-9][a-z0-9_.-]*$/
 
+/** A `secret://` reference, as the secrets broker accepts it. */
+const BINDING_REF = /^secret:\/\/[a-z0-9_]+\/[a-z0-9_]+(?:\/[a-z0-9_]+)*$/
+const SECRET_REF = new RegExp(
+  `${BINDING_REF.source.slice(0, -1)}(?:#[A-Za-z0-9_-]+)?$`,
+)
+
 /** The sorted, distinct labels in a comma-separated list. */
 export function parseLabels(value: string): string[] {
   const labels = value
@@ -383,6 +431,15 @@ export function parseLabels(value: string): string[] {
     .map((l) => l.trim())
     .filter(Boolean)
   return [...new Set(labels)].sort()
+}
+
+/** The sorted, distinct lines of a text, without blank lines. */
+export function parseLines(value: string): string[] {
+  const lines = value
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return [...new Set(lines)].sort()
 }
 
 export function slaLabel(value: null | string | undefined): null | string {

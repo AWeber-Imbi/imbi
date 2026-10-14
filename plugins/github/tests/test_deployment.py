@@ -3598,6 +3598,30 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(note)
 
     @respx.mock
+    async def test_get_file_reads_raw_content_at_ref(self) -> None:
+        route = respx.get(
+            f'{self.REPO}/contents/.claude-plugin/marketplace.json'
+        ).mock(return_value=httpx.Response(200, text='{"name": "x"}'))
+        text = await self.handler.get_file(
+            _ctx(), _CREDS, '.claude-plugin/marketplace.json', self.FULL_SHA
+        )
+        self.assertEqual('{"name": "x"}', text)
+        request = route.calls.last.request
+        self.assertEqual(self.FULL_SHA, request.url.params['ref'])
+        self.assertEqual(
+            'application/vnd.github.raw+json', request.headers['Accept']
+        )
+
+    @respx.mock
+    async def test_get_file_missing_is_none(self) -> None:
+        respx.get(f'{self.REPO}/contents/missing.json').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        self.assertIsNone(
+            await self.handler.get_file(_ctx(), _CREDS, 'missing.json', 'x')
+        )
+
+    @respx.mock
     async def test_get_commit_note_no_entry_is_none(self) -> None:
         self._mock_tree([{'type': 'blob', 'path': 'e' * 40, 'sha': 'b1'}])
         note = await self.handler.get_commit_note(
