@@ -784,3 +784,54 @@ class SecretEndpointTestCase(
                 self.base + '/secret-audit-events/'
             )
         self.assertEqual(response.status_code, 503)
+
+
+class AuditAtomicTestCase(SecretEndpointTestCase):
+    """A management change and its audit row commit together."""
+
+    async def test_outbox_failure_rolls_back_a_provider_create(
+        self,
+    ) -> None:
+        with (
+            mock.patch.object(
+                audit, 'write', side_effect=RuntimeError('outbox down')
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self._post(
+                '/secret-providers/',
+                {'name': 'rolled-back', 'type': 'fake', 'config': {}},
+            )
+        names = [
+            row['name']
+            for row in await self.store.list_all('providers', self.org)
+        ]
+        self.assertNotIn('rolled-back', names)
+        self.assertEqual(await self.audit_events(), [])
+
+    async def test_outbox_failure_rolls_back_a_grant_update(self) -> None:
+        with (
+            mock.patch.object(
+                audit, 'write', side_effect=RuntimeError('outbox down')
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.client.patch(
+                f'{self.base}/secret-grants/{self.grant["id"]}',
+                json={'description': 'changed', 'enabled': False},
+            )
+        grant = await self.store.get('grants', self.org, self.grant['id'])
+        assert grant is not None
+        self.assertEqual((grant['description'], grant['enabled']), ('', True))
+
+    async def test_change_and_event_commit_together(self) -> None:
+        response = await self.client.patch(
+            f'{self.base}/secret-grants/{self.grant["id"]}',
+            json={'description': 'changed'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (event,) = await self.audit_events()
+        self.assertEqual(
+            (event.type, event.grant_id, event.actor),
+            ('secret_grant_updated', str(self.grant['id']), self.email),
+        )

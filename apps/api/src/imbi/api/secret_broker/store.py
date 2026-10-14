@@ -12,9 +12,9 @@ Every query is scoped to one organization. Deletion rules (plan 9.3):
   the check and the delete.
 """
 
-import logging
 import typing
 import uuid
+from collections import abc
 
 import psycopg
 import psycopg.errors
@@ -22,8 +22,6 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.secret_broker import audit, broker
-
-LOGGER = logging.getLogger(__name__)
 
 SCHEMA = 'secrets'
 
@@ -51,6 +49,19 @@ def _value(value: typing.Any) -> typing.Any:
     return pg_json.Jsonb(value) if isinstance(value, dict) else value
 
 
+#: Builds the audit event of a change from the changed row. A write
+#: method adds it to the outbox in its own transaction, so a change and
+#: its audit event commit together, or neither does.
+type AuditEvent = abc.Callable[[Row], audit.Event]
+
+
+async def _audit(
+    conn: broker.Conn, event: AuditEvent | None, row: Row | None
+) -> None:
+    if event is not None and row is not None:
+        await audit.write(conn, [event(row)])
+
+
 class SecretStore:
     def __init__(self, pool: broker.Pool) -> None:
         self._pool = pool
@@ -64,21 +75,6 @@ class SecretStore:
         ):
             await cur.execute(query, params)  # pyright: ignore[reportArgumentType]
             return await cur.fetchall()
-
-    async def audit(self, event: audit.Event) -> None:
-        """Write a management audit event to the outbox.
-
-        The change committed already, so the event has a transaction of
-        its own. A failure is logged: the change stays.
-        """
-        try:
-            await audit.record(self._pool, [event])
-        except Exception as exc:  # noqa: BLE001 - logged, not raised
-            LOGGER.error(
-                'Secret audit event %s not saved: %s',
-                event.type,
-                type(exc).__name__,
-            )
 
     async def list_all(self, table: Table, organization_id: str) -> list[Row]:
         order = 'reference' if table == 'bindings' else 'created_at'
@@ -105,9 +101,14 @@ class SecretStore:
         return found[0] if found else None
 
     async def create(
-        self, table: Table, organization_id: str, values: Row
+        self,
+        table: Table,
+        organization_id: str,
+        values: Row,
+        *,
+        event: AuditEvent | None = None,
     ) -> Row:
-        """Insert a row and return it.
+        """Insert a row and return it, with its audit ``event``.
 
         Raises:
             psycopg.errors.UniqueViolation: A name or reference is in use.
@@ -142,7 +143,9 @@ class SecretStore:
                     cur, organization_id, values['provider_id']
                 )
             await cur.execute(query, [_value(v) for v in values.values()])
-            return typing.cast(Row, await cur.fetchone())
+            row = typing.cast(Row, await cur.fetchone())
+            await _audit(conn, event, row)
+            return row
 
     async def update(
         self,
@@ -150,8 +153,12 @@ class SecretStore:
         organization_id: str,
         row_id: uuid.UUID,
         changes: Row,
+        *,
+        event: AuditEvent | None = None,
     ) -> Row | None:
         """Change a row; return it, or ``None`` when it is not there.
+
+        The audit ``event`` commits with the change.
 
         Raises:
             psycopg.errors.UniqueViolation: A name is in use.
@@ -191,7 +198,9 @@ class SecretStore:
                     row_id,
                 ],
             )
-            return await cur.fetchone()
+            row = await cur.fetchone()
+            await _audit(conn, event, row)
+            return row
 
     async def set_health(
         self,
@@ -199,19 +208,35 @@ class SecretStore:
         provider_id: uuid.UUID,
         status: str,
         reason: str | None,
+        *,
+        event: AuditEvent | None = None,
     ) -> Row | None:
-        found = await self._all(
-            'UPDATE secrets.providers SET health_status = %s,'
-            ' health_reason = %s, health_checked_at = NOW()'
-            ' WHERE organization_id = %s AND id = %s RETURNING *',
-            (status, reason, organization_id, provider_id),
-        )
-        return found[0] if found else None
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'UPDATE secrets.providers SET health_status = %s,'
+                ' health_reason = %s, health_checked_at = NOW()'
+                ' WHERE organization_id = %s AND id = %s RETURNING *',
+                (status, reason, organization_id, provider_id),
+            )
+            row = await cur.fetchone()
+            await _audit(conn, event, row)
+            return row
 
     async def delete(
-        self, table: Table, organization_id: str, row_id: uuid.UUID
+        self,
+        table: Table,
+        organization_id: str,
+        row_id: uuid.UUID,
+        *,
+        event: AuditEvent | None = None,
     ) -> bool:
         """Delete a row; return ``False`` when it is not there.
+
+        The audit ``event`` commits with the delete.
 
         Raises:
             InUse: A binding uses the provider, or a grant or an active
@@ -222,19 +247,22 @@ class SecretStore:
             if table == 'bindings':
                 await _check_binding_unused(conn, organization_id, row_id)
             try:
-                cur = await conn.execute(
-                    sql.SQL(
-                        'DELETE FROM {table}'
-                        ' WHERE organization_id = %s AND id = %s'
-                    ).format(table=sql.Identifier(SCHEMA, table)),
-                    (organization_id, row_id),
-                )
+                async with conn.cursor(row_factory=rows.dict_row) as cur:
+                    await cur.execute(
+                        sql.SQL(
+                            'DELETE FROM {table} WHERE organization_id = %s'
+                            ' AND id = %s RETURNING *'
+                        ).format(table=sql.Identifier(SCHEMA, table)),
+                        (organization_id, row_id),
+                    )
+                    row = await cur.fetchone()
             except (
                 psycopg.errors.ForeignKeyViolation,
                 psycopg.errors.RestrictViolation,
             ):
                 raise InUse('A binding uses the provider') from None
-            return cur.rowcount > 0
+            await _audit(conn, event, row)
+            return row is not None
 
     async def evaluate(
         self,
