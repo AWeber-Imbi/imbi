@@ -69,3 +69,20 @@ jobs:
             VITE_GIT_REF=${{ github.sha }}
           cache-from: type=gha,scope=linux-amd64
           cache-to: type=gha,mode=max,scope=linux-amd64
+  harness-isolation:
+    # The P5a gate of the agent harness (ADR 0022): the runner pod in a kind
+    # cluster, with the pod security settings of production, against a stub
+    # imbi-api and model (apps/harness/isolation/stub.py). The real
+    # imbi-api needs Postgres with AGE, ClickHouse, Iggy, and Valkey, and
+    # its fake secret provider keeps values in process memory only.
+    name: "Harness isolation"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+        with:
+          persist-credentials: false
+      - uses: "helm/kind-action@v1"
+        with:
+          version: "v0.30.0"
+          install_only: true
+      - run: "apps/harness/isolation/run-kind.sh"
