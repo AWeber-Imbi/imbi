@@ -13,11 +13,14 @@ Environment: ``FAKE_API_URL`` (the fake API's node port), ``KUBE_CONTEXT``.
 """
 
 import json
+import subprocess
 import time
 import typing
 import unittest
 
 from test_lifecycle import (
+    CONTEXT,
+    NAMESPACE,
     fake_api,
     github,
     kubectl,
@@ -147,17 +150,28 @@ class PoolTests(unittest.TestCase):
         (token,) = resolution['materials']
         self.assertEqual(github(token), 200)
         # The runner process, not tini: a crash of the runner.
-        kubectl(
-            'exec',
-            pod,
-            '-c',
-            'runner',
-            '--',
-            'python3',
-            '-c',
-            'import os, signal, sys; sys.path.insert(0, "/opt/isolation"); '
-            'import probe; os.kill(probe.harness_pid("runner"), '
-            'signal.SIGKILL)',
+        # The container ends with the runner (tini exits with its child),
+        # so this exec can end with SIGKILL too: its status is ignored.
+        subprocess.run(  # noqa: S603
+            [  # noqa: S607
+                'kubectl',
+                '--context',
+                CONTEXT,
+                '-n',
+                NAMESPACE,
+                'exec',
+                pod,
+                '-c',
+                'runner',
+                '--',
+                'python3',
+                '-c',
+                'import os, signal, sys; '
+                'sys.path.insert(0, "/opt/isolation"); import probe; '
+                'os.kill(probe.harness_pid("runner"), signal.SIGKILL)',
+            ],
+            capture_output=True,
+            check=False,
         )
         self.assert_requeued(task, token)
 
