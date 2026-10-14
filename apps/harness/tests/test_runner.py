@@ -34,26 +34,73 @@ def make_runner() -> runner.Runner:
     )
 
 
+REAL_SLEEP = asyncio.sleep
+
+
+class Clock:
+    """Controlled time for the runner module: ``time.monotonic``,
+    ``asyncio.sleep``, and ``asyncio.timeout``. A sleep moves the clock
+    and yields once; a timeout only records its delay."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.delay = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, delay: float) -> None:
+        self.now += delay
+        await REAL_SLEEP(0)
+
+    @contextlib.asynccontextmanager
+    async def timeout(self, delay: float) -> typing.AsyncIterator[None]:
+        self.delay = delay
+        yield
+
+    async def black_hole(self, *_: typing.Any) -> None:
+        """A request with no reply: it ends at its timeout."""
+        self.now += self.delay
+        raise TimeoutError
+
+    async def until(self, at: float) -> None:
+        while self.now < at:
+            await REAL_SLEEP(0)
+
+
+class _Asyncio:
+    """The asyncio module, with the clock's sleep and timeout."""
+
+    def __init__(self, clock: Clock) -> None:
+        self.sleep = clock.sleep
+        self.timeout = clock.timeout
+
+    def __getattr__(self, name: str) -> typing.Any:
+        return getattr(asyncio, name)
+
+
 class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.runner = make_runner()
         self.api = mock.AsyncMock(spec=api.Api)
         self.runner.api = self.api
-        patcher = mock.patch.object(runner, '_fence', side_effect=Fenced)
-        self.fence = patcher.start()
-        self.addCleanup(patcher.stop)
+        self.clock = Clock()
+        for name, value in (
+            ('_fence', mock.Mock(side_effect=Fenced)),
+            ('time', mock.Mock(monotonic=self.clock.monotonic)),
+            ('asyncio', _Asyncio(self.clock)),
+        ):
+            patcher = mock.patch.object(runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.fence = typing.cast('mock.Mock', runner._fence)
 
     async def test_fences_before_the_lease_expires(self) -> None:
-        async def black_hole(*_: typing.Any) -> None:
-            await asyncio.sleep(3600)
-
-        self.api.heartbeat.side_effect = black_hole
-        loop = asyncio.get_running_loop()
-        started = loop.time()
+        self.api.heartbeat.side_effect = self.clock.black_hole
         with self.assertRaises(Fenced):
             await self.runner.heartbeat(lease_seconds=3)
         # The margin is a third of the lease: fence at 2 s, not at 3 s.
-        self.assertLess(loop.time() - started, 2.5)
+        self.assertLess(self.clock.now, 2.5)
         self.assertIn('lease', self.fence.call_args.args[0])
 
     async def test_fences_when_the_runner_is_unknown(self) -> None:
@@ -68,14 +115,12 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
         # For example a decode error: it must not end the heartbeat
         # before the fence.
         self.api.heartbeat.side_effect = ValueError('bad body')
-        loop = asyncio.get_running_loop()
-        started = loop.time()
         with (
             self.assertLogs('imbi.harness.runner', 'WARNING') as logs,
             self.assertRaises(Fenced),
         ):
             await self.runner.heartbeat(lease_seconds=3)
-        self.assertGreaterEqual(loop.time() - started, 1.5)
+        self.assertGreaterEqual(self.clock.now, 1.5)
         self.assertIn('lease', self.fence.call_args.args[0])
         self.assertNotIn('bad body', '\n'.join(logs.output))
 
@@ -90,7 +135,7 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
         self.runner.api = api.Api('http://imbi.test')
         self.runner.runner_id = 'r'
         task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
-        await asyncio.sleep(3.5)
+        await asyncio.wait_for(self.clock.until(3.5), 10)
         self.assertFalse(task.done())
         task.cancel()
         self.fence.assert_not_called()
@@ -115,7 +160,7 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_keeps_running_while_renewed(self) -> None:
         self.api.heartbeat.return_value = None
         task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
-        await asyncio.sleep(3.5)
+        await asyncio.wait_for(self.clock.until(3.5), 10)
         self.assertFalse(task.done())
         task.cancel()
         self.fence.assert_not_called()
