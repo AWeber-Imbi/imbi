@@ -161,6 +161,12 @@ class _Server(http.server.ThreadingHTTPServer):
         self.litellm = litellm
         self.meter = meter
         self.allowed = allowed
+        #: One metered call at a time: the budget check, the call, and
+        #: the usage report. Otherwise N calls at once all pass the
+        #: check and overshoot by N calls; ADR 0020 allows one.
+        # ponytail: parallel subagents wait for each other's model calls
+        # (accepted in rev 1); a budget reservation would let them run.
+        self.metered = threading.Lock()
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -214,8 +220,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def _forward(self, target: str) -> None:
         server = typing.cast('_Server', self.server)
         body = self.rfile.read(int(self.headers['Content-Length']))
+        if target.split('?')[0] != '/v1/messages':
+            self._call(target, body, metered=False)
+            return
+        with server.metered:
+            self._call(target, body, metered=True)
+
+    def _call(self, target: str, body: bytes, *, metered: bool) -> None:
+        server = typing.cast('_Server', self.server)
         drop = _DROP | _nominated(self.headers.get_all('Connection') or [])
-        metered = target.split('?')[0] == '/v1/messages'
         if metered and server.allowed is not None and not server.allowed():
             self.send_response(400)
             self.send_header('Content-Type', 'application/json')

@@ -1,7 +1,9 @@
+import concurrent.futures
 import http.client
 import http.server
 import json
 import threading
+import time
 import typing
 import unittest
 import unittest.mock
@@ -272,6 +274,24 @@ class MeterTestCase(unittest.TestCase):
                 )
             ],
         )
+
+    def test_concurrent_calls_overshoot_by_one_call_at_most(self) -> None:
+        def meter(model: str, usage: dict[str, typing.Any]) -> None:
+            # A slow usage report that spends the budget.
+            time.sleep(0.3)
+            self.metered.append((model, usage))
+            self.budget = False
+
+        url = proxy.start(
+            self.upstream, 'real-key', meter=meter, allowed=lambda: self.budget
+        )
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            statuses = sorted(
+                pool.map(lambda _: self.post(url, {'model': 'm'})[0], range(2))
+            )
+        self.assertEqual(statuses, [200, 400])
+        self.assertEqual(len(_Model.calls), 1)
+        self.assertEqual(len(self.metered), 1)
 
     def test_json_usage(self) -> None:
         self.post(self.start(), {'model': 'm'})
