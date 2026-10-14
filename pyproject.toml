@@ -711,6 +711,8 @@ max-complexity = 15
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 # TC001-TC003: as for the scheduler.
 "apps/workflows/**" = ["TC001", "TC002", "TC003", "UP037"]
+# The pod isolation suite and its stub: test code that runs in a container.
+"apps/harness/isolation/**" = ["C901", "PL", "PTH", "RET", "S101", "T201"]
 "conftest.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
   "A",
