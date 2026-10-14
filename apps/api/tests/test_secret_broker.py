@@ -860,6 +860,50 @@ class LeaseTestCase(secret_support.SecretCase):
             await self.broker.release_runner_resolutions(self.runner)
         )
 
+    async def _change_during_provider_call(self, statement: str) -> None:
+        """Run ``statement`` (one ``%s``: the id) while the provider
+        issues a lease; the resolution itself stays ``active``."""
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        resolve = self.fake.resolve
+        target = self.runner if 'harness' in statement else self.task_id
+
+        async def changing(
+            *args: object, **kwargs: object
+        ) -> providers.Material:
+            async with self.pool.connection() as conn:
+                await conn.execute(statement, (target,))  # type: ignore[arg-type]
+            return await resolve(*args, **kwargs)  # type: ignore[arg-type]
+
+        with (
+            mock.patch.object(self.fake, 'resolve', changing),
+            self.assertRaises(providers.BrokerError) as ctx,
+        ):
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        self.assertEqual(ctx.exception.reason, 'resolution_released')
+        # No material, and the lease issued in the call is revoked.
+        self.assertEqual(len(self.fake.revoked), 1)
+        self.assertEqual(self.fake.leases, set())
+        row = await self.broker.get(created.resolution_id)
+        assert row is not None
+        self.assertIsNone(row['lease_id'])
+        self.assertIsNone(row['handle_hash'])
+
+    async def test_task_closed_during_a_provider_call(self) -> None:
+        # As if the close hook failed: the resolution is still active.
+        await self._change_during_provider_call(
+            "UPDATE agent_runtime.tasks SET status = 'closed' WHERE id = %s"
+        )
+
+    async def test_runner_fenced_during_a_provider_call(self) -> None:
+        # The lease sweep fenced the runner; the fencer has not run yet.
+        await self._change_during_provider_call(
+            "UPDATE harness.runners SET state = 'fenced' WHERE id = %s"
+        )
+
     async def test_unsaved_lease_is_revoked_at_once(self) -> None:
         created = await self.broker.create_resolution(
             self.context(), self.request()

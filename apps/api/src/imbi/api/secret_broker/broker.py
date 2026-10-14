@@ -1013,24 +1013,21 @@ class Broker:
     ) -> None:
         """Check the state again after the provider call; keep the lease.
 
-        The row is locked ``FOR UPDATE``, so fencing or a release that
-        ran during the provider call is seen here. When the resolution is
-        no longer ``active``, the new lease is revoked at once and the
-        material is not returned. When the lease cannot be saved, it is
-        revoked at once too. The audit event of a materialization that
-        succeeds (``active`` and not ``expired``) commits with the lease.
+        The resolution is locked ``FOR UPDATE``, and its task and runner
+        ``FOR SHARE``, so a release, a task close, or fencing that ran
+        during the provider call is seen here. When the resolution is
+        no longer ``active``, its task is closed, or its runner is not
+        live (``idle`` or ``busy``, as for the executor credential), the
+        new lease is revoked at once and the material is not returned.
+        When the lease cannot be saved, it is revoked at once too. The
+        audit event of a materialization that succeeds (``active`` and
+        not ``expired``) commits with the lease.
         """
         lease_id = material.lease_id
         task_events: list[TaskEvent] = []
         try:
             async with self._pool.connection() as conn, conn.transaction():
-                cur = await conn.execute(
-                    'SELECT state FROM secrets.resolutions'
-                    ' WHERE id = %s FOR UPDATE',
-                    (row['id'],),
-                )
-                current = await cur.fetchone()
-                active = current is not None and current[0] == 'active'
+                active = await _still_usable(conn, row)
                 await conn.execute(
                     'UPDATE secrets.resolutions'
                     ' SET materializing_since = NULL WHERE id = %s',
@@ -1565,6 +1562,38 @@ async def _release_events(conn: Conn, released: list[Row]) -> list[TaskEvent]:
             conn, 'secret_resolution_released', row, actor='system'
         )
     return task_events
+
+
+async def _still_usable(conn: Conn, row: Row) -> bool:
+    """Lock a resolution, its task, and its runner, in this order; say
+    whether the resolution may still give material.
+
+    ``runner_id`` is ``TEXT`` here and a ``UUID`` in ``harness``, so
+    the runner is matched on its text form.
+    """
+    cur = await conn.execute(
+        'SELECT state FROM secrets.resolutions WHERE id = %s FOR UPDATE',
+        (row['id'],),
+    )
+    resolution = await cur.fetchone()
+    cur = await conn.execute(
+        'SELECT status FROM agent_runtime.tasks WHERE id = %s FOR SHARE',
+        (row['task_id'],),
+    )
+    task = await cur.fetchone()
+    cur = await conn.execute(
+        'SELECT state FROM harness.runners WHERE id::TEXT = %s FOR SHARE',
+        (row['runner_id'],),
+    )
+    runner = await cur.fetchone()
+    return (
+        resolution is not None
+        and resolution[0] == 'active'
+        and task is not None
+        and task[0] != 'closed'
+        and runner is not None
+        and runner[0] in ('idle', 'busy')
+    )
 
 
 def _created(row: Row, handle: str) -> Created:

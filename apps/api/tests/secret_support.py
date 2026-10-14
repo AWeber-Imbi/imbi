@@ -12,7 +12,7 @@ from unittest import mock
 
 from psycopg.types import json as pg_json
 
-from imbi.api import agent_tasks, secret_broker
+from imbi.api import agent_tasks, harness, secret_broker
 from imbi.api.secret_broker import audit, broker, providers, store
 
 #: The secret value of the fake provider. Every leak check looks for it.
@@ -31,11 +31,27 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         self.org = f'sec-{suffix}'
         self.agent = f'agent-{suffix}'
         self.project = f'proj-{suffix}'
-        self.runner = f'runner-{suffix}'
+        #: A live runner: materialization checks its state.
+        self.runner = str(uuid.uuid4())
+        self.runner_pool = f'pool-{suffix}'
         await agent_tasks.initialize()
+        await harness.initialize()
         await secret_broker.initialize()
         self.pool = agent_tasks.create_pool()
         await self.pool.open()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.pools (name, service_account)'
+                " VALUES (%s, 'test')",
+                (self.runner_pool,),
+            )
+            await conn.execute(
+                'INSERT INTO harness.runners (id, pool, state,'
+                ' runner_token_hash, executor_token_hash, lease_expires_at)'
+                " VALUES (%s, %s, 'busy', %s, %s,"
+                " NOW() + interval '1 hour')",
+                (self.runner, self.runner_pool, self.runner, self.runner),
+            )
         self.broker = broker.Broker(self.pool)
         self.store = store.SecretStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
@@ -99,6 +115,10 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
             await conn.execute(
                 'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
                 (self.org,),
+            )
+            await conn.execute(
+                'DELETE FROM harness.pools WHERE name = %s',
+                (self.runner_pool,),
             )
         await self.pool.close()
 
