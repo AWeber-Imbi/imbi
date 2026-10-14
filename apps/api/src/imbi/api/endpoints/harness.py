@@ -33,14 +33,18 @@ from fastapi import responses
 
 from imbi.api import agent_tasks, harness, secret_broker
 from imbi.api.auth import autonomous, organizations, permissions
+from imbi.api.endpoints import _helpers
 from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.endpoints import agents as agents_api
 from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
+from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
-from imbi.api.harness import tokens
-from imbi.api.secret_broker import broker, providers
+from imbi.api.secret_broker import broker, github_app, providers
 from imbi.common import graph, models
+from imbi.common.prompts import rendering
+from imbi.common.prompts import resolve as prompt_resolve
+from imbi.plugins.github import _repos
 
 #: The longest wait of a claim long poll, in seconds.
 MAX_CLAIM_WAIT_SECONDS = 20
@@ -150,6 +154,30 @@ class RunnerLease(pydantic.BaseModel):
     lease_expires_at: datetime.datetime
 
 
+class BundlePrompt(pydantic.BaseModel):
+    """The pinned prompt version of a task, rendered."""
+
+    #: ``namespace/slug@n``.
+    ref: str
+    system: str
+    messages: list[models.PromptMessage] = []
+    #: ``AIModel.slug`` and the model id of the version.
+    model: str | None = None
+    model_id: str | None = None
+    params: models.PromptParams = pydantic.Field(
+        default_factory=models.PromptParams
+    )
+
+
+class BundleRepository(pydantic.BaseModel):
+    """A repository of the task's project."""
+
+    host: str
+    #: ``owner/name``.
+    name: str
+    url: str
+
+
 class IdentityBundle(pydantic.BaseModel):
     """The pinned identity of a task's agent. Holds no secret."""
 
@@ -160,6 +188,21 @@ class IdentityBundle(pydantic.BaseModel):
     snapshot: dict[str, typing.Any]
     prompt_ref: str | None = None
     prompt_version: int | None = None
+    #: The pinned prompt version, rendered. ``None`` when the agent has
+    #: no prompt, or when it did not render (see ``prompt_error``).
+    prompt: BundlePrompt | None = None
+    prompt_error: str | None = None
+    #: The organization configuration version that the task pinned.
+    #: ``None``: the organization had none, so the defaults apply.
+    platform_config_version: int | None = None
+    #: The organization configuration with the agent's settings
+    #: applied. Each plugin has its marketplace URL and commit.
+    config: platform.MergedConfig | None = None
+    #: The repository of the task's project: its ``github-repository``
+    #: link on the host of the agent's GitHub App provider, as the
+    #: ``github_app`` provider reads it. Empty when the task has no
+    #: project or the project has no such link.
+    repositories: list[BundleRepository] = []
 
 
 class Claim(pydantic.BaseModel):
@@ -402,6 +445,127 @@ async def _bundle(
     )
 
 
+async def _rendered_prompt(
+    db: graph.Graph,
+    task: dict[str, typing.Any],
+    bundle: IdentityBundle,
+    org_slug: str,
+) -> tuple[BundlePrompt | None, str | None]:
+    """Render the pinned prompt version; return it or the error.
+
+    The template gets the variables that it declares among
+    ``organization``, ``agent``, ``task``, and ``project`` (slugs and
+    the short id).
+    """
+    if bundle.prompt_ref is None or bundle.prompt_version is None:
+        return None, None
+    try:
+        namespace, slug, _label = prompt_resolve.parse_ref(bundle.prompt_ref)
+        prompt, _latest = await prompt_resolve.fetch_prompt(
+            db, namespace, slug
+        )
+        version = await prompt_resolve.fetch_version(
+            db, prompt, bundle.prompt_version
+        )
+        variables = {
+            'organization': org_slug,
+            'agent': bundle.agent_slug or '',
+            'task': task['short_id'],
+            'project': task.get('project_slug') or '',
+        }
+        rendered = await rendering.render(
+            version,
+            {
+                k: v
+                for k, v in variables.items()
+                if k in version.variable_schema
+            },
+            {},
+        )
+    except (prompt_resolve.PromptError, rendering.RenderError) as err:
+        return None, str(err)
+    return (
+        BundlePrompt(
+            ref=f'{namespace}/{slug}@{version.n}',
+            system=rendered.system,
+            messages=rendered.messages,
+            model=version.model,
+            model_id=version.model_id,
+            params=version.params,
+        ),
+        None,
+    )
+
+
+async def _repositories(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    task: dict[str, typing.Any],
+    settings: models.AgentSettings,
+) -> list[BundleRepository]:
+    """Return the project repository, from the same source as the
+    ``github_app`` provider: only the ``github-repository`` link, on
+    the host of the agent's GitHub App provider (``github.com`` when
+    the agent has none)."""
+    if not task.get('project_id'):
+        return []
+    host = 'github.com'
+    if settings.github_app_binding is not None:
+        provider = await store.binding_provider(
+            task['organization_id'], settings.github_app_binding
+        )
+        if provider is not None and provider['type'] == 'github_app':
+            config: dict[str, typing.Any] = provider['config'] or {}
+            host = str(config.get('host', host))
+    url = (await _helpers.lookup_project_links(db, task['project_id'])).get(
+        github_app.REPOSITORY_LINK
+    )
+    found = None if url is None else _repos.parse_owner_repo(url, host)
+    if url is None or found is None:
+        return []
+    return [
+        BundleRepository(host=host, name=f'{found[0]}/{found[1]}', url=url)
+    ]
+
+
+async def _identity(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    task: dict[str, typing.Any],
+    org_slug: str,
+) -> IdentityBundle:
+    """Return the full identity bundle of a task (plan section 5.4).
+
+    Everything comes from the pinned versions: the agent version, the
+    prompt version, and the organization configuration version. A
+    later change to the agent or the organization does not change it.
+    """
+    bundle = await _bundle(db, task)
+    version: int | None = task.get('platform_config_version')
+    config = platform.AgentPlatformConfig()
+    if version is not None:
+        loaded, config = await platform.load(
+            store, task['organization_id'], version
+        )
+        if loaded != version:
+            # Never send the defaults as version N: _deliver undoes
+            # the claim.
+            raise LookupError(
+                f'Agent platform configuration version {version} is missing'
+            )
+    settings = _settings(bundle.snapshot.get('settings'))
+    prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
+    return bundle.model_copy(
+        update={
+            'prompt': prompt,
+            'prompt_error': prompt_error,
+            'platform_config_version': version,
+            'config': platform.merge(config, settings),
+            'repositories': await _repositories(db, store, task, settings),
+        }
+    )
+
+
 class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
@@ -428,7 +592,7 @@ async def _deliver(
     """
     task, chain = claimed
     try:
-        return await _claim(db, runner, task, chain)
+        return await _claim(db, store, runner, task, chain)
     except _NoServiceAccount:
         await tasks.set_outcome(
             task['organization_id'],
@@ -446,6 +610,7 @@ async def _deliver(
 
 async def _claim(
     db: graph.Graph,
+    store: harness.HarnessStore,
     runner: dict[str, typing.Any],
     task: dict[str, typing.Any],
     chain: dict[str, typing.Any],
@@ -464,12 +629,13 @@ async def _claim(
         organization_id=task['organization_id'],
     )
     token, expires = tokens.mint_agent_token(accounts[0].slug, grant)
+    org_slug = org_slugs.get(task['organization_id'], '')
     return Claim(
         chain_id=chain['root_task_id'],
         attempt=chain['attempt'],
-        organization_slug=org_slugs.get(task['organization_id'], ''),
+        organization_slug=org_slug,
         task=tasks_api.AgentTaskResponse.model_validate(task),
-        bundle=await _bundle(db, task),
+        bundle=await _identity(db, store, task, org_slug),
         agent_token=token,
         agent_token_expires_at=expires,
     )

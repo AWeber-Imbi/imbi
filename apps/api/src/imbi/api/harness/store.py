@@ -133,6 +133,10 @@ class RunnerBusy(ValueError):
     """The runner holds a chain; it cannot claim another one."""
 
 
+class MarketplaceExists(ValueError):
+    """The organization has a marketplace with this slug."""
+
+
 class HarnessStore:
     """Repository over the ``harness`` schema."""
 
@@ -528,6 +532,132 @@ class HarnessStore:
             if row is None:  # pragma: no cover - the conflict found it
                 raise RuntimeError('tool call counter row is missing')
             return False, int(row[0]), row[1]
+
+    # --- Agent platform configuration ----------------------------------
+
+    async def platform_config(
+        self, organization_id: str, version: int | None = None
+    ) -> Row | None:
+        """Return version ``version`` of an organization's agent
+        platform configuration, or the newest when it is ``None``."""
+        return await self._fetch_one(
+            'SELECT * FROM harness.platform_configs'
+            ' WHERE organization_id = %s'
+            ' AND (%s::int IS NULL OR version = %s)'
+            ' ORDER BY version DESC LIMIT 1',
+            (organization_id, version, version),
+        )
+
+    async def add_platform_config(
+        self, organization_id: str, config: Row, created_by: str
+    ) -> Row:
+        """Write the next version of an organization's configuration.
+
+        Raises:
+            psycopg.errors.UniqueViolation: A concurrent write took the
+                version.
+
+        """
+        row = await self._fetch_one(
+            'INSERT INTO harness.platform_configs'
+            ' (organization_id, version, config, created_by)'
+            ' SELECT %s, COALESCE(max(version), 0) + 1, %s, %s'
+            ' FROM harness.platform_configs WHERE organization_id = %s'
+            ' RETURNING *',
+            (
+                organization_id,
+                pg_json.Jsonb(config),
+                created_by,
+                organization_id,
+            ),
+        )
+        if row is None:  # pragma: no cover - RETURNING yields a row
+            raise RuntimeError('platform config insert returned no row')
+        return row
+
+    # --- Marketplaces --------------------------------------------------
+
+    async def marketplaces(self, organization_id: str) -> list[Row]:
+        """Return the marketplaces of an organization, by slug."""
+        return await self._fetch_all(
+            'SELECT * FROM harness.marketplaces WHERE organization_id = %s'
+            ' ORDER BY slug',
+            (organization_id,),
+        )
+
+    async def marketplace(self, organization_id: str, slug: str) -> Row | None:
+        return await self._fetch_one(
+            'SELECT * FROM harness.marketplaces'
+            ' WHERE organization_id = %s AND slug = %s',
+            (organization_id, slug),
+        )
+
+    async def create_marketplace(
+        self, organization_id: str, slug: str, url: str, created_by: str
+    ) -> Row:
+        """Insert a marketplace.
+
+        Raises:
+            MarketplaceExists: The organization has one with this slug.
+
+        """
+        try:
+            row = await self._fetch_one(
+                'INSERT INTO harness.marketplaces'
+                ' (id, organization_id, slug, url, created_by)'
+                ' VALUES (%s, %s, %s, %s, %s) RETURNING *',
+                (uuid.uuid4(), organization_id, slug, url, created_by),
+            )
+        except psycopg.errors.UniqueViolation as err:
+            raise MarketplaceExists(slug) from err
+        if row is None:  # pragma: no cover - RETURNING yields a row
+            raise RuntimeError('marketplace insert returned no row')
+        return row
+
+    async def set_marketplace_sync(
+        self, marketplace_id: uuid.UUID, changes: Row
+    ) -> Row | None:
+        """Record the result of a sync: the catalog, or ``sync_error``."""
+        statement = sql.SQL(
+            'UPDATE harness.marketplaces SET {sets}, updated_at = NOW()'
+            ' WHERE id = %s RETURNING *'
+        ).format(
+            sets=sql.SQL(', ').join(
+                sql.SQL('{} = %s').format(sql.Identifier(column))
+                for column in changes
+            )
+        )
+        values = [
+            pg_json.Jsonb(value) if column == 'plugins' else value
+            for column, value in changes.items()
+        ]
+        return await self._fetch_one(statement, (*values, marketplace_id))
+
+    async def delete_marketplace(
+        self, organization_id: str, slug: str
+    ) -> bool:
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(
+                'DELETE FROM harness.marketplaces'
+                ' WHERE organization_id = %s AND slug = %s',
+                (organization_id, slug),
+            )
+            return cursor.rowcount > 0
+
+    async def binding_provider(
+        self, organization_id: str, reference: str
+    ) -> Row | None:
+        """Return the provider of a secret binding (``type``, ``config``)
+        and ``enabled``: the binding and its provider are both enabled.
+        ``None`` when the organization has no binding with
+        ``reference``."""
+        return await self._fetch_one(
+            'SELECT p.type, p.config, b.enabled AND p.enabled AS enabled'
+            ' FROM secrets.bindings AS b'
+            ' JOIN secrets.providers AS p ON p.id = b.provider_id'
+            ' WHERE b.organization_id = %s AND b.reference = %s',
+            (organization_id, reference),
+        )
 
     # --- Lease sweep ---------------------------------------------------
 

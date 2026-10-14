@@ -21,6 +21,7 @@ import contextlib
 import datetime
 import decimal
 import logging
+import re
 import typing
 import uuid
 from collections import abc
@@ -59,6 +60,13 @@ SERVICE_ORIGINS: dict[str, typing.Literal['schedule', 'webhook']] = {
     'imbi-scheduler': 'schedule',
     'imbi-gateway': 'webhook',
 }
+
+
+#: The key shape of the task of a workflow agent step,
+#: ``<run_id>:<node_key>``. Only that step makes it.
+_STEP_KEY = re.compile(
+    r'^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}:[a-z][a-z0-9_]*$'
+)
 
 
 def _header(name: str) -> typing.Any:
@@ -134,6 +142,9 @@ class AgentTaskResponse(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     prompt_version: int | None = None
+    #: The version of the organization's agent platform configuration
+    #: when the task was made. ``None``: the defaults apply.
+    platform_config_version: int | None = None
     service_account_id: str
     project_id: str | None = None
     #: The slug of the project when the task was made.
@@ -813,13 +824,18 @@ async def create_agent_task(
         409: The agent is disabled.
         422: The agent or the project is not in the org, the budget is
             more than the agent's task budget, a service does not name
-            its origin, or the webhook does not exist.
+            its origin, the webhook does not exist, or the key has the
+            shape of a workflow step key (``<uuid>:<node_key>``).
 
     """
     origin = task_origin(
         auth, scheduled_task, webhook, delivery, scheduled_by, scheduled_org
     )
     key = data.idempotency_key or idempotency_key
+    if key is not None and _STEP_KEY.match(key):
+        raise _unprocessable(
+            'The idempotency key has the shape of a workflow step key'
+        )
     if key is not None:
         existing = await store.find_by_idempotency_key(
             org_id, origin.kind, origin.id, key
@@ -828,6 +844,35 @@ async def create_agent_task(
             response.status_code = 200
             return existing
     owner = await _owner(db, org_slug, auth, origin)
+    task, created = await make_task(
+        db, store, org_slug, org_id, data, origin, key, owner, _actor(auth)
+    )
+    if not created:
+        response.status_code = 200
+    return task
+
+
+async def make_task(
+    db: graph.Graph,
+    store: agent_tasks.TaskStore,
+    org_slug: str,
+    org_id: str,
+    data: AgentTaskCreate,
+    origin: TaskOrigin,
+    key: str | None,
+    owner: str,
+    actor: agent_tasks.Actor,
+) -> tuple[dict[str, typing.Any], bool]:
+    """Make a task with the agent and prompt versions that it has now.
+
+    Return the task, and ``False`` when a task with the key exists.
+
+    Raises:
+        409: The agent is disabled.
+        422: The agent or the project is not in the org, or the budget
+            is more than the agent's task budget.
+
+    """
     agent = await _fetch_agent(db, org_slug, data.agent_slug)
     if not agent.get('enabled', True):
         raise fastapi.HTTPException(
@@ -849,7 +894,7 @@ async def create_agent_task(
     )
     agent_version = int(agent.get('version') or 1)
     prompt_version = agent.get('prompt_version')
-    task, created = await store.create(
+    return await store.create(
         agent_tasks.NewTask(
             organization_id=org_id,
             agent_id=agent_id,
@@ -867,7 +912,7 @@ async def create_agent_task(
             owner=owner,
             budget=budget,
         ),
-        _actor(auth),
+        actor,
         {
             'title': data.title,
             'description': data.description,
@@ -877,9 +922,6 @@ async def create_agent_task(
             'prompt_version': prompt_version,
         },
     )
-    if not created:
-        response.status_code = 200
-    return task
 
 
 @agent_tasks_router.get('/', response_model=list[AgentTaskListItem])

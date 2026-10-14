@@ -5,8 +5,9 @@ schema holds runs. They are plain Postgres schemas next to the graph,
 managed like ``agent_runtime``: the declarative schemata are applied on
 every start. imbi-api owns both; imbi-workflows executes the runs.
 
-The store lifespan also runs the archive sweep of the run log
-(:mod:`imbi.api.workflows.sweeper`), because it needs the pool.
+The store lifespan also runs the archive sweep of the run log and the
+reconcile of agent step tasks (:mod:`imbi.api.workflows.sweeper`),
+because they need the pool.
 """
 
 import asyncio
@@ -17,7 +18,7 @@ from collections import abc
 
 import fastapi
 
-from imbi.api.agent_tasks import create_pool
+from imbi.api.agent_tasks import TaskStore, create_pool
 from imbi.api.workflows import runs, sweeper
 from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
@@ -27,6 +28,7 @@ from imbi.api.workflows.store import (
     Row,
     Trigger,
     WorkflowStore,
+    agent_ids,
 )
 from imbi.common import lifespan, relational
 from imbi.common.workflows import runtime
@@ -60,7 +62,9 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         await pool.open()
         _runs = RunStore(pool)
         stop = asyncio.Event()
-        sweep = asyncio.create_task(sweeper.run_sweeper(_runs, stop=stop))
+        sweep = asyncio.create_task(
+            sweeper.run_sweeper(_runs, TaskStore(pool), stop=stop)
+        )
         try:
             yield WorkflowStore(pool)
         finally:
@@ -105,6 +109,7 @@ __all__ = [
     'Store',
     'Trigger',
     'WorkflowStore',
+    'agent_ids',
     'create_pool',
     'initialize',
     'run_store',

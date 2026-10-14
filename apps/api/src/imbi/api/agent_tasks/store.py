@@ -464,9 +464,12 @@ class TaskStore:
                     ' short_id, agent_id, agent_version, prompt_version,'
                     ' service_account_id, project_id, project_slug, title,'
                     ' description, origin_kind, origin_id, origin,'
-                    ' idempotency_key, owner, budget, chain_id) VALUES (%s,'
+                    ' idempotency_key, owner, budget, chain_id,'
+                    ' platform_config_version) VALUES (%s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s)',
+                    ' %s, %s, %s, (SELECT max(version)'
+                    ' FROM harness.platform_configs'
+                    ' WHERE organization_id = %s))',
                     (
                         task_id,
                         task.organization_id,
@@ -486,6 +489,7 @@ class TaskStore:
                         task.owner,
                         task.budget,
                         task.chain_id or task_id,
+                        task.organization_id,
                     ),
                 )
                 event = await _append_event(
@@ -616,6 +620,21 @@ class TaskStore:
                 (task_id, after_seq, limit),
             )
             return await cursor.fetchall()
+
+    async def last_agent_turn(self, task_id: uuid.UUID) -> str | None:
+        """Return the body of the newest ``turn`` of the agent.
+
+        ``None`` when the agent wrote no turn, or the log is archived.
+        """
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(
+                "SELECT payload->>'body' FROM agent_runtime.events"
+                " WHERE task_id = %s AND type = 'turn'"
+                " AND actor_kind = 'agent' ORDER BY seq DESC LIMIT 1",
+                (task_id,),
+            )
+            row = await cursor.fetchone()
+        return row[0] if row else None
 
     async def unarchived(self) -> list[Row]:
         """Return the tasks whose log is not archived, by organization.

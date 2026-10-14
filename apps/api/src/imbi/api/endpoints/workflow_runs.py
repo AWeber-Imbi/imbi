@@ -14,6 +14,10 @@ client, so the engine asks it to send what a run recorded: the input of
 a running email step, or the failure notice of a failed run. Both take
 an ``Idempotency-Key``, so a repeat after a crash sends nothing twice.
 
+The two agent task routes are for the engine only too. They make,
+read, and cancel the agent task of a running ``agent`` step (ADR 0021,
+Agent tasks from workflows).
+
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
@@ -25,6 +29,7 @@ import uuid
 import fastapi
 import pydantic
 
+from imbi.api import agent_tasks as agent_runtime
 from imbi.api import email, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
@@ -32,6 +37,7 @@ from imbi.api.endpoints import agent_tasks
 from imbi.common import graph, lifespan
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, registry, validation, walk
+from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import email as email_step
 
 OrgId = organizations.MemberOrgId
@@ -146,7 +152,22 @@ class EmailResult(pydantic.BaseModel):
     failed: list[str] = []
 
 
+class StepAgentTask(pydantic.BaseModel):
+    #: The short id, ``T-<n>``.
+    task_id: str
+    status: str
+    outcome: str | None
+    reason: str | None
+    #: The last message of the agent, when the task is closed.
+    summary: str | None
+
+
 # --- Helpers -----------------------------------------------------------
+
+_AGENT_SLUG_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})-[:BELONGS_TO]->(:Organization {{id: {org}}})
+RETURN a.slug AS slug
+"""
 
 _TEAM_MEMBER_QUERY: typing.LiteralString = """
 MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(t:Team {{id: {team}}})
@@ -408,6 +429,126 @@ async def _require_engine(
     return auth
 
 
+async def _agent_step(
+    runs: workflows.RunStore,
+    workflow: workflows.Row,
+    run_id: uuid.UUID,
+    node_id: str,
+) -> tuple[workflows.Row, workflows.Row, agent_tasks.TaskOrigin, str]:
+    """Return the run, its agent step, and the origin and key of its task.
+
+    The task has the root origin of the run, and its origin record
+    names the run and the node (ADR 0021). The key is
+    ``<run_id>:<node_key>``, as for every side effect of a step.
+
+    Raises:
+        404: No such run or step.
+        409: The step is not an agent step.
+
+    """
+    run = await _run(runs, workflow, run_id)
+    step = next(
+        (s for s in await runs.steps(run_id) if s['node_id'] == node_id),
+        None,
+    )
+    if step is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Run {run_id} has no step {node_id!r}'
+        )
+    if step['node_type'] != 'agent':
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Step {node_id!r} is not an agent step'
+        )
+    origin = agent_tasks.TaskOrigin(
+        run['origin_kind'],
+        run['origin_id'],
+        {
+            **run['origin'],
+            'kind': run['origin_kind'],
+            'workflow_run_id': str(run_id),
+            'node_key': step['node_key'],
+        },
+    )
+    return run, step, origin, f'{run_id}:{step["node_key"]}'
+
+
+async def _pinned_agent_ids(
+    store: workflows.WorkflowStore,
+    org_id: str,
+    slug: str,
+    run: workflows.Row,
+    node_id: str,
+) -> tuple[str, str | None]:
+    """Return the agent id and project id of the node in the run's version.
+
+    They come from the pinned version, not from the rendered step
+    input, so run input cannot choose the agent or the project.
+
+    Raises:
+        422: ``agent_params_not_literal``: an id is a template.
+
+    """
+    wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
+    node = next((n for n in wf_graph.nodes if n.id == node_id), None)
+    params = node.params if node is not None else {}
+    agent_id, project_id = params.get('agent_id'), params.get('project_id')
+    if not isinstance(agent_id, str) or any(
+        isinstance(value, str) and ('{{' in value or '{%' in value)
+        for value in (agent_id, project_id)
+    ):
+        raise fastapi.HTTPException(
+            status_code=422, detail={'error': 'agent_params_not_literal'}
+        )
+    return agent_id, project_id
+
+
+def _made_by_step(
+    task: dict[str, typing.Any], run_id: uuid.UUID, node_key: str
+) -> bool:
+    """Return whether the agent step of ``run_id`` made ``task``.
+
+    A person can make a task with the same origin and key first. Only
+    this route writes ``workflow_run_id`` in an origin record.
+    """
+    origin: dict[str, typing.Any] = task['origin'] or {}
+    return (
+        origin.get('workflow_run_id') == str(run_id)
+        and origin.get('node_key') == node_key
+    )
+
+
+def _task_key_conflict() -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409, detail={'error': 'task_key_conflict'}
+    )
+
+
+def _without_task_content(
+    step: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    """Remove the agent task content from the output of an agent step."""
+    if step['node_type'] != 'agent' or not step['output']:
+        return step
+    output = {
+        k: v
+        for k, v in step['output'].items()
+        if k not in ('reason', 'summary')
+    }
+    return {**step, 'output': output}
+
+
+def _step_agent_task(
+    task: dict[str, typing.Any], summary: str | None = None
+) -> dict[str, typing.Any]:
+    return {
+        'task_id': task['short_id'],
+        'status': task['status'],
+        'outcome': task['outcome'],
+        'reason': task['outcome_reason'],
+        'summary': summary,
+    }
+
+
 # --- Endpoints ---------------------------------------------------------
 
 workflow_runs_router = fastapi.APIRouter(
@@ -566,9 +707,13 @@ async def get_run(
     run_id: uuid.UUID,
     store: workflows.Store,
     runs: workflows.Runs,
-    _: ReadAuth,
+    auth: ReadAuth,
 ) -> dict[str, typing.Any]:
     """Return a run with its step records.
+
+    The ``reason`` and ``summary`` of an agent step's output come from
+    the agent task. Only a caller who can read agent tasks
+    (``agent_task:read``) gets them.
 
     Raises:
         404: No such workflow or run.
@@ -578,13 +723,16 @@ async def get_run(
     workflow = await _workflow(store, org_id, slug)
     row = await _run(runs, workflow, run_id)
     if row['log_archived_at'] is None:
-        return {**row, 'steps': await runs.steps(run_id)}
-    try:
-        steps = await history.archived_steps(row)
-    except Exception as e:
-        raise fastapi.HTTPException(
-            status_code=503, detail='The run history is not available'
-        ) from e
+        steps = await runs.steps(run_id)
+    else:
+        try:
+            steps = await history.archived_steps(row)
+        except Exception as e:
+            raise fastapi.HTTPException(
+                status_code=503, detail='The run history is not available'
+            ) from e
+    if not (auth.is_admin or 'agent_task:read' in auth.permissions):
+        steps = [_without_task_content(s) for s in steps]
     return {**row, 'steps': steps}
 
 
@@ -756,6 +904,153 @@ async def send_failure_notice(
     return await runs.once(
         auth.principal_name, 'failure-notice', idempotency_key, call
     )
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/steps/{node_id}/agent-task',
+    response_model=StepAgentTask,
+)
+async def step_agent_task(
+    org_slug: str,
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    node_id: str,
+    db: graph.Pool,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    tasks: agent_runtime.Store,
+    auth: EngineAuth,
+) -> dict[str, typing.Any]:
+    """Make the task of a running agent step, or return it. Engine only.
+
+    A repeat, after a crash or for a retry of the step, returns the
+    first task: the key is the same. The person who activated the
+    workflow owns the task, and must still be able to make agent tasks
+    in the org. The engine polls this route until the task is closed.
+
+    The agent and the project come from the pinned version (see
+    :func:`_pinned_agent_ids`). A task with the key that this step did
+    not make, or that has another agent, is refused.
+
+    Raises:
+        403: ``owner_forbidden``: the activator cannot make agent tasks.
+        404: No such workflow, run, or step.
+        409: The step is not a running agent step, the agent is
+            disabled, or ``task_key_conflict``.
+        422: ``agent_not_found``, ``agent_params_not_literal``, or the
+            project or the budget is not valid (see
+            :func:`agent_tasks.make_task`).
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    run, step, origin, key = await _agent_step(runs, workflow, run_id, node_id)
+    agent_id, project_id = await _pinned_agent_ids(
+        store, org_id, slug, run, node_id
+    )
+    task = await tasks.find_by_idempotency_key(
+        org_id, origin.kind, origin.id, key
+    )
+    if task is None:
+        if step['status'] != 'running':
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=f'Step {node_id!r} is not a running agent step',
+            )
+        if not await agent_tasks.may_create(db, org_slug, run['activated_by']):
+            raise fastapi.HTTPException(
+                status_code=403, detail={'error': 'owner_forbidden'}
+            )
+        records = await db.execute(
+            _AGENT_SLUG_QUERY, {'id': agent_id, 'org': org_id}, ['slug']
+        )
+        if not records:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'agent_not_found'}
+            )
+        try:
+            params = agent_step.Params.model_validate(step['input'] or {})
+            data = agent_tasks.AgentTaskCreate(
+                agent_slug=str(graph.parse_agtype(records[0]['slug'])),
+                title=f'{workflow["name"]}: {step["title"]}',
+                description=params.instruction,
+                project_id=project_id,
+                budget=params.budget,
+            )
+        except pydantic.ValidationError as e:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'invalid_params'}
+            ) from e
+        task, _ = await agent_tasks.make_task(
+            db,
+            tasks,
+            org_slug,
+            org_id,
+            data,
+            origin,
+            key,
+            run['activated_by'],
+            agent_runtime.Actor('system', auth.principal_name, 'api'),
+        )
+    if (
+        not _made_by_step(task, run_id, step['node_key'])
+        or task['agent_id'] != agent_id
+    ):
+        raise _task_key_conflict()
+    summary = (
+        await tasks.last_agent_turn(task['id'])
+        if task['status'] == 'closed'
+        else None
+    )
+    return _step_agent_task(task, summary)
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/steps/{node_id}/agent-task/cancel',
+    status_code=204,
+)
+async def cancel_step_agent_task(
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    node_id: str,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    tasks: agent_runtime.Store,
+    auth: EngineAuth,
+) -> None:
+    """Cancel the task of an agent step, when it is open. Engine only.
+
+    The engine calls this when it closes a run whose agent step is
+    running. A step with no task, or with a closed task, is not an
+    error.
+
+    Raises:
+        404: No such workflow, run, or step.
+        409: The step is not an agent step.
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    _, step, origin, key = await _agent_step(runs, workflow, run_id, node_id)
+    task = await tasks.find_by_idempotency_key(
+        org_id, origin.kind, origin.id, key
+    )
+    # A task that the step did not make is never cancelled here.
+    if (
+        task is None
+        or task['status'] == 'closed'
+        or not _made_by_step(task, run_id, step['node_key'])
+    ):
+        return
+    try:
+        await tasks.set_control(
+            org_id,
+            task['short_id'],
+            'cancel',
+            agent_runtime.Actor('system', auth.principal_name, 'api'),
+        )
+    except (agent_runtime.TaskClosed, agent_runtime.CancelPending):
+        pass
 
 
 @workflow_runs_router.post('/{slug}/test-runs', response_model=TestRunResult)

@@ -737,6 +737,16 @@ export type Agent = Schemas['AgentResponse']
 
 export type AgentCreate = Schemas['AgentCreate']
 
+// The agent platform configuration of an organization and its plugin
+// marketplaces (ADR 0022).
+export type AgentMarketplace = Schemas['MarketplaceResponse']
+
+export type AgentPlatformConfig = Schemas['AgentPlatformConfig']
+
+export type AgentPlatformConfigResponse = Schemas['PlatformConfigResponse']
+
+export type AgentPlugin = Schemas['AgentPlugin']
+
 export type AgentSettings = Schemas['AgentSettings-Input']
 
 // A subagent as an agent stores it (by agent id), and as the API

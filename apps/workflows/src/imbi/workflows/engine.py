@@ -174,6 +174,7 @@ class Engine:
         wf_graph = wf.Graph.model_validate(version['graph'])
         wf_settings = wf.Settings.model_validate(version['settings'])
         if run['cancel_requested']:
+            await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'cancelled')
             return None
         if run['status'] == 'queued':
@@ -185,6 +186,7 @@ class Engine:
             seconds=wf_settings.max_run_time_seconds
         )
         if _now() > deadline:
+            await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'timed_out')
             return None
         # A failure with no Failed port fails the run at once: the steps
@@ -377,7 +379,9 @@ class Engine:
                 - _now()
             ).total_seconds()
             if remaining <= 0:
-                return await self._error(run, node, step, 'timeout', True)
+                return await self._error(
+                    run, node, step, slug, 'timeout', True
+                )
             limit = min(limit, remaining)
         async with self.store.write(run['id']) as conn:
             await store.update(
@@ -400,12 +404,14 @@ class Engine:
                     )
                 )
         except executors.StepError as e:
-            return await self._error(run, node, step, e.code, e.retry)
+            return await self._error(run, node, step, slug, e.code, e.retry)
         except TimeoutError:
-            return await self._error(run, node, step, 'timeout', True)
+            return await self._error(run, node, step, slug, 'timeout', True)
         except Exception as e:
             LOGGER.exception('Run %s: %s raised', run['id'], node.key)
-            return await self._error(run, node, step, type(e).__name__, True)
+            return await self._error(
+                run, node, step, slug, type(e).__name__, True
+            )
         key = {'run_id': run['id'], 'node_id': node_id}
         async with self.store.write(run['id']) as conn:
             if outcome.resume_at is not None:
@@ -434,19 +440,27 @@ class Engine:
             )
         return _now()
 
-    async def _error(
+    async def _error(  # noqa: PLR0913
         self,
         run: store.Row,
         node: wf.Node,
         step: store.Row,
+        slug: str,
         code: str,
         retry: bool,
     ) -> datetime.datetime:
-        """Retry the step after a backoff, or fail it."""
+        """Retry the step after a backoff, or fail it.
+
+        A retry keeps the agent task of the step; a failure cancels it
+        first (best effort), so the task does not outlive the step.
+        """
         step_type = registry.STEP_TYPES[node.type]
         retries = step_type.retries if node.retries is None else node.retries
+        fail = not (retry and step['attempt'] <= retries)
+        if fail:
+            await self._cancel_agent_tasks(run, {step['node_id']: step}, slug)
         async with self.store.write(run['id']) as conn:
-            if not (retry and step['attempt'] <= retries):
+            if fail:
                 await self._fail(conn, run, step, code)
                 return _now()
             attempt = step['attempt'] + 1
@@ -497,6 +511,30 @@ class Engine:
         await _step_event(conn, run['id'], step['node_id'], f'step.{status}')
 
     # --- Close ---------------------------------------------------------
+
+    async def _cancel_agent_tasks(
+        self, run: store.Row, steps: dict[str, store.Row], slug: str
+    ) -> None:
+        """Cancel the task of each running agent step. Best effort.
+
+        An error is logged and never stops the close of the step or the
+        run. The reconcile in imbi-api cancels a task that is still open
+        (:func:`imbi.api.workflows.sweeper.cancel_orphan_agent_tasks`).
+        """
+        for step in steps.values():
+            if step['node_type'] != 'agent' or step['status'] != 'running':
+                continue
+            try:
+                await self.steps.cancel_agent_task(
+                    run['organization_id'], slug, run['id'], step['node_id']
+                )
+            except Exception:  # noqa: BLE001 -- the reconcile cancels it
+                LOGGER.warning(
+                    'Run %s: could not cancel the task of %s',
+                    run['id'],
+                    step['node_key'],
+                    exc_info=True,
+                )
 
     async def _close(
         self,

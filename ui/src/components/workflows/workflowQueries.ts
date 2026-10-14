@@ -5,6 +5,7 @@ import {
   getWorkflow,
   getWorkflowRun,
   getWorkflowVersion,
+  listAgents,
   listAIModels,
   listEnvironments,
   listTeams,
@@ -60,7 +61,14 @@ export function useSourceOptions(orgSlug: string, source: FieldSource) {
     queryKey: ['webhooks', orgSlug],
     select: (rows) => rows.map((w) => ({ label: w.name, value: w.id })),
   })
+  const agents = useQuery({
+    enabled: source === 'agent',
+    queryFn: ({ signal }) => listAgents(orgSlug, signal),
+    queryKey: queryKeys.agents(orgSlug),
+    select: (rows) => rows.map((a) => ({ label: a.name, value: a.id })),
+  })
   const query = {
+    agent: agents,
     environment: environments,
     model: models,
     project: projects,
