@@ -89,6 +89,9 @@ class Runner:
         self.layout: task.Layout | None = None
         #: The task runs of the chain, by short id.
         self.runs: dict[str, asyncio.Task[Body]] = {}
+        #: One claimer at a time: a child that one parent claims is in
+        #: :attr:`runs` before another parent looks for its own.
+        self.claiming = asyncio.Lock()
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
@@ -250,16 +253,18 @@ class Runner:
         identity, in the same workspace).
 
         Two parents can make children at once, so a claim can return
-        the child of the other parent; it starts too. The wait is
-        shielded: a cancel of the parent does not cancel the child.
+        the child of the other parent; it starts too, and is in
+        :attr:`runs` before the lock is released. The wait is shielded:
+        a cancel of the parent does not cancel the child.
         """
-        while short_id not in self.runs:
-            claim = await self.api.chain_claim(
-                self.runner_id, self.runner_token
-            )
-            if claim is None:
-                return {'short_id': short_id, 'status': 'not_claimed'}
-            self._start(claim, build=False)
+        async with self.claiming:
+            while short_id not in self.runs:
+                claim = await self.api.chain_claim(
+                    self.runner_id, self.runner_token
+                )
+                if claim is None:
+                    return {'short_id': short_id, 'status': 'not_claimed'}
+                self._start(claim, build=False)
         return await asyncio.shield(self.runs[short_id])
 
 
