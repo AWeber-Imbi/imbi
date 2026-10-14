@@ -43,7 +43,10 @@ COPY pyproject.toml uv.lock README.md LICENSE /tmp/build/
 COPY libraries/ /tmp/build/libraries/
 COPY apps/ /tmp/build/apps/
 COPY plugins/ /tmp/build/plugins/
-RUN uv build /tmp/build --all-packages --wheel --out-dir /tmp/wheels/
+# imbi-harness has its own image (apps/harness/Dockerfile), and its
+# Agent SDK wheel holds the Claude Code CLI binary.
+RUN uv build /tmp/build --all-packages --wheel --out-dir /tmp/wheels/ \
+ && rm /tmp/wheels/imbi_harness-*.whl
 
 # Install every wheel into a venv
 ENV UV_LINK_MODE=copy UV_PROJECT_DIRECTORY=/app VIRTUAL_ENV=/app

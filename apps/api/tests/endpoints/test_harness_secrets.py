@@ -500,6 +500,33 @@ class RouteTests(SecretRunnerTestCase):
                 )
                 self.assertEqual(response.status_code, 403, response.text)
 
+    async def test_replayed_handle_is_refused(self) -> None:
+        created = await self.created()
+        response = await self.materialize_route(created['handle'])
+        self.assertEqual(response.status_code, 200, response.text)
+        # A new nonce does not help: the handle is used.
+        response = await self.materialize_route(created['handle'])
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'resolution_already_used'
+        )
+        self.assert_no_store(response)
+
+    async def test_expired_handle_is_refused(self) -> None:
+        created = await self.created()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.resolutions'
+                " SET expires_at = NOW() - INTERVAL '1 second'"
+                ' WHERE id = %s',
+                (created['resolution_id'],),
+            )
+        response = await self.materialize_route(created['handle'])
+        self.assertEqual(response.status_code, 410, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'resolution_expired'
+        )
+
     async def test_stale_attempt_is_refused(self) -> None:
         created = await self.created()
         await self.expire(self.runner)

@@ -1,0 +1,13 @@
+#!/bin/sh -p
+# The Agent SDK cli_path (harness plan section 6.3). The runner starts
+# this with effective uid 0, and -p keeps it. setpriv makes every id
+# agent, removes the supplementary groups (harness-ipc), and clears the
+# inheritable capabilities. Do not use ClaudeAgentOptions.user: the CLI
+# then keeps the runner's groups.
+#
+# The real uid (runner) is not the effective uid (0), so glibc starts
+# this script and setpriv in secure mode and removes TMPDIR from the
+# environment. The runner sends it as HARNESS_TMPDIR, and env sets it
+# after setpriv, when all ids are agent.
+exec setpriv --reuid=agent --regid=agent --clear-groups --inh-caps=-all \
+  /usr/bin/env TMPDIR="${HARNESS_TMPDIR:?}" /usr/local/libexec/claude "$@"

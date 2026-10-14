@@ -45,6 +45,10 @@ dev = [
   "click~=8.2.1",  # 8.3 CliRunner drops stderr from result.output; also breaks mkdocs serve
   "coverage[toml]>=7.13.1",
   "httpcore",
+  # The runner app is a workspace member but not a meta-package
+  # dependency (it ships only as the runner image), so the dev group
+  # installs it for typecheck and tests.
+  "imbi-harness",
   "mypy~=1.19.1",
   "pre-commit>=4.5.1",
   "pytest~=9.0",
@@ -99,6 +103,7 @@ files = [
   "apps/api/src",
   "apps/assistant/src",
   "apps/gateway/src",
+  "apps/harness/src",
   "apps/mcp/src",
   "apps/scheduler/src",
   "apps/slackbot/src",
@@ -111,7 +116,7 @@ files = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -144,6 +149,7 @@ extraPaths = [
   "apps/api/src",
   "apps/assistant/src",
   "apps/gateway/src",
+  "apps/harness/src",
   "apps/mcp/src",
   "apps/scheduler/src",
   "apps/slackbot/src",
@@ -709,6 +715,8 @@ max-complexity = 15
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 # TC001-TC003: as for the scheduler.
 "apps/workflows/**" = ["TC001", "TC002", "TC003", "UP037"]
+# The pod isolation suite and its stub: test code that runs in a container.
+"apps/harness/isolation/**" = ["C901", "PL", "PTH", "RET", "S101", "T201"]
 "conftest.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
   "A",
@@ -747,6 +755,7 @@ imbi-common = { workspace = true }
 imbi-api = { workspace = true }
 imbi-assistant = { workspace = true }
 imbi-gateway = { workspace = true }
+imbi-harness = { workspace = true }
 imbi-mcp = { workspace = true }
 imbi-scheduler = { workspace = true }
 imbi-slackbot = { workspace = true }

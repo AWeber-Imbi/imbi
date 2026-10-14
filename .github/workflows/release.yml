@@ -223,6 +223,11 @@ jobs:
       - name: Build
         run: uv build --all-packages
 
+      # imbi-harness ships only as the runner image (apps/harness/Dockerfile),
+      # not on PyPI. It stays in lockstep, so bump-version.sh still covers it.
+      - name: Remove imbi-harness from the PyPI upload
+        run: rm -v dist/imbi_harness-*
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
