@@ -1,9 +1,13 @@
+import concurrent.futures
 import http.client
 import http.server
 import json
 import threading
+import time
 import typing
 import unittest
+import unittest.mock
+import urllib.error
 import urllib.request
 
 from imbi.harness import proxy
@@ -164,3 +168,176 @@ class ProxyTestCase(unittest.TestCase):
                     self.raw(method, target, body, headers), status
                 )
         self.assertEqual(_Upstream.seen, [])
+
+
+def _sse(*events: dict[str, typing.Any]) -> bytes:
+    return b''.join(
+        f'event: {e["type"]}\ndata: {json.dumps(e)}\n\n'.encode()
+        for e in events
+    )
+
+
+class _Model(http.server.BaseHTTPRequestHandler):
+    """An Anthropic Messages API that streams one reply, or returns JSON."""
+
+    calls: typing.ClassVar[list[dict[str, str]]] = []
+
+    def log_message(self, format: str, *args: typing.Any) -> None:
+        pass
+
+    def do_POST(self) -> None:
+        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        self.calls.append({k.lower(): v for k, v in self.headers.items()})
+        if self.path.startswith('/v1/messages/count_tokens'):
+            data, kind = b'{"input_tokens": 3}', 'application/json'
+        elif body.get('stream'):
+            kind = 'text/event-stream'
+            data = _sse(
+                {
+                    'type': 'message_start',
+                    'message': {
+                        'model': 'claude-x-20260101',
+                        'usage': {
+                            'input_tokens': 100,
+                            'cache_read_input_tokens': 7,
+                            'cache_creation_input_tokens': None,
+                            'output_tokens': 1,
+                        },
+                    },
+                },
+                {'type': 'content_block_delta', 'delta': {'text': 'hi'}},
+                {'type': 'message_delta', 'usage': {'output_tokens': 42}},
+                {'type': 'message_stop'},
+            )
+        else:
+            kind = 'application/json'
+            data = json.dumps(
+                {
+                    'model': 'claude-y',
+                    'usage': {'input_tokens': 5, 'output_tokens': 6},
+                }
+            ).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', kind)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+class MeterTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _Model.calls = []
+        upstream = http.server.ThreadingHTTPServer(('127.0.0.1', 0), _Model)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.shutdown)
+        host, port = upstream.server_address[:2]
+        self.upstream = f'http://{host!s}:{port}'
+        self.metered: list[tuple[str, dict[str, typing.Any]]] = []
+        self.budget = True
+
+    def start(self, **kwargs: typing.Any) -> str:
+        return proxy.start(
+            self.upstream,
+            'real-key',
+            meter=lambda model, usage: self.metered.append((model, usage)),
+            allowed=lambda: self.budget,
+            **kwargs,
+        )
+
+    def post(
+        self, url: str, body: dict[str, typing.Any], path: str = '/v1/messages'
+    ) -> tuple[int, bytes]:
+        request = urllib.request.Request(
+            url + path, data=json.dumps(body).encode()
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as err:
+            with err:
+                return err.code, err.read()
+
+    def test_stream_usage(self) -> None:
+        status, data = self.post(self.start(), {'model': 'm', 'stream': True})
+        self.assertEqual(status, 200)
+        self.assertIn(b'message_stop', data)
+        self.assertEqual(
+            self.metered,
+            [
+                (
+                    'claude-x-20260101',
+                    {
+                        'input_tokens': 100,
+                        'cache_read_input_tokens': 7,
+                        'output_tokens': 42,
+                    },
+                )
+            ],
+        )
+
+    def test_concurrent_calls_overshoot_by_one_call_at_most(self) -> None:
+        def meter(model: str, usage: dict[str, typing.Any]) -> None:
+            # A slow usage report that spends the budget.
+            time.sleep(0.3)
+            self.metered.append((model, usage))
+            self.budget = False
+
+        url = proxy.start(
+            self.upstream, 'real-key', meter=meter, allowed=lambda: self.budget
+        )
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            statuses = sorted(
+                pool.map(lambda _: self.post(url, {'model': 'm'})[0], range(2))
+            )
+        self.assertEqual(statuses, [200, 400])
+        self.assertEqual(len(_Model.calls), 1)
+        self.assertEqual(len(self.metered), 1)
+
+    def test_json_usage(self) -> None:
+        self.post(self.start(), {'model': 'm'})
+        self.assertEqual(
+            self.metered,
+            [('claude-y', {'input_tokens': 5, 'output_tokens': 6})],
+        )
+
+    def test_count_tokens_is_not_metered(self) -> None:
+        self.budget = False
+        status, _ = self.post(
+            self.start(), {'model': 'm'}, '/v1/messages/count_tokens'
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(self.metered, [])
+
+    def test_spent_budget_refuses_with_no_upstream_call(self) -> None:
+        self.budget = False
+        status, data = self.post(self.start(), {'model': 'm'})
+        self.assertEqual(status, 400)
+        self.assertIn(b'budget', data)
+        self.assertEqual(_Model.calls, [])
+        self.assertEqual(self.metered, [])
+
+    def test_litellm_gets_a_bearer_key(self) -> None:
+        self.post(self.start(litellm=True), {'model': 'm'})
+        (headers,) = _Model.calls
+        self.assertEqual(headers['authorization'], 'Bearer real-key')
+        self.assertEqual(headers['x-api-key'], 'real-key')
+
+    def test_anthropic_gets_no_bearer(self) -> None:
+        self.post(self.start(), {'model': 'm'})
+        (headers,) = _Model.calls
+        self.assertNotIn('authorization', headers)
+
+
+class UsageTestCase(unittest.TestCase):
+    def test_bad_request_body_and_bad_events(self) -> None:
+        usage = proxy._Usage(b'not json', True)
+        usage.feed(b'data: {broken\n\ndata: [1]\n\n')
+        usage.finish()
+        self.assertEqual((usage.model, usage.counts), ('', {}))
+
+    def test_json_body_over_the_limit_is_not_read(self) -> None:
+        usage = proxy._Usage(b'{"model": "m"}', False)
+        with unittest.mock.patch.object(proxy, '_JSON_LIMIT', 4):
+            usage.feed(b'{"usage": {"input_tokens": 1}}')
+        usage.finish()
+        self.assertEqual((usage.model, usage.counts), ('m', {}))

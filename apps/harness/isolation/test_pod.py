@@ -22,6 +22,13 @@ only through ``setpriv`` as that user.
 - ``EndOfChainTests``: after a chain, no ``agent`` process is left in
   either container, the workspace is gone, and the runner process
   ended after one claim.
+- ``TaskFlowTests`` (P5): the workspace build (a private clone with a
+  token on a descriptor, a pinned plugin), the model key through a
+  ``model_inference`` resolution, the task events with redaction and
+  1 MiB parts, the usage reports, and the outcome.
+- ``BudgetTests`` and ``CancelTests`` (P5): a task over budget ends as
+  ``exceeded_ceiling`` with no more model calls; a cancel stops a
+  running command.
 """
 
 import base64
@@ -167,12 +174,23 @@ def probe_result(text: str) -> Row:
     return json.loads(text[text.index('{') :])
 
 
-def resolutions_of(task: Row) -> list[Row]:
+def resolutions_of(task: Row, purpose: str = 'github_write') -> list[Row]:
+    """The resolutions of a task for one purpose. Each task also has a
+    ``model_inference`` resolution for its model key."""
     return [
         row
         for row in fake_api('GET', '/test/state')['resolutions']
-        if row['task_id'] == task['id']
+        if row['task_id'] == task['id'] and row['purpose'] == purpose
     ]
+
+
+def task_of(task: Row) -> Row:
+    """The task with its events and usage reports."""
+    return fake_api('GET', f'/test/task?short_id={task["short_id"]}')
+
+
+def model_key() -> str:
+    return fake_api('GET', '/test/model-key')['key']
 
 
 def run_with_secret(command: str) -> Row:
@@ -232,7 +250,13 @@ class AgentTests(unittest.TestCase):
 
     def test_cannot_read_pool_credential_or_model_key(self) -> None:
         self.assertEqual(self.result['pool_credential'], DENIED)
-        self.assertEqual(self.result['model_key'], DENIED)
+        # The model key is only in the runner's memory (from a
+        # model_inference resolution), never in a file; the memory test
+        # above covers it.
+        self.assertEqual(
+            self.result['model_key'],
+            f'denied:{errno.errorcode[errno.ENOENT]}',
+        )
         self.assertTrue(self.result['cli_key_is_placeholder'])
 
     def test_cannot_read_service_account_token(self) -> None:
@@ -352,6 +376,7 @@ class TranscriptTests(unittest.TestCase):
             base64.b64encode(raw).decode()[:-4],
             raw.hex(),
             urllib.parse.quote(material, safe=''),
+            model_key(),
         ]
 
     def check(self, haystack: str, where: str) -> None:
@@ -369,6 +394,9 @@ class TranscriptTests(unittest.TestCase):
             'GET', f'/test/model-requests?task={self.task["short_id"]}'
         )
         self.check(json.dumps(requests), 'model requests')
+
+    def test_task_events(self) -> None:
+        self.check(json.dumps(task_of(self.task)['events']), 'task events')
 
     def test_runner_transcript(self) -> None:
         path = f'/run/creds/runner/transcripts/{self.task["id"]}.jsonl'
@@ -469,6 +497,20 @@ class HandleTests(unittest.TestCase):
             'resolution_context_mismatch',
             'other-runner',
         )
+
+    def test_setup_purpose_is_never_run(self) -> None:
+        resolution = fake_api(
+            'POST', '/test/resolutions', {'purpose': 'model_inference'}
+        )
+        reply = self.send(resolution, 'setup-purpose')
+        self.assert_refused(reply, 'purpose_not_allowed', 'setup-purpose')
+        (row,) = [
+            r
+            for r in fake_api('GET', '/test/state')['resolutions']
+            if r['id'] == resolution['id']
+        ]
+        self.assertEqual(row['count'], 0)
+        self.assertEqual(row['state'], 'released')
 
     def test_peer_that_is_not_the_runner(self) -> None:
         # In the harness-ipc group, so only the SO_PEERCRED check stops it.
@@ -629,3 +671,286 @@ class EndOfChainTests(unittest.TestCase):
         self.assertFalse(
             pathlib.Path(f'/work/{self.task["chain_id"]}').exists()
         )
+
+
+def bash(command: str) -> Row:
+    return {
+        'name': 'Bash',
+        'input': {'command': command, 'description': 'A test step'},
+    }
+
+
+class TaskFlowTests(unittest.TestCase):
+    """A task with a repository, a pinned plugin, and a GitHub App."""
+
+    task: typing.ClassVar[Row]
+    detail: typing.ClassVar[Row]
+    results: typing.ClassVar[list[str]]
+    known = 'ghp_' + 'A' * 36
+    text_bytes = 2_500_000
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        wait_for_runner()
+        cls.task = fake_api(
+            'POST',
+            '/test/tasks',
+            {
+                'repository': True,
+                'plugin': True,
+                'binding': True,
+                'final_text_bytes': cls.text_bytes,
+                'script': [
+                    bash(
+                        'pwd; git log -1 --format=%s; cat .git/config; '
+                        'ls "$CLAUDE_CONFIG_DIR"'
+                    ),
+                    {
+                        'name': 'TodoWrite',
+                        'input': {
+                            'todos': [
+                                {
+                                    'content': 'Check the clone',
+                                    'status': 'completed',
+                                    'activeForm': 'Checking the clone',
+                                }
+                            ]
+                        },
+                    },
+                    bash(f'echo {cls.known}'),
+                    {
+                        'name': 'Write',
+                        'input': {
+                            'file_path': '/work/written-by-a-denied-tool',
+                            'content': 'x',
+                        },
+                    },
+                ],
+            },
+        )
+        deadline = time.monotonic() + 240
+        while task_of(cls.task)['status'] != 'closed':
+            if time.monotonic() > deadline:
+                raise AssertionError('the task did not close')
+            time.sleep(1)
+        cls.detail = task_of(cls.task)
+        cls.results = tool_results(cls.task)
+
+    def events(self, kind: str) -> list[Row]:
+        return [e for e in self.detail['events'] if e['type'] == kind]
+
+    def test_outcome(self) -> None:
+        self.assertEqual(
+            (self.detail['outcome'], self.detail['outcome_reason']),
+            ('done_acted', None),
+        )
+
+    def test_clone_in_the_workspace_without_a_credential(self) -> None:
+        text = self.results[0]
+        self.assertIn(f'/work/{self.task["chain_id"]}/repos/app', text)
+        self.assertIn('app: first commit', text)
+        self.assertIn('url = http://harness-fake-api:8080/git/app', text)
+        self.assertNotIn('ghs_', text)
+        self.assertNotIn('x-access-token', text)
+        self.assertIn('settings.json', text)
+        self.assertIn('CLAUDE.md', text)
+
+    def test_setup_secrets_were_used_once_and_released(self) -> None:
+        for purpose in (
+            'model_inference',
+            'workspace_checkout',
+            'marketplace_fetch',
+        ):
+            with self.subTest(purpose=purpose):
+                (resolution,) = resolutions_of(self.task, purpose)
+                self.assertEqual(resolution['count'], 1)
+                self.assertEqual(resolution['state'], 'released')
+                self.assertEqual(resolution['ended_by'], 'executor')
+        for purpose in ('workspace_checkout', 'marketplace_fetch'):
+            (resolution,) = resolutions_of(self.task, purpose)
+            self.assertGreaterEqual(resolution.get('git_uses', 0), 1)
+            self.assertTrue(resolution['revoked'])
+
+    def test_plugin_loaded(self) -> None:
+        path = f'/run/creds/runner/transcripts/{self.task["id"]}.jsonl'
+        result = as_user('runner', ['cat', path])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        init = next(
+            json.loads(line)
+            for line in result.stdout.splitlines()
+            if '"subtype": "init"' in line
+        )
+        paths = [p['path'] for p in init['data']['plugins']]
+        self.assertTrue(
+            any(p.endswith('/plugins/hello') for p in paths), paths
+        )
+
+    def test_tool_and_todo_events(self) -> None:
+        calls = self.events('tool.called')
+        self.assertEqual(
+            [c['payload']['tool'] for c in calls],
+            ['Bash', 'TodoWrite', 'Bash', 'Write'],
+        )
+        self.assertIn('app: first commit', calls[0]['payload']['result'])
+        self.assertTrue(calls[0]['payload']['mutating'])
+        (todos,) = self.events('todos.updated')
+        self.assertEqual(
+            todos['payload']['todos'],
+            [
+                {
+                    'title': 'Check the clone',
+                    'status': 'completed',
+                    'done': True,
+                }
+            ],
+        )
+
+    def test_repository_settings_do_not_widen_the_policy(self) -> None:
+        write = self.events('tool.called')[3]['payload']
+        self.assertTrue(write['is_error'], write)
+        self.assertFalse(
+            pathlib.Path('/work/written-by-a-denied-tool').exists()
+        )
+
+    def test_repository_instructions_are_loaded(self) -> None:
+        requests = json.dumps(
+            fake_api(
+                'GET', f'/test/model-requests?task={self.task["short_id"]}'
+            )
+        )
+        self.assertIn('REPO-CLAUDE-MARKER', requests)
+        self.assertIn('REPO-AGENTS-MARKER', requests)
+
+    def test_known_formats_are_redacted(self) -> None:
+        events = json.dumps(self.detail['events'])
+        self.assertNotIn(self.known, events)
+        self.assertIn(
+            '[REDACTED]', self.events('tool.called')[2]['payload']['result']
+        )
+        # The model got the output: the CLI holds no redactor.
+        self.assertIn(self.known, self.results[2])
+
+    def test_large_turn_is_in_parts(self) -> None:
+        parts = [e for e in self.events('turn') if 'parts' in e['payload']]
+        self.assertGreaterEqual(len(parts), 3)
+        (call_id,) = {p['payload']['call_id'] for p in parts}
+        self.assertTrue(call_id)
+        self.assertEqual(
+            [p['payload']['part'] for p in parts],
+            list(range(1, len(parts) + 1)),
+        )
+        body = ''.join(p['payload']['body'] for p in parts)
+        self.assertEqual(body, 'y' * self.text_bytes)
+
+    def test_usage_for_each_model_call(self) -> None:
+        requests = fake_api(
+            'GET', f'/test/model-requests?task={self.task["short_id"]}'
+        )
+        usage = self.detail['usage']
+        self.assertGreaterEqual(len(usage), len(requests))
+        self.assertEqual(len(requests), 5)
+        for report in usage:
+            self.assertEqual(report['tokens_in'], 10)
+            self.assertEqual(report['tokens_out'], 5)
+            self.assertEqual(report['cache_read_tokens'], 0)
+            self.assertEqual(report['cache_write_tokens'], 0)
+        self.assertNotIn({'bad_key': True}, requests)
+
+
+class BudgetTests(unittest.TestCase):
+    def test_over_budget_ends_with_no_more_model_calls(self) -> None:
+        wait_for_runner()
+        task = fake_api(
+            'POST',
+            '/test/tasks',
+            {
+                # One fake call costs 15 tokens at 0.000001 USD.
+                'budget': '0.00001',
+                'script': [bash('true'), bash('true'), bash('true')],
+            },
+        )
+        run_task_until_done(task)
+        detail = task_of(task)
+        self.assertEqual(
+            (detail['outcome'], detail['outcome_reason']),
+            ('exceeded_ceiling', 'budget'),
+        )
+        requests = fake_api(
+            'GET', f'/test/model-requests?task={task["short_id"]}'
+        )
+        self.assertEqual(len(requests), 1)
+
+
+class CancelTests(unittest.TestCase):
+    def test_cancel_stops_a_running_command(self) -> None:
+        wait_for_runner()
+        task = fake_api('POST', '/test/tasks', {'script': [bash('sleep 300')]})
+        deadline = time.monotonic() + 120
+        while not fake_api(
+            'GET', f'/test/model-requests?task={task["short_id"]}'
+        ):
+            if time.monotonic() > deadline:
+                raise AssertionError('the task did not start')
+            time.sleep(0.5)
+        time.sleep(3)
+        fake_api(
+            'POST',
+            '/test/control',
+            {'short_id': task['short_id'], 'control': 'cancel'},
+        )
+        started = time.monotonic()
+        run_task_until_done(task, 90)
+        self.assertLess(time.monotonic() - started, 60)
+        detail = task_of(task)
+        self.assertEqual(detail['outcome'], 'cancelled_by_human')
+        self.assertEqual(agent_processes(), [])
+
+
+def run_task_until_done(task: Row, timeout: float = 180) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        chains = fake_api('GET', '/test/state')['chains']
+        if next(c for c in chains if c['id'] == task['chain_id'])['state'] == (
+            'done'
+        ):
+            return
+        time.sleep(1)
+    raise AssertionError(f'task {task["short_id"]} did not end')
+
+
+class ModelKeyRequestTests(unittest.TestCase):
+    """The model asks run_with_secret for the model key: refused, and
+    the key reaches no output, event, or model request."""
+
+    def test_model_key_is_refused(self) -> None:
+        wait_for_runner()
+        step = {
+            'name': 'mcp__imbi__run_with_secret',
+            'input': {
+                'command': 'echo "key=$K"',
+                'secrets': [
+                    {
+                        'reference': 'secret://production/anthropic/key',
+                        'purpose': 'model_inference',
+                        'env': 'K',
+                    }
+                ],
+            },
+        }
+        task = run_task([step])
+        (result,) = tool_results(task)
+        self.assertIn('harness only', result)
+        self.assertNotIn('key=', result)
+        key = model_key()
+        self.assertNotIn(key, json.dumps(task_of(task)['events']))
+        self.assertNotIn(
+            key,
+            json.dumps(
+                fake_api(
+                    'GET', f'/test/model-requests?task={task["short_id"]}'
+                )
+            ),
+        )
+        # Only the runner's own model key resolution exists.
+        (only,) = resolutions_of(task, 'model_inference')
+        self.assertEqual(only['ended_by'], 'executor')

@@ -1,4 +1,4 @@
-"""The runner's ``run_with_secret`` tool and its lease fence.
+"""The runner's lease fence and its one chain.
 
 The SDK session and the user switches need the pod; the kind suite in
 ``isolation/`` covers them.
@@ -6,7 +6,6 @@ The SDK session and the user switches need the pod; the kind suite in
 
 import asyncio
 import contextlib
-import json
 import pathlib
 import tempfile
 import typing
@@ -16,29 +15,6 @@ from unittest import mock
 import respx
 
 from imbi.harness import api, ipc, privilege, runner
-
-HANDLE = 'handle-that-must-not-reach-the-model-0123456789'
-CLAIM = {
-    'chain_id': 'c',
-    'agent_token': 'iat_token',
-    'task': {
-        'id': 't',
-        'short_id': 'T-1',
-        'agent_id': 'a',
-        'project_id': None,
-        'description': 'Work.',
-    },
-}
-ARGS = {
-    'command': 'gh pr list',
-    'secrets': [
-        {
-            'reference': 'secret://production/github/token',
-            'purpose': 'github_write',
-            'env': 'GH_TOKEN',
-        }
-    ],
-}
 
 
 class Fenced(BaseException):
@@ -51,73 +27,56 @@ def make_runner() -> runner.Runner:
         api_url='http://imbi.test',
         pool='general',
         instance='pod',
-        model_url='http://model.test',
         model=None,
     )
     return runner.Runner(
-        settings, ('id', 'secret'), pathlib.Path('/nonexistent'), 'http://p'
+        settings, ('id', 'secret'), pathlib.Path('/nonexistent')
     )
 
 
-class RunWithSecretTestCase(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        self.runner = make_runner()
-        self.api = mock.AsyncMock(spec=api.Api)
-        self.runner.api = self.api
-        self.api.create_resolution.return_value = {
-            'resolution_id': 'r1',
-            'handle': HANDLE,
-            'state': 'active',
-            'delivery': {'mode': 'environment', 'target': 'GH_TOKEN'},
-        }
-        patcher = mock.patch.object(ipc, 'call', mock.AsyncMock())
-        self.call = patcher.start()
-        self.addCleanup(patcher.stop)
-        tool = self.runner._run_with_secret(CLAIM, pathlib.Path('/work/c'))
-        self.handler = tool.handler
+REAL_SLEEP = asyncio.sleep
 
-    async def run_tool(self) -> dict[str, typing.Any]:
-        result = await self.handler(ARGS)
-        self.assertNotIn(HANDLE, json.dumps(result))
-        return result
 
-    async def test_sends_handles_to_the_executor_only(self) -> None:
-        self.call.return_value = {'exit_code': 0, 'output': 'ok'}
-        result = await self.run_tool()
-        self.assertEqual(
-            result, {'content': [{'type': 'text', 'text': 'exit code 0\nok'}]}
-        )
-        body = self.api.create_resolution.call_args.args[1]
-        self.assertEqual(body['short_id'], 'T-1')
-        self.assertEqual(body['delivery']['target'], 'GH_TOKEN')
-        (message,) = self.call.call_args.args
-        self.assertEqual(message['secrets'][0]['handle'], HANDLE)
-        self.assertEqual(message['cwd'], '/work/c')
-        self.assertEqual(message['context']['task_id'], 't')
+class Clock:
+    """Controlled time for the runner module: ``time.monotonic``,
+    ``asyncio.sleep``, and ``asyncio.timeout``. A sleep moves the clock
+    and yields once; a timeout only records its delay."""
 
-    async def test_refused_resolution(self) -> None:
-        self.api.create_resolution.side_effect = api.Refused(
-            403, 'secret_access_denied'
-        )
-        result = await self.run_tool()
-        self.assertTrue(result['is_error'])
-        self.assertIn('secret_access_denied', result['content'][0]['text'])
-        self.call.assert_not_called()
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.delay = 0.0
 
-    async def test_executor_error(self) -> None:
-        self.call.return_value = {'error': 'resolution_expired'}
-        result = await self.run_tool()
-        self.assertTrue(result['is_error'])
-        self.assertIn('resolution_expired', result['content'][0]['text'])
+    def monotonic(self) -> float:
+        return self.now
 
-    async def test_executor_unavailable(self) -> None:
-        self.call.side_effect = FileNotFoundError(ipc.SOCKET_PATH)
-        result = await self.run_tool()
-        self.assertTrue(result['is_error'])
+    async def sleep(self, delay: float) -> None:
+        self.now += delay
+        await REAL_SLEEP(0)
 
-    async def test_invalid_input(self) -> None:
-        result = await self.handler({'command': 'x', 'secrets': [{}]})
-        self.assertTrue(result['is_error'])
+    @contextlib.asynccontextmanager
+    async def timeout(self, delay: float) -> typing.AsyncIterator[None]:
+        self.delay = delay
+        yield
+
+    async def black_hole(self, *_: typing.Any) -> None:
+        """A request with no reply: it ends at its timeout."""
+        self.now += self.delay
+        raise TimeoutError
+
+    async def until(self, at: float) -> None:
+        while self.now < at:
+            await REAL_SLEEP(0)
+
+
+class _Asyncio:
+    """The asyncio module, with the clock's sleep and timeout."""
+
+    def __init__(self, clock: Clock) -> None:
+        self.sleep = clock.sleep
+        self.timeout = clock.timeout
+
+    def __getattr__(self, name: str) -> typing.Any:
+        return getattr(asyncio, name)
 
 
 class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
@@ -125,21 +84,23 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
         self.runner = make_runner()
         self.api = mock.AsyncMock(spec=api.Api)
         self.runner.api = self.api
-        patcher = mock.patch.object(runner, '_fence', side_effect=Fenced)
-        self.fence = patcher.start()
-        self.addCleanup(patcher.stop)
+        self.clock = Clock()
+        for name, value in (
+            ('_fence', mock.Mock(side_effect=Fenced)),
+            ('time', mock.Mock(monotonic=self.clock.monotonic)),
+            ('asyncio', _Asyncio(self.clock)),
+        ):
+            patcher = mock.patch.object(runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.fence = typing.cast('mock.Mock', runner._fence)
 
     async def test_fences_before_the_lease_expires(self) -> None:
-        async def black_hole(*_: typing.Any) -> None:
-            await asyncio.sleep(3600)
-
-        self.api.heartbeat.side_effect = black_hole
-        loop = asyncio.get_running_loop()
-        started = loop.time()
+        self.api.heartbeat.side_effect = self.clock.black_hole
         with self.assertRaises(Fenced):
             await self.runner.heartbeat(lease_seconds=3)
         # The margin is a third of the lease: fence at 2 s, not at 3 s.
-        self.assertLess(loop.time() - started, 2.5)
+        self.assertLess(self.clock.now, 2.5)
         self.assertIn('lease', self.fence.call_args.args[0])
 
     async def test_fences_when_the_runner_is_unknown(self) -> None:
@@ -154,14 +115,12 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
         # For example a decode error: it must not end the heartbeat
         # before the fence.
         self.api.heartbeat.side_effect = ValueError('bad body')
-        loop = asyncio.get_running_loop()
-        started = loop.time()
         with (
             self.assertLogs('imbi.harness.runner', 'WARNING') as logs,
             self.assertRaises(Fenced),
         ):
             await self.runner.heartbeat(lease_seconds=3)
-        self.assertGreaterEqual(loop.time() - started, 1.5)
+        self.assertGreaterEqual(self.clock.now, 1.5)
         self.assertIn('lease', self.fence.call_args.args[0])
         self.assertNotIn('bad body', '\n'.join(logs.output))
 
@@ -176,7 +135,7 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
         self.runner.api = api.Api('http://imbi.test')
         self.runner.runner_id = 'r'
         task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
-        await asyncio.sleep(3.5)
+        await asyncio.wait_for(self.clock.until(3.5), 10)
         self.assertFalse(task.done())
         task.cancel()
         self.fence.assert_not_called()
@@ -201,7 +160,7 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_keeps_running_while_renewed(self) -> None:
         self.api.heartbeat.return_value = None
         task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
-        await asyncio.sleep(3.5)
+        await asyncio.wait_for(self.clock.until(3.5), 10)
         self.assertFalse(task.done())
         task.cancel()
         self.fence.assert_not_called()
@@ -258,3 +217,52 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertLogs('imbi.harness.runner', 'WARNING'),
         ):
             await subject.end_chain(pathlib.Path('/nonexistent/chain'))
+
+
+class CycleTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_runs_the_root_task_and_finishes(self) -> None:
+        subject = make_runner()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        subject.credentials = pathlib.Path(tmp.name)
+        subject.api = mock.AsyncMock(spec=api.Api)
+        subject.api.register.return_value = {
+            'runner_id': 'r',
+            'runner_token': 'ihr_runner_token_0123456789',
+            'executor_token': 'ihe_executor_token_0123456789',
+            'lease_seconds': 30,
+        }
+        claim = {'chain_id': 'c', 'agent_token': 'iat_agent_token_0123456789'}
+        subject.api.claim.side_effect = [None, claim]
+        subject.heartbeat = mock.AsyncMock()  # type: ignore[method-assign]
+        subject.end_chain = mock.AsyncMock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(ipc, 'call', mock.AsyncMock()) as call,
+            mock.patch.object(runner.task, 'TaskRun') as task_run,
+            mock.patch.object(runner.task.Layout, 'make') as make,
+        ):
+            task_run.return_value.run = mock.AsyncMock()
+            await subject.cycle()
+        call.assert_awaited_once_with(
+            {'op': 'hello', 'executor_token': 'ihe_executor_token_0123456789'}
+        )
+        make.assert_called_once_with()
+        args = task_run.call_args.args
+        self.assertEqual(args[1], claim)
+        self.assertEqual(args[2].root, runner.WORK / 'c')
+        task_run.return_value.run.assert_awaited_once_with()
+        subject.end_chain.assert_awaited_once_with(runner.WORK / 'c')
+        subject.api.finish.assert_awaited_once_with(
+            'r', 'ihr_runner_token_0123456789'
+        )
+        for value in (
+            'ihr_runner_token_0123456789',
+            'ihe_executor_token_0123456789',
+            'iat_agent_token_0123456789',
+            'secret',
+        ):
+            self.assertEqual(subject.redactor.text(value), '[REDACTED]')
+        self.assertEqual(
+            (subject.credentials / 'runner.token').read_text(),
+            'ihr_runner_token_0123456789',
+        )

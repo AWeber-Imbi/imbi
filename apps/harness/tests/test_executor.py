@@ -6,6 +6,7 @@ kind suite in ``isolation/`` covers it.
 
 import asyncio
 import base64
+import json
 import os
 import pathlib
 import stat
@@ -39,7 +40,7 @@ def request(**changes: typing.Any) -> dict[str, typing.Any]:
     } | changes
 
 
-class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
+class BaseTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -65,6 +66,8 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(reply, {'ok': True})
 
+
+class ExecutorTestCase(BaseTestCase):
     async def test_hello_keeps_the_credential(self) -> None:
         await self.hello()
         path = self.credentials / 'executor.token'
@@ -86,8 +89,14 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_run_filters_and_releases(self) -> None:
         await self.hello()
         reply = await self.executor.dispatch(request())
+        # The exact value goes to the runner's event redactor.
         self.assertEqual(
-            reply, {'exit_code': 0, 'output': 'token=[REDACTED]\n'}
+            reply,
+            {
+                'exit_code': 0,
+                'output': 'token=[REDACTED]\n',
+                'values': [SECRET],
+            },
         )
         body = self.api.materialize.call_args.args[1]
         self.assertEqual(body['handle'], 'h')
@@ -203,6 +212,207 @@ class ExecutorTestCase(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(reply, {'error': error})
         self.api.materialize.assert_not_called()
 
+    async def test_setup_purposes_are_never_run(self) -> None:
+        await self.hello()
+        for purpose in sorted(executor.SETUP_PURPOSES):
+            with self.subTest(purpose=purpose):
+                self.api.release.reset_mock()
+                secret = request()['secrets'][0] | {'purpose': purpose}
+                reply = await self.executor.dispatch(request(secrets=[secret]))
+                self.assertEqual(reply, {'error': 'purpose_not_allowed'})
+                self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+        self.api.materialize.assert_not_called()
+        self.spawn.assert_not_called()
+
+    async def test_home_in_the_workspace(self) -> None:
+        await self.hello()
+        await self.executor.dispatch(request(home='/work/chain/tasks/t/home'))
+        self.assertEqual(
+            self.spawn.call_args.args[2]['HOME'], '/work/chain/tasks/t/home'
+        )
+        reply = await self.executor.dispatch(request(home='/etc'))
+        self.assertEqual(reply, {'error': 'invalid_cwd'})
+
+    async def test_no_secret_no_values(self) -> None:
+        await self.hello()
+        reply = await self.executor.dispatch(request(secrets=[]))
+        self.assertEqual(
+            reply, {'exit_code': 0, 'output': f'token={SECRET}\n'}
+        )
+
+
+def clone(**changes: typing.Any) -> dict[str, typing.Any]:
+    return {
+        'op': 'clone',
+        'url': 'https://github.com/acme/app',
+        'dest': '/work/chain/repos/app',
+        'sha': None,
+        'context': {'task_id': 't', 'agent_id': 'a', 'project_id': 'p'},
+        'secret': {
+            'handle': 'h',
+            'resolution_id': 'r1',
+            'purpose': 'workspace_checkout',
+            'delivery': {'mode': 'file_descriptor', 'target': '3'},
+        },
+    } | changes
+
+
+class CloneTestCase(BaseTestCase):
+    async def test_token_goes_on_a_descriptor(self) -> None:
+        await self.hello()
+        seen: dict[str, typing.Any] = {}
+
+        async def spawn(
+            command: str,
+            cwd: str,
+            env: dict[str, str],
+            limit: float,
+            pass_fds: tuple[int, ...] = (),
+        ) -> tuple[int, bytes, bool]:
+            (fd,) = pass_fds
+            seen.update(
+                command=command,
+                cwd=cwd,
+                env=env,
+                token=os.read(fd, 1024).decode(),
+                fd=fd,
+            )
+            return 0, f'cloned {SECRET}'.encode(), False
+
+        self.spawn.side_effect = spawn
+        reply = await self.executor.dispatch(clone())
+        self.assertEqual(
+            reply,
+            {
+                'exit_code': 0,
+                'output': 'cloned [REDACTED]',
+                'values': [SECRET],
+            },
+        )
+        self.assertEqual(seen['token'], SECRET)
+        self.assertEqual(seen['cwd'], '/work/chain/repos')
+        self.assertEqual(seen['env']['IMBI_GIT_TOKEN_FD'], str(seen['fd']))
+        self.assertNotIn(SECRET, seen['command'])
+        self.assertNotIn(SECRET, json.dumps(seen['env']))
+        self.assertIn(
+            'clone --quiet -- https://github.com/acme/app app', seen['command']
+        )
+        self.assertIn('credential.helper= ', seen['command'])
+        self.assertIn('protocol.allow=never', seen['command'])
+        body = self.api.materialize.call_args.args[1]
+        self.assertEqual(body['purpose'], 'workspace_checkout')
+        self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+        with self.assertRaises(OSError):
+            os.fstat(seen['fd'])
+
+    async def test_anonymous_at_a_commit(self) -> None:
+        reply = await self.executor.dispatch(
+            clone(secret=None, sha='0123456789abcdef', dest='/work/c/p/m-0123')
+        )
+        self.assertEqual(reply['exit_code'], 0)
+        command, cwd, env, _ = self.spawn.call_args.args
+        self.assertEqual(cwd, '/work/c/p')
+        self.assertNotIn('IMBI_GIT_TOKEN_FD', env)
+        self.assertEqual(self.spawn.call_args.kwargs['pass_fds'], ())
+        self.assertIn('init --quiet -- m-0123 && cd -- m-0123', command)
+        self.assertIn(
+            'fetch --quiet --depth 1 -- https://github.com/acme/app '
+            '0123456789abcdef',
+            command,
+        )
+        self.api.materialize.assert_not_called()
+        self.api.release.assert_not_called()
+
+    async def test_secret_needs_the_credential(self) -> None:
+        reply = await self.executor.dispatch(clone())
+        self.assertEqual(reply, {'error': 'no_executor_credential'})
+
+    async def test_refused_secret(self) -> None:
+        await self.hello()
+        self.api.materialize.side_effect = api.Refused(
+            403, 'resolution_context_mismatch'
+        )
+        reply = await self.executor.dispatch(clone())
+        self.assertEqual(reply, {'error': 'resolution_context_mismatch'})
+        self.spawn.assert_not_called()
+        self.api.release.assert_awaited_once()
+
+    async def test_invalid_clones(self) -> None:
+        await self.hello()
+        cases = {
+            'invalid_url': [
+                clone(url='ext::sh -c touch% /tmp/x'),
+                clone(url='file:///etc'),
+                clone(url='ssh://git@github.com/acme/app'),
+                clone(url='https://x-access-token:t@github.com/acme/app'),
+                clone(url='https://github.com/acme/app --upload-pack=x'),
+                clone(url=None),
+            ],
+            'invalid_cwd': [
+                clone(dest='/etc/app'),
+                clone(dest='/work/app'),
+                clone(dest='/work/c/../../etc/app'),
+            ],
+            'purpose_not_allowed': [
+                clone(secret=clone()['secret'] | {'purpose': 'github_write'}),
+                clone(
+                    secret=clone()['secret'] | {'purpose': 'model_inference'}
+                ),
+            ],
+            'invalid_clone': [
+                clone(dest='/work/chain/repos/-rf'),
+                clone(sha='HEAD; rm -rf /'),
+                clone(sha='--upload-pack=x'),
+            ],
+        }
+        for error, requests in cases.items():
+            for item in requests:
+                with self.subTest(error=error, request=item):
+                    reply = await self.executor.dispatch(item)
+                    self.assertEqual(reply, {'error': error})
+        self.spawn.assert_not_called()
+        self.api.materialize.assert_not_called()
+
+
+class FetchTestCase(BaseTestCase):
+    def fetch(self, purpose: str = 'model_inference') -> dict[str, typing.Any]:
+        return {
+            'op': 'fetch',
+            'context': {'task_id': 't', 'agent_id': 'a', 'project_id': None},
+            'secret': {
+                'handle': 'h',
+                'resolution_id': 'r1',
+                'purpose': purpose,
+                'delivery': {'mode': 'file_descriptor', 'target': '3'},
+            },
+        }
+
+    async def test_returns_the_model_key_and_releases(self) -> None:
+        await self.hello()
+        reply = await self.executor.dispatch(self.fetch())
+        self.assertEqual(reply, {'material': SECRET})
+        self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+        self.spawn.assert_not_called()
+
+    async def test_only_the_model_key(self) -> None:
+        await self.hello()
+        reply = await self.executor.dispatch(self.fetch('github_write'))
+        self.assertEqual(reply, {'error': 'purpose_not_allowed'})
+        self.api.materialize.assert_not_called()
+
+    async def test_without_credential(self) -> None:
+        reply = await self.executor.dispatch(self.fetch())
+        self.assertEqual(reply, {'error': 'no_executor_credential'})
+
+    async def test_refused(self) -> None:
+        await self.hello()
+        self.api.materialize.side_effect = api.Refused(
+            410, 'resolution_expired'
+        )
+        reply = await self.executor.dispatch(self.fetch())
+        self.assertEqual(reply, {'error': 'resolution_expired'})
+        self.api.release.assert_awaited_once()
+
 
 class SocketTestCase(ExecutorTestCase):
     """``handle`` on a real unix socket; the peer uid is patched."""
@@ -239,6 +449,32 @@ class SocketTestCase(ExecutorTestCase):
                 )
         self.peer.start()
         self.assertIsNone(self.executor.token)
+
+    async def test_other_peer_cannot_fetch_the_model_key(self) -> None:
+        await self.hello()
+        self.peer.stop()
+        try:
+            for uid in (10002, 10003):
+                with (
+                    self.subTest(uid=uid),
+                    mock.patch.object(ipc, 'peer_uid', return_value=uid),
+                    self.assertRaises(ConnectionError),
+                ):
+                    await ipc.call(
+                        {
+                            'op': 'fetch',
+                            'context': {},
+                            'secret': {
+                                'handle': 'h',
+                                'resolution_id': 'r1',
+                                'purpose': 'model_inference',
+                            },
+                        },
+                        self.path,
+                    )
+        finally:
+            self.peer.start()
+        self.api.materialize.assert_not_called()
 
     async def test_runner_gone_stops_the_work(self) -> None:
         await self.hello()

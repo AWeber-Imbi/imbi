@@ -63,3 +63,55 @@ class RedactTestCase(unittest.TestCase):
         text = redact.redact(kept, [VALUE], truncated=True)
         self.assertTrue(text.endswith('[output truncated]'))
         self.assertNotIn(VALUE[:6].decode(), text)
+
+
+class RedactorTestCase(unittest.TestCase):
+    def test_known_formats(self) -> None:
+        subject = redact.Redactor()
+        cases = [
+            'ghp_' + 'a' * 36,
+            'ghs_' + 'B' * 40,
+            'github_pat_' + 'c' * 30,
+            'sk-ant-api03-' + 'd' * 30,
+            'AKIA' + 'E' * 16,
+            'xoxb-1234567890-abcdef',
+            'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZ2VudCJ9.c2lnbmF0dXJlc2ln',
+            '-----BEGIN RSA PRIVATE KEY-----\nMIIx\n'
+            '-----END RSA PRIVATE KEY-----',
+        ]
+        for value in cases:
+            with self.subTest(value=value[:12]):
+                self.assertEqual(
+                    subject.text(f'a {value} b'), 'a [REDACTED] b'
+                )
+        self.assertEqual(
+            subject.text('sk-short ghp_short'), 'sk-short ghp_short'
+        )
+
+    def test_values_and_their_encodings(self) -> None:
+        subject = redact.Redactor()
+        subject.add(VALUE.decode(), '')
+        encoded = base64.b64encode(VALUE).decode()
+        text = subject.text(
+            f'{VALUE.decode()} {encoded} {urllib.parse.quote(VALUE)}'
+        )
+        self.assertNotIn(VALUE.decode(), text)
+        self.assertNotIn(encoded[:-4], text)
+
+    def test_payload(self) -> None:
+        subject = redact.Redactor()
+        subject.add('my-secret-value')
+        self.assertEqual(
+            subject.payload(
+                {
+                    'a': [
+                        'my-secret-value',
+                        1,
+                        None,
+                        {'my-secret-value': True},
+                    ],
+                    'b': 2.5,
+                }
+            ),
+            {'a': ['[REDACTED]', 1, None, {'[REDACTED]': True}], 'b': 2.5},
+        )

@@ -17,8 +17,9 @@ RUN uv sync --frozen --no-dev --no-editable --package imbi-harness
 
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
+# git clones the workspace; gh is the model's GitHub client (H19).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini \
+ && apt-get install -y --no-install-recommends ca-certificates gh git tini \
  && rm -rf /var/lib/apt/lists/*
 
 # Only runner and executor are in harness-ipc, the group of the
@@ -33,6 +34,7 @@ RUN groupadd -g 10010 harness-ipc \
 
 COPY --from=builder /app /app
 COPY --chmod=0755 apps/harness/agent-cli /usr/local/bin/agent-cli
+COPY --chmod=0755 apps/harness/git-credential-fd /usr/local/libexec/git-credential-fd
 RUN mkdir -p /usr/local/libexec /work /run/creds /run/executor \
  && ln -s "$(/app/bin/python -c 'import claude_agent_sdk, pathlib; print(pathlib.Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude")')" /usr/local/libexec/claude \
  && chown agent:agent /work \

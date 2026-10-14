@@ -6,6 +6,7 @@ know.
 """
 
 import base64
+import re
 import typing
 import urllib.parse
 
@@ -70,3 +71,62 @@ def redact(
     if truncated or len(text) > MAX_OUTPUT:
         text = text[:MAX_OUTPUT] + '\n[output truncated]'
     return text
+
+
+#: Known secret formats (plan section 6.6): GitHub tokens, Anthropic and
+#: OpenAI style keys, AWS access key ids, Slack tokens, JWTs (the agent
+#: token is one), and PEM private keys.
+_FORMATS = re.compile(
+    r'\b(?:gh[pousr]_[A-Za-z0-9]{36,255}'
+    r'|github_pat_[A-Za-z0-9_]{22,255}'
+    r'|sk-[A-Za-z0-9_-]{20,}'
+    r'|(?:AKIA|ASIA)[A-Z0-9]{16}'
+    r'|xox[abposr]-[A-Za-z0-9-]{10,}'
+    r'|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})'
+    r'|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?'
+    r'-----END [A-Z ]*PRIVATE KEY-----'
+)
+_MARK_TEXT = MARK.decode()
+
+
+class Redactor:
+    """Redacts task event payloads before each append (plan 6.6).
+
+    It removes the known formats and each value that it was given: the
+    runner's own credentials, the model key, and every value that the
+    executor delivered (plan section 9.6 step 4), with their encodings.
+    """
+
+    def __init__(self) -> None:
+        self._patterns: list[str] = []
+
+    def add(self, *values: str) -> None:
+        found = set(self._patterns)
+        for value in values:
+            if value:
+                found |= {
+                    item.decode('utf-8', 'replace')
+                    for item in variants(value.encode())
+                }
+        self._patterns = sorted(found, key=len, reverse=True)
+
+    def text(self, value: str) -> str:
+        for pattern in self._patterns:
+            value = value.replace(pattern, _MARK_TEXT)
+        return _FORMATS.sub(_MARK_TEXT, value)
+
+    def payload(self, value: typing.Any) -> typing.Any:
+        """Redact every string in a JSON value, keys included."""
+        if isinstance(value, str):
+            return self.text(value)
+        if isinstance(value, dict):
+            return {
+                self.text(str(key)): self.payload(item)
+                for key, item in typing.cast(
+                    'dict[str, typing.Any]', value
+                ).items()
+            }
+        if isinstance(value, list):
+            items: list[typing.Any] = value  # pyright: ignore[reportUnknownVariableType]
+            return [self.payload(item) for item in items]
+        return value

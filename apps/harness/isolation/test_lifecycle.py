@@ -96,8 +96,14 @@ def state() -> Row:
 
 
 def resolution_of(task: Row) -> Row | None:
+    """The ``run_with_secret`` resolution of a task, not a setup secret
+    (the model key)."""
     return next(
-        (r for r in state()['resolutions'] if r['task_id'] == task['id']),
+        (
+            r
+            for r in state()['resolutions']
+            if r['task_id'] == task['id'] and r['purpose'] == 'github_write'
+        ),
         None,
     )
 
