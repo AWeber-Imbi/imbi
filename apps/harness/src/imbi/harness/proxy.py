@@ -6,7 +6,9 @@ upstream only for ``POST /v1/messages`` and
 ``POST /v1/messages/count_tokens`` with a ``Content-Length`` body. It
 answers ``HEAD /api/hello`` itself. It refuses every other method,
 path (no normalization: ``/v1/messages/../files`` is refused), an
-absolute-form target, and a chunked body, with no upstream call. The
+absolute-form target, a fragment, a query with ``/``, ``\\``, or
+``..``, and a chunked body, with no upstream call. It forwards a target
+built from the checked path and query only. The
 model's ``Bash`` can reach the proxy too (plan section 6.4), so the
 key opens only these routes. Usage metering and the budget come in P5.
 """
@@ -71,14 +73,22 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         # An absolute-form (http://host/...) or a //host/... target has
         # a host part.
         target = urllib.parse.urlsplit(self.path)
-        if target.scheme or target.netloc or target.path not in _ROUTES:
+        if (
+            '#' in self.path
+            or target.scheme
+            or target.netloc
+            or target.path not in _ROUTES
+            or any(part in target.query for part in ('/', '\\', '..'))
+        ):
             self._refuse(404)
         elif 'Transfer-Encoding' in self.headers or (
             not (self.headers.get('Content-Length') or '').isdigit()
         ):
             self._refuse(411)
         else:
-            self._forward()
+            # Only the checked parts go upstream, never the raw target.
+            query = f'?{target.query}' if target.query else ''
+            self._forward(target.path + query)
 
     def _refuse(self, status: int) -> None:
         self.send_response(status)
@@ -90,7 +100,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: typing.Any) -> None:  # noqa: A002
         """Log nothing: a request line can hold a prompt fragment."""
 
-    def _forward(self) -> None:
+    def _forward(self, target: str) -> None:
         server = typing.cast('_Server', self.server)
         body = self.rfile.read(int(self.headers['Content-Length']))
         headers = {
@@ -108,7 +118,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         try:
             upstream.request(
                 self.command,
-                server.upstream.path.rstrip('/') + self.path,
+                server.upstream.path.rstrip('/') + target,
                 body=body,
                 headers=headers,
             )

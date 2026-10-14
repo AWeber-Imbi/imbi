@@ -89,6 +89,10 @@ class ProxyTestCase(unittest.TestCase):
         self.assertNotIn('authorization', headers)
         self.assertNotEqual(headers.get('accept-encoding'), 'gzip')
 
+    def test_forwards_only_the_checked_path_and_query(self) -> None:
+        self.assertEqual(self.raw('POST', '/v1/messages?beta=true'), 200)
+        self.assertEqual(_Upstream.seen, ['POST /v1/messages?beta=true'])
+
     def test_count_tokens_goes_upstream(self) -> None:
         self.assertEqual(self.raw('POST', '/v1/messages/count_tokens'), 200)
         self.assertEqual(_Upstream.seen, ['POST /v1/messages/count_tokens'])
@@ -106,6 +110,11 @@ class ProxyTestCase(unittest.TestCase):
             ('POST', '/v1/messages/%2e%2e/files', b'{}', {}, 404),
             ('POST', 'http://evil.test/v1/messages', b'{}', {}, 404),
             ('POST', '//evil.test/v1/messages', b'{}', {}, 404),
+            ('POST', '/v1/messages#/../../v1/files', b'{}', {}, 404),
+            ('POST', '/v1/messages?x=1#frag', b'{}', {}, 404),
+            ('POST', '/v1/messages?beta=../../v1/files', b'{}', {}, 404),
+            ('POST', '/v1/messages?p=/v1/files', b'{}', {}, 404),
+            ('POST', '/v1/messages?p=a\\b', b'{}', {}, 404),
             (
                 'POST',
                 '/v1/messages',
