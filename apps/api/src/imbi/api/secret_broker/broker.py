@@ -1568,8 +1568,9 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
     """Lock a resolution, its task, and its runner, in this order; say
     whether the resolution may still give material.
 
-    ``runner_id`` is ``TEXT`` here and a ``UUID`` in ``harness``, so
-    the runner is matched on its text form.
+    ``runner_id`` is ``TEXT`` here and a ``UUID`` in ``harness``. It is
+    parsed here, so the query uses the primary key index. A value that
+    is not a UUID names no runner.
     """
     cur = await conn.execute(
         'SELECT state FROM secrets.resolutions WHERE id = %s FOR UPDATE',
@@ -1581,9 +1582,13 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
         (row['task_id'],),
     )
     task = await cur.fetchone()
+    try:
+        runner_id = uuid.UUID(str(row['runner_id']))
+    except ValueError:
+        return False
     cur = await conn.execute(
-        'SELECT state FROM harness.runners WHERE id::TEXT = %s FOR SHARE',
-        (row['runner_id'],),
+        'SELECT state FROM harness.runners WHERE id = %s FOR SHARE',
+        (runner_id,),
     )
     runner = await cur.fetchone()
     return (
