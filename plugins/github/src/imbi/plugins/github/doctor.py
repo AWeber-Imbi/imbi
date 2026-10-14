@@ -411,6 +411,7 @@ class GitHubDoctor(AnalysisCapability):
                     f'the GitHub API id {api_id!r}.',
                 )
             )
+            results.append(_verified_item(connection, api_id))
         else:
             results.append(
                 _item(
@@ -681,6 +682,7 @@ class GitHubDoctor(AnalysisCapability):
         if connection is not None:
             already_correct = (
                 connection.identifier == str(api_id)
+                and connection.verified_identifier == str(api_id)
                 and connection.canonical_url == desired_canonical
                 and ctx.project_links.get(slug) == html_url
             )
@@ -702,6 +704,36 @@ class GitHubDoctor(AnalysisCapability):
                 f'(identifier={api_id}).'
             ),
         )
+
+
+def _verified_item(
+    connection: ServiceConnection, api_id: str
+) -> AnalysisResultItem:
+    """Check that this plugin wrote the identifier from GitHub.
+
+    The ``github_app`` secret provider issues tokens only for a verified
+    identifier. An edge that a user created or edited by hand is not
+    verified until the repair writes it again from GitHub.
+    """
+    if connection.verified_identifier == api_id:
+        return _item(
+            'identifier-verified',
+            'Identifier verified',
+            'pass',
+            f'GitHub verified the EXISTS_IN identifier {api_id!r}.',
+        )
+    return _item(
+        'identifier-verified',
+        'Identifier verified',
+        'warn',
+        f'GitHub has not verified the EXISTS_IN identifier {api_id!r}. '
+        'GitHub App tokens are not issued for this project until you use '
+        'the Fix action.',
+        RemediationOffer(
+            id=_REPAIR_EDGE,
+            label='Verify the EXISTS_IN edge from GitHub',
+        ),
+    )
 
 
 def _body_unavailable_items() -> list[AnalysisResultItem]:

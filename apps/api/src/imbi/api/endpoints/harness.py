@@ -40,7 +40,7 @@ from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
-from imbi.api.secret_broker import broker, github_app, providers
+from imbi.api.secret_broker import broker, providers
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
@@ -52,6 +52,8 @@ MAX_CLAIM_WAIT_SECONDS = 20
 CLAIM_POLL_SECONDS = 1.0
 
 _POOL_NAME_PATTERN = r'^[a-z0-9][a-z0-9-]*$'
+#: The project link that names the repository the runner clones.
+_REPOSITORY_LINK = 'github-repository'
 
 
 # --- Schemas -----------------------------------------------------------
@@ -503,10 +505,13 @@ async def _repositories(
     task: dict[str, typing.Any],
     settings: models.AgentSettings,
 ) -> list[BundleRepository]:
-    """Return the project repository, from the same source as the
-    ``github_app`` provider: only the ``github-repository`` link, on
-    the host of the agent's GitHub App provider (``github.com`` when
-    the agent has none)."""
+    """Return the project repository: only the ``github-repository``
+    link, on the host of the agent's GitHub App provider (``github.com``
+    when the agent has none).
+
+    This tells the runner what to clone. It gives no access: the
+    ``github_app`` provider limits each token to the repository that
+    the GitHub integration verified, whatever this link says."""
     if not task.get('project_id'):
         return []
     host = 'github.com'
@@ -518,7 +523,7 @@ async def _repositories(
             config: dict[str, typing.Any] = provider['config'] or {}
             host = str(config.get('host', host))
     url = (await _helpers.lookup_project_links(db, task['project_id'])).get(
-        github_app.REPOSITORY_LINK
+        _REPOSITORY_LINK
     )
     found = None if url is None else _repos.parse_owner_repo(url, host)
     if url is None or found is None:

@@ -18,7 +18,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from apps.api.tests import secret_support
 from imbi.api import lifespans, secret_broker
-from imbi.api.endpoints import _helpers
 from imbi.api.secret_broker import github_app, providers
 from imbi.common.auth import encryption
 
@@ -136,8 +135,8 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         for name, value in (
             ('private_key', mock.AsyncMock(return_value=PEM)),
             (
-                'project_repositories',
-                mock.AsyncMock(return_value=['octo/demo']),
+                'project_repository_ids',
+                mock.AsyncMock(return_value=[101]),
             ),
         ):
             patcher = mock.patch.object(github_app, name, value)
@@ -154,16 +153,22 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         route = _mock_github()
         binding_id = uuid.uuid4()
         expected = {
-            'workspace_checkout': (['demo'], {'contents': 'read'}),
+            'workspace_checkout': (
+                {'repository_ids': [101]},
+                {'contents': 'read'},
+            ),
             'github_write': (
-                ['demo'],
+                {'repository_ids': [101]},
                 {
                     'contents': 'write',
                     'issues': 'write',
                     'pull_requests': 'write',
                 },
             ),
-            'marketplace_fetch': (['plugins'], {'contents': 'read'}),
+            'marketplace_fetch': (
+                {'repositories': ['plugins']},
+                {'contents': 'read'},
+            ),
         }
         for purpose, (repositories, permissions) in expected.items():
             material = await APP.resolve(
@@ -171,9 +176,7 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
             )
             body = json.loads(route.calls.last.request.content)
             self.assertEqual(
-                body,
-                {'permissions': permissions, 'repositories': repositories},
-                purpose,
+                body, {'permissions': permissions} | repositories, purpose
             )
             self.assertEqual(material.value, TOKEN.encode())
             assert material.lease_id is not None
@@ -221,9 +224,13 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_repository_of_another_owner_is_refused(self) -> None:
         route = _mock_github()
-        self.project_repositories.return_value = ['someone-else/demo']
         with self.assertRaises(providers.BrokerError) as ctx:
-            await APP.resolve(CONFIG, LOCATOR, None, _context('github_write'))
+            await APP.resolve(
+                CONFIG,
+                LOCATOR | {'repositories': ['someone-else/plugins']},
+                None,
+                _context('marketplace_fetch'),
+            )
         self.assertEqual(
             ctx.exception.reason, 'repository_outside_installation'
         )
@@ -414,44 +421,45 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class ProjectRepositoryTestCase(unittest.IsolatedAsyncioTestCase):
-    """Only the github-repository link names the project's repository."""
+    """Only a verified id of a GitHub Integration on the host counts."""
 
-    async def _repositories(self, links: dict[str, str]) -> list[str]:
-        with (
-            mock.patch.object(lifespans, '_graph', object()),
-            mock.patch.object(
-                _helpers,
-                'lookup_project_links',
-                mock.AsyncMock(return_value=links),
-            ),
-        ):
-            return await github_app.project_repositories('github.com', 'p')
+    async def _ids(self, rows: list[dict[str, typing.Any]]) -> list[int]:
+        db = mock.Mock(execute=mock.AsyncMock(return_value=rows))
+        with mock.patch.object(lifespans, '_graph', db):
+            return await github_app.project_repository_ids('github.com', 'p')
 
-    async def test_only_the_repository_link(self) -> None:
+    async def test_only_verified_ids_on_the_host(self) -> None:
+        github = json.dumps({'flavor': 'github'})
         self.assertEqual(
-            await self._repositories(
-                {
-                    'docs': 'https://github.com/octo/other',
-                    'github-repository': 'https://github.com/octo/demo.git',
-                }
+            await self._ids(
+                [
+                    {'options': github, 'repository_id': 101},
+                    {'options': github, 'repository_id': '101'},
+                    # Another host does not count.
+                    {
+                        'options': json.dumps(
+                            {'flavor': 'ghec', 'host': 'acme.ghe.com'}
+                        ),
+                        'repository_id': 202,
+                    },
+                ]
             ),
-            ['octo/demo'],
+            [101],
         )
-        for links in (
-            # Another link on the host does not count.
-            {'docs': 'https://github.com/octo/other'},
-            {'github': 'https://github.com/octo/other'},
-            # The repository link on another host does not count.
-            {'github-repository': 'https://evil.example/octo/demo'},
-            {},
+        for rows in (
+            # A manual edge: no verified id.
+            [{'options': github, 'repository_id': None}],
+            [{'options': github, 'repository_id': 'octo/demo'}],
+            [{'options': '{}', 'repository_id': 101}],
+            [],
         ):
             with self.assertRaises(providers.BrokerError) as ctx:
-                await self._repositories(links)
+                await self._ids(rows)
             self.assertEqual(
-                ctx.exception.reason, 'project_repository_missing'
+                ctx.exception.reason, 'project_repository_unverified'
             )
         self.assertEqual(
-            await github_app.project_repositories('github.com', None), []
+            await github_app.project_repository_ids('github.com', None), []
         )
 
 
@@ -497,8 +505,8 @@ class GitHubAppBrokerTestCase(secret_support.SecretCase):
             (secret_broker, '_broker', self.broker),
             (
                 github_app,
-                'project_repositories',
-                mock.AsyncMock(return_value=['octo/demo']),
+                'project_repository_ids',
+                mock.AsyncMock(return_value=[101]),
             ),
         ):
             patcher = mock.patch.object(target, name, value)

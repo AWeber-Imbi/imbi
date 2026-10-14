@@ -32,6 +32,7 @@ class LookupProjectExistsInTestCase(unittest.TestCase):
                 'integration_slug': 'github-enterprise-cloud',
                 'identifier': '134741',
                 'canonical_url': 'https://api.x.ghe.com/repositories/134741',
+                'verified_identifier': 134741,
             },
             {
                 'integration_slug': 'sonarqube',
@@ -48,8 +49,10 @@ class LookupProjectExistsInTestCase(unittest.TestCase):
             result[0].canonical_url,
             'https://api.x.ghe.com/repositories/134741',
         )
+        self.assertEqual(result[0].verified_identifier, '134741')
         self.assertEqual(result[1].integration_slug, 'sonarqube')
         self.assertIsNone(result[1].canonical_url)
+        self.assertIsNone(result[1].verified_identifier)
 
     def test_empty_on_lookup_failure(self) -> None:
         db = mock.AsyncMock()
