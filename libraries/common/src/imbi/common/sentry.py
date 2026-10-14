@@ -1,10 +1,44 @@
 import contextlib
 import logging
 import os
+import re
+import urllib.parse
 from collections import abc
 from typing import Any
 
 LOGGER = logging.getLogger(__name__)
+
+#: Routes whose requests, responses, and frame variables can hold
+#: secret handles or material (ADR 0022): every path under these
+#: prefixes, after any prefix such as ``/api``.
+PRIVATE_PATH = re.compile(
+    r'(?:^|/)harness/(?:secret-resolutions|executor)(?:/|$)'
+)
+#: Modules whose local variables hold handles, nonces, and lease ids.
+PRIVATE_MODULE_PREFIX = 'imbi.api.secret_broker'
+
+
+def _scrub(event: Any, _hint: Any) -> Any:
+    """Remove secrets from an error or transaction event.
+
+    For a private route (:data:`PRIVATE_PATH`), drop the request body,
+    the query string, and the local variables of every frame. For
+    every event, drop the local variables of frames in
+    :data:`PRIVATE_MODULE_PREFIX`.
+    """
+    request = event.get('request') or {}
+    path = urllib.parse.urlsplit(request.get('url') or '').path
+    private = PRIVATE_PATH.search(path) is not None
+    if private:
+        request.pop('data', None)
+        request.pop('query_string', None)
+    for container in (event.get('exception'), event.get('threads')):
+        for value in (container or {}).get('values') or []:
+            for frame in (value.get('stacktrace') or {}).get('frames') or []:
+                module = frame.get('module') or ''
+                if private or module.startswith(PRIVATE_MODULE_PREFIX):
+                    frame.pop('vars', None)
+    return event
 
 
 def _traces_sampler(sampling_context: dict[str, Any]) -> float:
@@ -85,5 +119,9 @@ def init(service_name: str | None = None) -> None:
         send_default_pii=False,
         server_name=name,
         traces_sampler=_traces_sampler,
+        before_send=_scrub,
+        before_send_transaction=_scrub,
+        # No request body in any event: the secret routes take handles.
+        max_request_body_size='never',
     )
     LOGGER.info('Sentry initialized for %s', name)

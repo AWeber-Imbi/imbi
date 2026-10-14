@@ -12,7 +12,7 @@ from unittest import mock
 
 from psycopg.types import json as pg_json
 
-from imbi.api import agent_tasks, secret_broker
+from imbi.api import agent_tasks, harness, secret_broker
 from imbi.api.secret_broker import audit, broker, providers, store
 
 #: The secret value of the fake provider. Every leak check looks for it.
@@ -31,11 +31,27 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         self.org = f'sec-{suffix}'
         self.agent = f'agent-{suffix}'
         self.project = f'proj-{suffix}'
-        self.runner = f'runner-{suffix}'
+        #: A live runner: materialization checks its state.
+        self.runner = str(uuid.uuid4())
+        self.runner_pool = f'pool-{suffix}'
         await agent_tasks.initialize()
+        await harness.initialize()
         await secret_broker.initialize()
         self.pool = agent_tasks.create_pool()
         await self.pool.open()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.pools (name, service_account)'
+                " VALUES (%s, 'test')",
+                (self.runner_pool,),
+            )
+            await conn.execute(
+                'INSERT INTO harness.runners (id, pool, state,'
+                ' runner_token_hash, executor_token_hash, lease_expires_at)'
+                " VALUES (%s, %s, 'busy', %s, %s,"
+                " NOW() + interval '1 hour')",
+                (self.runner, self.runner_pool, self.runner, self.runner),
+            )
         self.broker = broker.Broker(self.pool)
         self.store = store.SecretStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
@@ -49,17 +65,23 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         fake.fail_revoke = False
         fake.unavailable = False
 
-        self.events: list[audit.Event] = []
+        #: The events that the outbox published to Iggy.
+        self.published: list[audit.Event] = []
 
         async def capture(
             stream: str, topic: str, models: list[typing.Any], **_: typing.Any
         ) -> None:
             self.assertEqual((stream, topic), (audit.STREAM, audit.TOPIC))
-            self.events.extend(models)
+            self.published.extend(models)
 
         patcher = mock.patch.object(
             audit.iggy, 'publish', mock.AsyncMock(side_effect=capture)
         )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        #: The task log publish of the ADR 0020 task events.
+        self.task_log = mock.AsyncMock()
+        patcher = mock.patch.object(broker.log, 'publish', self.task_log)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -80,6 +102,11 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
 
     async def _cleanup(self) -> None:
         async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM secrets.audit_outbox'
+                " WHERE event->>'organization_id' = %s",
+                (self.org,),
+            )
             for table in ('resolutions', 'grants', 'bindings', 'providers'):
                 await conn.execute(
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
@@ -89,7 +116,38 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                 'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
                 (self.org,),
             )
+            await conn.execute(
+                'DELETE FROM harness.pools WHERE name = %s',
+                (self.runner_pool,),
+            )
         await self.pool.close()
+
+    async def audit_events(self) -> list[audit.Event]:
+        """Return the outbox events of this organization, in order."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT event FROM secrets.audit_outbox'
+                " WHERE event->>'organization_id' = %s ORDER BY seq",
+                (self.org,),
+            )
+            return [
+                audit.Event.model_validate(r[0]) for r in await cur.fetchall()
+            ]
+
+    async def task_events(
+        self, task_id: uuid.UUID | None = None
+    ) -> list[dict[str, typing.Any]]:
+        """Return the secret events of a task, in order."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT actor_kind, payload FROM agent_runtime.events'
+                ' WHERE task_id = %s AND type = %s ORDER BY seq',
+                (task_id or self.task_id, broker.TASK_EVENT_TYPE),
+            )
+            return [
+                {'actor_kind': kind, **payload}
+                for kind, payload in await cur.fetchall()
+            ]
 
     async def add_binding(self, **values: typing.Any) -> store.Row:
         return await self.store.create(

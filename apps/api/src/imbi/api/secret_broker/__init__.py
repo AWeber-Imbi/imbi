@@ -5,8 +5,10 @@ secret values. The ``secrets`` schema holds providers, bindings,
 grants, and resolutions. It is a plain Postgres schema, managed like
 ``agent_runtime``: the declarative schemata are applied on every start.
 
-The store lifespan also runs the expiry sweep, because it needs the
-pool.
+The store lifespan also runs the expiry sweep and publishes the audit
+outbox, because both need the pool. It registers the broker's release
+of a runner as a fencer of the harness lease sweep, and its release of
+a task as a close hook of the task store.
 """
 
 import asyncio
@@ -19,6 +21,8 @@ from collections import abc
 import fastapi
 
 from imbi.api.agent_tasks import create_pool
+from imbi.api.agent_tasks import store as task_store
+from imbi.api.harness import sweeper
 from imbi.api.secret_broker import audit, broker, github_app, providers, store
 from imbi.common import lifespan, relational
 
@@ -44,7 +48,8 @@ async def initialize() -> None:
 
 
 async def run_sweeper(service: broker.Broker, *, stop: asyncio.Event) -> None:
-    """Expire resolutions every :data:`SWEEP_INTERVAL_SECONDS`."""
+    """Expire resolutions and publish the audit outbox every
+    :data:`SWEEP_INTERVAL_SECONDS`."""
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=SWEEP_INTERVAL_SECONDS)
@@ -56,6 +61,10 @@ async def run_sweeper(service: broker.Broker, *, stop: asyncio.Event) -> None:
             await service.sweep()
         except Exception:  # noqa: BLE001
             LOGGER.warning('Secret resolution sweep failed', exc_info=True)
+        try:
+            await service.flush_audit()
+        except Exception:  # noqa: BLE001 - the rows stay for the next sweep
+            LOGGER.warning('Secret audit publish failed', exc_info=True)
 
 
 @contextlib.asynccontextmanager
@@ -67,11 +76,17 @@ async def store_lifespan() -> abc.AsyncGenerator[store.SecretStore]:
     try:
         await pool.open()
         _broker = broker.Broker(pool)
+        fencer = _broker.release_runner_resolutions
+        close_hook = _broker.release_task_resolutions
+        sweeper.register_fencer(fencer)
+        task_store.register_close_hook(close_hook)
         stop = asyncio.Event()
         sweep = asyncio.create_task(run_sweeper(_broker, stop=stop))
         try:
             yield store.SecretStore(pool)
         finally:
+            sweeper.unregister_fencer(fencer)
+            task_store.unregister_close_hook(close_hook)
             stop.set()
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):

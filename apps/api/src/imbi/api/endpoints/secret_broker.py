@@ -4,8 +4,9 @@ Providers, bindings, grants, resolutions, and audit events of one
 organization. No response contains secret material, a handle, or a
 provider lease id: the response models have no field for them.
 
-The runtime routes (create, materialize, release by the executor) need
-the runner tokens and come with the harness (plan phase P2). They call
+The runtime routes (create, materialize, release by the executor) are
+in :mod:`imbi.api.endpoints.harness`, behind the agent token and the
+executor credential. They call
 :class:`imbi.api.secret_broker.broker.Broker`.
 
 Every route needs the caller to be a member of the organization
@@ -96,7 +97,7 @@ AuditRead = typing.Annotated[
 ]
 
 
-def _error(err: providers.BrokerError) -> fastapi.HTTPException:
+def broker_error(err: providers.BrokerError) -> fastapi.HTTPException:
     return fastapi.HTTPException(
         status_code=err.status,
         detail={
@@ -116,24 +117,29 @@ def _invalid(
     )
 
 
-async def _audit(
+def _event(
     event_type: audit.EventType,
-    org_id: str,
     auth: permissions.AuthContext,
-    **ids: typing.Any,
-) -> None:
-    await audit.publish(
-        [
-            audit.Event.model_validate(
-                {
-                    'organization_id': org_id,
-                    'type': event_type,
-                    'actor': auth.principal_name,
-                }
-                | {k: str(v) for k, v in ids.items()}
-            )
-        ]
-    )
+    id_field: str,
+    **values: str,
+) -> store.AuditEvent:
+    """Return the audit event of a change, built from the changed row.
+
+    The store writes it in the transaction of the change.
+    """
+
+    def build(row: store.Row) -> audit.Event:
+        return audit.Event.model_validate(
+            {
+                'organization_id': row['organization_id'],
+                'type': event_type,
+                'actor': auth.principal_name,
+                id_field: str(row['id']),
+            }
+            | values
+        )
+
+    return build
 
 
 # --- Schemas -----------------------------------------------------------
@@ -483,10 +489,8 @@ async def create_provider(
                 'capabilities': sorted(plugin.capabilities),
                 'created_by': auth.principal_name,
             },
+            event=_event('secret_provider_created', auth, 'provider_id'),
         )
-    await _audit(
-        'secret_provider_created', org_id, auth, provider_id=row['id']
-    )
     return row
 
 
@@ -551,11 +555,9 @@ async def update_provider(
             org_id,
             provider_id,
             changes,
+            event=_event('secret_provider_updated', auth, 'provider_id'),
             detail='Provider not found',
         )
-    await _audit(
-        'secret_provider_updated', org_id, auth, provider_id=provider_id
-    )
     return row
 
 
@@ -574,16 +576,18 @@ async def delete_provider(
 
     """
     try:
-        deleted = await secrets.delete('providers', org_id, provider_id)
+        deleted = await secrets.delete(
+            'providers',
+            org_id,
+            provider_id,
+            event=_event('secret_provider_deleted', auth, 'provider_id'),
+        )
     except store.InUse as err:
         raise fastapi.HTTPException(status_code=409, detail=str(err)) from None
     if not deleted:
         raise fastapi.HTTPException(
             status_code=404, detail='Provider not found'
         )
-    await _audit(
-        'secret_provider_deleted', org_id, auth, provider_id=provider_id
-    )
 
 
 @providers_router.post(
@@ -607,21 +611,19 @@ async def test_provider(
     try:
         health = await plugin.health(current['config'], org_id)
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     row = await secrets.set_health(
-        org_id, provider_id, health.status, health.reason
-    )
-    await audit.publish(
-        [
-            audit.Event(
-                organization_id=org_id,
-                type='secret_provider_tested',
-                result='succeeded' if health.status == 'healthy' else 'failed',
-                reason=health.reason or '',
-                actor=auth.principal_name,
-                provider_id=str(provider_id),
-            )
-        ]
+        org_id,
+        provider_id,
+        health.status,
+        health.reason,
+        event=_event(
+            'secret_provider_tested',
+            auth,
+            'provider_id',
+            result='succeeded' if health.status == 'healthy' else 'failed',
+            reason=health.reason or '',
+        ),
     )
     return {
         'status': health.status,
@@ -699,7 +701,7 @@ async def create_binding(
     try:
         reference = broker.parse_reference(data.reference, field=False)
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     values = data.model_dump()
     values['reference'] = str(reference)
     values['locator'] = await _locator(
@@ -710,8 +712,12 @@ async def create_binding(
     )
     values['created_by'] = auth.principal_name
     with conflict_on_unique_violation(f'{reference} is bound already'):
-        row = await secrets.create('bindings', org_id, values)
-    await _audit('secret_binding_created', org_id, auth, binding_id=row['id'])
+        row = await secrets.create(
+            'bindings',
+            org_id,
+            values,
+            event=_event('secret_binding_created', auth, 'binding_id'),
+        )
     return row
 
 
@@ -780,9 +786,9 @@ async def update_binding(
         org_id,
         binding_id,
         changes,
+        event=_event('secret_binding_updated', auth, 'binding_id'),
         detail='Binding not found',
     )
-    await _audit('secret_binding_updated', org_id, auth, binding_id=binding_id)
     return row
 
 
@@ -803,14 +809,18 @@ async def delete_binding(
 
     """
     try:
-        deleted = await secrets.delete('bindings', org_id, binding_id)
+        deleted = await secrets.delete(
+            'bindings',
+            org_id,
+            binding_id,
+            event=_event('secret_binding_deleted', auth, 'binding_id'),
+        )
     except store.InUse as err:
         raise fastapi.HTTPException(status_code=409, detail=str(err)) from None
     if not deleted:
         raise fastapi.HTTPException(
             status_code=404, detail='Binding not found'
         )
-    await _audit('secret_binding_deleted', org_id, auth, binding_id=binding_id)
 
 
 @bindings_router.post(
@@ -881,10 +891,10 @@ async def create_grant(
             'grants',
             org_id,
             data.model_dump() | {'created_by': auth.principal_name},
+            event=_event('secret_grant_created', auth, 'grant_id'),
         )
     except store.UnknownBindings:
         raise _unknown_bindings() from None
-    await _audit('secret_grant_created', org_id, auth, grant_id=row['id'])
     return row
 
 
@@ -958,11 +968,11 @@ async def update_grant(
             org_id,
             grant_id,
             changes,
+            event=_event('secret_grant_updated', auth, 'grant_id'),
             detail='Grant not found',
         )
     except store.UnknownBindings:
         raise _unknown_bindings() from None
-    await _audit('secret_grant_updated', org_id, auth, grant_id=grant_id)
     return row
 
 
@@ -974,9 +984,13 @@ async def delete_grant(
     auth: GrantWrite,
 ) -> None:
     """Delete a grant. Unused handles that it allowed stop working."""
-    if not await secrets.delete('grants', org_id, grant_id):
+    if not await secrets.delete(
+        'grants',
+        org_id,
+        grant_id,
+        event=_event('secret_grant_deleted', auth, 'grant_id'),
+    ):
         raise fastapi.HTTPException(status_code=404, detail='Grant not found')
-    await _audit('secret_grant_deleted', org_id, auth, grant_id=grant_id)
 
 
 # --- Resolutions ---------------------------------------------------------
@@ -1045,7 +1059,7 @@ async def release_resolution(
             organization_id=org_id,
         )
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     return _resolution(row)
 
 
@@ -1071,7 +1085,7 @@ async def revoke_provider_lease(
             org_id, resolution_id, auth.principal_name
         )
     except providers.BrokerError as err:
-        raise _error(err) from None
+        raise broker_error(err) from None
     return _resolution(row)
 
 

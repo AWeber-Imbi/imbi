@@ -16,7 +16,10 @@ import orjson
 
 from apps.api.tests import secret_support
 from apps.api.tests.secret_support import MATERIAL
-from imbi.api.secret_broker import broker, providers, store
+from imbi.api import secret_broker
+from imbi.api.agent_tasks import store as task_store
+from imbi.api.harness import sweeper
+from imbi.api.secret_broker import audit, broker, providers, store
 from imbi.common.auth import encryption
 
 
@@ -154,8 +157,10 @@ class CreateResolutionTestCase(secret_support.SecretCase):
                 context or self.context(), request or self.request()
             )
         self.assertEqual(ctx.exception.code, code, ctx.exception.reason)
-        self.assertEqual(self.events[-1].type, 'secret_resolution_denied')
-        self.assertEqual(self.events[-1].result, 'denied')
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'secret_resolution_denied'
+        )
+        self.assertEqual((await self.audit_events())[-1].result, 'denied')
         return ctx.exception
 
     async def test_allowed(self) -> None:
@@ -172,7 +177,9 @@ class CreateResolutionTestCase(secret_support.SecretCase):
         self.assertEqual(row['runner_id'], self.runner)
         self.assertNotEqual(row['handle_hash'], created.handle.encode())
         self.assertEqual(len(row['handle_hash']), 32)
-        self.assertEqual(self.events[-1].type, 'secret_resolution_allowed')
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'secret_resolution_allowed'
+        )
 
     async def test_missing_context_is_denied(self) -> None:
         for change in ({'agent_id': ''}, {'runner_id': ''}):
@@ -493,10 +500,10 @@ class MaterializeTestCase(secret_support.SecretCase):
             'resolution_already_used', self.materialize_request(created.handle)
         )
         self.assertEqual(
-            [e.type for e in self.events[-2:]],
+            [e.type for e in (await self.audit_events())[-2:]],
             ['secret_materialized', 'secret_materialized'],
         )
-        self.assertEqual(self.events[-1].result, 'denied')
+        self.assertEqual((await self.audit_events())[-1].result, 'denied')
         self.assertEqual(
             broker.NO_STORE_HEADERS,
             {
@@ -654,7 +661,8 @@ class MaterializeTestCase(secret_support.SecretCase):
             ('released', 'task_closed', None),
         )
         self.assertIn(
-            'secret_resolution_released', [e.type for e in self.events]
+            'secret_resolution_released',
+            [e.type for e in await self.audit_events()],
         )
 
     async def test_deleted_grant_invalidates_handle(self) -> None:
@@ -682,7 +690,8 @@ class MaterializeTestCase(secret_support.SecretCase):
         self.assertEqual(row['state'], 'expired')
         self.assertIsNone(row['handle_hash'])
         self.assertIn(
-            'secret_resolution_expired', [e.type for e in self.events]
+            'secret_resolution_expired',
+            [e.type for e in await self.audit_events()],
         )
         await self._refused(
             'resolution_not_found', self.materialize_request(created.handle)
@@ -698,7 +707,7 @@ class MaterializeTestCase(secret_support.SecretCase):
         row = await self.broker.get(created.resolution_id)
         assert row is not None
         self.assertEqual(row['state'], 'failed')
-        self.assertEqual(self.events[-1].result, 'failed')
+        self.assertEqual((await self.audit_events())[-1].result, 'failed')
 
 
 class LeaseTestCase(secret_support.SecretCase):
@@ -735,7 +744,7 @@ class LeaseTestCase(secret_support.SecretCase):
         self.assertEqual(released['state'], 'released')
         self.assertEqual(released['revocation_state'], 'succeeded')
         self.assertEqual(self.fake.revoked, [lease_id])
-        types = [e.type for e in self.events]
+        types = [e.type for e in await self.audit_events()]
         self.assertIn('secret_resolution_released', types)
         self.assertIn('secret_lease_revoked', types)
         # Idempotent: a second release changes nothing.
@@ -754,7 +763,8 @@ class LeaseTestCase(secret_support.SecretCase):
         self.assertEqual(released['state'], 'released')
         self.assertEqual(released['revocation_state'], 'failed')
         self.assertEqual(
-            self.events[-1].type, 'secret_lease_revocation_failed'
+            (await self.audit_events())[-1].type,
+            'secret_lease_revocation_failed',
         )
         with self.assertRaises(providers.BrokerError) as ctx:
             await self.broker.revoke_provider_lease(
@@ -850,6 +860,50 @@ class LeaseTestCase(secret_support.SecretCase):
             await self.broker.release_runner_resolutions(self.runner)
         )
 
+    async def _change_during_provider_call(self, statement: str) -> None:
+        """Run ``statement`` (one ``%s``: the id) while the provider
+        issues a lease; the resolution itself stays ``active``."""
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        resolve = self.fake.resolve
+        target = self.runner if 'harness' in statement else self.task_id
+
+        async def changing(
+            *args: object, **kwargs: object
+        ) -> providers.Material:
+            async with self.pool.connection() as conn:
+                await conn.execute(statement, (target,))  # type: ignore[arg-type]
+            return await resolve(*args, **kwargs)  # type: ignore[arg-type]
+
+        with (
+            mock.patch.object(self.fake, 'resolve', changing),
+            self.assertRaises(providers.BrokerError) as ctx,
+        ):
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        self.assertEqual(ctx.exception.reason, 'resolution_released')
+        # No material, and the lease issued in the call is revoked.
+        self.assertEqual(len(self.fake.revoked), 1)
+        self.assertEqual(self.fake.leases, set())
+        row = await self.broker.get(created.resolution_id)
+        assert row is not None
+        self.assertIsNone(row['lease_id'])
+        self.assertIsNone(row['handle_hash'])
+
+    async def test_task_closed_during_a_provider_call(self) -> None:
+        # As if the close hook failed: the resolution is still active.
+        await self._change_during_provider_call(
+            "UPDATE agent_runtime.tasks SET status = 'closed' WHERE id = %s"
+        )
+
+    async def test_runner_fenced_during_a_provider_call(self) -> None:
+        # The lease sweep fenced the runner; the fencer has not run yet.
+        await self._change_during_provider_call(
+            "UPDATE harness.runners SET state = 'fenced' WHERE id = %s"
+        )
+
     async def test_unsaved_lease_is_revoked_at_once(self) -> None:
         created = await self.broker.create_resolution(
             self.context(), self.request()
@@ -936,15 +990,189 @@ class NoLeakTestCase(secret_support.SecretCase):
                 ' UNION ALL SELECT row_to_json(b)::TEXT'
                 ' FROM secrets.bindings AS b WHERE organization_id = %s'
                 ' UNION ALL SELECT row_to_json(p)::TEXT'
-                ' FROM secrets.providers AS p WHERE organization_id = %s',
-                (self.org,) * 4,
+                ' FROM secrets.providers AS p WHERE organization_id = %s'
+                ' UNION ALL SELECT row_to_json(e)::TEXT'
+                ' FROM agent_runtime.events AS e JOIN agent_runtime.tasks'
+                ' AS t ON t.id = e.task_id WHERE t.organization_id = %s',
+                (self.org,) * 5,
             )
             stored = '\n'.join(r[0] for r in await cur.fetchall())
         for value in secrets:
             self.assertNotIn(value, stored)
 
         published = orjson.dumps(
-            [e.model_dump(mode='json') for e in self.events]
+            [e.model_dump(mode='json') for e in await self.audit_events()]
         ).decode()
         for value in secrets:
             self.assertNotIn(value, published)
+
+
+class AuditOutboxTestCase(secret_support.SecretCase):
+    async def outbox_ids(self) -> list[str]:
+        return [e.event_id for e in await self.audit_events()]
+
+    async def test_iggy_down_keeps_the_rows(self) -> None:
+        await self.broker.create_resolution(self.context(), self.request())
+        pending = await self.outbox_ids()
+        self.assertEqual(len(pending), 1)
+        with (
+            mock.patch.object(
+                audit.iggy, 'publish', side_effect=ConnectionError('down')
+            ),
+            self.assertRaises(ConnectionError),
+        ):
+            await self.broker.flush_audit()
+        self.assertEqual(await self.outbox_ids(), pending)
+        self.assertEqual(self.published, [])
+
+    async def test_hung_publish_times_out_and_keeps_the_rows(self) -> None:
+        await self.broker.create_resolution(self.context(), self.request())
+        pending = await self.outbox_ids()
+
+        async def hang(*_: object, **__: object) -> None:
+            await asyncio.sleep(60)
+
+        with (
+            mock.patch.object(audit, 'PUBLISH_TIMEOUT_SECONDS', 0.05),
+            mock.patch.object(audit.iggy, 'publish', side_effect=hang),
+            self.assertRaises(TimeoutError),
+        ):
+            await self.broker.flush_audit()
+        self.assertEqual(await self.outbox_ids(), pending)
+        # The locks are gone: the next flush publishes the rows.
+        await self.broker.flush_audit()
+        self.assertEqual(await self.outbox_ids(), [])
+
+    async def test_iggy_up_publishes_each_row_once(self) -> None:
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        await self.broker.release(
+            created.resolution_id, reason='done', actor='runner:x'
+        )
+        pending = await self.outbox_ids()
+        self.assertEqual(len(pending), 2)
+        # Two instances flush at the same time.
+        await asyncio.gather(
+            self.broker.flush_audit(), self.broker.flush_audit()
+        )
+        self.assertEqual(await self.outbox_ids(), [])
+        mine = [e for e in self.published if e.organization_id == self.org]
+        self.assertEqual([e.event_id for e in mine], pending)
+        self.assertEqual(
+            [e.type for e in mine],
+            ['secret_resolution_allowed', 'secret_resolution_released'],
+        )
+        await self.broker.flush_audit()
+        self.assertEqual(
+            len([e for e in self.published if e.organization_id == self.org]),
+            2,
+        )
+
+    async def test_event_commits_with_its_operation(self) -> None:
+        with (
+            mock.patch.object(
+                audit, 'write', side_effect=RuntimeError('outbox down')
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.broker.create_resolution(self.context(), self.request())
+        # The audit row is in the transaction of the resolution, so
+        # neither is saved.
+        self.assertEqual(
+            await self.store.resolutions(
+                self.org, state=None, task_id=None, limit=10
+            ),
+            [],
+        )
+
+
+class TaskEventTestCase(secret_support.SecretCase):
+    async def test_each_step_writes_a_task_event(self) -> None:
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        await self.broker.materialize(
+            self.executor(), self.materialize_request(created.handle)
+        )
+        await self.broker.release(
+            created.resolution_id,
+            reason='done',
+            actor=f'runner:{self.runner}',
+        )
+        with self.assertRaises(providers.BrokerError):
+            await self.broker.create_resolution(
+                self.context(), self.request(purpose='deploy')
+            )
+        events = await self.task_events()
+        self.assertEqual(
+            [(e['action'], e['result']) for e in events],
+            [
+                ('created', 'succeeded'),
+                ('materialized', 'succeeded'),
+                ('released', 'succeeded'),
+                ('created', 'denied'),
+            ],
+        )
+        for event in events:
+            self.assertEqual(
+                event['reference'], 'secret://production/github/token'
+            )
+            self.assertEqual(event['actor_kind'], 'agent')
+        self.assertEqual(
+            [e['resolution_id'] for e in events],
+            [str(created.resolution_id)] * 3 + [None],
+        )
+        self.assertEqual(events[0]['purpose'], 'github_write')
+        self.assertEqual(events[3]['purpose'], 'deploy')
+        self.assertEqual(events[3]['reason'], 'no_grant')
+        text = orjson.dumps(events).decode()
+        self.assertNotIn(MATERIAL, text)
+        self.assertNotIn(created.handle, text)
+        # Each event goes to the task log after its commit.
+        self.assertEqual(self.task_log.await_count, 4)
+
+    async def test_sweep_and_fencing_releases_write_task_events(
+        self,
+    ) -> None:
+        await self.broker.create_resolution(self.context(), self.request())
+        other_task = await self.add_task()
+        await self.broker.create_resolution(
+            self.context(task_id=other_task), self.request()
+        )
+        self.assertTrue(
+            await self.broker.release_runner_resolutions(self.runner)
+        )
+        for task_id in (self.task_id, other_task):
+            events = await self.task_events(task_id)
+            self.assertEqual(
+                [(e['action'], e['actor_kind']) for e in events],
+                [('created', 'agent'), ('released', 'system')],
+            )
+
+    async def test_archived_task_gets_no_event(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                ' WHERE id = %s',
+                (self.task_id,),
+            )
+        created = await self.broker.create_resolution(
+            self.context(), self.request()
+        )
+        self.assertIsNotNone(created.resolution_id)
+        self.assertEqual(await self.task_events(), [])
+
+
+class LifespanTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_registers_the_fencer_and_the_close_hook(self) -> None:
+        async with secret_broker.store_lifespan():
+            service = secret_broker.get_broker()
+            self.assertIn(service.release_runner_resolutions, sweeper._fencers)
+            self.assertIn(
+                service.release_task_resolutions, task_store._close_hooks
+            )
+        self.assertNotIn(service.release_runner_resolutions, sweeper._fencers)
+        self.assertNotIn(
+            service.release_task_resolutions, task_store._close_hooks
+        )
