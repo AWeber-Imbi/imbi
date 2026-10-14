@@ -106,7 +106,7 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         await self.assert_refused()
 
-    async def test_a_manual_edit_keeps_the_verified_repository(self) -> None:
+    async def test_a_manual_edit_refuses_the_repository(self) -> None:
         await self.verify(self.integration, VERIFIED)
         self.assertEqual(
             await github_app.project_repository_ids(
@@ -129,12 +129,9 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
             self.project_id,
             add={'github-repository': 'https://github.com/octo/other'},
         )
-        self.assertEqual(
-            await github_app.project_repository_ids(
-                'github.com', self.project_id
-            ),
-            [VERIFIED],
-        )
+        # Neither repository gets a token until the doctor verifies
+        # the edge again.
+        await self.assert_refused()
         # The doctor sees that the edge no longer matches what GitHub
         # verified.
         [connection] = await _helpers.lookup_project_exists_in(

@@ -76,10 +76,12 @@ _REPOSITORY_ID = re.compile(r'[0-9]{1,20}')
 #: The plugin of the Integrations that verify a project's repository.
 GITHUB_PLUGIN = 'github'
 #: The verified repository ids of a project, one row for each
-#: ``EXISTS_IN`` edge to a GitHub Integration.
+#: ``EXISTS_IN`` edge to a GitHub Integration. An edge whose
+#: identifier was changed by hand after verification does not count.
 _VERIFIED_REPOSITORIES: typing.LiteralString = (
     'MATCH (:Project {{id: {project_id}}})-[ei:EXISTS_IN]->'
     '(i:Integration {{plugin: {plugin}}}) '
+    'WHERE ei.verified_identifier = ei.identifier '
     'RETURN i.options AS options, '
     'ei.verified_identifier AS repository_id'
 )
