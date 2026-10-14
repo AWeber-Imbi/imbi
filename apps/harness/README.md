@@ -29,9 +29,21 @@ A runner process runs one chain. For its root task it:
    and tool results), and stops at a cancel or a closed task,
 7. sets the outcome.
 
+Each tool call goes through a `PreToolUse` hook (`policy.py`): a tool that is
+not allowed or not in the agent's tool map is refused, an environment limit is
+checked, a tool that needs approval opens an ADR 0020 approval and waits for a
+person, and a rate-limited tool is counted by imbi-api. The model can ask a
+person with `request_input`, and give work to another agent with
+`create_child_task`: the runner claims the child task of its chain and runs it
+as a second SDK instance in the same workspace. Text from a webhook goes into
+`<untrusted>` tags.
+
+The CLI starts through `agent-cli`, which changes to the task directory as
+`agent` and refuses a real path outside the chain workspace.
+
 At the end of the chain it kills every `agent` process in both containers,
-removes the chain workspace as `agent`, finishes, and exits. Child tasks, the
-tool policy, and pod deletion come in later slices.
+removes the chain workspace as `agent`, finishes, and exits. Pod deletion comes
+in a later slice.
 
 ## Isolation suite
 

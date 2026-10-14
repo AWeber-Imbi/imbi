@@ -182,6 +182,8 @@ class Recorder:
     def __init__(self, redactor: redact.Redactor) -> None:
         self.redactor = redactor
         self.pending: list[Event] = []
+        #: Tool use id to the tool policy decision (plan section 6.5).
+        self.decisions: dict[str, dict[str, typing.Any]] = {}
         #: Tool use id to (name, input, start, parent call id).
         self.calls: dict[
             str, tuple[str, dict[str, typing.Any], float, str | None]
@@ -203,6 +205,10 @@ class Recorder:
                 }
             )
         )
+
+    def notice(self, text: str) -> None:
+        """A warning for the people who read the task."""
+        self._add('turn', {'kind': 'warning', 'body': text}, None)
 
     def message(self, message: typing.Any) -> None:
         if isinstance(message, sdk.AssistantMessage):
@@ -274,6 +280,11 @@ class Recorder:
                 'result': _text(block.content),
                 'is_error': bool(block.is_error),
                 'duration_ms': int((time.monotonic() - started) * 1000),
+                **(
+                    {'policy': self.decisions.pop(block.tool_use_id)}
+                    if block.tool_use_id in self.decisions
+                    else {}
+                ),
             },
             parent,
         )

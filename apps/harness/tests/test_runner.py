@@ -232,7 +232,11 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
             'executor_token': 'ihe_executor_token_0123456789',
             'lease_seconds': 30,
         }
-        claim = {'chain_id': 'c', 'agent_token': 'iat_agent_token_0123456789'}
+        claim = {
+            'chain_id': 'c',
+            'agent_token': 'iat_agent_token_0123456789',
+            'task': {'short_id': 'T-1'},
+        }
         subject.api.claim.side_effect = [None, claim]
         subject.heartbeat = mock.AsyncMock()  # type: ignore[method-assign]
         subject.end_chain = mock.AsyncMock()  # type: ignore[method-assign]
@@ -266,3 +270,65 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
             (subject.credentials / 'runner.token').read_text(),
             'ihr_runner_token_0123456789',
         )
+
+
+class ChildRunTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_claims_until_the_child_runs(self) -> None:
+        subject = make_runner()
+        subject.layout = runner.task.Layout(pathlib.Path('/work/c'))
+        subject.api = mock.AsyncMock(spec=api.Api)
+        claims = [
+            {
+                'agent_token': 'iat_other_0123456789',
+                'task': {'short_id': 'T-3'},
+            },
+            {
+                'agent_token': 'iat_child_0123456789',
+                'task': {'short_id': 'T-2'},
+            },
+        ]
+        subject.api.chain_claim.side_effect = claims
+        with mock.patch.object(runner.task, 'TaskRun') as task_run:
+            task_run.return_value.run = mock.AsyncMock(
+                side_effect=[{'short_id': 'T-3'}, {'short_id': 'T-2'}]
+            )
+            summary = await subject.run_child('T-2')
+        self.assertEqual(summary, {'short_id': 'T-2'})
+        self.assertEqual(set(subject.runs), {'T-2', 'T-3'})
+        for call in task_run.call_args_list:
+            self.assertFalse(call.kwargs['build'])
+            self.assertEqual(call.kwargs['children'], subject.run_child)
+        self.assertEqual(
+            subject.redactor.text('iat_child_0123456789'), '[REDACTED]'
+        )
+
+    async def test_no_child_to_claim(self) -> None:
+        subject = make_runner()
+        subject.api = mock.AsyncMock(spec=api.Api)
+        subject.api.chain_claim.return_value = None
+        self.assertEqual(
+            await subject.run_child('T-9'),
+            {'short_id': 'T-9', 'status': 'not_claimed'},
+        )
+
+    async def test_chain_waits_for_children(self) -> None:
+        subject = make_runner()
+        order: list[str] = []
+
+        async def root_run() -> dict[str, str]:
+            async def child() -> dict[str, str]:
+                await asyncio.sleep(0.01)
+                order.append('child')
+                return {}
+
+            subject.runs['T-2'] = asyncio.create_task(child())
+            order.append('root')
+            return {}
+
+        with mock.patch.object(runner.task, 'TaskRun') as task_run:
+            task_run.return_value.run = root_run
+            await subject.run_chain(
+                {'agent_token': 'iat_x', 'task': {'short_id': 'T-1'}},
+                runner.task.Layout(pathlib.Path('/work/c')),
+            )
+        self.assertEqual(order, ['root', 'child'])

@@ -9,5 +9,18 @@
 # this script and setpriv in secure mode and removes TMPDIR from the
 # environment. The runner sends it as HARNESS_TMPDIR, and env sets it
 # after setpriv, when all ids are agent.
+#
+# The runner gives the SDK no cwd: a chdir into the workspace with
+# effective uid 0 would let agent swap a directory for a symlink first.
+# The shell changes to HARNESS_CWD as agent, then checks that the real
+# path is in the chain workspace HARNESS_CHAIN, as the executor shim
+# does.
 exec setpriv --reuid=agent --regid=agent --clear-groups --inh-caps=-all \
-  /usr/bin/env TMPDIR="${HARNESS_TMPDIR:?}" /usr/local/libexec/claude "$@"
+  /bin/sh -c '
+cd -P -- "${HARNESS_CWD:?}" || exit 126
+case "$(pwd -P)/" in
+  "${HARNESS_CHAIN:?}"/*) ;;
+  *) echo "The workspace is not in the chain" >&2; exit 126 ;;
+esac
+exec /usr/bin/env TMPDIR="${HARNESS_TMPDIR:?}" /usr/local/libexec/claude "$@"
+' agent-cli "$@"

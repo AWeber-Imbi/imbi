@@ -918,6 +918,271 @@ def run_task_until_done(task: Row, timeout: float = 180) -> None:
     raise AssertionError(f'task {task["short_id"]} did not end')
 
 
+# --- P5 slice 2: tool policy, requests, child tasks ---------------------
+
+
+def wait_for_event(task: Row, kind: str, timeout: float = 120) -> Row:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for event in task_of(task)['events']:
+            if event['type'] == kind:
+                return event
+        time.sleep(0.5)
+    raise AssertionError(f'no {kind} event in {task["short_id"]}')
+
+
+def queue(body: Row) -> Row:
+    wait_for_runner()
+    return fake_api('POST', '/test/tasks', body)
+
+
+def resolve(task: Row, status: str, answer: str | None = None) -> None:
+    fake_api(
+        'POST',
+        '/test/resolve',
+        {'short_id': task['short_id'], 'status': status, 'answer': answer},
+    )
+
+
+def tool_calls(task: Row) -> list[Row]:
+    return [
+        e['payload']
+        for e in task_of(task)['events']
+        if e['type'] == 'tool.called'
+    ]
+
+
+def children_of(task: Row) -> list[Row]:
+    return [
+        t
+        for t in fake_api('GET', '/test/state')['tasks']
+        if t['origin'].get('task_id') == task['id']
+    ]
+
+
+def child_task(**changes: typing.Any) -> Row:
+    return {
+        'name': 'mcp__imbi__create_child_task',
+        'input': {
+            'agent_slug': 'reviewer',
+            'title': 'Review',
+            'instruction': 'Review the change.',
+        }
+        | changes,
+    }
+
+
+class ApprovalTests(unittest.TestCase):
+    """A webhook task: its text is untrusted, and Bash needs approval."""
+
+    def run_approval(self, status: str) -> tuple[Row, list[str], Row]:
+        task = queue(
+            {
+                'origin': 'webhook',
+                'approval_tools': ['Bash'],
+                'script': [bash('echo approved-run')],
+            }
+        )
+        opened = wait_for_event(task, 'request.opened')
+        self.assertEqual(task_of(task)['status'], 'blocked')
+        self.assertEqual(opened['payload']['kind'], 'approval')
+        self.assertTrue(
+            opened['payload']['artifact_digests'][0].startswith('sha256:')
+        )
+        # The CLI waits in the hook while the task is blocked.
+        time.sleep(3)
+        resolve(task, status)
+        run_task_until_done(task)
+        return task, tool_results(task), opened
+
+    def test_approved_call_runs(self) -> None:
+        task, results, opened = self.run_approval('approved')
+        self.assertIn('approved-run', results[0])
+        (call,) = tool_calls(task)
+        self.assertEqual(
+            call['policy'],
+            {
+                'approval': True,
+                'request_id': opened['payload']['request_id'],
+                'decision': 'allow',
+                'reason': None,
+            },
+        )
+        self.assertEqual(task_of(task)['outcome'], 'done_acted')
+        requests = json.dumps(
+            fake_api('GET', f'/test/model-requests?task={task["short_id"]}')
+        )
+        self.assertIn('<untrusted source=\\"webhook\\">', requests)
+
+    def test_rejected_call_does_not_run(self) -> None:
+        task, results, _ = self.run_approval('rejected')
+        self.assertIn('approval_rejected', results[0])
+        self.assertNotIn('approved-run\n', results[0])
+        (call,) = tool_calls(task)
+        self.assertEqual(call['policy']['decision'], 'deny')
+        self.assertTrue(call['is_error'])
+
+
+class RequestInputTests(unittest.TestCase):
+    def test_answer_reaches_the_model(self) -> None:
+        task = queue(
+            {
+                'script': [
+                    {
+                        'name': 'mcp__imbi__request_input',
+                        'input': {'question': 'Which color?'},
+                    }
+                ]
+            }
+        )
+        opened = wait_for_event(task, 'request.opened')
+        self.assertEqual(opened['payload']['kind'], 'feedback')
+        self.assertEqual(opened['payload']['title'], 'Which color?')
+        resolve(task, 'answered', 'blue')
+        run_task_until_done(task)
+        self.assertEqual(tool_results(task), ['blue'])
+
+
+class RateLimitTests(unittest.TestCase):
+    def test_second_call_is_refused(self) -> None:
+        task = queue(
+            {
+                'tools': {
+                    'imbi.run_with_secret': {
+                        'rate_limit': {'count': 1, 'per': 'hour'}
+                    }
+                },
+                'script': [run_with_secret('true'), run_with_secret('true')],
+            }
+        )
+        run_task_until_done(task)
+        first, second = tool_results(task)
+        self.assertTrue(first.startswith('exit code 0'), first)
+        self.assertIn('rate_limited', second)
+        self.assertEqual(len(resolutions_of(task)), 1)
+
+
+class ChildTaskTests(unittest.TestCase):
+    """A child task for a second agent runs in the same pod and sees the
+    parent's clone (plan P5 verify item 5)."""
+
+    task: typing.ClassVar[Row]
+    child: typing.ClassVar[Row]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.task = queue(
+            {
+                'repository': True,
+                # The repositories are private: a checkout token.
+                'binding': True,
+                'child': {'script': [bash('cat from-parent.txt; pwd')]},
+                'script': [
+                    bash('echo hi-from-parent > from-parent.txt'),
+                    child_task(),
+                ],
+            }
+        )
+        run_task_until_done(cls.task, 240)
+        (cls.child,) = children_of(cls.task)
+
+    def test_child_sees_the_parent_clone(self) -> None:
+        (result,) = tool_results(self.child)
+        self.assertIn('hi-from-parent', result)
+        self.assertIn(f'/work/{self.task["chain_id"]}/repos/app', result)
+
+    def test_both_end_done(self) -> None:
+        self.assertEqual(task_of(self.child)['outcome'], 'done_acted')
+        self.assertEqual(task_of(self.task)['outcome'], 'done_acted')
+        summary = json.loads(tool_results(self.task)[1])
+        self.assertEqual(summary['short_id'], self.child['short_id'])
+        self.assertEqual(summary['outcome'], 'done_acted')
+
+    def test_child_runs_as_its_own_agent_in_the_same_runner(self) -> None:
+        (key,) = resolutions_of(self.child, 'model_inference')
+        self.assertEqual(key['agent_id'], 'agent-2')
+        runners = fake_api('GET', '/test/state')['runners']
+        (runner,) = [
+            r for r in runners if self.task['chain_id'] in r['claims']
+        ]
+        self.assertEqual(runner['claims'], [self.task['chain_id']])
+
+
+class SwappedWorkspaceTests(unittest.TestCase):
+    """The parent's model swaps the repository for a symlink to /etc
+    before a child task starts. The child's CLI changes to its
+    directory as agent and refuses a path outside the chain."""
+
+    def test_child_does_not_start_outside_the_chain(self) -> None:
+        task = queue(
+            {
+                'repository': True,
+                # The repositories are private: a checkout token.
+                'binding': True,
+                'child': {'script': [bash('pwd')]},
+                'script': [
+                    bash('cd .. && mv app app.real && ln -s /etc app'),
+                    child_task(),
+                ],
+            }
+        )
+        run_task_until_done(task, 240)
+        (child,) = children_of(task)
+        self.assertEqual(task_of(child)['outcome'], 'failed_external')
+        self.assertEqual(
+            fake_api('GET', f'/test/model-requests?task={child["short_id"]}'),
+            [],
+        )
+        summary = json.loads(tool_results(task)[1])
+        self.assertEqual(summary['outcome'], 'failed_external')
+
+
+class AgentCliTests(unittest.TestCase):
+    """``agent-cli`` changes to HARNESS_CWD as agent and checks it."""
+
+    chain = '/work/agent-cli-chain'
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        as_user(
+            'agent',
+            ['mkdir', '-p', f'{cls.chain}/repo', f'{cls.chain}/scratch'],
+        )
+        as_user('agent', ['ln', '-sfn', '/etc', f'{cls.chain}/link'])
+
+    def run_cli(self, cwd: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ['/usr/local/bin/agent-cli', '--version'],
+            env={
+                'PATH': '/usr/local/bin:/usr/bin:/bin',
+                'HARNESS_CWD': cwd,
+                'HARNESS_CHAIN': self.chain,
+                'HARNESS_TMPDIR': f'{self.chain}/scratch',
+                'HOME': f'{self.chain}/scratch',
+            },
+            cwd='/',
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
+    def test_starts_in_the_chain(self) -> None:
+        result = self.run_cli(f'{self.chain}/repo')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Claude Code', result.stdout)
+
+    def test_symlink_out_of_the_chain_is_refused(self) -> None:
+        result = self.run_cli(f'{self.chain}/link')
+        self.assertEqual(result.returncode, 126)
+        self.assertIn('not in the chain', result.stderr)
+
+    def test_other_chain_is_refused(self) -> None:
+        as_user('agent', ['mkdir', '-p', '/work/agent-cli-chainx'])
+        result = self.run_cli('/work/agent-cli-chainx')
+        self.assertEqual(result.returncode, 126)
+
+
 class ModelKeyRequestTests(unittest.TestCase):
     """The model asks run_with_secret for the model key: refused, and
     the key reaches no output, event, or model request."""
