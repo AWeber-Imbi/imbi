@@ -11,6 +11,7 @@ from imbi.api.plugins import assignments
 from imbi.common import models
 from imbi.common.plugins import base
 from imbi.common.prompts import pool
+from imbi.common.prompts import resolve as prompt_resolve
 
 #: ``.claude-plugin/marketplace.json`` of github.com/anthropics/claude-code
 #: at b0b7bed9820350bb0942e32c7f00752a99ea3555.
@@ -309,7 +310,7 @@ class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):
             ('fetch_version', self.version),
         ):
             patcher = mock.patch.object(
-                harness_api.prompt_resolve, name, return_value=value
+                prompt_resolve, name, return_value=value
             )
             patcher.start()
             self.addCleanup(patcher.stop)
