@@ -544,10 +544,11 @@ class GitHubAppBrokerTestCase(secret_support.SecretCase):
         self.assertEqual(released['revocation_state'], 'succeeded')
         self.assertEqual(revoke.call_count, 1)
         # The key was read through the broker, and audited without it.
-        key_events = [e for e in self.events if e.purpose == 'provider_key']
+        events = await self.audit_events()
+        key_events = [e for e in events if e.purpose == 'provider_key']
         self.assertEqual(len(key_events), 1)
         self.assertEqual(key_events[0].result, 'succeeded')
-        for event in self.events:
+        for event in events:
             self.assertNotIn(TOKEN, event.model_dump_json())
             self.assertNotIn('PRIVATE KEY', event.model_dump_json())
 

@@ -1637,6 +1637,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/secret-resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Harness Secret Resolution
+         * @description Ask for a secret resolution for a task of the chain.
+         *
+         *     Imbi takes the organization, agent, project, task, and runner from
+         *     the agent token, the chain, and the task. Exactly one grant must
+         *     allow the request. A repeat with the same ``Idempotency-Key`` gives
+         *     the unused resolution a new handle.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent, or the request is denied.
+         *         404: No such task.
+         */
+        post: operations["create_harness_secret_resolution_api_harness_secret_resolutions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/executor/secret-materializations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Harness Secret Materialization
+         * @description Return the material of a resolution, once, to its runner's
+         *     executor.
+         *
+         *     The response is ``no-store``. Sentry keeps no request body and no
+         *     local variables of this route (:mod:`imbi.common.sentry`).
+         *
+         *     Raises:
+         *         401: ``invalid_executor_credential``.
+         *         403: The context does not match, or a resource is disabled.
+         *         404: No such handle.
+         *         409: The handle or the nonce was used.
+         *         410: The resolution expired.
+         *         502: The provider failed.
+         */
+        post: operations["create_harness_secret_materialization_api_harness_executor_secret_materializations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/executor/secret-resolutions/{resolution_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Harness Secret Resolution
+         * @description Release a resolution of this runner and revoke its provider
+         *     lease. Idempotent.
+         *
+         *     Raises:
+         *         401: ``invalid_executor_credential``.
+         *         404: No such resolution of this runner.
+         */
+        post: operations["release_harness_secret_resolution_api_harness_executor_secret_resolutions__resolution_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/local-auth": {
         parameters: {
             query?: never;
@@ -18569,6 +18656,16 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** SecretDelivery */
+        SecretDelivery: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "file_descriptor" | "stdin" | "file" | "environment";
+            /** Target */
+            target?: string | null;
+        };
         /** SecretGrant */
         SecretGrant: {
             /**
@@ -18691,6 +18788,57 @@ export interface components {
             max_ttl_seconds?: number | null;
             /** Enabled */
             enabled?: boolean | null;
+        };
+        /** SecretMaterialization */
+        SecretMaterialization: {
+            /**
+             * Resolution Id
+             * Format: uuid
+             */
+            resolution_id: string;
+            /**
+             * Encoding
+             * @enum {string}
+             */
+            encoding: "utf8" | "base64";
+            /** Material */
+            material: string;
+            delivery: components["schemas"]["SecretDelivery"];
+            /**
+             * Resolution Expires At
+             * Format: date-time
+             */
+            resolution_expires_at: string;
+            /** Credential Expires At */
+            credential_expires_at?: string | null;
+        };
+        /**
+         * SecretMaterializationCreate
+         * @description The handle and the context of the resolution. The context must
+         *     be the context of the resolution.
+         */
+        SecretMaterializationCreate: {
+            /**
+             * Handle
+             * Format: password
+             */
+            handle: string;
+            /**
+             * Nonce
+             * Format: password
+             */
+            nonce: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Purpose */
+            purpose: string;
         };
         /** SecretProvider */
         SecretProvider: {
@@ -18866,6 +19014,57 @@ export interface components {
             expires_at: string;
             /** Released At */
             released_at: string | null;
+        };
+        /** SecretResolutionCreate */
+        SecretResolutionCreate: {
+            /**
+             * Short Id
+             * @description The task of the chain that needs it.
+             */
+            short_id: string;
+            /**
+             * Reference
+             * @description secret://<scope>/<path>[#<field>]
+             */
+            reference: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Ttl Seconds
+             * @default 300
+             */
+            ttl_seconds: number;
+            delivery: components["schemas"]["SecretDelivery"];
+        };
+        /** SecretResolutionCreated */
+        SecretResolutionCreated: {
+            /**
+             * Resolution Id
+             * Format: uuid
+             */
+            resolution_id: string;
+            /** Handle */
+            handle: string;
+            /** State */
+            state: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            delivery: components["schemas"]["SecretDelivery"];
+        };
+        /** SecretResolutionReleased */
+        SecretResolutionReleased: {
+            /**
+             * Resolution Id
+             * Format: uuid
+             */
+            resolution_id: string;
+            /** State */
+            state: string;
+            /** Revocation State */
+            revocation_state: string;
         };
         /**
          * ServiceAccountCreate
@@ -22947,6 +23146,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToolCallVerdict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_harness_secret_resolution_api_harness_secret_resolutions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretResolutionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResolutionCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_harness_secret_materialization_api_harness_executor_secret_materializations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretMaterializationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretMaterialization"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_harness_secret_resolution_api_harness_executor_secret_resolutions__resolution_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resolution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResolutionReleased"];
                 };
             };
             /** @description Validation Error */

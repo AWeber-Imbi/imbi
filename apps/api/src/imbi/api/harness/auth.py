@@ -3,9 +3,12 @@
 The harness routes accept credentials that no other route accepts:
 
 - A runner credential, for the runner routes (:func:`current_runner`).
-- An agent token, for the ADR 0020 harness routes and the
-  ``/harness/tasks`` routes (:func:`harness_caller`). It is valid only
-  while its chain is pinned to its runner in its attempt.
+- An agent token, for the ADR 0020 harness routes, the
+  ``/harness/tasks`` routes, and ``/harness/secret-resolutions``
+  (:func:`harness_caller`). It is valid only while its chain is pinned
+  to its runner in its attempt.
+- An executor credential, for the ``/harness/executor`` secret routes
+  (:func:`current_executor`).
 
 The ADR 0020 harness routes also keep accepting the client credential
 of the agent's service account, for a task whose chain no runner holds.
@@ -178,4 +181,35 @@ async def current_runner(
 
 Runner = typing.Annotated[
     dict[str, typing.Any], fastapi.Depends(current_runner)
+]
+
+
+async def current_executor(
+    store: harness.Store, credentials: Credentials
+) -> dict[str, typing.Any]:
+    """Return the live runner whose executor credential this is.
+
+    Only the executor secret routes accept this credential, and they
+    accept no other credential.
+
+    Raises:
+        401: ``invalid_executor_credential``: not the executor
+            credential of a live runner. A fenced runner's credential
+            stops working at once.
+
+    """
+    token = credentials.credentials if credentials else ''
+    runner = None
+    if token.startswith(tokens.EXECUTOR_PREFIX):
+        runner = await store.runner_by_executor_credential(token)
+    if runner is None:
+        raise _unauthorized(
+            'invalid_executor_credential',
+            'Not the executor credential of a live runner',
+        )
+    return runner
+
+
+Executor = typing.Annotated[
+    dict[str, typing.Any], fastapi.Depends(current_executor)
 ]

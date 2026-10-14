@@ -3,8 +3,8 @@
 These are functions for trusted callers, not routes. The caller gives a
 :class:`ResolutionContext` that it took from the agent token and the
 chain pin (organization, agent, project, task, runner); a request can
-never set them. The harness routes that call this service come with the
-runner tokens (plan phase P2).
+never set them. The harness routes (:mod:`imbi.api.endpoints.harness`)
+call this service.
 
 Rules that this module keeps:
 
@@ -19,9 +19,15 @@ Rules that this module keeps:
   revocation stays ``failed`` and the sweep tries it again.
 - Material is held only in :class:`~.providers.Material` and
   :class:`Materialization`; neither has a readable ``repr``.
+- Each audit event commits with its operation, in the outbox
+  (:mod:`.audit`). A create, a materialization, and a release also
+  write a :data:`TASK_EVENT_TYPE` event on the task (ADR 0020), with
+  the reference, the purpose, and the result. No event holds material
+  or a handle.
 """
 
 import base64
+import contextlib
 import dataclasses
 import datetime
 import hashlib
@@ -37,6 +43,8 @@ import psycopg.errors
 import psycopg_pool
 from psycopg import rows
 
+from imbi.api.agent_tasks import log
+from imbi.api.agent_tasks import store as task_store
 from imbi.api.secret_broker import audit, providers
 from imbi.common import settings
 from imbi.common.auth import encryption
@@ -67,6 +75,16 @@ NO_STORE_HEADERS: dict[str, str] = {
     'Cache-Control': 'no-store',
     'Pragma': 'no-cache',
     'X-Content-Type-Options': 'nosniff',
+}
+
+#: The ADR 0020 task event of a resolution step.
+TASK_EVENT_TYPE = 'secret.resolution'
+#: The audit event types that also write a task event, and its action.
+_TASK_ACTIONS: dict[str, str] = {
+    'secret_resolution_allowed': 'created',
+    'secret_resolution_denied': 'created',
+    'secret_materialized': 'materialized',
+    'secret_resolution_released': 'released',
 }
 
 _HANDLE_LABEL = b'imbi-secret-handle-v1'
@@ -552,6 +570,61 @@ def _event(
     )
 
 
+type TaskEvent = tuple[Row, Row]
+
+
+def _task_actor(actor: str, agent_id: str) -> task_store.Actor:
+    if actor.startswith('runner:'):
+        return task_store.Actor('agent', agent_id, 'harness')
+    if actor == 'system':
+        return task_store.Actor('system', 'imbi', 'harness')
+    return task_store.Actor('human', actor, 'api')
+
+
+async def _write(
+    conn: Conn,
+    event_type: audit.EventType,
+    row: Row,
+    *,
+    result: audit.Result = 'succeeded',
+    reason: str = '',
+    actor: str = '',
+) -> list[TaskEvent]:
+    """Write the audit event of a resolution step in the transaction of
+    ``conn``, and its task event when the task shows that step.
+
+    Return the task event, to publish after the commit.
+    """
+    event = _event(event_type, row, result=result, reason=reason, actor=actor)
+    await audit.write(conn, [event])
+    action = _TASK_ACTIONS.get(event_type)
+    if action is None:
+        return []
+    written = await task_store.append_event(
+        conn,
+        row['organization_id'],
+        row['task_id'],
+        TASK_EVENT_TYPE,
+        {
+            'action': action,
+            'resolution_id': event.resolution_id or None,
+            'reference': row.get('reference'),
+            'purpose': row.get('purpose'),
+            'delivery_mode': row.get('delivery_mode'),
+            'result': event.result,
+            'reason': event.reason or None,
+        },
+        _task_actor(event.actor, row['agent_id']),
+    )
+    return [] if written is None else [written]
+
+
+async def _publish(task_events: list[TaskEvent]) -> None:
+    """Publish task events after their commit. Never raises."""
+    for task, event in task_events:
+        await log.publish(task, [event])
+
+
 def _new_handle() -> str:
     return _HANDLE_PREFIX + secrets.token_urlsafe(32)
 
@@ -587,10 +660,12 @@ class Broker:
             'purpose': request.purpose,
             'delivery_mode': request.delivery_mode,
         }
+        with contextlib.suppress(providers.BrokerError):
+            context_row['reference'] = str(parse_reference(request.reference))
         try:
             for attempt in (1, 2):
                 try:
-                    created, row = await self._create(context, request)
+                    created, task_events = await self._create(context, request)
                     break
                 except psycopg.errors.UniqueViolation as err:
                     # A concurrent create with the same key won the race:
@@ -604,23 +679,19 @@ class Broker:
             else:  # pragma: no cover - the loop breaks or raises
                 raise RuntimeError('unreachable')
         except providers.BrokerError as err:
-            await audit.publish(
-                [
-                    _event(
-                        'secret_resolution_denied',
-                        context_row,
-                        result='denied',
-                        reason=err.reason,
-                    )
-                ]
+            await self._record(
+                'secret_resolution_denied',
+                context_row,
+                result='denied',
+                reason=err.reason,
             )
             raise
-        await audit.publish([_event('secret_resolution_allowed', row)])
+        await _publish(task_events)
         return created
 
     async def _create(
         self, context: ResolutionContext, request: ResolutionRequest
-    ) -> tuple[Created, Row]:
+    ) -> tuple[Created, list[TaskEvent]]:
         if not (
             context.organization_id
             and context.agent_id
@@ -645,13 +716,16 @@ class Broker:
                     (context.task_id, request.idempotency_key),
                 )
                 if existing is not None:
-                    return await self._repeat(
+                    repeated = await self._repeat(
                         conn,
                         existing,
                         context,
                         request,
                         str(reference),
                         handle,
+                    )
+                    return _created(repeated, handle), await _write(
+                        conn, 'secret_resolution_allowed', repeated
                     )
             decision = await evaluate(
                 conn,
@@ -694,9 +768,10 @@ class Broker:
                     request.ttl_seconds,
                 ),
             )
-        if row is None:  # pragma: no cover - RETURNING always yields a row
-            raise RuntimeError('resolution insert returned no row')
-        return _created(row, handle), row
+            if row is None:  # pragma: no cover - RETURNING yields a row
+                raise RuntimeError('resolution insert returned no row')
+            task_events = await _write(conn, 'secret_resolution_allowed', row)
+        return _created(row, handle), task_events
 
     async def _repeat(
         self,
@@ -706,7 +781,7 @@ class Broker:
         request: ResolutionRequest,
         reference: str,
         handle: str,
-    ) -> tuple[Created, Row]:
+    ) -> Row:
         """Give an unused resolution a new handle for a repeat."""
         if (
             row['runner_id'],
@@ -734,7 +809,7 @@ class Broker:
             'UPDATE secrets.resolutions SET handle_hash = %s WHERE id = %s',
             (_digest(_HANDLE_LABEL, handle), row['id']),
         )
-        return _created(row, handle), row
+        return row
 
     async def materialize(
         self, executor: ExecutorContext, request: MaterializeRequest
@@ -775,19 +850,14 @@ class Broker:
                 )
         except providers.BrokerError as err:
             if row is not None:
-                await audit.publish(
-                    [
-                        _event(
-                            'secret_materialized',
-                            row,
-                            result='denied',
-                            reason=err.reason,
-                        )
-                    ]
+                await self._record(
+                    'secret_materialized',
+                    row,
+                    result='denied',
+                    reason=err.reason,
                 )
             raise
         material = await self._resolve(row, decision)
-        await audit.publish([_event('secret_materialized', row)])
         return Materialization(row, material)
 
     async def _check_materialize(
@@ -907,11 +977,12 @@ class Broker:
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)
-            await self._finish(row, plugin, config, material)
-            if (
+            expired = (
                 material.credential_expires_at is not None
                 and material.credential_expires_at <= now
-            ):
+            )
+            await self._finish(row, plugin, config, material, expired)
+            if expired:
                 raise providers.BrokerError(
                     'secret_materialization_failed', 'credential_expired'
                 )
@@ -938,25 +1009,25 @@ class Broker:
         plugin: providers.Provider,
         config: dict[str, typing.Any],
         material: providers.Material,
+        expired: bool,
     ) -> None:
         """Check the state again after the provider call; keep the lease.
 
-        The row is locked ``FOR UPDATE``, so fencing or a release that
-        ran during the provider call is seen here. When the resolution is
-        no longer ``active``, the new lease is revoked at once and the
-        material is not returned. When the lease cannot be saved, it is
-        revoked at once too.
+        The resolution is locked ``FOR UPDATE``, and its task and runner
+        ``FOR SHARE``, so a release, a task close, or fencing that ran
+        during the provider call is seen here. When the resolution is
+        no longer ``active``, its task is closed, or its runner is not
+        live (``idle`` or ``busy``, as for the executor credential), the
+        new lease is revoked at once and the material is not returned.
+        When the lease cannot be saved, it is revoked at once too. The
+        audit event of a materialization that succeeds (``active`` and
+        not ``expired``) commits with the lease.
         """
         lease_id = material.lease_id
+        task_events: list[TaskEvent] = []
         try:
             async with self._pool.connection() as conn, conn.transaction():
-                cur = await conn.execute(
-                    'SELECT state FROM secrets.resolutions'
-                    ' WHERE id = %s FOR UPDATE',
-                    (row['id'],),
-                )
-                current = await cur.fetchone()
-                active = current is not None and current[0] == 'active'
+                active = await _still_usable(conn, row)
                 await conn.execute(
                     'UPDATE secrets.resolutions'
                     ' SET materializing_since = NULL WHERE id = %s',
@@ -976,6 +1047,10 @@ class Broker:
                             row['id'],
                         ),
                     )
+                if active and not expired:
+                    task_events = await _write(
+                        conn, 'secret_materialized', row
+                    )
         except Exception as exc:  # noqa: BLE001 - revoked and reported
             # No traceback anywhere here: frames hold the lease id.
             LOGGER.error(
@@ -987,6 +1062,7 @@ class Broker:
             raise providers.BrokerError(
                 'secret_materialization_failed', 'lease_not_saved'
             ) from None
+        await _publish(task_events)
         if not active:
             await self._revoke_unsaved(row, plugin, config, material)
             raise providers.BrokerError(
@@ -1009,6 +1085,7 @@ class Broker:
             LOGGER.error('Resolution %s: unsaved lease not revoked', row['id'])
 
     async def _fail(self, row: Row, err: providers.BrokerError) -> None:
+        task_events: list[TaskEvent] = []
         try:
             async with self._pool.connection() as conn:
                 await conn.execute(
@@ -1019,22 +1096,20 @@ class Broker:
                     ' handle_hash = NULL WHERE id = %s',
                     (err.reason, row['id']),
                 )
+                task_events = await _write(
+                    conn,
+                    'secret_materialized',
+                    row,
+                    result='failed',
+                    reason=err.reason,
+                )
         except Exception as exc:  # noqa: BLE001 - the handle is used up
             LOGGER.error(
                 'Resolution %s: state not saved: %s',
                 row['id'],
                 type(exc).__name__,
             )
-        await audit.publish(
-            [
-                _event(
-                    'secret_materialized',
-                    row,
-                    result='failed',
-                    reason=err.reason,
-                )
-            ]
-        )
+        await _publish(task_events)
 
     async def release(
         self,
@@ -1055,6 +1130,7 @@ class Broker:
             BrokerError: ``resolution_not_found``.
 
         """
+        task_events: list[TaskEvent] = []
         async with self._pool.connection() as conn, conn.transaction():
             row = await _fetch_one(
                 conn,
@@ -1080,11 +1156,14 @@ class Broker:
                     ' release_reason = %s WHERE id = %s RETURNING *',
                     (reason, resolution_id),
                 )
+                task_events = await _write(
+                    conn,
+                    'secret_resolution_released',
+                    typing.cast(Row, row),
+                    actor=actor,
+                )
+        await _publish(task_events)
         row = typing.cast(Row, row)
-        if released:
-            await audit.publish(
-                [_event('secret_resolution_released', row, actor=actor)]
-            )
         if row['revocation_state'] in ('pending', 'failed'):
             await self._revoke(row, actor)
         return typing.cast(Row, await self.get(row['id']))
@@ -1147,25 +1226,26 @@ class Broker:
                 ' WHERE id = %s',
                 ('failed' if reason else 'succeeded', reason, row['id']),
             )
-        await audit.publish(
-            [
-                _event(
-                    'secret_lease_revocation_failed'
-                    if reason
-                    else 'secret_lease_revoked',
-                    row,
-                    result='failed' if reason else 'succeeded',
-                    reason=reason or '',
-                    actor=actor,
-                )
-            ]
-        )
+            await _write(
+                conn,
+                'secret_lease_revocation_failed'
+                if reason
+                else 'secret_lease_revoked',
+                row,
+                result='failed' if reason else 'succeeded',
+                reason=reason or '',
+                actor=actor,
+            )
         return reason is None
 
-    async def release_runner_resolutions(self, runner_id: str) -> bool:
+    async def release_runner_resolutions(
+        self, runner_id: str | uuid.UUID
+    ) -> bool:
         """Release every open resolution of a runner and revoke leases.
 
-        For fencing (ADR 0022): return ``True`` only when no provider
+        The fencer of the lease sweep (ADR 0022,
+        :func:`imbi.api.harness.sweeper.register_fencer`): return
+        ``True`` only when no provider
         lease of the runner is left unrevoked and no materialization of
         the runner is in flight. A materialization that finishes after
         this release sees the new state and revokes its own lease
@@ -1173,6 +1253,7 @@ class Broker:
         A mark older than :data:`MATERIALIZE_TIMEOUT` is a crashed call
         and does not hold the chain.
         """
+        runner_id = str(runner_id)
         async with self._pool.connection() as conn:
             released = await _fetch(
                 conn,
@@ -1196,16 +1277,36 @@ class Broker:
                 'secs => %s) LIMIT 1',
                 (runner_id, MATERIALIZE_TIMEOUT),
             )
-        await audit.publish(
-            [
-                _event('secret_resolution_released', row, actor='system')
-                for row in released
-            ]
-        )
+            task_events = await _release_events(conn, released)
+        await _publish(task_events)
         ok = not in_flight
         for row in pending:
             ok = await self._revoke(row) and ok
         return ok
+
+    async def release_task_resolutions(self, task: Row) -> None:
+        """Release the open resolutions of a task that closed, and
+        revoke their provider leases.
+
+        The close hook of the task store
+        (:func:`imbi.api.agent_tasks.store.register_close_hook`). When it
+        fails, the sweep releases them.
+        """
+        async with self._pool.connection() as conn:
+            released = await _fetch(
+                conn,
+                "UPDATE secrets.resolutions SET state = 'released',"
+                ' handle_hash = NULL, released_at = NOW(),'
+                " release_reason = 'task_closed'"
+                " WHERE task_id = %s AND state IN ('pending', 'active')"
+                ' RETURNING *',
+                (task['id'],),
+            )
+            task_events = await _release_events(conn, released)
+        await _publish(task_events)
+        for row in released:
+            if row['revocation_state'] == 'pending':
+                await self._revoke(row)
 
     async def sweep(self) -> int:
         """Expire resolutions past ``expires_at``, release the open
@@ -1227,8 +1328,9 @@ class Broker:
                 ' AND expires_at <= NOW() RETURNING *',
                 (),
             )
-            # No hook runs when a task closes, so the sweep releases
-            # what its task left open. Materialize refuses them already.
+            # The close hook (release_task_resolutions) releases these at
+            # once; this catches a task whose hook failed. Materialize
+            # refuses them already.
             closed = await _fetch(
                 conn,
                 "UPDATE secrets.resolutions AS r SET state = 'released',"
@@ -1256,22 +1358,61 @@ class Broker:
                 ' FOR UPDATE SKIP LOCKED) RETURNING *',
                 (),
             )
-        await audit.publish(
-            [
-                _event('secret_resolution_expired', row, actor='system')
-                for row in expired
-            ]
-            + [
-                _event('secret_resolution_released', row, actor='system')
-                for row in closed
-            ]
-        )
+            for row in expired:
+                await _write(
+                    conn, 'secret_resolution_expired', row, actor='system'
+                )
+            task_events = await _release_events(conn, closed)
+        await _publish(task_events)
         for row in expired + closed:
             if row['revocation_state'] == 'pending':
                 await self._revoke(row)
         for row in retry:
             await self._revoke(row)
         return len(expired)
+
+    async def flush_audit(self) -> int:
+        """Publish the audit outbox; see :func:`audit.flush`."""
+        return await audit.flush(self._pool)
+
+    async def _record(
+        self,
+        event_type: audit.EventType,
+        row: Row,
+        *,
+        result: audit.Result,
+        reason: str,
+    ) -> None:
+        """Write the events of a step in a transaction of their own.
+
+        For a denial, whose transaction rolls back. Never raises: the
+        operation already has its result.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.transaction():
+                task_events = await _write(
+                    conn, event_type, row, result=result, reason=reason
+                )
+        except Exception as exc:  # noqa: BLE001 - logged, not raised
+            LOGGER.error(
+                'Secret audit event %s not saved: %s',
+                event_type,
+                type(exc).__name__,
+            )
+            return
+        await _publish(task_events)
+
+    async def _record_event(self, event: audit.Event) -> None:
+        """Write an audit event that has no resolution row to the
+        outbox, in a transaction of its own. Never raises."""
+        try:
+            await audit.record(self._pool, [event])
+        except Exception as exc:  # noqa: BLE001 - logged, not raised
+            LOGGER.error(
+                'Secret audit event %s not saved: %s',
+                event.type,
+                type(exc).__name__,
+            )
 
     async def check_provider_key(
         self,
@@ -1391,15 +1532,13 @@ class Broker:
                 ),
             )
         except providers.BrokerError as err:
-            await audit.publish(
-                [
-                    event.model_copy(
-                        update={'result': 'failed', 'reason': err.reason}
-                    )
-                ]
+            await self._record_event(
+                event.model_copy(
+                    update={'result': 'failed', 'reason': err.reason}
+                )
             )
             raise
-        await audit.publish([event])
+        await self._record_event(event)
         return material
 
     async def get(self, resolution_id: uuid.UUID) -> Row | None:
@@ -1409,6 +1548,57 @@ class Broker:
                 'SELECT * FROM secrets.resolutions WHERE id = %s',
                 (resolution_id,),
             )
+
+
+async def _release_events(conn: Conn, released: list[Row]) -> list[TaskEvent]:
+    """Write the events of released rows, in task order.
+
+    Each task event locks its task row; one order for every caller
+    keeps two sweeps from a deadlock.
+    """
+    task_events: list[TaskEvent] = []
+    for row in sorted(released, key=lambda r: (r['task_id'], r['id'])):
+        task_events += await _write(
+            conn, 'secret_resolution_released', row, actor='system'
+        )
+    return task_events
+
+
+async def _still_usable(conn: Conn, row: Row) -> bool:
+    """Lock a resolution, its task, and its runner, in this order; say
+    whether the resolution may still give material.
+
+    ``runner_id`` is ``TEXT`` here and a ``UUID`` in ``harness``. It is
+    parsed here, so the query uses the primary key index. A value that
+    is not a UUID names no runner.
+    """
+    cur = await conn.execute(
+        'SELECT state FROM secrets.resolutions WHERE id = %s FOR UPDATE',
+        (row['id'],),
+    )
+    resolution = await cur.fetchone()
+    cur = await conn.execute(
+        'SELECT status FROM agent_runtime.tasks WHERE id = %s FOR SHARE',
+        (row['task_id'],),
+    )
+    task = await cur.fetchone()
+    try:
+        runner_id = uuid.UUID(str(row['runner_id']))
+    except ValueError:
+        return False
+    cur = await conn.execute(
+        'SELECT state FROM harness.runners WHERE id = %s FOR SHARE',
+        (runner_id,),
+    )
+    runner = await cur.fetchone()
+    return (
+        resolution is not None
+        and resolution[0] == 'active'
+        and task is not None
+        and task[0] != 'closed'
+        and runner is not None
+        and runner[0] in ('idle', 'busy')
+    )
 
 
 def _created(row: Row, handle: str) -> Created:
