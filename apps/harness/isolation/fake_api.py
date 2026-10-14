@@ -1,15 +1,23 @@
 """The fake imbi-api for the P5a isolation suite: a test double.
 
-It serves three things on one port:
+It serves four things on one port:
 
 - The imbi-api routes that the runner and the executor call: the pool
   token, register, heartbeat, claim, finish, secret resolutions,
   materializations, and release. They follow the shapes and the refusal
   rules of ``imbi.api.endpoints.harness`` and
   ``imbi.api.secret_broker.broker`` (context, expiry, single use, nonce,
-  runner), with one ``fake`` dynamic secret. A lease sweep marks a
-  runner offline, revokes its resolutions, and requeues its chain after
-  a grace period.
+  runner), with ``fake`` secrets: a dynamic GitHub token, a GitHub App
+  binding for the setup purposes, and the static model key. A lease
+  sweep marks a runner offline, revokes its resolutions, and requeues
+  its chain after a grace period.
+- The ADR 0020 task routes of ``imbi.api.endpoints.agent_task_harness``
+  that the runner calls with the agent token: sessions, heartbeat,
+  events (with the 1 MiB continuation rules), usage (one price per
+  token, so a small budget runs out), and outcome.
+- ``/git/<repo>``: two private repositories through
+  ``git http-backend``, an app and a plugin marketplace. A clone needs
+  a token of an active setup resolution.
 - An Anthropic Messages API that runs a script: each task has a list of
   tool calls, and the model makes them in order, then says "done". It
   keeps every request, so the suite sees what the model saw.
@@ -25,13 +33,16 @@ memory. ``apps/api/tests/endpoints/test_harness_secrets.py`` covers the
 real broker rules.
 """
 
+import base64
 import datetime
+import decimal
 import http.server
 import json
 import os
 import re
 import secrets
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -44,8 +55,28 @@ GRACE_SECONDS = int(os.environ.get('GRACE_SECONDS', '10'))
 POOL_CLIENT_ID = os.environ['POOL_CLIENT_ID']
 POOL_CLIENT_SECRET = os.environ['POOL_CLIENT_SECRET']
 MODEL_KEY = os.environ['MODEL_KEY']
+PUBLIC_URL = os.environ.get('PUBLIC_URL', 'http://harness-fake-api:8080')
 REFERENCE = 'secret://production/github/token'
-PURPOSES = {'github_write'}
+MODEL_REFERENCE = 'secret://production/anthropic/key'
+APP_REFERENCE = 'secret://production/github/app'
+#: The purposes that each reference allows.
+PURPOSES = {
+    REFERENCE: {'github_write'},
+    MODEL_REFERENCE: {'model_inference'},
+    APP_REFERENCE: {'workspace_checkout', 'marketplace_fetch'},
+}
+SETUP_PURPOSES = {'workspace_checkout', 'marketplace_fetch'}
+#: USD per token: 15 tokens per fake model call.
+PRICE = decimal.Decimal('0.000001')
+LARGE_EVENTS = {'turn', 'tool.called'}
+HARNESS_EVENTS = {
+    'turn',
+    'tool.called',
+    'phase.changed',
+    'todos.updated',
+    'check.reported',
+}
+GIT_ROOT = os.environ.get('GIT_ROOT', '/tmp/git')  # noqa: S108 - emptyDir
 AGENT_ID = 'agent-1'
 POOL_ACCESS_TOKEN = 'pool-access-' + secrets.token_hex(8)
 _MARKER = re.compile(r'\[\[task:(T-\d+)\]\]')
@@ -62,6 +93,7 @@ NONCES: set[str] = set()
 TOKENS: dict[str, str] = {}
 MODEL_REQUESTS: list[Row] = []
 PARTITION = threading.Event()
+GIT: dict[str, str] = {}
 
 
 class Fail(Exception):
@@ -93,7 +125,9 @@ def _new_runner(*, synthetic: bool = False) -> Row:
     return runner
 
 
-def _new_resolution(runner: Row, task: Row, purpose: str, ttl: int) -> Row:
+def _new_resolution(
+    runner: Row, task: Row, purpose: str, ttl: int, reference: str = REFERENCE
+) -> Row:
     resolution = {
         'id': str(uuid.uuid4()),
         'handle': secrets.token_urlsafe(32),
@@ -102,7 +136,7 @@ def _new_resolution(runner: Row, task: Row, purpose: str, ttl: int) -> Row:
         'agent_id': task['agent_id'],
         'project_id': task['project_id'],
         'purpose': purpose,
-        'reference': REFERENCE,
+        'reference': reference,
         'expires_at': time.time() + ttl,
         'state': 'active',
         'count': 0,
@@ -218,13 +252,65 @@ def _wait_for_chain(runner: Row, wait: int) -> Row | None:
                             'description',
                         )
                     },
-                    'bundle': {'agent_id': AGENT_ID, 'agent_version': 1},
+                    'bundle': _bundle(task),
                     'agent_token': chain['agent_token'],
                     'agent_token_expires_at': _iso(time.time() + 3600),
                 }
         if time.time() >= deadline:
             return None
         time.sleep(0.25)
+
+
+def _bundle(task: Row) -> Row:
+    """The identity bundle of ``harness._identity``, with the test
+    options of the task."""
+    options = task['options']
+    plugins = []
+    if options.get('plugin'):
+        plugins.append(
+            {
+                'marketplace': 'tools',
+                'plugin': 'hello',
+                'url': f'{PUBLIC_URL}/git/tools',
+                'sha': GIT['tools'],
+                'path': 'plugins/hello',
+            }
+        )
+    repositories = []
+    if options.get('repository'):
+        repositories.append(
+            {
+                'host': 'harness-fake-api',
+                'name': 'acme/app',
+                'url': f'{PUBLIC_URL}/git/app',
+            }
+        )
+    return {
+        'agent_id': AGENT_ID,
+        'agent_version': 1,
+        'snapshot': {},
+        'prompt': {'ref': 'agents/test@1', 'system': 'You are a test.'},
+        'repositories': repositories,
+        'config': {
+            'model_upstream': {
+                'kind': 'anthropic',
+                'base_url': PUBLIC_URL,
+                'key_ref': MODEL_REFERENCE,
+            },
+            'plugins': plugins,
+            'allowed_tools': None,
+            'denied_tools': ['Write'] if options.get('repository') else [],
+            'permission_mode': 'default',
+            'sandbox': {'enabled': False, 'allow_unsandboxed_commands': True},
+            'system_prompt_prefix': '',
+            'hooks': {},
+            'approval_tools': [],
+            'secrets': [REFERENCE],
+            'github_app_binding': (
+                APP_REFERENCE if options.get('binding') else None
+            ),
+        },
+    }
 
 
 def _materialize(token: str, body: Row) -> Row:
@@ -263,9 +349,12 @@ def _materialize(token: str, body: Row) -> Row:
         raise Fail(409, 'resolution_already_used')
     NONCES.add(nonce)
     resolution['count'] += 1
-    material = 'ghs_' + secrets.token_hex(18)
+    if resolution['reference'] == MODEL_REFERENCE:
+        material = MODEL_KEY
+    else:
+        material = 'ghs_' + secrets.token_hex(18)
+        TOKENS[material] = resolution['id']
     resolution['materials'].append(material)
-    TOKENS[material] = resolution['id']
     return {
         'resolution_id': resolution['id'],
         'encoding': 'utf8',
@@ -285,6 +374,7 @@ def _model_reply(body: Row) -> tuple[Row, list[Row]]:
     messages = json.dumps(body.get('messages') or [])
     match = _MARKER.search(messages)
     script: list[Row] = []
+    task = None
     if match:
         task = TASKS.get(match.group(1))
         script = task['script'] if task else []
@@ -302,8 +392,9 @@ def _model_reply(body: Row) -> tuple[Row, list[Row]]:
         start = {**block, 'input': {}}
         stop_reason = 'tool_use'
     else:
-        block = {'type': 'text', 'text': 'done'}
-        deltas = [{'type': 'text_delta', 'text': 'done'}]
+        text = 'y' * task['final_text_bytes'] if match and task else 'done'
+        block = {'type': 'text', 'text': text}
+        deltas = [{'type': 'text_delta', 'text': text}]
         start = {'type': 'text', 'text': ''}
         stop_reason = 'end_turn'
     message = {
@@ -342,12 +433,18 @@ def _model_reply(body: Row) -> tuple[Row, list[Row]]:
     return message, events
 
 
+def _default(value: typing.Any) -> typing.Any:
+    if isinstance(value, decimal.Decimal):
+        return str(value)
+    return sorted(value)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: typing.Any) -> None:  # noqa: A002
         pass
 
     def _json(self, status: int, body: typing.Any) -> None:
-        data = json.dumps(body, default=sorted).encode()
+        data = json.dumps(body, default=_default).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(data)))
@@ -390,6 +487,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     )
                 if url.path == '/github/write':
                     return self._github()
+                if url.path == '/test/task':
+                    return self._json(200, TASKS[query['short_id']])
+                if url.path == '/test/model-key':
+                    return self._json(200, {'key': MODEL_KEY})
+            if url.path.startswith('/git/'):
+                return self._git()
             return self._json(404, {'detail': 'not found'})
         except Fail as err:
             return self._json(err.status, {'detail': {'error': err.error}})
@@ -401,7 +504,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 {key: value for key, value in chain.items() if key != 'task'}
                 for chain in CHAINS.values()
             ],
-            'tasks': list(TASKS.values()),
+            # Without the events and usage: GET /test/task has them.
+            'tasks': [
+                {k: v for k, v in task.items() if k not in {'events', 'usage'}}
+                for task in TASKS.values()
+            ],
             'resolutions': list(RESOLUTIONS.values()),
             'partition': PARTITION.is_set(),
             'now': time.time(),
@@ -421,6 +528,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             time.sleep(120)
             self.close_connection = True
             return
+        if url.path.startswith('/git/'):
+            return self._git()
         try:
             body = self._body()
             if url.path == '/v1/messages':
@@ -505,15 +614,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             task = chain['task']
             if body.get('short_id') != task['short_id']:
                 raise Fail(403, 'task_forbidden')
-            if body.get('reference') != REFERENCE:
+            reference = str(body.get('reference'))
+            if reference not in PURPOSES:
                 raise Fail(404, 'secret_binding_not_found')
-            if body.get('purpose') not in PURPOSES:
+            if body.get('purpose') not in PURPOSES[reference]:
                 raise Fail(403, 'secret_access_denied')
             ttl = int(body.get('ttl_seconds', 300))
             if not 1 <= ttl <= 900:
                 raise Fail(422, 'requested_ttl_too_large')
             resolution = _new_resolution(
-                RUNNERS[chain['runner_id']], task, body['purpose'], ttl
+                RUNNERS[chain['runner_id']],
+                task,
+                body['purpose'],
+                ttl,
+                reference,
             )
             resolution['delivery'] = body.get('delivery')
             return 201, {
@@ -523,6 +637,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'expires_at': _iso(resolution['expires_at']),
                 'delivery': resolution['delivery'],
             }
+        if parts[:3] == ['organizations', 'test', 'agent-tasks']:
+            return _task_route(token, parts[3], '/'.join(parts[4:]), body)
         if path == '/harness/executor/secret-materializations':
             return 200, _materialize(token, body)
         if (
@@ -555,6 +671,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 f'[[task:{short_id}]]',
                 'chain_id': chain_id,
                 'script': body.get('script', []),
+                'final_text_bytes': int(body.get('final_text_bytes', 4)),
+                'options': {
+                    key: bool(body.get(key))
+                    for key in ('repository', 'plugin', 'binding')
+                },
+                'status': 'queued',
+                'control': 'run',
+                'budget': (
+                    None
+                    if body.get('budget') is None
+                    else decimal.Decimal(str(body['budget']))
+                ),
+                'cost_total': decimal.Decimal(0),
+                'outcome': None,
+                'outcome_reason': None,
+                'sessions': {},
+                'events': [],
+                'usage': [],
             }
             TASKS[short_id] = task
             CHAINS[chain_id] = {
@@ -599,6 +733,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'target': body.get('target', 'GH_TOKEN'),
             }
             return 201, resolution
+        if path == '/test/control':
+            TASKS[body['short_id']]['control'] = body['control']
+            return 200, {'control': body['control']}
         if path == '/test/partition':
             if body.get('on'):
                 PARTITION.set()
@@ -606,6 +743,70 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 PARTITION.clear()
             return 200, {'partition': PARTITION.is_set()}
         raise Fail(404, 'not_found')
+
+    def _git(self) -> None:
+        """``git http-backend`` as a CGI; a token of an active setup
+        resolution in the Basic password."""
+        auth = str(self.headers.get('Authorization') or '')
+        password = ''
+        if auth.startswith('Basic '):
+            raw = base64.b64decode(auth[6:]).decode(errors='replace')
+            password = raw.partition(':')[2]
+        with LOCK:
+            resolution = RESOLUTIONS.get(TOKENS.get(password, ''))
+            allowed = (
+                resolution is not None
+                and not resolution['revoked']
+                and resolution['purpose'] in SETUP_PURPOSES
+            )
+            if resolution is not None:
+                resolution.setdefault('git_uses', 0)
+                resolution['git_uses'] += 1
+        if not allowed:
+            self.send_response(401)
+            self.send_header('WWW-Authenticate', 'Basic realm="git"')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        url = urllib.parse.urlsplit(self.path)
+        length = int(self.headers.get('Content-Length') or 0)
+        env = {
+            'PATH': os.environ['PATH'],
+            'HOME': '/tmp',  # noqa: S108
+            'GIT_PROJECT_ROOT': GIT_ROOT,
+            'GIT_HTTP_EXPORT_ALL': '1',
+            'PATH_INFO': url.path.removeprefix('/git'),
+            'QUERY_STRING': url.query,
+            'REQUEST_METHOD': self.command,
+            'CONTENT_TYPE': self.headers.get('Content-Type') or '',
+            'CONTENT_LENGTH': str(length),
+            'HTTP_CONTENT_ENCODING': self.headers.get('Content-Encoding')
+            or '',
+            'GIT_PROTOCOL': self.headers.get('Git-Protocol') or '',
+            'REMOTE_ADDR': '127.0.0.1',
+        }
+        result = subprocess.run(
+            ['git', 'http-backend'],  # noqa: S607
+            input=self.rfile.read(length) if length else b'',
+            env=env,
+            capture_output=True,
+            check=False,
+        )
+        head, _, data = result.stdout.partition(b'\r\n\r\n')
+        status = 200
+        headers = []
+        for line in head.decode().split('\r\n'):
+            name, _, value = line.partition(':')
+            if name.lower() == 'status':
+                status = int(value.split()[0])
+            elif name:
+                headers.append((name, value.strip()))
+        self.send_response(status)
+        for name, value in headers:
+            self.send_header(name, value)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _messages(self, body: Row) -> None:
         if self.headers.get('x-api-key') != MODEL_KEY:
@@ -637,7 +838,177 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+def _task_state(task: Row) -> Row:
+    budget = task['budget']
+    return {
+        'short_id': task['short_id'],
+        'status': task['status'],
+        'control': task['control'],
+        'outcome': task['outcome'],
+        'outcome_reason': task['outcome_reason'],
+        'last_seq': len(task['events']),
+        'budget': None if budget is None else str(budget),
+        'cost_total': str(task['cost_total']),
+        'budget_remaining': (
+            None if budget is None else str(budget - task['cost_total'])
+        ),
+    }
+
+
+def _close(task: Row, outcome: str, reason: str | None) -> None:
+    task['status'] = 'closed'
+    task['outcome'] = outcome
+    task['outcome_reason'] = reason
+    for session in task['sessions'].values():
+        session['closed'] = True
+
+
+def _check_event(event: Row) -> None:
+    """The checks of ``agent_task_harness.HarnessEvent`` and the size
+    limits of ``append_agent_task_events``."""
+    kind = event.get('type')
+    payload = event.get('payload') or {}
+    if kind not in HARNESS_EVENTS:
+        raise Fail(422, 'invalid_event_type')
+    size = len(
+        json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode()
+    )
+    if size > (1024 * 1024 if kind in LARGE_EVENTS else 64 * 1024):
+        raise Fail(413, 'payload_too_large')
+    if 'part' in payload or 'parts' in payload:
+        part, parts = payload.get('part'), payload.get('parts')
+        if (
+            kind not in LARGE_EVENTS
+            or not payload.get('call_id')
+            or not (
+                type(part) is int
+                and type(parts) is int
+                and 1 <= part <= parts <= 1000
+            )
+        ):
+            raise Fail(422, 'invalid_continuation')
+
+
+def _task_route(
+    token: str, short_id: str, action: str, body: Row
+) -> tuple[int, Row]:
+    """The ADR 0020 harness routes, with the agent token of the chain."""
+    task = TASKS.get(short_id)
+    if task is None:
+        raise Fail(404, 'task_not_found')
+    chain = CHAINS[task['chain_id']]
+    if chain['agent_token'] != token or chain['state'] != 'running':
+        raise Fail(401, 'stale_attempt')
+    if action == 'sessions':
+        if task['status'] == 'closed':
+            raise Fail(409, 'task_closed')
+        if task['control'] == 'cancel':
+            raise Fail(409, 'task_cancelled')
+        session = task['sessions'].setdefault(
+            body['session_key'],
+            {'id': str(uuid.uuid4()), 'closed': False},
+        )
+        task['status'] = 'running'
+        return 201, {'session': session, 'task': _task_state(task)}
+    if task['status'] == 'closed' and action != 'outcome':
+        raise Fail(409, 'task_closed')
+    if action.endswith('/heartbeat'):
+        return 200, _task_state(task)
+    if action.endswith('/close'):
+        if not any(not s['closed'] for s in task['sessions'].values()):
+            return 200, _task_state(task)
+        for session in task['sessions'].values():
+            session['closed'] = True
+        if task['control'] == 'cancel':
+            _close(task, 'cancelled_by_human', 'session_closed')
+        else:
+            task['status'] = 'queued'
+        return 200, _task_state(task)
+    if action == 'events':
+        for event in body['events']:
+            _check_event(event)
+        task['events'].extend(body['events'])
+        return 201, {'written': body['events'], 'duplicates': []}
+    if action == 'usage':
+        tokens = (body.get('tokens_in') or 0) + (body.get('tokens_out') or 0)
+        cost = PRICE * tokens
+        task['cost_total'] += cost
+        task['usage'].append({**body, 'cost': str(cost)})
+        budget = task['budget']
+        if budget is not None and task['cost_total'] > budget:
+            _close(task, 'exceeded_ceiling', 'budget')
+        return 201, {'id': str(uuid.uuid4()), 'task': _task_state(task)}
+    if action == 'outcome':
+        if task['status'] == 'closed':
+            raise Fail(409, 'task_closed')
+        _close(task, body['outcome'], body.get('reason'))
+        return 200, _task_state(task)
+    raise Fail(404, 'not_found')
+
+
+def _git_repositories() -> None:
+    """Make the app repository and the marketplace, and pin its head."""
+    env = {
+        **os.environ,
+        'HOME': '/tmp',  # noqa: S108
+        'GIT_AUTHOR_NAME': 'test',
+        'GIT_AUTHOR_EMAIL': 'test@example.com',
+        'GIT_COMMITTER_NAME': 'test',
+        'GIT_COMMITTER_EMAIL': 'test@example.com',
+    }
+    files = {
+        # The repository's settings allow Write; the organization denies
+        # it, and the runner never reads project settings.
+        'app': {
+            'README.md': 'The app.\n',
+            'CLAUDE.md': 'REPO-CLAUDE-MARKER\n',
+            'AGENTS.md': 'REPO-AGENTS-MARKER\n',
+            '.claude/settings.json': json.dumps(
+                {'permissions': {'allow': ['Write']}}
+            ),
+        },
+        'tools': {
+            '.claude-plugin/marketplace.json': json.dumps(
+                {
+                    'name': 'tools',
+                    'owner': {'name': 'test'},
+                    'plugins': [
+                        {'name': 'hello', 'source': './plugins/hello'}
+                    ],
+                }
+            ),
+            'plugins/hello/.claude-plugin/plugin.json': json.dumps(
+                {'name': 'hello', 'version': '1.0.0'}
+            ),
+            'plugins/hello/commands/hello.md': 'Say hello.\n',
+        },
+    }
+    for name, content in files.items():
+        path = f'{GIT_ROOT}/{name}'
+        for relative, text in content.items():
+            target = f'{path}/{relative}'
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, 'w', encoding='utf-8') as out:
+                out.write(text)
+
+        def git(*args: str, path: str = path) -> str:
+            return subprocess.run(  # noqa: S603 - fixed arguments
+                ['git', '-C', path, *args],  # noqa: S607
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+
+        git('init', '--quiet', '--initial-branch=main')
+        git('add', '.')
+        git('commit', '--quiet', '-m', f'{name}: first commit')
+        git('config', 'uploadpack.allowAnySHA1InWant', 'true')
+        GIT[name] = git('rev-parse', 'HEAD')
+
+
 def main() -> None:
+    _git_repositories()
     # PID 1 ignores SIGTERM without a handler.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     threading.Thread(target=sweep, daemon=True).start()

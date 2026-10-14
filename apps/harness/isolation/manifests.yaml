@@ -20,6 +20,8 @@ items:
     stringData:
       client_id: test-pool
       client_secret: test-pool-secret-not-real
+  # The model key of the fake model. The runner gets it only through a
+  # model_inference resolution (plan section 6.4), never as a file.
   - apiVersion: v1
     kind: Secret
     metadata:
@@ -69,6 +71,7 @@ items:
                 - name: MODEL_KEY
                   valueFrom:
                     secretKeyRef: {name: harness-model, key: key}
+                - {name: PUBLIC_URL, value: "http://harness-fake-api:8080"}
               ports:
                 - containerPort: 8080
               readinessProbe:
@@ -79,6 +82,12 @@ items:
                 readOnlyRootFilesystem: true
                 capabilities:
                   drop: ["ALL"]
+              # The git repositories that the fake serves.
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}
   - apiVersion: v1
     kind: Service
     metadata:
@@ -122,7 +131,6 @@ items:
               echo "runner-exit $? $(date +%s.%N)"; sleep 1; done
           env:
             - {name: IMBI_API_URL, value: "http://harness-fake-api:8080"}
-            - {name: IMBI_HARNESS_MODEL_URL, value: "http://harness-fake-api:8080"}
           securityContext: &privilege
             runAsUser: 0
             runAsNonRoot: false
@@ -136,7 +144,6 @@ items:
             - {name: executor-socket, mountPath: /run/executor}
             - {name: runner-credentials, mountPath: /run/creds}
             - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
-            - {name: model, mountPath: /var/run/secrets/imbi/model, readOnly: true}
             - name: service-account-token
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
               readOnly: true
@@ -163,8 +170,6 @@ items:
         # Owned by uid 0, mode 0400: only the processes' uid 0 reads them.
         - name: pool
           secret: {secretName: harness-pool, defaultMode: 0400}
-        - name: model
-          secret: {secretName: harness-model, defaultMode: 0400}
         - name: service-account-token
           projected:
             defaultMode: 0400
