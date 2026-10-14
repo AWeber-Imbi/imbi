@@ -135,11 +135,30 @@ users.
 | Claude Code CLI and its tools | `runner` | `agent` | Nothing |
 | Commands run with a secret | `executor` | `agent` | Only that command's secrets |
 
-- The SDK starts the CLI as `agent` (`ClaudeAgentOptions.user`).
+- The SDK starts the CLI through a `cli_path` wrapper
+  (`#!/bin/sh -p`) that runs `setpriv --reuid=agent --regid=agent
+  --clear-groups --inh-caps=-all` and then the bundled CLI. The runner
+  sets its effective uid to 0 only for the process start. Do not use
+  `ClaudeAgentOptions.user`: the SDK then changes only the uid, and the
+  CLI keeps the runner's groups, which include the executor socket group.
+- The wrapper starts with a real uid (`runner`) that is not its
+  effective uid (0), so glibc runs it in secure mode and removes
+  `TMPDIR`, `LD_*`, and similar variables from its environment. The
+  runner sends the temporary directory in another variable, and the
+  wrapper sets `TMPDIR` with `env` after `setpriv`, when all ids are
+  `agent`.
 - The containers do not share a process namespace. Credential files are in
   per-container volumes with mode `0700`.
 - The executor socket allows only the runner. It is in a group that does
   not contain `agent`, and the executor checks the peer uid.
+- The runner gives the executor its credential over the socket, not in
+  a file: the two containers do not share a credential volume, and root
+  without `CAP_CHOWN` cannot make a file that only `executor` can read.
+  The executor keeps it in memory and in its own `0700` directory.
+- A runner process runs one chain. At the end of the chain it kills
+  every `agent` process in both containers, removes the chain workspace
+  as `agent`, reports that it finished, and exits. It never claims a
+  second chain. Then it deletes its pod (see below).
 - **The Kubernetes service account token.** The pod sets
   `automountServiceAccountToken: false`. A projected service account token
   is mounted in the `runner` container only, owned by uid 0 with mode
@@ -152,9 +171,12 @@ users.
 - Kubernetes gives no added capability to a non-root process. Both
   containers therefore start as uid 0 with only `SETUID` and `SETGID`,
   with `allowPrivilegeEscalation: false`, a read-only root filesystem, and
-  `RuntimeDefault` seccomp. Each process then sets its effective uid to its
-  own user. It keeps uid 0 as its saved uid, which it needs to start
-  `agent` processes. A process with saved uid 0 cannot be read through
+  `RuntimeDefault` seccomp. Each process then sets its supplementary
+  groups and calls `setresgid(u, u, 0)` and `setresuid(u, u, 0)`: the
+  real and effective ids become its own user, and uid 0 stays as its
+  saved uid, which it needs to start and signal `agent` processes. A
+  drop of only the effective uid is not sufficient, because every
+  program the process starts would run as uid 0. A process with saved uid 0 cannot be read through
   `/proc` by `agent`. The namespace runs at Pod Security level Baseline.
 - Each privileged tool runs in the runner process as an in-process SDK MCP
   tool. The model gives it a secret reference, a purpose, and other
