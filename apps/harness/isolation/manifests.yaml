@@ -1,5 +1,5 @@
-# The P5a test pod (harness plan section 6.1) and the stub, for kind.
-# The credentials here are test values for the stub only.
+# The P5a test pod (harness plan section 6.1) and the fake API, for kind.
+# The credentials here are test values for the fake API (a test double) only.
 # One List, so that the file is one YAML document.
 apiVersion: v1
 kind: List
@@ -36,17 +36,17 @@ items:
   - apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: harness-stub
+      name: harness-fake-api
       namespace: imbi-harness-test
     spec:
       replicas: 1
       selector:
         matchLabels:
-          app: harness-stub
+          app: harness-fake-api
       template:
         metadata:
           labels:
-            app: harness-stub
+            app: harness-fake-api
         spec:
           automountServiceAccountToken: false
           securityContext:
@@ -55,10 +55,10 @@ items:
             seccompProfile:
               type: RuntimeDefault
           containers:
-            - name: stub
+            - name: fake-api
               image: imbi-harness:isolation
               imagePullPolicy: Never
-              command: ["python3", "/opt/isolation/stub.py"]
+              command: ["python3", "/opt/isolation/fake_api.py"]
               env:
                 - name: POOL_CLIENT_ID
                   valueFrom:
@@ -82,12 +82,12 @@ items:
   - apiVersion: v1
     kind: Service
     metadata:
-      name: harness-stub
+      name: harness-fake-api
       namespace: imbi-harness-test
     spec:
       type: NodePort
       selector:
-        app: harness-stub
+        app: harness-fake-api
       ports:
         - port: 8080
           targetPort: 8080
@@ -111,10 +111,18 @@ items:
         - name: runner
           image: imbi-harness:isolation
           imagePullPolicy: Never
-          args: ["runner"]
+          # Test only. The runner exits after one chain, and P5 deletes
+          # the pod then. P5a has no pod deletion, and a container
+          # restart has a growing back-off, so a loop starts the next
+          # runner process and logs each exit for test_lifecycle.py.
+          command: ["tini", "-g", "--", "sh", "-c"]
+          args:
+            - >-
+              while :; do imbi-harness runner;
+              echo "runner-exit $? $(date +%s.%N)"; sleep 1; done
           env:
-            - {name: IMBI_API_URL, value: "http://harness-stub:8080"}
-            - {name: IMBI_HARNESS_MODEL_URL, value: "http://harness-stub:8080"}
+            - {name: IMBI_API_URL, value: "http://harness-fake-api:8080"}
+            - {name: IMBI_HARNESS_MODEL_URL, value: "http://harness-fake-api:8080"}
           securityContext: &privilege
             runAsUser: 0
             runAsNonRoot: false
@@ -137,7 +145,7 @@ items:
           imagePullPolicy: Never
           args: ["executor"]
           env:
-            - {name: IMBI_API_URL, value: "http://harness-stub:8080"}
+            - {name: IMBI_API_URL, value: "http://harness-fake-api:8080"}
           securityContext: *privilege
           volumeMounts:
             - {name: work, mountPath: /work}

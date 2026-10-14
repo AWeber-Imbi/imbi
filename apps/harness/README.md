@@ -18,16 +18,22 @@ This is the P5a isolation slice of the harness plan: the pod layout, the
 executor socket, `run_with_secret`, and the SDK start through the `setpriv`
 wrapper. It has no task logic.
 
+A runner process runs one chain. At the end of the chain it kills every
+`agent` process in both containers, removes the chain workspace as `agent`,
+finishes, and exits. P5 then deletes the pod.
+
 ## Isolation suite
 
 `isolation/` holds the adversarial tests. They run in a kind cluster against
-a stub (`isolation/stub.py`) that serves the runner and executor routes of
-imbi-api, an Anthropic-compatible model, and a GitHub write route.
+a test double of imbi-api (`isolation/fake_api.py`) that serves the runner
+and executor routes, an Anthropic-compatible model, and a GitHub write route.
+Only the `isolation` image target contains this directory; the `runtime`
+target and the wheel do not.
 
 ```sh
 apps/harness/isolation/run-kind.sh
 ```
 
 The script builds the `isolation` image target, loads it into the cluster,
-deploys the stub and the test pod, runs the in-pod suite, and then runs the
+deploys the fake API and the test pod, runs the in-pod suite, and then runs the
 lifecycle suite (`SIGTERM`, partition) from the host.

@@ -30,8 +30,8 @@ dump() {
     echo "--- $c previous log" >&2
     k logs harness -c "$c" --previous --tail=200 >&2 || true
   done
-  echo "--- stub log" >&2
-  k logs deploy/harness-stub --tail=100 >&2 || true
+  echo "--- fake API log" >&2
+  k logs deploy/harness-fake-api --tail=100 >&2 || true
 }
 
 if ! "$KIND" get clusters | grep -qx "$CLUSTER"; then
@@ -47,13 +47,13 @@ kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" \
   --ignore-not-found --wait
 kubectl --context "$CONTEXT" apply -f "$HERE/manifests.yaml"
 trap 'status=$?; if [ $status -ne 0 ]; then dump; fi' EXIT
-k rollout status deploy/harness-stub --timeout=120s
+k rollout status deploy/harness-fake-api --timeout=120s
 k wait --for=condition=Ready pod/harness --timeout=180s
 
 k exec harness -c runner -- python3 -m unittest discover \
   -s /opt/isolation -p test_pod.py -v
 
-STUB_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
+FAKE_API_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
   "$PYTHON" -m unittest discover -s "$HERE" -p test_lifecycle.py -v
 
 if [ "${KEEP:-0}" != 1 ]; then

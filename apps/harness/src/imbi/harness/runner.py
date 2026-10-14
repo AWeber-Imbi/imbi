@@ -8,8 +8,11 @@ in-process ``imbi`` MCP server gives the model ``run_with_secret``: the
 runner asks for the resolutions and sends the handles to the executor.
 No handle passes through the SDK.
 
-P5a has no task logic: no events, tool policy, child tasks, or pod
-deletion. After a chain, the runner registers again.
+One chain per process (plan section 4.2 step 5): at the end of the
+chain the runner kills every ``agent`` process in both containers,
+removes the chain workspace, finishes, and exits. It never claims a
+second chain. P5 then deletes the pod; P5a has no pod deletion and no
+task logic (events, tool policy, child tasks).
 """
 
 import asyncio
@@ -19,9 +22,11 @@ import json
 import logging
 import os
 import pathlib
+import shutil
 import signal
 import time
 import typing
+import uuid
 
 import claude_agent_sdk as sdk
 import httpx
@@ -149,8 +154,10 @@ class Runner:
         self.proxy_url = proxy_url
         self.runner_id = ''
         self.runner_token = ''
+        self.claimed = False
 
     async def serve(self) -> None:
+        self.remove_old_workspaces()
         while not pathlib.Path(ipc.SOCKET_PATH).exists():  # noqa: ASYNC110
             await asyncio.sleep(0.5)
         while True:
@@ -158,7 +165,10 @@ class Runner:
                 await self.cycle()
             except (api.Refused, httpx.HTTPError, OSError) as err:
                 LOGGER.warning('Runner cycle failed: %s', err)
-                await asyncio.sleep(5)
+            if self.claimed:
+                # One chain per process, also after a failure.
+                return
+            await asyncio.sleep(5)
 
     async def cycle(self) -> None:
         """Register, claim one chain, run it, and finish."""
@@ -182,14 +192,43 @@ class Runner:
         try:
             while (claim := await self._claim()) is None:
                 pass
+            self.claimed = True
+            workspace = self._workspace(str(claim['chain_id']))
             try:
-                await self.run_chain(claim)
+                await self.run_chain(claim, workspace)
             except sdk.ClaudeSDKError:
                 # P5 ends the task as failed; P5a only logs it.
                 LOGGER.exception('Task %s failed', claim['task']['short_id'])
+            finally:
+                await self.end_chain(workspace)
             await self.api.finish(self.runner_id, self.runner_token)
         finally:
             heartbeat.cancel()
+
+    def remove_old_workspaces(self) -> None:
+        """Remove the workspace of a chain that a crash left behind."""
+        for path in WORK.iterdir():
+            try:
+                uuid.UUID(path.name)
+            except ValueError:
+                continue
+            LOGGER.warning('Removing the old workspace %s', path)
+            with privilege.effective(privilege.AGENT):
+                shutil.rmtree(path, ignore_errors=True)
+
+    async def end_chain(self, workspace: pathlib.Path) -> None:
+        """Kill every ``agent`` process in both containers, then remove
+        the workspace as ``agent``."""
+        privilege.kill_agent()
+        try:
+            await ipc.call({'op': 'end_chain'})
+        except OSError as err:
+            # The executor is gone, and its children with it.
+            LOGGER.warning('end_chain failed: %s', err)
+        with privilege.effective(privilege.AGENT):
+            shutil.rmtree(workspace, ignore_errors=True)
+        if workspace.exists():
+            LOGGER.error('Could not remove %s', workspace)
 
     async def _claim(self) -> Body | None:
         return await self.api.claim(
@@ -318,14 +357,13 @@ class Runner:
 
         return run_with_secret
 
-    async def run_chain(self, claim: Body) -> None:
+    async def run_chain(self, claim: Body, workspace: pathlib.Path) -> None:
         """Run the claimed task in one SDK session.
 
         Each SDK message goes to a transcript file that only ``runner``
         can read.
         """
         task = claim['task']
-        workspace = self._workspace(str(claim['chain_id']))
         server = sdk.create_sdk_mcp_server(
             'imbi', tools=[self._run_with_secret(claim, workspace)]
         )

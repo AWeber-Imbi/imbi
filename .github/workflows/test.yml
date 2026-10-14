@@ -71,8 +71,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=linux-amd64
   harness-isolation:
     # The P5a gate of the agent harness (ADR 0022): the runner pod in a kind
-    # cluster, with the pod security settings of production, against a stub
-    # imbi-api and model (apps/harness/isolation/stub.py). The real
+    # cluster, with the pod security settings of production, against a fake
+    # imbi-api and model (apps/harness/isolation/fake_api.py). The real
     # imbi-api needs Postgres with AGE, ClickHouse, Iggy, and Valkey, and
     # its fake secret provider keeps values in process memory only.
     name: "Harness isolation"

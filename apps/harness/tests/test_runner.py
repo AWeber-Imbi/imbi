@@ -5,13 +5,15 @@ The SDK session and the user switches need the pod; the kind suite in
 """
 
 import asyncio
+import contextlib
 import json
 import pathlib
+import tempfile
 import typing
 import unittest
 from unittest import mock
 
-from imbi.harness import api, ipc, runner
+from imbi.harness import api, ipc, privilege, runner
 
 HANDLE = 'handle-that-must-not-reach-the-model-0123456789'
 CLAIM = {
@@ -153,3 +155,55 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         self.fence.assert_not_called()
         self.assertGreaterEqual(self.api.heartbeat.await_count, 4)
+
+
+class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_serve_returns_after_the_claim_even_on_failure(self) -> None:
+        subject = make_runner()
+        calls = 0
+
+        async def cycle() -> None:
+            nonlocal calls
+            calls += 1
+            subject.claimed = True
+            raise api.Refused(500, 'finish_failed')
+
+        subject.cycle = cycle  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with mock.patch.object(pathlib.Path, 'exists', return_value=True):
+            await asyncio.wait_for(subject.serve(), 2)
+        self.assertEqual(calls, 1)
+
+    async def test_end_chain_kills_and_removes_the_workspace(self) -> None:
+        subject = make_runner()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        workspace = pathlib.Path(tmp.name) / 'chain'
+        (workspace / 'home').mkdir(parents=True)
+        (workspace / 'home' / 'file').write_text('x')
+        with (
+            mock.patch.object(privilege, 'kill_agent') as kill,
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ) as effective,
+            mock.patch.object(ipc, 'call', mock.AsyncMock()) as call,
+        ):
+            await subject.end_chain(workspace)
+        kill.assert_called_once_with()
+        call.assert_awaited_once_with({'op': 'end_chain'})
+        effective.assert_called_once_with(privilege.AGENT)
+        self.assertFalse(workspace.exists())
+
+    async def test_end_chain_without_executor(self) -> None:
+        subject = make_runner()
+        with (
+            mock.patch.object(privilege, 'kill_agent'),
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ),
+            mock.patch.object(
+                ipc, 'call', mock.AsyncMock(side_effect=FileNotFoundError)
+            ),
+            self.assertLogs('imbi.harness.runner', 'WARNING'),
+        ):
+            await subject.end_chain(pathlib.Path('/nonexistent/chain'))

@@ -16,6 +16,12 @@ only through ``setpriv`` as that user.
   or the CLI session files.
 - ``HandleTests``: the suite acts as the runner on the executor socket
   and sends handles that imbi-api must refuse.
+- ``ExecutorTests``: the suite acts as the runner on the socket: the
+  workspace check after the switch to ``agent``, the output bound, and
+  the timeout of a command whose child holds the pipe open.
+- ``EndOfChainTests``: after a chain, no ``agent`` process is left in
+  either container, the workspace is gone, and the runner process
+  ended after one claim.
 """
 
 import base64
@@ -31,7 +37,9 @@ import unittest
 import urllib.parse
 import urllib.request
 
-STUB = os.environ.get('STUB_URL', 'http://harness-stub:8080')
+import probe
+
+FAKE_API = os.environ.get('FAKE_API_URL', 'http://harness-fake-api:8080')
 REFERENCE = 'secret://production/github/token'
 NO_CAPABILITIES = '0000000000000000'
 DENIED = f'denied:{errno.errorcode[errno.EACCES]}'
@@ -54,9 +62,9 @@ print(line.decode() or json.dumps({'closed': True}))
 type Row = dict[str, typing.Any]
 
 
-def stub(method: str, path: str, body: Row | None = None) -> typing.Any:
-    request = urllib.request.Request(  # noqa: S310 - the stub URL
-        STUB + path,
+def fake_api(method: str, path: str, body: Row | None = None) -> typing.Any:
+    request = urllib.request.Request(  # noqa: S310 - the fake API URL
+        FAKE_API + path,
         method=method,
         data=None if body is None else json.dumps(body).encode(),
         headers={'Content-Type': 'application/json'},
@@ -100,10 +108,10 @@ def socket_call(message: Row, user: str = 'runner') -> Row:
 
 def run_task(script: list[Row], timeout: float = 180) -> Row:
     """Queue a task, wait until the runner finishes its chain."""
-    task = stub('POST', '/test/tasks', {'script': script})
+    task = fake_api('POST', '/test/tasks', {'script': script})
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        chains = stub('GET', '/test/state')['chains']
+        chains = fake_api('GET', '/test/state')['chains']
         chain = next(c for c in chains if c['id'] == task['chain_id'])
         if chain['state'] == 'done':
             return task
@@ -113,7 +121,7 @@ def run_task(script: list[Row], timeout: float = 180) -> Row:
 
 def tool_results(task: Row) -> list[str]:
     """The text of each tool result that the model got, in order."""
-    requests = stub('GET', f'/test/model-requests?task={task["short_id"]}')
+    requests = fake_api('GET', f'/test/model-requests?task={task["short_id"]}')
     texts: list[str] = []
     for message in requests[-1]['messages']:
         content = message.get('content')
@@ -136,7 +144,7 @@ def probe_result(text: str) -> Row:
 def resolutions_of(task: Row) -> list[Row]:
     return [
         row
-        for row in stub('GET', '/test/state')['resolutions']
+        for row in fake_api('GET', '/test/state')['resolutions']
         if row['task_id'] == task['id']
     ]
 
@@ -258,7 +266,8 @@ class ChildTests(unittest.TestCase):
         # PWD, SHLVL and _ come from /bin/sh, LC_CTYPE from the C locale
         # coercion of the probe's Python.
         self.assertLessEqual(
-            names, {'GH_TOKEN', 'LC_CTYPE', 'PATH', 'PWD', 'SHLVL', '_'}
+            names,
+            {'GH_TOKEN', 'HOME', 'LC_CTYPE', 'PATH', 'PWD', 'SHLVL', '_'},
         )
         self.assertGreater(self.result['secret_length'], 0)
 
@@ -283,7 +292,29 @@ class TranscriptTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.task = run_task([run_with_secret(cls.command)])
+        # The runner removes the workspace at the end of the chain, so
+        # the second step copies the CLI session files out of it.
+        cls.task = run_task(
+            [
+                run_with_secret(cls.command),
+                {
+                    'name': 'Bash',
+                    'input': {
+                        # The CLI writes its session file a moment later.
+                        'command': 'for i in $(seq 60); do grep -rqs '
+                        'REDACTED "$CLAUDE_CONFIG_DIR/projects" && break; '
+                        'sleep 0.5; done; '
+                        'cp -r "$CLAUDE_CONFIG_DIR/projects" '
+                        f'/work/session-{cls.task_marker()}',
+                        'description': 'Copy the session files',
+                    },
+                },
+            ]
+        )
+
+    @classmethod
+    def task_marker(cls) -> str:
+        return 'transcript'
 
     def forbidden(self) -> list[str]:
         (resolution,) = resolutions_of(self.task)
@@ -303,12 +334,12 @@ class TranscriptTests(unittest.TestCase):
             self.assertNotIn(value, haystack, where)
 
     def test_model_got_filtered_output(self) -> None:
-        (text,) = tool_results(self.task)
+        text = tool_results(self.task)[0]
         self.assertIn('length=40', text)
         self.assertGreaterEqual(text.count('[REDACTED]'), 5, text)
 
     def test_model_requests(self) -> None:
-        requests = stub(
+        requests = fake_api(
             'GET', f'/test/model-requests?task={self.task["short_id"]}'
         )
         self.check(json.dumps(requests), 'model requests')
@@ -325,7 +356,7 @@ class TranscriptTests(unittest.TestCase):
             'agent',
             [
                 'find',
-                f'/work/{self.task["chain_id"]}/.claude',
+                f'/work/session-{self.task_marker()}',
                 '-name',
                 '*.jsonl',
                 '-exec',
@@ -377,7 +408,7 @@ class HandleTests(unittest.TestCase):
         self.assertFalse((self.workspace / marker).exists())
 
     def test_valid_handle_then_replay(self) -> None:
-        resolution = stub('POST', '/test/resolutions', {})
+        resolution = fake_api('POST', '/test/resolutions', {})
         self.assertEqual(self.send(resolution, 'first')['exit_code'], 0)
         self.assertTrue((self.workspace / 'first').exists())
         self.assert_refused(
@@ -387,21 +418,21 @@ class HandleTests(unittest.TestCase):
         )
 
     def test_expired_handle(self) -> None:
-        resolution = stub('POST', '/test/resolutions', {'ttl_seconds': 1})
+        resolution = fake_api('POST', '/test/resolutions', {'ttl_seconds': 1})
         time.sleep(2.5)
         self.assert_refused(
             self.send(resolution, 'expired'), 'resolution_expired', 'expired'
         )
 
     def test_handle_for_another_task(self) -> None:
-        resolution = stub('POST', '/test/resolutions', {})
+        resolution = fake_api('POST', '/test/resolutions', {})
         reply = self.send(
             resolution, 'other-task', task_id=os.urandom(16).hex()
         )
         self.assert_refused(reply, 'resolution_context_mismatch', 'other-task')
 
     def test_handle_of_another_runner(self) -> None:
-        resolution = stub('POST', '/test/resolutions', {'runner': 'other'})
+        resolution = fake_api('POST', '/test/resolutions', {'runner': 'other'})
         self.assert_refused(
             self.send(resolution, 'other-runner'),
             'resolution_context_mismatch',
@@ -419,3 +450,148 @@ class HandleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def agent_processes() -> list[list[str]]:
+    """The ``agent`` processes of this (the runner) container."""
+    found = []
+    for pid, argv in probe.processes().items():
+        try:
+            status = pathlib.Path(f'/proc/{pid}/status').read_text()
+        except OSError:
+            continue
+        if any(
+            line.startswith('Uid:') and '10003' in line.split()
+            for line in status.splitlines()
+        ):
+            found.append(argv)
+    return found
+
+
+class ExecutorTests(unittest.TestCase):
+    """The suite is the runner on the socket, with no secrets."""
+
+    workspace = pathlib.Path('/work/executor-tests')
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        as_user('agent', ['mkdir', '-p', str(cls.workspace / 'home')])
+
+    def run_command(
+        self, command: str, cwd: str | None = None, timeout: int | None = None
+    ) -> Row:
+        message: Row = {
+            'op': 'run',
+            'command': command,
+            'cwd': cwd or str(self.workspace),
+            'context': {},
+            'secrets': [],
+        }
+        if timeout is not None:
+            message['timeout_seconds'] = timeout
+        return socket_call(message)
+
+    def test_runs_in_the_workspace_with_home(self) -> None:
+        reply = self.run_command('pwd -P; echo "$HOME"')
+        self.assertEqual(reply['exit_code'], 0, reply)
+        self.assertEqual(
+            reply['output'],
+            f'{self.workspace}\n{self.workspace}/home\n',
+        )
+
+    def test_symlink_in_place_of_the_workspace(self) -> None:
+        # agent can make any entry in /work. The check runs after the
+        # switch to agent, so the swap gives agent nothing.
+        as_user('agent', ['ln', '-sfn', '/etc', '/work/swapped'])
+        reply = self.run_command('pwd -P; cat hostname', cwd='/work/swapped')
+        self.assertEqual(reply['exit_code'], 126, reply)
+        self.assertIn('not in /work', reply['output'])
+        self.assertNotIn('/etc', reply['output'])
+
+    def test_large_output_is_bounded(self) -> None:
+        reply = self.run_command("head -c 50000000 /dev/zero | tr '\\0' x")
+        self.assertEqual(reply['exit_code'], 0, reply.get('error'))
+        output = reply['output']
+        self.assertTrue(output.endswith('\n[output truncated]'))
+        self.assertLessEqual(len(output), 64 * 1024 + 20)
+
+    def test_child_holding_the_pipe_ends_at_the_timeout(self) -> None:
+        started = time.monotonic()
+        reply = self.run_command('setsid sleep 1000 & echo started', timeout=3)
+        elapsed = time.monotonic() - started
+        self.assertIn('started', reply['output'])
+        self.assertGreaterEqual(elapsed, 3)
+        self.assertLess(elapsed, 15)
+        reply = self.run_command('python3 /opt/isolation/probe.py processes')
+        self.assertEqual(json.loads(reply['output']), [])
+
+
+class EndOfChainTests(unittest.TestCase):
+    """One chain per runner process; nothing of the chain stays."""
+
+    task: typing.ClassVar[Row]
+    before: typing.ClassVar[int | None]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        deadline = time.monotonic() + 60
+        while (before := probe.harness_pid('runner')) is None:
+            if time.monotonic() > deadline:
+                raise AssertionError('no runner process')
+            time.sleep(0.2)
+        cls.before = before
+        cls.task = run_task(
+            [
+                {
+                    'name': 'Bash',
+                    'input': {
+                        'command': 'setsid sleep 1000 '
+                        '</dev/null >/dev/null 2>&1 &',
+                        'description': 'Leave a process',
+                    },
+                },
+                run_with_secret(
+                    'setsid sleep 1001 </dev/null >/dev/null 2>&1 &'
+                ),
+            ]
+        )
+        deadline = time.monotonic() + 60
+        while probe.harness_pid('runner') in (None, cls.before):
+            if time.monotonic() > deadline:
+                raise AssertionError('no new runner process')
+            time.sleep(0.5)
+
+    def test_the_runner_process_ended(self) -> None:
+        self.assertIsNotNone(self.before)
+        self.assertFalse(pathlib.Path(f'/proc/{self.before}').exists())
+
+    def test_one_claim_per_runner(self) -> None:
+        runners = fake_api('GET', '/test/state')['runners']
+        (runner,) = [
+            r for r in runners if self.task['chain_id'] in r['claims']
+        ]
+        self.assertEqual(runner['claims'], [self.task['chain_id']])
+        self.assertEqual(runner['state'], 'offline')
+        for other in runners:
+            self.assertLessEqual(len(other['claims']), 1, other)
+
+    def test_no_agent_process_in_the_runner_container(self) -> None:
+        self.assertEqual(agent_processes(), [])
+
+    def test_no_agent_process_in_the_executor_container(self) -> None:
+        as_user('agent', ['mkdir', '-p', '/work/end-of-chain'])
+        reply = socket_call(
+            {
+                'op': 'run',
+                'command': 'python3 /opt/isolation/probe.py processes',
+                'cwd': '/work/end-of-chain',
+                'context': {},
+                'secrets': [],
+            }
+        )
+        self.assertEqual(json.loads(reply['output']), [])
+
+    def test_workspace_removed(self) -> None:
+        self.assertFalse(
+            pathlib.Path(f'/work/{self.task["chain_id"]}').exists()
+        )

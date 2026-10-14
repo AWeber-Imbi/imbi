@@ -4,16 +4,15 @@ These stop a container, so they cannot run inside the pod.
 
 - ``SIGTERM`` to the executor while a ``run_with_secret`` command runs:
   the executor releases the resolution before it exits.
-- A partition between the pod and imbi-api only (the stub stops
+- A partition between the pod and imbi-api only (the fake API stops
   answering the imbi-api routes; the model and GitHub routes still
   answer): the runner fences itself and exits before imbi-api requeues
   the chain, the lease sweep revokes the resolution, and the old token
   gets ``401`` from GitHub.
 
-Environment: ``STUB_URL`` (the stub's node port), ``KUBE_CONTEXT``.
+Environment: ``FAKE_API_URL`` (the fake API's node port), ``KUBE_CONTEXT``.
 """
 
-import datetime
 import json
 import os
 import subprocess
@@ -23,7 +22,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-STUB = os.environ.get('STUB_URL', 'http://localhost:30080')
+FAKE_API = os.environ.get('FAKE_API_URL', 'http://localhost:30080')
 CONTEXT = os.environ.get('KUBE_CONTEXT', 'kind-imbi-harness')
 NAMESPACE = 'imbi-harness-test'
 REFERENCE = 'secret://production/github/token'
@@ -31,9 +30,9 @@ REFERENCE = 'secret://production/github/token'
 Row = dict[str, typing.Any]
 
 
-def stub(method: str, path: str, body: Row | None = None) -> typing.Any:
-    request = urllib.request.Request(  # noqa: S310 - the stub URL
-        STUB + path,
+def fake_api(method: str, path: str, body: Row | None = None) -> typing.Any:
+    request = urllib.request.Request(  # noqa: S310 - the fake API URL
+        FAKE_API + path,
         method=method,
         data=None if body is None else json.dumps(body).encode(),
         headers={'Content-Type': 'application/json'},
@@ -44,7 +43,7 @@ def stub(method: str, path: str, body: Row | None = None) -> typing.Any:
 
 def github(token: str) -> int:
     request = urllib.request.Request(  # noqa: S310
-        STUB + '/github/write', headers={'Authorization': f'token {token}'}
+        FAKE_API + '/github/write', headers={'Authorization': f'token {token}'}
     )
     try:
         with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
@@ -70,6 +69,17 @@ def container(name: str) -> Row:
     )
 
 
+def runner_exits() -> list[tuple[int, float]]:
+    """The exit code and time of each runner process, from the loop of
+    the test pod (manifests.yaml)."""
+    exits = []
+    for line in kubectl('logs', 'harness', '-c', 'runner').splitlines():
+        if line.startswith('runner-exit '):
+            _, code, at = line.split()
+            exits.append((int(code), float(at)))
+    return exits
+
+
 def wait_for(
     check: typing.Callable[[], typing.Any], timeout: float, what: str
 ) -> typing.Any:
@@ -82,7 +92,7 @@ def wait_for(
 
 
 def state() -> Row:
-    return stub('GET', '/test/state')
+    return fake_api('GET', '/test/state')
 
 
 def resolution_of(task: Row) -> Row | None:
@@ -116,7 +126,7 @@ def long_command(seconds: int) -> list[Row]:
 
 def start_long_command(seconds: int) -> tuple[Row, Row]:
     """Queue a task whose command runs; wait until it has its secret."""
-    task = stub('POST', '/test/tasks', {'script': long_command(seconds)})
+    task = fake_api('POST', '/test/tasks', {'script': long_command(seconds)})
 
     def materialized() -> Row | None:
         resolution = resolution_of(task)
@@ -168,23 +178,21 @@ class LifecycleTests(unittest.TestCase):
         task, resolution = start_long_command(40)
         (token,) = resolution['materials']
         self.assertEqual(github(token), 200)
-        restarts = container('runner')['restartCount']
-        stub('POST', '/test/partition', {'on': True})
+        exits_before = len(runner_exits())
+        fake_api('POST', '/test/partition', {'on': True})
         try:
             requeued = wait_for(
                 lambda: chain_of(task)['requeued_at'], 90, 'requeue'
             )[0]
-            runner = container('runner')
+            exits = runner_exits()[exits_before:]
         finally:
-            stub('POST', '/test/partition', {'on': False})
-        # The runner exited (fenced) before the chain went back to the
-        # queue. finishedAt has a resolution of one second.
-        self.assertGreater(runner['restartCount'], restarts)
-        finished = datetime.datetime.fromisoformat(
-            runner['lastState']['terminated']['finishedAt']
-        ).timestamp()
+            fake_api('POST', '/test/partition', {'on': False})
+        # The runner process exited (fenced) before the chain went back
+        # to the queue. The test pod's loop logs each exit.
+        self.assertTrue(exits, 'the runner did not exit')
+        code, finished = exits[0]
+        self.assertEqual(code, 75)
         self.assertLess(finished, requeued)
-        self.assertEqual(runner['lastState']['terminated']['exitCode'], 75)
         # The lease sweep revoked the token; GitHub refuses it.
         resolution = resolution_of(task)
         assert resolution is not None

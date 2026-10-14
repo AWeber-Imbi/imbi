@@ -148,5 +148,27 @@ def child() -> dict[str, object]:
     }
 
 
+def agent_processes() -> list[list[str]]:
+    """The other ``agent`` processes: not this one and not its shell."""
+    skip = {os.getpid(), os.getppid()}
+    found = []
+    for pid, argv in processes().items():
+        if pid in skip:
+            continue
+        try:
+            status = pathlib.Path(f'/proc/{pid}/status').read_text()
+        except OSError:
+            continue
+        uids = next(
+            line.split()[1:]
+            for line in status.splitlines()
+            if line.startswith('Uid:')
+        )
+        if str(os.getuid()) in uids:
+            found.append(argv)
+    return found
+
+
 if __name__ == '__main__':
-    print(json.dumps(agent() if sys.argv[1] == 'agent' else child()))
+    probes = {'agent': agent, 'child': child, 'processes': agent_processes}
+    print(json.dumps(probes[sys.argv[1]]()))

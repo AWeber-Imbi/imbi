@@ -1,4 +1,4 @@
-"""A stub for the P5a isolation suite. Test use only.
+"""The fake imbi-api for the P5a isolation suite: a test double.
 
 It serves three things on one port:
 
@@ -79,6 +79,7 @@ def _new_runner(*, synthetic: bool = False) -> Row:
     runner = {
         'id': str(uuid.uuid4()),
         'synthetic': synthetic,
+        'claims': [],
         'runner_token': 'ihr_' + secrets.token_urlsafe(32),
         'executor_token': 'ihe_' + secrets.token_urlsafe(32),
         'state': 'idle',
@@ -188,6 +189,7 @@ def _claim(runner: Row, wait: int) -> Row | None:
                 chain['agent_token'] = 'iat_' + secrets.token_urlsafe(32)
                 chain['claimed_at'].append(time.time())
                 runner['state'] = 'busy'
+                runner['claims'].append(chain['id'])
                 runner['chain_id'] = chain['id']
                 task = chain['task']
                 return {
@@ -297,7 +299,7 @@ def _model_reply(body: Row) -> tuple[Row, list[Row]]:
         'id': 'msg_' + secrets.token_hex(8),
         'type': 'message',
         'role': 'assistant',
-        'model': body.get('model', 'stub'),
+        'model': body.get('model', 'fake'),
         'content': [block],
         'stop_reason': stop_reason,
         'stop_sequence': None,
