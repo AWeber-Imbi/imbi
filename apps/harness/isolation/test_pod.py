@@ -106,6 +106,32 @@ def socket_call(message: Row, user: str = 'runner') -> Row:
     return json.loads(result.stdout)
 
 
+def wait_for_runner(timeout: float = 120) -> None:
+    """Wait until the fake API answers and a runner polls for a claim.
+
+    The runner polls only after it gave the executor its credential.
+    One runner process runs one chain, so between chains no runner is
+    live for a moment.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            runners = fake_api('GET', '/test/state')['runners']
+        except OSError:
+            runners = []
+        if any(
+            r['polling'] and r['state'] == 'idle' and not r['synthetic']
+            for r in runners
+        ):
+            return
+        time.sleep(0.25)
+    raise AssertionError('no runner is ready')
+
+
+def setUpModule() -> None:
+    wait_for_runner()
+
+
 def run_task(script: list[Row], timeout: float = 180) -> Row:
     """Queue a task, wait until the runner finishes its chain."""
     task = fake_api('POST', '/test/tasks', {'script': script})
@@ -375,6 +401,11 @@ class HandleTests(unittest.TestCase):
 
     workspace = pathlib.Path('/work/handle-tests')
 
+    def setUp(self) -> None:
+        # The handles are for the current runner, whose credential the
+        # executor holds.
+        wait_for_runner()
+
     @classmethod
     def setUpClass(cls) -> None:
         as_user('agent', ['mkdir', '-p', str(cls.workspace)])
@@ -489,7 +520,9 @@ class ExecutorTests(unittest.TestCase):
         }
         if timeout is not None:
             message['timeout_seconds'] = timeout
-        return socket_call(message)
+        reply = socket_call(message)
+        self.assertIn('output', reply, reply)
+        return reply
 
     def test_runs_in_the_workspace_with_home(self) -> None:
         reply = self.run_command('pwd -P; echo "$HOME"')
@@ -534,6 +567,7 @@ class EndOfChainTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        wait_for_runner()
         deadline = time.monotonic() + 60
         while (before := probe.harness_pid('runner')) is None:
             if time.monotonic() > deadline:

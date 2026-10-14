@@ -80,6 +80,7 @@ def _new_runner(*, synthetic: bool = False) -> Row:
         'id': str(uuid.uuid4()),
         'synthetic': synthetic,
         'claims': [],
+        'polling': False,
         'runner_token': 'ihr_' + secrets.token_urlsafe(32),
         'executor_token': 'ihe_' + secrets.token_urlsafe(32),
         'state': 'idle',
@@ -177,6 +178,16 @@ def sweep() -> None:
 
 
 def _claim(runner: Row, wait: int) -> Row | None:
+    # The runner sends its claim after it gave the executor its
+    # credential, so a polling runner is ready for the suite.
+    runner['polling'] = True
+    try:
+        return _wait_for_chain(runner, wait)
+    finally:
+        runner['polling'] = False
+
+
+def _wait_for_chain(runner: Row, wait: int) -> Row | None:
     deadline = time.time() + wait
     while True:
         with LOCK:
@@ -564,14 +575,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if body.get('runner') == 'other':
                 runner = _new_runner(synthetic=True)
             else:
-                runner = max(
-                    (
-                        r
-                        for r in RUNNERS.values()
-                        if r['state'] != 'offline' and not r['synthetic']
-                    ),
-                    key=lambda r: r['registered_at'],
-                )
+                live = [
+                    r
+                    for r in RUNNERS.values()
+                    if r['state'] != 'offline' and not r['synthetic']
+                ]
+                if not live:
+                    raise Fail(409, 'no_live_runner')
+                runner = max(live, key=lambda r: r['registered_at'])
             task = {
                 'id': body.get('task_id') or str(uuid.uuid4()),
                 'agent_id': AGENT_ID,

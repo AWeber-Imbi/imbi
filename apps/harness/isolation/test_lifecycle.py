@@ -124,6 +124,22 @@ def long_command(seconds: int) -> list[Row]:
     ]
 
 
+def setUpModule() -> None:
+    """Wait until the node port answers and a runner polls for a claim."""
+
+    def ready() -> bool:
+        try:
+            runners = state()['runners']
+        except OSError:
+            return False
+        return any(
+            r['polling'] and r['state'] == 'idle' and not r['synthetic']
+            for r in runners
+        )
+
+    wait_for(ready, 120, 'a ready runner')
+
+
 def start_long_command(seconds: int) -> tuple[Row, Row]:
     """Queue a task whose command runs; wait until it has its secret."""
     task = fake_api('POST', '/test/tasks', {'script': long_command(seconds)})

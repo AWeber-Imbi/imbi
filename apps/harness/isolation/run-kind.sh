@@ -48,7 +48,11 @@ kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" \
 kubectl --context "$CONTEXT" apply -f "$HERE/manifests.yaml"
 trap 'status=$?; if [ $status -ne 0 ]; then dump; fi' EXIT
 k rollout status deploy/harness-fake-api --timeout=120s
+k wait --for=jsonpath='{.subsets[0].addresses[0].ip}' \
+  endpoints/harness-fake-api --timeout=120s
 k wait --for=condition=Ready pod/harness --timeout=180s
+# Both suites also wait until the fake API answers from where they run
+# and a runner polls for a claim (setUpModule).
 
 k exec harness -c runner -- python3 -m unittest discover \
   -s /opt/isolation -p test_pod.py -v
