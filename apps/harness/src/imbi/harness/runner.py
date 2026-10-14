@@ -16,6 +16,7 @@ later slices.
 """
 
 import asyncio
+import contextlib
 import dataclasses
 import http
 import logging
@@ -29,7 +30,7 @@ import uuid
 
 import httpx
 
-from imbi.harness import api, ipc, privilege, redact, task, version
+from imbi.harness import api, ipc, kube, privilege, redact, task, version
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ POOL_CREDENTIAL = '/var/run/secrets/imbi/pool'
 CREDENTIALS = '/run/creds'
 WORK = pathlib.Path('/work')
 CLAIM_WAIT = 20
+#: The time for the shutdown steps after SIGTERM. Less than the pod's
+#: terminationGracePeriodSeconds (30), so the fence comes before the
+#: SIGKILL.
+SHUTDOWN_SECONDS = 20
 
 type Body = api.Body
 
@@ -89,6 +94,7 @@ class Runner:
         self.layout: task.Layout | None = None
         #: The task runs of the chain, by short id.
         self.runs: dict[str, asyncio.Task[Body]] = {}
+        self.task_runs: list[task.TaskRun] = []
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
@@ -100,9 +106,35 @@ class Runner:
             except (api.Refused, httpx.HTTPError, OSError) as err:
                 LOGGER.warning('Runner cycle failed: %s', err)
             if self.claimed:
-                # One chain per process, also after a failure.
+                # One chain per process, also after a failure. The
+                # ReplicaSet starts a clean pod for the next chain.
+                await kube.delete_own_pod()
                 return
             await asyncio.sleep(5)
+
+    async def shutdown(self) -> None:
+        """``SIGTERM`` (eviction, node drain): plan section 4.2 step 5
+        without the pod deletion, in the grace period.
+
+        Stop every ``agent`` process in both containers (the executor
+        releases the resolutions of its commands), close the sessions,
+        remove the workspace, and finish: imbi-api fences the chain and
+        puts it back in the queue with an ``attempt_marker``. What is
+        not done in time, the lease sweep does.
+        """
+        LOGGER.warning('Stopping: SIGTERM')
+        for run in self.runs.values():
+            run.cancel()
+        privilege.kill_agent()
+        with contextlib.suppress(OSError):
+            await ipc.call({'op': 'end_chain'})
+        for task_run in self.task_runs:
+            await task_run.abandon('runner_stopped')
+        if self.layout is not None:
+            await self.end_chain(self.layout.root)
+        if self.runner_id:
+            with contextlib.suppress(api.Refused, httpx.HTTPError):
+                await self.api.finish(self.runner_id, self.runner_token)
 
     async def cycle(self) -> None:
         """Register, claim one chain, run it, and finish."""
@@ -228,19 +260,19 @@ class Runner:
     def _start(self, claim: Body, *, build: bool) -> asyncio.Task[Body]:
         assert self.layout is not None  # noqa: S101 - set by run_chain
         self.redactor.add(str(claim['agent_token']))
-        run = asyncio.create_task(
-            task.TaskRun(
-                self.api,
-                claim,
-                self.layout,
-                self.redactor,
-                instance=self.settings.instance,
-                transcripts=self.credentials / 'transcripts',
-                model=self.settings.model,
-                build=build,
-                children=self.run_child,
-            ).run()
+        task_run = task.TaskRun(
+            self.api,
+            claim,
+            self.layout,
+            self.redactor,
+            instance=self.settings.instance,
+            transcripts=self.credentials / 'transcripts',
+            model=self.settings.model,
+            build=build,
+            children=self.run_child,
         )
+        self.task_runs.append(task_run)
+        run = asyncio.create_task(task_run.run())
         self.runs[str(claim['task']['short_id'])] = run
         return run
 
@@ -276,10 +308,30 @@ def main() -> None:
     os.environ['CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK'] = '1'
     runner = Runner(settings, pool_credential, credentials)
 
+    async def stop() -> None:
+        try:
+            async with asyncio.timeout(SHUTDOWN_SECONDS):
+                await runner.shutdown()
+        except TimeoutError:
+            _fence('the shutdown did not end in time')
+        os._exit(0)
+
     async def run() -> None:
         loop = asyncio.get_running_loop()
+        stopping: list[asyncio.Task[None]] = []
+
+        def on_signal() -> None:
+            if not stopping:
+                stopping.append(loop.create_task(stop()))
+
         for signum in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(signum, _fence, 'stop signal')
-        await runner.serve()
+            loop.add_signal_handler(signum, on_signal)
+        try:
+            await runner.serve()
+        except asyncio.CancelledError:
+            # The shutdown cancels the task runs; it exits the process.
+            if not stopping:
+                raise
+            await stopping[0]
 
     asyncio.run(run())

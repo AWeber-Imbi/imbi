@@ -1,0 +1,119 @@
+# The runner pod of plan section 6.1 and ADR 0022: two containers, three
+# users, no shared process namespace, per-container credential volumes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "imbi-harness.pool" . }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.pool.replicas }}
+  selector:
+    matchLabels:
+      {{- include "imbi-harness.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "imbi-harness.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "imbi-harness.pool" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      shareProcessNamespace: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        # No fsGroup: it would give a group access to the credential volumes.
+      containers:
+        - name: runner
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["runner"]
+          env:
+            - name: IMBI_API_URL
+              value: {{ required "imbi.apiUrl is required" .Values.imbi.apiUrl | quote }}
+            - name: IMBI_HARNESS_POOL
+              value: {{ include "imbi-harness.pool" . | quote }}
+            {{- with .Values.imbi.model }}
+            - name: IMBI_HARNESS_MODEL
+              value: {{ . | quote }}
+            {{- end }}
+            # The runner deletes its own pod at the end of its chain.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef: {fieldPath: metadata.namespace}
+          securityContext: &privilege
+            # Uid 0 with only SETUID and SETGID; each process drops to its
+            # own user at start (plan section 2 rule 4).
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["SETUID", "SETGID"]
+          resources:
+            {{- toYaml .Values.resources.runner | nindent 12 }}
+          volumeMounts:
+            - {name: work, mountPath: /work}
+            - {name: executor-socket, mountPath: /run/executor}
+            - {name: runner-credentials, mountPath: /run/creds}
+            - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
+            - name: service-account-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+        - name: executor
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["executor"]
+          env:
+            - name: IMBI_API_URL
+              value: {{ .Values.imbi.apiUrl | quote }}
+          securityContext: *privilege
+          resources:
+            {{- toYaml .Values.resources.executor | nindent 12 }}
+          volumeMounts:
+            - {name: work, mountPath: /work}
+            - {name: executor-socket, mountPath: /run/executor}
+            - {name: executor-credentials, mountPath: /run/creds}
+      volumes:
+        - name: work
+          emptyDir:
+            sizeLimit: {{ .Values.work.sizeLimit }}
+        - name: executor-socket
+          emptyDir: {medium: Memory}
+        - name: runner-credentials
+          emptyDir: {medium: Memory}
+        - name: executor-credentials
+          emptyDir: {medium: Memory}
+        # Owned by uid 0, mode 0400: only the runner's uid 0 reads them.
+        - name: pool
+          secret:
+            secretName: {{ include "imbi-harness.secretName" . }}
+            defaultMode: 0400
+        - name: service-account-token
+          projected:
+            defaultMode: 0400
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3600}
+              # The cluster CA is public: the runner reads it as runner.
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - {key: ca.crt, path: ca.crt, mode: 0444}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

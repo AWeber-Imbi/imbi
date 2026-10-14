@@ -1248,3 +1248,24 @@ class FlushTestCase(TaskTestCase):
         self.assertEqual(len(self.sent), 10)
         # One size() per event: the batches are made once.
         self.assertEqual(size.call_count, 1000)
+
+
+class AbandonTestCase(TaskTestCase):
+    async def test_closes_an_open_session(self) -> None:
+        self.client.post.return_value = mock.Mock(
+            json=mock.Mock(return_value={})
+        )
+        await self.run_task.abandon('runner_stopped')
+        self.assertEqual(self.posted('/close'), [])
+        self.run_task.session_id = 's'
+        await self.run_task.abandon('runner_stopped')
+        self.assertEqual(self.posted('/close'), [{'reason': 'runner_stopped'}])
+        self.run_task.state = {'status': 'closed'}
+        await self.run_task.abandon('runner_stopped')
+        self.assertEqual(len(self.posted('/close')), 1)
+
+    async def test_failure_is_logged(self) -> None:
+        self.run_task.session_id = 's'
+        self.client.post.side_effect = httpx.ConnectError('down')
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await self.run_task.abandon('runner_stopped')

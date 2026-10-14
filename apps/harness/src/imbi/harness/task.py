@@ -393,6 +393,20 @@ class TaskRun:
         self.write_config()
         return await self.run_sdk(url)
 
+    async def abandon(self, reason: str) -> None:
+        """Close the session of a task that this runner cannot finish.
+
+        With control ``run``, imbi-api puts the task back to ``queued``.
+        """
+        if not self.session_id or self.state.get('status') == 'closed':
+            return
+        try:
+            await self.api.close_session(self.session_id, reason)
+        except (api.Refused, httpx.HTTPError) as err:
+            LOGGER.warning(
+                'Session of %s not closed: %s', self.api.short_id, err
+            )
+
     async def _end(self, kind: str, reason: str | None) -> None:
         """Set the outcome. Imbi refuses it for a task that it closed
         (``exceeded_ceiling``, a timeout).

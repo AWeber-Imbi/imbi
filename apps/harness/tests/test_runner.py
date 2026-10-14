@@ -332,3 +332,57 @@ class ChildRunTestCase(unittest.IsolatedAsyncioTestCase):
                 runner.task.Layout(pathlib.Path('/work/c')),
             )
         self.assertEqual(order, ['root', 'child'])
+
+
+class EndOfPodTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_pod_is_deleted_after_the_chain(self) -> None:
+        subject = make_runner()
+
+        async def cycle() -> None:
+            subject.claimed = True
+
+        subject.cycle = cycle  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(pathlib.Path, 'exists', return_value=True),
+            mock.patch.object(
+                runner.kube, 'delete_own_pod', mock.AsyncMock()
+            ) as delete,
+        ):
+            await subject.serve()
+        delete.assert_awaited_once_with()
+
+    async def test_shutdown_steps(self) -> None:
+        subject = make_runner()
+        subject.api = mock.AsyncMock(spec=api.Api)
+        subject.runner_id, subject.runner_token = 'r', 'rt'
+        subject.layout = runner.task.Layout(pathlib.Path('/work/c'))
+        running = asyncio.create_task(asyncio.sleep(3600))
+        subject.runs['T-1'] = running
+        task_run = mock.AsyncMock()
+        subject.task_runs.append(task_run)
+        subject.end_chain = mock.AsyncMock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(privilege, 'kill_agent') as kill,
+            mock.patch.object(ipc, 'call', mock.AsyncMock()) as call,
+        ):
+            await subject.shutdown()
+        await asyncio.sleep(0)
+        self.assertTrue(running.cancelled())
+        kill.assert_called_once_with()
+        call.assert_awaited_once_with({'op': 'end_chain'})
+        task_run.abandon.assert_awaited_once_with('runner_stopped')
+        subject.end_chain.assert_awaited_once_with(pathlib.Path('/work/c'))
+        subject.api.finish.assert_awaited_once_with('r', 'rt')
+
+    async def test_shutdown_before_registration(self) -> None:
+        subject = make_runner()
+        subject.api = mock.AsyncMock(spec=api.Api)
+        with (
+            mock.patch.object(privilege, 'kill_agent'),
+            mock.patch.object(
+                ipc, 'call', mock.AsyncMock(side_effect=FileNotFoundError)
+            ),
+        ):
+            await subject.shutdown()
+        subject.api.finish.assert_not_called()

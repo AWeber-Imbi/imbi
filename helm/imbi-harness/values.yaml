@@ -1,0 +1,67 @@
+# One release is one runner pool: a fixed-size Deployment whose name is the
+# pool name in Imbi (plan section 6.1). Install it in its own namespace, with
+# Pod Security level Baseline: the runner and executor start as uid 0 with
+# only SETUID and SETGID, which Restricted refuses.
+#
+#   kubectl create namespace imbi-runners
+#   kubectl label namespace imbi-runners \
+#     pod-security.kubernetes.io/enforce=baseline
+#   helm install general helm/imbi-harness -n imbi-runners \
+#     --set imbi.apiUrl=https://imbi.example.com/api \
+#     --set poolCredential.existingSecret=imbi-pool-general
+
+image:
+  # The runtime target of apps/harness/Dockerfile.
+  repository: ghcr.io/aweber-imbi/imbi-harness
+  tag: latest
+  pullPolicy: IfNotPresent
+
+pool:
+  # The name of the pool in Imbi (POST /harness/pools) and of the Deployment.
+  # Empty uses the release name.
+  name: ""
+  # The fixed pool size. Each pod runs one chain, then deletes itself, and
+  # the ReplicaSet starts a clean pod.
+  replicas: 1
+
+imbi:
+  # imbi-api's URL, with its route prefix.
+  apiUrl: ""  # REQUIRED, e.g. https://imbi.example.com/api
+  # The model when the agent's prompt names none. Empty uses the CLI default.
+  model: ""
+
+# The client credential of the pool's service account in Imbi. It can only
+# register runners of this pool. Mounted in the runner container only, owned
+# by uid 0 with mode 0400.
+poolCredential:
+  # A Secret with the keys client_id and client_secret.
+  existingSecret: ""
+  clientId: ""
+  clientSecret: ""
+
+# Leave time for the shutdown steps after SIGTERM: the runner fences at 20 s.
+terminationGracePeriodSeconds: 30
+
+# The chain workspace (/work): the clones, plugins, and task directories.
+work:
+  sizeLimit: 10Gi
+
+resources:
+  runner:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  executor:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

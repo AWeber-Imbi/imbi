@@ -30,6 +30,10 @@ dump() {
     echo "--- $c previous log" >&2
     k logs harness -c "$c" --previous --tail=200 >&2 || true
   done
+  for c in runner executor; do
+    echo "--- pool $c logs" >&2
+    k logs -l imbi.aweber.com/pool=general -c "$c" --prefix --tail=200 >&2 || true
+  done
   echo "--- fake API log" >&2
   k logs deploy/harness-fake-api --tail=100 >&2 || true
 }
@@ -59,6 +63,19 @@ k exec harness -c runner -- python3 -m unittest discover \
 
 FAKE_API_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
   "$PYTHON" -m unittest discover -s "$HERE" -p test_lifecycle.py -v
+
+# The pool suite: the test pod goes, and a one-pod pool from the Helm
+# chart takes its place (pod self-deletion and the failure paths).
+k delete pod harness --wait
+helm template general "$ROOT/helm/imbi-harness" --namespace "$NAMESPACE" \
+  --set image.repository=imbi-harness --set image.tag=isolation \
+  --set image.pullPolicy=Never \
+  --set imbi.apiUrl=http://harness-fake-api:8080 \
+  --set poolCredential.existingSecret=harness-pool \
+  | k apply -f -
+k rollout status deploy/general --timeout=180s
+FAKE_API_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
+  "$PYTHON" -m unittest discover -s "$HERE" -p test_pool.py -v
 
 if [ "${KEEP:-0}" != 1 ]; then
   kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" --wait=false
