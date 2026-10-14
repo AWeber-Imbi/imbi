@@ -329,6 +329,39 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             request=self.request(delivery_target='LD_PRELOAD'),
         )
 
+    async def test_setup_purposes_need_a_file_descriptor(self) -> None:
+        for purpose in sorted(broker.SETUP_PURPOSES):
+            for mode, target in (
+                ('environment', 'GH_TOKEN'),
+                ('stdin', None),
+                ('file', 'token'),
+            ):
+                with self.subTest(purpose=purpose, mode=mode):
+                    error = await self._denied(
+                        'delivery_mode_not_allowed',
+                        request=self.request(
+                            purpose=purpose,
+                            delivery_mode=mode,
+                            delivery_target=target,
+                        ),
+                    )
+                    self.assertEqual(
+                        error.reason, 'setup_purpose_file_descriptor_only'
+                    )
+        # A file descriptor passes this rule; the grants decide.
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.broker.create_resolution(
+                self.context(),
+                self.request(
+                    purpose='model_inference',
+                    delivery_mode='file_descriptor',
+                    delivery_target='3',
+                ),
+            )
+        self.assertNotEqual(
+            ctx.exception.reason, 'setup_purpose_file_descriptor_only'
+        )
+
     async def test_delivery_mode_and_ttl_limits(self) -> None:
         await self._denied(
             'delivery_mode_not_allowed',
