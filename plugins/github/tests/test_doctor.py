@@ -60,6 +60,7 @@ def _ctx(
                 integration_slug=_TPS_SLUG,
                 identifier='134741',
                 canonical_url=_CANONICAL,
+                verified_identifier='134741',
             )
         ]
     default_links: dict[str, str] = {
@@ -142,8 +143,9 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDoctor()
         results = await plugin.analyze(_ctx(), _CREDS)
         by = _by_slug(results)
-        self.assertEqual(len(results), 7)
+        self.assertEqual(len(results), 8)
         self.assertEqual(by['exists-in'].status, 'pass')
+        self.assertEqual(by['identifier-verified'].status, 'pass')
         self.assertEqual(by['canonical-url'].status, 'pass')
         self.assertEqual(by['identifier-type'].status, 'pass')
         self.assertEqual(by['identifier-match'].status, 'pass')
@@ -449,6 +451,24 @@ class RemediationOfferTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(offer.id, _REPAIR_EDGE)
 
     @respx.mock
+    async def test_unverified_identifier_offers_the_repair(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        connection = ServiceConnection(
+            integration_slug=_TPS_SLUG,
+            identifier='134741',
+            canonical_url=_CANONICAL,
+        )
+        results = await GitHubDoctor().analyze(
+            _ctx(connections=[connection]), _CREDS
+        )
+        item = _by_slug(results)['identifier-verified']
+        self.assertEqual(item.status, 'warn')
+        assert item.remediation is not None
+        self.assertEqual(item.remediation.id, _REPAIR_EDGE)
+
+    @respx.mock
     async def test_passing_findings_have_no_offer(self) -> None:
         respx.get(_CANONICAL).mock(
             return_value=httpx.Response(200, json=_REPO_PAYLOAD)
@@ -545,6 +565,25 @@ class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
         result = await plugin.remediate(ctx, _CREDS, _REPAIR_EDGE)
         self.assertEqual(result.status, 'noop')
         self.assertIsNone(ctx.service_writeback)
+
+    @respx.mock
+    async def test_edge_repair_verifies_an_unverified_edge(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        ctx = _ctx(
+            connections=[
+                ServiceConnection(
+                    integration_slug=_TPS_SLUG,
+                    identifier='134741',
+                    canonical_url=_CANONICAL,
+                )
+            ]
+        )
+        result = await GitHubDoctor().remediate(ctx, _CREDS, _REPAIR_EDGE)
+        self.assertEqual(result.status, 'fixed')
+        assert ctx.service_writeback is not None
+        self.assertEqual(ctx.service_writeback.identifier, '134741')
 
     @respx.mock
     async def test_github_link_repair_emits_link_writeback(self) -> None:

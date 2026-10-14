@@ -259,6 +259,7 @@ async def _mint(
     installation_id: str,
     scope: FrozenScope,
     repositories: collections.abc.Sequence[str] | None = None,
+    repository_ids: collections.abc.Sequence[int] | None = None,
 ) -> tuple[str, object]:
     """Exchange the App JWT for an installation access token.
 
@@ -270,7 +271,9 @@ async def _mint(
     so rather than act with less.
 
     ``repositories`` (names without the owner) limits the token to those
-    repositories of the installation.
+    repositories of the installation. ``repository_ids`` does the same
+    with the numeric repository ids; GitHub refuses an id that is not in
+    the installation (``422``).
     """
     # ``is not None`` rather than truthiness: ``freeze_scope({})`` is an
     # empty tuple, and asking GitHub for *no* permissions must send
@@ -282,6 +285,8 @@ async def _mint(
     )
     if repositories is not None:
         body = {**(body or {}), 'repositories': list(repositories)}
+    if repository_ids is not None:
+        body = {**(body or {}), 'repository_ids': list(repository_ids)}
     resp = await client.post(
         f'/app/installations/{installation_id}/access_tokens', json=body
     )

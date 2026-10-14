@@ -497,13 +497,19 @@ async def lookup_project_exists_in(
         '-[ei:EXISTS_IN]->(i:Integration) '
         'RETURN i.slug AS integration_slug, '
         'ei.identifier AS identifier, '
-        'ei.canonical_url AS canonical_url'
+        'ei.canonical_url AS canonical_url, '
+        'ei.verified_identifier AS verified_identifier'
     )
     try:
         records = await db.execute(
             query,
             {'project_id': project_id},
-            ['integration_slug', 'identifier', 'canonical_url'],
+            [
+                'integration_slug',
+                'identifier',
+                'canonical_url',
+                'verified_identifier',
+            ],
         )
     except Exception:  # noqa: BLE001
         LOGGER.debug('Project EXISTS_IN lookup failed', exc_info=True)
@@ -515,6 +521,7 @@ async def lookup_project_exists_in(
             continue
         identifier = graph.parse_agtype(r.get('identifier'))
         canonical_url = graph.parse_agtype(r.get('canonical_url'))
+        verified = graph.parse_agtype(r.get('verified_identifier'))
         connections.append(
             ServiceConnection(
                 integration_slug=str(slug),
@@ -522,6 +529,9 @@ async def lookup_project_exists_in(
                 canonical_url=(
                     None if canonical_url is None else str(canonical_url)
                 ),
+                verified_identifier=None
+                if verified is None
+                else str(verified),
             )
         )
     return connections
@@ -748,6 +758,11 @@ async def _merge_exists_in(
     the edge alongside ``identifier`` for a gateway to read back at
     webhook-delivery time. When ``None`` the ``SET`` omits it, so an
     existing edge's secret is left untouched.
+
+    ``verified_identifier`` records that the plugin wrote this
+    identifier from the remote API. Only this path sets it: the project
+    services endpoints write free-text identifiers and never touch it.
+    The ``github_app`` secret provider trusts only this property.
     """
     # Conditionally append the secret to the SET clause so a writeback
     # without one cannot null out a previously-stored secret. Both
@@ -766,6 +781,7 @@ async def _merge_exists_in(
           -[:BELONGS_TO]->(o)
     MERGE (p)-[ei:EXISTS_IN]->(i)
     SET ei.identifier = {identifier},
+        ei.verified_identifier = {identifier},
         ei.canonical_url = {canonical_url}"""
         + secret_set
         + """

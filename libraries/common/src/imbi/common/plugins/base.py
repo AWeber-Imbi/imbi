@@ -456,6 +456,9 @@ class ServiceConnection(pydantic.BaseModel):
     #: Canonical API URL (returns JSON) for the project in the remote.
     #: ``None`` when the edge predates canonical-URL maintenance.
     canonical_url: str | None = None
+    #: The identifier a :class:`ServiceWriteback` last wrote. ``None``
+    #: when no plugin has written the edge (a manual edit only).
+    verified_identifier: str | None = None
 
 
 class ProjectDependency(pydantic.BaseModel):
