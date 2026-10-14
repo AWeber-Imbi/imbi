@@ -14,6 +14,7 @@ that is published two times collapses in ClickHouse, which keys the
 table on ``event_id``.
 """
 
+import asyncio
 import datetime
 import logging
 import typing
@@ -82,6 +83,9 @@ type Pool = psycopg_pool.AsyncConnectionPool[Conn]
 
 #: The most outbox rows that one publish sends.
 FLUSH_BATCH = 500
+#: The longest wait for Iggy to accept one batch. Well under the 30 s
+#: sweep interval. A timeout is a failure: the rows stay.
+PUBLISH_TIMEOUT_SECONDS = 10
 
 
 async def write(conn: Conn, events: list[Event]) -> None:
@@ -118,7 +122,9 @@ async def flush(pool: Pool) -> int:
     do not publish one row, and is deleted only after Iggy accepts it.
 
     Raises:
-        Exception: Iggy refused a batch. Its rows stay in the outbox.
+        Exception: Iggy refused a batch, or did not accept it in
+            :data:`PUBLISH_TIMEOUT_SECONDS` (``TimeoutError``). Its rows
+            stay in the outbox.
 
     """
     total = 0
@@ -132,11 +138,13 @@ async def flush(pool: Pool) -> int:
             found = await cur.fetchall()
             if not found:
                 return total
-            await iggy.publish(
-                STREAM,
-                TOPIC,
-                [Event.model_validate(event) for _, event in found],
-            )
+            # The rows stay locked during the send, so it has a limit.
+            async with asyncio.timeout(PUBLISH_TIMEOUT_SECONDS):
+                await iggy.publish(
+                    STREAM,
+                    TOPIC,
+                    [Event.model_validate(event) for _, event in found],
+                )
             await conn.execute(
                 'DELETE FROM secrets.audit_outbox WHERE event_id = ANY(%s)',
                 ([event_id for event_id, _ in found],),

@@ -21,15 +21,17 @@ PRIVATE_MODULE_PREFIX = 'imbi.api.secret_broker'
 def _scrub(event: Any, _hint: Any) -> Any:
     """Remove secrets from an error or transaction event.
 
-    For a private route (:data:`PRIVATE_PATH`), drop the request body
-    and the local variables of every frame. For every event, drop the
-    local variables of frames in :data:`PRIVATE_MODULE_PREFIX`.
+    For a private route (:data:`PRIVATE_PATH`), drop the request body,
+    the query string, and the local variables of every frame. For
+    every event, drop the local variables of frames in
+    :data:`PRIVATE_MODULE_PREFIX`.
     """
     request = event.get('request') or {}
     path = urllib.parse.urlsplit(request.get('url') or '').path
     private = PRIVATE_PATH.search(path) is not None
     if private:
         request.pop('data', None)
+        request.pop('query_string', None)
     for container in (event.get('exception'), event.get('threads')):
         for value in (container or {}).get('values') or []:
             for frame in (value.get('stacktrace') or {}).get('frames') or []:

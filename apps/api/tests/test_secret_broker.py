@@ -981,6 +981,24 @@ class AuditOutboxTestCase(secret_support.SecretCase):
         self.assertEqual(await self.outbox_ids(), pending)
         self.assertEqual(self.published, [])
 
+    async def test_hung_publish_times_out_and_keeps_the_rows(self) -> None:
+        await self.broker.create_resolution(self.context(), self.request())
+        pending = await self.outbox_ids()
+
+        async def hang(*_: object, **__: object) -> None:
+            await asyncio.sleep(60)
+
+        with (
+            mock.patch.object(audit, 'PUBLISH_TIMEOUT_SECONDS', 0.05),
+            mock.patch.object(audit.iggy, 'publish', side_effect=hang),
+            self.assertRaises(TimeoutError),
+        ):
+            await self.broker.flush_audit()
+        self.assertEqual(await self.outbox_ids(), pending)
+        # The locks are gone: the next flush publishes the rows.
+        await self.broker.flush_audit()
+        self.assertEqual(await self.outbox_ids(), [])
+
     async def test_iggy_up_publishes_each_row_once(self) -> None:
         created = await self.broker.create_resolution(
             self.context(), self.request()

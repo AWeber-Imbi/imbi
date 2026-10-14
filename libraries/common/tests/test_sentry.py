@@ -11,7 +11,11 @@ def _event(
 ) -> dict[str, typing.Any]:
     frame = {'module': module, 'vars': {'handle': 'imh_secret'}}
     return {
-        'request': {'url': url, 'data': {'handle': 'imh_secret'}},
+        'request': {
+            'url': url,
+            'data': {'handle': 'imh_secret'},
+            'query_string': 'handle=imh_secret',
+        },
         'exception': {'values': [{'stacktrace': {'frames': [dict(frame)]}}]},
         'threads': {'values': [{'stacktrace': {'frames': [dict(frame)]}}]},
     }
@@ -43,6 +47,7 @@ class ScrubTestCase(unittest.TestCase):
             with self.subTest(path=path):
                 event = sentry._scrub(_event('http://imbi' + path), {})
                 self.assertNotIn('data', event['request'])
+                self.assertNotIn('query_string', event['request'])
                 self.assert_no_vars(event)
 
     def test_private_transactions_lose_the_body(self) -> None:
@@ -63,8 +68,9 @@ class ScrubTestCase(unittest.TestCase):
             {},
         )
         self.assert_no_vars(event)
-        # Not a private route: the body stays.
+        # Not a private route: the body and the query string stay.
         self.assertIn('data', event['request'])
+        self.assertIn('query_string', event['request'])
 
     def test_other_routes_keep_their_event(self) -> None:
         for path in (
