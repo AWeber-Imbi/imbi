@@ -14,6 +14,8 @@ import uuid
 
 from imbi.api.agent_tasks import log
 from imbi.common import clickhouse, iggy
+from imbi.common.clickhouse import client as clickhouse_client
+from imbi.common.iggy import client as iggy_client
 
 #: Slack for a cold consumer group and a large insert.
 TIMEOUT = 30.0
@@ -27,9 +29,27 @@ MIB = 1024 * 1024
 )
 class LargeTaskEventTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
+        # Both clients bind to the loop that opened them, and each test
+        # has its own loop, so this test takes its own clients (the
+        # pattern of test_agent_task_log.ClickHouseTestCase).
+        previous = (
+            clickhouse_client.Clickhouse._instance,
+            iggy_client.Iggy._instance,
+        )
+        clickhouse_client.Clickhouse._instance = None
+        iggy_client.Iggy._instance = None
+
+        async def restore() -> None:
+            await clickhouse.aclose()
+            await iggy.aclose()
+            (
+                clickhouse_client.Clickhouse._instance,
+                iggy_client.Iggy._instance,
+            ) = previous
+
+        self.addAsyncCleanup(restore)
+        await clickhouse.initialize()
         await clickhouse.setup_schema()
-        self.addAsyncCleanup(clickhouse.aclose)
-        self.addAsyncCleanup(iggy.aclose)
 
     async def test_one_mib_event_reaches_clickhouse(self) -> None:
         task_id = uuid.uuid4()

@@ -13,6 +13,7 @@ from imbi.harness import proxy
 
 class _Upstream(http.server.BaseHTTPRequestHandler):
     seen: typing.ClassVar[list[str]] = []
+    seen_headers: typing.ClassVar[list[set[str]]] = []
 
     def log_message(self, format: str, *args: typing.Any) -> None:
         pass
@@ -28,6 +29,7 @@ class _Upstream(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         self.seen.append(f'POST {self.path}')
+        self.seen_headers.append({k.lower() for k in self.headers})
         length = int(self.headers['Content-Length'])
         body = json.dumps(
             {
@@ -38,6 +40,9 @@ class _Upstream(http.server.BaseHTTPRequestHandler):
         ).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.send_header('Connection', 'X-Upstream-Hop, close')
+        self.send_header('X-Upstream-Hop', '1')
+        self.send_header('X-Upstream-End', '1')
         self.end_headers()
         self.wfile.write(body)
 
@@ -45,6 +50,7 @@ class _Upstream(http.server.BaseHTTPRequestHandler):
 class ProxyTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _Upstream.seen = []
+        _Upstream.seen_headers = []
         upstream = http.server.ThreadingHTTPServer(('127.0.0.1', 0), _Upstream)
         threading.Thread(target=upstream.serve_forever, daemon=True).start()
         self.addCleanup(upstream.shutdown)
@@ -94,6 +100,33 @@ class ProxyTestCase(unittest.TestCase):
     def test_forwards_only_the_checked_path_and_query(self) -> None:
         self.assertEqual(self.raw('POST', '/v1/messages?beta=true'), 200)
         self.assertEqual(_Upstream.seen, ['POST /v1/messages?beta=true'])
+
+    def test_body_over_the_limit_is_not_read(self) -> None:
+        status = self.raw(
+            'POST',
+            '/v1/messages',
+            None,
+            {'Content-Length': str(proxy.MAX_BODY + 1)},
+        )
+        self.assertEqual(status, 413)
+        self.assertEqual(_Upstream.seen, [])
+
+    def test_connection_nominated_headers_are_dropped(self) -> None:
+        connection = http.client.HTTPConnection(self.host, int(self.port))
+        self.addCleanup(connection.close)
+        connection.request(
+            'POST',
+            '/v1/messages',
+            body=b'{}',
+            headers={'Connection': 'X-Client-Hop', 'X-Client-Hop': '1'},
+        )
+        response = connection.getresponse()
+        response.read()
+        self.assertEqual(response.status, 200)
+        (sent,) = _Upstream.seen_headers
+        self.assertNotIn('x-client-hop', sent)
+        self.assertIsNone(response.getheader('X-Upstream-Hop'))
+        self.assertEqual(response.getheader('X-Upstream-End'), '1')
 
     def test_count_tokens_goes_upstream(self) -> None:
         self.assertEqual(self.raw('POST', '/v1/messages/count_tokens'), 200)

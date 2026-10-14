@@ -58,6 +58,10 @@ _DROP = frozenset(
         'x-api-key',
     }
 )
+#: The largest request body. The Anthropic Messages API takes requests
+#: of up to 32 MB, which images and long contexts can reach; a larger
+#: body cannot succeed upstream.
+MAX_BODY = 32 * 1024 * 1024
 #: The only paths that go upstream, for POST.
 _ROUTES = frozenset({'/v1/messages', '/v1/messages/count_tokens'})
 _HOP = frozenset(
@@ -128,6 +132,17 @@ class _Usage:
             }
 
 
+def _nominated(values: list[str]) -> frozenset[str]:
+    """The header names that a ``Connection`` header nominates as
+    hop-by-hop (RFC 9110 section 7.6.1)."""
+    return frozenset(
+        name.strip().lower()
+        for value in values
+        for name in value.split(',')
+        if name.strip()
+    )
+
+
 class _Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
@@ -178,6 +193,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             not (self.headers.get('Content-Length') or '').isdigit()
         ):
             self._refuse(411)
+        elif int(self.headers['Content-Length']) > MAX_BODY:
+            # No read: the connection closes with the body unread.
+            self._refuse(413)
         else:
             # Only the checked parts go upstream, never the raw target.
             query = f'?{target.query}' if target.query else ''
@@ -196,6 +214,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def _forward(self, target: str) -> None:
         server = typing.cast('_Server', self.server)
         body = self.rfile.read(int(self.headers['Content-Length']))
+        drop = _DROP | _nominated(self.headers.get_all('Connection') or [])
         metered = target.split('?')[0] == '/v1/messages'
         if metered and server.allowed is not None and not server.allowed():
             self.send_response(400)
@@ -207,7 +226,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         headers = {
             name: value
             for name, value in self.headers.items()
-            if name.lower() not in _DROP
+            if name.lower() not in drop
         }
         headers['x-api-key'] = server.key
         if server.litellm:
@@ -227,8 +246,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             )
             response = upstream.getresponse()
             self.send_response(response.status)
+            hop = _HOP | _nominated(
+                response.headers.get_all('Connection') or []
+            )
             for name, value in response.getheaders():
-                if name.lower() not in _HOP:
+                if name.lower() not in hop:
                     self.send_header(name, value)
             self.send_header('Transfer-Encoding', 'chunked')
             self.end_headers()

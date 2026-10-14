@@ -180,8 +180,18 @@ class Runner:
         """Renew the lease. Fence before it expires (plan section 4.3).
 
         The margin is a third of the lease. The time to stop is one
-        ``SIGKILL``.
+        ``SIGKILL``. Only a cancel at the end of the chain stops the
+        heartbeat; if it stops for any other reason, the runner fences.
         """
+        try:
+            await self._renew(lease_seconds)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001 - nothing renews the lease
+            _fence(f'the heartbeat stopped: {type(err).__name__}')
+        _fence('the heartbeat stopped')
+
+    async def _renew(self, lease_seconds: int) -> None:
         margin = lease_seconds / 3
         expires = time.monotonic() + lease_seconds
         while True:
@@ -198,7 +208,8 @@ class Runner:
                 if err.status == http.HTTPStatus.UNAUTHORIZED:
                     _fence(f'imbi-api does not know the runner: {err.code}')
                 LOGGER.warning('Heartbeat refused: %s', err)
-            except (httpx.HTTPError, TimeoutError) as err:
+            except Exception as err:  # noqa: BLE001 - a failed renewal
+                # Only the type: a message can hold a response body.
                 LOGGER.warning('Heartbeat failed: %s', type(err).__name__)
             if time.monotonic() >= expires - margin:
                 _fence('the lease was not renewed')

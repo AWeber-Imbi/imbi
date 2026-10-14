@@ -12,11 +12,14 @@ import typing
 import unittest
 from unittest import mock
 
+import respx
+
 from imbi.harness import api, ipc, privilege, runner
 
 
-class Fenced(Exception):
-    pass
+class Fenced(BaseException):
+    """Not an Exception, as os._exit is not: the heartbeat must not
+    catch its own fence."""
 
 
 def make_runner() -> runner.Runner:
@@ -61,8 +64,56 @@ class HeartbeatTestCase(unittest.IsolatedAsyncioTestCase):
             await self.runner.heartbeat(lease_seconds=3)
         self.assertIn('does not know', self.fence.call_args.args[0])
 
+    async def test_unexpected_error_is_a_failed_renewal(self) -> None:
+        # For example a decode error: it must not end the heartbeat
+        # before the fence.
+        self.api.heartbeat.side_effect = ValueError('bad body')
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        with (
+            self.assertLogs('imbi.harness.runner', 'WARNING') as logs,
+            self.assertRaises(Fenced),
+        ):
+            await self.runner.heartbeat(lease_seconds=3)
+        self.assertGreaterEqual(loop.time() - started, 1.5)
+        self.assertIn('lease', self.fence.call_args.args[0])
+        self.assertNotIn('bad body', '\n'.join(logs.output))
+
+    async def test_non_json_body_still_renews(self) -> None:
+        # Api.heartbeat reads only the status; a 200 renews.
+        self.mock = respx.mock(base_url='http://imbi.test')
+        self.mock.start()
+        self.addCleanup(self.mock.stop)
+        self.mock.post('/harness/runners/r/heartbeat').respond(
+            200, text='not json'
+        )
+        self.runner.api = api.Api('http://imbi.test')
+        self.runner.runner_id = 'r'
+        task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
+        await asyncio.sleep(3.5)
+        self.assertFalse(task.done())
+        task.cancel()
+        self.fence.assert_not_called()
+
+    async def test_heartbeat_that_stops_fences(self) -> None:
+        with mock.patch.object(
+            self.runner, '_renew', side_effect=RuntimeError('bug')
+        ):
+            with self.assertRaises(Fenced):
+                await self.runner.heartbeat(lease_seconds=3)
+        self.assertIn('RuntimeError', self.fence.call_args.args[0])
+
+    async def test_cancel_does_not_fence(self) -> None:
+        self.api.heartbeat.return_value = None
+        task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.fence.assert_not_called()
+
     async def test_keeps_running_while_renewed(self) -> None:
-        self.api.heartbeat.return_value = {'state': 'busy'}
+        self.api.heartbeat.return_value = None
         task = asyncio.create_task(self.runner.heartbeat(lease_seconds=3))
         await asyncio.sleep(3.5)
         self.assertFalse(task.done())
