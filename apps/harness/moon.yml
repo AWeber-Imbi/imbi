@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+layer: 'application'
+stack: 'backend'
+language: 'python'
+tags:
+  - 'python'
+
+project:
+  name: 'imbi-harness'
+  description: 'Imbi agent runner and executor (ADR 0022)'
+
+# Inherits lint / format / typecheck / test from .moon/tasks/python.yml. The
+# pod isolation suite (isolation/) runs in a kind cluster, see
+# isolation/run-kind.sh.
+tasks:
+  test:
+    args:
+      - '--cov'
+      - '--cov-report=term-missing'
