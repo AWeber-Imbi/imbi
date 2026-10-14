@@ -1040,6 +1040,34 @@ class RequestInputTestCase(RoutedTestCase):
 
 
 class ChildTaskTestCase(RoutedTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.run_task.bundle['subagents'] = [
+            {'agent_id': 'a2', 'slug': 'reviewer', 'instructions': 'Review.'},
+            {'agent_id': 'a3', 'slug': 'a', 'instructions': ''},
+            {'agent_id': 'gone', 'slug': None, 'instructions': ''},
+        ]
+
+    async def test_only_bundle_subagents(self) -> None:
+        self.run_task.children = mock.AsyncMock()
+        result = await self.run_task.create_child_task(
+            {'agent_slug': 'admin', 'title': 't', 'instruction': 'i'}
+        )
+        self.assertTrue(result['is_error'])
+        self.assertIn(
+            "'admin' is not a subagent of this agent. Use one of: a, reviewer",
+            result['content'][0]['text'],
+        )
+        self.assertEqual(self.posted('/children'), [])
+
+    def test_rules_list_the_slugs(self) -> None:
+        self.run_task.layout.make_task('t')
+        self.run_task.write_config()
+        rules = (
+            self.tmp / 'chain' / 'tasks' / 't' / '.claude' / 'CLAUDE.md'
+        ).read_text()
+        self.assertIn('another agent: `reviewer` (Review.), `a`.', rules)
+
     async def test_runs_the_child_and_returns_its_summary(self) -> None:
         summary = {'short_id': 'T-2', 'outcome': 'done_acted', 'result': 'ok'}
         children = mock.AsyncMock(return_value=summary)

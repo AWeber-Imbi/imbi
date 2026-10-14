@@ -651,6 +651,17 @@ class TaskRun:
         with privilege.effective(privilege.AGENT):
             shutil.rmtree(path, ignore_errors=True)
 
+    def subagents(self) -> dict[str, str]:
+        """The slugs of the agents that this agent can make child tasks
+        for, with their instructions (the identity bundle)."""
+        return {
+            str(entry['slug']): str(entry.get('instructions') or '')
+            for entry in typing.cast(
+                'list[Body]', api.items(self.bundle, 'subagents')
+            )
+            if entry.get('slug')
+        }
+
     def mcp_servers(self) -> list[str]:
         """The external MCP servers in the agent's tool map. Rev 1 does
         not connect them: their credentials need the secrets broker."""
@@ -697,16 +708,11 @@ class TaskRun:
                     sandbox.get('allow_unsandboxed_commands')
                 ),
             }
-        subagents = typing.cast(
-            'list[Body]',
-            api.items(self.bundle.get('snapshot') or {}, 'subagents'),
-        )
         rules = _RULES.format(
             mcp=', '.join(self.mcp_servers()) or 'none',
             subagents=', '.join(
-                f'`{s.get("slug") or s.get("agent_id")}`'
-                + (f' ({s["instructions"]})' if s.get('instructions') else '')
-                for s in subagents
+                f'`{slug}`' + (f' ({text})' if text else '')
+                for slug, text in self.subagents().items()
             )
             or 'none',
             cwd=self.cwd,
@@ -1100,6 +1106,12 @@ class TaskRun:
         """
         if self.children is None:
             return _tool_error('Child tasks are not available')
+        slugs = self.subagents()
+        if args.get('agent_slug') not in slugs:
+            return _tool_error(
+                f'{args.get("agent_slug")!r} is not a subagent of this '
+                f'agent. Use one of: {", ".join(sorted(slugs)) or "none"}'
+            )
         try:
             body: Body = {
                 'agent_slug': str(args['agent_slug']),

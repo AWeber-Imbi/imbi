@@ -376,11 +376,14 @@ def _bundle(task: Row) -> Row:
         'snapshot': {
             'tools': options['tools'],
             'subagents': (
-                [{'agent_id': 'agent-2', 'slug': 'reviewer'}]
-                if options.get('child')
-                else []
+                [{'agent_id': 'agent-2'}] if options.get('child') else []
             ),
         },
+        'subagents': (
+            [{'agent_id': 'agent-2', 'slug': 'reviewer', 'instructions': ''}]
+            if options.get('child')
+            else []
+        ),
         'prompt': {'ref': 'agents/test@1', 'system': 'You are a test.'},
         'repositories': repositories,
         'config': {

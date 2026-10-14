@@ -327,6 +327,30 @@ class ClaimTests(RunnerTestCase):
         self.assertEqual(claim['bundle']['prompt_ref'], 'ops/triage@prod')
         self.assertEqual(claim['bundle']['prompt_version'], 7)
 
+    async def test_bundle_has_the_subagent_slugs(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version(
+            {
+                'subagents': [
+                    {'agent_id': helper_id, 'instructions': 'Review it.'},
+                    {'agent_id': 'gone'},
+                ]
+            }
+        )
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(
+            claim['bundle']['subagents'],
+            [
+                {
+                    'agent_id': helper_id,
+                    'slug': 'helper',
+                    'instructions': 'Review it.',
+                },
+                {'agent_id': 'gone', 'slug': None, 'instructions': ''},
+            ],
+        )
+
     async def test_long_poll_waits_for_a_task(self) -> None:
         runner = await self.register()
         self.assertIsNotNone(await self.claim(runner))
