@@ -1,7 +1,8 @@
 """One task: setup secrets, workspace, config, SDK run, and outcome.
 
 The user switches and the CLI start need the pod; the kind suite in
-``isolation/`` covers them. Here ``privilege.effective`` is a no-op.
+``isolation/`` covers them. Here ``privilege.effective`` and
+``privilege.spawn_as_root`` are no-ops.
 """
 
 import asyncio
@@ -81,11 +82,12 @@ class TaskTestCase(unittest.IsolatedAsyncioTestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.tmp = pathlib.Path(tmp.name)
-        patcher = mock.patch.object(
-            privilege, 'effective', return_value=contextlib.nullcontext()
-        )
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name in ('effective', 'spawn_as_root'):
+            patcher = mock.patch.object(
+                privilege, name, return_value=contextlib.nullcontext()
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.call = mock.AsyncMock()
         patcher = mock.patch.object(ipc, 'call', self.call)
         patcher.start()

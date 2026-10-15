@@ -138,15 +138,21 @@ users.
 - The SDK starts the CLI through a `cli_path` wrapper
   (`#!/bin/sh -p`) that runs `setpriv --reuid=agent --regid=agent
   --clear-groups --inh-caps=-all` and then the bundled CLI. The runner
-  sets its effective uid to 0 only for the process start. Do not use
+  sets its real, effective and saved uid and gid to 0 only for the
+  process start, and sets them back at once. An effective uid of 0 is
+  not sufficient: some kernels (seen on 6.12 with SELinux and
+  `no_new_privs`) start the new program with the effective uid set to
+  the real uid, so the wrapper runs as `runner` and `setpriv` fails.
+  The ids apply to all threads of the runner. Do not use
   `ClaudeAgentOptions.user`: the SDK then changes only the uid, and the
   CLI keeps the runner's groups, which include the executor socket group.
-- The wrapper starts with a real uid (`runner`) that is not its
-  effective uid (0), so glibc runs it in secure mode and removes
-  `TMPDIR`, `LD_*`, and similar variables from its environment. The
-  runner sends the temporary directory in another variable, and the
+- The runner sends the temporary directory in another variable, and the
   wrapper sets `TMPDIR` with `env` after `setpriv`, when all ids are
-  `agent`.
+  `agent`. This is from when the wrapper started with a real uid that
+  was not its effective uid, so glibc ran it in secure mode and removed
+  `TMPDIR`, `LD_*`, and similar variables. Now that all ids are 0 at the
+  start, glibc does not do that; the wrapper's environment is what the
+  runner gives it, never a value that the model chose.
 - The containers do not share a process namespace. Credential files are in
   per-container volumes with mode `0700`.
 - The executor socket allows only the runner. It is in a group that does
