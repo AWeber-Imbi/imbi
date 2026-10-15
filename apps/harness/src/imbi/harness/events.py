@@ -182,6 +182,12 @@ class Recorder:
     def __init__(self, redactor: redact.Redactor) -> None:
         self.redactor = redactor
         self.pending: list[Event] = []
+        #: The relay's audit fields of a call (plan P7), by tool name
+        #: and input.
+        self.audit: (
+            typing.Callable[[str, typing.Any], dict[str, typing.Any] | None]
+            | None
+        ) = None
         #: Tool use id to the tool policy decision (plan section 6.5).
         self.decisions: dict[str, dict[str, typing.Any]] = {}
         #: Tool use id to (name, input, start, parent call id).
@@ -283,6 +289,11 @@ class Recorder:
                 **(
                     {'policy': self.decisions.pop(block.tool_use_id)}
                     if block.tool_use_id in self.decisions
+                    else {}
+                ),
+                **(
+                    {'relay': audit}
+                    if self.audit and (audit := self.audit(name, arguments))
                     else {}
                 ),
             },

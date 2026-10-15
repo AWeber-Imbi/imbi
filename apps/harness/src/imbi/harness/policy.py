@@ -36,13 +36,19 @@ class Check:
     rate_key: str | None = None
 
 
+#: CLI server names whose tool map key uses another server name: the
+#: Imbi relay is ``imbi_api`` for the CLI (the harness's own server is
+#: ``imbi``) and ``imbi`` in the agent tool catalog (plan P7).
+_KEY_SERVER = {'imbi_api': 'imbi'}
+
+
 def tool_key(name: str) -> str | None:
     """``mcp__<server>__<tool>`` to ``<server>.<tool>``; ``None`` for a
     built-in tool."""
     if not name.startswith('mcp__'):
         return None
     server, _, tool = name.removeprefix('mcp__').partition('__')
-    return f'{server}.{tool}'
+    return f'{_KEY_SERVER.get(server, server)}.{tool}'
 
 
 def check(  # noqa: PLR0913 - keyword-only inputs
@@ -56,6 +62,9 @@ def check(  # noqa: PLR0913 - keyword-only inputs
 ) -> Check:
     key = tool_key(name)
     config: dict[str, typing.Any] = {}
+    if name.removeprefix('mcp__imbi_api__') in HARNESS_TOOLS:
+        # A relayed tool never takes a harness tool's name or config.
+        return Check(deny='tool_not_configured')
     if key is None:
         if name not in allowed:
             return Check(deny='tool_not_allowed')

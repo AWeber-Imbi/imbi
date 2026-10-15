@@ -131,6 +131,7 @@ items:
               echo "runner-exit $? $(date +%s.%N)"; sleep 1; done
           env:
             - {name: IMBI_API_URL, value: "http://harness-fake-api:8080"}
+            - {name: IMBI_HARNESS_MCP_URL, value: "http://harness-fake-api:8080/mcp"}
           securityContext: &privilege
             runAsUser: 0
             runAsNonRoot: false

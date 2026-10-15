@@ -29,6 +29,10 @@ imbi:
   apiUrl: ""  # REQUIRED, e.g. https://imbi.example.com/api
   # The model when the agent's prompt names none. Empty uses the CLI default.
   model: ""
+  # apps/mcp, in the cluster, for the Imbi relay (plan P7): the runner
+  # relays the agent's mapped Imbi tools there with the agent API token.
+  # Empty: agents get no Imbi tools. E.g. http://imbi-mcp:8001/mcp
+  mcpUrl: ""
 
 # The client credential of the pool's service account in Imbi. It can only
 # register runners of this pool. Mounted in the runner container only, owned

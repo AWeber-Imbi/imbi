@@ -88,9 +88,29 @@ class Api:
         )
         return _body(response)
 
-    async def heartbeat(self, runner_id: str, token: str) -> None:
-        """Renew the lease. Only the status counts, not the body."""
-        await self.post(f'/harness/runners/{runner_id}/heartbeat', token)
+    async def heartbeat(
+        self, runner_id: str, token: str, tasks: list[str] | None = None
+    ) -> dict[str, str]:
+        """Renew the lease, and the agent API tokens of ``tasks``.
+
+        Only the status renews the lease. Return the new API tokens by
+        short id; a body that is not what imbi-api sends gives none.
+        """
+        response = await self.post(
+            f'/harness/runners/{runner_id}/heartbeat',
+            token,
+            json={'tasks': tasks} if tasks else None,
+        )
+        try:
+            renewed = typing.cast(
+                'dict[str, Body]', response.json().get('api_tokens') or {}
+            )
+            return {
+                str(short_id): str(value['token'])
+                for short_id, value in renewed.items()
+            }
+        except (ValueError, AttributeError, KeyError, TypeError):
+            return {}
 
     async def claim(
         self, runner_id: str, token: str, wait: int

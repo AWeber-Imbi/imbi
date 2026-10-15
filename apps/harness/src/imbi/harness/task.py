@@ -32,7 +32,16 @@ import claude_agent_sdk as sdk
 import httpx
 from claude_agent_sdk._internal.transport import subprocess_cli
 
-from imbi.harness import api, events, ipc, policy, privilege, proxy, redact
+from imbi.harness import (
+    api,
+    events,
+    ipc,
+    policy,
+    privilege,
+    proxy,
+    redact,
+    relay,
+)
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -88,7 +97,6 @@ SETUP_DELIVERY = {'mode': 'file_descriptor', 'target': '3'}
 SETUP_PURPOSES = frozenset(
     {'marketplace_fetch', 'model_inference', 'workspace_checkout'}
 )
-_UNTRUSTED_TAG = re.compile(r'<\s*/?\s*untrusted', re.IGNORECASE)
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
 _RULES = """\
 # Imbi harness
@@ -278,6 +286,7 @@ class TaskRun:
         model: str | None = None,
         build: bool = True,
         children: abc.Callable[[str], abc.Awaitable[Body]] | None = None,
+        mcp_url: str | None = None,
     ) -> None:
         self.claim = claim
         self.task: Body = claim['task']
@@ -309,6 +318,11 @@ class TaskRun:
         self.loop: asyncio.AbstractEventLoop | None = None
         #: Runs a child task of the chain and returns its summary.
         self.children = children
+        #: The agent API token (P7): memory only. The runner heartbeat
+        #: renews it.
+        self.api_token = str(claim.get('api_token') or '')
+        self.mcp_url = mcp_url
+        self.relay: relay.Relay | None = None
         #: The newest task state from imbi-api.
         self.state: Body = {}
         self.seq = 0
@@ -391,6 +405,7 @@ class TaskRun:
             meter=self.meter,
             allowed=self.allowed,
         )
+        await self.start_relay()
         self.write_config()
         return await self.run_sdk(url)
 
@@ -677,12 +692,51 @@ class TaskRun:
             if entry.get('slug')
         }
 
+    async def start_relay(self) -> None:
+        """Relay the agent's mapped Imbi tools (plan P7), when the pool
+        has ``apps/mcp`` and the tool map has Imbi tools.
+
+        Raises:
+            Failed: The agent needs Imbi tools, but Imbi minted no agent
+                API token (for example ``service_account_in_other_
+                organizations``).
+
+        """
+        snapshot: Body = self.bundle.get('snapshot') or {}
+        tool_map: Body = snapshot.get('tools') or {}
+        if not (self.mcp_url and relay.mapped(tool_map)):
+            return
+        if not self.api_token:
+            raise Failed(
+                str(self.claim.get('api_token_error') or 'no_api_token')
+            )
+        candidate = relay.Relay(
+            self.mcp_url,
+            lambda: self.api_token,
+            tool_map,
+            stopped=lambda: self.stopped,
+        )
+        try:
+            names = await candidate.start()
+        except relay.Unavailable as err:
+            LOGGER.warning('Imbi relay not available: %s', err)
+            self.recorder.notice(
+                'The Imbi tools are not available: the runner could not '
+                'reach the Imbi MCP server.'
+            )
+            return
+        LOGGER.info('Relaying %d Imbi tools', len(names))
+        self.relay = candidate
+        self.recorder.audit = candidate.take_audit
+
     def mcp_servers(self) -> list[str]:
         """The external MCP servers in the agent's tool map. Rev 1 does
         not connect them: their credentials need the secrets broker."""
         snapshot: Body = self.bundle.get('snapshot') or {}
         tools: Body = snapshot.get('tools') or {}
-        return sorted({key.partition('.')[0] for key in tools} - {'imbi'})
+        return sorted(
+            {key.partition('.')[0] for key in tools} - {'imbi', relay.SERVER}
+        )
 
     def _repo_dirs(self) -> list[pathlib.Path]:
         return [
@@ -706,7 +760,8 @@ class TaskRun:
             for tool in (BUILTIN_TOOLS if base is None else base)
             if tool not in denied
         ]
-        return [*allowed, *IMBI_TOOLS], denied
+        relayed = self.relay.allowed_tools() if self.relay else []
+        return [*allowed, *IMBI_TOOLS, *relayed], denied
 
     def write_config(self) -> None:
         """Write ``settings.json`` and ``CLAUDE.md`` of the task's
@@ -771,10 +826,7 @@ class TaskRun:
         origin: Body = self.task.get('origin') or {}
         if origin.get('kind') != 'webhook':
             return text
-        # Any opening or closing tag, in any case and spacing: the text
-        # can neither close the block nor open a nested one.
-        text = _UNTRUSTED_TAG.sub(lambda m: '&lt;' + m.group(0)[1:], text)
-        return f'<untrusted source="webhook">\n{text}\n</untrusted>'
+        return relay.untrusted(text, 'webhook')
 
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
         allowed, denied = self.tools()
@@ -820,7 +872,18 @@ class TaskRun:
                     )
                 ]
             },
-            mcp_servers={'imbi': server},
+            mcp_servers={
+                'imbi': server,
+                **(
+                    {
+                        relay.SERVER: sdk.create_sdk_mcp_server(
+                            relay.SERVER, tools=self.relay.sdk_tools()
+                        )
+                    }
+                    if self.relay
+                    else {}
+                ),
+            },
             allowed_tools=allowed,
             disallowed_tools=denied,
             # Only the allowed tools, with no prompt and no classifier.

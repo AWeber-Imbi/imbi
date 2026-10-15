@@ -85,7 +85,23 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock.post('/harness/runners/r/heartbeat').respond(
             200, text='not json'
         )
-        self.assertIsNone(await self.api.heartbeat('r', 't'))
+        # The lease is renewed by the status; a bad body gives no tokens.
+        self.assertEqual(await self.api.heartbeat('r', 't'), {})
+
+    async def test_heartbeat_renews_api_tokens(self) -> None:
+        route = self.mock.post('/harness/runners/r/heartbeat').respond(
+            200,
+            json={
+                'state': 'busy',
+                'api_tokens': {'T-1': {'token': 'new', 'expires_at': 'x'}},
+            },
+        )
+        self.assertEqual(
+            await self.api.heartbeat('r', 't', ['T-1']), {'T-1': 'new'}
+        )
+        self.assertEqual(
+            json.loads(route.calls.last.request.content), {'tasks': ['T-1']}
+        )
 
     async def test_other_routes(self) -> None:
         self.mock.post('/harness/runners/r/heartbeat').respond(

@@ -1589,12 +1589,16 @@ source = { editable = "apps/harness" }
 dependencies = [
     { name = "claude-agent-sdk" },
     { name = "httpx" },
+    { name = "mcp" },
+    { name = "pyjwt" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.2.150" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "mcp", specifier = ">=1.23.0" },
+    { name = "pyjwt", specifier = ">=2.10.1" },
 ]
 
 [[package]]
