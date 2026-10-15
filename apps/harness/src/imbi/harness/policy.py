@@ -38,17 +38,19 @@ class Check:
 
 #: CLI server names whose tool map key uses another server name: the
 #: Imbi relay is ``imbi_api`` for the CLI (the harness's own server is
-#: ``imbi``) and ``imbi`` in the agent tool catalog (plan P7).
+#: ``imbi``) and ``imbi`` in the agent tool catalog (plan P7). A task
+#: adds its third-party servers whose slug is not a CLI name.
 _KEY_SERVER = {'imbi_api': 'imbi'}
 
 
-def tool_key(name: str) -> str | None:
+def tool_key(name: str, servers: dict[str, str] | None = None) -> str | None:
     """``mcp__<server>__<tool>`` to ``<server>.<tool>``; ``None`` for a
-    built-in tool."""
+    built-in tool. ``servers`` maps a CLI server name to its key."""
     if not name.startswith('mcp__'):
         return None
     server, _, tool = name.removeprefix('mcp__').partition('__')
-    return f'{_KEY_SERVER.get(server, server)}.{tool}'
+    keys = _KEY_SERVER | (servers or {})
+    return f'{keys.get(server, server)}.{tool}'
 
 
 def check(  # noqa: PLR0913 - keyword-only inputs
@@ -59,8 +61,9 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     tool_map: dict[str, typing.Any],
     approval_tools: list[str],
     automation: bool,
+    servers: dict[str, str] | None = None,
 ) -> Check:
-    key = tool_key(name)
+    key = tool_key(name, servers)
     config: dict[str, typing.Any] = {}
     if name.removeprefix('mcp__imbi_api__') in HARNESS_TOOLS:
         # A relayed tool never takes a harness tool's name or config.

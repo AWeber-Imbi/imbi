@@ -1319,3 +1319,37 @@ class RelayTests(unittest.TestCase):
                 ('transcript', transcript),
             ):
                 self.assertNotIn(token, text, where)
+
+
+class PrivateMcpServerTests(unittest.TestCase):
+    """A third-party MCP server whose host resolves to a cluster address
+    is refused before the runner connects (plan P7)."""
+
+    def test_private_address_is_refused(self) -> None:
+        task = queue(
+            {
+                'tools': {'private.list_projects': {}},
+                'mcp_servers': [
+                    {
+                        'slug': 'private',
+                        # The fake API's service: a cluster address.
+                        'url': 'https://harness-fake-api/mcp',
+                        'auth_type': 'none',
+                    }
+                ],
+                'script': [],
+            }
+        )
+        run_task_until_done(task)
+        done = task_of(task)
+        bodies = [
+            e['payload'].get('body', '')
+            for e in done['events']
+            if e['payload'].get('kind') == 'warning'
+        ]
+        self.assertIn(
+            'The MCP server private is not available to this task: '
+            'address_not_global.',
+            bodies,
+        )
+        self.assertEqual(done['outcome'], 'done_acted', done)
