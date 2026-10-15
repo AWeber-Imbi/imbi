@@ -23,14 +23,14 @@ import fastapi.responses
 import nanoid
 import pydantic
 
-from imbi.api.auth import permissions
+from imbi.api.auth import agent_api, permissions
 from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
     parse_iso,
 )
-from imbi.common import clickhouse, iggy, models
+from imbi.common import clickhouse, graph, iggy, models
 from imbi.common import patch as json_patch
 from imbi.common.plugins import OpsLogTemplate
 from imbi.common.plugins.registry import list_plugins
@@ -234,8 +234,13 @@ async def create_operation_log(
             permissions.require_permission('operations_log:create'),
         ),
     ],
+    db: typing.Annotated[
+        graph.Graph | None, fastapi.Depends(agent_api.graph_for)
+    ],
 ) -> dict[str, typing.Any]:
     """Create a new operations log entry."""
+    # An agent writes only for a project of its own organization.
+    await agent_api.require_own_project(db, auth, data.get('project_id'))
     payload = dict(data)
     for server_field in (
         'id',

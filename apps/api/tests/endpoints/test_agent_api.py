@@ -15,6 +15,7 @@ import jwt
 
 from apps.api.tests.endpoints import test_harness
 from imbi.api.auth import agent_api
+from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import store as harness_store
 from imbi.api.harness import tokens
 from imbi.common.auth import permissions as common_permissions
@@ -43,6 +44,13 @@ class AgentApiTestCase(test_harness.RunnerTestCase):
         # The real authentication, not the test override.
         self.test_app.dependency_overrides.pop(
             common_permissions.get_current_user
+        )
+        # The tests have no lifespan: the project check uses this graph.
+        self.test_app.dependency_overrides[agent_api.graph_for] = (
+            lambda: self.graph
+        )
+        self.addCleanup(
+            self.test_app.dependency_overrides.pop, agent_api.graph_for
         )
 
     async def _drop_role(self) -> None:
@@ -108,6 +116,29 @@ class ClaimTests(AgentApiTestCase):
         self.assertEqual(response.json()['api_tokens'], {})
 
 
+class RenewalFailureTests(AgentApiTestCase):
+    async def test_heartbeat_keeps_the_lease(self) -> None:
+        """A renewal error (a graph outage) must not fence the runner."""
+        before = await self.runner_post(self.runner, 'heartbeat')
+        with (
+            mock.patch.object(
+                harness_api,
+                '_renew_api_tokens',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            self.assertLogs('imbi.api.endpoints.harness', 'ERROR'),
+        ):
+            response = await self.runner_post(
+                self.runner, 'heartbeat', json={'tasks': ['T-1']}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['api_tokens'], {})
+        self.assertGreaterEqual(
+            body['lease_expires_at'], before.json()['lease_expires_at']
+        )
+
+
 class RouteTests(AgentApiTestCase):
     async def test_normal_route_with_the_roles(self) -> None:
         response = await self.call(
@@ -144,6 +175,60 @@ class RouteTests(AgentApiTestCase):
         self.assert_refused(
             await self.call('GET', f'/organizations/{self.other_org}')
         )
+
+    async def other_project(self) -> str:
+        """A project of another organization."""
+        project = f'proj-other-{self.org}'
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            ' CREATE (t:Team {{id: {team}, slug: {team}, name: "X"}})'
+            '-[:BELONGS_TO]->(o)'
+            ' CREATE (p:Project {{id: {project}, slug: {project},'
+            ' name: "Other"}})-[:OWNED_BY]->(t)'
+            ' RETURN p.id AS id',
+            {
+                'org': self.other_org,
+                'team': f'team-other-{self.org}',
+                'project': project,
+            },
+            ['id'],
+        )
+        return project
+
+    async def test_project_of_another_organization(self) -> None:
+        org = f'/organizations/{self.org}'
+        response = await self.call('GET', f'{org}/projects/{self.project_id}')
+        self.assertEqual(response.status_code, 200, response.text)
+        other = await self.other_project()
+        for path in (
+            f'{org}/projects/{other}/events/',
+            f'{org}/projects/{other}/operations-log/',
+        ):
+            with self.subTest(path=path):
+                response = await self.call('GET', path)
+                self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_org_query_parameter(self) -> None:
+        response = await self.call(
+            'GET', '/scores/rollup', params={'org': self.other_org}
+        )
+        self.assert_refused(response)
+
+    async def test_operations_log_entry_of_another_project(self) -> None:
+        await self.graph.execute(
+            'MERGE (p:Permission {{name: "operations_log:create"}})'
+            ' WITH p MATCH (r:Role {{slug: {role}}})'
+            ' CREATE (r)-[:GRANTS]->(p) RETURN 1 AS ok',
+            {'role': self.role},
+            ['ok'],
+        )
+        other = await self.other_project()
+        response = await self.call(
+            'POST', '/operations-log/', json={'project_id': other}
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+        response = await self.call('POST', '/operations-log/', json={})
+        self.assert_refused(response)
 
     async def test_refused_route_groups(self) -> None:
         org = f'/organizations/{self.org}'
@@ -182,6 +267,14 @@ class RouteTests(AgentApiTestCase):
             'team members': ('POST', f'{org}/teams/x/members'),
             'workflow runs': ('POST', f'{org}/workflows/x/runs'),
             'prompts': ('POST', '/prompts/'),
+            'global lists': ('GET', '/users/'),
+            'organizations': ('GET', '/organizations/'),
+            'events by id': ('GET', '/events/e1'),
+            'operations log by id': ('PATCH', '/operations-log/x'),
+            'uploads': ('GET', '/uploads/u1'),
+            'blueprint writes': ('POST', '/blueprints/'),
+            'rescore': ('POST', '/scoring/rescore'),
+            'admin reads': ('GET', '/admin/graph/schema'),
         }
         for name, (method, path) in cases.items():
             with self.subTest(name):
@@ -302,6 +395,28 @@ class ClassificationTests(test_harness.RunnerTestCase):
         keys = set(self.test_app.state.agent_api_routes.values())
         self.assertEqual(agent_api.ALLOWED_ROUTES - keys, frozenset())
         self.assertEqual(agent_api.REFUSED_ROUTES - keys, frozenset())
+
+    def test_allowed_routes_have_an_organization(self) -> None:
+        """Every allowed route names the organization, or is reviewed
+        as global but safe, with a reason."""
+        unscoped = sorted(
+            key
+            for key in agent_api.ALLOWED_ROUTES
+            if '{org_slug}' not in key
+            and ' /organizations/{slug}' not in key
+            and key not in agent_api.GLOBAL_SAFE
+        )
+        self.assertEqual(
+            unscoped,
+            [],
+            'Scope these routes to the organization, refuse them, or add '
+            'them to agent_api.GLOBAL_SAFE with the reason that they give '
+            'no data of another organization',
+        )
+        self.assertEqual(
+            set(agent_api.GLOBAL_SAFE) - agent_api.ALLOWED_ROUTES, set()
+        )
+        self.assertTrue(all(agent_api.GLOBAL_SAFE.values()))
 
     def test_no_route_is_allowed_and_refused(self) -> None:
         self.assertEqual(

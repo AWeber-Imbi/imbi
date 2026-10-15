@@ -265,9 +265,12 @@ class Relay:
             arguments.setdefault(tool.idempotency_key, str(uuid.uuid4()))
         retries = 1 if tool.read_only or tool.idempotency_key else 0
         started = time.monotonic()
-        status, result = 'error', None
+        status, result, jti = 'error', None, None
         try:
             for attempt in range(retries + 1):
+                # The token of this attempt: a heartbeat can renew it
+                # during the call.
+                jti = self._jti()
                 try:
                     result = await self._until_stopped(name, arguments)
                     status = 'error' if result.isError else 'ok'
@@ -290,7 +293,7 @@ class Relay:
             {
                 'server': self.server,
                 'input_digest': input_digest,
-                'token_jti': self._jti(),
+                'token_jti': jti,
                 'status': status,
                 'latency_ms': int((time.monotonic() - started) * 1000),
                 'bytes_in': len(json.dumps(arguments)),

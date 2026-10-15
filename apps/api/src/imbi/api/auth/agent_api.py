@@ -19,10 +19,17 @@ route and refuses it:
   (:mod:`imbi.api.auth.agent_api_routes`) or refused above; a test
   fails on an unclassified route, so a new route needs a decision;
 - for an organization that is not the token's: the ``org_slug`` (or,
-  on the organization routes, ``slug``) path parameter must be the
-  token's ``org_slug`` claim. The guard reads no database, so it adds
-  no cost to other requests; a renamed organization refuses the token
-  until the next heartbeat renews it.
+  on the organization routes, ``slug``) path parameter, or an ``org``
+  query parameter, must be the token's ``org_slug`` claim. A
+  ``project_id`` path parameter must name a project of that
+  organization (404 otherwise): some project routes do not check that
+  the project is in the path's organization. An allowed route with no
+  organization parameter must be in :data:`GLOBAL_SAFE`, with the
+  reason that it gives no data of another organization.
+
+Only an agent API token request reads the database (the project
+check); other requests pay nothing. A renamed organization refuses the
+token until the next heartbeat renews it.
 
 The check uses the endpoint that the router matched, not the URL, so
 an encoded path cannot slip past it.
@@ -35,7 +42,8 @@ import jwt
 from fastapi import routing
 
 from imbi.api.auth.agent_api_routes import ALLOWED_ROUTES, REFUSED_ROUTES
-from imbi.common.auth import core
+from imbi.common import graph, lifespan
+from imbi.common.auth import core, permissions
 
 #: Every route of these endpoint modules refuses the token.
 REFUSED_MODULES = frozenset(
@@ -67,6 +75,59 @@ READ_ONLY_MODULES = frozenset(
     {'imbi.api.endpoints.agents', 'imbi.api.endpoints.users'}
 )
 _READS = frozenset({'GET', 'HEAD', 'OPTIONS'})
+
+#: The allowed routes with no organization in the path, and why each
+#: gives no data of another organization.
+GLOBAL_SAFE: dict[str, str] = {
+    'GET /ai-models/': 'the platform model catalog: no organization data',
+    'GET /ai-models/{id}': 'the platform model catalog: no organization data',
+    'GET /blueprints/': 'global schema configuration',
+    'GET /blueprints/{type}': 'global schema configuration',
+    'GET /blueprints/{type}/{slug}': 'global schema configuration',
+    'GET /scoring/policies/': 'global scoring configuration',
+    'GET /scoring/policies/{slug}': 'global scoring configuration',
+    'GET /prompts/': 'the global prompt library',
+    'GET /prompts/resolve': 'the global prompt library',
+    'GET /prompts/{namespace}/{slug}': 'the global prompt library',
+    'GET /prompts/{namespace}/{slug}/versions': 'the global prompt library',
+    'GET /prompts/{namespace}/{slug}/versions/{n}': (
+        'the global prompt library'
+    ),
+    'GET /plugins/{slug}/manifest': 'a plugin manifest: no organization data',
+    'GET /operations-log/plugin-templates': 'plugin templates: no entries',
+    'GET /status': 'service status',
+    'GET /users/me': 'the caller itself',
+    'GET /users/me/permissions': 'the caller itself',
+    'POST /operations-log/': (
+        'the handler refuses an agent entry for a project of another '
+        'organization (require_own_project)'
+    ),
+    'GET /scores/history-by-team': (
+        'the required org query parameter is checked'
+    ),
+    'GET /scores/history-feed': (
+        'the required org query parameter is checked'
+    ),
+    'GET /scores/monthly-improvement': (
+        'the required org query parameter is checked'
+    ),
+    'GET /scores/rollup': 'the required org query parameter is checked',
+}
+
+_PROJECT_IN_ORG: typing.LiteralString = """
+MATCH (p:Project {{id: {project_id}}})
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+RETURN p.id AS id
+LIMIT 1
+"""
+_PROJECT_IN_ORG_ID: typing.LiteralString = """
+MATCH (p:Project {{id: {project_id}}})
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN p.id AS id
+LIMIT 1
+"""
 
 
 def refused(module: str, method: str, key: str | None = None) -> bool:
@@ -111,13 +172,66 @@ def _bearer(request: fastapi.Request) -> str | None:
     return token.strip() if scheme.lower() == 'bearer' else None
 
 
-async def guard(request: fastapi.Request) -> None:
+async def graph_for(request: fastapi.Request) -> graph.Graph | None:
+    """The graph of the app lifespan, or ``None`` in an app without one
+    (unit tests). Only an agent API token request reads it; with
+    ``None``, its project check fails closed."""
+    try:
+        context = lifespan.get_lifespan(request)
+        return context.get_state(graph.graph_lifespan)
+    except Exception:  # noqa: BLE001 - no lifespan: no graph
+        return None
+
+
+async def _project_in(
+    db: graph.Graph | None, query: typing.LiteralString, args: dict[str, str]
+) -> None:
+    if db is None:
+        raise fastapi.HTTPException(
+            status_code=503, detail='The project check is not available'
+        )
+    if not await db.execute(query, args, ['id']):
+        raise fastapi.HTTPException(
+            status_code=404, detail='Project not found'
+        )
+
+
+async def require_own_project(
+    db: graph.Graph | None,
+    auth: permissions.AuthContext,
+    project_id: str | None,
+) -> None:
+    """For an agent API token: ``project_id`` must name a project of
+    the token's organization. For a handler whose project is in the
+    body. Other callers pass.
+
+    Raises:
+        403: An agent entry without a project.
+        404: The project is not in the token's organization.
+
+    """
+    if auth.auth_method != 'agent_api':
+        return
+    if not project_id:
+        raise _forbidden('An agent API token needs a project here')
+    await _project_in(
+        db,
+        _PROJECT_IN_ORG_ID,
+        {'project_id': project_id, 'org_id': str(auth.organization_id)},
+    )
+
+
+async def guard(
+    request: fastapi.Request,
+    db: typing.Annotated[graph.Graph | None, fastapi.Depends(graph_for)],
+) -> None:
     """Refuse an agent API token where it must not work.
 
     Raises:
         401: The token is not valid or has expired.
         403: ``agent_api_forbidden``: a refused route, or another
             organization.
+        404: The path's project is not in the token's organization.
 
     """
     token = _bearer(request)
@@ -138,10 +252,21 @@ async def guard(request: fastapi.Request) -> None:
             status_code=401, detail='Invalid token'
         ) from err
     params = request.path_params
-    slug = params.get('org_slug') or (
+    for slug in (
+        params.get('org_slug'),
         params.get('slug')
         if module == 'imbi.api.endpoints.organizations'
-        else None
-    )
-    if slug is not None and slug != claims['org_slug']:
-        raise _forbidden(f'The token is not for organization {slug!r}')
+        else None,
+        request.query_params.get('org'),
+    ):
+        if slug is not None and slug != claims['org_slug']:
+            raise _forbidden(f'The token is not for organization {slug!r}')
+    if 'project_id' in params:
+        await _project_in(
+            db,
+            _PROJECT_IN_ORG,
+            {
+                'project_id': str(params['project_id']),
+                'org_slug': str(claims['org_slug']),
+            },
+        )
