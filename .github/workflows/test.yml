@@ -85,4 +85,17 @@ jobs:
         with:
           version: "v0.30.0"
           install_only: true
+      # The released runner image (release.yml) must hold no setuid or
+      # setgid file (P5a). The kind run below reuses these layers.
+      - name: "Check the runtime image has no setuid or setgid files"
+        run: |
+          docker build -f apps/harness/Dockerfile --target runtime \
+            -t imbi-harness:runtime .
+          found=$(docker run --rm --entrypoint find imbi-harness:runtime \
+            / -xdev -perm /6000 -type f)
+          if [ -n "$found" ]; then
+            echo "::error::setuid or setgid files in the runner image:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
       - run: "apps/harness/isolation/run-kind.sh"
