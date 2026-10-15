@@ -475,10 +475,12 @@ async def _org_ids(db: graph.Graph, slugs: list[str]) -> list[str]:
     records = await db.execute(
         _ORGS_BY_SLUG_QUERY, {'slugs': slugs}, ['id', 'slug']
     )
-    found = {
-        str(graph.parse_agtype(r['slug'])): str(graph.parse_agtype(r['id']))
-        for r in records
-    }
+    found: dict[str, str] = {}
+    for r in records:
+        slug = str(graph.parse_agtype(r['slug']))
+        found[slug] = organizations.organization_id(
+            graph.parse_agtype(r['id']), slug
+        )
     missing = sorted(set(slugs) - set(found))
     if missing:
         raise _unprocessable(f'Unknown organizations: {", ".join(missing)}')

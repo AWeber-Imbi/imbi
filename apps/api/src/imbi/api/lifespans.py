@@ -10,7 +10,7 @@ import contextlib
 import logging
 from collections import abc
 
-from imbi.api import iggy_metrics, openapi, user_document_orgs
+from imbi.api import graph_ids, iggy_metrics, openapi, user_document_orgs
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.documents import read_sweeper as document_read_sweeper
@@ -43,6 +43,11 @@ async def _on_graph_startup(db: graph.Graph) -> None:
         await plugin_lifecycle.startup_load_plugins(db)
     except Exception:
         LOGGER.exception('Failed to load plugins')
+    try:
+        # First: the document backfill links to organizations by id.
+        await graph_ids.backfill(db)
+    except Exception:
+        LOGGER.exception('Failed to give ids to organizations and users')
     try:
         await user_document_orgs.backfill(db)
     except Exception:
