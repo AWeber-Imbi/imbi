@@ -42,6 +42,7 @@ from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
 from imbi.api.secret_broker import broker, providers
+from imbi.api.secret_broker import store as secret_store
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
@@ -228,6 +229,11 @@ class BundleMcpServer(pydantic.BaseModel):
     credential_ref: str | None = None
 
 
+class BundleMcpUnavailable(pydantic.BaseModel):
+    slug: str
+    reason: str
+
+
 class IdentityBundle(pydantic.BaseModel):
     """The pinned identity of a task's agent. Holds no secret."""
 
@@ -259,6 +265,9 @@ class IdentityBundle(pydantic.BaseModel):
     #: that the task's organization can use. The runner warns about
     #: the other servers of the tool map.
     mcp_servers: list[BundleMcpServer] = []
+    #: The other third-party servers of the tool map, with the reason
+    #: (a safe code), for the runner's warning.
+    mcp_unavailable: list[BundleMcpUnavailable] = []
 
 
 class Claim(pydantic.BaseModel):
@@ -542,19 +551,24 @@ async def _subagents(
     ]
 
 
+#: The resolution lifetime that the runner asks for (harness task.py).
+_RUNNER_RESOLUTION_TTL = 300
+
+
 async def _mcp_servers(
     db: graph.Graph,
-    store: harness.HarnessStore,
-    organization_id: str,
+    secrets: secret_store.SecretStore,
+    task: dict[str, typing.Any],
     snapshot: dict[str, typing.Any],
-) -> list[BundleMcpServer]:
+) -> tuple[list[BundleMcpServer], list[BundleMcpUnavailable]]:
     """The third-party MCP servers of a version snapshot's tool map
-    that the runner can relay (plan P7).
+    that the runner can relay (plan P7), and the others with a reason.
 
-    A server is left out when it is disabled, does not check TLS, or
-    is not HTTPS, or when it needs a credential and the organization
-    has no enabled binding for its ``credential_ref``. The Fernet
-    fields are never used for agents.
+    A server is left out when it is gone or disabled, does not check
+    TLS, or is not HTTPS, or when it needs a credential and the grants
+    do not allow the task's agent its ``credential_ref`` (the broker's
+    grant evaluation, as ``/secret-grants/evaluate``: no provider
+    call). The Fernet fields are never used for agents.
     """
     tools: dict[str, typing.Any] = snapshot.get('tools') or {}
     slugs = sorted(
@@ -562,26 +576,13 @@ async def _mcp_servers(
         - {agent_tools.IMBI_SERVER_SLUG}
     )
     servers: list[BundleMcpServer] = []
+    unavailable: list[BundleMcpUnavailable] = []
     for slug in slugs:
-        found = await db.match(models.MCPServer, {'slug': slug})
-        if not found:
+        reason = await _mcp_unavailable(db, secrets, task, slug)
+        if isinstance(reason, str):
+            unavailable.append(BundleMcpUnavailable(slug=slug, reason=reason))
             continue
-        server = found[0]
-        if (
-            not server.enabled
-            or not server.verify_ssl
-            or server.url.scheme != 'https'
-        ):
-            continue
-        if server.auth_type != 'none':
-            if not server.credential_ref:
-                continue
-            binding = await store.binding_provider(
-                organization_id,
-                broker.parse_reference(server.credential_ref).binding,
-            )
-            if binding is None or not binding['enabled']:
-                continue
+        server = reason
         servers.append(
             BundleMcpServer(
                 slug=server.slug,
@@ -599,7 +600,41 @@ async def _mcp_servers(
                 credential_ref=server.credential_ref,
             )
         )
-    return servers
+    return servers, unavailable
+
+
+async def _mcp_unavailable(
+    db: graph.Graph,
+    secrets: secret_store.SecretStore,
+    task: dict[str, typing.Any],
+    slug: str,
+) -> models.MCPServer | str:
+    """The server, or why the task cannot use it."""
+    found = await db.match(models.MCPServer, {'slug': slug})
+    if not found:
+        return 'server_not_found'
+    server = found[0]
+    if not server.enabled:
+        return 'server_disabled'
+    if server.url.scheme != 'https' or not server.verify_ssl:
+        return 'tls_required'
+    if server.auth_type == 'none':
+        return server
+    if not server.credential_ref:
+        return 'no_credential_ref'
+    try:
+        await secrets.evaluate(
+            task['organization_id'],
+            task['agent_id'],
+            task.get('project_id'),
+            broker.parse_reference(server.credential_ref),
+            'mcp_server',
+            'file_descriptor',
+            _RUNNER_RESOLUTION_TTL,
+        )
+    except providers.BrokerError as err:
+        return err.reason or err.code
+    return server
 
 
 async def _rendered_prompt(
@@ -691,6 +726,7 @@ async def _repositories(
 async def _identity(
     db: graph.Graph,
     store: harness.HarnessStore,
+    secrets: secret_store.SecretStore,
     task: dict[str, typing.Any],
     org_slug: str,
 ) -> IdentityBundle:
@@ -715,6 +751,9 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
+    mcp_servers, mcp_unavailable = await _mcp_servers(
+        db, secrets, task, bundle.snapshot
+    )
     return bundle.model_copy(
         update={
             'prompt': prompt,
@@ -723,9 +762,8 @@ async def _identity(
             'config': platform.merge(config, settings),
             'repositories': await _repositories(db, store, task, settings),
             'subagents': await _subagents(db, bundle.snapshot),
-            'mcp_servers': await _mcp_servers(
-                db, store, task['organization_id'], bundle.snapshot
-            ),
+            'mcp_servers': mcp_servers,
+            'mcp_unavailable': mcp_unavailable,
         }
     )
 
@@ -741,6 +779,7 @@ _SYSTEM = agent_tasks.Actor('system', 'imbi', 'harness')
 async def _deliver(
     db: graph.Graph,
     store: harness.HarnessStore,
+    secrets: secret_store.SecretStore,
     tasks: agent_tasks.TaskStore,
     runner: dict[str, typing.Any],
     claimed: tuple[dict[str, typing.Any], dict[str, typing.Any]],
@@ -756,7 +795,7 @@ async def _deliver(
     """
     task, chain = claimed
     try:
-        return await _claim(db, store, runner, task, chain)
+        return await _claim(db, store, secrets, runner, task, chain)
     except _NoServiceAccount:
         await tasks.set_outcome(
             task['organization_id'],
@@ -775,6 +814,7 @@ async def _deliver(
 async def _claim(
     db: graph.Graph,
     store: harness.HarnessStore,
+    secrets: secret_store.SecretStore,
     runner: dict[str, typing.Any],
     task: dict[str, typing.Any],
     chain: dict[str, typing.Any],
@@ -813,7 +853,7 @@ async def _claim(
         attempt=chain['attempt'],
         organization_slug=org_slug,
         task=tasks_api.AgentTaskResponse.model_validate(task),
-        bundle=await _identity(db, store, task, org_slug),
+        bundle=await _identity(db, store, secrets, task, org_slug),
         agent_token=token,
         agent_token_expires_at=expires,
         api_token=api_token,
@@ -1315,6 +1355,7 @@ async def claim_harness_task(
     runner: harness_auth.Runner,
     db: graph.Pool,
     store: harness.Store,
+    secrets: secret_broker.Store,
     tasks: agent_tasks.Store,
     wait: typing.Annotated[
         int,
@@ -1353,7 +1394,7 @@ async def claim_harness_task(
             raise _conflict('runner_busy', 'The runner holds a chain') from err
         if claimed is not None:
             delivered = await _deliver(
-                db, store, tasks, runner, claimed, pinned=True
+                db, store, secrets, tasks, runner, claimed, pinned=True
             )
             if delivered is not None:
                 return delivered
@@ -1373,6 +1414,7 @@ async def claim_harness_child_task(
     runner: harness_auth.Runner,
     db: graph.Pool,
     store: harness.Store,
+    secrets: secret_broker.Store,
     tasks: agent_tasks.Store,
 ) -> Claim | fastapi.Response:
     """Claim the oldest queued child task of the runner's chain.
@@ -1385,7 +1427,7 @@ async def claim_harness_child_task(
     """
     while (claimed := await store.claim_child(runner)) is not None:
         delivered = await _deliver(
-            db, store, tasks, runner, claimed, pinned=False
+            db, store, secrets, tasks, runner, claimed, pinned=False
         )
         if delivered is not None:
             return delivered

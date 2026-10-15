@@ -331,6 +331,8 @@ class TaskRun:
         self.relay: relay.Relay | None = None
         #: The third-party relays, by CLI server name (plan P7).
         self.external: dict[str, relay.Relay] = {}
+        #: The servers that already have a warning with their reason.
+        self.noticed: set[str] = set()
         #: The newest task state from imbi-api.
         self.state: Body = {}
         self.seq = 0
@@ -757,6 +759,13 @@ class TaskRun:
         """
         snapshot: Body = self.bundle.get('snapshot') or {}
         tool_map: Body = snapshot.get('tools') or {}
+        # Imbi says why it left a server out, for example no_grant.
+        for entry in typing.cast(
+            'list[Body]', api.items(self.bundle, 'mcp_unavailable')
+        ):
+            slug = str(entry.get('slug') or '')
+            if relay.mapped(tool_map, slug):
+                self._not_available(slug, str(entry.get('reason') or ''))
         servers = [
             server
             for server in typing.cast(
@@ -802,7 +811,7 @@ class TaskRun:
     def warn_unavailable(self) -> None:
         """One warning for the servers in the tool map that this task
         cannot use."""
-        if servers := self.mcp_servers():
+        if servers := [s for s in self.mcp_servers() if s not in self.noticed]:
             self.recorder.notice(
                 'The MCP servers '
                 + ', '.join(servers)
@@ -810,6 +819,7 @@ class TaskRun:
             )
 
     def _not_available(self, slug: str, reason: str) -> None:
+        self.noticed.add(slug)
         LOGGER.warning('MCP server %s not available: %s', slug, reason)
         self.recorder.notice(
             f'The MCP server {slug} is not available to this task: {reason}.'

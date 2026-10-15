@@ -657,20 +657,15 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
         self.assertTrue(body['validation']['valid'], body)
         self.assertNotIn('static-mcp-value', response.text)
 
-    async def left_behind(self) -> tuple[list[typing.Any], list[typing.Any]]:
-        """The bindings with this test's reference, and their grants."""
-        bindings = [
-            b
-            for b in await self.secrets.list_all('bindings', self.org)
-            if b['reference'] == self.body['reference']
-        ]
-        ids = {b['id'] for b in bindings}
-        grants = [
-            g
-            for g in await self.secrets.list_all('grants', self.org)
-            if ids & set(g['binding_ids'])
-        ]
-        return bindings, grants
+    async def rows(self) -> tuple[set[typing.Any], set[typing.Any]]:
+        """The ids of every binding and every grant of the organization."""
+        return (
+            {
+                b['id']
+                for b in await self.secrets.list_all('bindings', self.org)
+            },
+            {g['id'] for g in await self.secrets.list_all('grants', self.org)},
+        )
 
     async def test_a_failed_step_leaves_nothing(self) -> None:
         for target, error in (
@@ -683,6 +678,7 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
                     if target == '_persist'
                     else mcp_servers.secrets_api
                 )
+                before = await self.rows()
                 with mock.patch.object(
                     owner,
                     target,
@@ -692,12 +688,20 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
                 ):
                     response = await self.link()
                 self.assertEqual(response.status_code, error, response.text)
-                self.assertEqual(await self.left_behind(), ([], []))
+                # No binding and no grant is left, orphaned or not.
+                self.assertEqual(await self.rows(), before)
         # A retry of the same reference then works.
+        before = await self.rows()
         response = await self.link()
         self.assertEqual(response.status_code, 201, response.text)
-        bindings, grants = await self.left_behind()
-        self.assertEqual((len(bindings), len(grants)), (1, 1))
+        bindings, grants = await self.rows()
+        self.assertEqual(
+            (bindings - before[0], grants - before[1]),
+            (
+                {uuid.UUID(response.json()['binding']['id'])},
+                {uuid.UUID(response.json()['grant']['id'])},
+            ),
+        )
 
     async def test_only_a_platform_admin(self) -> None:
         self.user.is_admin = False

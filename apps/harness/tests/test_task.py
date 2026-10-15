@@ -1541,3 +1541,23 @@ class ExternalRelayTestCase(TaskTestCase):
         self.assertEqual(subject.external, {})
         self.assertIn('address_not_global', self.notices(subject)[0])
         self.assertEqual(subject.mcp_servers(), ['jira', 'unbound'])
+
+    async def test_imbi_reason_for_a_server_left_out(self) -> None:
+        subject = self.with_servers({'slug': 'jira'})
+        subject.bundle['mcp_servers'] = []
+        subject.bundle['mcp_unavailable'] = [
+            {'slug': 'jira', 'reason': 'no_grant'},
+            {'slug': 'not-in-the-map', 'reason': 'no_grant'},
+        ]
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await subject.start_external()
+        subject.warn_unavailable()
+        self.assertEqual(
+            self.notices(subject),
+            [
+                'The MCP server jira is not available to this task: no_grant.',
+                # The generic warning leaves out a server with a reason.
+                'The MCP servers unbound of this agent are not available '
+                'to this task.',
+            ],
+        )
