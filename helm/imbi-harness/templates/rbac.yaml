@@ -1,0 +1,36 @@
+# The runner's projected token can only delete pods in this namespace: each
+# pod deletes itself at the end of its chain (plan section 4.2 step 5).
+# Runners are alone in the namespace (accepted risk, plan section 11).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "imbi-harness.pool" . }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "imbi-harness.pool" . }}-delete-pods
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "imbi-harness.pool" . }}-delete-pods
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "imbi-harness.pool" . }}-delete-pods
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "imbi-harness.pool" . }}
+    namespace: {{ .Release.Namespace }}

@@ -209,6 +209,21 @@ def sweep() -> None:
                     chain['agent_token'] = None
                     chain['requeued_at'].append(now)
                     QUEUE.append(chain['id'])
+                    # As imbi-api: each open task of the chain gets an
+                    # attempt_marker event and goes back to queued.
+                    for task in TASKS.values():
+                        if (
+                            task['chain_id'] == chain['id']
+                            and task['status'] != 'closed'
+                        ):
+                            _event(
+                                task,
+                                'attempt_marker',
+                                {'attempt': chain['attempt']},
+                            )
+                            task['status'] = 'queued'
+                            task['agent_token'] = None
+                            task['sessions'] = {}
 
 
 def _claim(runner: Row, wait: int) -> Row | None:
@@ -670,6 +685,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if token != POOL_ACCESS_TOKEN:
                 raise Fail(401, 'not_authenticated')
             runner = _new_runner()
+            runner['instance'] = body.get('instance')
             return 201, {
                 'runner_id': runner['id'],
                 'runner_token': runner['runner_token'],
@@ -707,7 +723,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 runner['offline_at'] = time.time()
                 chain = CHAINS.get(runner['chain_id'] or '')
                 if chain and chain['state'] == 'running':
-                    chain['state'] = 'done'
+                    # A task still open: fenced as for a lost runner.
+                    open_tasks = [
+                        t
+                        for t in TASKS.values()
+                        if t['chain_id'] == chain['id']
+                        and t['status'] != 'closed'
+                    ]
+                    if open_tasks:
+                        for resolution in RESOLUTIONS.values():
+                            if resolution['runner_id'] == runner['id']:
+                                _end(resolution, 'expired', 'finish')
+                        chain['state'] = 'fenced'
+                        chain['fenced_at'] = time.time()
+                    else:
+                        chain['state'] = 'done'
                 return 200, {'chain_state': chain and chain['state']}
         if path == '/harness/secret-resolutions':
             task = _task_for_token(token)

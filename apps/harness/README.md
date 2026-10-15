@@ -42,8 +42,16 @@ The CLI starts through `agent-cli`, which changes to the task directory as
 `agent` and refuses a real path outside the chain workspace.
 
 At the end of the chain it kills every `agent` process in both containers,
-removes the chain workspace as `agent`, finishes, and exits. Pod deletion comes
-in a later slice.
+removes the chain workspace as `agent`, finishes, deletes its own pod with the
+projected service account token (read with uid 0 only then), and exits. The
+ReplicaSet starts a clean pod.
+
+On `SIGTERM` (an eviction, a node drain) it stops every task, kills every
+`agent` process, closes the sessions, removes the workspace, and finishes in 20
+seconds; imbi-api then puts the chain back in the queue. If that takes longer,
+it fences and exits.
+
+`helm/imbi-harness` deploys a pool.
 
 ## Isolation suite
 
