@@ -949,9 +949,20 @@ class TaskRun:
         parts = [
             self.config.get('system_prompt_prefix'),
             prompt.get('system'),
+            self.task_context(),
             UNTRUSTED_RULE,
         ]
         return '\n\n'.join(str(part) for part in parts if part)
+
+    def task_context(self) -> str:
+        """Where the task runs, so Imbi tools get the right arguments."""
+        lines = [
+            'Your Imbi organization slug is '
+            f'`{self.claim["organization_slug"]}`.'
+        ]
+        if project_id := self.task.get('project_id'):
+            lines.append(f'The task project id is `{project_id}`.')
+        return ' '.join(lines)
 
     def instruction(self) -> str:
         """The task description; a webhook payload is untrusted (6.7)."""

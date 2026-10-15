@@ -312,7 +312,10 @@ class ConfigTestCase(TaskTestCase):
         prompt = typing.cast('dict[str, str]', options.system_prompt)
         self.assertEqual(
             prompt['append'],
-            f'Org rules.\n\nYou fix bugs.\n\n{task.UNTRUSTED_RULE}',
+            'Org rules.\n\nYou fix bugs.\n\n'
+            'Your Imbi organization slug is `org`. '
+            'The task project id is `p`.\n\n'
+            f'{task.UNTRUSTED_RULE}',
         )
         # agent-cli changes the directory as agent; the SDK does not.
         self.assertIsNone(options.cwd)
