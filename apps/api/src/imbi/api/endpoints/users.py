@@ -6,6 +6,7 @@ import typing
 from urllib import parse as urlparse
 
 import fastapi
+import pydantic
 
 from imbi.api import models
 from imbi.api.auth import password, permissions
@@ -444,6 +445,29 @@ async def get_user_by_identity(
         avatar_url=user.avatar_url,
         email_notifications=user.email_notifications,
         organizations=organizations,
+    )
+
+
+class CallerPermissions(pydantic.BaseModel):
+    is_admin: bool
+    permissions: list[str]
+
+
+@users_router.get('/me/permissions', response_model=CallerPermissions)
+async def get_current_permissions(
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
+    ],
+) -> CallerPermissions:
+    """Return the caller's effective permissions.
+
+    Unlike ``GET /users/me``, this works for every principal, service
+    accounts included: imbi-mcp lists an agent's tools with it (harness
+    plan P7).
+    """
+    return CallerPermissions(
+        is_admin=auth.is_admin, permissions=sorted(auth.permissions)
     )
 
 

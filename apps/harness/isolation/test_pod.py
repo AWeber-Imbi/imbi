@@ -1219,3 +1219,103 @@ class ModelKeyRequestTests(unittest.TestCase):
         # Only the runner's own model key resolution exists.
         (only,) = resolutions_of(task, 'model_inference')
         self.assertEqual(only['ended_by'], 'executor')
+
+
+# --- P7.1: the Imbi relay ---------------------------------------------
+
+
+def mcp_tool(name: str, **arguments: typing.Any) -> Row:
+    return {'name': f'mcp__imbi_api__{name}', 'input': arguments}
+
+
+def jti(token: str) -> str:
+    payload = token.split('.')[1]
+    padded = payload + '=' * (-len(payload) % 4)
+    return json.loads(base64.urlsafe_b64decode(padded))['jti']
+
+
+class RelayTests(unittest.TestCase):
+    """The agent's mapped Imbi tools, relayed to a fake apps/mcp."""
+
+    task: typing.ClassVar[Row]
+    results: typing.ClassVar[list[str]]
+    calls: typing.ClassVar[list[Row]]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.task = queue(
+            {
+                'tools': {
+                    'imbi.list_projects': {},
+                    'imbi.update_project': {},
+                },
+                'script': [
+                    mcp_tool('list_projects', org='test'),
+                    # Longer than a runner heartbeat: the token renews.
+                    bash('sleep 8'),
+                    mcp_tool('list_projects', org='test'),
+                    mcp_tool('delete_everything'),
+                ],
+            }
+        )
+        run_task_until_done(cls.task)
+        cls.results = tool_results(cls.task)
+        cls.calls = [
+            call
+            for call in fake_api('GET', '/test/mcp-calls')
+            if call['task'] == cls.task['short_id']
+        ]
+
+    def test_relayed_result_is_untrusted(self) -> None:
+        first = self.results[0]
+        self.assertTrue(
+            first.startswith('<untrusted source="mcp:imbi_api">'), first
+        )
+        self.assertIn('billing', first)
+        self.assertIn('&lt;/untrusted>', first)
+
+    def test_unmapped_tool_is_not_offered(self) -> None:
+        self.assertNotIn('billing', self.results[3])
+        self.assertEqual(
+            [call['tool'] for call in self.calls],
+            ['list_projects', 'list_projects'],
+        )
+
+    def test_the_token_is_renewed(self) -> None:
+        first, second = (call['token'] for call in self.calls)
+        self.assertNotEqual(first, second)
+
+    def test_audit_fields_on_tool_called(self) -> None:
+        relayed = [
+            e['payload']
+            for e in task_of(self.task)['events']
+            if e['type'] == 'tool.called'
+            and e['payload']['tool'] == 'mcp__imbi_api__list_projects'
+        ]
+        self.assertEqual(len(relayed), 2)
+        for event, call in zip(relayed, self.calls, strict=True):
+            audit = event['relay']
+            self.assertEqual(audit['server'], 'imbi_api')
+            self.assertEqual(audit['status'], 'ok')
+            self.assertEqual(audit['token_jti'], jti(call['token']))
+            self.assertTrue(audit['input_digest'].startswith('sha256:'))
+            self.assertGreater(audit['bytes_out'], 0)
+            self.assertIn('latency_ms', audit)
+
+    def test_the_token_is_in_no_output(self) -> None:
+        tokens = [call['token'] for call in self.calls]
+        requests = json.dumps(
+            fake_api(
+                'GET', f'/test/model-requests?task={self.task["short_id"]}'
+            )
+        )
+        events = json.dumps(task_of(self.task)['events'])
+        path = f'/run/creds/runner/transcripts/{self.task["id"]}.jsonl'
+        transcript = as_user('runner', ['cat', path]).stdout
+        for token in tokens:
+            for where, text in (
+                ('model requests', requests),
+                ('events', events),
+                ('transcript', transcript),
+            ):
+                self.assertNotIn(token, text, where)

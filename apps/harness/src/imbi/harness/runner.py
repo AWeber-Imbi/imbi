@@ -53,6 +53,9 @@ class Settings:
     instance: str
     #: The model when the agent's prompt names none.
     model: str | None
+    #: ``apps/mcp`` for the Imbi relay (plan P7); operator
+    #: configuration, the in-cluster URL.
+    mcp_url: str | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -61,6 +64,7 @@ class Settings:
             pool=os.environ.get('IMBI_HARNESS_POOL', 'general'),
             instance=os.environ.get('HOSTNAME', 'runner'),
             model=os.environ.get('IMBI_HARNESS_MODEL') or None,
+            mcp_url=os.environ.get('IMBI_HARNESS_MCP_URL') or None,
         )
 
 
@@ -240,8 +244,11 @@ class Runner:
             sent = time.monotonic()
             try:
                 async with asyncio.timeout(max(0.1, deadline - sent)):
-                    await self.api.heartbeat(self.runner_id, self.runner_token)
+                    renewed = await self.api.heartbeat(
+                        self.runner_id, self.runner_token, self.open_tasks()
+                    )
                 expires = sent + lease_seconds
+                self.renew_api_tokens(renewed)
             except api.Refused as err:
                 if err.status == http.HTTPStatus.UNAUTHORIZED:
                     _fence(f'imbi-api does not know the runner: {err.code}')
@@ -251,6 +258,20 @@ class Runner:
                 LOGGER.warning('Heartbeat failed: %s', type(err).__name__)
             if time.monotonic() >= expires - margin:
                 _fence('the lease was not renewed')
+
+    def open_tasks(self) -> list[str]:
+        """The short ids of the task runs that have not ended."""
+        return [
+            short_id for short_id, run in self.runs.items() if not run.done()
+        ]
+
+    def renew_api_tokens(self, renewed: dict[str, str]) -> None:
+        """Swap in the new agent API tokens (memory only)."""
+        for task_run in self.task_runs:
+            token = renewed.get(task_run.api.short_id)
+            if token:
+                self.redactor.add(token)
+                task_run.api_token = token
 
     async def run_chain(self, claim: Body, layout: task.Layout) -> None:
         """Run the root task, then wait for every child task that it
@@ -262,7 +283,9 @@ class Runner:
 
     def _start(self, claim: Body, *, build: bool) -> asyncio.Task[Body]:
         assert self.layout is not None  # noqa: S101 - set by run_chain
-        self.redactor.add(str(claim['agent_token']))
+        self.redactor.add(
+            str(claim['agent_token']), str(claim.get('api_token') or '')
+        )
         task_run = task.TaskRun(
             self.api,
             claim,
@@ -273,6 +296,7 @@ class Runner:
             model=self.settings.model,
             build=build,
             children=self.run_child,
+            mcp_url=self.settings.mcp_url,
         )
         self.task_runs.append(task_run)
         run = asyncio.create_task(task_run.run())

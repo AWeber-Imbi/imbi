@@ -213,3 +213,14 @@ def _get_lifespan(request: fastapi.Request) -> Lifespan:
 
 
 type InjectLifespan = t.Annotated[Lifespan, fastapi.Depends(_get_lifespan)]
+
+
+def get_lifespan(request: fastapi.Request) -> Lifespan:
+    """The Lifespan of the request's app, for code that reads its state
+    on some requests only and so does not take :data:`InjectLifespan`.
+
+    Raises:
+        fastapi.HTTPException: 500 when the app has no lifespan.
+
+    """
+    return _get_lifespan(request)

@@ -423,3 +423,24 @@ class ConcurrentChildrenTestCase(unittest.IsolatedAsyncioTestCase):
                     await self.run_two(order),
                     [{'short_id': 'T-2'}, {'short_id': 'T-3'}],
                 )
+
+
+class ApiTokenRenewalTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_open_tasks_get_their_new_tokens(self) -> None:
+        subject = make_runner()
+        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        done.set_result(None)
+        running = asyncio.create_task(asyncio.sleep(3600))
+        self.addCleanup(running.cancel)
+        subject.runs = {'T-1': running, 'T-2': done}  # type: ignore[dict-item]
+        self.assertEqual(subject.open_tasks(), ['T-1'])
+        first, second = mock.Mock(), mock.Mock()
+        first.api.short_id, first.api_token = 'T-1', 'old-1'
+        second.api.short_id, second.api_token = 'T-2', 'old-2'
+        subject.task_runs = [first, second]
+        subject.renew_api_tokens({'T-1': 'eyJnew.eyJtoken.signature01'})
+        self.assertEqual(first.api_token, 'eyJnew.eyJtoken.signature01')
+        self.assertEqual(second.api_token, 'old-2')
+        self.assertEqual(
+            subject.redactor.text('eyJnew.eyJtoken.signature01'), '[REDACTED]'
+        )

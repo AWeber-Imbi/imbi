@@ -39,6 +39,10 @@ spec:
             - name: IMBI_HARNESS_MODEL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.imbi.mcpUrl }}
+            - name: IMBI_HARNESS_MCP_URL
+              value: {{ . | quote }}
+            {{- end }}
             # The runner deletes its own pod at the end of its chain.
             - name: POD_NAME
               valueFrom:

@@ -265,6 +265,39 @@ def deployed_operation_log(
     return common_models.OperationLog(**fields)
 
 
+_ORG_ENVIRONMENTS_QUERY: typing.LiteralString = (
+    'MATCH (e:Environment)-[:BELONGS_TO]->'
+    '(:Organization {{slug: {org_slug}}}) '
+    'WHERE e.slug IN {slugs} RETURN e.slug AS slug'
+)
+
+
+async def require_org_environments(
+    db: graph.Graph,
+    org_slug: str,
+    slugs: collections.abc.Iterable[str | None],
+) -> None:
+    """Raise 422 for an environment slug that is not in the
+    organization. A plugin puts the slug into its own queries (a log
+    search, a parameter path), so another value could widen them to
+    data that is not the project's."""
+    wanted = sorted({slug for slug in slugs if slug})
+    if not wanted:
+        return
+    records = await db.execute(
+        _ORG_ENVIRONMENTS_QUERY,
+        {'org_slug': org_slug, 'slugs': wanted},
+        ['slug'],
+    )
+    found = {graph.parse_agtype(r['slug']) for r in records}
+    if missing := [slug for slug in wanted if slug not in found]:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=f'Environment {missing[0]!r} is not in organization '
+            f'{org_slug!r}',
+        )
+
+
 async def lookup_project_slugs(
     db: graph.Graph,
     project_id: str,

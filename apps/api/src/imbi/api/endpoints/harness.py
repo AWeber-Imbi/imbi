@@ -24,6 +24,7 @@ import asyncio
 import datetime
 import decimal
 import json
+import logging
 import typing
 import uuid
 
@@ -45,6 +46,8 @@ from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.plugins.github import _repos
+
+LOGGER = logging.getLogger(__name__)
 
 #: The longest wait of a claim long poll, in seconds.
 MAX_CLAIM_WAIT_SECONDS = 20
@@ -149,11 +152,28 @@ class RunnerRegistered(pydantic.BaseModel):
     lease_expires_at: datetime.datetime
 
 
+class ApiToken(pydantic.BaseModel):
+    """An agent API token (harness plan P7): the Imbi API with the
+    agent's roles, for one lease."""
+
+    token: str
+    expires_at: datetime.datetime
+
+
+class RunnerHeartbeat(pydantic.BaseModel):
+    #: The short ids of the open tasks that the runner runs: each gets
+    #: a new agent API token.
+    tasks: list[str] = pydantic.Field(default=[], max_length=100)
+
+
 class RunnerLease(pydantic.BaseModel):
     state: harness_store.RunnerState
     chain_id: uuid.UUID | None = None
     lease_seconds: int
     lease_expires_at: datetime.datetime
+    #: A new agent API token for each task of the request that is open
+    #: in the runner's chain, by short id.
+    api_tokens: dict[str, ApiToken] = {}
 
 
 class BundlePrompt(pydantic.BaseModel):
@@ -228,6 +248,15 @@ class Claim(pydantic.BaseModel):
     #: For the harness routes of the tasks of this chain only.
     agent_token: str
     agent_token_expires_at: datetime.datetime
+    #: For the Imbi API with the agent's roles (P7), one lease; the
+    #: runner heartbeat renews it. ``None`` with ``api_token_error``
+    #: when Imbi does not mint it.
+    api_token: str | None = None
+    api_token_expires_at: datetime.datetime | None = None
+    #: ``service_account_in_other_organizations``: the agent's service
+    #: account is a member of another organization too, so its roles
+    #: there would apply (the organization comes only from the token).
+    api_token_error: str | None = None
 
 
 class RunnerFinished(pydantic.BaseModel):
@@ -679,6 +708,20 @@ async def _claim(
         organization_id=task['organization_id'],
     )
     token, expires = tokens.mint_agent_token(accounts[0].slug, grant)
+    api_token = api_expires = api_token_error = None
+    if await _only_in_organization(
+        db, accounts[0].slug, task['organization_id']
+    ):
+        api_token, api_expires = tokens.mint_agent_api_token(
+            accounts[0].slug,
+            grant,
+            organization_slug=org_slugs.get(task['organization_id'], ''),
+            agent_id=task['agent_id'],
+            task_id=str(task['id']),
+            lease_seconds=harness_store.LEASE_SECONDS,
+        )
+    else:
+        api_token_error = 'service_account_in_other_organizations'
     org_slug = org_slugs.get(task['organization_id'], '')
     return Claim(
         chain_id=chain['root_task_id'],
@@ -688,7 +731,29 @@ async def _claim(
         bundle=await _identity(db, store, task, org_slug),
         agent_token=token,
         agent_token_expires_at=expires,
+        api_token=api_token,
+        api_token_expires_at=api_expires,
+        api_token_error=api_token_error,
     )
+
+
+_MEMBERSHIPS_QUERY: typing.LiteralString = """
+MATCH (:ServiceAccount {{slug: {slug}}})-[:MEMBER_OF]->(o:Organization)
+RETURN o.id AS id
+"""
+
+
+async def _only_in_organization(
+    db: graph.Graph, service_account: str, organization_id: str
+) -> bool:
+    """Whether the service account is a member of this organization
+    only. An agent API token is minted only then: its roles in another
+    organization must not apply (plan P7)."""
+    records = await db.execute(
+        _MEMBERSHIPS_QUERY, {'slug': service_account}, ['id']
+    )
+    found = {str(graph.parse_agtype(r['id'])) for r in records}
+    return found <= {organization_id}
 
 
 def _unprocessable(detail: str) -> fastapi.HTTPException:
@@ -1053,9 +1118,14 @@ async def register_harness_runner(
     '/runners/{runner_id}/heartbeat', response_model=RunnerLease
 )
 async def heartbeat_harness_runner(
-    runner: harness_auth.Runner, store: harness.Store
+    runner: harness_auth.Runner,
+    store: harness.Store,
+    db: graph.Pool,
+    tasks: agent_tasks.Store,
+    data: RunnerHeartbeat | None = None,
 ) -> RunnerLease:
-    """Renew the lease of the runner.
+    """Renew the lease of the runner, and the agent API tokens of the
+    open tasks of its chain that ``tasks`` names.
 
     Raises:
         401: ``invalid_runner_credential``: the runner is lost. It
@@ -1071,12 +1141,84 @@ async def heartbeat_harness_runner(
                 'message': 'The runner is not live',
             },
         )
+    api_tokens: dict[str, ApiToken] = {}
+    if data is not None and data.tasks and row['chain_id'] is not None:
+        try:
+            api_tokens = await _renew_api_tokens(
+                db, store, tasks, row, data.tasks
+            )
+        except Exception:
+            # The lease is renewed already. A renewal error must not fail
+            # the heartbeat, or the runner is fenced. It keeps its tokens
+            # until the next heartbeat.
+            LOGGER.exception(
+                'Agent API token renewal failed for runner %s', runner['id']
+            )
     return RunnerLease(
         state=row['state'],
         chain_id=row['chain_id'],
         lease_seconds=harness_store.LEASE_SECONDS,
         lease_expires_at=row['lease_expires_at'],
+        api_tokens=api_tokens,
     )
+
+
+async def _renew_api_tokens(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    tasks: agent_tasks.TaskStore,
+    runner: dict[str, typing.Any],
+    short_ids: list[str],
+) -> dict[str, ApiToken]:
+    """New agent API tokens for the open tasks of the runner's chain.
+
+    A task of another chain, a closed task, or a chain that is not the
+    runner's current attempt gets none.
+    """
+    chain = await store.chain(runner['chain_id'])
+    if (
+        chain is None
+        or chain['state'] != 'running'
+        or chain['runner_id'] != runner['id']
+    ):
+        return {}
+    grant = tokens.AgentGrant(
+        chain_id=chain['root_task_id'],
+        attempt=chain['attempt'],
+        runner_id=runner['id'],
+        organization_id=chain['organization_id'],
+    )
+    org_slugs = await _org_slugs(db, [chain['organization_id']])
+    renewed: dict[str, ApiToken] = {}
+    for short_id in short_ids:
+        task = await tasks.get(chain['organization_id'], short_id.upper())
+        if (
+            task is None
+            or (task['chain_id'] or task['id']) != chain['root_task_id']
+            or task['status'] == 'closed'
+        ):
+            continue
+        accounts = await db.match(
+            models.ServiceAccount, {'id': task['service_account_id']}
+        )
+        if (
+            not accounts
+            or not accounts[0].is_active
+            or not await _only_in_organization(
+                db, accounts[0].slug, chain['organization_id']
+            )
+        ):
+            continue
+        token, expires = tokens.mint_agent_api_token(
+            accounts[0].slug,
+            grant,
+            organization_slug=org_slugs.get(chain['organization_id'], ''),
+            agent_id=task['agent_id'],
+            task_id=str(task['id']),
+            lease_seconds=harness_store.LEASE_SECONDS,
+        )
+        renewed[task['short_id']] = ApiToken(token=token, expires_at=expires)
+    return renewed
 
 
 @harness_router.post(

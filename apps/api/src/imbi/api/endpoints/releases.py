@@ -1844,6 +1844,7 @@ async def record_deployment(
         await complete_opslog_entry(
             data.external_run_id,
             datetime.datetime.now(datetime.UTC),
+            project_id,
         )
 
     # A DeploymentStatusPolicy may score this project on its current

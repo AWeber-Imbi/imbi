@@ -103,6 +103,67 @@ def create_refresh_token(
     )
 
 
+#: The audience of an agent API token (ADR 0022, harness plan P7): the
+#: token that a runner relays an agent's Imbi tool calls with. The
+#: shared :func:`verify_token` names no audience, so it refuses one.
+AGENT_API_AUDIENCE = 'imbi-agent-api'
+#: The ``type`` claim of an agent API token.
+AGENT_API_TOKEN_TYPE = 'agent_api'
+#: The claims that an agent API token must have.
+AGENT_API_CLAIMS = (
+    'sub',
+    'jti',
+    'type',
+    'exp',
+    'aud',
+    'org',
+    'org_slug',
+    'agent',
+    'chain',
+    'task',
+    'attempt',
+    'runner',
+)
+
+
+def is_agent_api_token(token: str) -> bool:
+    """Whether ``token`` says that it is an agent API token.
+
+    The signature is not checked here; :func:`verify_agent_api_token`
+    does.
+    """
+    try:
+        claims = jwt.decode(token, options={'verify_signature': False})
+    except jwt.InvalidTokenError:
+        return False
+    return claims.get('aud') == AGENT_API_AUDIENCE
+
+
+def verify_agent_api_token(
+    token: str, auth_settings: settings.Auth | None = None
+) -> dict[str, typing.Any]:
+    """Decode and validate an agent API token.
+
+    Raises:
+        jwt.ExpiredSignatureError: The token has expired (its lease).
+        jwt.InvalidTokenError: The token is not a valid agent API
+            token.
+
+    """
+    if auth_settings is None:
+        auth_settings = settings.get_auth_settings()
+    decoded: dict[str, typing.Any] = jwt.decode(
+        token,
+        auth_settings.jwt_secret,
+        algorithms=[auth_settings.jwt_algorithm],
+        audience=AGENT_API_AUDIENCE,
+        options={'require': list(AGENT_API_CLAIMS)},
+    )
+    if decoded['type'] != AGENT_API_TOKEN_TYPE:
+        raise jwt.InvalidTokenError('Not an agent API token')
+    return decoded
+
+
 def verify_token(
     token: str, auth_settings: settings.Auth | None = None
 ) -> dict[str, typing.Any]:

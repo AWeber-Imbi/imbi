@@ -246,3 +246,35 @@ class RequeueTestCase(unittest.TestCase):
         (warning,) = kept[3:]
         self.assertEqual(warning['payload']['kind'], 'warning')
         self.assertIn('7 events', warning['payload']['body'])
+
+
+class RelayAuditTestCase(unittest.TestCase):
+    def test_relay_fields_go_on_the_tool_call(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.audit = lambda name, arguments: (
+            {'server': 'imbi_api', 'status': 'ok'}
+            if name == 'mcp__imbi_api__list_projects'
+            else None
+        )
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[
+                    sdk.ToolUseBlock('t1', 'mcp__imbi_api__list_projects', {}),
+                    sdk.ToolUseBlock('t2', 'Bash', {}),
+                ],
+                model='m',
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(
+                content=[
+                    sdk.ToolResultBlock('t1', 'ok', False),
+                    sdk.ToolResultBlock('t2', 'ok', False),
+                ]
+            )
+        )
+        relayed, bash = recorder.take()
+        self.assertEqual(
+            relayed['payload']['relay'], {'server': 'imbi_api', 'status': 'ok'}
+        )
+        self.assertNotIn('relay', bash['payload'])

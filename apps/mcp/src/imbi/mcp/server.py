@@ -58,14 +58,28 @@ class ImbiTokenVerifier(TokenVerifier):
     JWT access tokens are verified locally with the shared Imbi HS256
     secret (via ``imbi.common``). Opaque ``ik_`` API keys cannot be
     verified here -- only the API can -- so they are accepted and
-    forwarded for the API to authorize (accept-and-forward). Anything
-    else returns ``None``, which makes FastMCP answer ``401`` with a
+    forwarded for the API to authorize (accept-and-forward). An agent
+    API token (a runner's relay, harness plan P7) is verified with its
+    own audience; the API decides where it works. Anything else returns
+    ``None``, which makes FastMCP answer ``401`` with a
     ``WWW-Authenticate`` challenge and kicks off OAuth discovery.
     """
 
     async def verify_token(self, token: str) -> AccessToken | None:
         if token.startswith('ik_'):
             return AccessToken(token=token, client_id='api-key', scopes=[])
+        if core.is_agent_api_token(token):
+            try:
+                agent = core.verify_agent_api_token(token)
+            except jwt.InvalidTokenError:
+                return None
+            return AccessToken(
+                token=token,
+                client_id=str(agent['sub']),
+                scopes=[],
+                expires_at=agent.get('exp'),
+                claims=agent,
+            )
         try:
             claims = core.verify_token(token)
         except jwt.InvalidTokenError:

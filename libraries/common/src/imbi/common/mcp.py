@@ -299,6 +299,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
         """
         self._client = client
         self._profile_path = f'{mount_prefix(spec)}{PROFILE_PATH}'
+        self._permissions_path = f'{self._profile_path}/permissions'
         # Per-instance, not module-level: each toolset filters against
         # its own client, so two servers in one process must not share
         # resolved profiles.
@@ -325,6 +326,10 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
             return cached
         try:
             response = await self._client.get(self._profile_path)
+            if response.status_code == httpx.codes.FORBIDDEN:
+                # A service account (an agent, harness plan P7) has no
+                # profile; this route gives its permissions.
+                response = await self._client.get(self._permissions_path)
             response.raise_for_status()
             profile = response.json()
         except (httpx.HTTPError, ValueError):

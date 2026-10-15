@@ -76,3 +76,48 @@ class PolicyTestCase(unittest.TestCase):
                 tool_map={'tickets.open': {}},
             ).approval
         )
+
+
+class RelayKeyTestCase(unittest.TestCase):
+    def test_relayed_imbi_tools_use_the_catalog_key(self) -> None:
+        self.assertEqual(
+            policy.tool_key('mcp__imbi_api__list_projects'),
+            'imbi.list_projects',
+        )
+        checked = policy.check(
+            'mcp__imbi_api__list_projects',
+            {},
+            allowed=[],
+            tool_map={'imbi.list_projects': {'approval': True}},
+            approval_tools=[],
+            automation=False,
+        )
+        self.assertTrue(checked.approval)
+        self.assertEqual(
+            policy.check(
+                'mcp__imbi_api__delete_everything',
+                {},
+                allowed=[],
+                tool_map={},
+                approval_tools=[],
+                automation=False,
+            ).deny,
+            'tool_not_configured',
+        )
+
+
+class HarnessNameTestCase(unittest.TestCase):
+    def test_a_relayed_tool_never_takes_a_harness_tool_key(self) -> None:
+        for name in sorted(policy.HARNESS_TOOLS):
+            with self.subTest(name=name):
+                # The harness tool itself is configured...
+                self.assertIsNone(check(f'mcp__imbi__{name}').deny)
+                # ...but a relayed tool with its name is refused, even
+                # when the tool map has the key.
+                self.assertEqual(
+                    check(
+                        f'mcp__imbi_api__{name}',
+                        tool_map={f'imbi.{name}': {}},
+                    ).deny,
+                    'tool_not_configured',
+                )

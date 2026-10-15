@@ -1,4 +1,5 @@
 import json
+import time
 import typing
 import unittest
 from unittest import mock
@@ -289,6 +290,43 @@ class ImbiTokenVerifierTests(unittest.IsolatedAsyncioTestCase):
         ):
             token = await server.ImbiTokenVerifier().verify_token('jwt')
         self.assertIsNone(token)
+
+
+class AgentApiTokenTests(unittest.IsolatedAsyncioTestCase):
+    def token(self, **changes: typing.Any) -> str:
+        claims = {
+            'sub': 'agent-sa',
+            'jti': 'j',
+            'type': 'agent_api',
+            'aud': 'imbi-agent-api',
+            'exp': int(time.time()) + 60,
+            'org': 'o',
+            'org_slug': 'o',
+            'agent': 'a',
+            'chain': 'c',
+            'task': 't',
+            'attempt': 1,
+            'runner': 'r',
+        } | changes
+        return jwt.encode(claims, 'secret', algorithm='HS256')
+
+    async def verify(self, token: str) -> AccessToken | None:
+        auth = mock.Mock(jwt_secret='secret', jwt_algorithm='HS256')
+        with mock.patch.object(
+            server.core.settings, 'get_auth_settings', return_value=auth
+        ):
+            return await server.ImbiTokenVerifier().verify_token(token)
+
+    async def test_agent_api_token_is_verified(self) -> None:
+        token = await self.verify(self.token())
+        assert token is not None
+        self.assertEqual(token.client_id, 'agent-sa')
+
+    async def test_expired_or_wrong_type(self) -> None:
+        self.assertIsNone(
+            await self.verify(self.token(exp=int(time.time()) - 5))
+        )
+        self.assertIsNone(await self.verify(self.token(type='access')))
 
 
 class BuildAuthTests(unittest.TestCase):

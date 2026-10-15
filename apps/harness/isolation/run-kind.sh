@@ -71,6 +71,7 @@ helm template general "$ROOT/helm/imbi-harness" --namespace "$NAMESPACE" \
   --set image.repository=imbi-harness --set image.tag=isolation \
   --set image.pullPolicy=Never \
   --set imbi.apiUrl=http://harness-fake-api:8080 \
+  --set imbi.mcpUrl=http://harness-fake-api:8080/mcp \
   --set poolCredential.existingSecret=harness-pool \
   | k apply -f -
 k rollout status deploy/general --timeout=180s

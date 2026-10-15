@@ -1324,3 +1324,76 @@ class UntrustedTagTestCase(TaskTestCase):
                 body = self.run_task.instruction().split('\n')[1]
                 self.assertNotRegex(body, r'(?i)<\s*/?\s*untrusted')
                 self.assertIn('&lt;', body)
+
+
+class RelayStartTestCase(TaskTestCase):
+    def with_tools(self, tools: dict[str, typing.Any]) -> task.TaskRun:
+        subject = self.make()
+        subject.bundle['snapshot'] = {'tools': tools}
+        subject.mcp_url = 'http://imbi-mcp:8001/mcp'
+        subject.api_token = 'api-token'
+        return subject
+
+    async def test_no_relay_without_url_or_mapped_tools(self) -> None:
+        subject = self.with_tools({'imbi.list_projects': {}})
+        subject.mcp_url = None
+        await subject.start_relay()
+        self.assertIsNone(subject.relay)
+
+    async def test_no_token_fails_a_task_that_needs_imbi(self) -> None:
+        subject = self.with_tools({'imbi.list_projects': {}})
+        subject.api_token = ''
+        subject.claim['api_token_error'] = (
+            'service_account_in_other_organizations'
+        )
+        with self.assertRaises(task.Failed) as ctx:
+            await subject.start_relay()
+        self.assertEqual(
+            ctx.exception.reason, 'service_account_in_other_organizations'
+        )
+        subject = self.with_tools({'jira.create': {}})
+        await subject.start_relay()
+        self.assertIsNone(subject.relay)
+
+    async def test_relay_tools_reach_the_cli(self) -> None:
+        subject = self.with_tools(
+            {'imbi.list_projects': {}, 'jira.create': {}}
+        )
+        with mock.patch.object(
+            task.relay.Relay,
+            'start',
+            mock.AsyncMock(return_value=['list_projects']),
+        ):
+            await subject.start_relay()
+        assert subject.relay is not None
+        subject.relay.tools['list_projects'] = task.relay._Tool(
+            'list_projects', 'List.', {'type': 'object'}, True, None
+        )
+        self.assertIn('mcp__imbi_api__list_projects', subject.tools()[0])
+        self.assertEqual(subject.mcp_servers(), ['jira'])
+        options = subject.options('http://127.0.0.1:1')
+        self.assertIn(
+            'imbi_api',
+            typing.cast('dict[str, typing.Any]', options.mcp_servers),
+        )
+        # The token is read when a call is made, so a renewal applies.
+        subject.api_token = 'renewed'
+        self.assertEqual(subject.relay.token(), 'renewed')
+
+    async def test_unavailable_relay_is_a_warning(self) -> None:
+        subject = self.with_tools({'imbi.list_projects': {}})
+        with (
+            mock.patch.object(
+                task.relay.Relay,
+                'start',
+                mock.AsyncMock(side_effect=task.relay.Unavailable('x')),
+            ),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+        ):
+            await subject.start_relay()
+        self.assertIsNone(subject.relay)
+        (notice,) = subject.recorder.take()
+        self.assertEqual(notice['payload']['kind'], 'warning')
+        self.assertIn(
+            'Imbi tools are not available', notice['payload']['body']
+        )

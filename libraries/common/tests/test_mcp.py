@@ -318,6 +318,25 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(['/api/users/me'], requested)
         self.assertEqual({'list_projects', 'ungated_op'}, names)
 
+    async def test_service_account_uses_the_permissions_route(self) -> None:
+        """A service account (an agent) gets 403 from the profile; the
+        permissions route filters its tools (harness plan P7)."""
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(request.url.path)
+            if request.url.path == '/api/users/me':
+                return httpx.Response(403)
+            return httpx.Response(
+                200, json={'is_admin': False, 'permissions': ['project:read']}
+            )
+
+        names = await self._tool_names(handler, prefix='/api')
+        self.assertEqual(
+            ['/api/users/me', '/api/users/me/permissions'], requested
+        )
+        self.assertEqual({'list_projects', 'ungated_op'}, names)
+
     async def test_admin_sees_every_tool(self) -> None:
         """Admins bypass filtering, matching the API's own bypass."""
         names = await self._tool_names(
