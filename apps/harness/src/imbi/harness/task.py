@@ -175,7 +175,7 @@ class Failed(Exception):
 
 
 class AgentTransport(subprocess_cli.SubprocessCLITransport):
-    """Start the CLI wrapper with effective uid 0.
+    """Start the CLI wrapper as uid 0 (real, effective and saved).
 
     ``setpriv`` needs ``CAP_SETUID`` when it starts. With
     ``CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK`` set and ``cli_path`` given,
@@ -183,7 +183,7 @@ class AgentTransport(subprocess_cli.SubprocessCLITransport):
     """
 
     async def connect(self) -> None:
-        with privilege.effective():
+        with privilege.spawn_as_root():
             await super().connect()
 
     async def close(self) -> None:
