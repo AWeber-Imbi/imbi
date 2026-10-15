@@ -595,3 +595,99 @@ class RouteTests(SecretRunnerTestCase):
         for value in (created['handle'], nonce):
             self.assertNotIn(value, repr(model))
             self.assertNotIn(value, str(model.model_dump()))
+
+
+class McpCredentialBindingTests(SecretRunnerTestCase):
+    """``POST /mcp-servers/{id}/credential-binding`` (plan P7)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.secrets
+        )
+        self.fake.values['mcp'] = b'static-mcp-value'
+        self.act_as_user()
+        self.user.is_admin = True
+        response = await self.client.post(
+            '/mcp-servers/',
+            json={
+                'name': 'Jira',
+                'slug': f'{self.org}-jira',
+                'url': 'https://jira.example.com/mcp',
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.server_id = response.json()['id']
+        self.addAsyncCleanup(self._drop_server)
+        self.body: dict[str, typing.Any] = {
+            'organization': self.org,
+            'reference': f'secret://mcp/{uuid.uuid4().hex}',
+            'provider_id': str(self.binding['provider_id']),
+            'locator': {'key': 'mcp'},
+            'agent_ids': [self.agent_id],
+        }
+
+    async def _drop_server(self) -> None:
+        await self.graph.execute(
+            'MATCH (n:MCPServer {{id: {id}}}) DETACH DELETE n RETURN 1 AS ok',
+            {'id': self.server_id},
+            ['ok'],
+        )
+
+    def link(self) -> typing.Awaitable[httpx.Response]:
+        return self.client.post(
+            f'/mcp-servers/{self.server_id}/credential-binding',
+            json=self.body,
+        )
+
+    async def test_links_binding_grant_and_reference(self) -> None:
+        response = await self.link()
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertEqual(
+            body['server']['credential_ref'], self.body['reference']
+        )
+        self.assertEqual(
+            body['binding']['allowed_delivery_modes'], ['file_descriptor']
+        )
+        self.assertEqual(body['grant']['purposes'], ['mcp_server'])
+        self.assertEqual(body['grant']['agent_ids'], [self.agent_id])
+        self.assertTrue(body['validation']['valid'], body)
+        self.assertNotIn('static-mcp-value', response.text)
+
+    async def test_only_a_platform_admin(self) -> None:
+        self.user.is_admin = False
+        self.permissions.add('mcp_server:update')
+        response = await self.link()
+        self.assertEqual(response.status_code, 403, response.text)
+        # Not as a field on the server either.
+        response = await self.client.patch(
+            f'/mcp-servers/{self.server_id}',
+            json={'credential_ref': 'secret://mcp/x'},
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.client.patch(
+            f'/mcp-servers/{self.server_id}', json={'timeout': 10}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_only_in_a_member_organization(self) -> None:
+        other = f'other-{self.org}'
+        await self.graph.execute(
+            'CREATE (o:Organization {{id: {slug}, slug: {slug},'
+            ' name: {slug}}}) RETURN 1 AS ok',
+            {'slug': other},
+            ['ok'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (o:Organization {{slug: {slug}}}) DETACH DELETE o'
+            ' RETURN 1 AS ok',
+            {'slug': other},
+            ['ok'],
+        )
+        self.body['organization'] = other
+        response = await self.link()
+        self.assertEqual(response.status_code, 403, response.text)
+        server = await self.client.get(f'/mcp-servers/{self.server_id}')
+        self.assertIsNone(server.json()['credential_ref'])

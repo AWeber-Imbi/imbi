@@ -31,7 +31,7 @@ import fastapi
 import pydantic
 from fastapi import responses
 
-from imbi.api import agent_tasks, harness, secret_broker
+from imbi.api import agent_tasks, agent_tools, harness, secret_broker
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
 from imbi.api.endpoints import agent_tasks as tasks_api
@@ -207,6 +207,24 @@ class BundleSubagent(pydantic.BaseModel):
     instructions: str = ''
 
 
+class BundleMcpServer(pydantic.BaseModel):
+    """A third-party MCP server that the runner relays (plan P7).
+
+    Holds no secret: the runner resolves ``credential_ref`` with the
+    ``mcp_server`` purpose into its own memory.
+    """
+
+    slug: str
+    url: str
+    auth_type: typing.Literal['none', 'static', 'oauth_client_credentials']
+    static_header: str | None = None
+    oauth_token_url: str | None = None
+    oauth_client_id: str | None = None
+    oauth_scope: str | None = None
+    ignored_tools: list[str] = []
+    credential_ref: str | None = None
+
+
 class IdentityBundle(pydantic.BaseModel):
     """The pinned identity of a task's agent. Holds no secret."""
 
@@ -234,6 +252,10 @@ class IdentityBundle(pydantic.BaseModel):
     repositories: list[BundleRepository] = []
     #: The subagents of the pinned agent version, with their slugs.
     subagents: list[BundleSubagent] = []
+    #: The third-party MCP servers with tools in the agent's tool map
+    #: that the task's organization can use. The runner warns about
+    #: the other servers of the tool map.
+    mcp_servers: list[BundleMcpServer] = []
 
 
 class Claim(pydantic.BaseModel):
@@ -517,6 +539,66 @@ async def _subagents(
     ]
 
 
+async def _mcp_servers(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    organization_id: str,
+    snapshot: dict[str, typing.Any],
+) -> list[BundleMcpServer]:
+    """The third-party MCP servers of a version snapshot's tool map
+    that the runner can relay (plan P7).
+
+    A server is left out when it is disabled, does not check TLS, or
+    is not HTTPS, or when it needs a credential and the organization
+    has no enabled binding for its ``credential_ref``. The Fernet
+    fields are never used for agents.
+    """
+    tools: dict[str, typing.Any] = snapshot.get('tools') or {}
+    slugs = sorted(
+        {key.partition('.')[0] for key in tools}
+        - {agent_tools.IMBI_SERVER_SLUG}
+    )
+    servers: list[BundleMcpServer] = []
+    for slug in slugs:
+        found = await db.match(models.MCPServer, {'slug': slug})
+        if not found:
+            continue
+        server = found[0]
+        if (
+            not server.enabled
+            or not server.verify_ssl
+            or server.url.scheme != 'https'
+        ):
+            continue
+        if server.auth_type != 'none':
+            if not server.credential_ref:
+                continue
+            binding = await store.binding_provider(
+                organization_id,
+                broker.parse_reference(server.credential_ref).binding,
+            )
+            if binding is None or not binding['enabled']:
+                continue
+        servers.append(
+            BundleMcpServer(
+                slug=server.slug,
+                url=str(server.url),
+                auth_type=server.auth_type,
+                static_header=server.static_header,
+                oauth_token_url=(
+                    str(server.oauth_token_url)
+                    if server.oauth_token_url
+                    else None
+                ),
+                oauth_client_id=server.oauth_client_id,
+                oauth_scope=server.oauth_scope,
+                ignored_tools=server.ignored_tools,
+                credential_ref=server.credential_ref,
+            )
+        )
+    return servers
+
+
 async def _rendered_prompt(
     db: graph.Graph,
     task: dict[str, typing.Any],
@@ -638,6 +720,9 @@ async def _identity(
             'config': platform.merge(config, settings),
             'repositories': await _repositories(db, store, task, settings),
             'subagents': await _subagents(db, bundle.snapshot),
+            'mcp_servers': await _mcp_servers(
+                db, store, task['organization_id'], bundle.snapshot
+            ),
         }
     )
 

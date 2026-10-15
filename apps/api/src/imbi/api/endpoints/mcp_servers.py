@@ -11,14 +11,17 @@ surface ``has_static_value`` / ``has_oauth_client_secret`` booleans.
 import datetime
 import logging
 import typing
+import uuid
 
 import fastapi
 import pydantic
 
-from imbi.api import mcp_test
-from imbi.api.auth import permissions
+from imbi.api import mcp_test, secret_broker
+from imbi.api.auth import organizations, permissions
+from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.secret_broker import broker, providers
 from imbi.common import graph, models
 from imbi.common.auth.encryption import encrypt_config_value
 
@@ -30,6 +33,33 @@ mcp_servers_router = fastapi.APIRouter(
 )
 
 AuthType = typing.Literal['none', 'static', 'oauth_client_credentials']
+
+
+def _admin_only_reference(
+    auth: permissions.AuthContext, before: str | None, after: str | None
+) -> None:
+    """Only a platform admin sets ``credential_ref``: the server is
+    global, so the reference names a binding in every organization.
+
+    Raises:
+        403: The caller changes the reference and is not an admin.
+
+    """
+    if before != after and not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only a platform admin can set credential_ref',
+        )
+
+
+def _check_reference(value: str | None) -> str | None:
+    """A ``secret://`` reference in its canonical form, or ``None``."""
+    if value:
+        try:
+            broker.parse_reference(value)
+        except providers.BrokerError as err:
+            raise ValueError('not a valid secret:// reference') from err
+    return value or None
 
 
 class MCPServerCreate(pydantic.BaseModel):
@@ -56,6 +86,12 @@ class MCPServerCreate(pydantic.BaseModel):
     oauth_client_id: str | None = None
     oauth_client_secret: str | None = None
     oauth_scope: str | None = None
+    credential_ref: str | None = None
+
+    @pydantic.field_validator('credential_ref')
+    @classmethod
+    def _reference(cls, value: str | None) -> str | None:
+        return _check_reference(value)
 
 
 class MCPServerUpdate(pydantic.BaseModel):
@@ -84,6 +120,12 @@ class MCPServerUpdate(pydantic.BaseModel):
     oauth_client_id: str | None = None
     oauth_client_secret: str | None = None
     oauth_scope: str | None = None
+    credential_ref: str | None = None
+
+    @pydantic.field_validator('credential_ref')
+    @classmethod
+    def _reference(cls, value: str | None) -> str | None:
+        return _check_reference(value)
 
 
 class MCPServerResponse(pydantic.BaseModel):
@@ -111,6 +153,7 @@ class MCPServerResponse(pydantic.BaseModel):
     oauth_client_id: str | None = None
     has_oauth_client_secret: bool = False
     oauth_scope: str | None = None
+    credential_ref: str | None = None
     status: typing.Literal['unknown', 'healthy', 'degraded', 'unreachable'] = (
         'unknown'
     )
@@ -175,6 +218,7 @@ def _to_response(node: models.MCPServer) -> MCPServerResponse:
             node.oauth_client_secret_encrypted is not None
         ),
         oauth_scope=node.oauth_scope,
+        credential_ref=node.credential_ref,
         status=node.status,
         last_tested_at=node.last_tested_at,
         last_tested_latency_ms=node.last_tested_latency_ms,
@@ -207,10 +251,11 @@ async def create_mcp_server(
         The created MCP server, without any secret values.
 
     Raises:
+        403: ``credential_ref`` is set by a caller that is not an admin.
         409: If an MCP server with the same slug already exists.
 
     """
-    _ = auth
+    _admin_only_reference(auth, None, data.credential_ref)
     try:
         node = models.MCPServer(
             name=data.name,
@@ -232,6 +277,7 @@ async def create_mcp_server(
                 data.oauth_client_secret
             ),
             oauth_scope=data.oauth_scope,
+            credential_ref=data.credential_ref,
         )
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
@@ -326,13 +372,17 @@ async def update_mcp_server(
         The updated MCP server, without any secret values.
 
     Raises:
+        403: ``credential_ref`` changes and the caller is not an admin.
         404: If no MCP server with the given id exists.
         409: If the new slug collides with another MCP server.
 
     """
-    _ = auth
     existing = await _fetch(db, id)
     set_fields = data.model_dump(exclude_unset=True)
+    if 'credential_ref' in set_fields:
+        _admin_only_reference(
+            auth, existing.credential_ref, set_fields['credential_ref']
+        )
 
     updates: dict[str, typing.Any] = {}
     for field in (
@@ -351,6 +401,7 @@ async def update_mcp_server(
         'oauth_token_url',
         'oauth_client_id',
         'oauth_scope',
+        'credential_ref',
     ):
         if field in set_fields:
             updates[field] = set_fields[field]
@@ -605,3 +656,121 @@ async def _fetch(db: graph.Graph, id: str) -> models.MCPServer:
 
 
 __all__ = ['mcp_servers_router']
+
+
+class CredentialBindingCreate(pydantic.BaseModel):
+    """Link an MCP server to a secrets broker binding in one
+    organization (harness plan P7)."""
+
+    organization: str = pydantic.Field(description='The organization slug')
+    reference: str = pydantic.Field(
+        description='secret://<scope>/<path>, without a field'
+    )
+    field: secrets_api.FieldName | None = pydantic.Field(
+        default=None,
+        description='The field of the secret that holds the static value '
+        'or the OAuth client secret',
+    )
+    provider_id: uuid.UUID
+    locator: dict[str, typing.Any]
+    max_ttl_seconds: secrets_api.Ttl = 900
+    agent_ids: list[secrets_api.Id] = pydantic.Field(
+        default=[],
+        description='The agents that may use the credential. Empty: no '
+        'grant is made.',
+    )
+
+
+class CredentialBindingResult(pydantic.BaseModel):
+    server: MCPServerResponse
+    binding: secrets_api.SecretBinding
+    grant: secrets_api.SecretGrant | None = None
+    validation: secrets_api.SecretBindingValidation
+
+
+@mcp_servers_router.post(
+    '/{id}/credential-binding',
+    response_model=CredentialBindingResult,
+    status_code=201,
+)
+async def link_credential_binding(
+    id: str,
+    data: CredentialBindingCreate,
+    db: graph.Pool,
+    secrets: secret_broker.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('mcp_server:update')),
+    ],
+) -> dict[str, typing.Any]:
+    """Link the server's credential for agents to a broker binding.
+
+    Creates a binding (``file_descriptor`` only) in the organization,
+    a grant with the ``mcp_server`` purpose for ``agent_ids``, asks the
+    provider whether the secret is there, and sets ``credential_ref``.
+
+    The value is not moved: the broker stores no secret material, so
+    the admin first puts the value in the organization's secret store.
+    The Fernet fields stay, because apps/assistant still reads them.
+
+    Raises:
+        403: The caller is not a platform admin (the server is global),
+            or is not a member of the organization.
+        404: No such server or organization.
+        409: The reference is bound already in the organization.
+        422: The reference, provider, or locator is not valid.
+
+    """
+    if not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only a platform admin can set credential_ref',
+        )
+    server = await _fetch(db, id)
+    # The binding and the grant need the caller's access to the
+    # organization, as on the secrets routes.
+    org_id = await organizations.check_member(data.organization, db, auth)
+    binding = await secrets_api.create_binding(
+        org_id,
+        secrets_api.SecretBindingCreate(
+            reference=data.reference,
+            provider_id=data.provider_id,
+            credential_class='static',
+            locator=data.locator,
+            allowed_fields=[data.field] if data.field else [],
+            allowed_delivery_modes=['file_descriptor'],
+            max_ttl_seconds=data.max_ttl_seconds,
+            description=f'MCP server {server.slug} (harness plan P7)',
+        ),
+        secrets,
+        auth,
+    )
+    grant = None
+    if data.agent_ids:
+        grant = await secrets_api.create_grant(
+            org_id,
+            secrets_api.SecretGrantCreate(
+                description=f'Agents that use MCP server {server.slug}',
+                agent_ids=data.agent_ids,
+                binding_ids=[binding['id']],
+                purposes=['mcp_server'],
+                delivery_modes=['file_descriptor'],
+                max_ttl_seconds=data.max_ttl_seconds,
+            ),
+            secrets,
+            auth,
+        )
+    validation = await secrets_api.validate_binding(
+        org_id, binding['id'], secrets, auth
+    )
+    server.credential_ref = (
+        f'{binding["reference"]}#{data.field}'
+        if data.field
+        else str(binding['reference'])
+    )
+    return {
+        'server': _to_response(await _persist(db, server)),
+        'binding': binding,
+        'grant': grant,
+        'validation': validation,
+    }

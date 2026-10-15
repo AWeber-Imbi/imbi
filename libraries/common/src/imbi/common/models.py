@@ -532,6 +532,11 @@ class MCPServer(Node):
     oauth_client_id: str | None = None
     oauth_client_secret_encrypted: str | None = None
     oauth_scope: str | None = None
+    #: The ``secret://`` reference of the credential for agents (harness
+    #: plan P7): the static value, or the OAuth client secret. Each
+    #: organization that gives the server to its agents has a secrets
+    #: broker binding with this reference.
+    credential_ref: str | None = None
     # Runtime health, written by the connection-test endpoint and by the
     # assistant when a tool call against this server fails. ``unknown``
     # means it has never been tested or reported on.
@@ -557,14 +562,18 @@ class MCPServer(Node):
         Validates the persisted shape: secret presence is checked via the
         ``*_encrypted`` fields, so this holds equally for a freshly built
         node and for a node assembled by merging a partial update onto an
-        existing one.
+        existing one. A ``credential_ref`` stands for the secret: agents
+        get the credential from the secrets broker (harness plan P7).
         """
         if self.auth_type == 'static':
             missing = [
                 name
                 for name, value in (
                     ('static_header', self.static_header),
-                    ('static_value', self.static_value_encrypted),
+                    (
+                        'static_value or credential_ref',
+                        self.static_value_encrypted or self.credential_ref,
+                    ),
                 )
                 if not value
             ]
@@ -579,8 +588,9 @@ class MCPServer(Node):
                     ('oauth_token_url', self.oauth_token_url),
                     ('oauth_client_id', self.oauth_client_id),
                     (
-                        'oauth_client_secret',
-                        self.oauth_client_secret_encrypted,
+                        'oauth_client_secret or credential_ref',
+                        self.oauth_client_secret_encrypted
+                        or self.credential_ref,
                     ),
                 )
                 if not value
