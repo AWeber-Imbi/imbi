@@ -22,7 +22,10 @@ import slugify
 
 from imbi.api.auth import permissions
 from imbi.api.endpoints import ai_providers
-from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.endpoints._helpers import (
+    caller_team_ids,
+    conflict_on_unique_violation,
+)
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
@@ -354,6 +357,38 @@ def _rows_to_responses(
     ]
 
 
+async def _visible_teams(
+    db: graph.Graph, auth: permissions.AuthContext
+) -> set[str] | None:
+    """The ids of the teams that the caller may see: the teams of its
+    organizations, or ``None`` (all) for a platform admin. A model is
+    global, but its teams are data of their organizations (#414)."""
+    return None if auth.is_admin else await caller_team_ids(db, auth)
+
+
+def _only_visible(
+    response: AIModelResponse, visible: set[str] | None
+) -> AIModelResponse:
+    if visible is None:
+        return response
+    return response.model_copy(
+        update={
+            'allowed_teams': [
+                team for team in response.allowed_teams if team.id in visible
+            ]
+        }
+    )
+
+
+def _check_visible(team_ids: list[str], visible: set[str] | None) -> None:
+    """A caller sets only teams of its own organizations."""
+    if visible is not None and (hidden := set(team_ids) - visible):
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=f'Team {sorted(hidden)[0]!r} does not exist',
+        )
+
+
 async def _resolve_teams(
     db: graph.Graph, team_ids: list[str]
 ) -> list[TeamRef]:
@@ -565,9 +600,12 @@ async def list_ai_models(
         Every configured model with its provider and allowed teams.
 
     """
-    _ = auth
     records = await db.execute(_LIST_QUERY, {}, ['m', 'p', 't'])
-    return sorted(_rows_to_responses(records), key=lambda r: r.name.lower())
+    visible = await _visible_teams(db, auth)
+    return sorted(
+        (_only_visible(r, visible) for r in _rows_to_responses(records)),
+        key=lambda r: r.name.lower(),
+    )
 
 
 @ai_models_router.post('/', response_model=AIModelResponse, status_code=201)
@@ -600,7 +638,8 @@ async def create_ai_model(
             no teams.
 
     """
-    _ = auth
+    visible = await _visible_teams(db, auth)
+    _check_visible(data.allowed_team_ids, visible)
     provider = await ai_providers.fetch_provider(db, data.provider_id)
     teams = await _resolve_teams(db, data.allowed_team_ids)
     _validate_access(data.access_scope, teams)
@@ -614,7 +653,7 @@ async def create_ai_model(
 
     await _assert_slug_free(db, node.slug)
     await _assert_model_id_free(db, provider.id, node.model_id)
-    return await _insert(db, node, provider, teams)
+    return _only_visible(await _insert(db, node, provider, teams), visible)
 
 
 @ai_models_router.get('/{id}', response_model=AIModelResponse)
@@ -638,8 +677,9 @@ async def get_ai_model(
         404: No such model.
 
     """
-    _ = auth
-    return await _fetch_response(db, id)
+    return _only_visible(
+        await _fetch_response(db, id), await _visible_teams(db, auth)
+    )
 
 
 async def _fetch_response(db: graph.Graph, id: str) -> AIModelResponse:
@@ -686,15 +726,14 @@ async def patch_ai_model(
             with no teams, or the patched values are invalid.
 
     """
-    _ = auth
+    visible = await _visible_teams(db, auth)
     current_response = await _fetch_response(db, id)
     document: dict[str, typing.Any] = current_response.model_dump(
         mode='json',
         include={*_PATCHABLE_FIELDS, 'provider_id'},
     )
-    document['allowed_team_ids'] = [
-        team.id for team in current_response.allowed_teams
-    ]
+    shown = _only_visible(current_response, visible).allowed_teams
+    document['allowed_team_ids'] = [team.id for team in shown]
     patched = json_patch.apply_patch(document, operations, _READONLY_PATHS)
 
     provider_id = str(
@@ -710,6 +749,12 @@ async def patch_ai_model(
             status_code=422,
             detail=f'allowed_team_ids must be a list of ids: {e.errors()}',
         ) from e
+    _check_visible(team_ids, visible)
+    # The caller does not see the teams of other organizations, so a
+    # patch keeps them.
+    team_ids += [
+        team.id for team in current_response.allowed_teams if team not in shown
+    ]
     teams = await _resolve_teams(db, team_ids)
     node = _build(
         {k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS},
@@ -751,7 +796,9 @@ async def patch_ai_model(
         await db.execute(_LINK_PROVIDER_QUERY, params, ['id'])
         await db.execute(_UNLINK_OTHER_PROVIDERS_QUERY, params, [])
     await _replace_team_edges(db, id, teams)
-    return _to_response(node, provider.id, provider.name, teams)
+    return _only_visible(
+        _to_response(node, provider.id, provider.name, teams), visible
+    )
 
 
 @ai_models_router.delete('/{id}', status_code=204)

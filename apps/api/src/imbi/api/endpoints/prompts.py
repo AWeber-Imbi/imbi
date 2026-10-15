@@ -28,7 +28,10 @@ import slugify
 
 from imbi.api.auth import permissions
 from imbi.api.endpoints import ai_providers, projects
-from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.endpoints._helpers import (
+    caller_org_slugs,
+    conflict_on_unique_violation,
+)
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
@@ -518,10 +521,47 @@ async def _model_id_for(
     return str(graph.parse_agtype(records[0]['model_id']))
 
 
+#: The namespace whose prompts are data of one organization: an agent's
+#: system prompt is ``agents/<org slug>.<agent slug>``.
+_ORG_NAMESPACE = 'agents'
+
+
+def _prompt_org(namespace: str, slug: str) -> str | None:
+    """The organization whose data a prompt is, or ``None``.
+
+    A prompt in :data:`_ORG_NAMESPACE` named ``<org>.<agent>`` belongs
+    to ``<org>``. An older agent prompt without the prefix belongs to
+    no organization.
+    """
+    org, dot, _ = slug.partition('.')
+    return org if namespace == _ORG_NAMESPACE and dot else None
+
+
+async def _require_access(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    namespace: str,
+    slug: str,
+) -> None:
+    """An organization's prompt is only for its members and platform
+    admins (issue #414). Others get 404, so the name is not confirmed."""
+    org = _prompt_org(namespace, slug)
+    if org is None or auth.is_admin:
+        return
+    if org not in await caller_org_slugs(db, auth):
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Prompt {namespace}/{slug} not found'
+        )
+
+
 async def _fetch_prompt(
-    db: graph.Graph, namespace: str, slug: str
+    db: graph.Graph,
+    namespace: str,
+    slug: str,
+    auth: permissions.AuthContext,
 ) -> tuple[models.Prompt, int]:
     """Read a prompt and its newest version number, or raise 404."""
+    await _require_access(db, auth, namespace, slug)
     try:
         return await prompt_resolve.fetch_prompt(db, namespace, slug)
     except prompt_resolve.PromptNotFound as e:
@@ -663,9 +703,14 @@ def parse_ref(ref: str) -> tuple[str, str, str | None]:
 
 
 async def _resolve(
-    db: graph.Graph, ref: str
+    db: graph.Graph, ref: str, auth: permissions.AuthContext
 ) -> tuple[models.Prompt, models.PromptVersion, str | None]:
     """Find the version a reference names, or raise 404 / 422."""
+    try:
+        namespace, slug, _selector = prompt_resolve.parse_ref(ref)
+    except prompt_resolve.InvalidRef as e:
+        raise _unprocessable(str(e)) from e
+    await _require_access(db, auth, namespace, slug)
     try:
         return await prompt_resolve.resolve(db, ref)
     except prompt_resolve.InvalidRef as e:
@@ -692,7 +737,6 @@ async def list_prompts(
         namespace: Only list prompts in this namespace.
 
     """
-    _ = auth
     if namespace is None:
         records = await db.execute(_LIST_QUERY, {}, ['p', 'latest'])
     else:
@@ -701,15 +745,18 @@ async def list_prompts(
             {'namespace': namespace},
             ['p', 'latest'],
         )
+    members = None if auth.is_admin else await caller_org_slugs(db, auth)
     responses: list[PromptResponse] = []
     for record in records:
         props = _props(record['p'])
         if props is None:
             continue
+        prompt = _parse_prompt(props)
+        org = _prompt_org(prompt.namespace, prompt.slug)
+        if members is not None and org is not None and org not in members:
+            continue  # Another organization's prompt (issue #414).
         latest = graph.parse_agtype(record['latest'])
-        responses.append(
-            _prompt_response(_parse_prompt(props), int(latest or 0))
-        )
+        responses.append(_prompt_response(prompt, int(latest or 0)))
     return sorted(responses, key=lambda r: (r.namespace, r.slug))
 
 
@@ -737,6 +784,7 @@ async def create_prompt(
             catalog.
 
     """
+    await _require_access(db, auth, data.namespace, data.slug or '')
     can_promote = auth.is_admin or 'prompt:promote' in auth.permissions
     return await insert_prompt(
         db, data, auth.principal_name, label_first_version=can_promote
@@ -852,7 +900,7 @@ async def resolve_prompt(
 
     """
     _ = auth
-    prompt, version, label = await _resolve(db, ref)
+    prompt, version, label = await _resolve(db, ref, auth)
     return Resolution(
         ref=ref, label=label, version=_version_response(version, prompt)
     )
@@ -881,7 +929,7 @@ async def render_prompt(
             template fails.
 
     """
-    prompt, version, label = await _resolve(db, data.ref)
+    prompt, version, label = await _resolve(db, data.ref, auth)
     providers = _providers(auth, db, org_slug, request)
     response = RenderResponse(
         ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
@@ -952,14 +1000,14 @@ def _wire_question(question: models.DecisionQuestion) -> dict[str, typing.Any]:
 
 
 async def _run_target(
-    db: graph.Graph, data: RunRequest, principal: str
+    db: graph.Graph, data: RunRequest, auth: permissions.AuthContext
 ) -> tuple[models.Prompt, models.PromptVersion, int | None]:
     """The prompt and version a run uses: saved, or the draft."""
     if data.ref is not None:
-        prompt, version, _label = await _resolve(db, data.ref)
+        prompt, version, _label = await _resolve(db, data.ref, auth)
         return prompt, version, version.n
     draft = typing.cast('RunDraft', data.draft)
-    prompt, latest = await _fetch_prompt(db, draft.namespace, draft.slug)
+    prompt, latest = await _fetch_prompt(db, draft.namespace, draft.slug, auth)
     _check_kind(prompt.kind, draft.version)
     _check_templates(draft.version)
     version = models.PromptVersion.model_validate(
@@ -969,7 +1017,7 @@ async def _run_target(
             'prompt_id': prompt.id,
             'n': latest + 1,
             'content_sha256': content_sha256(draft.version),
-            'created_by': principal,
+            'created_by': auth.principal_name,
         }
     )
     return prompt, version, None
@@ -1002,7 +1050,7 @@ async def run_prompt(
         502: The decision model rejected or failed the call.
 
     """
-    prompt, version, n = await _run_target(db, data, auth.principal_name)
+    prompt, version, n = await _run_target(db, data, auth)
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
     )
@@ -1097,7 +1145,7 @@ async def get_prompt(
 ) -> PromptResponse:
     """Get one prompt with its labels."""
     _ = auth
-    prompt, latest = await _fetch_prompt(db, namespace, slug)
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     return _prompt_response(prompt, latest)
 
 
@@ -1126,7 +1174,7 @@ async def patch_prompt(
         422: The patched values are not valid.
 
     """
-    prompt, latest = await _fetch_prompt(db, namespace, slug)
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     document = prompt.model_dump(mode='json', include=set(_PATCHABLE_FIELDS))
     patched = json_patch.apply_patch(document, operations, _READONLY_PATHS)
     try:
@@ -1146,6 +1194,7 @@ async def patch_prompt(
                 status_code=403,
                 detail='Renaming a prompt requires prompt:promote',
             )
+        await _require_access(db, auth, updated.namespace, updated.slug)
         await _assert_ref_free(db, updated.namespace, updated.slug, prompt.id)
     updated.updated_at = _now()
     props = updated.model_dump(
@@ -1174,7 +1223,7 @@ async def delete_prompt(
 ) -> None:
     """Delete a prompt and every version of it."""
     _ = auth
-    prompt, _latest = await _fetch_prompt(db, namespace, slug)
+    prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     params = {'id': prompt.id}
     # Versions first: a failure between the two writes leaves a prompt
     # with no versions, which a second DELETE removes.
@@ -1200,7 +1249,7 @@ async def list_prompt_versions(
 ) -> list[PromptVersionResponse]:
     """List every version of a prompt, newest first."""
     _ = auth
-    prompt, _latest = await _fetch_prompt(db, namespace, slug)
+    prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     records = await db.execute(
         _VERSIONS_QUERY, {'prompt_id': prompt.id}, ['v']
     )
@@ -1229,7 +1278,7 @@ async def get_prompt_version(
 ) -> PromptVersionResponse:
     """Get one version of a prompt."""
     _ = auth
-    prompt, _latest = await _fetch_prompt(db, namespace, slug)
+    prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     version = await _fetch_version(db, prompt, n)
     return _version_response(version, prompt)
 
@@ -1262,7 +1311,7 @@ async def create_prompt_version(
             catalog.
 
     """
-    prompt, latest = await _fetch_prompt(db, namespace, slug)
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     _check_kind(prompt.kind, data)
     _check_templates(data)
     if latest:
@@ -1312,7 +1361,7 @@ async def set_prompt_version_evaluation(
     This is a cache for display. It never gates a promotion.
     """
     _ = auth
-    prompt, _latest = await _fetch_prompt(db, namespace, slug)
+    prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     version = await _fetch_version(db, prompt, n)
     summary = data.model_dump(mode='json')
     await db.execute(
@@ -1356,7 +1405,7 @@ async def set_prompt_label(
 
     """
     _check_label_name(label)
-    prompt, latest = await _fetch_prompt(db, namespace, slug)
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     await _fetch_version(db, prompt, data.version)
     labels = moved_labels(prompt, label, data.version, auth.principal_name)
     updated = await _write_labels(db, prompt, labels, prompt.default_label)
@@ -1385,7 +1434,7 @@ async def delete_prompt_label(
 
     """
     _ = auth
-    prompt, latest = await _fetch_prompt(db, namespace, slug)
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     if label == prompt.default_label:
         raise fastapi.HTTPException(
             status_code=409,
@@ -1426,7 +1475,7 @@ async def set_prompt_default_label(
 
     """
     _ = auth
-    prompt, latest = await _fetch_prompt(db, namespace, slug)
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     if data.label not in {item.name for item in prompt.labels}:
         raise _unprocessable(
             f'Prompt {namespace}/{slug} has no label {data.label!r}'

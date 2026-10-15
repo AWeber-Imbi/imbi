@@ -56,7 +56,7 @@ _ORG_SCOPE_QUERIES: tuple[str, ...] = (
     '(:Organization {{slug: {org_slug}}})'
     ' RETURN d.id AS nid',
     'MATCH (d:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
-    '(:Organization {{slug: {org_slug}}})'
+    '(:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(d)'
     ' RETURN d.id AS nid',
     'MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
     '(:Team)<-[:OWNED_BY]-(p:Project)-[:HAS_RELEASE]->(r:Release)'
@@ -72,8 +72,8 @@ _ORG_SCOPE_QUERIES: tuple[str, ...] = (
     '(:Organization {{slug: {org_slug}}})'
     ' RETURN c.id AS nid',
     'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
-    '(:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
-    '(:Organization {{slug: {org_slug}}})'
+    '(d:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
+    '(:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(d)'
     ' RETURN c.id AS nid',
 )
 

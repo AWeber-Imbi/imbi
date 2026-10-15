@@ -271,6 +271,7 @@ _DOC_JOIN: typing.LiteralString = """
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (d)-[:ATTACHED_TO]->(u:User)
           -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
+          <-[:BELONGS_TO]-(d)
     WITH d, p, pt, u
     WHERE ({project_id} IS NULL
            AND (p IS NOT NULL OR pt IS NOT NULL OR u IS NOT NULL))
