@@ -14,6 +14,7 @@ from imbi.api.domain import models
 from imbi.api.endpoints._helpers import (
     lookup_project_slugs,
     lookup_project_type_slugs,
+    require_org_environments,
 )
 from imbi.api.identity.host_integration import call_with_identity_retry
 from imbi.api.plugins import call_with_timeout
@@ -96,6 +97,9 @@ async def _resolve_and_prepare(
     configuration endpoint, raising 503 when the integration has no
     credentials configured.
     """
+    # The prefix route passes the literal placeholder: not a value.
+    if environment != '${environment}':
+        await require_org_environments(db, org_slug, [environment])
     resolved = await resolve_capability(
         db, project_id, 'configuration', source
     )

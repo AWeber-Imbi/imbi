@@ -1148,6 +1148,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         mock_close.assert_awaited_once()
         args = mock_close.call_args
         self.assertEqual(args.args[0], 'run-42')
+        self.assertEqual(args.args[2], PROJECT_ID)
 
     def test_record_deployment_skips_opslog_for_non_terminal_status(
         self,

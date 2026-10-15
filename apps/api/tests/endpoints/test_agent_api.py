@@ -193,6 +193,13 @@ class RouteTests(AgentApiTestCase):
             },
             ['id'],
         )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (p:Project {{id: {project}}})-[:OWNED_BY]->(t:Team)'
+            ' DETACH DELETE p, t RETURN 1 AS ok',
+            {'project': project},
+            ['ok'],
+        )
         return project
 
     async def test_project_of_another_organization(self) -> None:
@@ -207,6 +214,51 @@ class RouteTests(AgentApiTestCase):
             with self.subTest(path=path):
                 response = await self.call('GET', path)
                 self.assertEqual(response.status_code, 404, response.text)
+
+    async def grant(self, *names: str) -> None:
+        for name in names:
+            await self.graph.execute(
+                'MERGE (p:Permission {{name: {name}}})'
+                ' WITH p MATCH (r:Role {{slug: {role}}})'
+                ' CREATE (r)-[:GRANTS]->(p) RETURN 1 AS ok',
+                {'role': self.role, 'name': name},
+                ['ok'],
+            )
+
+    async def test_environment_of_another_organization(self) -> None:
+        """A plugin puts the environment into its own query: only an
+        environment of the organization is accepted."""
+        await self.grant('project:logs:read', 'project:configuration:read')
+        project = f'/organizations/{self.org}/projects/{self.project_id}'
+        for path in ('/logs/', '/logs/schema', '/configuration/'):
+            with self.subTest(path=path):
+                response = await self.call(
+                    'GET',
+                    f'{project}{path}',
+                    params={'environment': 'x OR service:other'},
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+        # An environment of the organization passes the check (and then
+        # finds no logs integration).
+        env = f'env-{self.org}'
+        await self.graph.execute(
+            'MATCH (o:Organization {{slug: {org}}})'
+            ' CREATE (e:Environment {{slug: {env}, name: {env}}})'
+            '-[:BELONGS_TO]->(o) RETURN 1 AS ok',
+            {'org': self.org, 'env': env},
+            ['ok'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (e:Environment {{slug: {env}}}) DETACH DELETE e'
+            ' RETURN 1 AS ok',
+            {'env': env},
+            ['ok'],
+        )
+        response = await self.call(
+            'GET', f'{project}/logs/schema', params={'environment': env}
+        )
+        self.assertEqual(response.status_code, 404, response.text)
 
     async def test_org_query_parameter(self) -> None:
         response = await self.call(
@@ -275,6 +327,12 @@ class RouteTests(AgentApiTestCase):
             'blueprint writes': ('POST', '/blueprints/'),
             'rescore': ('POST', '/scoring/rescore'),
             'admin reads': ('GET', '/admin/graph/schema'),
+            'prompt library': ('GET', '/prompts/agents/other.agent/versions'),
+            'ai models': ('GET', '/ai-models/'),
+            'shared notes': (
+                'GET',
+                f'{org}/component-releases/r1/notes',
+            ),
         }
         for name, (method, path) in cases.items():
             with self.subTest(name):
