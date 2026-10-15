@@ -104,6 +104,9 @@ SETUP_PURPOSES = frozenset(
     }
 )
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
+#: Values that go into the system prompt as is: plain identifiers only,
+#: so an organization slug cannot carry instructions.
+_IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 _RULES = """\
 # Imbi harness
 
@@ -956,11 +959,12 @@ class TaskRun:
 
     def task_context(self) -> str:
         """Where the task runs, so Imbi tools get the right arguments."""
-        lines = [
-            'Your Imbi organization slug is '
-            f'`{self.claim["organization_slug"]}`.'
-        ]
-        if project_id := self.task.get('project_id'):
+        lines: list[str] = []
+        slug = str(self.claim['organization_slug'])
+        if _IDENTIFIER.match(slug):
+            lines.append(f'Your Imbi organization slug is `{slug}`.')
+        project_id = str(self.task.get('project_id') or '')
+        if _IDENTIFIER.match(project_id):
             lines.append(f'The task project id is `{project_id}`.')
         return ' '.join(lines)
 
