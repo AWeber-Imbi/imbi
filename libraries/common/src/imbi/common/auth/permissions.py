@@ -95,7 +95,13 @@ class AuthContext(pydantic.BaseModel):
     user: models.User | None = None
     service_account: models.ServiceAccount | None = None
     session_id: str | None = None
-    auth_method: typing.Literal['jwt', 'api_key', 'client_credentials']
+    auth_method: typing.Literal[
+        'jwt', 'api_key', 'client_credentials', 'agent_api'
+    ]
+    #: For an agent API token (``auth_method`` ``agent_api``): the only
+    #: organization that the token works in. Every other method leaves
+    #: it ``None``.
+    organization_id: str | None = None
     #: The surface that a user token was minted for, from the token's
     #: ``channel`` claim. Only a holder of the JWT secret can set it:
     #: imbi-slackbot sets ``slack``. ``None`` for every other token.
@@ -716,6 +722,56 @@ async def get_current_user(
     )
 
 
+#: Set by :func:`accept_agent_api_tokens`. A service that does not set
+#: it refuses every agent API token.
+_agent_api_accepted = False
+
+
+def accept_agent_api_tokens() -> None:
+    """Accept agent API tokens (ADR 0022, harness plan P7) in this
+    service. imbi-api calls it, and refuses them on its auth, token,
+    service account, role, secret, and harness routes."""
+    global _agent_api_accepted
+    _agent_api_accepted = True
+
+
+async def authenticate_agent_api(
+    db: graph.Graph, token: str, auth_settings: settings.Auth
+) -> AuthContext:
+    """Authenticate an agent API token as its service account, with the
+    roles of that service account, in the token's organization only.
+
+    Raises:
+        fastapi.HTTPException: 401 when the token is not valid, has
+            expired (its lease), or its service account is inactive.
+
+    """
+    try:
+        claims = core.verify_agent_api_token(token, auth_settings)
+    except jwt.ExpiredSignatureError as err:
+        raise fastapi.HTTPException(
+            status_code=401, detail='Token has expired'
+        ) from err
+    except jwt.InvalidTokenError as err:
+        raise fastapi.HTTPException(
+            status_code=401, detail='Invalid token'
+        ) from err
+    accounts = await db.match(models.ServiceAccount, {'slug': claims['sub']})
+    if not accounts or not accounts[0].is_active:
+        raise fastapi.HTTPException(
+            status_code=401, detail='Service account is inactive'
+        )
+    return AuthContext(
+        service_account=accounts[0],
+        session_id=str(claims['jti']),
+        auth_method='agent_api',
+        organization_id=str(claims['org']),
+        permissions=await load_principal_permissions(
+            db, 'ServiceAccount', 'slug', str(claims['sub'])
+        ),
+    )
+
+
 async def _authenticate_token(
     db: graph.Graph,
     token: str,
@@ -723,9 +779,15 @@ async def _authenticate_token(
 ) -> AuthContext:
     """Resolve an AuthContext from a raw bearer token.
 
-    Detects the API key format (``ik_<id>_<secret>``) and otherwise
-    treats the token as a JWT.
+    Detects the API key format (``ik_<id>_<secret>``), an agent API
+    token, and otherwise treats the token as a JWT.
     """
+    if core.is_agent_api_token(token):
+        if not _agent_api_accepted:
+            raise fastapi.HTTPException(
+                status_code=401, detail='Invalid token'
+            )
+        return await authenticate_agent_api(db, token, auth_settings)
     if token.startswith('ik_'):
         ctx = await authenticate_api_key(db, token, auth_settings)
         # Cache the key's owner so imbi-common's access log renders the
@@ -761,6 +823,9 @@ async def get_current_user_cookie_fallback(
         if credentials
         else request.cookies.get(ACCESS_COOKIE_NAME)
     )
+    if not credentials and token and core.is_agent_api_token(token):
+        # A runner sends it as a header only.
+        token = None
     if not token:
         raise fastapi.HTTPException(
             status_code=401,

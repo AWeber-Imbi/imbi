@@ -16,6 +16,7 @@ from imbi.api import (
     version,
     workflows,
 )
+from imbi.api.auth import agent_api
 from imbi.api.middleware import rate_limit
 from imbi.common import (
     access_log,
@@ -25,6 +26,7 @@ from imbi.common import (
     sentry,
     valkey,
 )
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginInstallationMissing,
@@ -35,8 +37,12 @@ LOGGER = logging.getLogger(__name__)
 
 
 def create_app() -> fastapi.FastAPI:
+    # Agent API tokens (harness plan P7) work here, and nowhere else;
+    # agent_api.guard refuses them on the sensitive routes.
+    common_permissions.accept_agent_api_tokens()
     app = fastapi.FastAPI(
         title='Imbi',
+        dependencies=[fastapi.Depends(agent_api.guard)],
         lifespan=lifespan.Lifespan(
             sentry.sentry_lifespan,
             lifespans.clickhouse_hook,
@@ -144,6 +150,7 @@ def create_app() -> fastapi.FastAPI:
         app.include_router(router, prefix=server_config.api_prefix)
     for router in endpoints.unprefixed_routers:
         app.include_router(router)
+    agent_api.index(app, server_config.api_prefix)
     # On the app root, not under the API prefix: Prometheus scrapes it
     # by pod IP, and the public routes do not reach it.
     metrics.add_route(app)

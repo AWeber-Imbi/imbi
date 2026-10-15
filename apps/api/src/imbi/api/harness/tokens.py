@@ -29,7 +29,7 @@ import uuid
 import fastapi
 import jwt
 
-from imbi.common.auth import permissions
+from imbi.common.auth import core, permissions
 
 #: The audience of an agent token.
 AUDIENCE = 'imbi-harness'
@@ -94,6 +94,49 @@ def mint_agent_token(
             'attempt': grant.attempt,
             'runner': str(grant.runner_id),
             'org': grant.organization_id,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    return token, expires
+
+
+def mint_agent_api_token(
+    service_account: str,
+    grant: AgentGrant,
+    *,
+    organization_slug: str,
+    agent_id: str,
+    task_id: str,
+    lease_seconds: int,
+) -> tuple[str, datetime.datetime]:
+    """Return an agent API token and its expiry (harness plan P7).
+
+    The runner relays the agent's Imbi tool calls with it. Its audience
+    is :data:`imbi.common.auth.core.AGENT_API_AUDIENCE`, so the harness
+    routes refuse it, and it works on the normal API routes with the
+    service account's roles (:mod:`imbi.api.auth.agent_api` refuses
+    the sensitive ones). It lives one lease: each runner heartbeat
+    returns a new one.
+    """
+    settings = permissions.auth_settings()
+    now = datetime.datetime.now(datetime.UTC)
+    expires = now + datetime.timedelta(seconds=lease_seconds)
+    token = jwt.encode(
+        {
+            'sub': service_account,
+            'jti': secrets.token_urlsafe(16),
+            'type': core.AGENT_API_TOKEN_TYPE,
+            'aud': core.AGENT_API_AUDIENCE,
+            'iat': now,
+            'exp': expires,
+            'org': grant.organization_id,
+            'org_slug': organization_slug,
+            'agent': agent_id,
+            'chain': str(grant.chain_id),
+            'task': task_id,
+            'attempt': grant.attempt,
+            'runner': str(grant.runner_id),
         },
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
