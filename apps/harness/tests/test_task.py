@@ -320,7 +320,8 @@ class ConfigTestCase(TaskTestCase):
         self.assertEqual(
             prompt['append'],
             'Org rules.\n\nYou fix bugs.\n\n'
-            'Your Imbi organization slug is `org`. '
+            'Your Imbi organization slug is the text in this block:\n'
+            '<untrusted source="organization_slug">\norg\n</untrusted> '
             'The task project id is `p`.\n\n'
             f'{task.UNTRUSTED_RULE}',
         )

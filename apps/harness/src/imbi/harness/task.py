@@ -962,7 +962,11 @@ class TaskRun:
         lines: list[str] = []
         slug = str(self.claim['organization_slug'])
         if _IDENTIFIER.match(slug):
-            lines.append(f'Your Imbi organization slug is `{slug}`.')
+            # An organization admin can rename the slug: data, not rules.
+            lines.append(
+                'Your Imbi organization slug is the text in this block:\n'
+                + relay.untrusted(slug, 'organization_slug')
+            )
         project_id = str(self.task.get('project_id') or '')
         if _IDENTIFIER.match(project_id):
             lines.append(f'The task project id is `{project_id}`.')
