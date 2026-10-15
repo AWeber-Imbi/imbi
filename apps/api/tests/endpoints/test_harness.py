@@ -15,11 +15,12 @@ import httpx
 
 from apps.api.tests.endpoints import test_agent_task_harness
 from apps.api.tests.endpoints.test_agent_task_log import ClickHouseTestCase
-from imbi.api import models
+from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agent_task_harness
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import sweeper
+from imbi.api.secret_broker import store as secret_store
 
 new_id = test_agent_task_harness.new_id
 
@@ -31,6 +32,11 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        # The claim evaluates secret grants (MCP servers, plan P7).
+        self.secret_store = secret_store.SecretStore(self.pool)
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.secret_store
+        )
         self.pool_account = models.ServiceAccount(
             id=f'pool-{self.org}',
             slug=f'pool-{self.org}',
@@ -1149,3 +1155,167 @@ class PoolApiTests(RunnerTestCase):
             pool['organizations'], sorted([self.org, self.other_org])
         )
         self.assertEqual(pool['service_account'], self.pool_account.slug)
+
+
+class McpServerBundleTests(RunnerTestCase):
+    """The third-party MCP servers in the claim bundle (plan P7)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.permissions.add('mcp_server:create')
+        self.addAsyncCleanup(self._drop_servers)
+
+    async def create(self, body: dict[str, typing.Any]) -> httpx.Response:
+        """Create a server as the admin user."""
+        self.act_as_user()
+        self.user.is_admin = True
+        try:
+            return await self.client.post('/mcp-servers/', json=body)
+        finally:
+            self.act_as(self.account)
+
+    async def _drop_servers(self) -> None:
+        await self.graph.execute(
+            'MATCH (n:MCPServer) WHERE n.slug STARTS WITH {prefix}'
+            ' DETACH DELETE n RETURN 1 AS ok',
+            {'prefix': f'{self.org}-'},
+            ['ok'],
+        )
+
+    async def server(self, name: str, **fields: typing.Any) -> str:
+        slug = f'{self.org}-{name}'
+        response = await self.create(
+            {
+                'name': slug,
+                'slug': slug,
+                'url': f'https://{name}.example.com/mcp',
+            }
+            | fields
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        return slug
+
+    async def bind(
+        self, reference: str, *, enabled: bool = True, grant: bool = True
+    ) -> None:
+        """A binding of ``reference`` (field ``value``), and a grant
+        with the ``mcp_server`` purpose for the task's agent."""
+        provider, binding = uuid.uuid4(), uuid.uuid4()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO secrets.providers (id, organization_id, name,'
+                " type, created_by) VALUES (%s, %s, %s, 'fake', 'test')",
+                (provider, self.org, reference),
+            )
+            await conn.execute(
+                'INSERT INTO secrets.bindings (id, organization_id,'
+                ' reference, provider_id, credential_class, allowed_fields,'
+                ' allowed_delivery_modes, max_ttl_seconds, enabled,'
+                " created_by) VALUES (%s, %s, %s, %s, 'static',"
+                " '{value}', '{file_descriptor}', 900, %s, 'test')",
+                (binding, self.org, reference, provider, enabled),
+            )
+            if grant:
+                await conn.execute(
+                    'INSERT INTO secrets.grants (id, organization_id,'
+                    ' agent_ids, binding_ids, purposes, delivery_modes,'
+                    ' max_ttl_seconds, created_by) VALUES (%s, %s, %s, %s,'
+                    " '{mcp_server}', '{file_descriptor}', 900, 'test')",
+                    (uuid.uuid4(), self.org, [self.agent_id], [binding]),
+                )
+
+    async def test_only_usable_servers_of_the_tool_map(self) -> None:
+        ref = f'secret://mcp/{uuid.uuid4().hex}'
+        bound = await self.server(
+            'bound',
+            auth_type='static',
+            static_header='X-Api-Key',
+            credential_ref=f'{ref}#value',
+        )
+        await self.bind(ref)
+        disabled_ref = f'secret://mcp/{uuid.uuid4().hex}'
+        no_grant_ref = f'secret://mcp/{uuid.uuid4().hex}'
+        await self.bind(no_grant_ref, grant=False)
+        static = {'auth_type': 'static', 'static_header': 'X-Api-Key'}
+        slugs = [
+            bound,
+            await self.server('open'),
+            await self.server(
+                'unbound',
+                **static,
+                credential_ref=f'secret://mcp/{uuid.uuid4().hex}#value',
+            ),
+            # Only the Fernet value: not migrated, so not for agents.
+            await self.server('fernet-only', **static, static_value='v'),
+            await self.server(
+                'off-binding', **static, credential_ref=f'{disabled_ref}#value'
+            ),
+            # A binding, but no grant for the task's agent.
+            await self.server(
+                'no-grant', **static, credential_ref=f'{no_grant_ref}#value'
+            ),
+            await self.server('insecure', verify_ssl=False),
+            await self.server('disabled', enabled=False),
+            await self.server('plain', url='http://plain.example.com/mcp'),
+        ]
+        await self.bind(disabled_ref, enabled=False)
+        await self.server('not-mapped')
+        await self.make_version(
+            {'tools': {f'{slug}.do': {} for slug in [*slugs, 'gone']}}
+        )
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(
+            claim['bundle']['mcp_servers'],
+            [
+                {
+                    'slug': bound,
+                    'url': 'https://bound.example.com/mcp',
+                    'auth_type': 'static',
+                    'static_header': 'X-Api-Key',
+                    'oauth_token_url': None,
+                    'oauth_client_id': None,
+                    'oauth_scope': None,
+                    'ignored_tools': [],
+                    'credential_ref': f'{ref}#value',
+                },
+                {
+                    'slug': f'{self.org}-open',
+                    'url': 'https://open.example.com/mcp',
+                    'auth_type': 'none',
+                    'static_header': None,
+                    'oauth_token_url': None,
+                    'oauth_client_id': None,
+                    'oauth_scope': None,
+                    'ignored_tools': [],
+                    'credential_ref': None,
+                },
+            ],
+        )
+        self.assertEqual(
+            {
+                entry['slug'].removeprefix(f'{self.org}-'): entry['reason']
+                for entry in claim['bundle']['mcp_unavailable']
+            },
+            {
+                'unbound': 'secret_binding_not_found',
+                'fernet-only': 'no_credential_ref',
+                'off-binding': 'secret_binding_disabled',
+                'no-grant': 'no_grant',
+                'insecure': 'tls_required',
+                'disabled': 'server_disabled',
+                'plain': 'tls_required',
+                'gone': 'server_not_found',
+            },
+        )
+
+    async def test_reference_is_checked(self) -> None:
+        response = await self.create(
+            {
+                'name': 'x',
+                'slug': f'{self.org}-bad',
+                'url': 'https://x.example.com/mcp',
+                'credential_ref': 'vault:mcp/x',
+            }
+        )
+        self.assertEqual(response.status_code, 422, response.text)

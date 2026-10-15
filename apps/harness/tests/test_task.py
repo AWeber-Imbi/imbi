@@ -185,6 +185,7 @@ class RunWithSecretTestCase(TaskTestCase):
     async def test_setup_secrets_are_refused(self) -> None:
         cases = [
             {'purpose': 'model_inference'},
+            {'purpose': 'mcp_server'},
             {'purpose': 'workspace_checkout'},
             {'purpose': 'marketplace_fetch'},
             {'reference': 'secret://production/anthropic/key'},
@@ -1159,23 +1160,14 @@ class McpServerTestCase(TaskTestCase):
         rules = (
             self.tmp / 'chain' / 'tasks' / 't' / '.claude' / 'CLAUDE.md'
         ).read_text()
-        self.assertIn('try their tools: jira, pagerduty.', rules)
+        self.assertIn('their tools: jira, pagerduty.', rules)
 
     async def test_warning_event(self) -> None:
         subject = self.make()
         subject.bundle['snapshot'] = {'tools': {'jira.create': {}}}
-        self.client.post.return_value = mock.Mock(
-            json=mock.Mock(
-                return_value={
-                    'session': {'id': 's'},
-                    'task': {'status': 'running', 'control': 'cancel'},
-                }
-            )
-        )
-        with mock.patch.object(subject, '_work', mock.AsyncMock()):
-            await subject.run()
-        (batch,) = self.posted('/events')
-        (event,) = batch['events']
+        await subject.start_external()
+        subject.warn_unavailable()
+        (event,) = subject.recorder.take()
         self.assertEqual(event['payload']['kind'], 'warning')
         self.assertIn('jira', event['payload']['body'])
 
@@ -1378,7 +1370,8 @@ class RelayStartTestCase(TaskTestCase):
         )
         # The token is read when a call is made, so a renewal applies.
         subject.api_token = 'renewed'
-        self.assertEqual(subject.relay.token(), 'renewed')
+        assert isinstance(subject.relay.auth, task.relay.Bearer)
+        self.assertEqual(subject.relay.auth.token(), 'renewed')
 
     async def test_unavailable_relay_is_a_warning(self) -> None:
         subject = self.with_tools({'imbi.list_projects': {}})
@@ -1396,4 +1389,175 @@ class RelayStartTestCase(TaskTestCase):
         self.assertEqual(notice['payload']['kind'], 'warning')
         self.assertIn(
             'Imbi tools are not available', notice['payload']['body']
+        )
+
+
+class ExternalRelayTestCase(TaskTestCase):
+    """Third-party MCP servers of the bundle (plan P7)."""
+
+    def with_servers(self, *servers: dict[str, typing.Any]) -> task.TaskRun:
+        subject = self.make()
+        subject.bundle['snapshot'] = {
+            'tools': {
+                f'{s["slug"]}.create': {'approval': True} for s in servers
+            }
+            | {'unbound.x': {}}
+        }
+        subject.bundle['mcp_servers'] = [
+            {'url': 'https://mcp.example.com/mcp', 'auth_type': 'none'} | s
+            for s in servers
+        ]
+        return subject
+
+    def notices(self, subject: task.TaskRun) -> list[str]:
+        return [e['payload']['body'] for e in subject.recorder.take()]
+
+    async def test_static_credential_from_the_broker(self) -> None:
+        self.call.return_value = {'material': 'static-secret-1'}
+        subject = self.with_servers(
+            {
+                'slug': 'jira',
+                'auth_type': 'static',
+                'static_header': 'X-Api-Key',
+                'credential_ref': 'secret://mcp/jira',
+            }
+        )
+        with mock.patch.object(
+            task.relay.Relay,
+            'start',
+            mock.AsyncMock(return_value=['create']),
+        ):
+            await subject.start_external()
+        relayed = subject.external['jira']
+        auth = relayed.auth
+        assert isinstance(auth, task.outbound.Header)
+        self.assertEqual(
+            (auth.name, auth.value), ('X-Api-Key', 'static-secret-1')
+        )
+        self.assertIsInstance(relayed.transport, task.outbound.Transport)
+        body = self.client.create_resolution.call_args.args[1]
+        self.assertEqual(body['purpose'], 'mcp_server')
+        self.assertEqual(body['reference'], 'secret://mcp/jira')
+        self.assertEqual(body['delivery'], task.SETUP_DELIVERY)
+        self.assertEqual(self.redactor.text('static-secret-1'), '[REDACTED]')
+        relayed.tools['create'] = task.relay._Tool(
+            'create', 'Create.', {'type': 'object'}, False, None
+        )
+        self.assertIn('mcp__jira__create', subject.tools()[0])
+        self.assertIn(
+            'jira',
+            typing.cast(
+                'dict[str, typing.Any]',
+                subject.options('http://127.0.0.1:1').mcp_servers,
+            ),
+        )
+        # The tool map entry applies: approval.
+        checked = task.policy.check(
+            'mcp__jira__create',
+            {},
+            allowed=[],
+            tool_map=subject.bundle['snapshot']['tools'],
+            approval_tools=[],
+            automation=False,
+            servers={'jira': 'jira'},
+        )
+        self.assertTrue(checked.approval)
+        self.assertEqual(subject.mcp_servers(), ['unbound'])
+
+    async def test_oauth_token_goes_to_the_redactor(self) -> None:
+        self.call.return_value = {'material': 'client-secret-1'}
+        subject = self.with_servers(
+            {
+                'slug': 'pd',
+                'auth_type': 'oauth_client_credentials',
+                'oauth_token_url': 'https://login.example.com/token',
+                'oauth_client_id': 'client-1',
+                'oauth_scope': 'read',
+                'credential_ref': 'secret://mcp/pd',
+            }
+        )
+        with mock.patch.object(
+            task.relay.Relay, 'start', mock.AsyncMock(return_value=[])
+        ):
+            await subject.start_external()
+        auth = subject.external['pd'].auth
+        assert isinstance(auth, task.outbound.ClientCredentials)
+        self.assertEqual(auth.client_secret, 'client-secret-1')
+        auth.on_token('access-token-1')
+        self.assertEqual(self.redactor.text('access-token-1'), '[REDACTED]')
+
+    async def test_servers_this_task_cannot_use(self) -> None:
+        self.client.create_resolution.side_effect = api.Refused(
+            403, 'secret_access_denied'
+        )
+        subject = self.with_servers(
+            {'slug': 'a.b'},
+            {'slug': 'a_b'},
+            {'slug': 'Imbi_API'},
+            {'slug': 'Imbi'},
+            {'slug': 'plain', 'url': 'http://mcp.example.com/mcp'},
+            {
+                'slug': 'refused',
+                'auth_type': 'static',
+                'credential_ref': 'secret://mcp/refused',
+            },
+        )
+        with (
+            mock.patch.object(
+                task.relay.Relay, 'start', mock.AsyncMock(return_value=[])
+            ),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+        ):
+            await subject.start_external()
+        self.assertEqual(subject.external, {})
+        notices = self.notices(subject)
+        for slug, reason in (
+            ('a.b', 'name_collision'),
+            ('a_b', 'name_collision'),
+            ('Imbi_API', 'name_collision'),
+            ('Imbi', 'name_collision'),
+            ('plain', 'url_not_https'),
+            ('refused', 'mcp_credential_refused'),
+        ):
+            self.assertIn(
+                f'The MCP server {slug} is not available to this task: '
+                f'{reason}.',
+                notices,
+            )
+
+    async def test_unreachable_server_is_a_notice(self) -> None:
+        subject = self.with_servers({'slug': 'jira'})
+        with (
+            mock.patch.object(
+                task.relay.Relay,
+                'start',
+                mock.AsyncMock(
+                    side_effect=task.relay.Unavailable('address_not_global')
+                ),
+            ),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+        ):
+            await subject.start_external()
+        self.assertEqual(subject.external, {})
+        self.assertIn('address_not_global', self.notices(subject)[0])
+        self.assertEqual(subject.mcp_servers(), ['jira', 'unbound'])
+
+    async def test_imbi_reason_for_a_server_left_out(self) -> None:
+        subject = self.with_servers({'slug': 'jira'})
+        subject.bundle['mcp_servers'] = []
+        subject.bundle['mcp_unavailable'] = [
+            {'slug': 'jira', 'reason': 'no_grant'},
+            {'slug': 'not-in-the-map', 'reason': 'no_grant'},
+        ]
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await subject.start_external()
+        subject.warn_unavailable()
+        self.assertEqual(
+            self.notices(subject),
+            [
+                'The MCP server jira is not available to this task: no_grant.',
+                # The generic warning leaves out a server with a reason.
+                'The MCP servers unbound of this agent are not available '
+                'to this task.',
+            ],
         )

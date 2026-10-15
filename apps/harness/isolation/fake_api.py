@@ -384,6 +384,7 @@ def _new_task(body: Row, chain_id: str, origin: Row) -> Row:
             'plugin': bool(body.get('plugin')),
             'binding': bool(body.get('binding')),
             'tools': body.get('tools') or {},
+            'mcp_servers': body.get('mcp_servers') or [],
             'approval_tools': body.get('approval_tools') or [],
             'child': body.get('child'),
         },
@@ -448,6 +449,7 @@ def _bundle(task: Row) -> Row:
         ),
         'prompt': {'ref': 'agents/test@1', 'system': 'You are a test.'},
         'repositories': repositories,
+        'mcp_servers': options.get('mcp_servers') or [],
         'config': {
             'model_upstream': {
                 'kind': 'anthropic',

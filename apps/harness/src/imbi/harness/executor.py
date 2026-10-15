@@ -26,7 +26,8 @@ Two more requests are for the runner's own setup secrets (H22):
   so ``.git/config``, the command line, and the environment never hold
   it (plan section 6.2).
 - ``fetch`` returns the material of a ``model_inference`` resolution to
-  the runner, for its model proxy (plan section 6.4).
+  the runner, for its model proxy (plan section 6.4), or of an
+  ``mcp_server`` resolution, for its MCP relay (plan P7).
 
 Rev 1 runs one request at a time (:attr:`Executor.lock`), so every
 ``agent`` process of this container belongs to the current command.
@@ -90,7 +91,7 @@ _GIT = (
     '-c protocol.https.allow=always'
 )
 #: Setup secrets that the executor returns to the runner (H22).
-FETCH_PURPOSES = frozenset({'model_inference'})
+FETCH_PURPOSES = frozenset({'mcp_server', 'model_inference'})
 #: Setup secrets that git gets on a descriptor (H22).
 CLONE_PURPOSES = frozenset({'marketplace_fetch', 'workspace_checkout'})
 #: The runner's own secrets. ``run`` never delivers them: a command

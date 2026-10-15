@@ -23,6 +23,11 @@ relayed tools as an in-process MCP server, ``imbi_api``. So:
 Each call opens its own MCP session, so a renewed token (each runner
 heartbeat) applies at once, a restart of ``apps/mcp`` costs one call,
 and nothing stays open when the runner fences and exits.
+
+A third-party MCP server of the agent uses the same relay, with its
+own CLI name (:func:`server_name`), its credential from the secrets
+broker, and the outbound checks of :mod:`imbi.harness.outbound`. Its
+tool descriptions are untrusted too.
 """
 
 import asyncio
@@ -58,6 +63,9 @@ SERVER = 'imbi_api'
 #: The server part of the tool map key of a relayed tool.
 KEY = 'imbi'
 CALL_TIMEOUT = 120.0
+#: The CLI's limit on an MCP tool name.
+_TOOL_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}')
+_NOT_NAME = re.compile(r'[^a-z0-9_-]+')
 #: The most result text, in characters, that the model gets.
 RESULT_LIMIT = 256 * 1024
 _IDEMPOTENCY_KEYS = ('Idempotency-Key', 'idempotency_key')
@@ -75,15 +83,25 @@ def untrusted(text: str, source: str) -> str:
     return f'<untrusted source="{source}">\n{text}\n</untrusted>'
 
 
-def mapped(tool_map: Body) -> set[str]:
-    """The Imbi tools of a tool map: ``imbi.<tool>`` keys, less the
-    harness's own tools."""
+def mapped(tool_map: Body, key: str = KEY) -> set[str]:
+    """The tools of one server in a tool map: ``<key>.<tool>`` keys.
+    The Imbi tools never include the harness's own tools."""
     return {
-        key.removeprefix(f'{KEY}.')
-        for key in tool_map
-        if key.startswith(f'{KEY}.')
-        and key.removeprefix(f'{KEY}.') not in policy.HARNESS_TOOLS
+        name
+        for name in (
+            k.removeprefix(f'{key}.')
+            for k in tool_map
+            if k.startswith(f'{key}.')
+        )
+        if key != KEY or name not in policy.HARNESS_TOOLS
     }
+
+
+def server_name(slug: str) -> str:
+    """The CLI name of a third-party server: the slug in lower case,
+    with each run of other characters as one ``_``. Never ``__``, which
+    divides the server and the tool in a CLI tool name."""
+    return re.sub('_{2,}', '_', _NOT_NAME.sub('_', slug.lower())).strip('_')
 
 
 def digest(arguments: typing.Any) -> str:
@@ -91,7 +109,7 @@ def digest(arguments: typing.Any) -> str:
     return 'sha256:' + hashlib.sha256(canonical.encode()).hexdigest()
 
 
-class _Bearer(httpx.Auth):
+class Bearer(httpx.Auth):
     """The current token on each request: a renewed token applies at
     once."""
 
@@ -123,19 +141,26 @@ class _Tool:
 
 
 class Relay:
-    """Relays the agent's mapped Imbi tools to ``apps/mcp``."""
+    """Relays the agent's mapped tools of one MCP server."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only options
         self,
         url: str,
-        token: abc.Callable[[], str],
+        auth: httpx.Auth | None,
         tool_map: Body,
         *,
+        server: str = SERVER,
+        key: str = KEY,
+        ignored: abc.Iterable[str] = (),
+        transport: httpx.AsyncBaseTransport | None = None,
         stopped: abc.Callable[[], bool] = lambda: False,
     ) -> None:
         self.url = url
-        self.token = token
-        self.mapped = mapped(tool_map)
+        self.auth = auth
+        self.server = server
+        self.key = key
+        self.mapped = mapped(tool_map, key) - set(ignored)
+        self.transport = transport
         self.stopped = stopped
         self.tools: dict[str, _Tool] = {}
         self.audits: dict[tuple[str, str], collections.deque[Body]] = (
@@ -149,7 +174,8 @@ class Relay:
         # No redirects: the token goes to the configured origin only.
         async with (
             httpx.AsyncClient(
-                auth=_Bearer(self.token),
+                auth=self.auth,
+                transport=self.transport,
                 follow_redirects=False,
                 # Past the call deadline, so that the deadline decides.
                 timeout=httpx.Timeout(CALL_TIMEOUT + 10, connect=10),
@@ -173,15 +199,20 @@ class Relay:
             ExceptionGroup,
             mcp_exceptions.McpError,
         ) as err:
-            raise Unavailable(type(err).__name__) from err
+            raise Unavailable(_reason(err)) from err
         for tool in listed.tools:
-            if tool.name not in self.mapped:
+            if tool.name not in self.mapped or not _TOOL_NAME.fullmatch(
+                tool.name
+            ):
                 continue
             properties: Body = tool.inputSchema.get('properties') or {}
             annotations = tool.annotations
+            description = tool.description or tool.name
+            if self.server != SERVER:
+                description = untrusted(description, f'mcp:{self.server}')
             self.tools[tool.name] = _Tool(
                 name=tool.name,
-                description=tool.description or tool.name,
+                description=description,
                 schema=tool.inputSchema,
                 read_only=bool(annotations and annotations.readOnlyHint),
                 idempotency_key=next(
@@ -191,7 +222,7 @@ class Relay:
         return sorted(self.tools)
 
     def allowed_tools(self) -> list[str]:
-        return [f'mcp__{SERVER}__{name}' for name in sorted(self.tools)]
+        return [f'mcp__{self.server}__{name}' for name in sorted(self.tools)]
 
     def sdk_tools(self) -> list[sdk.SdkMcpTool[typing.Any]]:
         def make(tool: _Tool) -> sdk.SdkMcpTool[typing.Any]:
@@ -206,17 +237,20 @@ class Relay:
     def take_audit(self, name: str, arguments: typing.Any) -> Body | None:
         """The audit fields of a relayed call, for its tool.called
         event (plan P7): one per call, in call order."""
-        if not name.startswith(f'mcp__{SERVER}__'):
+        prefix = f'mcp__{self.server}__'
+        if not name.startswith(prefix):
             return None
-        queue = self.audits.get(
-            (name.removeprefix(f'mcp__{SERVER}__'), digest(arguments))
-        )
+        queue = self.audits.get((name.removeprefix(prefix), digest(arguments)))
         return queue.popleft() if queue else None
 
     def _jti(self) -> str | None:
+        """The ``jti`` of the agent API token; ``None`` for another
+        server."""
+        if not isinstance(self.auth, Bearer):
+            return None
         try:
             claims = jwt.decode(
-                self.token(), options={'verify_signature': False}
+                self.auth.token(), options={'verify_signature': False}
             )
         except jwt.InvalidTokenError:
             return None
@@ -245,7 +279,7 @@ class Relay:
                     if attempt == retries:
                         raise
         except Unavailable:
-            text = 'Imbi is not available'
+            text = f'The MCP server {self.server} is not available'
         except TimeoutError:
             status, text = 'timeout', 'The Imbi call timed out'
         except Stopped:
@@ -257,7 +291,7 @@ class Relay:
             text = text[:RESULT_LIMIT] + '\n[result truncated]'
         self.audits[(name, input_digest)].append(
             {
-                'server': SERVER,
+                'server': self.server,
                 'input_digest': input_digest,
                 'token_jti': jti,
                 'status': status,
@@ -268,7 +302,10 @@ class Relay:
         )
         reply: Body = {
             'content': [
-                {'type': 'text', 'text': untrusted(text, f'mcp:{SERVER}')}
+                {
+                    'type': 'text',
+                    'text': untrusted(text, f'mcp:{self.server}'),
+                }
             ]
         }
         if status != 'ok':
@@ -296,7 +333,7 @@ class Relay:
                 ExceptionGroup,
                 mcp_exceptions.McpError,
             ) as err:
-                raise Unavailable(type(err).__name__) from err
+                raise Unavailable(_reason(err)) from err
 
         task = asyncio.ensure_future(call())
         deadline = time.monotonic() + CALL_TIMEOUT
@@ -311,6 +348,28 @@ class Relay:
         finally:
             if not task.done():
                 task.cancel()
+
+
+def imbi(
+    url: str,
+    token: abc.Callable[[], str],
+    tool_map: Body,
+    *,
+    stopped: abc.Callable[[], bool] = lambda: False,
+) -> Relay:
+    """The relay to ``apps/mcp``, with the agent API token."""
+    return Relay(url, Bearer(token), tool_map, stopped=stopped)
+
+
+def _reason(err: BaseException) -> str:
+    """A safe reason: an outbound check's code, or the error type. An
+    error group (from the MCP client's task group) gives its first
+    error."""
+    inner: tuple[BaseException, ...] = getattr(err, 'exceptions', ())
+    if inner:
+        return _reason(inner[0])
+    reason: object = getattr(err, 'reason', None)
+    return reason if isinstance(reason, str) else type(err).__name__
 
 
 def _text(result: types.CallToolResult | None) -> str:

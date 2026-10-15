@@ -394,6 +394,11 @@ class FetchTestCase(BaseTestCase):
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
         self.spawn.assert_not_called()
 
+    async def test_returns_an_mcp_server_credential(self) -> None:
+        await self.hello()
+        reply = await self.executor.dispatch(self.fetch('mcp_server'))
+        self.assertEqual(reply, {'material': SECRET})
+
     async def test_only_the_model_key(self) -> None:
         await self.hello()
         reply = await self.executor.dispatch(self.fetch('github_write'))
