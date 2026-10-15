@@ -104,6 +104,9 @@ SETUP_PURPOSES = frozenset(
     }
 )
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
+#: Values that go into the system prompt as is: plain identifiers only,
+#: so an organization slug cannot carry instructions.
+_IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 _RULES = """\
 # Imbi harness
 
@@ -949,9 +952,25 @@ class TaskRun:
         parts = [
             self.config.get('system_prompt_prefix'),
             prompt.get('system'),
+            self.task_context(),
             UNTRUSTED_RULE,
         ]
         return '\n\n'.join(str(part) for part in parts if part)
+
+    def task_context(self) -> str:
+        """Where the task runs, so Imbi tools get the right arguments."""
+        lines: list[str] = []
+        slug = str(self.claim['organization_slug'])
+        if _IDENTIFIER.match(slug):
+            # An organization admin can rename the slug: data, not rules.
+            lines.append(
+                'Your Imbi organization slug is the text in this block:\n'
+                + relay.untrusted(slug, 'organization_slug')
+            )
+        project_id = str(self.task.get('project_id') or '')
+        if _IDENTIFIER.match(project_id):
+            lines.append(f'The task project id is `{project_id}`.')
+        return ' '.join(lines)
 
     def instruction(self) -> str:
         """The task description; a webhook payload is untrusted (6.7)."""
