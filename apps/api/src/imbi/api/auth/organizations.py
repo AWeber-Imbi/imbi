@@ -9,6 +9,7 @@ can only use the routes of an organization that they are a member of
 There is no admin bypass.
 """
 
+import logging
 import typing
 
 import fastapi
@@ -16,12 +17,36 @@ import fastapi
 from imbi.api.auth import autonomous, permissions
 from imbi.common import graph
 
+LOGGER = logging.getLogger(__name__)
+
 #: The org id, and whether the user with ``email`` is a member of it.
 _ORG_MEMBER_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{slug: {org_slug}}})
 OPTIONAL MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(o)
 RETURN o.id AS id, u IS NOT NULL AS member
 """
+
+
+def organization_id(value: object, slug: str) -> str:
+    """The id of an organization node, parsed.
+
+    An organization made before nodes had an ``id`` has none until the
+    startup backfill (:mod:`imbi.api.graph_ids`) gives it one. Its
+    data must never be keyed as ``"None"``, so this fails closed.
+
+    Raises:
+        500: The organization has no id.
+
+    """
+    if value is None or value == '':
+        LOGGER.error(
+            'Organization %r has no id; the graph id backfill has not run',
+            slug,
+        )
+        raise fastapi.HTTPException(
+            status_code=500, detail=f'Organization {slug!r} has no id'
+        )
+    return str(value)
 
 
 async def member_org_id(
@@ -77,7 +102,7 @@ async def check_member(
             ),
             org_slug=org_slug,
         )
-    return str(graph.parse_agtype(records[0]['id']))
+    return organization_id(graph.parse_agtype(records[0]['id']), org_slug)
 
 
 #: The id of the organization in the path, for a caller that is a member.

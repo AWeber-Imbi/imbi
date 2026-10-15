@@ -53,7 +53,9 @@ async def _ids(
     db: graph.Graph, query: typing.LiteralString, args: dict[str, str]
 ) -> set[str]:
     records = await db.execute(query, args, ['id'])
-    return {str(graph.parse_agtype(r['id'])) for r in records}
+    ids = (graph.parse_agtype(r['id']) for r in records)
+    # An organization without an id cannot be linked to.
+    return {str(value) for value in ids if value}
 
 
 def choose(tag_orgs: set[str], user_orgs: set[str]) -> tuple[str, str | None]:
