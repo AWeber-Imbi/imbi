@@ -164,6 +164,24 @@ class RouteTests(AgentApiTestCase):
             'mcp servers': ('GET', '/mcp-servers/'),
             'user writes': ('PATCH', '/users/someone@example.com'),
             'agent writes': ('POST', f'{org}/agents/'),
+            'own approval': (
+                'POST',
+                f'{org}/agent-tasks/T-1/requests/r1/resolve',
+            ),
+            'platform config': ('PUT', f'{org}/agent-platform-config/'),
+            'graph query': ('POST', '/admin/graph/query'),
+            'integration credentials': (
+                'PUT',
+                f'{org}/integrations/x/credentials',
+            ),
+            'webhooks': ('POST', f'{org}/webhooks/'),
+            'configuration values': (
+                'POST',
+                f'{org}/projects/p/configuration/values:fetch',
+            ),
+            'team members': ('POST', f'{org}/teams/x/members'),
+            'workflow runs': ('POST', f'{org}/workflows/x/runs'),
+            'prompts': ('POST', '/prompts/'),
         }
         for name, (method, path) in cases.items():
             with self.subTest(name):
@@ -268,7 +286,7 @@ class ClassificationTests(test_harness.RunnerTestCase):
         unclassified = sorted(
             key
             for (endpoint, method), key in keys.items()
-            if not agent_api.refused(endpoint.__module__, method)
+            if not agent_api.refused(endpoint.__module__, method, key)
             and key not in agent_api.ALLOWED_ROUTES
         )
         self.assertEqual(
@@ -283,6 +301,18 @@ class ClassificationTests(test_harness.RunnerTestCase):
         """A stale entry would allow a later route with that key."""
         keys = set(self.test_app.state.agent_api_routes.values())
         self.assertEqual(agent_api.ALLOWED_ROUTES - keys, frozenset())
+        self.assertEqual(agent_api.REFUSED_ROUTES - keys, frozenset())
+
+    def test_no_route_is_allowed_and_refused(self) -> None:
+        self.assertEqual(
+            agent_api.ALLOWED_ROUTES & agent_api.REFUSED_ROUTES, frozenset()
+        )
+        for (
+            endpoint,
+            method,
+        ), key in self.test_app.state.agent_api_routes.items():
+            if agent_api.refused(endpoint.__module__, method):
+                self.assertNotIn(key, agent_api.ALLOWED_ROUTES)
 
     def test_every_listed_module_has_routes(self) -> None:
         """A renamed module would drop out of the refusal silently."""

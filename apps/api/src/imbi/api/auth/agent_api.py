@@ -11,6 +11,9 @@ route and refuses it:
   in :data:`REFUSED_MODULES`, and the writes of the modules in
   :data:`READ_ONLY_MODULES` (users and agents make memberships and
   service accounts);
+- on the writes that change the rules that govern agents, or that
+  create or change what holds or sends credentials or data outside
+  Imbi (:data:`~imbi.api.auth.agent_api_routes.REFUSED_ROUTES`);
 - on every route that is not classified as allowed: each mounted
   route (method and template) must be in :data:`ALLOWED_ROUTES`
   (:mod:`imbi.api.auth.agent_api_routes`) or refused above; a test
@@ -31,7 +34,7 @@ import fastapi
 import jwt
 from fastapi import routing
 
-from imbi.api.auth.agent_api_routes import ALLOWED_ROUTES
+from imbi.api.auth.agent_api_routes import ALLOWED_ROUTES, REFUSED_ROUTES
 from imbi.common.auth import core
 
 #: Every route of these endpoint modules refuses the token.
@@ -46,6 +49,8 @@ REFUSED_MODULES = frozenset(
         'imbi.api.endpoints.auth_providers',
         'imbi.api.endpoints.client_credentials',
         'imbi.api.endpoints.harness',
+        # The connector configuration holds the ClickHouse password.
+        'imbi.api.endpoints.iggy_connectors',
         'imbi.api.endpoints.local_auth',
         'imbi.api.endpoints.mcp_servers',
         'imbi.api.endpoints.mfa',
@@ -64,11 +69,13 @@ READ_ONLY_MODULES = frozenset(
 _READS = frozenset({'GET', 'HEAD', 'OPTIONS'})
 
 
-def refused(module: str, method: str) -> bool:
-    """Whether the routes of ``module`` refuse the token for
-    ``method``."""
-    return module in REFUSED_MODULES or (
-        module in READ_ONLY_MODULES and method not in _READS
+def refused(module: str, method: str, key: str | None = None) -> bool:
+    """Whether a route refuses the token: its module for ``method``,
+    or its ``"METHOD /template"`` key."""
+    return (
+        module in REFUSED_MODULES
+        or (module in READ_ONLY_MODULES and method not in _READS)
+        or key in REFUSED_ROUTES
     )
 
 
@@ -122,7 +129,7 @@ async def guard(request: fastapi.Request) -> None:
         request.app.state, 'agent_api_routes', {}
     )
     key = keys.get((endpoint, request.method))
-    if refused(module, request.method) or key not in ALLOWED_ROUTES:
+    if refused(module, request.method, key) or key not in ALLOWED_ROUTES:
         raise _forbidden('An agent API token cannot use this route')
     try:
         claims = core.verify_agent_api_token(token)
