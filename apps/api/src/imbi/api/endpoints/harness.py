@@ -24,6 +24,7 @@ import asyncio
 import datetime
 import decimal
 import json
+import logging
 import typing
 import uuid
 
@@ -45,6 +46,8 @@ from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.plugins.github import _repos
+
+LOGGER = logging.getLogger(__name__)
 
 #: The longest wait of a claim long poll, in seconds.
 MAX_CLAIM_WAIT_SECONDS = 20
@@ -1140,7 +1143,17 @@ async def heartbeat_harness_runner(
         )
     api_tokens: dict[str, ApiToken] = {}
     if data is not None and data.tasks and row['chain_id'] is not None:
-        api_tokens = await _renew_api_tokens(db, store, tasks, row, data.tasks)
+        try:
+            api_tokens = await _renew_api_tokens(
+                db, store, tasks, row, data.tasks
+            )
+        except Exception:
+            # The lease is renewed already. A renewal error must not fail
+            # the heartbeat, or the runner is fenced. It keeps its tokens
+            # until the next heartbeat.
+            LOGGER.exception(
+                'Agent API token renewal failed for runner %s', runner['id']
+            )
     return RunnerLease(
         state=row['state'],
         chain_id=row['chain_id'],

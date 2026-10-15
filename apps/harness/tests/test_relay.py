@@ -176,6 +176,36 @@ class RelayTestCase(unittest.IsolatedAsyncioTestCase):
             CALLS, [('update_project', {'slug': 's', 'name': 'n'})]
         )
 
+    async def test_audit_has_the_jti_of_the_attempt(self) -> None:
+        """A renewal during the call does not change the audit jti; a
+        retry after it records the new one."""
+        await self.relay.start()
+        real = self.relay._until_stopped
+        renewed = jwt.encode({'jti': 'jti-2'}, 'k', algorithm='HS256')
+        outcomes: list[str] = []
+
+        async def renew_during(name: str, arguments: typing.Any) -> typing.Any:
+            self.token = renewed
+            if outcomes.pop(0) == 'fail':
+                raise relay.Unavailable('ConnectError')
+            return await real(name, arguments)
+
+        for plan, expected in ((['ok'], 'jti-1'), (['fail', 'ok'], 'jti-2')):
+            with self.subTest(plan=plan):
+                self.token = jwt.encode(
+                    {'jti': 'jti-1'}, 'k', algorithm='HS256'
+                )
+                outcomes[:] = plan
+                with mock.patch.object(
+                    self.relay, '_until_stopped', renew_during
+                ):
+                    await self.relay.call('list_projects', {'org': 'a'})
+                audit = self.relay.take_audit(
+                    'mcp__imbi_api__list_projects', {'org': 'a'}
+                )
+                assert audit is not None
+                self.assertEqual(audit['token_jti'], expected)
+
     async def test_size_limit(self) -> None:
         await self.relay.start()
         result = await self.relay.call('big', {})
