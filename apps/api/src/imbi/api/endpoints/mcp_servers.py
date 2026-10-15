@@ -717,7 +717,9 @@ async def link_credential_binding(
         403: The caller is not a platform admin (the server is global),
             or is not a member of the organization.
         404: No such server or organization.
-        409: The reference is bound already in the organization.
+        409: The reference is bound already in the organization, or
+            ``credential_ref_conflict``: the server has another
+            reference (change it with PATCH).
         422: The reference, provider, or locator is not valid.
 
     """
@@ -727,6 +729,24 @@ async def link_credential_binding(
             detail='Only a platform admin can set credential_ref',
         )
     server = await _fetch(db, id)
+    reference = (
+        f'{data.reference}#{data.field}' if data.field else data.reference
+    )
+    if server.credential_ref and server.credential_ref != reference:
+        # The server is global: another reference would hide it from
+        # the organizations that bound the current one. A deliberate
+        # change goes through PATCH.
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'credential_ref_conflict',
+                'message': (
+                    f'The server uses {server.credential_ref}: bind that '
+                    'reference in this organization'
+                ),
+                'credential_ref': server.credential_ref,
+            },
+        )
     # The binding and the grant need the caller's access to the
     # organization, as on the secrets routes.
     org_id = await organizations.check_member(data.organization, db, auth)
@@ -764,11 +784,9 @@ async def link_credential_binding(
         validation = await secrets_api.validate_binding(
             org_id, binding['id'], secrets, auth
         )
-        server.credential_ref = (
-            f'{binding["reference"]}#{data.field}'
-            if data.field
-            else str(binding['reference'])
-        )
+        # The broker accepts only the canonical form, so this is the
+        # binding's reference (with the field).
+        server.credential_ref = reference
         linked = _to_response(await _persist(db, server))
     except BaseException:
         # Undo what this request made, so that a retry does not get

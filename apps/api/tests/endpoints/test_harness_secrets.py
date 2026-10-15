@@ -703,6 +703,58 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
             ),
         )
 
+    async def _cleanup_other_org(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM secrets.audit_outbox'
+                " WHERE event->>'organization_id' = %s",
+                (self.other_org,),
+            )
+            for table in ('grants', 'bindings', 'providers'):
+                await conn.execute(
+                    f'DELETE FROM secrets.{table} WHERE organization_id = %s',
+                    (self.other_org,),
+                )
+
+    async def test_one_reference_for_every_organization(self) -> None:
+        """The server is global: a second organization binds the same
+        reference; another reference would hide it from the first."""
+        response = await self.link()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.addAsyncCleanup(self._cleanup_other_org)
+        provider = await self.secrets.create(
+            'providers',
+            self.other_org,
+            {
+                'name': 'fake',
+                'type': 'fake',
+                'config': {},
+                'capabilities': sorted(self.fake.capabilities),
+                'created_by': 'test',
+            },
+        )
+        other = self.body | {
+            'organization': self.other_org,
+            'provider_id': str(provider['id']),
+            'agent_ids': [],
+        }
+        response = await self.client.post(
+            f'/mcp-servers/{self.server_id}/credential-binding',
+            json=other | {'reference': 'secret://mcp/another'},
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'credential_ref_conflict')
+        self.assertEqual(detail['credential_ref'], self.body['reference'])
+        server = await self.client.get(f'/mcp-servers/{self.server_id}')
+        self.assertEqual(
+            server.json()['credential_ref'], self.body['reference']
+        )
+        response = await self.client.post(
+            f'/mcp-servers/{self.server_id}/credential-binding', json=other
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+
     async def test_only_a_platform_admin(self) -> None:
         self.user.is_admin = False
         self.permissions.add('mcp_server:update')
