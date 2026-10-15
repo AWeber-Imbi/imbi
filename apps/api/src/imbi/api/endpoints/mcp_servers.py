@@ -720,7 +720,9 @@ async def link_credential_binding(
         409: The reference is bound already in the organization, or
             ``credential_ref_conflict``: the server has another
             reference (change it with PATCH).
-        422: The reference, provider, or locator is not valid.
+        422: The reference, provider, or locator is not valid, or
+            ``credential_binding_not_valid``: the provider does not
+            find the secret. Nothing is left.
 
     """
     if not auth.is_admin:
@@ -736,17 +738,8 @@ async def link_credential_binding(
         # The server is global: another reference would hide it from
         # the organizations that bound the current one. A deliberate
         # change goes through PATCH.
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail={
-                'error': 'credential_ref_conflict',
-                'message': (
-                    f'The server uses {server.credential_ref}: bind that '
-                    'reference in this organization'
-                ),
-                'credential_ref': server.credential_ref,
-            },
-        )
+        raise _reference_conflict(server.credential_ref)
+    expected = server.credential_ref or ''
     # The binding and the grant need the caller's access to the
     # organization, as on the secrets routes.
     org_id = await organizations.check_member(data.organization, db, auth)
@@ -784,10 +777,19 @@ async def link_credential_binding(
         validation = await secrets_api.validate_binding(
             org_id, binding['id'], secrets, auth
         )
+        if not validation['valid']:
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail={
+                    'error': 'credential_binding_not_valid',
+                    'reason': validation.get('reason'),
+                },
+            )
         # The broker accepts only the canonical form, so this is the
         # binding's reference (with the field).
-        server.credential_ref = reference
-        linked = _to_response(await _persist(db, server))
+        linked = _to_response(
+            await _set_reference(db, server.id, expected, reference)
+        )
     except BaseException:
         # Undo what this request made, so that a retry does not get
         # 409 for the reference. The original error is raised again.
@@ -799,6 +801,55 @@ async def link_credential_binding(
         'grant': grant,
         'validation': validation,
     }
+
+
+_SET_REFERENCE: typing.LiteralString = """
+MATCH (n:MCPServer {{id: {id}}})
+WHERE coalesce(n.credential_ref, '') = {expected}
+SET n.credential_ref = {reference}, n.updated_at = {now}
+RETURN n
+"""
+
+
+async def _set_reference(
+    db: graph.Graph, id: str, expected: str, reference: str
+) -> models.MCPServer:
+    """Set ``credential_ref`` only while it is still ``expected`` (the
+    value that the request checked), in one statement.
+
+    Raises:
+        404: The server is gone.
+        409: ``credential_ref_conflict``: another request changed it.
+
+    """
+    records = await db.execute(
+        _SET_REFERENCE,
+        {
+            'id': id,
+            'expected': expected,
+            'reference': reference,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['n'],
+    )
+    if records:
+        return _parse_node(records[0]['n'])
+    current = await _fetch(db, id)
+    raise _reference_conflict(current.credential_ref or '')
+
+
+def _reference_conflict(current: str) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409,
+        detail={
+            'error': 'credential_ref_conflict',
+            'message': (
+                f'The server uses {current}: bind that reference in this '
+                'organization'
+            ),
+            'credential_ref': current,
+        },
+    )
 
 
 async def _undo_link(

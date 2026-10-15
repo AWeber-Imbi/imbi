@@ -670,12 +670,12 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
     async def test_a_failed_step_leaves_nothing(self) -> None:
         for target, error in (
             ('validate_binding', 502),
-            ('_persist', 404),
+            ('_set_reference', 404),
         ):
             with self.subTest(target=target):
                 owner = (
                     mcp_servers
-                    if target == '_persist'
+                    if target == '_set_reference'
                     else mcp_servers.secrets_api
                 )
                 before = await self.rows()
@@ -715,6 +715,56 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
                     (self.other_org,),
                 )
+
+    async def test_another_link_wins_the_race(self) -> None:
+        """Another reference is written between the check and the
+        write: this request gets 409 and leaves nothing."""
+        real = mcp_servers.secrets_api.validate_binding
+
+        async def other_writes_first(*args: typing.Any) -> typing.Any:
+            await self.graph.execute(
+                'MATCH (n:MCPServer {{id: {id}}})'
+                ' SET n.credential_ref = {ref} RETURN n.id AS id',
+                {'id': self.server_id, 'ref': 'secret://mcp/other'},
+                ['id'],
+            )
+            return await real(*args)
+
+        before = await self.rows()
+        with mock.patch.object(
+            mcp_servers.secrets_api, 'validate_binding', other_writes_first
+        ):
+            response = await self.link()
+        self.assertEqual(response.status_code, 409, response.text)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'credential_ref_conflict')
+        self.assertEqual(detail['credential_ref'], 'secret://mcp/other')
+        self.assertEqual(await self.rows(), before)
+        server = await self.client.get(f'/mcp-servers/{self.server_id}')
+        self.assertEqual(server.json()['credential_ref'], 'secret://mcp/other')
+
+    async def test_a_secret_that_is_not_there(self) -> None:
+        before = await self.rows()
+        # The fake provider reports a missing key as metadata; a real
+        # provider reports it as not valid.
+        with mock.patch.object(
+            mcp_servers.secrets_api,
+            'validate_binding',
+            mock.AsyncMock(
+                return_value={'valid': False, 'reason': 'not_found'}
+            ),
+        ):
+            response = await self.link()
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'credential_binding_not_valid')
+        self.assertEqual(detail['reason'], 'not_found')
+        self.assertEqual(await self.rows(), before)
+        server = await self.client.get(f'/mcp-servers/{self.server_id}')
+        self.assertIsNone(server.json()['credential_ref'])
+        # A good locator then works.
+        response = await self.link()
+        self.assertEqual(response.status_code, 201, response.text)
 
     async def test_one_reference_for_every_organization(self) -> None:
         """The server is global: a second organization binds the same
