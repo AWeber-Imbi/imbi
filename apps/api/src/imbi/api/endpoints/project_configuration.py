@@ -84,21 +84,28 @@ async def _lookup_project_slug(
     return slug
 
 
+#: The environment segment of a prefix that varies per row.
+_PLACEHOLDER = '${environment}'
+
+
 async def _resolve_and_prepare(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
     source: str | None,
     environment: str | None,
+    *,
+    allow_placeholder: bool = False,
 ) -> tuple[ResolvedCapability, PluginContext, dict[str, str]]:
     """Resolve the configuration capability and prepare the call context.
 
     Runs the resolve -> context -> credential sequence shared by every
     configuration endpoint, raising 503 when the integration has no
-    credentials configured.
+    credentials configured. The environment must be one of the
+    organization's, except the literal placeholder that the prefix
+    route puts in itself (``allow_placeholder``).
     """
-    # The prefix route passes the literal placeholder: not a value.
-    if environment != '${environment}':
+    if not (allow_placeholder and environment == _PLACEHOLDER):
         await require_org_environments(db, org_slug, [environment])
     resolved = await resolve_capability(
         db, project_id, 'configuration', source
@@ -219,7 +226,12 @@ async def get_configuration_prefix(
     substituting any single environment's value would be misleading.
     """
     resolved, ctx, _ = await _resolve_and_prepare(
-        db, org_slug, project_id, source, environment or '${environment}'
+        db,
+        org_slug,
+        project_id,
+        source,
+        environment or _PLACEHOLDER,
+        allow_placeholder=environment is None,
     )
     handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
     return models.ConfigPrefixResponse(prefix=handler.describe_prefix(ctx))

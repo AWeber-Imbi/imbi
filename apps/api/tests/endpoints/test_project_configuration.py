@@ -188,11 +188,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             self.mock_db
         )
         # The environment check reads the graph; test_agent_api covers it.
-        patcher = mock.patch.object(
+        self.env_check = mock.patch.object(
             project_configuration, 'require_org_environments'
         )
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        self.env_check.start()
+        self.addCleanup(mock.patch.stopall)
 
         self.plugin_id = f'p-{_short_id()}'
         self.project_id = f'proj-{_short_id()}'
@@ -563,6 +563,49 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
                 )
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()['prefix'])
+
+    def test_client_placeholder_is_checked(self) -> None:
+        """Only the prefix route may use the placeholder, and only when
+        the client sent no environment: a client value
+        ``${environment}`` is checked like any other."""
+        # The real check, against a graph with no environments.
+        self.env_check.stop()
+
+        class _PrefixHandler(_FakeConfigurationHandler):
+            def describe_prefix(self, ctx: PluginContext) -> str:
+                return f'/imbi/{ctx.environment}/acct/'
+
+        base = f'/organizations/myorg/projects/{self.project_id}/configuration'
+        placeholder = {'environment': '${environment}'}
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
+                    return_value=_resolved(self.plugin_id, _PrefixHandler),
+                ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+            ):
+                responses = {
+                    'list': client.get(f'{base}/', params=placeholder),
+                    'fetch': client.post(
+                        f'{base}/values:fetch',
+                        params=placeholder,
+                        json={'keys': ['/foo']},
+                    ),
+                    'prefix': client.get(f'{base}/prefix', params=placeholder),
+                }
+                no_environment = client.get(f'{base}/prefix')
+        for name, response in responses.items():
+            with self.subTest(name):
+                self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(no_environment.status_code, 200, no_environment.text)
+        self.assertEqual(
+            no_environment.json()['prefix'], '/imbi/${environment}/acct/'
+        )
 
     # ----- value fetch ------------------------------------------------
 
