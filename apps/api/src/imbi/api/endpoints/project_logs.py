@@ -9,7 +9,10 @@ import fastapi
 
 from imbi.api.auth import permissions
 from imbi.api.domain import models
-from imbi.api.endpoints._helpers import lookup_project_slugs
+from imbi.api.endpoints._helpers import (
+    lookup_project_slugs,
+    require_org_environments,
+)
 from imbi.api.identity import resolution as identity_resolution
 from imbi.api.identity.host_integration import attach_identity
 from imbi.api.plugins import call_with_timeout
@@ -148,6 +151,7 @@ async def search_logs(
     query so rare levels can still be located even when total volume
     is high.
     """
+    await require_org_environments(db, org_slug, environment)
     resolved = await resolve_capability(db, project_id, 'logs', source)
 
     now = datetime.datetime.now(datetime.UTC)
@@ -355,6 +359,7 @@ async def get_log_histogram(
     counts at matching timestamps; per-level counts are aggregated
     across envs.
     """
+    await require_org_environments(db, org_slug, environment)
     resolved = await resolve_capability(db, project_id, 'logs', source)
     capability = resolved.entry.manifest.get_capability('logs')
     supports_histogram = bool(
@@ -502,6 +507,7 @@ async def get_log_schema(
     environment: str | None = fastapi.Query(default=None),
 ) -> list[dict[str, typing.Any]]:
     """Get the log schema (available fields) for the assigned logs plugin."""
+    await require_org_environments(db, org_slug, [environment])
     resolved = await resolve_capability(db, project_id, 'logs', source)
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     ctx = PluginContext(

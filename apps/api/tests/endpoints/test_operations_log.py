@@ -595,7 +595,7 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=instance,
         ):
             result = await operations_log.complete_opslog_entry(
-                'run-abc', datetime.datetime.now(datetime.UTC)
+                'run-abc', datetime.datetime.now(datetime.UTC), 'proj-1'
             )
         self.assertFalse(result)
         # The open row may still be in the sink, so the lookup is retried
@@ -616,7 +616,9 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
             'get_instance',
             return_value=instance,
         ):
-            result = await operations_log.complete_opslog_entry('run-99', now)
+            result = await operations_log.complete_opslog_entry(
+                'run-99', now, 'proj-1'
+            )
         self.assertTrue(result)
         self.assertEqual(2, instance.query.await_count)
         self.sleep.assert_awaited_once()
@@ -632,9 +634,20 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
             'get_instance',
             return_value=instance,
         ):
-            result = await operations_log.complete_opslog_entry('run-99', now)
+            result = await operations_log.complete_opslog_entry(
+                'run-99', now, 'proj-1'
+            )
         self.assertTrue(result)
         self.sleep.assert_not_awaited()
+        # The lookup is scoped to the project of the route.
+        self.assertEqual(
+            instance.query.await_args.args[1],
+            {'run_id': 'run-99', 'project_id': 'proj-1'},
+        )
+        self.assertIn(
+            'project_id = {project_id:String}',
+            instance.query.await_args.args[0],
+        )
         # Verify the row was published with the bumped row_version and
         # completed_at set, to the deployments topic.
         self.publish.assert_awaited_once()

@@ -30,8 +30,6 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'DELETE /organizations/{org_slug}/projects/{project_id}/relationships/{target_id}',
         'DELETE /organizations/{org_slug}/projects/{project_id}/services/{service_slug}',
         'DELETE /organizations/{org_slug}/tags/{tag_slug}',
-        'GET /ai-models/',
-        'GET /ai-models/{id}',
         'GET /blueprints/',
         'GET /blueprints/{type}',
         'GET /blueprints/{type}/{slug}',
@@ -51,7 +49,6 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/agents/{slug}/versions',
         'GET /organizations/{org_slug}/agents/{slug}/versions/{n}',
         'GET /organizations/{org_slug}/component-releases/{component_release_id}/advisories',
-        'GET /organizations/{org_slug}/component-releases/{component_release_id}/notes',
         'GET /organizations/{org_slug}/components/',
         'GET /organizations/{org_slug}/components/{component_id}/usage',
         'GET /organizations/{org_slug}/document-analytics',
@@ -145,11 +142,6 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{slug}',
         'GET /organizations/{slug}/members',
         'GET /plugins/{slug}/manifest',
-        'GET /prompts/',
-        'GET /prompts/resolve',
-        'GET /prompts/{namespace}/{slug}',
-        'GET /prompts/{namespace}/{slug}/versions',
-        'GET /prompts/{namespace}/{slug}/versions/{n}',
         'GET /scores/history-by-team',
         'GET /scores/history-feed',
         'GET /scores/monthly-improvement',
@@ -173,7 +165,6 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'PATCH /organizations/{org_slug}/projects/{project_id}/releases/{release_id}',
         'PATCH /organizations/{org_slug}/tags/{tag_slug}',
         'POST /operations-log/',
-        'POST /organizations/{org_slug}/component-releases/{component_release_id}/notes',
         'POST /organizations/{org_slug}/document-templates/',
         'POST /organizations/{org_slug}/documents/{document_id}/comments',
         'POST /organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments',
@@ -345,5 +336,20 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /maintenance/log',
         'GET /maintenance/operations',
         'GET /maintenance/operations/{slug}',
+        # Shared records that hold data of other organizations: the
+        # prompt library holds every organization's agent prompts
+        # (agents/<org>.<agent>), an AI model lists the teams of every
+        # organization that may use it, and component release notes
+        # are shared by all organizations by design. An agent gets its
+        # own prompt and model in the claim bundle.
+        'GET /ai-models/',
+        'GET /ai-models/{id}',
+        'GET /organizations/{org_slug}/component-releases/{component_release_id}/notes',
+        'GET /prompts/',
+        'GET /prompts/resolve',
+        'GET /prompts/{namespace}/{slug}',
+        'GET /prompts/{namespace}/{slug}/versions',
+        'GET /prompts/{namespace}/{slug}/versions/{n}',
+        'POST /organizations/{org_slug}/component-releases/{component_release_id}/notes',
     }
 )

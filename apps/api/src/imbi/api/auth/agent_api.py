@@ -79,20 +79,11 @@ _READS = frozenset({'GET', 'HEAD', 'OPTIONS'})
 #: The allowed routes with no organization in the path, and why each
 #: gives no data of another organization.
 GLOBAL_SAFE: dict[str, str] = {
-    'GET /ai-models/': 'the platform model catalog: no organization data',
-    'GET /ai-models/{id}': 'the platform model catalog: no organization data',
     'GET /blueprints/': 'global schema configuration',
     'GET /blueprints/{type}': 'global schema configuration',
     'GET /blueprints/{type}/{slug}': 'global schema configuration',
     'GET /scoring/policies/': 'global scoring configuration',
     'GET /scoring/policies/{slug}': 'global scoring configuration',
-    'GET /prompts/': 'the global prompt library',
-    'GET /prompts/resolve': 'the global prompt library',
-    'GET /prompts/{namespace}/{slug}': 'the global prompt library',
-    'GET /prompts/{namespace}/{slug}/versions': 'the global prompt library',
-    'GET /prompts/{namespace}/{slug}/versions/{n}': (
-        'the global prompt library'
-    ),
     'GET /plugins/{slug}/manifest': 'a plugin manifest: no organization data',
     'GET /operations-log/plugin-templates': 'plugin templates: no entries',
     'GET /status': 'service status',

@@ -178,6 +178,7 @@ async def _insert_row(row: dict[str, typing.Any], topic: str = 'api') -> None:
 _BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
     'SELECT * FROM operations_log FINAL '
     'WHERE external_run_id = {run_id:String} '
+    'AND project_id = {project_id:String} '
     'AND completed_at IS NULL AND is_deleted = 0 '
     'ORDER BY _row_version DESC LIMIT 1'
 )
@@ -186,8 +187,11 @@ _BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
 async def complete_opslog_entry(
     external_run_id: str,
     completed_at: datetime.datetime,
+    project_id: str,
 ) -> bool:
-    """Mark the opslog entry for ``external_run_id`` as completed.
+    """Mark the opslog entry of ``project_id`` for ``external_run_id``
+    as completed. The project keeps a caller from completing another
+    project's entry (of another organization too) with its run id.
 
     Looks up the latest in-progress row by ``external_run_id``, then
     re-publishes it with ``completed_at`` set and a bumped ``_row_version``
@@ -200,13 +204,14 @@ async def complete_opslog_entry(
     entry is treated as missing. The start and the completion are
     normally seconds to minutes apart, so the retry is a safety net.
     """
+    args = {'run_id': external_run_id, 'project_id': project_id}
     rows = await clickhouse.client.Clickhouse.get_instance().query(
-        _BY_EXTERNAL_RUN_SQL, {'run_id': external_run_id}
+        _BY_EXTERNAL_RUN_SQL, args
     )
     if not rows:
         await asyncio.sleep(SINK_POLL_INTERVAL_SECONDS)
         rows = await clickhouse.client.Clickhouse.get_instance().query(
-            _BY_EXTERNAL_RUN_SQL, {'run_id': external_run_id}
+            _BY_EXTERNAL_RUN_SQL, args
         )
     if not rows:
         LOGGER.debug(

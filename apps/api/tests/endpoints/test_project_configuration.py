@@ -24,6 +24,7 @@ from valkey import asyncio as valkey_asyncio
 from apps.api.tests import support
 from imbi.api import app, models
 from imbi.api.auth import password, permissions
+from imbi.api.endpoints import project_configuration
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common import clickhouse as imbi_clickhouse
 from imbi.common import graph
@@ -186,6 +187,12 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # The environment check reads the graph; test_agent_api covers it.
+        patcher = mock.patch.object(
+            project_configuration, 'require_org_environments'
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.plugin_id = f'p-{_short_id()}'
         self.project_id = f'proj-{_short_id()}'
