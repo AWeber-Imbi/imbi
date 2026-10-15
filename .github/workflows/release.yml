@@ -114,7 +114,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push by digest
+      # Built and checked locally first: nothing reaches the registry
+      # unless the check passes. One platform per job, so load works.
+      - name: Build for the check
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/harness/Dockerfile
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: imbi-harness:check
+          cache-from: type=gha,scope=harness-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=harness-${{ env.PLATFORM_PAIR }}
+
+      # The pod's main control is allowPrivilegeEscalation: false, but a
+      # setuid-root file would let agent read the runner credential if
+      # that control were lost (P5a).
+      - name: Check the image has no setuid or setgid files
+        run: |
+          found=$(docker run --rm --entrypoint find imbi-harness:check \
+            / -xdev -perm /6000 -type f)
+          if [ -n "$found" ]; then
+            echo "::error::setuid or setgid files in the runner image:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      # The same build from the builder's cache, pushed by digest for the
+      # merge job.
+      - name: Push by digest
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -124,22 +153,6 @@ jobs:
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.HARNESS_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=harness-${{ env.PLATFORM_PAIR }}
-          cache-to: type=gha,mode=max,scope=harness-${{ env.PLATFORM_PAIR }}
-
-      # The pod's main control is allowPrivilegeEscalation: false, but a
-      # setuid-root file would let agent read the runner credential if
-      # that control were lost (P5a). The digest is not tagged yet, so a
-      # failure here publishes nothing.
-      - name: Check the image has no setuid or setgid files
-        run: |
-          found=$(docker run --rm --entrypoint find \
-            "${{ env.HARNESS_IMAGE }}@${{ steps.build.outputs.digest }}" \
-            / -xdev -perm /6000 -type f)
-          if [ -n "$found" ]; then
-            echo "::error::setuid or setgid files in the runner image:" >&2
-            echo "$found" >&2
-            exit 1
-          fi
 
       - name: Export digest
         run: |
@@ -212,16 +225,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Create and push manifest to GHCR
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          tags="-t ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.tag }}"
-          if [ "${{ steps.version.outputs.is_latest }}" = "true" ]; then
-            tags="$tags -t ${{ env.GHCR_IMAGE }}:latest"
-          fi
-          docker buildx imagetools create $tags \
-            $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
-
+      # The harness tag first, then imbi: a failure here leaves no imbi
+      # release without its runner image. Each manifest step is
+      # idempotent (imagetools create sets the same tags to the same
+      # digests again), so re-running this job is the recovery.
       - name: Create and push the harness manifest to GHCR
         working-directory: ${{ runner.temp }}/harness-digests
         run: |
@@ -231,6 +238,16 @@ jobs:
           fi
           docker buildx imagetools create $tags \
             $(printf '${{ env.HARNESS_IMAGE }}@sha256:%s ' *)
+
+      - name: Create and push manifest to GHCR
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          tags="-t ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.tag }}"
+          if [ "${{ steps.version.outputs.is_latest }}" = "true" ]; then
+            tags="$tags -t ${{ env.GHCR_IMAGE }}:latest"
+          fi
+          docker buildx imagetools create $tags \
+            $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
 
       - name: Create and push manifest to DockerHub
         working-directory: ${{ runner.temp }}/digests
