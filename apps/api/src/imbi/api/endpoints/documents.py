@@ -194,6 +194,7 @@ _ATTACHMENT_MATCH: typing.LiteralString = """
           -[:OWNED_BY]->(team:Team)-[:BELONGS_TO]->(o)
     OPTIONAL MATCH (n)-[:ATTACHED_TO]->(pt:ProjectType)-[:BELONGS_TO]->(o)
     OPTIONAL MATCH (n)-[:ATTACHED_TO]->(u:User)-[:MEMBER_OF]->(o)
+          <-[:BELONGS_TO]-(n)
     WITH n, o, p, team, pt, u
     WHERE (p IS NOT NULL OR pt IS NOT NULL OR u IS NOT NULL)
 """
@@ -351,8 +352,11 @@ _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
         version: 1
     }})
     CREATE (n)-[:ATTACHED_TO]->(target)
-    RETURN n.id AS id
 """
+_RETURN_ID: typing.LiteralString = '\n    RETURN n.id AS id\n'
+#: A user document belongs to the organization it is made through: a
+#: user can be a member of more than one (issue #414). Needs ``o``.
+_LINK_ORG: typing.LiteralString = '\n    CREATE (n)-[:BELONGS_TO]->(o)'
 
 
 async def _create_document_impl(
@@ -364,6 +368,7 @@ async def _create_document_impl(
     anchor_match: typing.LiteralString,
     anchor_params: dict[str, typing.Any],
     not_found_detail: str,
+    after_create: typing.LiteralString = '',
 ) -> dict[str, typing.Any]:
     """Create a document attached to the vertex bound as ``target``."""
     tag_slugs = list(dict.fromkeys(data.tags))
@@ -372,7 +377,7 @@ async def _create_document_impl(
     now = datetime.datetime.now(datetime.UTC)
     document_id = nanoid.generate()
     records = await db.execute(
-        anchor_match + _DOCUMENT_CREATE_FRAGMENT,
+        anchor_match + _DOCUMENT_CREATE_FRAGMENT + after_create + _RETURN_ID,
         {
             **anchor_params,
             'org_slug': org_slug,
@@ -501,7 +506,7 @@ async def create_user_document(
     """Create a document attached to a user (org member)."""
     anchor: typing.LiteralString = """
     MATCH (target:User {{email: {email}}})
-          -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
+          -[:MEMBER_OF]->(o:Organization {{slug: {org_slug}}})
     """
     return await _create_document_impl(
         db,
@@ -512,6 +517,7 @@ async def create_user_document(
         anchor,
         {'email': email},
         f'User {email!r} not found',
+        after_create=_LINK_ORG,
     )
 
 

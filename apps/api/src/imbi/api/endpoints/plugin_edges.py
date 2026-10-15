@@ -296,12 +296,17 @@ async def put_anchor_edge(
     anchor_params: dict[str, typing.Any],
     rel_type: str,
     body: EdgePutBody,
+    org_slug: str,
 ) -> EdgeResponse:
     """Replace the single edge of ``rel_type`` from this anchor.
 
     For multi-edge relationships, a future ``?append=true`` mode will be
     added.  Today the semantics are: delete any existing edge with the
     same ``rel_type``, then create a fresh one.
+
+    The target must belong to no organization or to ``org_slug``, the
+    anchor's organization (issue #414): a plugin can declare a target
+    label that organizations own.
     """
     edge = resolve_edge_for(anchor_label, rel_type)
     if body.target_label not in edge.to_labels:
@@ -324,7 +329,9 @@ async def put_anchor_edge(
         {**anchor_params, 'target_id': body.target_id},
         ['anchor_id', 'target_id'],
     )
-    if not check_rows:
+    if not check_rows or not await _target_in_org(
+        db, body.target_label, body.target_id, org_slug
+    ):
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
@@ -364,6 +371,34 @@ async def put_anchor_edge(
         target={'id': body.target_id},
         properties=coerced_props,
     )
+
+
+async def _target_in_org(
+    db: graph.Graph, label: str, target_id: str, org_slug: str
+) -> bool:
+    """Whether the target belongs to no organization or to
+    ``org_slug``: directly (``BELONGS_TO``), or as a project through
+    its team."""
+    query = (
+        f'MATCH (t:{label} {{{{id: {{target_id}}}}}}) '
+        'OPTIONAL MATCH (t)-[:BELONGS_TO]->(o:Organization) '
+        'OPTIONAL MATCH (t)-[:OWNED_BY]->(:Team)'
+        '-[:BELONGS_TO]->(po:Organization) '
+        'RETURN o.slug AS org, po.slug AS project_org'
+    )
+    records = await db.execute(
+        query, {'target_id': target_id}, ['org', 'project_org']
+    )
+    orgs = {
+        str(value)
+        for record in records
+        for value in (
+            graph.parse_agtype(record['org']),
+            graph.parse_agtype(record['project_org']),
+        )
+        if value is not None
+    }
+    return orgs <= {org_slug}
 
 
 async def delete_anchor_edge(

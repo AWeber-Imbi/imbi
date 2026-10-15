@@ -11,6 +11,7 @@ import urllib.parse
 import fastapi
 import psycopg
 
+from imbi.api.auth import permissions
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common import patch as json_patch
@@ -296,6 +297,46 @@ async def require_org_environments(
             detail=f'Environment {missing[0]!r} is not in organization '
             f'{org_slug!r}',
         )
+
+
+_USER_ORGS_QUERY: typing.LiteralString = (
+    'MATCH (:User {{email: {who}}})-[:MEMBER_OF]->(o:Organization) '
+    'RETURN DISTINCT o.slug AS slug'
+)
+_ACCOUNT_ORGS_QUERY: typing.LiteralString = (
+    'MATCH (:ServiceAccount {{slug: {who}}})-[:MEMBER_OF]->'
+    '(o:Organization) RETURN DISTINCT o.slug AS slug'
+)
+_ORG_TEAMS_QUERY: typing.LiteralString = (
+    'MATCH (t:Team)-[:BELONGS_TO]->(o:Organization) '
+    'WHERE o.slug IN {slugs} RETURN DISTINCT t.id AS id'
+)
+
+
+async def caller_org_slugs(
+    db: graph.Graph, auth: permissions.AuthContext
+) -> set[str]:
+    """The slugs of the organizations that the caller is a member of:
+    a user, or a service account."""
+    if auth.user is not None:
+        query, who = _USER_ORGS_QUERY, auth.user.email
+    elif auth.service_account is not None:
+        query, who = _ACCOUNT_ORGS_QUERY, auth.service_account.slug
+    else:
+        return set()
+    records = await db.execute(query, {'who': who}, ['slug'])
+    return {str(graph.parse_agtype(r['slug'])) for r in records}
+
+
+async def caller_team_ids(
+    db: graph.Graph, auth: permissions.AuthContext
+) -> set[str]:
+    """The ids of the teams of the caller's organizations."""
+    slugs = sorted(await caller_org_slugs(db, auth))
+    if not slugs:
+        return set()
+    records = await db.execute(_ORG_TEAMS_QUERY, {'slugs': slugs}, ['id'])
+    return {str(graph.parse_agtype(r['id'])) for r in records}
 
 
 async def lookup_project_slugs(

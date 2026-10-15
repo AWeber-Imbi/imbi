@@ -518,6 +518,7 @@ async def set_environment_edge(
         anchor_params=_env_anchor_params(org_slug, slug),
         rel_type=rel_type,
         body=body,
+        org_slug=org_slug,
     )
 
 
