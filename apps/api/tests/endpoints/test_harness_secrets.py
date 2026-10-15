@@ -10,6 +10,7 @@ import typing
 import uuid
 from unittest import mock
 
+import fastapi
 import httpx
 
 from apps.api.tests.endpoints import test_harness
@@ -18,6 +19,7 @@ from imbi.api import secret_broker
 from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import permissions
 from imbi.api.endpoints import harness as harness_api
+from imbi.api.endpoints import mcp_servers
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import sweeper, tokens
 from imbi.api.secret_broker import broker, providers, store
@@ -654,6 +656,48 @@ class McpCredentialBindingTests(SecretRunnerTestCase):
         self.assertEqual(body['grant']['agent_ids'], [self.agent_id])
         self.assertTrue(body['validation']['valid'], body)
         self.assertNotIn('static-mcp-value', response.text)
+
+    async def left_behind(self) -> tuple[list[typing.Any], list[typing.Any]]:
+        """The bindings with this test's reference, and their grants."""
+        bindings = [
+            b
+            for b in await self.secrets.list_all('bindings', self.org)
+            if b['reference'] == self.body['reference']
+        ]
+        ids = {b['id'] for b in bindings}
+        grants = [
+            g
+            for g in await self.secrets.list_all('grants', self.org)
+            if ids & set(g['binding_ids'])
+        ]
+        return bindings, grants
+
+    async def test_a_failed_step_leaves_nothing(self) -> None:
+        for target, error in (
+            ('validate_binding', 502),
+            ('_persist', 404),
+        ):
+            with self.subTest(target=target):
+                owner = (
+                    mcp_servers
+                    if target == '_persist'
+                    else mcp_servers.secrets_api
+                )
+                with mock.patch.object(
+                    owner,
+                    target,
+                    mock.AsyncMock(
+                        side_effect=fastapi.HTTPException(status_code=error)
+                    ),
+                ):
+                    response = await self.link()
+                self.assertEqual(response.status_code, error, response.text)
+                self.assertEqual(await self.left_behind(), ([], []))
+        # A retry of the same reference then works.
+        response = await self.link()
+        self.assertEqual(response.status_code, 201, response.text)
+        bindings, grants = await self.left_behind()
+        self.assertEqual((len(bindings), len(grants)), (1, 1))
 
     async def test_only_a_platform_admin(self) -> None:
         self.user.is_admin = False

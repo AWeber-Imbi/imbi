@@ -746,31 +746,57 @@ async def link_credential_binding(
         auth,
     )
     grant = None
-    if data.agent_ids:
-        grant = await secrets_api.create_grant(
-            org_id,
-            secrets_api.SecretGrantCreate(
-                description=f'Agents that use MCP server {server.slug}',
-                agent_ids=data.agent_ids,
-                binding_ids=[binding['id']],
-                purposes=['mcp_server'],
-                delivery_modes=['file_descriptor'],
-                max_ttl_seconds=data.max_ttl_seconds,
-            ),
-            secrets,
-            auth,
+    try:
+        if data.agent_ids:
+            grant = await secrets_api.create_grant(
+                org_id,
+                secrets_api.SecretGrantCreate(
+                    description=f'Agents that use MCP server {server.slug}',
+                    agent_ids=data.agent_ids,
+                    binding_ids=[binding['id']],
+                    purposes=['mcp_server'],
+                    delivery_modes=['file_descriptor'],
+                    max_ttl_seconds=data.max_ttl_seconds,
+                ),
+                secrets,
+                auth,
+            )
+        validation = await secrets_api.validate_binding(
+            org_id, binding['id'], secrets, auth
         )
-    validation = await secrets_api.validate_binding(
-        org_id, binding['id'], secrets, auth
-    )
-    server.credential_ref = (
-        f'{binding["reference"]}#{data.field}'
-        if data.field
-        else str(binding['reference'])
-    )
+        server.credential_ref = (
+            f'{binding["reference"]}#{data.field}'
+            if data.field
+            else str(binding['reference'])
+        )
+        linked = _to_response(await _persist(db, server))
+    except BaseException:
+        # Undo what this request made, so that a retry does not get
+        # 409 for the reference. The original error is raised again.
+        await _undo_link(org_id, secrets, auth, binding, grant)
+        raise
     return {
-        'server': _to_response(await _persist(db, server)),
+        'server': linked,
         'binding': binding,
         'grant': grant,
         'validation': validation,
     }
+
+
+async def _undo_link(
+    org_id: str,
+    secrets: secret_broker.Store,
+    auth: permissions.AuthContext,
+    binding: dict[str, typing.Any],
+    grant: dict[str, typing.Any] | None,
+) -> None:
+    """Delete the grant, then the binding, of a failed link. A failure
+    here is logged: the caller raises the original error."""
+    try:
+        if grant is not None:
+            await secrets_api.delete_grant(org_id, grant['id'], secrets, auth)
+        await secrets_api.delete_binding(org_id, binding['id'], secrets, auth)
+    except Exception:
+        LOGGER.exception(
+            'Could not undo the credential binding %s', binding['id']
+        )
