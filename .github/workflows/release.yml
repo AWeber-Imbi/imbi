@@ -9,6 +9,10 @@ on:
 env:
   GHCR_IMAGE: ghcr.io/aweber-imbi/imbi
   DOCKERHUB_IMAGE: aweber/imbi
+  # The agent runner pod image (ADR 0022): the runtime target of
+  # apps/harness/Dockerfile, never the isolation target with its test
+  # double. GHCR only.
+  HARNESS_IMAGE: ghcr.io/aweber-imbi/imbi-harness
 
 jobs:
   build:
@@ -76,8 +80,83 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-harness:
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'AWeber-Imbi/imbi'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/harness/Dockerfile
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.HARNESS_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=harness-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=harness-${{ env.PLATFORM_PAIR }}
+
+      # The pod's main control is allowPrivilegeEscalation: false, but a
+      # setuid-root file would let agent read the runner credential if
+      # that control were lost (P5a). The digest is not tagged yet, so a
+      # failure here publishes nothing.
+      - name: Check the image has no setuid or setgid files
+        run: |
+          found=$(docker run --rm --entrypoint find \
+            "${{ env.HARNESS_IMAGE }}@${{ steps.build.outputs.digest }}" \
+            / -xdev -perm /6000 -type f)
+          if [ -n "$found" ]; then
+            echo "::error::setuid or setgid files in the runner image:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
   merge:
-    needs: build
+    needs: [build, build-harness]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,6 +189,13 @@ jobs:
           pattern: digests-*
           merge-multiple: true
 
+      - name: Download harness digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/harness-digests
+          pattern: harness-digests-*
+          merge-multiple: true
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -135,6 +221,16 @@ jobs:
           fi
           docker buildx imagetools create $tags \
             $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
+
+      - name: Create and push the harness manifest to GHCR
+        working-directory: ${{ runner.temp }}/harness-digests
+        run: |
+          tags="-t ${{ env.HARNESS_IMAGE }}:${{ steps.version.outputs.tag }}"
+          if [ "${{ steps.version.outputs.is_latest }}" = "true" ]; then
+            tags="$tags -t ${{ env.HARNESS_IMAGE }}:latest"
+          fi
+          docker buildx imagetools create $tags \
+            $(printf '${{ env.HARNESS_IMAGE }}@sha256:%s ' *)
 
       - name: Create and push manifest to DockerHub
         working-directory: ${{ runner.temp }}/digests
