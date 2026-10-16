@@ -291,6 +291,14 @@ def outcome(
     return 'failed_external', reason
 
 
+def _deny_rule(rule: str) -> list[str]:
+    """The CLI deny rules for one ``denied_tools`` rule, less
+    ``report_outcome``: a deny rule wins over every allow rule."""
+    if rule in {'mcp__imbi', 'mcp__imbi__*'}:
+        return [tool for tool in IMBI_TOOLS if tool != policy.REPORT_OUTCOME]
+    return [] if rule == policy.REPORT_OUTCOME else [rule]
+
+
 def _cli_stderr(line: str) -> None:
     # The CLI holds no credential, so its stderr holds none.
     LOGGER.info('cli: %s', line.rstrip())
@@ -928,7 +936,11 @@ class TaskRun:
 
     def tools(self) -> tuple[list[str], list[str]]:
         """The allowed and the denied tools of the merged configuration."""
-        denied = sorted(self.config.get('denied_tools') or [])
+        denied = sorted(
+            tool
+            for rule in api.items(self.config, 'denied_tools')
+            for tool in _deny_rule(str(rule))
+        )
         base = self.config.get('allowed_tools')
         allowed = [
             tool
@@ -1446,7 +1458,7 @@ class TaskRun:
             return _tool_error(
                 f'The outcome must be one of: {", ".join(REPORTED_OUTCOMES)}'
             )
-        if not isinstance(reason, str) or not _REASON.match(reason):
+        if not isinstance(reason, str) or not _REASON.fullmatch(reason):
             return _tool_error(
                 'The reason must be a lower-case slug of at most 100 '
                 'characters: a-z, 0-9, _ . -'

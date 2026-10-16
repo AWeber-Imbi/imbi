@@ -287,6 +287,7 @@ class ReportOutcomeTestCase(TaskTestCase):
             {'outcome': 'cancelled_by_human', 'reason': 'x'},
             {'outcome': 'done_acted', 'reason': 'Not a slug'},
             {'outcome': 'done_acted', 'reason': 'x' * 101},
+            {'outcome': 'done_acted', 'reason': 'fixed\n'},
             {'outcome': 'done_acted'},
         ]
         for args in cases:
@@ -303,6 +304,22 @@ class ConfigTestCase(TaskTestCase):
         self.assertNotIn('WebFetch', allowed)
         self.assertIn('Bash', allowed)
         self.assertEqual(allowed[-1], 'mcp__imbi__run_with_secret')
+
+    def test_report_outcome_is_never_denied(self) -> None:
+        for rule in (
+            'mcp__imbi',
+            'mcp__imbi__*',
+            'mcp__imbi__report_outcome',
+        ):
+            with self.subTest(rule=rule):
+                allowed, denied = self.make(
+                    denied_tools=['WebFetch', rule]
+                ).tools()
+                self.assertIn('mcp__imbi__report_outcome', allowed)
+                self.assertNotIn('mcp__imbi__report_outcome', denied)
+                self.assertIn('WebFetch', denied)
+                if rule != 'mcp__imbi__report_outcome':
+                    self.assertIn('mcp__imbi__run_with_secret', denied)
 
     def test_allowed_list(self) -> None:
         subject = self.make(allowed_tools=['Read', 'WebFetch'])

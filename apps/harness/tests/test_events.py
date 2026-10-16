@@ -237,6 +237,52 @@ class PolicyFieldTestCase(unittest.TestCase):
         )
         self.assertFalse(recorder.mutated)
 
+    def test_cli_denial_did_not_mutate(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[
+                    sdk.ToolUseBlock('t1', 'Write', {}),
+                    sdk.ToolUseBlock('t2', 'Bash', {}),
+                ],
+                model='m',
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(
+                content=[
+                    sdk.ToolResultBlock('t1', 'Permission denied', True),
+                    sdk.ToolResultBlock('t2', 'exit 1', True),
+                ]
+            )
+        )
+        denial = {'tool_name': 'Write', 'tool_use_id': 't1', 'tool_input': {}}
+        recorder.message(
+            sdk.ResultMessage(
+                subtype='success',
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id='s',
+                permission_denials=[denial],
+            )
+        )
+        # The Bash call ran and failed: it still counts.
+        self.assertEqual(recorder.mutations, {'t2'})
+        recorder.message(
+            sdk.ResultMessage(
+                subtype='success',
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id='s',
+                permission_denials=[denial | {'tool_use_id': 't2'}],
+            )
+        )
+        self.assertFalse(recorder.mutated)
+
 
 class RequeueTestCase(unittest.TestCase):
     def test_unsent_events_go_first(self) -> None:

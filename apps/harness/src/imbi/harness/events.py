@@ -194,8 +194,9 @@ class Recorder:
         self.calls: dict[
             str, tuple[str, dict[str, typing.Any], float, str | None]
         ] = {}
-        #: A mutating tool call ran: the policy did not refuse it.
-        self.mutated = False
+        #: The tool use ids of the mutating calls that the policy did
+        #: not refuse.
+        self.mutations: set[str] = set()
 
     def _add(
         self, kind: str, payload: dict[str, typing.Any], parent: str | None
@@ -227,6 +228,16 @@ class Recorder:
             for block in message.content:
                 if isinstance(block, sdk.ToolResultBlock):
                     self._result(block)
+        elif isinstance(message, sdk.ResultMessage):
+            # The CLI's own refusals (a deny rule, dontAsk): the tool
+            # did not run.
+            for denial in message.permission_denials or []:
+                self.mutations.discard(str(denial.get('tool_use_id')))
+
+    @property
+    def mutated(self) -> bool:
+        """A mutating tool call ran."""
+        return bool(self.mutations)
 
     def _assistant(self, message: sdk.AssistantMessage) -> None:
         parent = message.parent_tool_use_id
@@ -280,7 +291,7 @@ class Recorder:
         )
         decision = self.decisions.pop(block.tool_use_id, None)
         if name in MUTATING and (decision or {}).get('decision') != 'deny':
-            self.mutated = True
+            self.mutations.add(block.tool_use_id)
         self._add(
             'tool.called',
             {

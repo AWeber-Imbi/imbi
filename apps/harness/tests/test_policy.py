@@ -106,6 +106,24 @@ class RelayKeyTestCase(unittest.TestCase):
         )
 
 
+class ReportOutcomeTestCase(unittest.TestCase):
+    def test_no_approval_or_rate_limit(self) -> None:
+        checked = policy.check(
+            policy.REPORT_OUTCOME,
+            {},
+            allowed=[],
+            tool_map={
+                'imbi.report_outcome': {
+                    'approval': True,
+                    'rate_limit': {'count': 1, 'per': 'hour'},
+                }
+            },
+            approval_tools=[policy.REPORT_OUTCOME, 'imbi.report_outcome'],
+            automation=True,
+        )
+        self.assertEqual(checked, policy.Check())
+
+
 class HarnessNameTestCase(unittest.TestCase):
     def test_a_relayed_tool_never_takes_a_harness_tool_key(self) -> None:
         for name in sorted(policy.HARNESS_TOOLS):
