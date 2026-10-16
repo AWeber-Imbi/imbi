@@ -208,6 +208,18 @@ class RunWithSecretTestCase(TaskTestCase):
         self.client.create_resolution.assert_not_called()
         self.call.assert_not_called()
 
+    async def test_purpose_must_be_a_slug(self) -> None:
+        for purpose in ['Authenticate git push to GitHub', 'github_write\n']:
+            with self.subTest(purpose=purpose):
+                secret = self.ARGS['secrets'][0] | {'purpose': purpose}
+                result = await self.run_tool(
+                    {'command': 'git push', 'secrets': [secret]}
+                )
+                self.assertTrue(result['is_error'])
+                self.assertIn('github_write', result['content'][0]['text'])
+        self.client.create_resolution.assert_not_called()
+        self.call.assert_not_called()
+
     async def test_invalid_input(self) -> None:
         result = await self.run_tool({'command': 'x', 'secrets': [{}]})
         self.assertTrue(result['is_error'])
