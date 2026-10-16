@@ -1395,8 +1395,8 @@ export interface paths {
         head?: never;
         /**
          * Update Harness Pool
-         * @description Change a runner pool. Runners keep the labels and allowlist that
-         *     they registered with; new runners get the new ones.
+         * @description Change a runner pool. The next claim of each runner of the pool
+         *     uses the new labels and allowlist.
          *
          *     Raises:
          *         403: Not a platform administrator.
@@ -1445,7 +1445,8 @@ export interface paths {
         put?: never;
         /**
          * Heartbeat Harness Runner
-         * @description Renew the lease of the runner.
+         * @description Renew the lease of the runner, and the agent API tokens of the
+         *     open tasks of its chain that ``tasks`` names.
          *
          *     Raises:
          *         401: ``invalid_runner_credential``: the runner is lost. It
@@ -1887,6 +1888,7 @@ export interface paths {
          *         The created MCP server, without any secret values.
          *
          *     Raises:
+         *         403: ``credential_ref`` is set by a caller that is not an admin.
          *         409: If an MCP server with the same slug already exists.
          */
         post: operations["create_mcp_server_api_mcp_servers__post"];
@@ -1949,6 +1951,7 @@ export interface paths {
          *         The updated MCP server, without any secret values.
          *
          *     Raises:
+         *         403: ``credential_ref`` changes and the caller is not an admin.
          *         404: If no MCP server with the given id exists.
          *         409: If the new slug collides with another MCP server.
          */
@@ -2050,6 +2053,45 @@ export interface paths {
          *         404: If no MCP server with the given id exists.
          */
         post: operations["report_mcp_server_status_api_mcp_servers__id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-servers/{id}/credential-binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Credential Binding
+         * @description Link the server's credential for agents to a broker binding.
+         *
+         *     Creates a binding (``file_descriptor`` only) in the organization,
+         *     a grant with the ``mcp_server`` purpose for ``agent_ids``, asks the
+         *     provider whether the secret is there, and sets ``credential_ref``.
+         *
+         *     The value is not moved: the broker stores no secret material, so
+         *     the admin first puts the value in the organization's secret store.
+         *     The Fernet fields stay, because apps/assistant still reads them.
+         *
+         *     Raises:
+         *         403: The caller is not a platform admin (the server is global),
+         *             or is not a member of the organization.
+         *         404: No such server or organization.
+         *         409: The reference is bound already in the organization, or
+         *             ``credential_ref_conflict``: the server has another
+         *             reference (change it with PATCH).
+         *         422: The reference, provider, or locator is not valid, or
+         *             ``credential_binding_not_valid``: the provider does not
+         *             find the secret. Nothing is left.
+         */
+        post: operations["link_credential_binding_api_mcp_servers__id__credential_binding_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5704,16 +5746,26 @@ export interface paths {
         put?: never;
         /**
          * Start Run
-         * @description Start a manual run of the active version.
+         * @description Start a run of the active version.
          *
-         *     A repeat of the ``Idempotency-Key`` header by the same person
+         *     A person starts a manual trigger. The scheduler starts a schedule
+         *     trigger, and the gateway a webhook trigger, with the origin in
+         *     headers (see :func:`agent_tasks.task_origin`). The idempotency key
+         *     is the ``Idempotency-Key`` header (the scheduler sends its run id),
+         *     or the delivery id for a webhook. A repeat by the same origin
          *     returns the first run.
          *
          *     Raises:
-         *         403: The trigger's ``who`` does not include the caller.
+         *         403: The trigger's ``who`` does not include the caller, a person
+         *             names an origin, the caller is a service account other than
+         *             the scheduler or the gateway, or the scheduler task is not
+         *             the one that the trigger's binding records.
          *         404: No such workflow.
-         *         409: The workflow is not active.
-         *         422: No such manual trigger, or the inputs do not match it.
+         *         409: The workflow is not active, or its active version has no
+         *             such schedule or webhook trigger.
+         *         422: No such manual trigger, the inputs do not match it,
+         *             ``concurrency_key_missing``, or a schedule run without an
+         *             ``Idempotency-Key``.
          */
         post: operations["start_run_api_organizations__org_slug__workflows__slug__runs_post"];
         delete?: never;
@@ -6001,8 +6053,11 @@ export interface paths {
          * @description Create a provider. Its configuration holds no credentials.
          *
          *     Raises:
-         *         409: The name is in use.
-         *         422: Unknown type, or the configuration is not valid.
+         *         409: The name is in use, or the role cannot be used
+         *             (``role_arn_in_use``).
+         *         422: Unknown type, or the configuration is not valid, or the
+         *             role does not require the ExternalId
+         *             (``role_does_not_require_external_id``).
          */
         post: operations["create_provider_api_organizations__org_slug__secret_providers__post"];
         delete?: never;
@@ -6039,8 +6094,10 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
-         *         409: The name is in use.
-         *         422: The configuration is not valid.
+         *         409: The name is in use, or the role cannot be used
+         *             (``role_arn_in_use``).
+         *         422: The configuration is not valid, or the role does not
+         *             require the ExternalId.
          */
         patch: operations["update_provider_api_organizations__org_slug__secret_providers__provider_id__patch"];
         trace?: never;
@@ -9106,6 +9163,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current Permissions
+         * @description Return the caller's effective permissions.
+         *
+         *     Unlike ``GET /users/me``, this works for every principal, service
+         *     accounts included: imbi-mcp lists an agent's tools with it (harness
+         *     plan P7).
+         */
+        get: operations["get_current_permissions_api_users_me_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/me": {
         parameters: {
             query?: never;
@@ -10854,6 +10935,20 @@ export interface components {
             /** Start */
             start: number;
         };
+        /**
+         * ApiToken
+         * @description An agent API token (harness plan P7): the Imbi API with the
+         *     agent's roles, for one lease.
+         */
+        ApiToken: {
+            /** Token */
+            token: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** AppendEventsResponse */
         AppendEventsResponse: {
             /** Written */
@@ -10927,6 +11022,13 @@ export interface components {
             origin_kind: string;
             /** Origin Id */
             origin_id: string;
+            /**
+             * Origin
+             * @description The scheduler task id, the webhook id and delivery id, or the person.
+             */
+            origin: {
+                [key: string]: unknown;
+            };
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -11302,6 +11404,46 @@ export interface components {
             refresh_token?: string | null;
         };
         /**
+         * BundleMcpServer
+         * @description A third-party MCP server that the runner relays (plan P7).
+         *
+         *     Holds no secret: the runner resolves ``credential_ref`` with the
+         *     ``mcp_server`` purpose into its own memory.
+         */
+        BundleMcpServer: {
+            /** Slug */
+            slug: string;
+            /** Url */
+            url: string;
+            /**
+             * Auth Type
+             * @enum {string}
+             */
+            auth_type: "none" | "static" | "oauth_client_credentials";
+            /** Static Header */
+            static_header?: string | null;
+            /** Oauth Token Url */
+            oauth_token_url?: string | null;
+            /** Oauth Client Id */
+            oauth_client_id?: string | null;
+            /** Oauth Scope */
+            oauth_scope?: string | null;
+            /**
+             * Ignored Tools
+             * @default []
+             */
+            ignored_tools: string[];
+            /** Credential Ref */
+            credential_ref?: string | null;
+        };
+        /** BundleMcpUnavailable */
+        BundleMcpUnavailable: {
+            /** Slug */
+            slug: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * BundlePrompt
          * @description The pinned prompt version of a task, rendered.
          */
@@ -11332,6 +11474,28 @@ export interface components {
             name: string;
             /** Url */
             url: string;
+        };
+        /**
+         * BundleSubagent
+         * @description An agent that the task's agent can make child tasks for.
+         */
+        BundleSubagent: {
+            /** Agent Id */
+            agent_id: string;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+        };
+        /** CallerPermissions */
+        CallerPermissions: {
+            /** Is Admin */
+            is_admin: boolean;
+            /** Permissions */
+            permissions: string[];
         };
         /**
          * CapabilityAssignment
@@ -11456,6 +11620,12 @@ export interface components {
              * Format: date-time
              */
             agent_token_expires_at: string;
+            /** Api Token */
+            api_token?: string | null;
+            /** Api Token Expires At */
+            api_token_expires_at?: string | null;
+            /** Api Token Error */
+            api_token_error?: string | null;
         };
         /**
          * ClientCredentialCreate
@@ -12107,6 +12277,55 @@ export interface components {
             tz: string;
             /** Buckets */
             buckets: components["schemas"]["ContributionBucket"][];
+        };
+        /**
+         * CredentialBindingCreate
+         * @description Link an MCP server to a secrets broker binding in one
+         *     organization (harness plan P7).
+         */
+        CredentialBindingCreate: {
+            /**
+             * Organization
+             * @description The organization slug
+             */
+            organization: string;
+            /**
+             * Reference
+             * @description secret://<scope>/<path>, without a field
+             */
+            reference: string;
+            /**
+             * Field
+             * @description The field of the secret that holds the static value or the OAuth client secret
+             */
+            field?: string | null;
+            /**
+             * Provider Id
+             * Format: uuid
+             */
+            provider_id: string;
+            /** Locator */
+            locator: {
+                [key: string]: unknown;
+            };
+            /**
+             * Max Ttl Seconds
+             * @default 900
+             */
+            max_ttl_seconds: number;
+            /**
+             * Agent Ids
+             * @description The agents that may use the credential. Empty: no grant is made.
+             * @default []
+             */
+            agent_ids: string[];
+        };
+        /** CredentialBindingResult */
+        CredentialBindingResult: {
+            server: components["schemas"]["MCPServerResponse"];
+            binding: components["schemas"]["SecretBinding"];
+            grant?: components["schemas"]["SecretGrant"] | null;
+            validation: components["schemas"]["SecretBindingValidation"];
         };
         /**
          * CurrentReleaseEnvironment
@@ -13416,6 +13635,21 @@ export interface components {
              * @default []
              */
             repositories: components["schemas"]["BundleRepository"][];
+            /**
+             * Subagents
+             * @default []
+             */
+            subagents: components["schemas"]["BundleSubagent"][];
+            /**
+             * Mcp Servers
+             * @default []
+             */
+            mcp_servers: components["schemas"]["BundleMcpServer"][];
+            /**
+             * Mcp Unavailable
+             * @default []
+             */
+            mcp_unavailable: components["schemas"]["BundleMcpUnavailable"][];
         };
         /**
          * IdentityConnectionPollRequest
@@ -14282,6 +14516,8 @@ export interface components {
             oauth_client_secret?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
+            /** Credential Ref */
+            credential_ref?: string | null;
         };
         /**
          * MCPServerResponse
@@ -14349,6 +14585,8 @@ export interface components {
             has_oauth_client_secret: boolean;
             /** Oauth Scope */
             oauth_scope?: string | null;
+            /** Credential Ref */
+            credential_ref?: string | null;
             /**
              * Status
              * @default unknown
@@ -14445,6 +14683,8 @@ export interface components {
             oauth_client_secret?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
+            /** Credential Ref */
+            credential_ref?: string | null;
         };
         /**
          * MCPServerTestResult
@@ -14516,6 +14756,8 @@ export interface components {
             oauth_client_secret?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
+            /** Credential Ref */
+            credential_ref?: string | null;
         };
         /**
          * MFASetupResponse
@@ -17831,6 +18073,13 @@ export interface components {
             origin_kind: string;
             /** Origin Id */
             origin_id: string;
+            /**
+             * Origin
+             * @description The scheduler task id, the webhook id and delivery id, or the person.
+             */
+            origin: {
+                [key: string]: unknown;
+            };
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -17867,9 +18116,21 @@ export interface components {
             };
             /**
              * Trigger
-             * @description The id of a manual trigger node. Defaults to the only manual trigger.
+             * @description The id of the trigger node. Defaults to the only manual trigger.
              */
             trigger?: string | null;
+            /**
+             * Payload
+             * @description The trigger payload that the scheduler or the gateway sends. A person sends inputs.
+             */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Binding
+             * @description The trigger binding of the gateway rule that started a webhook run.
+             */
+            binding?: string | null;
         };
         /** RunDetail */
         RunDetail: {
@@ -17886,6 +18147,13 @@ export interface components {
             origin_kind: string;
             /** Origin Id */
             origin_id: string;
+            /**
+             * Origin
+             * @description The scheduler task id, the webhook id and delivery id, or the person.
+             */
+            origin: {
+                [key: string]: unknown;
+            };
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -18004,6 +18272,14 @@ export interface components {
             /** Chain State */
             chain_state?: ("running" | "fencing" | "stuck" | "queued" | "done") | null;
         };
+        /** RunnerHeartbeat */
+        RunnerHeartbeat: {
+            /**
+             * Tasks
+             * @default []
+             */
+            tasks: string[];
+        };
         /** RunnerLease */
         RunnerLease: {
             /**
@@ -18020,6 +18296,13 @@ export interface components {
              * Format: date-time
              */
             lease_expires_at: string;
+            /**
+             * Api Tokens
+             * @default {}
+             */
+            api_tokens: {
+                [key: string]: components["schemas"]["ApiToken"];
+            };
         };
         /** RunnerRegister */
         RunnerRegister: {
@@ -19587,6 +19870,33 @@ export interface components {
             readers: number;
         };
         /**
+         * TriggerBinding
+         * @description The scheduler task or gateway rule of a trigger (ADR 0021).
+         *
+         *     The reconciler in imbi-workflows syncs it after each activation and
+         *     pause, and on a schedule. A trigger whose binding is not ``synced``
+         *     does not start runs.
+         */
+        TriggerBinding: {
+            /** Node Id */
+            node_id: string;
+            /** Type */
+            type: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Sync State
+             * @enum {string}
+             */
+            sync_state: "pending" | "synced" | "failed";
+            /** Error */
+            error: string | null;
+            /** Target Id */
+            target_id: string | null;
+            /** Synced At */
+            synced_at: string | null;
+        };
+        /**
          * UnattachedDeploymentBody
          * @description A deployment observed for a project whose release is unknown.
          */
@@ -20076,6 +20386,8 @@ export interface components {
             activated_by: string | null;
             /** Activated At */
             activated_at: string | null;
+            /** Bindings */
+            bindings: components["schemas"]["TriggerBinding"][];
             version: components["schemas"]["WorkflowVersion"];
         };
         /** WorkflowActivate */
@@ -20731,6 +21043,18 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
         };
         /** ProjectResponse */
         ProjectBlueprintResponse: {
@@ -20792,6 +21116,18 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
         };
         /** ProjectType */
         ProjectTypeBlueprintRequest: {
@@ -21017,6 +21353,20 @@ export interface components {
              */
             allow_autonomous: boolean;
             organization: components["schemas"]["Organization"];
+        };
+        /** ProjectDeployedInEnvironmentEdge */
+        Project_Environment_DEPLOYED_INEdgeProperties: {
+            /**
+             * Acceptance Test Status
+             * @default null
+             */
+            acceptance_test_status: ("pass" | "fail") | null;
+            /**
+             * Url
+             * @description The deployment URL for this project in this environment
+             * @default null
+             */
+            url: string | null;
         };
     };
     responses: never;
@@ -22914,7 +23264,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RunnerHeartbeat"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -23698,6 +24052,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_credential_binding_api_mcp_servers__id__credential_binding_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialBindingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialBindingResult"];
                 };
             };
             /** @description Validation Error */
@@ -30255,6 +30644,9 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
+                "X-Imbi-Scheduled-Task"?: string | null;
+                "X-Imbi-Webhook"?: string | null;
+                "X-Imbi-Delivery"?: string | null;
             };
             path: {
                 slug: string;
@@ -35892,6 +36284,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_permissions_api_users_me_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallerPermissions"];
                 };
             };
         };

@@ -1367,6 +1367,7 @@ export type MCPServerAuthType = Schemas['MCPServerResponse']['auth_type']
 // do not send.
 export interface MCPServerCreate {
   auth_type?: MCPServerAuthType
+  credential_ref?: null | string
   description?: null | string
   enabled?: boolean
   icon?: null | string
@@ -1384,6 +1385,11 @@ export interface MCPServerCreate {
   url: string
   verify_ssl?: boolean
 }
+
+export type MCPServerCredentialBinding = Schemas['CredentialBindingCreate']
+
+export type MCPServerCredentialBindingResult =
+  Schemas['CredentialBindingResult']
 
 export type MCPServerStatus = Schemas['MCPServerResponse']['status']
 
