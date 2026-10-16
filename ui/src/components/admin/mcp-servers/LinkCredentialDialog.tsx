@@ -12,6 +12,8 @@ import type { MCPServer, MCPServerCredentialBinding } from '@/types'
 import { SecretDialog } from '../secrets/SecretDialog'
 
 interface LinkCredentialDialogProps {
+  // The reference in the form, which can differ from the saved one.
+  credentialRef: string
   onClose: () => void
   onLinked: (credentialRef: null | string) => void
   orgSlug: string
@@ -24,6 +26,7 @@ interface LinkCredentialDialogProps {
  * `credential_ref`. The secret value must already be in the provider.
  */
 export function LinkCredentialDialog({
+  credentialRef,
   onClose,
   onLinked,
   orgSlug,
@@ -61,7 +64,7 @@ export function LinkCredentialDialog({
       fields={[
         {
           description: 'secret://<scope>/<path>, lower case, no field',
-          initial: server.credential_ref?.split('#')[0] ?? '',
+          initial: credentialRef.split('#')[0],
           kind: 'text',
           label: 'Reference',
           name: 'reference',
@@ -70,7 +73,7 @@ export function LinkCredentialDialog({
         {
           description:
             'The field of the secret that holds the value. Empty: the whole value.',
-          initial: server.credential_ref?.split('#')[1] ?? '',
+          initial: credentialRef.split('#')[1] ?? '',
           kind: 'text',
           label: 'Field',
           name: 'field',
@@ -95,7 +98,12 @@ export function LinkCredentialDialog({
           required: true,
         },
         {
-          description: 'Empty: no grant is made.',
+          // An empty list is a decision only when the agents are known.
+          description: agentsQuery.isError
+            ? 'Could not load the agents.'
+            : agentsQuery.isPending
+              ? 'Loading agents…'
+              : 'Empty: no grant is made.',
           kind: 'multi',
           label: 'Agents',
           name: 'agent_ids',
@@ -111,7 +119,7 @@ export function LinkCredentialDialog({
           name: 'max_ttl_seconds',
         },
       ]}
-      isPending={mutation.isPending}
+      isPending={mutation.isPending || !agentsQuery.isSuccess}
       onClose={onClose}
       onSubmit={(body) =>
         mutation.mutate({

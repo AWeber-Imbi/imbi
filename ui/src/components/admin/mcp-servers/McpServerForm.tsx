@@ -113,7 +113,11 @@ export function McpServerForm({
     setErrors(found)
     if (Object.keys(found).length > 0) return
     if (isEditing && server) {
-      onSave({ data: buildUpdate(s, isAdmin), id: server.id, mode: 'edit' })
+      onSave({
+        data: buildUpdate(s, isAdmin, server),
+        id: server.id,
+        mode: 'edit',
+      })
     } else {
       onSave({ data: buildCreate(s, isAdmin), mode: 'create' })
     }
@@ -461,6 +465,7 @@ export function McpServerForm({
       </Card>
       {linking && server && orgSlug && (
         <LinkCredentialDialog
+          credentialRef={s.credentialRef.trim()}
           onClose={() => setLinking(false)}
           onLinked={(credentialRef) => {
             setLinking(false)
@@ -556,13 +561,22 @@ function buildCreate(s: FormState, isAdmin: boolean): MCPServerCreate {
 
 // Secret rules: a freshly typed value is sent; an explicit clear sends null;
 // an untouched secret is omitted so the stored ciphertext survives.
-function buildUpdate(s: FormState, isAdmin: boolean): MCPServerUpdate {
+function buildUpdate(
+  s: FormState,
+  isAdmin: boolean,
+  server: MCPServer,
+): MCPServerUpdate {
   const data: MCPServerUpdate = {
     ...baseFields(s),
     name: s.name.trim(),
     slug: s.slug.trim(),
   }
-  if (isAdmin) data.credential_ref = s.credentialRef.trim() || null
+  // Send the reference only when it changed, so that a stale form does
+  // not replace a reference that another admin linked.
+  const credentialRef = s.credentialRef.trim() || null
+  if (isAdmin && credentialRef !== (server.credential_ref ?? null)) {
+    data.credential_ref = credentialRef
+  }
   if (s.staticValue) data.static_value = s.staticValue
   else if (s.staticCleared) data.static_value = null
   if (s.oauthValue) data.oauth_client_secret = s.oauthValue

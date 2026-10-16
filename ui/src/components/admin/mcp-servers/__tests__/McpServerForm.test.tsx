@@ -41,8 +41,8 @@ const server: MCPServer = {
   url: 'https://mcp.github.com/v1/stream',
 }
 
-const renderForm = (onSave = vi.fn()) => {
-  render(<McpServerForm onCancel={vi.fn()} onSave={onSave} server={server} />)
+const renderForm = (onSave = vi.fn(), saved: MCPServer = server) => {
+  render(<McpServerForm onCancel={vi.fn()} onSave={onSave} server={saved} />)
   return onSave
 }
 
@@ -70,6 +70,47 @@ describe('McpServerForm credential reference', () => {
         }),
       }),
     )
+  })
+
+  it('omits an unchanged reference on save', () => {
+    const onSave = renderForm(vi.fn(), {
+      ...server,
+      credential_ref: 'secret://mcp/github#token',
+    })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    expect(onSave.mock.calls[0][0].data).not.toHaveProperty('credential_ref')
+  })
+
+  it('fills the link dialog from the reference in the form', async () => {
+    renderForm()
+    fireEvent.change(screen.getByPlaceholderText('secret://mcp/github#token'), {
+      target: { value: 'secret://mcp/gh#pat' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Link credential for agents' }),
+    )
+    expect(await screen.findByLabelText(/Reference/)).toHaveValue(
+      'secret://mcp/gh',
+    )
+    expect(screen.getByLabelText(/^Field/)).toHaveValue('pat')
+  })
+
+  it('blocks the link until the agents load', async () => {
+    vi.mocked(listAgents).mockRejectedValue(new Error('down'))
+    renderForm()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Link credential for agents' }),
+    )
+    expect(
+      await screen.findByText('Could not load the agents.'),
+    ).toBeInTheDocument()
+    // Fill every required field, so that only the agents block Save.
+    fireEvent.change(screen.getByLabelText(/Reference/), {
+      target: { value: 'secret://mcp/github' },
+    })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Provider' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'AWS' }))
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('shows the reference read-only to a non-admin and omits it', () => {
