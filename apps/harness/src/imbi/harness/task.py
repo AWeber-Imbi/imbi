@@ -190,7 +190,6 @@ _RUN_WITH_SECRET_SCHEMA: dict[str, typing.Any] = {
                     },
                     'purpose': {
                         'type': 'string',
-                        'pattern': '^[a-z][a-z0-9_]{0,63}$',
                         'description': 'The purpose slug that a secret '
                         'grant allows, for example github_write.',
                     },
