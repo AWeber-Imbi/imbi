@@ -135,6 +135,8 @@ import type {
   LogResultResponse,
   MCPServer,
   MCPServerCreate,
+  MCPServerCredentialBinding,
+  MCPServerCredentialBindingResult,
   MCPServerTestConfig,
   MCPServerTestResult,
   MCPServerUpdate,
@@ -1842,6 +1844,17 @@ export const testMcpServer = (id: string) =>
 // plaintext and nothing is persisted.
 export const testMcpServerConfig = (data: MCPServerTestConfig) =>
   apiClient.post<MCPServerTestResult>('/mcp-servers/test', data)
+
+// Bind the server's credential for agents in one organization: a broker
+// binding, a grant for the agents, and the server's credential_ref.
+export const linkMcpServerCredential = (
+  id: string,
+  data: MCPServerCredentialBinding,
+) =>
+  apiClient.post<MCPServerCredentialBindingResult>(
+    `/mcp-servers/${encodeURIComponent(id)}/credential-binding`,
+    data,
+  )
 
 // Admin - AI providers and models (org-scoped LLM catalog)
 

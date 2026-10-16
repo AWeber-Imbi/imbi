@@ -1,11 +1,19 @@
 import { useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, KeyRound, Plug, ShieldCheck, Unlock } from 'lucide-react'
+import {
+  AlertCircle,
+  KeyRound,
+  Link2,
+  Plug,
+  ShieldCheck,
+  Unlock,
+} from 'lucide-react'
 
 import { ApiError } from '@/api/client'
 import { testMcpServer, testMcpServerConfig } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
@@ -17,6 +25,8 @@ import {
 } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAuth } from '@/hooks/useAuth'
 import { slugify } from '@/lib/utils'
 import type {
   MCPServer,
@@ -28,6 +38,7 @@ import type {
 
 import { ConnectionTestPanel } from './ConnectionTestPanel'
 import { IgnoredToolsEditor } from './IgnoredToolsEditor'
+import { LinkCredentialDialog } from './LinkCredentialDialog'
 import { SecretField } from './SecretField'
 
 export type McpServerSaveData =
@@ -36,6 +47,7 @@ export type McpServerSaveData =
 
 interface FormState {
   authType: MCPServerAuthType
+  credentialRef: string
   description: string
   enabled: boolean
   icon: string
@@ -77,6 +89,10 @@ export function McpServerForm({
 }: McpServerFormProps) {
   const isEditing = !!server
   const queryClient = useQueryClient()
+  // The server is global, so only a platform admin sets credential_ref.
+  const isAdmin = useAuth().user?.is_admin === true
+  const orgSlug = useOrganization().selectedOrganization?.slug
+  const [linking, setLinking] = useState(false)
   const [s, setS] = useState<FormState>(() => initialState(server))
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Tool names discovered by the last connection test, offered as a
@@ -97,9 +113,9 @@ export function McpServerForm({
     setErrors(found)
     if (Object.keys(found).length > 0) return
     if (isEditing && server) {
-      onSave({ data: buildUpdate(s), id: server.id, mode: 'edit' })
+      onSave({ data: buildUpdate(s, isAdmin), id: server.id, mode: 'edit' })
     } else {
-      onSave({ data: buildCreate(s), mode: 'create' })
+      onSave({ data: buildCreate(s, isAdmin), mode: 'create' })
     }
   }
 
@@ -109,7 +125,7 @@ export function McpServerForm({
       await queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
       return result
     }
-    return testMcpServerConfig(buildCreate(s) as MCPServerTestConfig)
+    return testMcpServerConfig(buildCreate(s, false) as MCPServerTestConfig)
   }
 
   const prefix = s.toolPrefix.trim() || s.slug.trim() || '…'
@@ -409,6 +425,52 @@ export function McpServerForm({
         </CardContent>
       </Card>
 
+      {/* Agent credential */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Agent credential</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field
+            help={
+              isAdmin
+                ? 'The secrets broker reference that agents use for this server. It applies in every organization.'
+                : 'Only a platform admin can change the reference.'
+            }
+            label="Credential reference"
+          >
+            <Input
+              className="font-mono"
+              disabled={!isAdmin}
+              onChange={(e) => set({ credentialRef: e.target.value })}
+              placeholder="secret://mcp/github#token"
+              value={s.credentialRef}
+            />
+          </Field>
+          {isAdmin && server && orgSlug && (
+            <Button
+              onClick={() => setLinking(true)}
+              size="sm"
+              variant="outline"
+            >
+              <Link2 className="size-3.5" />
+              Link credential for agents
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+      {linking && server && orgSlug && (
+        <LinkCredentialDialog
+          onClose={() => setLinking(false)}
+          onLinked={(credentialRef) => {
+            setLinking(false)
+            set({ credentialRef: credentialRef ?? '' })
+          }}
+          orgSlug={orgSlug}
+          server={server}
+        />
+      )}
+
       {/* Connection test */}
       <Card>
         <CardHeader>
@@ -476,12 +538,13 @@ function baseFields(s: FormState) {
   }
 }
 
-function buildCreate(s: FormState): MCPServerCreate {
+function buildCreate(s: FormState, isAdmin: boolean): MCPServerCreate {
   const data: MCPServerCreate = {
     ...baseFields(s),
     name: s.name.trim(),
     slug: s.slug.trim(),
   }
+  if (isAdmin) data.credential_ref = s.credentialRef.trim() || null
   if (s.authType === 'static' && s.staticValue) {
     data.static_value = s.staticValue
   }
@@ -493,12 +556,13 @@ function buildCreate(s: FormState): MCPServerCreate {
 
 // Secret rules: a freshly typed value is sent; an explicit clear sends null;
 // an untouched secret is omitted so the stored ciphertext survives.
-function buildUpdate(s: FormState): MCPServerUpdate {
+function buildUpdate(s: FormState, isAdmin: boolean): MCPServerUpdate {
   const data: MCPServerUpdate = {
     ...baseFields(s),
     name: s.name.trim(),
     slug: s.slug.trim(),
   }
+  if (isAdmin) data.credential_ref = s.credentialRef.trim() || null
   if (s.staticValue) data.static_value = s.staticValue
   else if (s.staticCleared) data.static_value = null
   if (s.oauthValue) data.oauth_client_secret = s.oauthValue
@@ -551,6 +615,7 @@ function hasStaticSecret(s: FormState, server: MCPServer | null): boolean {
 function initialState(server: MCPServer | null): FormState {
   return {
     authType: server?.auth_type ?? 'none',
+    credentialRef: server?.credential_ref ?? '',
     description: server?.description ?? '',
     enabled: server?.enabled ?? true,
     icon: server?.icon ?? '',
