@@ -122,6 +122,9 @@ _RULES = """\
 - Use the `run_with_secret` tool of the `imbi` server for a command that
   needs a secret, for example `gh` with `GH_TOKEN`. Its output never
   contains the secret. No other tool gets a secret.
+- The project repositories have your git commit identity. To push, run
+  `git push` with `run_with_secret` and the GitHub token in `GH_TOKEN`.
+  Do not set a git identity or a credential helper.
 - The secret references that you may request: {secrets}.
 - These MCP servers are not available to this task; do not try
   their tools: {mcp}.
@@ -665,6 +668,12 @@ class TaskRun:
         """Clone each repository of the project and each pinned plugin
         (plan sections 5.2 and 6.2)."""
         binding = self.config.get('github_app_binding')
+        snapshot: Body = self.bundle.get('snapshot') or {}
+        slug = self.bundle.get('agent_slug')
+        # The commit identity (#422). No slug: the agent is gone.
+        identity = (
+            {'name': snapshot.get('name'), 'slug': slug} if slug else None
+        )
         repo: Body
         for repo in api.items(self.bundle, 'repositories'):
             name = str(repo['name']).rpartition('/')[2]
@@ -676,7 +685,11 @@ class TaskRun:
                 if secret is None:
                     raise Failed('workspace_checkout_refused')
             if not await self.clone(
-                str(repo['url']), self.layout.repos / name, None, secret
+                str(repo['url']),
+                self.layout.repos / name,
+                None,
+                secret,
+                identity,
             ):
                 raise Failed('workspace_checkout_failed')
         cloned: set[pathlib.Path] = set()
@@ -723,6 +736,7 @@ class TaskRun:
         dest: pathlib.Path,
         sha: str | None,
         secret: Body | None,
+        identity: Body | None = None,
     ) -> bool:
         """Clone in the executor, as ``agent``."""
         request: Body = {
@@ -734,6 +748,8 @@ class TaskRun:
         }
         if secret is not None:
             request['secret'] = secret
+        if identity is not None:
+            request['identity'] = identity
         try:
             reply = await ipc.call(request)
         except OSError as err:

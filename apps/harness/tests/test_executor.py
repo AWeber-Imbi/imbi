@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import stat
+import subprocess
 import tempfile
 import threading
 import time
@@ -17,9 +18,12 @@ import typing
 import unittest
 from unittest import mock
 
+import httpx
+
 from imbi.harness import api, executor, ipc, privilege, redact
 
 SECRET = 'ghs_0123456789abcdef0123456789abcdef'
+PUSH_HELPER = pathlib.Path(__file__).parents[1] / 'git-credential-env'
 RUNNER_UID = 10001
 
 
@@ -46,6 +50,9 @@ class BaseTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(tmp.cleanup)
         self.credentials = pathlib.Path(tmp.name)
         self.api = mock.AsyncMock(spec=api.Api)
+        self.api.http = mock.Mock(
+            base_url=httpx.URL('https://imbi.example.com/api')
+        )
         self.api.materialize.return_value = {
             'material': SECRET,
             'encoding': 'utf8',
@@ -323,6 +330,33 @@ class CloneTestCase(BaseTestCase):
         self.api.materialize.assert_not_called()
         self.api.release.assert_not_called()
 
+    async def test_identity_and_push_helper(self) -> None:
+        reply = await self.executor.dispatch(
+            clone(
+                secret=None,
+                url='https://aweber.ghe.com/acme/app',
+                identity={'name': "O'Neil Bot", 'slug': 'fixer'},
+            )
+        )
+        self.assertEqual(reply['exit_code'], 0)
+        command = self.spawn.call_args.args[0]
+        self.assertIn(
+            'clone --quiet -- https://aweber.ghe.com/acme/app app && '
+            "git -C app config -- user.name 'O'\"'\"'Neil Bot' && "
+            'git -C app config -- user.email '
+            'fixer@noreply.imbi.example.com && '
+            'git -C app config -- '
+            'credential.https://aweber.ghe.com.helper '
+            '/usr/local/libexec/git-credential-env',
+            command,
+        )
+
+    async def test_no_identity_for_a_marketplace(self) -> None:
+        await self.executor.dispatch(
+            clone(secret=None, sha='0123456789abcdef', dest='/work/c/p/m')
+        )
+        self.assertNotIn('config', self.spawn.call_args.args[0])
+
     async def test_secret_needs_the_credential(self) -> None:
         reply = await self.executor.dispatch(clone())
         self.assertEqual(reply, {'error': 'no_executor_credential'})
@@ -359,6 +393,11 @@ class CloneTestCase(BaseTestCase):
                     secret=clone()['secret'] | {'purpose': 'model_inference'}
                 ),
             ],
+            'invalid_identity': [
+                clone(identity='fixer'),
+                clone(identity={'name': 'Fixer'}),
+                clone(identity={'slug': '-c x'}),
+            ],
             'invalid_clone': [
                 clone(dest='/work/chain/repos/-rf'),
                 clone(sha='HEAD; rm -rf /'),
@@ -372,6 +411,36 @@ class CloneTestCase(BaseTestCase):
                     self.assertEqual(reply, {'error': error})
         self.spawn.assert_not_called()
         self.api.materialize.assert_not_called()
+
+
+class PushHelperTestCase(unittest.TestCase):
+    def helper(self, *args: str, token: str | None) -> str:
+        env = {'PATH': '/usr/bin:/bin'}
+        if token is not None:
+            env['GH_TOKEN'] = token
+        return subprocess.run(
+            ['/bin/sh', str(PUSH_HELPER), *args],
+            input='protocol=https\nhost=github.com\n\n',
+            capture_output=True,
+            check=True,
+            env=env,
+            text=True,
+        ).stdout
+
+    def test_gives_the_token_from_the_environment(self) -> None:
+        self.assertEqual(
+            self.helper('get', token=SECRET),
+            f'username=x-access-token\npassword={SECRET}\n',
+        )
+
+    def test_gives_nothing_without_a_token(self) -> None:
+        self.assertEqual(self.helper('get', token=None), '')
+        self.assertEqual(self.helper('get', token=''), '')
+
+    def test_gives_nothing_for_store_and_erase(self) -> None:
+        for action in ('store', 'erase'):
+            with self.subTest(action=action):
+                self.assertEqual(self.helper(action, token=SECRET), '')
 
 
 class FetchTestCase(BaseTestCase):

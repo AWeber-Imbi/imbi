@@ -530,8 +530,19 @@ class WorkspaceTestCase(TaskTestCase):
             request['dest'], str(self.tmp / 'chain' / 'repos' / 'app')
         )
         self.assertNotIn('secret', request)
+        self.assertNotIn('identity', request)
         self.assertEqual(
             self.run_task._cwd(), self.tmp / 'chain' / 'repos' / 'app'
+        )
+
+    async def test_commit_identity_of_the_agent(self) -> None:
+        self.run_task.bundle['agent_slug'] = 'fixer'
+        self.run_task.bundle['snapshot'] = {'name': 'Fixer'}
+        self.call.return_value = {'exit_code': 0, 'output': ''}
+        await self.run_task.build_workspace()
+        (request,) = self.clone_calls()
+        self.assertEqual(
+            request['identity'], {'name': 'Fixer', 'slug': 'fixer'}
         )
 
     async def test_checkout_token_with_binding(self) -> None:

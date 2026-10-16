@@ -24,7 +24,8 @@ Two more requests are for the runner's own setup secrets (H22):
 - ``clone`` clones a repository or a marketplace commit as ``agent``.
   The token goes to git's credential helper through a file descriptor,
   so ``.git/config``, the command line, and the environment never hold
-  it (plan section 6.2).
+  it (plan section 6.2). A project repository also gets the agent's
+  commit identity and a push helper that reads ``GH_TOKEN`` (#422).
 - ``fetch`` returns the material of a ``model_inference`` resolution to
   the runner, for its model proxy (plan section 6.4), or of an
   ``mcp_server`` resolution, for its MCP relay (plan P7).
@@ -54,6 +55,9 @@ import urllib.parse
 import httpx
 
 from imbi.harness import api, ipc, privilege, redact
+
+if typing.TYPE_CHECKING:
+    from collections import abc
 
 LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +94,9 @@ _GIT = (
     '-c protocol.allow=never -c protocol.http.allow=always '
     '-c protocol.https.allow=always'
 )
+#: Gives git the ``GH_TOKEN`` of a ``run_with_secret`` command
+#: (``apps/harness/git-credential-env``), so ``git push`` works.
+_PUSH_HELPER = '/usr/local/libexec/git-credential-env'
 #: Setup secrets that the executor returns to the runner (H22).
 FETCH_PURPOSES = frozenset({'mcp_server', 'model_inference'})
 #: Setup secrets that git gets on a descriptor (H22).
@@ -173,16 +180,45 @@ def _git_url(value: typing.Any) -> str:
     return url
 
 
-def _clone_command(url: str, name: str, sha: str | None) -> str:
-    """Clone ``url`` into ``name``; at ``sha`` with only that commit."""
+def _clone_command(
+    url: str,
+    name: str,
+    sha: str | None,
+    config: abc.Iterable[tuple[str, str]] = (),
+) -> str:
+    """Clone ``url`` into ``name``; at ``sha`` with only that commit.
+    Then set ``config`` in the local config of the repository."""
     url, name = shlex.quote(url), shlex.quote(name)
+    setup = ''.join(
+        f' && git -C {name} config -- {shlex.quote(k)} {shlex.quote(v)}'
+        for k, v in config
+    )
     if sha is None:
-        return f'{_GIT} clone --quiet -- {url} {name}'
+        return f'{_GIT} clone --quiet -- {url} {name}{setup}'
     return (
-        f'{_GIT} init --quiet -- {name} && cd -- {name} && '
+        f'{_GIT} init --quiet -- {name}{setup} && cd -- {name} && '
         f'{_GIT} fetch --quiet --depth 1 -- {url} {sha} && '
         'git checkout --quiet --detach FETCH_HEAD'
     )
+
+
+def _workspace_config(
+    url: str, identity: typing.Any, host: str
+) -> list[tuple[str, str]]:
+    """The commit identity of the agent, and the push helper for the
+    host of ``url`` only (#422). The email is not routable."""
+    if not isinstance(identity, dict):
+        raise Invalid('invalid_identity')
+    identity = typing.cast('Message', identity)
+    slug = str(identity.get('slug') or '')
+    if not _NAME.match(slug):
+        raise Invalid('invalid_identity')
+    parts = urllib.parse.urlsplit(url)
+    return [
+        ('user.name', str(identity.get('name') or slug)),
+        ('user.email', f'{slug}@noreply.{host}'),
+        (f'credential.{parts.scheme}://{parts.netloc}.helper', _PUSH_HELPER),
+    ]
 
 
 def _target(secret: Message) -> str:
@@ -344,7 +380,8 @@ class Executor:
 
     async def clone(self, request: Message) -> Message:
         """Clone ``url`` into ``dest`` as ``agent``, with the token of
-        ``secret`` (optional) on a file descriptor."""
+        ``secret`` (optional) on a file descriptor. With ``identity``,
+        set the commit identity and the push helper."""
         url = _git_url(request.get('url'))
         dest = _workspace(request.get('dest'))
         parent, _, name = dest.rpartition('/')
@@ -359,6 +396,12 @@ class Executor:
             raise Invalid('purpose_not_allowed')
         if secret is not None and self.token is None:
             return {'error': 'no_executor_credential'}
+        identity = request.get('identity')
+        config = (
+            []
+            if identity is None
+            else _workspace_config(url, identity, self.api.http.base_url.host)
+        )
         env = {
             'PATH': PATH,
             'HOME': '/nonexistent',
@@ -379,7 +422,7 @@ class Executor:
                     out.write(token)
                 env['IMBI_GIT_TOKEN_FD'] = str(read)
             exit_code, output, dropped = await self._spawn(
-                _clone_command(url, name, sha),
+                _clone_command(url, name, sha, config),
                 parent,
                 env,
                 COMMAND_TIMEOUT,

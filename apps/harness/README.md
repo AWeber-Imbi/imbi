@@ -19,7 +19,10 @@ A runner process runs one chain. For its root task it:
 1. opens an ADR 0020 session,
 2. builds `/work/<chain>`: it clones each project repository and each pinned
    plugin marketplace in the executor, as `agent`, with the token on a file
-   descriptor of git's credential helper (`git-credential-fd`),
+   descriptor of git's credential helper (`git-credential-fd`); each project
+   repository gets the agent's commit identity and, for its host only, a
+   push helper that reads `GH_TOKEN` from a `run_with_secret` command
+   (`git-credential-env`),
 3. gets the model key through a `model_inference` resolution, which the
    executor materializes and releases,
 4. starts a loopback model proxy for the task (Anthropic or LiteLLM), which
