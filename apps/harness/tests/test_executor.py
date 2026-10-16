@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import stat
+import subprocess
 import tempfile
 import threading
 import time
@@ -20,6 +21,7 @@ from unittest import mock
 from imbi.harness import api, executor, ipc, privilege, redact
 
 SECRET = 'ghs_0123456789abcdef0123456789abcdef'
+PUSH_HELPER = pathlib.Path(__file__).parents[1] / 'git-credential-env'
 RUNNER_UID = 10001
 
 
@@ -323,6 +325,31 @@ class CloneTestCase(BaseTestCase):
         self.api.materialize.assert_not_called()
         self.api.release.assert_not_called()
 
+    async def test_push_helper_for_the_host(self) -> None:
+        reply = await self.executor.dispatch(
+            clone(
+                secret=None,
+                url='https://aweber.ghe.com/acme/app',
+                push_helper=True,
+            )
+        )
+        self.assertEqual(reply['exit_code'], 0)
+        command = self.spawn.call_args.args[0]
+        self.assertTrue(
+            command.endswith(
+                'clone --quiet -- https://aweber.ghe.com/acme/app app && '
+                'git -C app config -- '
+                'credential.https://aweber.ghe.com.helper '
+                '/usr/local/libexec/git-credential-env'
+            )
+        )
+
+    async def test_no_push_helper_for_a_marketplace(self) -> None:
+        await self.executor.dispatch(
+            clone(secret=None, sha='0123456789abcdef', dest='/work/c/p/m')
+        )
+        self.assertNotIn('config', self.spawn.call_args.args[0])
+
     async def test_secret_needs_the_credential(self) -> None:
         reply = await self.executor.dispatch(clone())
         self.assertEqual(reply, {'error': 'no_executor_credential'})
@@ -372,6 +399,36 @@ class CloneTestCase(BaseTestCase):
                     self.assertEqual(reply, {'error': error})
         self.spawn.assert_not_called()
         self.api.materialize.assert_not_called()
+
+
+class PushHelperTestCase(unittest.TestCase):
+    def helper(self, *args: str, token: str | None) -> str:
+        env = {'PATH': '/usr/bin:/bin'}
+        if token is not None:
+            env['GH_TOKEN'] = token
+        return subprocess.run(
+            ['/bin/sh', str(PUSH_HELPER), *args],
+            input='protocol=https\nhost=github.com\n\n',
+            capture_output=True,
+            check=True,
+            env=env,
+            text=True,
+        ).stdout
+
+    def test_gives_the_token_from_the_environment(self) -> None:
+        self.assertEqual(
+            self.helper('get', token=SECRET),
+            f'username=x-access-token\npassword={SECRET}\n',
+        )
+
+    def test_gives_nothing_without_a_token(self) -> None:
+        self.assertEqual(self.helper('get', token=None), '')
+        self.assertEqual(self.helper('get', token=''), '')
+
+    def test_gives_nothing_for_store_and_erase(self) -> None:
+        for action in ('store', 'erase'):
+            with self.subTest(action=action):
+                self.assertEqual(self.helper(action, token=SECRET), '')
 
 
 class FetchTestCase(BaseTestCase):

@@ -435,8 +435,10 @@ def _bundle(task: Row) -> Row:
         )
     return {
         'agent_id': task['agent_id'],
+        'agent_slug': 'test-agent',
         'agent_version': 1,
         'snapshot': {
+            'name': 'Test Agent',
             'tools': options['tools'],
             'subagents': (
                 [{'agent_id': 'agent-2'}] if options.get('child') else []

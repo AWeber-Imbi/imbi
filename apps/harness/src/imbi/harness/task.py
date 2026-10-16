@@ -122,6 +122,9 @@ _RULES = """\
 - Use the `run_with_secret` tool of the `imbi` server for a command that
   needs a secret, for example `gh` with `GH_TOKEN`. Its output never
   contains the secret. No other tool gets a secret.
+- git has your commit identity. To push a project repository, run
+  `git push` with `run_with_secret` and the GitHub token in `GH_TOKEN`.
+  Do not set a git identity or a credential helper.
 - The secret references that you may request: {secrets}.
 - These MCP servers are not available to this task; do not try
   their tools: {mcp}.
@@ -676,7 +679,11 @@ class TaskRun:
                 if secret is None:
                     raise Failed('workspace_checkout_refused')
             if not await self.clone(
-                str(repo['url']), self.layout.repos / name, None, secret
+                str(repo['url']),
+                self.layout.repos / name,
+                None,
+                secret,
+                push_helper=True,
             ):
                 raise Failed('workspace_checkout_failed')
         cloned: set[pathlib.Path] = set()
@@ -723,6 +730,8 @@ class TaskRun:
         dest: pathlib.Path,
         sha: str | None,
         secret: Body | None,
+        *,
+        push_helper: bool = False,
     ) -> bool:
         """Clone in the executor, as ``agent``."""
         request: Body = {
@@ -734,6 +743,8 @@ class TaskRun:
         }
         if secret is not None:
             request['secret'] = secret
+        if push_helper:
+            request['push_helper'] = True
         try:
             reply = await ipc.call(request)
         except OSError as err:
@@ -993,9 +1004,24 @@ class TaskRun:
                 if path.is_file()
             ]
             (config / 'settings.json').write_text(json.dumps(settings))
+            # The commit identity of this task's agent (#422). In HOME,
+            # so a child task in the same repositories has its own.
+            (self.home / 'home' / '.gitconfig').write_text(self._gitconfig())
             (config / 'CLAUDE.md').write_text(
                 '\n'.join([rules, *imports]) + '\n'
             )
+
+    def _gitconfig(self) -> str:
+        """The agent's name, and an email that is not routable."""
+        slug = str(self.bundle.get('agent_slug') or '')
+        if not _IDENTIFIER.match(slug):
+            return ''
+        snapshot: Body = self.bundle.get('snapshot') or {}
+        name = str(snapshot.get('name') or slug)
+        name = re.sub(r'[\x00-\x1f]', ' ', name)
+        name = name.replace('\\', '\\\\').replace('"', '\\"')
+        host = self.api.client.http.base_url.host
+        return f'[user]\n\tname = "{name}"\n\temail = {slug}@noreply.{host}\n'
 
     # --- SDK ----------------------------------------------------------
 

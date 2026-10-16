@@ -9,7 +9,9 @@ import asyncio
 import contextlib
 import decimal
 import json
+import os
 import pathlib
+import subprocess
 import tempfile
 import typing
 import unittest
@@ -93,6 +95,9 @@ class TaskTestCase(unittest.IsolatedAsyncioTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.client = mock.AsyncMock(spec=api.Api)
+        self.client.http = mock.Mock(
+            base_url=httpx.URL('https://imbi.example.com/api')
+        )
         self.client.create_resolution.side_effect = (
             lambda _token, body: created(body['purpose'])
         )
@@ -356,6 +361,51 @@ class ConfigTestCase(TaskTestCase):
         self.assertIn(f'\n@{repo}/CLAUDE.md\n', rules)
         self.assertNotIn('AGENTS.md', rules)
 
+    def gitconfig(self, task_id: str, slug: str | None, name: str) -> str:
+        """Write the config of a task, then read its identity with git."""
+        data = claim()
+        data['task']['id'] = task_id
+        data['bundle'] |= {'agent_slug': slug, 'snapshot': {'name': name}}
+        subject = task.TaskRun(
+            self.client,
+            data,
+            task.Layout(self.tmp / 'chain'),
+            self.redactor,
+            instance='pod',
+            transcripts=self.tmp / 'transcripts',
+        )
+        subject.layout.make_task(task_id)
+        subject.write_config()
+        return subprocess.run(
+            ['git', 'config', '--global', '--get-regexp', '^user\\.'],
+            capture_output=True,
+            check=False,
+            env={
+                'HOME': str(subject.home / 'home'),
+                'PATH': os.environ['PATH'],
+                'GIT_CONFIG_NOSYSTEM': '1',
+            },
+            text=True,
+        ).stdout
+
+    def test_each_task_has_its_agents_commit_identity(self) -> None:
+        # A child task works in the parent's repositories (#422).
+        parent = self.gitconfig('t', 'fixer', 'Fixer "Bot"\n\\')
+        child = self.gitconfig('t2', 'reviewer', 'Reviewer')
+        self.assertEqual(
+            parent,
+            'user.name Fixer "Bot" \\\n'
+            'user.email fixer@noreply.imbi.example.com\n',
+        )
+        self.assertEqual(
+            child,
+            'user.name Reviewer\n'
+            'user.email reviewer@noreply.imbi.example.com\n',
+        )
+
+    def test_no_commit_identity_without_a_slug(self) -> None:
+        self.assertEqual(self.gitconfig('t', None, 'Gone'), '')
+
     def test_task_context_skips_values_that_are_not_identifiers(
         self,
     ) -> None:
@@ -530,6 +580,7 @@ class WorkspaceTestCase(TaskTestCase):
             request['dest'], str(self.tmp / 'chain' / 'repos' / 'app')
         )
         self.assertNotIn('secret', request)
+        self.assertTrue(request['push_helper'])
         self.assertEqual(
             self.run_task._cwd(), self.tmp / 'chain' / 'repos' / 'app'
         )
@@ -584,6 +635,7 @@ class WorkspaceTestCase(TaskTestCase):
         await subject.build_workspace()
         (request,) = self.clone_calls()
         self.assertEqual(request['sha'], '0123456789abcdef0123')
+        self.assertNotIn('push_helper', request)
         dest = self.tmp / 'chain' / 'plugins' / 'tools-0123456789ab'
         self.assertEqual(request['dest'], str(dest))
         self.assertEqual(
