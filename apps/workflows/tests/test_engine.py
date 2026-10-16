@@ -557,6 +557,74 @@ class ManualRunTestCase(EngineTestCase):
         self.assertEqual(run['steps']['ship']['attempt'], 1)
         self.assertEqual(self.api.dispatches, 1)
 
+    async def _deploy_without_failed_edge(self) -> uuid.UUID:
+        """A deploy whose ``Failed`` port has no edge."""
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': 'p1',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
+                _node('ok', 'wait', {'duration': '1s'}),
+            ],
+            [_edge('start', 'ship'), _edge('ship', 'ok', 0)],
+        )
+        return await self._start(workflow_id)
+
+    async def test_error_into_unconnected_failed_port_fails_run(
+        self,
+    ) -> None:
+        original = FakeApi.__call__
+
+        def rejecting(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if request.url.path.endswith('/deployments'):
+                return httpx.Response(422, json={'detail': 'bad'})
+            return original(api, request)
+
+        run_id = await self._deploy_without_failed_edge()
+        with mock.patch.object(FakeApi, '__call__', rejecting):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'failed')
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(run['error'], ship['error'])
+        self.assertEqual(run['steps']['ok']['status'], 'cancelled')
+        self.assertEqual(
+            [e.rsplit('/', 1)[1] for e in self.api.emails], ['failure-notice']
+        )
+
+    async def test_failure_into_unconnected_failed_port_fails_run(
+        self,
+    ) -> None:
+        original = FakeApi.__call__
+
+        def failing(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if request.url.path.endswith('/runs/r1'):
+                return httpx.Response(
+                    200, json={'run_id': 'r1', 'status': 'failure'}
+                )
+            return original(api, request)
+
+        run_id = await self._deploy_without_failed_edge()
+        with mock.patch.object(FakeApi, '__call__', failing):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['steps']['ship']['port'], 1)
+        self.assertEqual(run['steps']['ok']['status'], 'cancelled')
+        self.assertEqual(
+            [e.rsplit('/', 1)[1] for e in self.api.emails], ['failure-notice']
+        )
+
     async def test_activator_without_permission_pauses(self) -> None:
         outsider = f'gone-{uuid.uuid4().hex[:8]}@example.com'
         workflow_id = await self._workflow(
@@ -608,6 +676,8 @@ class SecurityTestCase(EngineTestCase):
                 ),
             ],
             [_edge('start', 'ship')],
+            # The failure policy would call imbi-api.
+            {'on_failure': 'none'},
         )
         for bad in ('../../admin?x=1', '1.0/../../x', 'a..b', '%2e%2e'):
             with self.subTest(version=bad):
@@ -636,6 +706,8 @@ class SecurityTestCase(EngineTestCase):
                 ),
             ],
             [_edge('start', 'ship')],
+            # The failure policy would call imbi-api.
+            {'on_failure': 'none'},
         )
         # The run as the run endpoint writes it for a gateway delivery.
         row, _ = await self.runs.create(
