@@ -128,6 +128,31 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
             response.json()['detail'],
         )
 
+    def test_create_organization_invalid_slug(self) -> None:
+        """Slugs that are not identifiers are rejected with 422."""
+        for value in ('Engineering', 'eng_ops', 'eng ops', '-eng', 'a' * 64):
+            with self.subTest(value=value):
+                response = self.client.post(
+                    '/organizations/',
+                    json={'name': 'Engineering', 'slug': value},
+                )
+                self.assertEqual(response.status_code, 422)
+        self.mock_db.create.assert_not_called()
+
+    def test_create_organization_accepts_identifier_slug(self) -> None:
+        """Lower-case letters, digits, and hyphens are accepted."""
+        self.mock_db.create.return_value = models.Organization(
+            name='Engineering', slug='0-eng-2'
+        )
+
+        response = self.client.post(
+            '/organizations/',
+            json={'name': 'Engineering', 'slug': '0-eng-2'},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['slug'], '0-eng-2')
+
     def test_list_organizations(self) -> None:
         """Test listing all organizations.
 
@@ -346,6 +371,19 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_patch_organization_invalid_slug(self) -> None:
+        """Patch to a slug that is not an identifier returns 400."""
+        self.mock_db.match.return_value = [self.test_org]
+
+        for value in ('Bad Slug', '-lead', 'a/b', 'a' * 64, ''):
+            with self.subTest(value=value):
+                response = self.client.patch(
+                    '/organizations/engineering',
+                    json=[{'op': 'replace', 'path': '/slug', 'value': value}],
+                )
+                self.assertEqual(response.status_code, 400)
+        self.mock_db.execute.assert_not_called()
 
     def test_patch_organization_rename_captures_previous_slug(self) -> None:
         """L9: renaming an org appends the old slug to previous_slugs."""

@@ -359,6 +359,10 @@ DocumentAnalyticsIdentities = typing.Literal[
 
 
 class Organization(Node):
+    # The slug goes into URLs, claims, and agent prompts.
+    slug: str = pydantic.Field(
+        min_length=1, max_length=63, pattern=r'^[a-z0-9][a-z0-9-]*$'
+    )
     tag_formats: list[TagFormat] = []
 
     document_analytics_identities: DocumentAnalyticsIdentities = 'authors_only'
