@@ -167,6 +167,7 @@ class RecorderTestCase(unittest.TestCase):
         self.assertTrue(bash['result'].startswith('[REDACTED]\n'))
         self.assertGreaterEqual(bash['duration_ms'], 0)
         self.assertFalse(found[4]['payload']['mutating'])
+        self.assertTrue(self.recorder.mutated)
         self.assertEqual(found[4]['payload']['result'], '')
         self.assertNotIn('delivered-secret-value', json.dumps(found))
         self.assertEqual({e['actor_kind'] for e in found}, {'agent'})
@@ -222,6 +223,65 @@ class PolicyFieldTestCase(unittest.TestCase):
             {'decision': 'deny', 'reason': 'rate_limited'},
         )
         self.assertEqual(recorder.decisions, {})
+
+    def test_refused_mutating_call_did_not_mutate(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.decisions['t1'] = {'decision': 'deny', 'reason': 'x'}
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[sdk.ToolUseBlock('t1', 'Bash', {})], model='m'
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(content=[sdk.ToolResultBlock('t1', 'no', True)])
+        )
+        self.assertFalse(recorder.mutated)
+
+    def test_cli_denial_did_not_mutate(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[
+                    sdk.ToolUseBlock('t1', 'Write', {}),
+                    sdk.ToolUseBlock('t2', 'Bash', {}),
+                ],
+                model='m',
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(
+                content=[
+                    sdk.ToolResultBlock('t1', 'Permission denied', True),
+                    sdk.ToolResultBlock('t2', 'exit 1', True),
+                ]
+            )
+        )
+        denial = {'tool_name': 'Write', 'tool_use_id': 't1', 'tool_input': {}}
+        recorder.message(
+            sdk.ResultMessage(
+                subtype='success',
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id='s',
+                permission_denials=[denial],
+            )
+        )
+        # The Bash call ran and failed: it still counts.
+        self.assertEqual(recorder.mutations, {'t2'})
+        recorder.message(
+            sdk.ResultMessage(
+                subtype='success',
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id='s',
+                permission_denials=[denial | {'tool_use_id': 't2'}],
+            )
+        )
+        self.assertFalse(recorder.mutated)
 
 
 class RequeueTestCase(unittest.TestCase):

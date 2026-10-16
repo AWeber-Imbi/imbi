@@ -23,8 +23,12 @@ import typing
 
 #: The tools of the in-process ``imbi`` MCP server.
 HARNESS_TOOLS = frozenset(
-    {'create_child_task', 'request_input', 'run_with_secret'}
+    {'create_child_task', 'report_outcome', 'request_input', 'run_with_secret'}
 )
+
+#: The model must always be able to report the outcome of its task: no
+#: deny rule, approval, or rate limit applies to it.
+REPORT_OUTCOME = 'mcp__imbi__report_outcome'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -63,6 +67,8 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     automation: bool,
     servers: dict[str, str] | None = None,
 ) -> Check:
+    if name == REPORT_OUTCOME:
+        return Check()
     key = tool_key(name, servers)
     config: dict[str, typing.Any] = {}
     if name.removeprefix('mcp__imbi_api__') in HARNESS_TOOLS:

@@ -104,6 +104,14 @@ SETUP_PURPOSES = frozenset(
     }
 )
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
+#: The ADR 0020 outcomes that the model can report for a run that ends
+#: with an SDK ``success`` result.
+REPORTED_OUTCOMES = (
+    'done_acted',
+    'done_nothing_to_act_on',
+    'failed_at_gate',
+    'failed_external',
+)
 #: Values that go into the system prompt as is: plain identifiers only,
 #: so an organization slug cannot carry instructions.
 _IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
@@ -119,6 +127,11 @@ _RULES = """\
   their tools: {mcp}.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
+- Before you stop, use `report_outcome` once: `done_acted` when you
+  changed something, `done_nothing_to_act_on` when there was nothing to
+  do, `failed_external` or `failed_at_gate` when you could not do the
+  work. The reason is a short lower-case slug, for example
+  `project_not_found`.
 """
 
 type Body = api.Body
@@ -141,6 +154,18 @@ _CHILD_TASK_SCHEMA: dict[str, typing.Any] = {
         'budget': {'type': 'string', 'description': 'USD, optional.'},
     },
     'required': ['agent_slug', 'title', 'instruction'],
+}
+_REPORT_OUTCOME_SCHEMA: dict[str, typing.Any] = {
+    'type': 'object',
+    'properties': {
+        'outcome': {'type': 'string', 'enum': list(REPORTED_OUTCOMES)},
+        'reason': {
+            'type': 'string',
+            'description': 'A lower-case slug: a-z, 0-9, _ . - '
+            '(100 characters at most).',
+        },
+    },
+    'required': ['outcome', 'reason'],
 }
 _RUN_WITH_SECRET_SCHEMA: dict[str, typing.Any] = {
     'type': 'object',
@@ -240,18 +265,38 @@ class Layout:
         return path
 
 
-def outcome(result: sdk.ResultMessage | None) -> tuple[str, str | None]:
-    """The ADR 0020 outcome of an SDK result."""
+def outcome(
+    result: sdk.ResultMessage | None,
+    reported: tuple[str, str] | None = None,
+    *,
+    mutated: bool = False,
+) -> tuple[str, str | None]:
+    """The ADR 0020 outcome of an SDK result.
+
+    For a ``success`` result: the outcome that the model reported, else
+    ``done_acted`` when a mutating tool call ran, else
+    ``done_nothing_to_act_on``.
+    """
     if result is None:
         return 'failed_external', 'no_result'
     if not result.is_error and result.subtype == 'success':
-        return 'done_acted', None
+        if mutated:
+            return reported or ('done_acted', None)
+        return reported or ('done_nothing_to_act_on', 'no_mutating_tool_call')
     if result.subtype == 'error_max_turns':
         return 'partial_capped', 'max_turns'
     if result.api_error_status is not None:
         return 'failed_external', 'model_api_error'
     reason = result.subtype if _REASON.match(result.subtype) else 'sdk_error'
     return 'failed_external', reason
+
+
+def _deny_rule(rule: str) -> list[str]:
+    """The CLI deny rules for one ``denied_tools`` rule, less
+    ``report_outcome``: a deny rule wins over every allow rule."""
+    if rule in {'mcp__imbi', 'mcp__imbi__*'}:
+        return [tool for tool in IMBI_TOOLS if tool != policy.REPORT_OUTCOME]
+    return [] if rule == policy.REPORT_OUTCOME else [rule]
 
 
 def _cli_stderr(line: str) -> None:
@@ -340,6 +385,8 @@ class TaskRun:
         self.state: Body = {}
         self.seq = 0
         self.result_text: str | None = None
+        #: The last ``report_outcome`` of the model: (outcome, reason).
+        self.reported: tuple[str, str] | None = None
         #: Set when the control or the status changes, so a wait for a
         #: person ends at once on a cancel.
         self.changed = asyncio.Event()
@@ -383,7 +430,9 @@ class TaskRun:
         heartbeat = asyncio.create_task(self._heartbeat())
         try:
             result = await self._work()
-            done = outcome(result)
+            done = outcome(
+                result, self.reported, mutated=self.recorder.mutated
+            )
         except Failed as err:
             done = ('failed_external', err.reason)
         except Exception:
@@ -887,7 +936,11 @@ class TaskRun:
 
     def tools(self) -> tuple[list[str], list[str]]:
         """The allowed and the denied tools of the merged configuration."""
-        denied = sorted(self.config.get('denied_tools') or [])
+        denied = sorted(
+            tool
+            for rule in api.items(self.config, 'denied_tools')
+            for tool in _deny_rule(str(rule))
+        )
         base = self.config.get('allowed_tools')
         allowed = [
             tool
@@ -989,6 +1042,7 @@ class TaskRun:
                 self.run_with_secret_tool(),
                 self.request_input_tool(),
                 self.child_task_tool(),
+                self.report_outcome_tool(),
             ],
         )
         return sdk.ClaudeAgentOptions(
@@ -1380,6 +1434,37 @@ class TaskRun:
         return {
             'content': [{'type': 'text', 'text': json.dumps(waiting.result())}]
         }
+
+    # --- report_outcome -----------------------------------------------
+
+    def report_outcome_tool(self) -> sdk.SdkMcpTool[typing.Any]:
+        @sdk.tool(
+            'report_outcome',
+            'Report the outcome of the task before you stop. The last '
+            'report wins.',
+            _REPORT_OUTCOME_SCHEMA,
+        )
+        async def report_outcome(args: Body) -> Body:
+            return self.report_outcome(args)
+
+        return report_outcome
+
+    def report_outcome(self, args: Body) -> Body:
+        """Keep the outcome for :meth:`run`. The reason is model output:
+        it must be a slug, as imbi-api requires for ``outcome_reason``."""
+        kind = args.get('outcome')
+        reason = args.get('reason')
+        if kind not in REPORTED_OUTCOMES:
+            return _tool_error(
+                f'The outcome must be one of: {", ".join(REPORTED_OUTCOMES)}'
+            )
+        if not isinstance(reason, str) or not _REASON.fullmatch(reason):
+            return _tool_error(
+                'The reason must be a lower-case slug of at most 100 '
+                'characters: a-z, 0-9, _ . -'
+            )
+        self.reported = (kind, reason)
+        return {'content': [{'type': 'text', 'text': 'Outcome recorded.'}]}
 
     # --- run_with_secret ----------------------------------------------
 

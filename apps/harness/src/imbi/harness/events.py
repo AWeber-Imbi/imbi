@@ -194,6 +194,9 @@ class Recorder:
         self.calls: dict[
             str, tuple[str, dict[str, typing.Any], float, str | None]
         ] = {}
+        #: The tool use ids of the mutating calls that the policy did
+        #: not refuse.
+        self.mutations: set[str] = set()
 
     def _add(
         self, kind: str, payload: dict[str, typing.Any], parent: str | None
@@ -225,6 +228,16 @@ class Recorder:
             for block in message.content:
                 if isinstance(block, sdk.ToolResultBlock):
                     self._result(block)
+        elif isinstance(message, sdk.ResultMessage):
+            # The CLI's own refusals (a deny rule, dontAsk): the tool
+            # did not run.
+            for denial in message.permission_denials or []:
+                self.mutations.discard(str(denial.get('tool_use_id')))
+
+    @property
+    def mutated(self) -> bool:
+        """A mutating tool call ran."""
+        return bool(self.mutations)
 
     def _assistant(self, message: sdk.AssistantMessage) -> None:
         parent = message.parent_tool_use_id
@@ -276,6 +289,9 @@ class Recorder:
         name, arguments, started, parent = self.calls.pop(
             block.tool_use_id, ('unknown', {}, time.monotonic(), None)
         )
+        decision = self.decisions.pop(block.tool_use_id, None)
+        if name in MUTATING and (decision or {}).get('decision') != 'deny':
+            self.mutations.add(block.tool_use_id)
         self._add(
             'tool.called',
             {
@@ -286,11 +302,7 @@ class Recorder:
                 'result': _text(block.content),
                 'is_error': bool(block.is_error),
                 'duration_ms': int((time.monotonic() - started) * 1000),
-                **(
-                    {'policy': self.decisions.pop(block.tool_use_id)}
-                    if block.tool_use_id in self.decisions
-                    else {}
-                ),
+                **({'policy': decision} if decision is not None else {}),
                 **(
                     {'relay': audit}
                     if self.audit and (audit := self.audit(name, arguments))
