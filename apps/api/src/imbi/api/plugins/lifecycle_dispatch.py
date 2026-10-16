@@ -423,7 +423,14 @@ async def _invoke_one(
             await persist_link_writeback(db, ctx)
         if captured_service_writeback:
             ctx.service_writeback = captured_service_writeback[-1]
-            await persist_service_writeback(db, ctx)
+            refusal = await persist_service_writeback(db, ctx, auth)
+            if refusal is not None:
+                return LifecycleInvocation(
+                    integration_id=resolved.integration_id,
+                    plugin_slug=resolved.plugin_slug,
+                    status='failed',
+                    message=refusal,
+                )
 
     return LifecycleInvocation(
         integration_id=resolved.integration_id,

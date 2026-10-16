@@ -756,9 +756,49 @@ def linked_identifier_resolver(
     return _resolve
 
 
+#: The verified identifier of a project's ``EXISTS_IN`` edge to a
+#: GitHub Integration (the ``github_app`` secret provider's ``plugin``).
+_VERIFIED_GITHUB_IDENTIFIER: typing.LiteralString = (
+    'MATCH (:Project {{id: {project_id}}})-[ei:EXISTS_IN]->'
+    '(:Integration {{slug: {integration_slug}, plugin: {plugin}}}) '
+    'RETURN ei.verified_identifier AS verified_identifier'
+)
+
+
+async def _repoint_refusal(
+    db: graph.Graph, ctx: PluginContext, slug: str, identifier: str
+) -> str | None:
+    """Return why a non-admin cannot write ``identifier``, or ``None``.
+
+    The ``github_app`` secret provider issues tokens for the verified
+    identifier of a GitHub ``EXISTS_IN`` edge. A plugin derives the
+    repository from the project's links, which any project writer can
+    edit, so only an admin can change a verified identifier to a
+    different repository (issue #402).
+    """
+    records = await db.execute(
+        _VERIFIED_GITHUB_IDENTIFIER,
+        {
+            'project_id': ctx.project_id,
+            'integration_slug': slug,
+            'plugin': 'github',
+        },
+        ['verified_identifier'],
+    )
+    for row in records:
+        verified = graph.parse_agtype(row.get('verified_identifier'))
+        if verified is not None and str(verified) != identifier:
+            return (
+                f'Refusing to change the verified repository id from '
+                f'{verified} to {identifier}: only an admin can point '
+                'the project at a different repository.'
+            )
+    return None
+
+
 async def persist_service_writeback(
-    db: graph.Graph, ctx: PluginContext
-) -> None:
+    db: graph.Graph, ctx: PluginContext, auth: permissions.AuthContext
+) -> str | None:
     """Persist a project's service relationship a plugin reported on ``ctx``.
 
     A lifecycle plugin sets ``ctx.service_writeback`` when a call
@@ -769,10 +809,14 @@ async def persist_service_writeback(
     delete the edge and drop those link keys. Best-effort: a write
     failure is logged and swallowed so persistence never fails the
     user-facing request whose result we already have.
+
+    Returns a refusal message, and writes nothing, when a caller that
+    is not an admin would change the verified identifier of a GitHub
+    edge to a different repository. Otherwise returns ``None``.
     """
     writeback = ctx.service_writeback
     if writeback is None:
-        return
+        return None
     slug = ctx.integration_slug
     if not slug:
         LOGGER.warning(
@@ -780,8 +824,20 @@ async def persist_service_writeback(
             'integration_slug; skipping',
             ctx.project_id,
         )
-        return
+        return None
     try:
+        if not writeback.remove and not auth.is_admin:
+            refusal = await _repoint_refusal(
+                db, ctx, slug, writeback.identifier
+            )
+            if refusal is not None:
+                LOGGER.warning(
+                    'Refused service writeback for project %s (%s): %s',
+                    ctx.project_id,
+                    slug,
+                    refusal,
+                )
+                return refusal
         if writeback.remove:
             await _delete_exists_in(db, ctx.org_slug, ctx.project_id, slug)
             await merge_project_links(
@@ -807,13 +863,14 @@ async def persist_service_writeback(
             slug,
             exc_info=True,
         )
-        return
+        return None
     LOGGER.info(
         'Persisted EXISTS_IN edge for project %s -> %s (%s)',
         ctx.project_id,
         slug,
         'removed' if writeback.remove else writeback.identifier,
     )
+    return None
 
 
 async def _merge_exists_in(

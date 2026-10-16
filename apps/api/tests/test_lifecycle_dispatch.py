@@ -149,9 +149,11 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         *,
         event: LifecycleEvent = 'archived',
         lookup_failed: bool = False,
+        is_admin: bool = True,
     ) -> tuple[list[LifecycleInvocation], mock.AsyncMock]:
         mock_db = mock.AsyncMock()
         auth = _make_auth()
+        auth.is_admin = is_admin
         with (
             mock.patch(
                 'imbi.api.plugins.lifecycle_dispatch.resolve_all_capabilities',
@@ -343,6 +345,33 @@ class DispatchLifecycleTestCase(unittest.TestCase):
             merge_links.await_args.kwargs['add'],
             {'github-enterprise-cloud': 'https://x.ghe.com/o/r'},
         )
+
+    def test_refused_service_writeback_fails_the_invocation(self) -> None:
+        class _Svc(LifecycleCapability):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                ctx.service_writeback = ServiceWriteback(
+                    identifier='202', canonical_url='https://api.x/202'
+                )
+                return LifecycleResult(status='ok', message='done')
+
+        entry = _entry('gh', _Svc)
+        resolved = _resolved(entry, integration_slug='github')
+        with (
+            mock.patch(
+                'imbi.api.endpoints._helpers._repoint_refusal',
+                new=mock.AsyncMock(return_value='refused'),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers._merge_exists_in',
+                new=mock.AsyncMock(),
+            ) as merge_edge,
+        ):
+            results, _ = self._run([resolved], is_admin=False)
+        self.assertEqual(results[0].status, 'failed')
+        self.assertEqual(results[0].message, 'refused')
+        merge_edge.assert_not_awaited()
 
     def test_service_writeback_remove_deletes_edge(self) -> None:
         class _Svc(LifecycleCapability):

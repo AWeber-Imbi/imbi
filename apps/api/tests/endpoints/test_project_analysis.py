@@ -204,7 +204,9 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         # Remediation write-back persistence hits the graph; stub it so
         # the endpoint tests stay DB-free.
         self.mocks['persist_service_writeback'] = self._start(
-            mock.patch(f'{_MODULE}.persist_service_writeback')
+            mock.patch(
+                f'{_MODULE}.persist_service_writeback', return_value=None
+            )
         )
         self.mocks['persist_link_writeback'] = self._start(
             mock.patch(f'{_MODULE}.persist_link_writeback')
@@ -359,6 +361,26 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual('fixed fix-it', body['result']['message'])
         self.assertIn('report', body)
         self.mocks['persist_service_writeback'].assert_awaited()
+
+    def test_remediate_reports_a_refused_writeback(self) -> None:
+        self.mocks['persist_service_writeback'].return_value = 'refused'
+        with mock.patch(
+            f'{_MODULE}.resolve_all_capabilities',
+            return_value=[_resolved('p1', _RemediablePlugin)],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'p1',
+                        'finding_slug': 'fix-plugin:drift',
+                        'remediation_id': 'fix-it',
+                    },
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        result = resp.json()['result']
+        self.assertEqual('failed', result['status'])
+        self.assertEqual('refused', result['message'])
 
     def test_remediate_unknown_plugin_returns_404(self) -> None:
         with mock.patch(

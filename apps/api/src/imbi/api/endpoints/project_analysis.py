@@ -646,10 +646,13 @@ async def _remediate_one(
         ) from exc
 
     if captured_service:
-        await persist_service_writeback(
+        refusal = await persist_service_writeback(
             db,
             ctx.model_copy(update={'service_writeback': captured_service[-1]}),
+            auth,
         )
+        if refusal is not None:
+            return RemediationResult(status='failed', message=refusal)
     if captured_link:
         await persist_link_writeback(
             db, ctx.model_copy(update={'link_writeback': captured_link[-1]})
