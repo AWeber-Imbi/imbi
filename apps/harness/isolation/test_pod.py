@@ -703,6 +703,7 @@ class TaskFlowTests(unittest.TestCase):
                 'script': [
                     bash(
                         'pwd; git log -1 --format=%s; cat .git/config; '
+                        'git config user.name; git config user.email; '
                         'ls "$CLAUDE_CONFIG_DIR"'
                     ),
                     {
@@ -750,8 +751,8 @@ class TaskFlowTests(unittest.TestCase):
         self.assertIn(f'/work/{self.task["chain_id"]}/repos/app', text)
         self.assertIn('app: first commit', text)
         self.assertIn('url = http://harness-fake-api:8080/git/app', text)
-        self.assertIn('name = Test Agent', text)
-        self.assertIn('email = test-agent@noreply.harness-fake-api', text)
+        self.assertIn('\nTest Agent\n', text)
+        self.assertIn('\ntest-agent@noreply.harness-fake-api\n', text)
         self.assertIn('[credential "http://harness-fake-api:8080"]', text)
         self.assertIn('helper = /usr/local/libexec/git-credential-env', text)
         self.assertNotIn('ghs_', text)

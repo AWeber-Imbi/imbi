@@ -18,8 +18,6 @@ import typing
 import unittest
 from unittest import mock
 
-import httpx
-
 from imbi.harness import api, executor, ipc, privilege, redact
 
 SECRET = 'ghs_0123456789abcdef0123456789abcdef'
@@ -50,9 +48,6 @@ class BaseTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(tmp.cleanup)
         self.credentials = pathlib.Path(tmp.name)
         self.api = mock.AsyncMock(spec=api.Api)
-        self.api.http = mock.Mock(
-            base_url=httpx.URL('https://imbi.example.com/api')
-        )
         self.api.materialize.return_value = {
             'material': SECRET,
             'encoding': 'utf8',
@@ -330,28 +325,26 @@ class CloneTestCase(BaseTestCase):
         self.api.materialize.assert_not_called()
         self.api.release.assert_not_called()
 
-    async def test_identity_and_push_helper(self) -> None:
+    async def test_push_helper_for_the_host(self) -> None:
         reply = await self.executor.dispatch(
             clone(
                 secret=None,
                 url='https://aweber.ghe.com/acme/app',
-                identity={'name': "O'Neil Bot", 'slug': 'fixer'},
+                push_helper=True,
             )
         )
         self.assertEqual(reply['exit_code'], 0)
         command = self.spawn.call_args.args[0]
-        self.assertIn(
-            'clone --quiet -- https://aweber.ghe.com/acme/app app && '
-            "git -C app config -- user.name 'O'\"'\"'Neil Bot' && "
-            'git -C app config -- user.email '
-            'fixer@noreply.imbi.example.com && '
-            'git -C app config -- '
-            'credential.https://aweber.ghe.com.helper '
-            '/usr/local/libexec/git-credential-env',
-            command,
+        self.assertTrue(
+            command.endswith(
+                'clone --quiet -- https://aweber.ghe.com/acme/app app && '
+                'git -C app config -- '
+                'credential.https://aweber.ghe.com.helper '
+                '/usr/local/libexec/git-credential-env'
+            )
         )
 
-    async def test_no_identity_for_a_marketplace(self) -> None:
+    async def test_no_push_helper_for_a_marketplace(self) -> None:
         await self.executor.dispatch(
             clone(secret=None, sha='0123456789abcdef', dest='/work/c/p/m')
         )
@@ -392,11 +385,6 @@ class CloneTestCase(BaseTestCase):
                 clone(
                     secret=clone()['secret'] | {'purpose': 'model_inference'}
                 ),
-            ],
-            'invalid_identity': [
-                clone(identity='fixer'),
-                clone(identity={'name': 'Fixer'}),
-                clone(identity={'slug': '-c x'}),
             ],
             'invalid_clone': [
                 clone(dest='/work/chain/repos/-rf'),

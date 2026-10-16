@@ -122,7 +122,7 @@ _RULES = """\
 - Use the `run_with_secret` tool of the `imbi` server for a command that
   needs a secret, for example `gh` with `GH_TOKEN`. Its output never
   contains the secret. No other tool gets a secret.
-- The project repositories have your git commit identity. To push, run
+- git has your commit identity. To push a project repository, run
   `git push` with `run_with_secret` and the GitHub token in `GH_TOKEN`.
   Do not set a git identity or a credential helper.
 - The secret references that you may request: {secrets}.
@@ -668,12 +668,6 @@ class TaskRun:
         """Clone each repository of the project and each pinned plugin
         (plan sections 5.2 and 6.2)."""
         binding = self.config.get('github_app_binding')
-        snapshot: Body = self.bundle.get('snapshot') or {}
-        slug = self.bundle.get('agent_slug')
-        # The commit identity (#422). No slug: the agent is gone.
-        identity = (
-            {'name': snapshot.get('name'), 'slug': slug} if slug else None
-        )
         repo: Body
         for repo in api.items(self.bundle, 'repositories'):
             name = str(repo['name']).rpartition('/')[2]
@@ -689,7 +683,7 @@ class TaskRun:
                 self.layout.repos / name,
                 None,
                 secret,
-                identity,
+                push_helper=True,
             ):
                 raise Failed('workspace_checkout_failed')
         cloned: set[pathlib.Path] = set()
@@ -736,7 +730,8 @@ class TaskRun:
         dest: pathlib.Path,
         sha: str | None,
         secret: Body | None,
-        identity: Body | None = None,
+        *,
+        push_helper: bool = False,
     ) -> bool:
         """Clone in the executor, as ``agent``."""
         request: Body = {
@@ -748,8 +743,8 @@ class TaskRun:
         }
         if secret is not None:
             request['secret'] = secret
-        if identity is not None:
-            request['identity'] = identity
+        if push_helper:
+            request['push_helper'] = True
         try:
             reply = await ipc.call(request)
         except OSError as err:
@@ -1009,9 +1004,24 @@ class TaskRun:
                 if path.is_file()
             ]
             (config / 'settings.json').write_text(json.dumps(settings))
+            # The commit identity of this task's agent (#422). In HOME,
+            # so a child task in the same repositories has its own.
+            (self.home / 'home' / '.gitconfig').write_text(self._gitconfig())
             (config / 'CLAUDE.md').write_text(
                 '\n'.join([rules, *imports]) + '\n'
             )
+
+    def _gitconfig(self) -> str:
+        """The agent's name, and an email that is not routable."""
+        slug = str(self.bundle.get('agent_slug') or '')
+        if not _IDENTIFIER.match(slug):
+            return ''
+        snapshot: Body = self.bundle.get('snapshot') or {}
+        name = str(snapshot.get('name') or slug)
+        name = re.sub(r'[\x00-\x1f]', ' ', name)
+        name = name.replace('\\', '\\\\').replace('"', '\\"')
+        host = self.api.client.http.base_url.host
+        return f'[user]\n\tname = "{name}"\n\temail = {slug}@noreply.{host}\n'
 
     # --- SDK ----------------------------------------------------------
 

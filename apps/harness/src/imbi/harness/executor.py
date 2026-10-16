@@ -24,8 +24,8 @@ Two more requests are for the runner's own setup secrets (H22):
 - ``clone`` clones a repository or a marketplace commit as ``agent``.
   The token goes to git's credential helper through a file descriptor,
   so ``.git/config``, the command line, and the environment never hold
-  it (plan section 6.2). A project repository also gets the agent's
-  commit identity and a push helper that reads ``GH_TOKEN`` (#422).
+  it (plan section 6.2). A project repository also gets a push helper
+  that reads ``GH_TOKEN`` (#422).
 - ``fetch`` returns the material of a ``model_inference`` resolution to
   the runner, for its model proxy (plan section 6.4), or of an
   ``mcp_server`` resolution, for its MCP relay (plan P7).
@@ -202,23 +202,10 @@ def _clone_command(
     )
 
 
-def _workspace_config(
-    url: str, identity: typing.Any, host: str
-) -> list[tuple[str, str]]:
-    """The commit identity of the agent, and the push helper for the
-    host of ``url`` only (#422). The email is not routable."""
-    if not isinstance(identity, dict):
-        raise Invalid('invalid_identity')
-    identity = typing.cast('Message', identity)
-    slug = str(identity.get('slug') or '')
-    if not _NAME.match(slug):
-        raise Invalid('invalid_identity')
+def _push_helper(url: str) -> tuple[str, str]:
+    """The push helper for the host of ``url`` only (#422)."""
     parts = urllib.parse.urlsplit(url)
-    return [
-        ('user.name', str(identity.get('name') or slug)),
-        ('user.email', f'{slug}@noreply.{host}'),
-        (f'credential.{parts.scheme}://{parts.netloc}.helper', _PUSH_HELPER),
-    ]
+    return f'credential.{parts.scheme}://{parts.netloc}.helper', _PUSH_HELPER
 
 
 def _target(secret: Message) -> str:
@@ -380,8 +367,8 @@ class Executor:
 
     async def clone(self, request: Message) -> Message:
         """Clone ``url`` into ``dest`` as ``agent``, with the token of
-        ``secret`` (optional) on a file descriptor. With ``identity``,
-        set the commit identity and the push helper."""
+        ``secret`` (optional) on a file descriptor. With
+        ``push_helper``, set the push helper."""
         url = _git_url(request.get('url'))
         dest = _workspace(request.get('dest'))
         parent, _, name = dest.rpartition('/')
@@ -396,12 +383,7 @@ class Executor:
             raise Invalid('purpose_not_allowed')
         if secret is not None and self.token is None:
             return {'error': 'no_executor_credential'}
-        identity = request.get('identity')
-        config = (
-            []
-            if identity is None
-            else _workspace_config(url, identity, self.api.http.base_url.host)
-        )
+        config = [_push_helper(url)] if request.get('push_helper') else []
         env = {
             'PATH': PATH,
             'HOME': '/nonexistent',
