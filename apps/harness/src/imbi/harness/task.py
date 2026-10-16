@@ -117,6 +117,9 @@ REPORTED_OUTCOMES = (
 #: Values that go into the system prompt as is: plain identifiers only,
 #: so an organization slug cannot carry instructions.
 _IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+#: A DNS host name, so that a repository URL cannot write YAML.
+_LABEL = r'[a-z0-9]([a-z0-9-]*[a-z0-9])?'
+_HOST = re.compile(rf'{_LABEL}(\.{_LABEL})+')
 _RULES = """\
 # Imbi harness
 
@@ -1038,6 +1041,13 @@ class TaskRun:
             # The commit identity of this task's agent (#422). In HOME,
             # so a child task in the same repositories has its own.
             (self.home / 'home' / '.gitconfig').write_text(self._gitconfig())
+            if hosts := self._gh_hosts():
+                gh = self.home / 'home' / '.config' / 'gh'
+                gh.mkdir(parents=True, exist_ok=True)
+                # Version 1: gh 2.46 otherwise migrates hosts.yml to its
+                # multi-account format, which needs a stored token.
+                (gh / 'config.yml').write_text('version: "1"\n')
+                (gh / 'hosts.yml').write_text(hosts)
             (config / 'CLAUDE.md').write_text(
                 '\n'.join([rules, *imports]) + '\n'
             )
@@ -1053,6 +1063,22 @@ class TaskRun:
         name = name.replace('\\', '\\\\').replace('"', '\\"')
         host = self.api.client.http.base_url.host
         return f'[user]\n\tname = "{name}"\n\temail = {slug}@noreply.{host}\n'
+
+    def _gh_hosts(self) -> str:
+        """The GitHub hosts of the project repositories other than
+        github.com, with no token (#432). gh finds the host of a
+        repository only when it knows the host; the token stays in
+        ``GH_TOKEN`` from ``run_with_secret``."""
+        hosts = sorted(
+            {
+                host
+                for repo in api.items(self.bundle, 'repositories')
+                if (host := urllib.parse.urlsplit(str(repo['url'])).hostname)
+                and host != 'github.com'
+                and _HOST.fullmatch(host)
+            }
+        )
+        return ''.join(f'{host}:\n    git_protocol: https\n' for host in hosts)
 
     # --- SDK ----------------------------------------------------------
 
