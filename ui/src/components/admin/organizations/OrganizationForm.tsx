@@ -44,7 +44,7 @@ export function OrganizationForm({
     if (!slug.trim()) newErrors.slug = 'Slug is required'
     if (slug && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
       newErrors.slug =
-        'Slug must be lowercase, start with a letter or number, and can only contain letters, numbers, and hyphens'
+        'Slug must be 1 to 63 characters, lowercase, start with a letter or number, and can only contain letters, numbers, and hyphens'
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
