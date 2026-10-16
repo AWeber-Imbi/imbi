@@ -67,9 +67,11 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
             f'/services/{path}'
         )
 
-    async def verify(self, integration: str, repository_id: int) -> None:
+    async def verify(
+        self, integration: str, repository_id: int, *, admin: bool = False
+    ) -> str | None:
         """Write the edge as the GitHub plugin does."""
-        await _helpers.persist_service_writeback(
+        return await _helpers.persist_service_writeback(
             self.graph,
             PluginContext(
                 project_id=self.project_id,
@@ -83,6 +85,7 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
                     ),
                 ),
             ),
+            mock.Mock(is_admin=admin),
         )
 
     async def assert_refused(self, host: str = 'github.com') -> None:
@@ -148,4 +151,27 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
                 'acme.ghe.com', self.project_id
             ),
             [VERIFIED],
+        )
+
+    async def test_only_an_admin_can_repoint_the_repository(self) -> None:
+        self.assertIsNone(await self.verify(self.integration, VERIFIED))
+        # The same repository is written again, e.g. after a rename.
+        self.assertIsNone(await self.verify(self.integration, VERIFIED))
+        refusal = await self.verify(self.integration, OTHER)
+        self.assertIsNotNone(refusal)
+        self.assertIn(f'from {VERIFIED} to {OTHER}', str(refusal))
+        self.assertEqual(
+            await github_app.project_repository_ids(
+                'github.com', self.project_id
+            ),
+            [VERIFIED],
+        )
+        self.assertIsNone(
+            await self.verify(self.integration, OTHER, admin=True)
+        )
+        self.assertEqual(
+            await github_app.project_repository_ids(
+                'github.com', self.project_id
+            ),
+            [OTHER],
         )

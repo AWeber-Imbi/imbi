@@ -13,6 +13,8 @@ import unittest.mock as mock
 from imbi.api.endpoints import _helpers
 from imbi.common.plugins.base import PluginContext, ServiceWriteback
 
+_ADMIN = mock.Mock(is_admin=True)
+
 
 def _ctx(**kwargs: object) -> PluginContext:
     base: dict[str, object] = {
@@ -112,7 +114,7 @@ class MergeProjectLinksTestCase(unittest.TestCase):
 class PersistServiceWritebackTestCase(unittest.TestCase):
     def test_noop_when_no_writeback(self) -> None:
         db = mock.AsyncMock()
-        asyncio.run(_helpers.persist_service_writeback(db, _ctx()))
+        asyncio.run(_helpers.persist_service_writeback(db, _ctx(), _ADMIN))
         db.execute.assert_not_awaited()
 
     def test_skips_without_bound_slug(self) -> None:
@@ -122,7 +124,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
                 identifier='1', canonical_url='https://api/1'
             )
         )
-        asyncio.run(_helpers.persist_service_writeback(db, ctx))
+        asyncio.run(_helpers.persist_service_writeback(db, ctx, _ADMIN))
         db.execute.assert_not_awaited()
 
     def test_upsert_path(self) -> None:
@@ -145,7 +147,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
                 new=mock.AsyncMock(return_value=True),
             ) as merge_links,
         ):
-            asyncio.run(_helpers.persist_service_writeback(db, ctx))
+            asyncio.run(_helpers.persist_service_writeback(db, ctx, _ADMIN))
         merge_edge.assert_awaited_once_with(
             db,
             'org-1',
@@ -181,7 +183,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
                 new=mock.AsyncMock(return_value=False),
             ),
         ):
-            asyncio.run(_helpers.persist_service_writeback(db, ctx))
+            asyncio.run(_helpers.persist_service_writeback(db, ctx, _ADMIN))
         # secret is threaded through as the trailing positional arg
         self.assertEqual(merge_edge.await_args.args[6], 'gAAAAAB-ciphertext')
 
@@ -206,7 +208,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
                 new=mock.AsyncMock(return_value=True),
             ) as merge_links,
         ):
-            asyncio.run(_helpers.persist_service_writeback(db, ctx))
+            asyncio.run(_helpers.persist_service_writeback(db, ctx, _ADMIN))
         delete_edge.assert_awaited_once_with(
             db, 'org-1', 'proj-1', 'github-enterprise-cloud'
         )
@@ -229,7 +231,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
             new=mock.AsyncMock(side_effect=RuntimeError('db down')),
         ):
             # must not raise
-            asyncio.run(_helpers.persist_service_writeback(db, ctx))
+            asyncio.run(_helpers.persist_service_writeback(db, ctx, _ADMIN))
 
 
 class MergeExistsInTestCase(unittest.TestCase):
