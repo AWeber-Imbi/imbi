@@ -5,7 +5,7 @@ import unittest.mock
 
 import claude_agent_sdk as sdk
 
-from imbi.harness import events, redact
+from imbi.harness import events, redact, task
 
 MIB = 1024 * 1024
 
@@ -338,3 +338,49 @@ class RelayAuditTestCase(unittest.TestCase):
             relayed['payload']['relay'], {'server': 'imbi_api', 'status': 'ok'}
         )
         self.assertNotIn('relay', bash['payload'])
+
+
+class RelayedWriteTestCase(unittest.TestCase):
+    def outcome(
+        self, tool: str, is_error: bool = False
+    ) -> tuple[str, str | None]:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.writes = {'mcp__imbi_api__update_project'}
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[sdk.ToolUseBlock('t1', tool, {})], model='m'
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(
+                content=[sdk.ToolResultBlock('t1', 'ok', is_error)]
+            )
+        )
+        (call,) = recorder.take()
+        self.assertEqual(call['payload']['mutating'], tool in recorder.writes)
+        result = sdk.ResultMessage(
+            subtype='success',
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id='s',
+        )
+        return task.outcome(result, mutated=recorder.mutated)
+
+    def test_write_acted(self) -> None:
+        self.assertEqual(
+            self.outcome('mcp__imbi_api__update_project'), ('done_acted', None)
+        )
+
+    def test_read_did_nothing(self) -> None:
+        self.assertEqual(
+            self.outcome('mcp__imbi_api__list_projects'),
+            ('done_nothing_to_act_on', 'no_mutating_tool_call'),
+        )
+
+    def test_failed_write_did_nothing(self) -> None:
+        self.assertEqual(
+            self.outcome('mcp__imbi_api__update_project', is_error=True),
+            ('done_nothing_to_act_on', 'no_mutating_tool_call'),
+        )

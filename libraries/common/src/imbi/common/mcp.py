@@ -56,9 +56,11 @@ import re
 import typing
 
 import fastmcp.server.middleware
+import fastmcp.tools
 import httpx
 from fastmcp.server.dependencies import get_http_headers, get_http_request
 from fastmcp.server.providers.openapi import MCPType, RouteMap
+from mcp import types as mcp_types
 
 from imbi.common import access_log, cache
 
@@ -199,6 +201,20 @@ def copy_permissions_to_meta(
     component.meta = (component.meta or {}) | {
         PERMISSION_META_KEY: permissions
     }
+
+
+def annotate(route: HTTPRoute, component: FastMCPComponent) -> None:
+    """Set the tool annotations from the HTTP method of the operation.
+
+    A ``mcp_component_fn``. A GET or HEAD tool is read only; the
+    runner's relay counts a call of another Imbi tool as a change.
+    """
+    if isinstance(component, fastmcp.tools.Tool):
+        method = route.method.upper()
+        component.annotations = mcp_types.ToolAnnotations(
+            readOnlyHint=method in {'GET', 'HEAD'},
+            destructiveHint=method == 'DELETE',
+        )
 
 
 def required_permissions(tool: Tool) -> list[str]:

@@ -800,6 +800,7 @@ class TaskRun:
         LOGGER.info('Relaying %d Imbi tools', len(names))
         self.relay = candidate
         self.recorder.audit = self.take_audit
+        self.recorder.writes = candidate.writes()
 
     async def start_external(self) -> None:
         """Relay the agent's third-party MCP servers (plan P7): the

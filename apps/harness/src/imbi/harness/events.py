@@ -197,6 +197,9 @@ class Recorder:
         #: The tool use ids of the mutating calls that the policy did
         #: not refuse.
         self.mutations: set[str] = set()
+        #: The CLI names of the relayed Imbi tools that write (not
+        #: read only): a call that does not fail is a mutation.
+        self.writes: set[str] = set()
 
     def _add(
         self, kind: str, payload: dict[str, typing.Any], parent: str | None
@@ -290,14 +293,20 @@ class Recorder:
             block.tool_use_id, ('unknown', {}, time.monotonic(), None)
         )
         decision = self.decisions.pop(block.tool_use_id, None)
-        if name in MUTATING and (decision or {}).get('decision') != 'deny':
+        mutating = name in MUTATING or name in self.writes
+        if (
+            mutating
+            and (decision or {}).get('decision') != 'deny'
+            # A relayed call that failed did not write.
+            and not (name in self.writes and block.is_error)
+        ):
             self.mutations.add(block.tool_use_id)
         self._add(
             'tool.called',
             {
                 'call_id': block.tool_use_id,
                 'tool': name,
-                'mutating': name in MUTATING,
+                'mutating': mutating,
                 'arguments': arguments,
                 'result': _text(block.content),
                 'is_error': bool(block.is_error),

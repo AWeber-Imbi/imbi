@@ -224,6 +224,14 @@ class Relay:
     def allowed_tools(self) -> list[str]:
         return [f'mcp__{self.server}__{name}' for name in sorted(self.tools)]
 
+    def writes(self) -> set[str]:
+        """The CLI names of the tools that are not read only."""
+        return {
+            f'mcp__{self.server}__{tool.name}'
+            for tool in self.tools.values()
+            if not tool.read_only
+        }
+
     def sdk_tools(self) -> list[sdk.SdkMcpTool[typing.Any]]:
         def make(tool: _Tool) -> sdk.SdkMcpTool[typing.Any]:
             @sdk.tool(tool.name, tool.description, tool.schema)

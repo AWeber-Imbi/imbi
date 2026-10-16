@@ -33,12 +33,15 @@ from imbi.common.auth import core
 from imbi.common.mcp import (
     AccessLogContextMiddleware,
     PermissionFilterMiddleware,
+    annotate,
     copy_permissions_to_meta,
     exclude_non_ai_tools,
     excluded_route_maps,
 )
 
 if typing.TYPE_CHECKING:
+    from fastmcp.utilities.components import FastMCPComponent
+    from fastmcp.utilities.openapi import HTTPRoute
     from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,12 @@ async def _inject_auth(request: httpx.Request) -> None:
     auth = headers.get('authorization')
     if auth:
         request.headers['authorization'] = auth
+
+
+def _component(route: HTTPRoute, component: FastMCPComponent) -> None:
+    """Record the permissions and the read-only hint of each tool."""
+    copy_permissions_to_meta(route, component)
+    annotate(route, component)
 
 
 class ImbiTokenVerifier(TokenVerifier):
@@ -156,7 +165,7 @@ def create_server(
         auth=_build_auth(public_url, auth_server_url),
         route_maps=excluded_route_maps(spec),
         route_map_fn=exclude_non_ai_tools,
-        mcp_component_fn=copy_permissions_to_meta,
+        mcp_component_fn=_component,
     )
 
     # ``client`` forwards the caller's Authorization header via

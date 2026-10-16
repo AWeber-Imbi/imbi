@@ -145,6 +145,8 @@ class RelayTestCase(_ServerTestCase):
         self.assertNotIn('run_with_secret', self.relay.tools)
         self.assertTrue(self.relay.tools['list_projects'].read_only)
         self.assertFalse(self.relay.tools['update_project'].read_only)
+        self.assertIn('mcp__imbi_api__update_project', self.relay.writes())
+        self.assertNotIn('mcp__imbi_api__list_projects', self.relay.writes())
         self.assertEqual(len(self.relay.sdk_tools()), 4)
         self.assertTrue(all(h == f'Bearer {self.token}' for h in SEEN))
 
