@@ -223,7 +223,10 @@ class OutcomeTestCase(unittest.TestCase):
     def test_outcomes(self) -> None:
         cases = [
             (None, ('failed_external', 'no_result')),
-            (self.result(), ('done_acted', None)),
+            (
+                self.result(),
+                ('done_nothing_to_act_on', 'no_mutating_tool_call'),
+            ),
             (
                 self.result(subtype='error_max_turns', is_error=True),
                 ('partial_capped', 'max_turns'),
@@ -244,6 +247,53 @@ class OutcomeTestCase(unittest.TestCase):
         for result, expected in cases:
             with self.subTest(result=result):
                 self.assertEqual(task.outcome(result), expected)
+
+    def test_success_uses_the_report_then_the_mutating_calls(self) -> None:
+        reported = ('failed_external', 'project_forbidden')
+        self.assertEqual(
+            task.outcome(self.result(), reported, mutated=True), reported
+        )
+        self.assertEqual(
+            task.outcome(self.result(), mutated=True), ('done_acted', None)
+        )
+        # A report never changes the outcome of an error result.
+        self.assertEqual(
+            task.outcome(
+                self.result(subtype='error_max_turns', is_error=True),
+                ('done_acted', 'fixed'),
+            ),
+            ('partial_capped', 'max_turns'),
+        )
+
+
+class ReportOutcomeTestCase(TaskTestCase):
+    async def report(
+        self, args: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        return await self.run_task.report_outcome_tool().handler(args)
+
+    async def test_keeps_the_last_report(self) -> None:
+        await self.report({'outcome': 'done_acted', 'reason': 'fixed'})
+        result = await self.report(
+            {'outcome': 'done_nothing_to_act_on', 'reason': 'up_to_date'}
+        )
+        self.assertNotIn('is_error', result)
+        self.assertEqual(
+            self.run_task.reported, ('done_nothing_to_act_on', 'up_to_date')
+        )
+
+    async def test_refuses_invalid_input(self) -> None:
+        cases = [
+            {'outcome': 'cancelled_by_human', 'reason': 'x'},
+            {'outcome': 'done_acted', 'reason': 'Not a slug'},
+            {'outcome': 'done_acted', 'reason': 'x' * 101},
+            {'outcome': 'done_acted'},
+        ]
+        for args in cases:
+            with self.subTest(args=args):
+                result = await self.report(args)
+                self.assertTrue(result['is_error'])
+        self.assertIsNone(self.run_task.reported)
 
 
 class ConfigTestCase(TaskTestCase):

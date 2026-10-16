@@ -194,6 +194,8 @@ class Recorder:
         self.calls: dict[
             str, tuple[str, dict[str, typing.Any], float, str | None]
         ] = {}
+        #: A mutating tool call ran: the policy did not refuse it.
+        self.mutated = False
 
     def _add(
         self, kind: str, payload: dict[str, typing.Any], parent: str | None
@@ -276,6 +278,9 @@ class Recorder:
         name, arguments, started, parent = self.calls.pop(
             block.tool_use_id, ('unknown', {}, time.monotonic(), None)
         )
+        decision = self.decisions.pop(block.tool_use_id, None)
+        if name in MUTATING and (decision or {}).get('decision') != 'deny':
+            self.mutated = True
         self._add(
             'tool.called',
             {
@@ -286,11 +291,7 @@ class Recorder:
                 'result': _text(block.content),
                 'is_error': bool(block.is_error),
                 'duration_ms': int((time.monotonic() - started) * 1000),
-                **(
-                    {'policy': self.decisions.pop(block.tool_use_id)}
-                    if block.tool_use_id in self.decisions
-                    else {}
-                ),
+                **({'policy': decision} if decision is not None else {}),
                 **(
                     {'relay': audit}
                     if self.audit and (audit := self.audit(name, arguments))

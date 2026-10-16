@@ -1352,4 +1352,5 @@ class PrivateMcpServerTests(unittest.TestCase):
             'address_not_global.',
             bodies,
         )
-        self.assertEqual(done['outcome'], 'done_acted', done)
+        # No tool call ran: nothing to act on.
+        self.assertEqual(done['outcome'], 'done_nothing_to_act_on', done)

@@ -23,7 +23,7 @@ import typing
 
 #: The tools of the in-process ``imbi`` MCP server.
 HARNESS_TOOLS = frozenset(
-    {'create_child_task', 'request_input', 'run_with_secret'}
+    {'create_child_task', 'report_outcome', 'request_input', 'run_with_secret'}
 )
 
 

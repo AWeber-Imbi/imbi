@@ -167,6 +167,7 @@ class RecorderTestCase(unittest.TestCase):
         self.assertTrue(bash['result'].startswith('[REDACTED]\n'))
         self.assertGreaterEqual(bash['duration_ms'], 0)
         self.assertFalse(found[4]['payload']['mutating'])
+        self.assertTrue(self.recorder.mutated)
         self.assertEqual(found[4]['payload']['result'], '')
         self.assertNotIn('delivered-secret-value', json.dumps(found))
         self.assertEqual({e['actor_kind'] for e in found}, {'agent'})
@@ -222,6 +223,19 @@ class PolicyFieldTestCase(unittest.TestCase):
             {'decision': 'deny', 'reason': 'rate_limited'},
         )
         self.assertEqual(recorder.decisions, {})
+
+    def test_refused_mutating_call_did_not_mutate(self) -> None:
+        recorder = events.Recorder(redact.Redactor())
+        recorder.decisions['t1'] = {'decision': 'deny', 'reason': 'x'}
+        recorder.message(
+            sdk.AssistantMessage(
+                content=[sdk.ToolUseBlock('t1', 'Bash', {})], model='m'
+            )
+        )
+        recorder.message(
+            sdk.UserMessage(content=[sdk.ToolResultBlock('t1', 'no', True)])
+        )
+        self.assertFalse(recorder.mutated)
 
 
 class RequeueTestCase(unittest.TestCase):
