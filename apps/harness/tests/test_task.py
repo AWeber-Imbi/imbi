@@ -418,6 +418,32 @@ class ConfigTestCase(TaskTestCase):
     def test_no_commit_identity_without_a_slug(self) -> None:
         self.assertEqual(self.gitconfig('t', None, 'Gone'), '')
 
+    def test_gh_knows_the_enterprise_hosts(self) -> None:
+        # gh finds the repository of a GHE remote only for a known host
+        # (#432).
+        self.run_task.bundle['repositories'] = [
+            {'name': 'a/app', 'url': 'https://aweber.ghe.com/a/app.git'},
+            {'name': 'a/lib', 'url': 'https://aweber.ghe.com/a/lib.git'},
+            {'name': 'b/x', 'url': 'https://github.com/b/x.git'},
+            {'name': 'c/y', 'url': 'https://bad_host:\n  x/c/y.git'},
+        ]
+        self.run_task.layout.make_task('t')
+        self.run_task.write_config()
+        gh = self.run_task.home / 'home' / '.config' / 'gh'
+        self.assertEqual(
+            (gh / 'hosts.yml').read_text(),
+            'aweber.ghe.com:\n    git_protocol: https\n',
+        )
+        self.assertEqual((gh / 'config.yml').read_text(), 'version: "1"\n')
+
+    def test_no_gh_hosts_for_github_com(self) -> None:
+        self.run_task.bundle['repositories'] = [
+            {'name': 'b/x', 'url': 'https://github.com/b/x.git'}
+        ]
+        self.run_task.layout.make_task('t')
+        self.run_task.write_config()
+        self.assertFalse((self.run_task.home / 'home' / '.config').exists())
+
     def test_task_context_skips_values_that_are_not_identifiers(
         self,
     ) -> None:
