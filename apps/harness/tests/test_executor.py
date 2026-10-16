@@ -113,6 +113,8 @@ class ExecutorTestCase(BaseTestCase):
                 'PATH': executor.PATH,
                 'HOME': '/work/chain/home',
                 'GH_TOKEN': SECRET,
+                # gh on a GitHub Enterprise Server host (#434).
+                'GH_ENTERPRISE_TOKEN': SECRET,
             },
         )
         self.assertEqual(timeout, executor.COMMAND_TIMEOUT)

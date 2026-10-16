@@ -353,6 +353,10 @@ class Executor:
             env = {'PATH': PATH, 'HOME': home}
             for secret, target in zip(wanted, targets, strict=True):
                 env[target] = await self._materialize(secret, context)
+            # gh reads GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server
+            # host and GH_TOKEN for the others (#434).
+            if 'GH_TOKEN' in env:
+                env.setdefault('GH_ENTERPRISE_TOKEN', env['GH_TOKEN'])
             values = [env[target] for target in targets]
             exit_code, output, dropped = await self._spawn(
                 command, cwd, env, timeout
