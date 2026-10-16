@@ -26,7 +26,6 @@ import logging
 import typing
 
 import fastmcp
-import fastmcp.tools
 import httpx
 import pydantic
 from mcp import types as mcp_types
@@ -35,10 +34,6 @@ from valkey import asyncio as valkey
 from imbi.api import mcp_test
 from imbi.common import graph, models
 from imbi.common import mcp as common_mcp
-
-if typing.TYPE_CHECKING:
-    from fastmcp.utilities.components import FastMCPComponent
-    from fastmcp.utilities.openapi import HTTPRoute
 
 LOGGER = logging.getLogger(__name__)
 
@@ -195,16 +190,6 @@ async def _mcp_group(server: models.MCPServer) -> AgentToolGroup:
     return group
 
 
-def _annotate(route: HTTPRoute, component: FastMCPComponent) -> None:
-    """Set the tool annotations from the HTTP method of the operation."""
-    if isinstance(component, fastmcp.tools.Tool):
-        method = route.method.upper()
-        component.annotations = mcp_types.ToolAnnotations(
-            readOnlyHint=method in {'GET', 'HEAD'},
-            destructiveHint=method == 'DELETE',
-        )
-
-
 def _imbi_server(
     spec: dict[str, typing.Any], client: httpx.AsyncClient
 ) -> fastmcp.FastMCP[typing.Any]:
@@ -215,7 +200,7 @@ def _imbi_server(
         name='Imbi',
         route_maps=common_mcp.excluded_route_maps(spec),
         route_map_fn=common_mcp.exclude_non_ai_tools,
-        mcp_component_fn=_annotate,
+        mcp_component_fn=common_mcp.annotate,
     )
 
 

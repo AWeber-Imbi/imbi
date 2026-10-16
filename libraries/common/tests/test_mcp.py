@@ -511,6 +511,25 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual([], mcp.required_permissions(tools['ungated_op']))
 
+    async def test_annotate_marks_reads(self) -> None:
+        """``annotate`` marks a GET tool read only, a POST tool not."""
+        client = httpx.AsyncClient(base_url='http://localhost:8000')
+        try:
+            server = fastmcp.FastMCP.from_openapi(
+                openapi_spec=_permission_spec(),
+                client=client,
+                name='Imbi',
+                mcp_component_fn=mcp.annotate,
+            )
+            found = {
+                tool.name: tool.annotations and tool.annotations.readOnlyHint
+                for tool in await server.list_tools()
+            }
+        finally:
+            await client.aclose()
+        self.assertTrue(found['list_projects'])
+        self.assertFalse(found['create_project'])
+
     def test_non_openapi_tool_has_no_permissions(self) -> None:
         """A tool with no recorded meta yields an empty list."""
         not_a_tool = typing.cast(typing.Any, object())
