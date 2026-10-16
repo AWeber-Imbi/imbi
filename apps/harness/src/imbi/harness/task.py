@@ -104,6 +104,8 @@ SETUP_PURPOSES = frozenset(
     }
 )
 _REASON = re.compile(r'^[a-z0-9][a-z0-9_.-]{0,99}$')
+#: The secret purpose format of imbi-api (``secret_broker.Purpose``).
+_PURPOSE = re.compile(r'[a-z][a-z0-9_]{0,63}')
 #: The ADR 0020 outcomes that the model can report for a run that ends
 #: with an SDK ``success`` result.
 REPORTED_OUTCOMES = (
@@ -125,6 +127,9 @@ _RULES = """\
 - git has your commit identity. To push a project repository, run
   `git push` with `run_with_secret` and the GitHub token in `GH_TOKEN`.
   Do not set a git identity or a credential helper.
+- The `purpose` of a secret is a slug that a secret grant allows, not a
+  description. For `git push` and `gh` with the GitHub token, use
+  `github_write`.
 - The secret references that you may request: {secrets}.
 - These MCP servers are not available to this task; do not try
   their tools: {mcp}.
@@ -183,7 +188,11 @@ _RUN_WITH_SECRET_SCHEMA: dict[str, typing.Any] = {
                         'type': 'string',
                         'description': 'secret://<scope>/<path>[#<field>]',
                     },
-                    'purpose': {'type': 'string'},
+                    'purpose': {
+                        'type': 'string',
+                        'description': 'The purpose slug that a secret '
+                        'grant allows, for example github_write.',
+                    },
                     'env': {
                         'type': 'string',
                         'description': 'The environment variable name.',
@@ -309,6 +318,27 @@ def _cli_stderr(line: str) -> None:
 
 def _tool_error(text: str) -> Body:
     return {'content': [{'type': 'text', 'text': text}], 'is_error': True}
+
+
+def _secret_refusal(secret: Body, upstream: Body) -> str | None:
+    """Why the runner refuses a secret that the model asked for, if it
+    does. The API also checks the purpose, but its 422 does not tell
+    the model what to change."""
+    if not _PURPOSE.fullmatch(str(secret['purpose'])):
+        return (
+            'The purpose is not valid: use the purpose slug of the '
+            'secret grant, for example github_write'
+        )
+    # The runner's own secrets never go to a command that the model
+    # chose. The executor checks the purpose again.
+    if secret['purpose'] in SETUP_PURPOSES or (
+        secret['reference'] == upstream.get('key_ref')
+    ):
+        return (
+            'The secret request was refused: '
+            'the secret is for the harness only'
+        )
+    return None
 
 
 def _decimal(value: typing.Any) -> decimal.Decimal | None:
@@ -1515,15 +1545,8 @@ class TaskRun:
         try:
             wanted: list[Body] = args.get('secrets') or []
             for secret in wanted:
-                # The runner's own secrets never go to a command that the
-                # model chose. The executor checks the purpose again.
-                if secret['purpose'] in SETUP_PURPOSES or (
-                    secret['reference'] == upstream.get('key_ref')
-                ):
-                    return _tool_error(
-                        'The secret request was refused: '
-                        'the secret is for the harness only'
-                    )
+                if refusal := _secret_refusal(secret, upstream):
+                    return _tool_error(refusal)
             for secret in wanted:
                 created = await self.api.create_resolution(
                     {
