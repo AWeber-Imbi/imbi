@@ -42,9 +42,9 @@ export function OrganizationForm({
     const newErrors: Record<string, string> = {}
     if (!name.trim()) newErrors.name = 'Organization name is required'
     if (!slug.trim()) newErrors.slug = 'Slug is required'
-    if (slug && !/^[a-z0-9-_]+$/.test(slug)) {
+    if (slug && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
       newErrors.slug =
-        'Slug must be lowercase and can only contain letters, numbers, hyphens, and underscores'
+        'Slug must be lowercase, start with a letter or number, and can only contain letters, numbers, and hyphens'
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -68,9 +68,10 @@ export function OrganizationForm({
       setSlug(
         value
           .toLowerCase()
-          .replace(/[^a-z0-9\s-_]/g, '')
+          .replace(/[^a-z0-9\s-]/g, '')
           .replace(/\s+/g, '-')
           .replace(/-+/g, '-')
+          .replace(/^-/, '')
           .trim(),
       )
     }
