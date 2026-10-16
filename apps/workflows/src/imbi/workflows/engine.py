@@ -189,12 +189,15 @@ class Engine:
             await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'timed_out')
             return None
-        # A failure with no Failed port fails the run at once: the steps
-        # that did not start are cancelled, not run or skipped.
+        # A failure with no Failed port, or with a Failed port that has no
+        # edge, fails the run at once: the steps that did not start are
+        # cancelled, not run or skipped.
+        wired = {(e.source, e.port) for e in wf_graph.edges}
         failed = [
             s
             for s in steps.values()
-            if s['status'] == 'failed' and s['port'] is None
+            if s['status'] == 'failed'
+            and (s['node_id'], s['port']) not in wired
         ]
         if failed:
             await self._close(run, steps, 'failed', failed[0]['error'])

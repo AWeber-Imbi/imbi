@@ -164,7 +164,8 @@ endpoint and no public API.
 - **Failure.** An error (an exception, a timeout, a `5xx`) uses the step's
   retries first. A failed outcome that the step reports (a deployment that
   failed) is not retried. After either, the step takes its `Failed` port
-  when its type has one. Otherwise the run fails: steps already running
+  when its type has one and an edge starts at that port. Otherwise the
+  run fails: steps already running
   finish and their results are recorded, every pending step is
   `cancelled`, and the workflow's failure policy runs.
 - **Unknown outcomes.** The engine records an attempt as `running` before
