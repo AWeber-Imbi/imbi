@@ -314,10 +314,20 @@ class ChildTests(unittest.TestCase):
         names = set(self.result['environment'])
         self.assertIn('GH_TOKEN', names)
         # PWD, SHLVL and _ come from /bin/sh, LC_CTYPE from the C locale
-        # coercion of the probe's Python.
+        # coercion of the probe's Python. GH_ENTERPRISE_TOKEN is the
+        # copy of GH_TOKEN for gh on GHES (#434).
         self.assertLessEqual(
             names,
-            {'GH_TOKEN', 'HOME', 'LC_CTYPE', 'PATH', 'PWD', 'SHLVL', '_'},
+            {
+                'GH_ENTERPRISE_TOKEN',
+                'GH_TOKEN',
+                'HOME',
+                'LC_CTYPE',
+                'PATH',
+                'PWD',
+                'SHLVL',
+                '_',
+            },
         )
         self.assertGreater(self.result['secret_length'], 0)
 
