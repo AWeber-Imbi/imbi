@@ -5,12 +5,10 @@ import { Server } from 'lucide-react'
 
 import { listHarnessPools } from '@/api/endpoints'
 import { agentsPath } from '@/components/agents/agentsNav'
-import { Alert } from '@/components/ui/alert'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { useHasPermission } from '@/hooks/useHasPermission'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
 import type { HarnessPool, HarnessRunner } from '@/types'
@@ -29,25 +27,18 @@ const STATE_VARIANT: Record<HarnessRunner['state'], BadgeProps['variant']> = {
 
 /**
  * The runner pools that serve the organization and their live runners
- * (ADR 0022). Read only. Platform administrators see every chain; other
- * people see only the chains of their organization.
+ * (ADR 0022). Read only. The Admin route admits administrators only.
  */
 export function AgentRunners() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('harness_pool:read')
   const pools = useQuery({
-    enabled: !!orgSlug && canRead,
+    enabled: !!orgSlug,
     queryFn: ({ signal }) => listHarnessPools(orgSlug!, signal),
     queryKey: queryKeys.harnessPools(orgSlug ?? ''),
     refetchInterval: POLL_MS,
   })
 
-  if (!canRead) {
-    return (
-      <Alert>You need the harness_pool:read permission to see runners.</Alert>
-    )
-  }
   if (!orgSlug) {
     return (
       <div className="text-tertiary py-8 text-center">

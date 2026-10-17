@@ -15,13 +15,6 @@ vi.mock('@/contexts/OrganizationContext', () => ({
   useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
 }))
 
-const auth = vi.hoisted(() => ({
-  user: { is_admin: false, permissions: ['harness_pool:read'] },
-}))
-
-// fallow-ignore-next-line unresolved-import
-vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
-
 const NOW = new Date().toISOString()
 
 function pool(): HarnessPool {
@@ -81,7 +74,6 @@ function pool(): HarnessPool {
 describe('AgentRunners', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    auth.user = { is_admin: false, permissions: ['harness_pool:read'] }
   })
 
   it('lists the pools and runners of the organization', async () => {
@@ -121,12 +113,5 @@ describe('AgentRunners', () => {
       await screen.findByText(/Failed to refresh runners/),
     ).toBeInTheDocument()
     expect(screen.getByText('general-abc')).toBeInTheDocument()
-  })
-
-  it('needs the read permission', () => {
-    auth.user = { is_admin: false, permissions: [] }
-    render(<AgentRunners />)
-    expect(screen.getByText(/harness_pool:read/)).toBeInTheDocument()
-    expect(endpoints.listHarnessPools).not.toHaveBeenCalled()
   })
 })
