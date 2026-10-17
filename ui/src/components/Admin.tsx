@@ -19,6 +19,7 @@ import {
   LockKeyhole,
   Network,
   Puzzle,
+  Server,
   Shield,
   SlidersHorizontal,
   Sparkles,
@@ -34,6 +35,7 @@ import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AdminOverview } from './admin/AdminOverview'
+import { AgentRunners } from './admin/AgentRunners'
 import { AIModelsManagement } from './admin/AIModelsManagement'
 import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
@@ -58,6 +60,7 @@ import { Webhooks } from './admin/Webhooks'
 import { PromptLibrary } from './prompts/PromptLibrary'
 
 type AdminSection =
+  | 'agent-runners'
   | 'ai-models'
   | 'assistant'
   | 'blueprints'
@@ -86,6 +89,7 @@ type AdminSection =
 const DEFAULT_ADMIN_SECTION: AdminSection = 'overview'
 
 const VALID_SECTIONS: AdminSection[] = [
+  'agent-runners',
   'ai-models',
   'assistant',
   'blueprints',
@@ -144,6 +148,13 @@ export function Admin() {
       icon: LayoutDashboard,
       id: 'overview',
       label: 'Overview',
+      scope: 'org',
+    },
+    {
+      description: 'Runner pools that serve the organization and their runners',
+      icon: Server,
+      id: 'agent-runners',
+      label: 'Agent Runners',
       scope: 'org',
     },
     {
@@ -435,6 +446,7 @@ export function Admin() {
           {/* Section Content */}
           <div className="p-8">
             {currentSection === 'overview' && <AdminOverview />}
+            {currentSection === 'agent-runners' && <AgentRunners />}
             {currentSection === 'default-settings' && (
               <DefaultSettingsManagement key={selectedOrganization?.slug} />
             )}

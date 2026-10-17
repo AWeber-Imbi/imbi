@@ -4,7 +4,6 @@ import {
   Inbox,
   LayoutDashboard,
   type LucideIcon,
-  Server,
   SlidersHorizontal,
   Workflow,
 } from 'lucide-react'
@@ -24,7 +23,6 @@ export type AgentsSection =
   | 'dashboard'
   | 'manage'
   | 'platform'
-  | 'runners'
   | 'tasks'
   | 'usage'
   | 'workflows'
@@ -73,13 +71,6 @@ export const AGENTS_NAV: AgentsNavItem[] = [
     id: 'platform',
     label: 'Platform',
     note: 'Base configuration and plugin marketplaces',
-  },
-  {
-    group: 'Settings',
-    icon: Server,
-    id: 'runners',
-    label: 'Runners',
-    note: 'Runner pools that run agent tasks',
   },
 ]
 

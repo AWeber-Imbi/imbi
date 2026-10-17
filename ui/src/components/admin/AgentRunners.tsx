@@ -4,17 +4,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Server } from 'lucide-react'
 
 import { listHarnessPools } from '@/api/endpoints'
-import { Alert } from '@/components/ui/alert'
+import { agentsPath } from '@/components/agents/agentsNav'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { useHasPermission } from '@/hooks/useHasPermission'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
 import type { HarnessPool, HarnessRunner } from '@/types'
-
-import { agentsPath } from './agentsNav'
 
 /** How often the runner list refreshes. */
 const POLL_MS = 15_000
@@ -30,30 +27,21 @@ const STATE_VARIANT: Record<HarnessRunner['state'], BadgeProps['variant']> = {
 
 /**
  * The runner pools that serve the organization and their live runners
- * (ADR 0022). Read only. Platform administrators see every chain; other
- * people see only the chains of their organization.
+ * (ADR 0022). Read only. The Admin route admits administrators only.
  */
-export function RunnersPage() {
+export function AgentRunners() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('harness_pool:read')
   const pools = useQuery({
-    enabled: !!orgSlug && canRead,
+    enabled: !!orgSlug,
     queryFn: ({ signal }) => listHarnessPools(orgSlug!, signal),
     queryKey: queryKeys.harnessPools(orgSlug ?? ''),
     refetchInterval: POLL_MS,
   })
 
-  if (!canRead) {
-    return (
-      <div className="p-8">
-        <Alert>You need the harness_pool:read permission to see runners.</Alert>
-      </div>
-    )
-  }
   if (!orgSlug) {
     return (
-      <div className="text-tertiary p-8 text-center">
+      <div className="text-tertiary py-8 text-center">
         Select an organization to see its runners.
       </div>
     )
@@ -61,7 +49,7 @@ export function RunnersPage() {
 
   // A failed refresh keeps the last data on the page, with a warning.
   return (
-    <div className="flex flex-col gap-4 p-8">
+    <div className="flex flex-col gap-4">
       {pools.error && (
         <ErrorBanner
           error={pools.error}
