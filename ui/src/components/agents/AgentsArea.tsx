@@ -18,7 +18,6 @@ import {
 } from './agentsNav'
 import { DashboardPage } from './DashboardPage'
 import { PlatformPage } from './PlatformPage'
-import { RunnersPage } from './RunnersPage'
 import { useWaitingTaskCount } from './taskQueries'
 import { TasksPage } from './TasksPage'
 import { UsagePage } from './UsagePage'
@@ -52,8 +51,6 @@ export function AgentsArea() {
           <TasksPage />
         ) : current === 'usage' ? (
           <UsagePage />
-        ) : current === 'runners' ? (
-          <RunnersPage />
         ) : current === 'platform' ? (
           <PlatformPage />
         ) : (

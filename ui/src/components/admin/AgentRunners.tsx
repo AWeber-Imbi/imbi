@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Server } from 'lucide-react'
 
 import { listHarnessPools } from '@/api/endpoints'
+import { agentsPath } from '@/components/agents/agentsNav'
 import { Alert } from '@/components/ui/alert'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -13,8 +14,6 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
 import type { HarnessPool, HarnessRunner } from '@/types'
-
-import { agentsPath } from './agentsNav'
 
 /** How often the runner list refreshes. */
 const POLL_MS = 15_000
@@ -33,7 +32,7 @@ const STATE_VARIANT: Record<HarnessRunner['state'], BadgeProps['variant']> = {
  * (ADR 0022). Read only. Platform administrators see every chain; other
  * people see only the chains of their organization.
  */
-export function RunnersPage() {
+export function AgentRunners() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const canRead = useHasPermission('harness_pool:read')
@@ -46,14 +45,12 @@ export function RunnersPage() {
 
   if (!canRead) {
     return (
-      <div className="p-8">
-        <Alert>You need the harness_pool:read permission to see runners.</Alert>
-      </div>
+      <Alert>You need the harness_pool:read permission to see runners.</Alert>
     )
   }
   if (!orgSlug) {
     return (
-      <div className="text-tertiary p-8 text-center">
+      <div className="text-tertiary py-8 text-center">
         Select an organization to see its runners.
       </div>
     )
@@ -61,7 +58,7 @@ export function RunnersPage() {
 
   // A failed refresh keeps the last data on the page, with a warning.
   return (
-    <div className="flex flex-col gap-4 p-8">
+    <div className="flex flex-col gap-4">
       {pools.error && (
         <ErrorBanner
           error={pools.error}

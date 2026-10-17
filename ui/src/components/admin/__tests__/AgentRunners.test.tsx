@@ -5,7 +5,7 @@ import * as endpoints from '@/api/endpoints'
 import { render, screen } from '@/test/utils'
 import type { HarnessPool } from '@/types'
 
-import { RunnersPage } from '../RunnersPage'
+import { AgentRunners } from '../AgentRunners'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({ listHarnessPools: vi.fn() }))
@@ -78,7 +78,7 @@ function pool(): HarnessPool {
   }
 }
 
-describe('RunnersPage', () => {
+describe('AgentRunners', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     auth.user = { is_admin: false, permissions: ['harness_pool:read'] }
@@ -86,7 +86,7 @@ describe('RunnersPage', () => {
 
   it('lists the pools and runners of the organization', async () => {
     vi.mocked(endpoints.listHarnessPools).mockResolvedValue([pool()])
-    render(<RunnersPage />)
+    render(<AgentRunners />)
     expect(await screen.findByText('general-abc')).toBeInTheDocument()
     expect(endpoints.listHarnessPools).toHaveBeenCalledWith(
       'acme',
@@ -112,7 +112,7 @@ describe('RunnersPage', () => {
     })
     render(
       <QueryClientProvider client={queryClient}>
-        <RunnersPage />
+        <AgentRunners />
       </QueryClientProvider>,
     )
     expect(await screen.findByText('general-abc')).toBeInTheDocument()
@@ -125,7 +125,7 @@ describe('RunnersPage', () => {
 
   it('needs the read permission', () => {
     auth.user = { is_admin: false, permissions: [] }
-    render(<RunnersPage />)
+    render(<AgentRunners />)
     expect(screen.getByText(/harness_pool:read/)).toBeInTheDocument()
     expect(endpoints.listHarnessPools).not.toHaveBeenCalled()
   })
