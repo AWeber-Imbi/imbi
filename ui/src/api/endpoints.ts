@@ -320,6 +320,27 @@ export const getProjectsSlim = async (
   return Array.isArray(response) ? response : []
 }
 
+// One keyset page of the slim list; ``nextCursor`` is unset on the
+// last page.
+export const getProjectsSlimPage = async (
+  orgSlug: string,
+  limit: number,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<{ nextCursor?: string; projects: ProjectListItem[] }> => {
+  const query: Record<string, unknown> = { limit, slim: true }
+  if (cursor) query.cursor = cursor
+  const { data, headers } = await apiClient.getWithHeaders<ProjectListItem[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    query,
+    signal,
+  )
+  return {
+    nextCursor: parseNextCursor(headers),
+    projects: Array.isArray(data) ? data : [],
+  }
+}
+
 export const getProject = (
   orgSlug: string,
   projectId: string,

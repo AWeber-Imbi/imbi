@@ -15,7 +15,7 @@ import { ProjectsView } from '../ProjectsView'
 vi.mock('@/api/endpoints', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')
-  return { ...actual, getProjectsSlim: vi.fn() }
+  return { ...actual, getProjectsSlimPage: vi.fn() }
 })
 
 // fallow-ignore-next-line unresolved-import
@@ -162,6 +162,10 @@ const QUIET_PROJECTS: ProjectListItem[] = [
   }),
 ]
 
+function mockProjects(projects: ProjectListItem[]) {
+  vi.mocked(endpoints.getProjectsSlimPage).mockResolvedValue({ projects })
+}
+
 function renderView() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -177,7 +181,7 @@ function renderView() {
 
 describe('ProjectsView filter counts', () => {
   beforeEach(() => {
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue(PROJECTS)
+    mockProjects(PROJECTS)
   })
 
   it('shows per-option match totals in the team filter', async () => {
@@ -223,7 +227,7 @@ describe('ProjectsView filter counts', () => {
     // Same commits differ as Delta's, but every commit in the range is
     // marked false, so nothing needs promoting or releasing and the
     // drift filter has no options to offer at all.
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue(QUIET_PROJECTS)
+    mockProjects(QUIET_PROJECTS)
     renderView()
     await waitFor(() => expect(screen.getByText('Quiet')).toBeInTheDocument())
     const panel = await openFilter(userEvent.setup(), /filter by drift/i)
@@ -236,7 +240,7 @@ describe('ProjectsView filter counts', () => {
     // carries a verdict at all. Only proven clean is clean, so an
     // unverified difference stays in the queue: absent range keys and
     // an absent drift_detected both fail closed.
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+    mockProjects([
       {
         ...QUIET_PROJECTS[0],
         drift_ranges: {},
@@ -292,7 +296,7 @@ describe('ProjectsView latest deployment', () => {
   }
 
   it('shows a newer in-flight attempt beside the deployed release', async () => {
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+    mockProjects([
       deployable({
         latest_deployments: {
           production: {
@@ -312,7 +316,7 @@ describe('ProjectsView latest deployment', () => {
   })
 
   it('shows a failed attempt as failed, not as the deployed release', async () => {
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+    mockProjects([
       deployable({
         latest_deployments: {
           production: {
@@ -331,11 +335,33 @@ describe('ProjectsView latest deployment', () => {
   })
 
   it('shows nothing extra when the deployed release is the newest', async () => {
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([deployable()])
+    mockProjects([deployable()])
     renderView()
     await waitFor(() => expect(screen.getByText('Echo')).toBeInTheDocument())
     expect(screen.getByText('v2')).toBeInTheDocument()
     expect(screen.queryByText('deploying')).not.toBeInTheDocument()
     expect(screen.queryByText('failed')).not.toBeInTheDocument()
+  })
+})
+
+describe('ProjectsView paging', () => {
+  it('loads the remaining pages without user action', async () => {
+    vi.mocked(endpoints.getProjectsSlimPage).mockClear()
+    const [first, ...rest] = PROJECTS
+    vi.mocked(endpoints.getProjectsSlimPage).mockImplementation(
+      async (_org, _limit, cursor) =>
+        cursor ? { projects: rest } : { nextCursor: 'next', projects: [first] },
+    )
+    renderView()
+    for (const p of PROJECTS) {
+      await waitFor(() => expect(screen.getByText(p.name)).toBeInTheDocument())
+    }
+    expect(endpoints.getProjectsSlimPage).toHaveBeenCalledTimes(2)
+    expect(endpoints.getProjectsSlimPage).toHaveBeenLastCalledWith(
+      'acme',
+      50,
+      'next',
+      expect.anything(),
+    )
   })
 })
