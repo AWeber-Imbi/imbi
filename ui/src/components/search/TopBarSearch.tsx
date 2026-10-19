@@ -107,9 +107,8 @@ export function TopBarSearch() {
   const ask = () => {
     const text = input.trim()
     if (!text) return
-    const top3 = shown
-      .filter((r) => getConfidenceLabel(r.distance) !== null)
-      .slice(0, 3)
+    // The visible hits: confident, navigable, one per node.
+    const top3 = hits.slice(0, 3).map((h) => h.result)
     newAssistantConversation()
     setPanelOpen(true)
     void send(buildSearchContext(text, top3), text)
@@ -166,7 +165,7 @@ export function TopBarSearch() {
       </div>
       {showPanel && (
         <div
-          className="border-tertiary bg-primary absolute top-full right-0 z-50 mt-2 w-xl overflow-hidden rounded-xl border shadow-lg"
+          className="border-tertiary bg-primary absolute top-full right-0 z-50 mt-2 w-xl max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border shadow-lg"
           id="top-bar-search-results"
           // Keep focus in the input so blur does not close the list
           // before a click lands.
