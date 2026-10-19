@@ -1115,6 +1115,7 @@ async def _latest_release(project_id: str) -> tuple[str, str] | None:
 
 
 async def _assert_breaking_changes_acknowledged(
+    db: graph.Graph,
     handler: DeploymentCapability,
     ctx: PluginContext,
     credentials: dict[str, str],
@@ -1141,6 +1142,11 @@ async def _assert_breaking_changes_acknowledged(
     Like the CI gate this fails open -- a release lookup or compare that
     cannot answer lets the release through -- and an autonomous
     principal cannot make the acknowledgement.
+
+    A tag whose ``Release`` already carries a breaking override is not
+    judged again: re-promoting it before its tag reaches ClickHouse
+    would otherwise measure it against the release before it and ask
+    for the same acknowledgement a second time.
     """
     autonomous.require_no_breaking_override(
         auth, acknowledged=acknowledged, tag=tag
@@ -1150,6 +1156,8 @@ async def _assert_breaking_changes_acknowledged(
         return False
     last_tag, last_sha = latest
     if not _skips_breaking_bump(last_tag, tag):
+        return False
+    if await _tag_has_breaking_override(db, project_id=project_id, tag=tag):
         return False
     try:
         result = await call_with_timeout(
@@ -1189,6 +1197,32 @@ async def _assert_breaking_changes_acknowledged(
         ctx.actor_user_id,
     )
     return True
+
+
+async def _tag_has_breaking_override(
+    db: graph.Graph, *, project_id: str, tag: str
+) -> bool:
+    """Whether ``tag``'s ``Release`` was already shipped over a break.
+
+    A failed lookup answers ``False``, so the tag is judged as usual.
+    """
+    try:
+        release_id = await _release_id_for(
+            db, project_id=project_id, committish='', tag=tag
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'Release lookup failed for project %s tag %s',
+            project_id,
+            tag,
+            exc_info=True,
+        )
+        return False
+    if release_id is None:
+        return False
+    return await _release_breaking_override(
+        db, project_id=project_id, release_id=release_id
+    )
 
 
 def _require_deployment_sync_support(resolved: ResolvedCapability) -> None:
@@ -4372,6 +4406,7 @@ async def _handle_promote(
         action='promote',
     )
     breaking_override = await _assert_breaking_changes_acknowledged(
+        db,
         handler,
         ctx,
         credentials,
@@ -7016,6 +7051,7 @@ async def cut_release(
         action='release',
     )
     breaking_override = await _assert_breaking_changes_acknowledged(
+        db,
         handler,
         ctx,
         credentials,

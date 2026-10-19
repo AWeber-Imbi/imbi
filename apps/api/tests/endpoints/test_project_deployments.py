@@ -3939,6 +3939,20 @@ class BreakingChangeGateTestCase(ProjectDeploymentsTestCase):
         self._use(latest=None)
         self.assertEqual(202, self._promote().status_code)
 
+    def test_repromoting_an_overridden_tag_proceeds(self) -> None:
+        """Its tag may not have reached ClickHouse yet; the decision has."""
+        self._use()
+        has_override = self._start(
+            mock.patch(
+                f'{_MODULE}._tag_has_breaking_override', return_value=True
+            )
+        )
+        self.assertEqual(202, self._promote().status_code)
+        has_override.assert_awaited_once_with(
+            self.mock_db, project_id='proj1', tag='v6.4.0'
+        )
+        self.assertEqual([], self._override_writes())
+
     def test_promote_proceeds_when_the_compare_raises(self) -> None:
         """A plugin that cannot answer must not refuse the release."""
         self._use(raises=True)
@@ -4200,6 +4214,43 @@ class ReleaseBreakingOverrideTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(
             await self._read(side_effect=RuntimeError('AGE is down'))
         )
+
+
+class TagHasBreakingOverrideTestCase(unittest.IsolatedAsyncioTestCase):
+    """Whether a tag's ``Release`` was already shipped over a break."""
+
+    async def _check(
+        self, *, rid: typing.Any, overridden_by: typing.Any = None
+    ) -> bool:
+        async def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if isinstance(rid, Exception):
+                raise rid
+            if 'RETURN r.id AS rid' in query:
+                return [{'rid': rid}] if rid else []
+            return [{'overridden_by': overridden_by}]
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=_execute)
+        return await project_deployments._tag_has_breaking_override(
+            db, project_id='p1', tag='v1.3.0'
+        )
+
+    async def test_stamped_release(self) -> None:
+        self.assertTrue(
+            await self._check(rid='r1', overridden_by='daves@aweber.com')
+        )
+
+    async def test_unstamped_release(self) -> None:
+        self.assertFalse(await self._check(rid='r1'))
+
+    async def test_no_release(self) -> None:
+        self.assertFalse(await self._check(rid=None))
+
+    async def test_a_failed_lookup_is_no_override(self) -> None:
+        self.assertFalse(await self._check(rid=RuntimeError('AGE is down')))
 
 
 class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
