@@ -87,7 +87,10 @@ class GitHubDeployment(DeploymentCapability):
 - **`resolve_committish`** — hydrate a single branch / tag / SHA into a
   `Commit`.
 - **`compare`** — return a `CompareResult` for `base..head` (ahead /
-  behind counts, commits, diffstat).
+  behind counts, commits, diffstat). Populate each commit's `body`
+  (everything after the subject line): release-notes drafting reads it,
+  and the promote and release gates look in it for a `BREAKING CHANGE:`
+  footer (see [Breaking Changes](../../releases/breaking-changes.md)).
 - **`trigger_deployment`** — dispatch a CI workflow / pipeline run for
   `ref_or_sha` with optional `inputs`, returning a `DeploymentRun`.
 - **`get_deployment_status`** — poll a previously triggered run by

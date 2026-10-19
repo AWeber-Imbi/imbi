@@ -53,6 +53,8 @@ nav:
   - Deployment:
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
+  - Releases:
+      - Breaking Changes: releases/breaking-changes.md
   - Architecture:
       - Overview: architecture/overview.md
       - Services: architecture/services.md
