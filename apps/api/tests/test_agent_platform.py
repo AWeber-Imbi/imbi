@@ -221,6 +221,11 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 'c' * 40,
             )
             handler.list_refs.assert_not_called()
+            # An invalid sha is refused, never replaced.
+            with self.assertRaises(marketplaces.SyncError):
+                await marketplaces.resolve_commit(
+                    mock.Mock(), 'acme', plugin(sha='main', ref='v1')
+                )
             self.assertEqual(
                 await marketplaces.resolve_commit(
                     mock.Mock(), 'acme', plugin(ref='v1')
@@ -264,6 +269,10 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                         'name': 'hub',
                         'source': {'source': 'github', 'repo': 'a/d'},
                     },
+                    {
+                        'name': 'broken',
+                        'source': {'source': 'url', 'url': 'https://[x/e.git'},
+                    },
                 ],
             }
         )
@@ -300,11 +309,13 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 'ok': 'b' * 40,
                 'gone': None,
                 'elsewhere': None,
-                'hub': 'b' * 40,
+                'hub': None,
+                'broken': None,
             },
         )
-        # A plugin on another host is not loadable.
-        self.assertIsNone(changes['plugins'][3]['repository_url'])
+        # A plugin on another host, github.com too, is not loadable.
+        for plugin in changes['plugins'][3:]:
+            self.assertIsNone(plugin['repository_url'])
         self.assertIsNone(changes['sync_error'])
 
     async def test_no_integration(self) -> None:

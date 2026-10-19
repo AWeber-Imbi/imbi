@@ -103,7 +103,10 @@ def _repository_url(source: dict[str, typing.Any]) -> str | None:
 
 
 def _host(url: str) -> str | None:
-    return urllib.parse.urlsplit(url).hostname
+    try:
+        return urllib.parse.urlsplit(url).hostname
+    except ValueError:
+        return None
 
 
 def parse(text: str) -> Catalog:
@@ -232,7 +235,10 @@ async def resolve_commit(
     """
     source = plugin.source if isinstance(plugin.source, dict) else {}
     sha, ref = source.get('sha'), source.get('ref')
-    if isinstance(sha, str) and _SHA.fullmatch(sha):
+    if sha is not None:
+        # Never pin another commit in place of the one the source gives.
+        if not isinstance(sha, str) or not _SHA.fullmatch(sha):
+            raise SyncError(f'invalid sha {sha!r}')
         return sha
 
     async def read(
@@ -357,13 +363,13 @@ async def sync(
         changes: dict[str, typing.Any] = {'sync_error': str(err)[:2000]}
     else:
         # The runner sends its marketplace_fetch token to the plugin
-        # host, so a plugin can only live on the marketplace host or on
-        # github.com.
-        hosts = {_host(str(marketplace['url'])), 'github.com'}
+        # host, and the token is for the marketplace host. So a plugin
+        # can only live on the marketplace host.
+        host = _host(str(marketplace['url']))
         for plugin in catalog.plugins:
             if plugin.repository_url is None:
                 continue
-            if _host(plugin.repository_url) not in hosts:
+            if host is None or _host(plugin.repository_url) != host:
                 LOGGER.info(
                     'Marketplace %s: plugin %s is on another host',
                     marketplace['slug'],

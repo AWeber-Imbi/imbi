@@ -193,7 +193,11 @@ function MarketplacePlugins({
           const external = plugin.path == null
           const head = external ? plugin.repository_sha : marketplace.head_sha
           const outside = external && !head
-          const stale = chosen?.sha && head && chosen.sha !== head
+          const stale =
+            chosen?.sha &&
+            head &&
+            (chosen.sha !== head ||
+              (external && chosen.url !== plugin.repository_url))
           return (
             <li className="flex items-start gap-3 px-3 py-2" key={plugin.name}>
               <Checkbox

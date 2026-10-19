@@ -153,4 +153,23 @@ describe('PlatformTab', () => {
       { marketplace: 'claude-code', plugin: 'code-review' },
     ])
   })
+
+  it('offers to pin an external plugin that moved', async () => {
+    const initial = {
+      ...emptyDraft().settings,
+      plugins: [
+        {
+          marketplace: 'claude-code',
+          plugin: 'linked',
+          sha: 'c'.repeat(40),
+          url: 'https://github.com/a/old.git',
+        },
+      ],
+    }
+    render(<Harness initial={initial} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Pin ccccccc' }))
+    expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+      { marketplace: 'claude-code', plugin: 'linked' },
+    ])
+  })
 })
