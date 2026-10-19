@@ -58,13 +58,18 @@ export function NewTaskDialog({
     setQuery('')
   }, [agent, isOpen])
 
-  const { data: agentList = [] } = useAgentList(isOpen ? orgSlug : undefined)
+  // The Run button of an agent keeps its agent.
+  const { data: agentList = [] } = useAgentList(
+    isOpen && !agent ? orgSlug : undefined,
+  )
   const agents = useMemo(
     () =>
-      agentList
-        .filter((a) => a.enabled)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [agentList],
+      agent
+        ? [agent]
+        : agentList
+            .filter((a) => a.enabled)
+            .sort((a, b) => a.name.localeCompare(b.name)),
+    [agent, agentList],
   )
   const { data: projectList = [] } = useQuery({
     enabled: !!orgSlug && isOpen,
@@ -104,6 +109,11 @@ export function NewTaskDialog({
     },
   })
   const ready = missing.length === 0 && !create.isPending
+  const { reset } = create
+  // A reopened dialog shows no error from the last attempt.
+  useEffect(() => {
+    if (isOpen) reset()
+  }, [isOpen, reset])
 
   return (
     <Dialog

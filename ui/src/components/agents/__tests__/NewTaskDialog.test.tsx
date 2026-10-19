@@ -64,6 +64,13 @@ describe('NewTaskDialog', () => {
     expect(screen.queryByText('Retired')).toBeNull()
   })
 
+  it('keeps the agent of the Run button', () => {
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={vi.fn()} />)
+    expect(screen.getByRole('radio', { name: /Mender/ })).toBeChecked()
+    expect(screen.getAllByRole('radio')).toHaveLength(1)
+    expect(endpoints.listAgents).not.toHaveBeenCalled()
+  })
+
   it('searches projects and leaves out archived ones', async () => {
     render(<NewTaskDialog isOpen onClose={vi.fn()} />)
     fireEvent.change(screen.getByLabelText('Search projects'), {

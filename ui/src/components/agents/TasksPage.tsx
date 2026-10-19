@@ -277,7 +277,9 @@ function TaskInbox({
         {!loading && !error && groups.length === 0 && (
           <p className="text-tertiary p-6 text-center text-sm">
             {tasks.length === 0 && !q && !mine
-              ? 'No tasks yet. Start one with Run on an agent.'
+              ? canCreate
+                ? 'No tasks yet. Create one with New task.'
+                : 'No tasks yet.'
               : 'No tasks match.'}
           </p>
         )}

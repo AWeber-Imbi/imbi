@@ -63,7 +63,8 @@ export function Navigation({ currentView }: NavigationProps) {
   // Check if user is admin (safely cast to UserResponse to access is_admin)
   const isAdmin = (user as null | UserResponse)?.is_admin === true
   const canReadAgents = useHasPermission('agent:read')
-  const canCreateTask = useHasPermission('agent_task:create')
+  // The dialog lists agents, so it needs agent:read too.
+  const canCreateTask = useHasPermission('agent_task:create') && canReadAgents
 
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
