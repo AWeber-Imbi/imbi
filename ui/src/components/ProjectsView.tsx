@@ -280,7 +280,7 @@ export function ProjectsView() {
     fetchNextPage,
     hasNextPage,
     isFetching,
-    isFetchingNextPage,
+    isFetchNextPageError,
     isLoading,
     refetch,
   } = useInfiniteQuery({
@@ -293,9 +293,12 @@ export function ProjectsView() {
     select: (data) => data.pages.flatMap((page) => page.projects),
   })
 
+  // isFetching also covers a background refetch, which fetchNextPage
+  // would cancel. After a page error, stop: a retry is a user action.
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+    if (hasNextPage && !isFetching && !isFetchNextPageError)
+      void fetchNextPage()
+  }, [hasNextPage, isFetching, isFetchNextPageError, fetchNextPage])
 
   const teamOptions = useMemo(
     () =>

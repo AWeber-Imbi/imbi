@@ -92,6 +92,7 @@ def create_app() -> fastapi.FastAPI:
         allow_credentials=True,
         allow_methods=['*'],
         allow_headers=['authorization'],
+        expose_headers=['Link'],
     )
 
     # Honor X-Forwarded-For from trusted proxies so rate limiting keys
