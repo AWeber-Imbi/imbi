@@ -194,6 +194,7 @@ def deployed_operation_log(
     occurred_at: datetime.datetime | None = None,
     ci_status: str = 'unknown',
     ci_override: bool = False,
+    breaking_override: bool = False,
     credential: str | None = None,
 ) -> common_models.OperationLog:
     """Build a ``Deployed`` ``operations_log`` row.
@@ -222,7 +223,9 @@ def deployed_operation_log(
     that an operator acknowledged a failing one to get here (ENG-102).
     Both default to the "nothing was checked" case so the backfill and
     resync callers, which observe deployments rather than CI, need not
-    supply them.
+    supply them.  ``breaking_override`` records the same kind of
+    acknowledgement for a commit marked breaking shipped in a
+    non-breaking version bump, and defaults the same way.
 
     ``credential`` names the Integration credential the action ran on
     when it was not the actor's own (e.g.
@@ -237,6 +240,7 @@ def deployed_operation_log(
     description = json.dumps(
         {
             'action': action,
+            'breaking_override': breaking_override,
             'ci_override': ci_override,
             'ci_status': ci_status,
             'commit_sha': commit_sha,

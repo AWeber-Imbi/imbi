@@ -207,6 +207,53 @@ def _ci_plugin(
     return _CiPlugin
 
 
+def _breaking_plugin(
+    *,
+    declared: bool = True,
+    raises: bool = False,
+    parent: type[DeploymentCapability] = _FakeDeploymentPlugin,
+) -> type[DeploymentCapability]:
+    """A deployment plugin whose ``compare`` returns a release range.
+
+    With ``declared`` the range holds a commit its author marked breaking
+    (``feat(api)!:``); without it, only a fix.  ``raises`` makes the
+    compare fail, which the breaking-change gate must treat as no answer.
+    """
+
+    class _BreakingPlugin(parent):  # type: ignore[valid-type, misc]
+        async def compare(  # type: ignore[override]
+            self, ctx, credentials, base, head
+        ):
+            if raises:
+                raise RuntimeError('compare unavailable')
+            commits = [
+                Commit(
+                    sha='c0ffee1234567',
+                    short_sha='c0ffee1',
+                    message='fix: typo',
+                    url='https://gh/commit/c0ffee1',
+                )
+            ]
+            if declared:
+                commits.append(
+                    Commit(
+                        sha='b7e1d2c0ffee',
+                        short_sha='b7e1d2c',
+                        message='feat(api)!: drop the v1 routes',
+                        url='https://gh/commit/b7e1d2c',
+                    )
+                )
+            return CompareResult(
+                base_sha=base,
+                head_sha=head,
+                ahead=len(commits),
+                behind=0,
+                commits=commits,
+            )
+
+    return _BreakingPlugin
+
+
 class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
     """Deployment plugin that opts *out* of resync."""
 
@@ -426,6 +473,12 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                         close=mock.AsyncMock(return_value=None),
                     ),
                 )
+            ),
+            # Default release lookup for the breaking-change gate: no
+            # prior release, so the gate never engages.  Tests exercising
+            # the gate set a ``(tag, sha)`` return.
+            '_latest_release': self._start(
+                mock.patch(f'{_MODULE}._latest_release', return_value=None)
             ),
             # The operations_log audit row is published to Iggy.
             'publish_rows': self._start(
@@ -737,10 +790,10 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.mock_anthropic.complete_json = mock.AsyncMock(
             return_value=CompletionResult(
                 data=DraftReleaseNotes(
-                    bump='major',
+                    bump='minor',
                     version='v9.0',  # not a valid semver
-                    reasoning='breaking',
-                    notes_markdown='## Breaking',
+                    reasoning='new feature',
+                    notes_markdown='## Added',
                 ),
                 degraded=False,
             )
@@ -757,8 +810,44 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        # last_tag bumped major: 6.3.0 → 7.0.0
-        self.assertEqual(data['version'], 'v7.0.0')
+        # last_tag bumped minor: 6.3.0 → 6.4.0
+        self.assertEqual(data['version'], 'v6.4.0')
+
+    def test_draft_release_notes_forces_major_for_a_declared_break(
+        self,
+    ) -> None:
+        """A commit its author marked breaking overrides the model's bump."""
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _breaking_plugin(), options={'owner': 'octo', 'repo': 'demo'}
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # The stub model said minor; the declared break makes it major.
+        self.assertEqual('major', data['bump'])
+        self.assertEqual('v2.0.0', data['version'])
+        self.assertEqual(
+            [
+                {
+                    'commit': 'b7e1d2c',
+                    'description': 'feat(api)!: drop the v1 routes',
+                    'declared': True,
+                    'url': 'https://gh/commit/b7e1d2c',
+                }
+            ],
+            data['breaking_changes'],
+        )
+        call = self.mock_anthropic.complete_json.call_args
+        self.assertIn('Project types:', call.args[0])
 
     def test_draft_release_notes_keeps_a_calver_version(self) -> None:
         """A version that fits the tag policy is not re-bumped to semver."""
@@ -2377,6 +2466,26 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
         self.assertIn('    ## Summary', prompt)
         self.assertIn('bbb Subject only', prompt)
 
+    def test_prompt_names_the_project_types(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _build_release_notes_prompt,
+        )
+
+        commits = [Commit(sha='a', short_sha='aaa', message='Subject')]
+        prompt = _build_release_notes_prompt(
+            'proj',
+            'v1.0.0',
+            'a',
+            'b',
+            commits,
+            project_types=['http-api', 'library'],
+        )
+        self.assertIn('Project types: http-api, library', prompt)
+        unknown = _build_release_notes_prompt(
+            'proj', 'v1.0.0', 'a', 'b', commits
+        )
+        self.assertIn('Project types: (unknown)', unknown)
+
     def test_prompt_truncates_long_bodies(self) -> None:
         from imbi.api.endpoints.project_deployments import (
             _PROMPT_BODY_CAP,
@@ -2429,6 +2538,35 @@ class FallbackNotesTestCase(unittest.TestCase):
         commits = [Commit(sha='a', short_sha='a', message='feat!: drop')]
         self.assertEqual(_classify_bump(commits), 'major')
 
+    def test_classify_bump_breaking_footer(self) -> None:
+        from imbi.api.endpoints.project_deployments import _classify_bump
+
+        commits = [
+            Commit(
+                sha='a',
+                short_sha='a',
+                message='Drop the v1 routes',
+                body='Gone.\n\nBREAKING CHANGE: v1 clients must move to v2',
+            )
+        ]
+        self.assertEqual(_classify_bump(commits), 'major')
+
+    def test_classify_bump_breaking_below_1_0_is_minor(self) -> None:
+        from imbi.api.endpoints.project_deployments import _classify_bump
+
+        commits = [Commit(sha='a', short_sha='a', message='feat!: drop')]
+        self.assertEqual(_classify_bump(commits, '0.3.1'), 'minor')
+        self.assertEqual(_classify_bump(commits, 'v1.3.1'), 'major')
+
+    def test_classify_bump_ignores_the_word_breaking(self) -> None:
+        """Only the author's marker counts, not the word in a subject."""
+        from imbi.api.endpoints.project_deployments import _classify_bump
+
+        commits = [
+            Commit(sha='a', short_sha='a', message='fix: breaking test')
+        ]
+        self.assertEqual(_classify_bump(commits), 'patch')
+
     def test_classify_bump_feature(self) -> None:
         from imbi.api.endpoints.project_deployments import _classify_bump
 
@@ -2472,6 +2610,190 @@ class FallbackNotesTestCase(unittest.TestCase):
         ]
         body = _fallback_notes(commits)
         self.assertIn('### other', body)
+
+
+class BreakingChangeHelpersTestCase(unittest.TestCase):
+    """Direct tests for the breaking-change detection and version math."""
+
+    def test_declares_breaking(self) -> None:
+        from imbi.api.endpoints.project_deployments import _declares_breaking
+
+        cases: list[tuple[str, str | None, bool]] = [
+            ('feat!: drop the v1 routes', None, True),
+            ('fix(api)!: rename the field', None, True),
+            ('refactor!: x', 'body', True),
+            ('feat: add a thing', None, False),
+            ('Fix breaking test', None, False),
+            ('feat: x', 'BREAKING CHANGE: clients must upgrade', True),
+            ('feat: x', 'Summary\n\nBREAKING-CHANGE: gone', True),
+            ('feat: x', 'Mentions a BREAKING CHANGE: inline', False),
+        ]
+        for message, body, expected in cases:
+            with self.subTest(message=message, body=body):
+                commit = Commit(
+                    sha='a', short_sha='a', message=message, body=body
+                )
+                self.assertEqual(expected, _declares_breaking(commit))
+
+    def test_skips_breaking_bump(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _skips_breaking_bump,
+        )
+
+        cases: list[tuple[str, str, bool]] = [
+            ('v6.3.0', 'v6.4.0', True),
+            ('v6.3.0', 'v6.3.1', True),
+            ('6.3.0', '7.0.0', False),
+            # Not newer: re-promoting a tag, or a backport.
+            ('v6.3.0', 'v6.3.0', False),
+            ('v6.3.0', 'v5.9.9', False),
+            # Below 1.0.0 the minor carries the break.
+            ('0.3.0', '0.3.1', True),
+            ('0.3.0', '0.4.0', False),
+            ('0.3.0', '1.0.0', False),
+            # Nothing to judge without two semver tags.
+            ('2026.09.17', '2026.09.18', False),
+            ('v6.3.0', 'abc1234', False),
+        ]
+        for last_tag, tag, expected in cases:
+            with self.subTest(last_tag=last_tag, tag=tag):
+                self.assertEqual(expected, _skips_breaking_bump(last_tag, tag))
+
+
+class ReconcileBreakingChangesTestCase(unittest.TestCase):
+    """Direct tests for ``_reconcile_breaking_changes``."""
+
+    _COMMITS: typing.ClassVar[list[Commit]] = [
+        Commit(
+            sha='c0ffee1234567',
+            short_sha='c0ffee1',
+            message='fix: typo',
+            url='https://gh/commit/c0ffee1',
+        ),
+        Commit(
+            sha='b7e1d2c0ffee',
+            short_sha='b7e1d2c',
+            message='Remove the export endpoint',
+            url='https://gh/commit/b7e1d2c',
+        ),
+    ]
+
+    @staticmethod
+    def _notes(
+        bump: str, breaking: list[dict[str, str]] | None = None
+    ) -> DraftReleaseNotes:
+        return DraftReleaseNotes.model_validate(
+            {
+                'bump': bump,
+                'version': 'unused',
+                'reasoning': 'r',
+                'breaking_changes': breaking or [],
+                'notes_markdown': 'n',
+            }
+        )
+
+    def _reconcile(
+        self,
+        notes: DraftReleaseNotes,
+        commits: list[Commit] | None = None,
+        last_tag: str = 'v6.3.0',
+    ) -> DraftReleaseNotes:
+        from imbi.api.endpoints.project_deployments import (
+            _reconcile_breaking_changes,
+        )
+
+        return _reconcile_breaking_changes(
+            notes,
+            self._COMMITS if commits is None else commits,
+            last_tag,
+            [],
+        )
+
+    def test_keeps_a_judged_break_and_its_major(self) -> None:
+        result = self._reconcile(
+            self._notes(
+                'major',
+                [{'commit': 'B7E1D2C', 'description': 'Export is gone'}],
+            )
+        )
+        self.assertEqual('major', result.bump)
+        # Unchanged bump: the model's version stands.
+        self.assertEqual('unused', result.version)
+        self.assertEqual(1, len(result.breaking_changes))
+        entry = result.breaking_changes[0]
+        self.assertEqual('b7e1d2c', entry.commit)
+        self.assertEqual('Export is gone', entry.description)
+        self.assertFalse(entry.declared)
+        self.assertEqual('https://gh/commit/b7e1d2c', entry.url)
+
+    def test_a_listed_break_lifts_the_bump(self) -> None:
+        result = self._reconcile(
+            self._notes(
+                'minor',
+                [{'commit': 'b7e1d2c', 'description': 'Export is gone'}],
+            )
+        )
+        self.assertEqual('major', result.bump)
+        self.assertEqual('v7.0.0', result.version)
+
+    def test_a_break_below_1_0_lifts_only_to_minor(self) -> None:
+        result = self._reconcile(
+            self._notes(
+                'patch',
+                [{'commit': 'b7e1d2c', 'description': 'Export is gone'}],
+            ),
+            last_tag='0.3.1',
+        )
+        self.assertEqual('minor', result.bump)
+        self.assertEqual('0.4.0', result.version)
+
+    def test_drops_entries_outside_the_range(self) -> None:
+        """No evidence left, so the major it justified goes too."""
+        result = self._reconcile(
+            self._notes(
+                'major',
+                [
+                    {'commit': 'deadbee', 'description': 'invented'},
+                    {'commit': 'b7e', 'description': 'too short to match'},
+                ],
+            )
+        )
+        self.assertEqual([], result.breaking_changes)
+        self.assertEqual('minor', result.bump)
+        self.assertEqual('v6.4.0', result.version)
+
+    def test_adds_a_declared_break_the_model_missed(self) -> None:
+        commits = [
+            *self._COMMITS,
+            Commit(
+                sha='d1e2c3a4b5',
+                short_sha='d1e2c3a',
+                message='feat!: rename the config key',
+            ),
+        ]
+        result = self._reconcile(self._notes('patch'), commits)
+        self.assertEqual('major', result.bump)
+        self.assertEqual(
+            [('d1e2c3a', 'feat!: rename the config key', True)],
+            [
+                (b.commit, b.description, b.declared)
+                for b in result.breaking_changes
+            ],
+        )
+
+    def test_collapses_duplicate_entries(self) -> None:
+        result = self._reconcile(
+            self._notes(
+                'major',
+                [
+                    {'commit': 'b7e1d2c', 'description': 'first'},
+                    {'commit': 'b7e1d2c0ffee', 'description': 'second'},
+                ],
+            )
+        )
+        self.assertEqual(
+            ['first'], [b.description for b in result.breaking_changes]
+        )
 
 
 class LatestDeploymentTimestampTestCase(unittest.TestCase):
@@ -2603,6 +2925,11 @@ class DeployedOperationLogTestCase(unittest.TestCase):
     def test_commit_sha_defaults_to_none(self) -> None:
         description = self._build(version='1.29.0')
         self.assertIsNone(description['commit_sha'])
+
+    def test_breaking_override_recorded(self) -> None:
+        self.assertFalse(self._build(version='1.29.0')['breaking_override'])
+        description = self._build(version='1.29.0', breaking_override=True)
+        self.assertTrue(description['breaking_override'])
 
 
 class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
@@ -3506,6 +3833,191 @@ class DispatchCiGateTestCase(CiGateTestCase):
         self.mocks['publish_rows'].assert_not_called()
 
 
+class BreakingChangeGateTestCase(ProjectDeploymentsTestCase):
+    """A non-breaking bump over a commit marked breaking warns and confirms.
+
+    Mirrors the CI gate: refused with a 409 until acknowledged, recorded
+    on the ``Release`` node and in the audit row when it is, and open
+    whenever the server cannot answer the question.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _PROMOTE: typing.ClassVar[dict[str, typing.Any]] = {
+        'action': 'promote',
+        'from_environment': 'testing',
+        'to_environment': 'staging',
+        'from_committish': '1a9c610',
+        'tag': 'v6.4.0',
+    }
+    _CUT: typing.ClassVar[dict[str, typing.Any]] = {
+        'committish': '1a9c610',
+        'tag': 'v6.4.0',
+    }
+
+    def _use(
+        self,
+        latest: tuple[str, str] | None = ('v6.3.0', 'a1b2c3d4'),
+        **kwargs: typing.Any,
+    ) -> None:
+        """Arm the gate: a current release, and a range from ``compare``.
+
+        Per test rather than in ``setUp``, so the tests this class
+        inherits keep running against the ungated defaults.
+        """
+        self.mocks['_latest_release'].return_value = latest
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _breaking_plugin(**kwargs),
+            options={'owner': 'octo', 'repo': 'demo'},
+        )
+
+    def _promote(self, **overrides: typing.Any) -> httpx.Response:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(self._BASE, json={**self._PROMOTE, **overrides})
+
+    def _cut(self, **overrides: typing.Any) -> httpx.Response:
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(
+                f'{self._BASE}/releases/cut', json={**self._CUT, **overrides}
+            )
+
+    def _override_writes(self) -> list[dict[str, typing.Any]]:
+        return [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if 'SET r.breaking_override_by' in call.args[0]
+        ]
+
+    def _audit_description(self) -> dict[str, typing.Any]:
+        row = self._published_audit_row()
+        return typing.cast(
+            'dict[str, typing.Any]', json.loads(row['description'])
+        )
+
+    # -- The gate ---------------------------------------------------------
+
+    def test_promote_409_over_a_declared_break(self) -> None:
+        self._use()
+        response = self._promote()
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
+        self.assertIn('v6.4.0 is not a breaking-change release', detail)
+        self.assertIn('b7e1d2c is marked breaking', detail)
+        self.assertIn('Release a major version', detail)
+        self.assertIn('acknowledge_breaking_changes=true', detail)
+
+    def test_promote_gate_runs_before_any_side_effect(self) -> None:
+        self._use()
+        cut_tag = self._start(
+            mock.patch(f'{_MODULE}._promote_cut_tag', return_value=None)
+        )
+        upsert = self._start(
+            mock.patch(f'{_MODULE}._upsert_release_node', return_value='rel1')
+        )
+        self.assertEqual(409, self._promote().status_code)
+        cut_tag.assert_not_called()
+        upsert.assert_not_called()
+        self.mocks['append_deployment_event'].assert_not_called()
+
+    def test_major_promote_proceeds(self) -> None:
+        self._use()
+        self.assertEqual(202, self._promote(tag='v7.0.0').status_code)
+        self.assertEqual([], self._override_writes())
+        self.assertFalse(self._audit_description()['breaking_override'])
+
+    def test_promote_without_a_declared_break_proceeds(self) -> None:
+        self._use(declared=False)
+        self.assertEqual(202, self._promote().status_code)
+        self.assertEqual([], self._override_writes())
+
+    def test_repromoting_the_current_release_proceeds(self) -> None:
+        """Not a new version, so there is no bump to judge."""
+        self._use(latest=('v6.4.0', 'a1b2c3d4'))
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_first_release_proceeds(self) -> None:
+        self._use(latest=None)
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_promote_proceeds_when_the_compare_raises(self) -> None:
+        """A plugin that cannot answer must not refuse the release."""
+        self._use(raises=True)
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_below_1_0_the_minor_carries_the_break(self) -> None:
+        self._use(latest=('0.3.0', 'a1b2c3d4'))
+        response = self._promote(tag='0.3.1')
+        self.assertEqual(409, response.status_code)
+        self.assertIn('Release a minor version', response.json()['detail'])
+        self.assertEqual(202, self._promote(tag='0.4.0').status_code)
+
+    # -- The record -------------------------------------------------------
+
+    def test_acknowledged_promote_stamps_and_audits(self) -> None:
+        self._use()
+        response = self._promote(acknowledge_breaking_changes=True)
+        self.assertEqual(response.status_code, 202)
+        overrides = self._override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
+        self.assertTrue(overrides[0]['overridden_at'])
+        self.assertTrue(self._audit_description()['breaking_override'])
+
+    def test_unneeded_acknowledgement_records_nothing(self) -> None:
+        """Only an acknowledgement the gate needed is an override."""
+        self._use(declared=False)
+        self.assertEqual(
+            202, self._promote(acknowledge_breaking_changes=True).status_code
+        )
+        self.assertEqual([], self._override_writes())
+        self.assertFalse(self._audit_description()['breaking_override'])
+
+    # -- release cut ------------------------------------------------------
+
+    def test_cut_409_over_a_declared_break(self) -> None:
+        self._use()
+        response = self._cut()
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('to release v6.4.0 anyway', response.json()['detail'])
+
+    def test_acknowledged_cut_stamps_and_audits(self) -> None:
+        self._use()
+        response = self._cut(acknowledge_breaking_changes=True)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(1, len(self._override_writes()))
+        self.assertTrue(self._audit_description()['breaking_override'])
+
+    # -- dispatch-driven promote ------------------------------------------
+
+    def test_dispatch_stamps_before_the_build(self) -> None:
+        """The decision is recorded even if the build later fails."""
+        _DispatchingDeploymentPlugin.dispatches.clear()
+        _DispatchingDeploymentPlugin.run_id = '4242'
+        self.mocks['_latest_release'].return_value = ('v6.3.0', 'a1b2c3d4')
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _breaking_plugin(parent=_DispatchingDeploymentPlugin),
+            options={'owner': 'octo', 'repo': 'demo'},
+            capability_options={'artifact_workflow': 'release.yml'},
+        )
+        for target in (
+            '_project_is_deployable',
+            'release_promote_queue.enqueue_release_promote',
+        ):
+            self._start(mock.patch(f'{_MODULE}.{target}', return_value=True))
+        self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_service.set_status',
+                return_value=None,
+            )
+        )
+        self.assertEqual(409, self._promote().status_code)
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+        response = self._promote(acknowledge_breaking_changes=True)
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+        self.assertEqual(1, len(self._override_writes()))
+
+
 class ReleaseInFlightGuardTestCase(ProjectDeploymentsTestCase):
     """A second cut of a tag already building is refused with a 409.
 
@@ -3656,6 +4168,37 @@ class ReleaseCiOverrideTestCase(unittest.IsolatedAsyncioTestCase):
             await project_deployments._release_ci_override(
                 db, project_id='p1', release_id='r1'
             ),
+        )
+
+
+class ReleaseBreakingOverrideTestCase(unittest.IsolatedAsyncioTestCase):
+    """Reading the promote-time breaking-change decision back.
+
+    The dispatch path's counterpart to ``ReleaseCiOverrideTestCase``.
+    """
+
+    async def _read(self, **kwargs: typing.Any) -> bool:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(**kwargs)
+        return await project_deployments._release_breaking_override(
+            db, project_id='p1', release_id='r1'
+        )
+
+    async def test_reads_the_stamped_override(self) -> None:
+        self.assertTrue(
+            await self._read(
+                return_value=[{'overridden_by': 'daves@aweber.com'}]
+            )
+        )
+
+    async def test_no_actor_is_not_an_override(self) -> None:
+        for rows in ([{'overridden_by': None}], [{'overridden_by': ''}], []):
+            with self.subTest(rows=rows):
+                self.assertFalse(await self._read(return_value=rows))
+
+    async def test_a_failed_read_does_not_sink_the_audit_row(self) -> None:
+        self.assertFalse(
+            await self._read(side_effect=RuntimeError('AGE is down'))
         )
 
 

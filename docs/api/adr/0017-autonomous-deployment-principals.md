@@ -164,6 +164,7 @@ Following the existing `identity_required` shape:
 | Environment not autonomous-enabled | 403 | `environment_not_autonomous` |
 | Principal not a member of the organization | 403 | `organization_forbidden` |
 | Userless principal set `acknowledge_ci_failure` | 403 | `ci_override_forbidden` |
+| Userless principal set `acknowledge_breaking_changes` | 403 | `breaking_override_forbidden` |
 | No usable credential on the Integration | 503 | `no_service_credential` |
 
 `403` rather than `424`/`503` for the terminal states because consuming

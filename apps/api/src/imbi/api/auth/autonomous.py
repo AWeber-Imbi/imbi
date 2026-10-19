@@ -220,3 +220,27 @@ def require_no_ci_override(
         ),
         committish=committish,
     )
+
+
+def require_no_breaking_override(
+    auth: permissions.AuthContext, *, acknowledged: bool, tag: str
+) -> None:
+    """Refuse a userless principal that acknowledged a breaking change.
+
+    ``acknowledge_breaking_changes`` means "an operator who has seen the
+    commits marked breaking decided they do not need a breaking-change
+    bump".  A daemon setting it asserts a judgment nobody made, so it is
+    refused whether or not the release carries such a commit, exactly
+    like :func:`require_no_ci_override`.
+    """
+    if not acknowledged or not is_autonomous(auth):
+        return
+    raise forbidden(
+        'breaking_override_forbidden',
+        (
+            'acknowledge_breaking_changes asserts that an operator reviewed '
+            'the commits marked breaking; an autonomous principal cannot '
+            'make that claim.'
+        ),
+        tag=tag,
+    )

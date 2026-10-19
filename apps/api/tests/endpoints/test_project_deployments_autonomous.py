@@ -16,6 +16,7 @@ import typing
 import unittest
 from unittest import mock
 
+import fastapi
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -235,6 +236,46 @@ class CiOverrideTestCase(_AutonomousBase):
     def test_not_acknowledging_is_unaffected(self) -> None:
         response = self._deploy(acknowledge_ci_failure=False)
         self.assertEqual(response.status_code, 202, response.text)
+
+
+class BreakingOverrideTestCase(unittest.TestCase):
+    """A machine cannot acknowledge a breaking change either."""
+
+    def test_acknowledgement_is_refused_for_a_service_account(self) -> None:
+        auth = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='daemon', display_name='Daemon'
+            ),
+            auth_method='client_credentials',
+        )
+        with self.assertRaises(fastapi.HTTPException) as caught:
+            autonomous.require_no_breaking_override(
+                auth, acknowledged=True, tag='v6.4.0'
+            )
+        self.assertEqual(403, caught.exception.status_code)
+        detail = typing.cast('dict[str, typing.Any]', caught.exception.detail)
+        self.assertEqual('breaking_override_forbidden', detail['error'])
+        self.assertEqual('v6.4.0', detail['tag'])
+        # Not acknowledging is unaffected.
+        autonomous.require_no_breaking_override(
+            auth, acknowledged=False, tag='v6.4.0'
+        )
+
+    def test_a_user_may_acknowledge(self) -> None:
+        auth = permissions.AuthContext(
+            user=models.User(
+                email='dev@example.com',
+                display_name='Dev',
+                is_active=True,
+                is_admin=False,
+                password_hash=password.hash_password('testpassword123'),
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            auth_method='jwt',
+        )
+        autonomous.require_no_breaking_override(
+            auth, acknowledged=True, tag='v6.4.0'
+        )
 
 
 class NoServiceCredentialTestCase(_AutonomousBase):

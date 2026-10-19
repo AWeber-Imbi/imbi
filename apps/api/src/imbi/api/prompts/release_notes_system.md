@@ -6,14 +6,46 @@ the project allows, output a single JSON object with no surrounding text:
   "bump": "major" | "minor" | "patch",
   "version": "<next tag>",
   "reasoning": "<one-paragraph explanation of bump type selection>",
+  "breaking_changes": [
+    {"commit": "<short SHA>", "description": "<what consumers must change>"}
+  ],
   "notes_markdown": "<markdown body>"
 }
 
 ## Version Bump Rules
 
-- "minor" if ANY commit adds new capabilities, endpoints, behaviors, or options
+- "major" if ANY commit is a breaking change (see below)
+- "minor" if no commit is breaking and ANY commit adds new capabilities,
+  endpoints, behaviors, or options
 - "patch" if ALL commits are fixes, refactors, docs, or chores
-- Never select "major" — that requires explicit caller input
+
+A breaking change is one that breaks a consumer who upgrades without
+changing anything on their side:
+
+- Removing or renaming an endpoint, field, function, command, flag,
+  event, or configuration key
+- Changing a default, a response or payload shape, or a behavior
+  consumers rely on, in a way their existing usage no longer works with
+- Dropping support for a runtime, platform, or API version
+- Any commit its author marked breaking: a "!" before the colon in a
+  conventional-commit subject ("feat!:", "fix(api)!:") or a
+  "BREAKING CHANGE:" footer in its body
+
+Who the consumers are depends on the project types given in the
+request: a library's or SDK's public API, a service's HTTP, event, or
+queue contract with other services, a CLI's flags and output. A website
+or UI with no programmatic consumers rarely has breaking changes.
+
+List every breaking commit in `breaking_changes` using the short SHA
+shown in the request, with a one-line description of what consumers
+must change. When a commit is plausibly breaking but you are unsure,
+list it and say why: a person reviews the list before releasing, and a
+break that ships unannounced costs far more than one they dismiss. If
+`breaking_changes` is empty, do not select "major".
+
+Below 1.0.0 (a previous tag of 0.x.y), semantic versioning carries a
+breaking change in the minor version: select "minor", and still list
+the breaking commits.
 
 ## Version Rules
 
@@ -58,6 +90,9 @@ behaves — ingress rules, allowlists, resource limits, feature flags,
 scaling, decommissioned infrastructure — are consumer-facing, not
 internal: include them.
 
+A breaking change is never internal: always include it, whatever the
+commit message calls it.
+
 Never emit an empty `notes_markdown`: the body is what ships on the
 release, and a blank one leaves the release undocumented. If every commit
 in the range would be excluded, select "patch" and emit one `### Changed`
@@ -83,8 +118,14 @@ If dependency files (package.json, requirements*.txt, pyproject.toml,
 Pipfile) show version changes in the diff, add one bullet under Changed:
   "Updated internal dependencies: foo from 1.0.0 to 2.0.0, ..."
 
+Breaking changes go first, under their own heading, and are not
+repeated in the other sections.
+
 ```markdown
 ## What's Changed
+
+### Breaking Changes
+- Description of what consumers must change (#12)
 
 ### Added
 - Description ([TICKET-123](https://aweber.atlassian.net/browse/TICKET-123)) (#12)

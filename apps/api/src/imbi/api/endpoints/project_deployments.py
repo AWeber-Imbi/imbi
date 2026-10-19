@@ -153,6 +153,12 @@ class PromoteActionRequest(pydantic.BaseModel):
     #: ``unknown`` status means CI never ran or the token cannot read
     #: check-runs, which must not stand in for a failure.
     acknowledge_ci_failure: bool = False
+    #: Operator acknowledgement that ``tag`` is not a breaking-change bump
+    #: over the previous release although a commit it ships was marked
+    #: breaking by its author.  Without it the promote is refused with a
+    #: 409; with it the promote proceeds and the override is recorded
+    #: (see :func:`_assert_breaking_changes_acknowledged`).
+    acknowledge_breaking_changes: bool = False
 
 
 DeploymentRequestBody = typing.Annotated[
@@ -204,12 +210,28 @@ class DraftReleaseNotesRequest(pydantic.BaseModel):
 SemverBump = typing.Literal['major', 'minor', 'patch']
 
 
+class BreakingChange(pydantic.BaseModel):
+    """One commit in a release range that breaks the project's consumers."""
+
+    #: Short SHA of the breaking commit.
+    commit: str
+    #: What consumers must change, in one line.
+    description: str
+    #: ``True`` when the commit's author marked it breaking (``type!:``
+    #: subject or ``BREAKING CHANGE:`` footer) rather than the model
+    #: judging it so.  Only these are enforced by the promote and
+    #: release gates; the rest are evidence for the operator.
+    declared: bool = False
+    url: str | None = None
+
+
 class DraftReleaseNotes(pydantic.BaseModel):
     """The structured payload Claude returns for a release-notes draft."""
 
     bump: SemverBump
     version: str
     reasoning: str
+    breaking_changes: list[BreakingChange] = []
     notes_markdown: str
 
 
@@ -219,6 +241,7 @@ class DraftReleaseNotesResponse(pydantic.BaseModel):
     bump: SemverBump
     version: str
     reasoning: str
+    breaking_changes: list[BreakingChange] = []
     notes_markdown: str
     degraded: bool = False
     commits_considered: int = 0
@@ -430,6 +453,11 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     #: re-run turns the commit green after the fact.
     ci_override_by: str | None = None
     ci_override_at: datetime.datetime | None = None
+    #: Set when the release was cut as a non-breaking bump over a commit
+    #: its author marked breaking, which an operator explicitly
+    #: acknowledged.  The record of that decision, like ``ci_override_*``.
+    breaking_override_by: str | None = None
+    breaking_override_at: datetime.datetime | None = None
     #: CI's drift verdict for the release's own commit, ingested from
     #: git notes on ``refs/notes/imbi-drift``.  ``None`` means no note
     #: has been seen yet -- a real state, because CI pushes notes
@@ -534,6 +562,9 @@ class ReleaseCutRequest(pydantic.BaseModel):
     #: Same gate as the promote path; see
     #: :attr:`PromoteActionRequest.acknowledge_ci_failure`.
     acknowledge_ci_failure: bool = False
+    #: Same gate as the promote path; see
+    #: :attr:`PromoteActionRequest.acknowledge_breaking_changes`.
+    acknowledge_breaking_changes: bool = False
 
 
 class ReleaseCutResponse(pydantic.BaseModel):
@@ -1052,6 +1083,114 @@ async def _assert_ci_not_failing(
     return status
 
 
+async def _latest_release(project_id: str) -> tuple[str, str] | None:
+    """``(tag, sha)`` of the project's current release, or ``None``.
+
+    Chosen exactly as the release drift base is (see
+    :func:`get_release_drift`), so the gate below judges a new tag against
+    the same release the operator was shown as "Current".  ``None`` too
+    when the lookup fails: the gate it feeds must not turn an analytics
+    outage into a refused release.
+    """
+    try:
+        tag_rows = await clickhouse.query(
+            _PROJECT_TAGS_SQL, {'project_id': project_id}
+        )
+        facts_by_sha = await _commit_facts_by_sha(
+            project_id, [str(r['sha']) for r in tag_rows if r.get('sha')]
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Latest release lookup failed for project %s',
+            project_id,
+            exc_info=True,
+        )
+        return None
+    latest = versioning.latest_release_tag(
+        tag_rows, _authored_by_sha(facts_by_sha)
+    )
+    if not latest or not latest.get('sha'):
+        return None
+    return str(latest['name']), str(latest['sha'])
+
+
+async def _assert_breaking_changes_acknowledged(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    *,
+    project_id: str,
+    committish: str,
+    tag: str,
+    acknowledged: bool,
+    action: str,
+) -> bool:
+    """Refuse a non-breaking bump over a declared breaking change.
+
+    Returns ``True`` when the operator acknowledged one, so the caller
+    records the override (:func:`_set_release_breaking_override`).
+
+    Only commits their author marked breaking (``type!:`` subject or a
+    ``BREAKING CHANGE:`` footer) gate: those are facts the server can
+    re-derive here from the commits between the current release and
+    ``committish``.  The breaking changes the release-notes draft infers
+    are a model's judgment, so they are evidence the UI shows, not a
+    gate the API holds.
+
+    Like the CI gate this fails open -- a release lookup or compare that
+    cannot answer lets the release through -- and an autonomous
+    principal cannot make the acknowledgement.
+    """
+    autonomous.require_no_breaking_override(
+        auth, acknowledged=acknowledged, tag=tag
+    )
+    latest = await _latest_release(project_id)
+    if latest is None:
+        return False
+    last_tag, last_sha = latest
+    if not _skips_breaking_bump(last_tag, tag):
+        return False
+    try:
+        result = await call_with_timeout(
+            handler.compare(ctx, credentials, base=last_sha, head=committish)
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Breaking-change lookup failed for project %s %s..%s',
+            project_id,
+            last_tag,
+            committish,
+            exc_info=True,
+        )
+        return False
+    declared = [c for c in result.commits if _declares_breaking(c)]
+    if not declared:
+        return False
+    if not acknowledged:
+        shas = ', '.join(c.short_sha for c in declared)
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'{tag} is not a breaking-change release after {last_tag}, '
+                f'but {shas} {"is" if len(declared) == 1 else "are"} marked '
+                f'breaking. Release a {_breaking_bump(last_tag)} version, '
+                f'or to {action} {tag} anyway, resubmit with '
+                'acknowledge_breaking_changes=true.'
+            ),
+        )
+    LOGGER.warning(
+        'Breaking change overridden: project=%s action=%s tag=%s '
+        'commits=%s actor=%s',
+        project_id,
+        action,
+        tag,
+        ','.join(c.short_sha for c in declared),
+        ctx.actor_user_id,
+    )
+    return True
+
+
 def _require_deployment_sync_support(resolved: ResolvedCapability) -> None:
     """Raise 400 unless the plugin opts into deployment resync.
 
@@ -1107,6 +1246,7 @@ async def _record_deployment_audit(
     from_environment: str | None = None,
     ci_status: str = 'unknown',
     ci_override: bool = False,
+    breaking_override: bool = False,
     credential: str | None = None,
 ) -> None:
     """Write a deployment audit row to the ``operations_log``.
@@ -1126,7 +1266,8 @@ async def _record_deployment_audit(
     ``ci_status`` / ``ci_override`` carry the promote-time CI decision
     (ENG-102).  Deploys leave them at their defaults: a deploy ships a
     commit some earlier promote or release already gated, so the CI
-    question is not this row's to answer.
+    question is not this row's to answer.  ``breaking_override`` records
+    the same kind of decision about a commit marked breaking.
 
     ``credential`` names the Integration credential the plugin acted
     with when it was not the actor's own -- read off
@@ -1150,6 +1291,7 @@ async def _record_deployment_audit(
         external_run_id=external_run_id,
         ci_status=ci_status,
         ci_override=ci_override,
+        breaking_override=breaking_override,
         credential=credential,
     )
     row = entry.model_dump(by_alias=True, mode='python')
@@ -3850,6 +3992,7 @@ async def _dispatch_release_build(
     from_environment: str = '',
     deploy: bool,
     ci_status: plugin_base.CheckStatus = 'unknown',
+    breaking_override: bool = False,
 ) -> _DispatchedBuild:
     """Record the release, dispatch its build, and queue the watcher.
 
@@ -3922,6 +4065,13 @@ async def _dispatch_release_build(
         ci_status=ci_status,
         overridden_by=auth.principal_name,
     )
+    if breaking_override:
+        await _set_release_breaking_override(
+            db,
+            project_id=project_id,
+            release_id=release_id,
+            overridden_by=auth.principal_name,
+        )
     inputs = {
         _RELEASE_WORKFLOW_DESCRIPTION_INPUT: title,
         _RELEASE_WORKFLOW_NOTES_INPUT: notes_markdown,
@@ -4075,6 +4225,7 @@ async def _promote_via_dispatch(
     handler: DeploymentCapability,
     valkey_client: typing.Any,
     ci_status: plugin_base.CheckStatus = 'unknown',
+    breaking_override: bool = False,
 ) -> DeploymentTriggerResponse:
     """Dispatch the project's Release workflow instead of cutting the tag.
 
@@ -4099,6 +4250,7 @@ async def _promote_via_dispatch(
         from_environment=body.from_environment,
         deploy=await _project_is_deployable(db, project_id),
         ci_status=ci_status,
+        breaking_override=breaking_override,
     )
     return DeploymentTriggerResponse(
         run=DeploymentRun(run_id='', status='queued'),
@@ -4219,6 +4371,17 @@ async def _handle_promote(
         acknowledged=body.acknowledge_ci_failure,
         action='promote',
     )
+    breaking_override = await _assert_breaking_changes_acknowledged(
+        handler,
+        ctx,
+        credentials,
+        auth,
+        project_id=project_id,
+        committish=body.from_committish,
+        tag=body.tag,
+        acknowledged=body.acknowledge_breaking_changes,
+        action='promote',
+    )
 
     # A project with a Release workflow configured takes the
     # dispatch-and-watch path: the workflow builds the artifact, cuts the
@@ -4242,6 +4405,7 @@ async def _handle_promote(
             handler=handler,
             valkey_client=valkey_client,
             ci_status=ci_status,
+            breaking_override=breaking_override,
         )
 
     warnings: list[str] = []
@@ -4331,6 +4495,13 @@ async def _handle_promote(
         ci_status=ci_status,
         overridden_by=auth.principal_name,
     )
+    if breaking_override:
+        await _set_release_breaking_override(
+            db,
+            project_id=project_id,
+            release_id=release_id,
+            overridden_by=auth.principal_name,
+        )
 
     # 5. Record the deployment event.
     note = f'via {resolved.plugin_slug}'
@@ -4376,6 +4547,7 @@ async def _handle_promote(
         from_environment=body.from_environment,
         ci_status=ci_status,
         ci_override=ci_status == 'fail',
+        breaking_override=breaking_override,
         credential=ctx.credential_note,
     )
     return DeploymentTriggerResponse(
@@ -5048,6 +5220,74 @@ async def _release_ci_override(
     return str(status) if status else 'unknown', bool(overridden_by)
 
 
+async def _set_release_breaking_override(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+    overridden_by: str,
+) -> None:
+    """Record that an operator shipped this release over a breaking change.
+
+    Called only when :func:`_assert_breaking_changes_acknowledged` was
+    overridden, and only ever written, never blanked, for the reason
+    :func:`_set_release_ci_override` gives: a later re-promote of the
+    same tag must not erase the decision.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.breaking_override_by = {overridden_by},
+        r.breaking_override_at = {overridden_at},
+        r.updated_at = {overridden_at}
+    RETURN r.id AS rid
+    """
+    await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'overridden_by': overridden_by,
+            'overridden_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['rid'],
+    )
+
+
+async def _release_breaking_override(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+) -> bool:
+    """Whether the release was stamped by
+    :func:`_set_release_breaking_override`.
+
+    The dispatch path's counterpart to :func:`_release_ci_override`.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    RETURN r.breaking_override_by AS overridden_by
+    """
+    try:
+        rows = await db.execute(
+            query,
+            {'project_id': project_id, 'release_id': release_id},
+            ['overridden_by'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'Breaking override read failed for release %s',
+            release_id,
+            exc_info=True,
+        )
+        return False
+    if not rows:
+        return False
+    return bool(graph.parse_agtype(rows[0].get('overridden_by')))
+
+
 async def _sync_promoted_tag(
     db: graph.Graph,
     *,
@@ -5354,6 +5594,9 @@ async def complete_promote_build(
     ci_status, ci_override = await _release_ci_override(
         db, project_id=project_id, release_id=release_id
     )
+    breaking_override = await _release_breaking_override(
+        db, project_id=project_id, release_id=release_id
+    )
     await _record_deployment_audit(
         project_id=project_id,
         project_slug=ctx.project_slug,
@@ -5369,6 +5612,7 @@ async def complete_promote_build(
         from_environment=from_environment or None,
         ci_status=ci_status,
         ci_override=ci_override,
+        breaking_override=breaking_override,
         credential=ctx.credential_note,
     )
     return run
@@ -5381,6 +5625,12 @@ async def complete_promote_build(
 _PROMPT_COMMIT_CAP = 150
 _PROMPT_BODY_CAP = 2000
 _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
+# Conventional Commits' two ways for an author to mark a commit breaking:
+# a ``!`` before the subject's colon, or a ``BREAKING CHANGE:`` footer
+# (``BREAKING-CHANGE:`` is its spec-sanctioned synonym).
+_BREAKING_SUBJECT_RE = re.compile(r'^\w+(?:\([^)]*\))?!:')
+_BREAKING_FOOTER_RE = re.compile(r'^BREAKING[ -]CHANGE:', re.MULTILINE)
+_BUMP_RANK: dict[SemverBump, int] = {'patch': 0, 'minor': 1, 'major': 2}
 
 
 @functools.cache
@@ -5482,19 +5732,118 @@ def _version_allowed(
     )
 
 
-def _classify_bump(commits: list[Commit]) -> SemverBump:
+def _declares_breaking(commit: Commit) -> bool:
+    """Whether the commit's author marked it a breaking change."""
+    return bool(
+        _BREAKING_SUBJECT_RE.match(commit.message)
+        or (commit.body and _BREAKING_FOOTER_RE.search(commit.body))
+    )
+
+
+def _breaking_bump(last_tag: str | None) -> SemverBump:
+    """The bump a breaking change calls for after ``last_tag``.
+
+    Semver reserves the major version for breaking changes, except below
+    ``1.0.0``, where the minor version carries them.
+    """
+    match = _SEMVER_RE.match(last_tag or '')
+    return 'minor' if match and int(match.group(1)) == 0 else 'major'
+
+
+def _skips_breaking_bump(last_tag: str, tag: str) -> bool:
+    """Whether ``tag`` is a newer release than ``last_tag`` that a
+    breaking change should not ship in.
+
+    ``False`` when either is not semver-shaped or ``tag`` is not newer --
+    re-promoting an existing tag, or a backport -- since there is no
+    version step to judge.  A date (``2026.09.17``) also has the semver
+    shape, but its parts carry no compatibility meaning, so calver tags
+    are never judged either.
+    """
+    if versioning.is_calver_tag(last_tag) or versioning.is_calver_tag(tag):
+        return False
+    last_match = _SEMVER_RE.match(last_tag)
+    tag_match = _SEMVER_RE.match(tag)
+    if not last_match or not tag_match:
+        return False
+    last = tuple(int(part) for part in last_match.groups())
+    new = tuple(int(part) for part in tag_match.groups())
+    if new <= last:
+        return False
+    if last[0] == 0:
+        return new[0] == 0 and new[1] == last[1]
+    return new[0] == last[0]
+
+
+def _classify_bump(
+    commits: list[Commit], last_tag: str | None = None
+) -> SemverBump:
     """Crude heuristic used as the fallback when Claude isn't available."""
-    breaking = ('breaking', '!:', 'breaking change')
+    if any(_declares_breaking(commit) for commit in commits):
+        return _breaking_bump(last_tag)
     features = ('feat:', 'feature:')
-    for commit in commits:
-        msg = commit.message.lower()
-        if any(token in msg for token in breaking):
-            return 'major'
     for commit in commits:
         msg = commit.message.lower()
         if any(msg.startswith(token) for token in features):
             return 'minor'
     return 'patch'
+
+
+def _reconcile_breaking_changes(
+    notes: DraftReleaseNotes,
+    commits: list[Commit],
+    last_tag: str | None,
+    patterns: collections.abc.Sequence[str],
+) -> DraftReleaseNotes:
+    """Hold the draft's breaking changes and its bump to the commits.
+
+    The list is evidence an operator acts on, so an entry naming a commit
+    outside the range is dropped rather than shown, and a commit its
+    author marked breaking is added when the model missed it.  The list
+    and the bump must then agree: a draft cannot name a breaking change
+    and suggest a version that hides it, nor suggest a breaking bump it
+    offers no evidence for.
+    """
+
+    def lookup(ref: str) -> Commit | None:
+        ref = ref.strip().lower()
+        if len(ref) < 7:
+            return None
+        return next(
+            (c for c in commits if c.sha.lower().startswith(ref)), None
+        )
+
+    entries: dict[str, BreakingChange] = {}
+    for entry in notes.breaking_changes:
+        commit = lookup(entry.commit)
+        if commit is None or commit.sha in entries:
+            continue
+        entries[commit.sha] = BreakingChange(
+            commit=commit.short_sha,
+            description=entry.description,
+            declared=_declares_breaking(commit),
+            url=commit.url,
+        )
+    for commit in commits:
+        if commit.sha not in entries and _declares_breaking(commit):
+            entries[commit.sha] = BreakingChange(
+                commit=commit.short_sha,
+                description=commit.message,
+                declared=True,
+                url=commit.url,
+            )
+    breaking = list(entries.values())
+    update: dict[str, typing.Any] = {'breaking_changes': breaking}
+    bump = notes.bump
+    floor = _breaking_bump(last_tag)
+    if breaking and _BUMP_RANK[bump] < _BUMP_RANK[floor]:
+        bump = floor
+    elif not breaking and bump == 'major':
+        bump = 'minor'
+    if bump != notes.bump:
+        update['bump'] = bump
+        update['version'] = _suggest_version(last_tag, bump, patterns)
+    return notes.model_copy(update=update)
 
 
 def _fallback_notes(commits: list[Commit]) -> str:
@@ -5542,6 +5891,7 @@ def _build_release_notes_prompt(
     commits: list[Commit],
     tag_formats: collections.abc.Sequence[common_models.TagFormat] = (),
     suggested_version: str | None = None,
+    project_types: collections.abc.Sequence[str] = (),
 ) -> str:
     capped = commits[:_PROMPT_COMMIT_CAP]
     omitted = len(commits) - len(capped)
@@ -5551,6 +5901,7 @@ def _build_release_notes_prompt(
     )
     body_lines = [
         f'Project: {project_name}',
+        f'Project types: {", ".join(project_types) or "(unknown)"}',
         f'Previous tag: {last_tag or "(none)"}',
         f'Allowed tag formats: {formats}',
         f'Today: {datetime.datetime.now(datetime.UTC).date().isoformat()}',
@@ -5681,7 +6032,7 @@ async def draft_release_notes(
         commits = await _commits_through(project_id, body.head_sha)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
-    fallback_bump = _classify_bump(commits)
+    fallback_bump = _classify_bump(commits, body.last_tag)
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
         version=_suggest_version(body.last_tag, fallback_bump, patterns),
@@ -5700,13 +6051,16 @@ async def draft_release_notes(
             commits,
             tag_formats,
             fallback.version,
+            ctx.project_type_slugs,
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
         system=_release_notes_system(),
         cache_system_prompt=True,
     )
-    notes = completion.data
+    notes = _reconcile_breaking_changes(
+        completion.data, commits, body.last_tag, patterns
+    )
     # Re-derive the version when Claude's does not fit the tag policy.
     if not _version_allowed(notes.version, patterns):
         notes = notes.model_copy(
@@ -5727,6 +6081,7 @@ async def draft_release_notes(
         bump=notes.bump,
         version=notes.version,
         reasoning=notes.reasoning,
+        breaking_changes=notes.breaking_changes,
         notes_markdown=notes.notes_markdown,
         degraded=completion.degraded,
         commits_considered=len(commits),
@@ -6320,7 +6675,7 @@ async def get_release_drift(
         Commit(sha=c.sha, short_sha=c.short_sha, message=c.message)
         for c in commits
     ]
-    bump = _classify_bump(classify_input)
+    bump = _classify_bump(classify_input, latest_tag)
     return ReleaseDriftResponse(
         latest_tag=latest_tag,
         latest_tag_sha=latest_tag_sha,
@@ -6568,6 +6923,8 @@ async def get_release_history(
                 blockers=open_blockers,
                 ci_override_by=node.get('ci_override_by') or None,
                 ci_override_at=node.get('ci_override_at') or None,
+                breaking_override_by=node.get('breaking_override_by') or None,
+                breaking_override_at=node.get('breaking_override_at') or None,
                 drift_detected=node.get('drift_detected'),
             )
         )
@@ -6658,6 +7015,17 @@ async def cut_release(
         acknowledged=body.acknowledge_ci_failure,
         action='release',
     )
+    breaking_override = await _assert_breaking_changes_acknowledged(
+        handler,
+        ctx,
+        credentials,
+        auth,
+        project_id=project_id,
+        committish=body.committish,
+        tag=body.tag,
+        acknowledged=body.acknowledge_breaking_changes,
+        action='release',
+    )
 
     # With a Release workflow configured, the build owns the tag and the
     # remote Release, exactly as on the promote path -- the only
@@ -6680,6 +7048,7 @@ async def cut_release(
             notes_markdown=body.release_notes_markdown,
             deploy=False,
             ci_status=ci_status,
+            breaking_override=breaking_override,
         )
         return ReleaseCutResponse(
             tag=body.tag,
@@ -6734,6 +7103,13 @@ async def cut_release(
         ci_status=ci_status,
         overridden_by=auth.principal_name,
     )
+    if breaking_override:
+        await _set_release_breaking_override(
+            db,
+            project_id=project_id,
+            release_id=release_id,
+            overridden_by=auth.principal_name,
+        )
 
     LOGGER.info(
         'Release cut: project=%s tag=%s committish=%s plugin=%s actor=%s',
@@ -6757,6 +7133,7 @@ async def cut_release(
         release_url=release_url,
         ci_status=ci_status,
         ci_override=ci_status == 'fail',
+        breaking_override=breaking_override,
         credential=ctx.credential_note,
     )
     return ReleaseCutResponse(
