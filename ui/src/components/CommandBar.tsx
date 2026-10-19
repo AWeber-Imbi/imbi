@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -59,9 +65,11 @@ export function CommandBar() {
   const barRef = useRef<HTMLDivElement>(null)
   // The input bar grows with its hint row, so measure it.
   const [barHeight, setBarHeight] = useState(72)
-  useEffect(() => {
+  // Layout effects, so the first paint already has the real height.
+  useLayoutEffect(() => {
     const bar = barRef.current
     if (!bar) return
+    setBarHeight(bar.getBoundingClientRect().height)
     const observer = new ResizeObserver(() =>
       setBarHeight(bar.getBoundingClientRect().height),
     )
@@ -134,7 +142,7 @@ export function CommandBar() {
   })
 
   // Set CSS custom property so page content can avoid being hidden
-  useEffect(() => {
+  useLayoutEffect(() => {
     const total = isExpanded ? panelHeight + barHeight : barHeight
     document.documentElement.style.setProperty(
       '--assistant-height',
