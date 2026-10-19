@@ -34,6 +34,10 @@ export function useAssistantChat() {
       // await, so the composer cannot start a second conversation while
       // this one is being created.
       store.startStreaming()
+      // Stop, New conversation and opening another conversation abort
+      // this controller, including during the create below.
+      const abort = new AbortController()
+      abortController = abort
       store.addMessage({
         content: displayText,
         id: Date.now().toString(),
@@ -45,10 +49,12 @@ export function useAssistantChat() {
       if (!conversationId) {
         try {
           const conv = await createConversation()
+          if (abort.signal.aborted) return
           conversationId = conv.id
           // setState, not setCurrentConversation, which clears messages.
           useAssistantStore.setState({ currentConversationId: conv.id })
         } catch (err) {
+          if (abort.signal.aborted) return
           console.error('[Assistant] Failed to create conversation:', err)
           const st = useAssistantStore.getState()
           st.finishStreaming(Date.now().toString())
@@ -65,9 +71,6 @@ export function useAssistantChat() {
       const fullContent = isNewConversation
         ? buildUserContext(user, selectedOrganization) + messageContent
         : messageContent
-
-      const abort = new AbortController()
-      abortController = abort
 
       try {
         await sendMessageSSE(

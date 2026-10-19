@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as assistant from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistantStore'
 
-import { useAssistantChat } from '../useAssistantChat'
+import {
+  newAssistantConversation,
+  stopAssistant,
+  useAssistantChat,
+} from '../useAssistantChat'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/assistant', () => ({
@@ -52,5 +56,27 @@ describe('useAssistantChat', () => {
     const { currentConversationId, messages } = useAssistantStore.getState()
     expect(currentConversationId).toBe('c-1')
     expect(messages.map((m) => m.content)).toEqual(['from search'])
+  })
+  it.each([
+    ['Stop', stopAssistant],
+    ['New conversation', newAssistantConversation],
+  ])('%s during create drops the pending send', async (_, act) => {
+    let created: (v: { id: string }) => void = () => {}
+    vi.mocked(assistant.createConversation).mockReturnValue(
+      new Promise((resolve) => {
+        created = resolve as typeof created
+      }) as ReturnType<typeof assistant.createConversation>,
+    )
+    const { result } = renderHook(() => useAssistantChat(), {
+      wrapper: MemoryRouter,
+    })
+
+    const pending = result.current.send('question')
+    act()
+    created({ id: 'c-1' })
+    await pending
+
+    expect(assistant.sendMessageSSE).not.toHaveBeenCalled()
+    expect(useAssistantStore.getState().isStreaming).toBe(false)
   })
 })
