@@ -18,6 +18,7 @@ vi.mock('@/api/endpoints', () => ({
   createAgentTask: vi.fn(),
   getAgentTask: vi.fn(),
   getAgentToolCatalog: vi.fn(),
+  getProjectsSlim: vi.fn(),
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
   listAgentTaskEvents: vi.fn(),
@@ -514,21 +515,27 @@ describe('Tasks', () => {
     vi.mocked(endpoints.createAgentTask).mockResolvedValue(
       task({ short_id: 'T-9' }),
     )
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      {
+        archived: false,
+        id: 'p-1',
+        project_types: [{ name: 'HTTP API' }],
+        slug: 'billing',
+      },
+    ] as Awaited<ReturnType<typeof endpoints.getProjectsSlim>>)
     renderAt('/agents/manage/mender')
     fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Check the build' },
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/What should the agent/), {
+      target: { value: 'Check the build\nFind why it fails.' },
     })
-    fireEvent.change(screen.getByLabelText('Instruction'), {
-      target: { value: 'Find why it fails.' },
-    })
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Run' }),
-    )
+    fireEvent.click(await within(dialog).findByText('billing'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }))
     await waitFor(() =>
       expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
-        description: 'Find why it fails.',
+        description: 'Check the build\nFind why it fails.',
+        project_id: 'p-1',
         title: 'Check the build',
       }),
     )
