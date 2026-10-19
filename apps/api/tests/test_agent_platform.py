@@ -231,11 +231,12 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                     mock.Mock(), 'acme', plugin(sha='c' * 40)
                 )
             handler.resolve_committish.return_value = mock.Mock(sha='b' * 40)
-            # An invalid sha is refused, never replaced.
-            with self.assertRaises(marketplaces.SyncError):
-                await marketplaces.resolve_commit(
-                    mock.Mock(), 'acme', plugin(sha='main', ref='v1')
-                )
+            # An invalid sha or ref is refused, never replaced.
+            for source in ({'sha': 'main', 'ref': 'v1'}, {'ref': ''}):
+                with self.assertRaises(marketplaces.SyncError):
+                    await marketplaces.resolve_commit(
+                        mock.Mock(), 'acme', plugin(**source)
+                    )
             self.assertEqual(
                 await marketplaces.resolve_commit(
                     mock.Mock(), 'acme', plugin(ref='v1')

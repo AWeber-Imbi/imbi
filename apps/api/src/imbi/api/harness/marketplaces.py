@@ -240,13 +240,15 @@ async def resolve_commit(
         if not isinstance(sha, str) or not _SHA.fullmatch(sha):
             raise SyncError(f'invalid sha {sha!r}')
         ref = sha
+    elif ref is not None and (not isinstance(ref, str) or not ref):
+        raise SyncError(f'invalid ref {ref!r}')
 
     async def read(
         handler: base.DeploymentCapability,
         ctx: base.PluginContext,
         credentials: dict[str, str],
     ) -> str | None:
-        if isinstance(ref, str) and ref:
+        if ref is not None:
             # A sha resolves to itself only when the repository has it.
             return (
                 await handler.resolve_committish(ctx, credentials, ref)

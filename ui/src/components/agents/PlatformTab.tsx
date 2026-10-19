@@ -83,7 +83,8 @@ export function PlatformTab({
           <div className="text-overline text-tertiary uppercase">Plugins</div>
           <p className="text-tertiary mt-1 text-xs">
             From the marketplaces that the organization allows. A save pins each
-            new plugin to the marketplace commit that Imbi synced last.
+            new plugin to the commit that Imbi synced last: the marketplace
+            commit, or the plugin repository commit for an external plugin.
           </p>
         </div>
         {shown.length === 0 && !config.isLoading && (
