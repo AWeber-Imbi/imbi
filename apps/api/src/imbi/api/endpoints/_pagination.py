@@ -106,11 +106,11 @@ def build_link_header(
     replaced on the ``next`` link.
     """
     url = request.url
-    base_params = {
-        k: v for k, v in request.query_params.multi_items() if k != 'cursor'
-    }
+    base_params = [
+        (k, v) for k, v in request.query_params.multi_items() if k != 'cursor'
+    ]
 
-    def _url_with(params: dict[str, str]) -> str:
+    def _url_with(params: list[tuple[str, str]]) -> str:
         scheme_host_path = f'{url.scheme}://{url.netloc}{url.path}'
         if not params:
             return scheme_host_path
@@ -118,8 +118,7 @@ def build_link_header(
 
     links = [f'<{_url_with(base_params)}>; rel="first"']
     if next_cursor is not None:
-        next_params = dict(base_params)
-        next_params['cursor'] = next_cursor
+        next_params = [*base_params, ('cursor', next_cursor)]
         links.append(f'<{_url_with(next_params)}>; rel="next"')
     return ', '.join(links)
 

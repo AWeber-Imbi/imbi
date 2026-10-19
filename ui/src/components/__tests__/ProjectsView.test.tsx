@@ -345,6 +345,23 @@ describe('ProjectsView latest deployment', () => {
 })
 
 describe('ProjectsView paging', () => {
+  it('does not retry a rejected page automatically', async () => {
+    vi.mocked(endpoints.getProjectsSlimPage).mockClear()
+    const [first] = PROJECTS
+    vi.mocked(endpoints.getProjectsSlimPage).mockImplementation(
+      async (_org, _limit, cursor) => {
+        if (cursor) throw new Error('page failed')
+        return { nextCursor: 'next', projects: [first] }
+      },
+    )
+    renderView()
+    await waitFor(() =>
+      expect(endpoints.getProjectsSlimPage).toHaveBeenCalledTimes(2),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(endpoints.getProjectsSlimPage).toHaveBeenCalledTimes(2)
+  })
+
   it('loads the remaining pages without user action', async () => {
     vi.mocked(endpoints.getProjectsSlimPage).mockClear()
     const [first, ...rest] = PROJECTS
