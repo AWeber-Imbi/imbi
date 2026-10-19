@@ -716,6 +716,20 @@ class WorkspaceTestCase(TaskTestCase):
         body = self.client.create_resolution.call_args.args[1]
         self.assertEqual(body['repository'], 'acme/tools')
 
+    async def test_no_token_without_a_repository(self) -> None:
+        # A URL with no owner/name would get a token for every
+        # repository of the binding (#441).
+        subject = self.make(
+            plugins=[self.plugin(url='https://github.com/acme/tools/extra')],
+            github_app_binding=BINDING,
+        )
+        subject.bundle['repositories'] = []
+        self.call.return_value = {'exit_code': 0, 'output': ''}
+        await subject.build_workspace()
+        self.client.create_resolution.assert_not_called()
+        (request,) = self.clone_calls()
+        self.assertNotIn('secret', request)
+
     async def test_public_github_falls_back_to_anonymous(self) -> None:
         subject = self.make(
             plugins=[self.plugin()], github_app_binding=BINDING

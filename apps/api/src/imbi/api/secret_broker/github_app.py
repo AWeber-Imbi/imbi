@@ -565,11 +565,21 @@ class GitHubApp(providers.Provider):
             ) as client:
                 app = await client.get('/app')
                 app.raise_for_status()
-                listed = await client.get(
-                    '/app/installations', params={'per_page': 100}
-                )
-                listed.raise_for_status()
-        installations = typing.cast(list[dict[str, typing.Any]], listed.json())
+                installations: list[dict[str, typing.Any]] = []
+                page = 1
+                while True:
+                    listed = await client.get(
+                        '/app/installations',
+                        params={'per_page': 100, 'page': page},
+                    )
+                    listed.raise_for_status()
+                    batch = typing.cast(
+                        list[dict[str, typing.Any]], listed.json()
+                    )
+                    installations.extend(batch)
+                    if len(batch) < 100:
+                        break
+                    page += 1
         return {
             'app_slug': typing.cast(dict[str, typing.Any], app.json()).get(
                 'slug'

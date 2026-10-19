@@ -760,10 +760,15 @@ class TaskRun:
         binding: anonymously.
         """
         url, sha = str(plugin['url']), str(plugin['sha'])
+        repository = _repository(url)
         if binding:
-            secret = await self.setup_secret(
-                str(binding), 'marketplace_fetch', _repository(url)
-            )
+            # No owner/name, no token: a token without a repository
+            # would cover every repository of the binding.
+            secret = None
+            if repository is not None:
+                secret = await self.setup_secret(
+                    str(binding), 'marketplace_fetch', repository
+                )
             if secret is not None and await self.clone(url, dest, sha, secret):
                 LOGGER.info('Marketplace %s: cloned with a token', url)
                 return
