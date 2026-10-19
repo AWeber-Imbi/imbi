@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
-import { Inbox } from 'lucide-react'
+import { Inbox, Plus } from 'lucide-react'
 import {
   Group,
   Panel,
@@ -11,6 +11,7 @@ import {
 } from 'react-resizable-panels'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { FilterPopover } from '@/components/ui/filter-popover'
 import { Input } from '@/components/ui/input'
 import { RelativeTime } from '@/components/ui/RelativeTime'
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils'
 import type { AgentTaskListItem, AgentTaskStatus } from '@/types'
 
 import { agentsPath } from './agentsNav'
+import { NewTaskDialog } from './NewTaskDialog'
 import { TaskDetail } from './TaskDetail'
 import { groupTasks, statusLabel, statusVariant, TRIGGERS } from './taskEvents'
 import { useAgentTaskPages } from './taskQueries'
@@ -155,6 +157,8 @@ function TaskInbox({
   const [mine, setMine] = useState(false)
   const [states, setStates] = useState(new Set<string>())
   const [owners, setOwners] = useState(new Set<string>())
+  const [creating, setCreating] = useState(false)
+  const canCreate = useHasPermission('agent_task:create')
   const q = useDebouncedValue(text.trim(), 250) || undefined
   const open = useAgentTaskPages(orgSlug, { mine, q, status: OPEN })
   const closed = useAgentTaskPages(orgSlug, { mine, q, status: ['closed'] })
@@ -209,13 +213,25 @@ function TaskInbox({
   return (
     <>
       <div className="border-tertiary flex shrink-0 flex-col gap-2 border-b p-3">
-        <Input
-          aria-label="Filter tasks"
-          className="h-8 text-sm"
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Filter tasks, agents, projects"
-          value={text}
-        />
+        <div className="flex items-center gap-2">
+          <Input
+            aria-label="Filter tasks"
+            className="h-8 flex-1 text-sm"
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Filter tasks, agents, projects"
+            value={text}
+          />
+          {canCreate && (
+            <Button
+              className="h-8 shrink-0"
+              onClick={() => setCreating(true)}
+              size="sm"
+            >
+              <Plus className="mr-1 size-4" />
+              New task
+            </Button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <FilterPopover
             activeFilters={states}
@@ -261,7 +277,9 @@ function TaskInbox({
         {!loading && !error && groups.length === 0 && (
           <p className="text-tertiary p-6 text-center text-sm">
             {tasks.length === 0 && !q && !mine
-              ? 'No tasks yet. Start one with Run on an agent.'
+              ? canCreate
+                ? 'No tasks yet. Create one with New task.'
+                : 'No tasks yet.'
               : 'No tasks match.'}
           </p>
         )}
@@ -293,6 +311,7 @@ function TaskInbox({
         {shown.length} of {tasks.length}
         {more && '+'} tasks
       </div>
+      <NewTaskDialog isOpen={creating} onClose={() => setCreating(false)} />
     </>
   )
 }
