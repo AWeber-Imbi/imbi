@@ -15,6 +15,7 @@ import {
   Moon,
   Plus,
   Settings,
+  Sparkles,
   Sun,
   User,
   UserCircle,
@@ -27,14 +28,18 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
+import { cn } from '@/lib/utils'
+import { useAssistantStore } from '@/stores/assistantStore'
 import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
 
 import { AGENTS_NAV, agentsPath } from './agents/agentsNav'
 import { NewTaskDialog } from './agents/NewTaskDialog'
 import { useWaitingTaskCount } from './agents/taskQueries'
+import { AssistantPanel } from './assistant/AssistantPanel'
 import { NewOpsLogDialog } from './NewOpsLogDialog'
 import { NewProjectDialog } from './NewProjectDialog'
+import { TopBarSearch } from './search/TopBarSearch'
 import { Button } from './ui/button'
 import {
   DropdownMenu,
@@ -59,6 +64,8 @@ export function Navigation({ currentView }: NavigationProps) {
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [newOpsEntryOpen, setNewOpsEntryOpen] = useState(false)
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const assistantOpen = useAssistantStore((s) => s.isExpanded)
+  const setAssistantOpen = useAssistantStore((s) => s.setExpanded)
 
   // Check if user is admin (safely cast to UserResponse to access is_admin)
   const isAdmin = (user as null | UserResponse)?.is_admin === true
@@ -163,6 +170,23 @@ export function Navigation({ currentView }: NavigationProps) {
 
           {/* Right Side Actions */}
           <div className="flex items-center gap-3">
+            <TopBarSearch />
+            <Button
+              aria-pressed={assistantOpen}
+              className={cn(
+                'gap-2 border-tertiary text-primary',
+                assistantOpen
+                  ? 'bg-secondary'
+                  : 'bg-primary hover:bg-secondary',
+              )}
+              onClick={() => setAssistantOpen(!assistantOpen)}
+              size="sm"
+              variant="outline"
+            >
+              <Sparkles className="text-amber-text size-4" />
+              Assistant
+            </Button>
+
             {/* Organization Selector */}
             {organizations.length > 0 &&
               selectedOrganization &&
@@ -321,6 +345,7 @@ export function Navigation({ currentView }: NavigationProps) {
           </div>
         </div>
       </nav>
+      <AssistantPanel />
       <NewProjectDialog
         isOpen={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}

@@ -139,7 +139,7 @@ export function ProjectRelationshipsTab({
         <div
           className="grid min-h-96 grid-cols-1 gap-6 lg:grid-cols-[400px_1fr]"
           style={{
-            height: 'calc(100vh - 22rem - var(--assistant-height, 4rem))',
+            height: 'calc(100vh - 22rem)',
           }}
         >
           <ProjectRelationshipsSidebar

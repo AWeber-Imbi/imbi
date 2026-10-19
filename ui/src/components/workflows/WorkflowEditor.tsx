@@ -380,10 +380,7 @@ export function WorkflowEditor({
       : 'Not saved yet'
 
   return (
-    <div
-      className="flex flex-col"
-      style={{ height: 'calc(100vh - 4rem - var(--assistant-height, 64px))' }}
-    >
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
       <div className="border-tertiary flex h-14 shrink-0 items-center gap-2.5 border-b px-4">
         <Link
           className="text-secondary hover:bg-secondary hover:text-primary flex h-8 items-center gap-1.5 rounded-md px-2 text-sm"

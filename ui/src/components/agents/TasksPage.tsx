@@ -105,9 +105,7 @@ export function TasksPage() {
   // The Group sets its own height to 100%, so a wrapper sets the height:
   // the viewport less the header and the assistant bar.
   return (
-    <div
-      style={{ height: 'calc(100vh - 4rem - var(--assistant-height, 64px))' }}
-    >
+    <div style={{ height: 'calc(100vh - 4rem)' }}>
       <Group
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}

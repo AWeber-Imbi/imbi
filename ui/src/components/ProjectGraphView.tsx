@@ -61,7 +61,7 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
 
   const sub = 'text-tertiary'
   const cardClass = 'flex items-center justify-center p-12'
-  const canvasHeight = 'calc(100vh - 280px - var(--assistant-height, 64px))'
+  const canvasHeight = 'calc(100vh - 280px)'
 
   if (isAnyLoading) {
     return (

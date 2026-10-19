@@ -71,7 +71,7 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
   return (
     <aside
       className={cn(
-        'sticky top-16 flex h-[calc(100vh-4rem-var(--assistant-height,64px))] shrink-0 flex-col border-r border-tertiary bg-primary transition-all duration-300',
+        'sticky top-16 flex h-[calc(100vh-4rem)] shrink-0 flex-col border-r border-tertiary bg-primary transition-all duration-300',
         open ? 'w-62.5' : 'w-20',
       )}
     >

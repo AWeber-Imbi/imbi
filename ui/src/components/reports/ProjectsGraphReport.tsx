@@ -35,7 +35,7 @@ export function ProjectsGraphReport() {
     return (
       <div
         style={{
-          height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
+          height: 'calc(100vh - 280px)',
         }}
       >
         <Sk h="100%" r={8} w="100%" />
