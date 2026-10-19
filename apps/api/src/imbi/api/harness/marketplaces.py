@@ -239,7 +239,7 @@ async def resolve_commit(
         # Never pin another commit in place of the one the source gives.
         if not isinstance(sha, str) or not _SHA.fullmatch(sha):
             raise SyncError(f'invalid sha {sha!r}')
-        return sha
+        ref = sha
 
     async def read(
         handler: base.DeploymentCapability,
@@ -247,15 +247,19 @@ async def resolve_commit(
         credentials: dict[str, str],
     ) -> str | None:
         if isinstance(ref, str) and ref:
+            # A sha resolves to itself only when the repository has it.
             return (
                 await handler.resolve_committish(ctx, credentials, ref)
             ).sha
         refs = await handler.list_refs(ctx, credentials, kind='default')
         return refs[0].sha if refs else None
 
-    return await _read(
+    found = await _read(
         db, org_slug, str(plugin.repository_url), read, 'commit not found'
     )
+    if sha is not None and found != sha:
+        raise SyncError(f'sha {sha} is not in the repository')
+    return found
 
 
 async def _read[T](

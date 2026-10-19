@@ -213,14 +213,24 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(marketplaces, '_handler', return_value=handler),
         ):
-            # A sha in the source needs no lookup.
+            # A sha in the source is checked in the repository.
+            handler.resolve_committish.return_value = mock.Mock(sha='c' * 40)
             self.assertEqual(
                 await marketplaces.resolve_commit(
-                    mock.Mock(), 'acme', plugin(sha='c' * 40)
+                    mock.Mock(), 'acme', plugin(sha='c' * 40, ref='v1')
                 ),
                 'c' * 40,
             )
+            self.assertEqual(
+                handler.resolve_committish.call_args.args[2], 'c' * 40
+            )
             handler.list_refs.assert_not_called()
+            handler.resolve_committish.return_value = mock.Mock(sha='d' * 40)
+            with self.assertRaises(marketplaces.SyncError):
+                await marketplaces.resolve_commit(
+                    mock.Mock(), 'acme', plugin(sha='c' * 40)
+                )
+            handler.resolve_committish.return_value = mock.Mock(sha='b' * 40)
             # An invalid sha is refused, never replaced.
             with self.assertRaises(marketplaces.SyncError):
                 await marketplaces.resolve_commit(
