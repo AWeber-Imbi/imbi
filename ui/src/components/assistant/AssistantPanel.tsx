@@ -24,6 +24,11 @@ import { AssistantComposer, AssistantThread } from './AssistantThread'
 
 const PANEL_WIDTH = 440
 
+// Each page mounts its own Navigation, so the panel remounts on every
+// route change. This survives those remounts, so the composer takes
+// focus only when the reader opens the panel, not on each navigation.
+let wasVisible = false
+
 /**
  * The assistant docked on the right of every page. Page content keeps its
  * own layout: the body pads by --assistant-width while the panel is open.
@@ -44,6 +49,11 @@ export function AssistantPanel() {
       rememberAssistantReturnPath(pathname + search)
     }
   }, [pathname, search])
+
+  const focusComposer = visible && !wasVisible
+  useEffect(() => {
+    wasVisible = visible
+  }, [visible])
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty(
@@ -134,7 +144,7 @@ export function AssistantPanel() {
       </header>
       <AssistantThread className="px-4 py-4" />
       <div className="border-tertiary border-t p-3">
-        <AssistantComposer autoFocus />
+        <AssistantComposer autoFocus={focusComposer} />
       </div>
     </aside>
   )

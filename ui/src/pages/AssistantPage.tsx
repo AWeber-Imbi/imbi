@@ -37,7 +37,14 @@ export function AssistantPage() {
   useEffect(() => {
     setLoadError(false)
     if (!conversationId) return
-    openAssistantConversation(conversationId).catch(() => setLoadError(true))
+    // A later conversation replaces this load; ignore its failure.
+    let replaced = false
+    openAssistantConversation(conversationId).catch(() => {
+      if (!replaced) setLoadError(true)
+    })
+    return () => {
+      replaced = true
+    }
   }, [conversationId])
 
   // A first message creates the conversation; put its id in the URL.
