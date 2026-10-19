@@ -712,6 +712,9 @@ class WorkspaceTestCase(TaskTestCase):
         (request,) = self.clone_calls()
         self.assertEqual(request['secret']['purpose'], 'marketplace_fetch')
         self.assertIn('cloned with a token', logs.output[-1])
+        # The token is for the plugin repository only (#441).
+        body = self.client.create_resolution.call_args.args[1]
+        self.assertEqual(body['repository'], 'acme/tools')
 
     async def test_public_github_falls_back_to_anonymous(self) -> None:
         subject = self.make(

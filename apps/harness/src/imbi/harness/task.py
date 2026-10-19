@@ -348,6 +348,15 @@ def _decimal(value: typing.Any) -> decimal.Decimal | None:
     return None if value is None else decimal.Decimal(str(value))
 
 
+def _repository(url: str) -> str | None:
+    """The ``owner/name`` of a git URL, or ``None``."""
+    path = urllib.parse.urlsplit(url).path.strip('/').removesuffix('.git')
+    owner, _, name = path.partition('/')
+    if not owner or not name or '/' in name:
+        return None
+    return f'{owner}/{name}'
+
+
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
     """A plugin path in a marketplace: relative, with no ``..``."""
     path = pathlib.PurePosixPath(str(value or '.'))
@@ -673,18 +682,22 @@ class TaskRun:
         self.redactor.add(material)
         return material
 
-    async def setup_secret(self, reference: str, purpose: str) -> Body | None:
+    async def setup_secret(
+        self, reference: str, purpose: str, repository: str | None = None
+    ) -> Body | None:
         """A resolution for the runner's own use (H22), or ``None``
-        when Imbi refuses it."""
+        when Imbi refuses it. ``repository`` (``owner/name``) limits a
+        ``marketplace_fetch`` token to one repository (#441)."""
+        body: Body = {
+            'reference': reference,
+            'purpose': purpose,
+            'ttl_seconds': RESOLUTION_TTL,
+            'delivery': SETUP_DELIVERY,
+        }
+        if repository is not None:
+            body['repository'] = repository
         try:
-            created = await self.api.create_resolution(
-                {
-                    'reference': reference,
-                    'purpose': purpose,
-                    'ttl_seconds': RESOLUTION_TTL,
-                    'delivery': SETUP_DELIVERY,
-                }
-            )
+            created = await self.api.create_resolution(body)
         except api.Refused as err:
             LOGGER.warning('Refused %s secret: %s', purpose, err.code)
             return None
@@ -748,7 +761,9 @@ class TaskRun:
         """
         url, sha = str(plugin['url']), str(plugin['sha'])
         if binding:
-            secret = await self.setup_secret(str(binding), 'marketplace_fetch')
+            secret = await self.setup_secret(
+                str(binding), 'marketplace_fetch', _repository(url)
+            )
             if secret is not None and await self.clone(url, dest, sha, secret):
                 LOGGER.info('Marketplace %s: cloned with a token', url)
                 return

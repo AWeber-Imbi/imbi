@@ -164,6 +164,8 @@ class ResolveContext:
     #: The binding that asks. A provider that reads its own key from
     #: another binding names this one as the consumer.
     binding_id: uuid.UUID | None = None
+    #: The ``owner/name`` repository that the runner asks a token for.
+    repository: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)

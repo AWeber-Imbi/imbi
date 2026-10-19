@@ -488,10 +488,11 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             self.executor(), self.materialize_request(second.handle)
         )
         await self._denied('resolution_already_used', request=request)
-        await self._denied(
-            'resolution_context_mismatch',
-            request=self.request(idempotency_key='key-1', ttl_seconds=60),
-        )
+        for change in ({'ttl_seconds': 60}, {'repository': 'octo/lint'}):
+            await self._denied(
+                'resolution_context_mismatch',
+                request=self.request(idempotency_key='key-1', **change),
+            )
 
     async def test_concurrent_idempotent_creates(self) -> None:
         request = self.request(idempotency_key='key-2')
@@ -574,6 +575,19 @@ class MaterializeTestCase(secret_support.SecretCase):
         row = await self.broker.get(created.resolution_id)
         assert row is not None
         self.assertEqual(row['materialization_count'], 1)
+
+    async def test_repository_reaches_the_provider(self) -> None:
+        created = await self._create(repository='octo/lint')
+        row = await self.broker.get(created.resolution_id)
+        assert row is not None
+        self.assertEqual(row['repository'], 'octo/lint')
+        with mock.patch.object(
+            self.fake, 'resolve', wraps=self.fake.resolve
+        ) as spy:
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        self.assertEqual(spy.call_args.args[3].repository, 'octo/lint')
 
     async def test_nonce_replay(self) -> None:
         created = await self._create()

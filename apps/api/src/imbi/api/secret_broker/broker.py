@@ -268,6 +268,8 @@ class ResolutionRequest:
     delivery_mode: str
     delivery_target: str | None = None
     idempotency_key: str | None = None
+    #: The ``owner/name`` repository a ``marketplace_fetch`` token is for.
+    repository: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -760,9 +762,9 @@ class Broker:
                 ' binding_id, grant_id, provider_id, reference, field,'
                 ' agent_id, project_id, task_id, runner_id, purpose,'
                 ' delivery_mode, delivery_target, ttl_seconds, handle_hash,'
-                ' idempotency_key, expires_at) VALUES (%s, %s, %s, %s, %s,'
-                ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                ' NOW() + make_interval(secs => %s)) RETURNING *',
+                ' idempotency_key, repository, expires_at) VALUES (%s, %s,'
+                ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' %s, %s, NOW() + make_interval(secs => %s)) RETURNING *',
                 (
                     uuid.uuid4(),
                     context.organization_id,
@@ -781,6 +783,7 @@ class Broker:
                     request.ttl_seconds,
                     _digest(_HANDLE_LABEL, handle),
                     request.idempotency_key,
+                    request.repository,
                     request.ttl_seconds,
                 ),
             )
@@ -806,6 +809,7 @@ class Broker:
             row['delivery_mode'],
             row['delivery_target'],
             row['ttl_seconds'],
+            row['repository'],
         ) != (
             context.runner_id,
             reference,
@@ -813,6 +817,7 @@ class Broker:
             request.delivery_mode,
             check_delivery(request.delivery_mode, request.delivery_target),
             request.ttl_seconds,
+            request.repository,
         ):
             raise providers.BrokerError(
                 'resolution_context_mismatch', 'idempotency_key_reused'
@@ -990,6 +995,7 @@ class Broker:
                     ttl_seconds=row['ttl_seconds'],
                     credential_class=decision.binding['credential_class'],
                     binding_id=decision.binding['id'],
+                    repository=row.get('repository'),
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)
