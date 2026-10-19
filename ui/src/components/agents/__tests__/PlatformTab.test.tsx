@@ -77,6 +77,11 @@ function marketplace(): AgentMarketplace {
       plugin('commit-commands'),
       plugin('feature-dev'),
       plugin('remote', null),
+      {
+        ...plugin('linked', null),
+        repository_sha: 'c'.repeat(40),
+        repository_url: 'https://github.com/a/linked.git',
+      },
     ],
     slug: 'claude-code',
     sync_error: null,
@@ -103,8 +108,9 @@ describe('PlatformTab', () => {
     expect(screen.getByText('feature-dev')).toBeInTheDocument()
     // A default plugin is on and cannot be turned off.
     expect(screen.getByLabelText('commit-commands')).toBeDisabled()
-    // A plugin outside the marketplace repository cannot be pinned.
+    // An external plugin needs a resolved commit to be pinned.
     expect(screen.getByLabelText('remote')).toBeDisabled()
+    expect(screen.getByLabelText('linked')).toBeEnabled()
   })
 
   it('shows the GitHub App binding in the P4 select', async () => {
@@ -145,6 +151,25 @@ describe('PlatformTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pin b0b7bed' }))
     expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
       { marketplace: 'claude-code', plugin: 'code-review' },
+    ])
+  })
+
+  it('offers to pin an external plugin that moved', async () => {
+    const initial = {
+      ...emptyDraft().settings,
+      plugins: [
+        {
+          marketplace: 'claude-code',
+          plugin: 'linked',
+          sha: 'c'.repeat(40),
+          url: 'https://github.com/a/old.git',
+        },
+      ],
+    }
+    render(<Harness initial={initial} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Pin ccccccc' }))
+    expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+      { marketplace: 'claude-code', plugin: 'linked' },
     ])
   })
 })

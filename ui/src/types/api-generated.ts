@@ -11563,6 +11563,10 @@ export interface components {
             };
             /** Path */
             path?: string | null;
+            /** Repository Url */
+            repository_url?: string | null;
+            /** Repository Sha */
+            repository_sha?: string | null;
         };
         /** ChildTaskCreate */
         ChildTaskCreate: {

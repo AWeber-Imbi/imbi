@@ -971,11 +971,12 @@ class AgentPlugin(pydantic.BaseModel):
     #: The slug of the marketplace in the organization.
     marketplace: str = pydantic.Field(min_length=1)
     plugin: PluginName
-    #: The git URL of the marketplace.
+    #: The git URL of the marketplace, or of the plugin's own
+    #: repository for a ``url`` or ``github`` source.
     url: str | None = None
-    #: The commit of the marketplace that the version pins.
+    #: The commit of ``url`` that the version pins.
     sha: str | None = None
-    #: The plugin directory, relative to the marketplace root.
+    #: The plugin directory, relative to the root of ``url``.
     path: str | None = None
 
 

@@ -65,6 +65,21 @@ class ParseTests(unittest.TestCase):
                             'name': 'remote',
                             'source': {'source': 'github', 'repo': 'a/b'},
                         },
+                        {
+                            'name': 'url',
+                            'source': {
+                                'source': 'url',
+                                'url': 'https://ghe.example.com/a/c.git',
+                            },
+                        },
+                        {
+                            'name': 'insecure',
+                            'source': {'source': 'url', 'url': 'git://x/y'},
+                        },
+                        {
+                            'name': 'npm',
+                            'source': {'source': 'npm', 'package': 'x'},
+                        },
                         {'name': 'bad name', 'source': './x'},
                         {'name': 'nosource'},
                         {'name': 'bare', 'source': './dup'},
@@ -83,6 +98,20 @@ class ParseTests(unittest.TestCase):
                 'escape': None,
                 'nested': None,
                 'remote': None,
+                'url': None,
+                'insecure': None,
+                'npm': None,
+            },
+        )
+        self.assertEqual(
+            {
+                p.name: p.repository_url
+                for p in catalog.plugins
+                if p.repository_url
+            },
+            {
+                'remote': 'https://github.com/a/b.git',
+                'url': 'https://ghe.example.com/a/c.git',
             },
         )
 
@@ -161,6 +190,144 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 await marketplaces.fetch(
                     mock.Mock(), 'acme', 'https://github.com/acme/tools'
                 )
+
+    async def test_resolves_an_external_plugin_commit(self) -> None:
+        handler = mock.AsyncMock(spec=base.DeploymentCapability)
+        handler.list_refs.return_value = [
+            base.Ref(name='main', kind='default', sha=SHA, is_default=True)
+        ]
+        handler.resolve_committish.return_value = mock.Mock(sha='b' * 40)
+
+        def plugin(**source: str) -> marketplaces.CatalogPlugin:
+            return marketplaces.CatalogPlugin(
+                name='x',
+                source={'source': 'url', **source},
+                repository_url='https://ghe.example.com/a/x.git',
+            )
+
+        with (
+            mock.patch.object(
+                assignments,
+                'org_integrations',
+                return_value={'i1': {'slug': 'gh', 'plugin': 'github'}},
+            ),
+            mock.patch.object(marketplaces, '_handler', return_value=handler),
+        ):
+            # A sha in the source is checked in the repository.
+            handler.resolve_committish.return_value = mock.Mock(sha='c' * 40)
+            self.assertEqual(
+                await marketplaces.resolve_commit(
+                    mock.Mock(), 'acme', plugin(sha='c' * 40, ref='v1')
+                ),
+                'c' * 40,
+            )
+            self.assertEqual(
+                handler.resolve_committish.call_args.args[2], 'c' * 40
+            )
+            handler.list_refs.assert_not_called()
+            handler.resolve_committish.return_value = mock.Mock(sha='d' * 40)
+            with self.assertRaises(marketplaces.SyncError):
+                await marketplaces.resolve_commit(
+                    mock.Mock(), 'acme', plugin(sha='c' * 40)
+                )
+            handler.resolve_committish.return_value = mock.Mock(sha='b' * 40)
+            # An invalid sha or ref is refused, never replaced.
+            for source in ({'sha': 'main', 'ref': 'v1'}, {'ref': ''}):
+                with self.assertRaises(marketplaces.SyncError):
+                    await marketplaces.resolve_commit(
+                        mock.Mock(), 'acme', plugin(**source)
+                    )
+            self.assertEqual(
+                await marketplaces.resolve_commit(
+                    mock.Mock(), 'acme', plugin(ref='v1')
+                ),
+                'b' * 40,
+            )
+            self.assertEqual(
+                handler.resolve_committish.call_args.args[2], 'v1'
+            )
+            self.assertEqual(
+                await marketplaces.resolve_commit(
+                    mock.Mock(), 'acme', plugin()
+                ),
+                SHA,
+            )
+            ctx = handler.list_refs.call_args.args[0]
+            self.assertEqual(
+                ctx.project_links,
+                {'github-repository': 'https://ghe.example.com/a/x.git'},
+            )
+
+    async def test_sync_resolves_external_plugins(self) -> None:
+        document = json.dumps(
+            {
+                'name': 'acme',
+                'plugins': [
+                    {'name': 'local', 'source': './local'},
+                    {
+                        'name': 'ok',
+                        'source': {'source': 'url', 'url': 'https://h/a.git'},
+                    },
+                    {
+                        'name': 'gone',
+                        'source': {'source': 'url', 'url': 'https://h/b.git'},
+                    },
+                    {
+                        'name': 'elsewhere',
+                        'source': {'source': 'url', 'url': 'https://x/c.git'},
+                    },
+                    {
+                        'name': 'hub',
+                        'source': {'source': 'github', 'repo': 'a/d'},
+                    },
+                    {
+                        'name': 'broken',
+                        'source': {'source': 'url', 'url': 'https://[x/e.git'},
+                    },
+                ],
+            }
+        )
+
+        async def resolve(
+            _db: object, _org: str, plugin: marketplaces.CatalogPlugin
+        ) -> str:
+            if plugin.name == 'gone':
+                raise marketplaces.SyncError('not found')
+            return 'b' * 40
+
+        store = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                marketplaces,
+                'fetch',
+                return_value=marketplaces.Head('main', SHA, document),
+            ),
+            mock.patch.object(
+                marketplaces, 'resolve_commit', side_effect=resolve
+            ),
+        ):
+            await marketplaces.sync(
+                mock.Mock(),
+                store,
+                'acme',
+                {'id': 'm1', 'slug': 'm', 'url': 'https://h/market'},
+            )
+        changes = store.set_marketplace_sync.call_args.args[1]
+        self.assertEqual(
+            {p['name']: p['repository_sha'] for p in changes['plugins']},
+            {
+                'local': None,
+                'ok': 'b' * 40,
+                'gone': None,
+                'elsewhere': None,
+                'hub': None,
+                'broken': None,
+            },
+        )
+        # A plugin on another host, github.com too, is not loadable.
+        for plugin in changes['plugins'][3:]:
+            self.assertIsNone(plugin['repository_url'])
+        self.assertIsNone(changes['sync_error'])
 
     async def test_no_integration(self) -> None:
         with mock.patch.object(
@@ -270,6 +437,25 @@ class PinTests(unittest.TestCase):
             catalog,
         )
         self.assertEqual(repinned.sha, SHA)
+
+    def test_pins_an_external_plugin_to_its_repository(self) -> None:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {
+                'name': 'remote',
+                'path': None,
+                'repository_url': 'https://github.com/acme/remote.git',
+                'repository_sha': 'b' * 40,
+            }
+        ]
+        (plugin,) = platform.pin_plugins(
+            [models.AgentPlugin(marketplace='tools', plugin='remote')],
+            [],
+            {'tools': catalog},
+        )
+        self.assertEqual(plugin.url, 'https://github.com/acme/remote.git')
+        self.assertEqual(plugin.sha, 'b' * 40)
+        self.assertEqual(plugin.path, '.')
 
     def test_refusals(self) -> None:
         catalog = {'tools': _marketplace(lint='plugins/lint', remote=None)}

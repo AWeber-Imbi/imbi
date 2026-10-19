@@ -724,9 +724,12 @@ class TaskRun:
         for plugin in api.items(self.config, 'plugins'):
             if not plugin.get('url') or not plugin.get('sha'):
                 raise Failed('plugin_not_pinned')
-            dest = self.layout.plugins / (
-                f'{plugin["marketplace"]}-{str(plugin["sha"])[:12]}'
-            )
+            # One clone per repository and commit: an external plugin
+            # has its own repository (#437).
+            key = hashlib.sha256(
+                f'{plugin["url"]}\0{plugin["sha"]}'.encode()
+            ).hexdigest()[:12]
+            dest = self.layout.plugins / f'{plugin["marketplace"]}-{key}'
             if dest not in cloned:
                 await self._marketplace(plugin, dest, binding)
                 cloned.add(dest)
