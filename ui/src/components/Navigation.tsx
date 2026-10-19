@@ -10,6 +10,7 @@ import {
   ChevronDown,
   FileText,
   FolderKanban,
+  Inbox,
   LogOut,
   Moon,
   Plus,
@@ -30,6 +31,7 @@ import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
 
 import { AGENTS_NAV, agentsPath } from './agents/agentsNav'
+import { NewTaskDialog } from './agents/NewTaskDialog'
 import { useWaitingTaskCount } from './agents/taskQueries'
 import { NewOpsLogDialog } from './NewOpsLogDialog'
 import { NewProjectDialog } from './NewProjectDialog'
@@ -56,10 +58,12 @@ export function Navigation({ currentView }: NavigationProps) {
   const location = useLocation()
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [newOpsEntryOpen, setNewOpsEntryOpen] = useState(false)
+  const [newTaskOpen, setNewTaskOpen] = useState(false)
 
   // Check if user is admin (safely cast to UserResponse to access is_admin)
   const isAdmin = (user as null | UserResponse)?.is_admin === true
   const canReadAgents = useHasPermission('agent:read')
+  const canCreateTask = useHasPermission('agent_task:create')
 
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
@@ -241,6 +245,12 @@ export function Navigation({ currentView }: NavigationProps) {
                   <FolderKanban className="mr-2 size-4" />
                   <span>New Project</span>
                 </DropdownMenuItem>
+                {canCreateTask && (
+                  <DropdownMenuItem onClick={() => setNewTaskOpen(true)}>
+                    <Inbox className="mr-2 size-4" />
+                    <span>New Task</span>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -318,6 +328,10 @@ export function Navigation({ currentView }: NavigationProps) {
       <NewOpsLogDialog
         isOpen={newOpsEntryOpen}
         onClose={() => setNewOpsEntryOpen(false)}
+      />
+      <NewTaskDialog
+        isOpen={newTaskOpen}
+        onClose={() => setNewTaskOpen(false)}
       />
     </>
   )
