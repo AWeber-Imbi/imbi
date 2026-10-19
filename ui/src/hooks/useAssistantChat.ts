@@ -30,17 +30,29 @@ export function useAssistantChat() {
     async (messageContent: string, displayText = messageContent) => {
       const store = useAssistantStore.getState()
       if (store.isStreaming) return
+      // Streaming state reserves the one send slot before the first
+      // await, so the composer cannot start a second conversation while
+      // this one is being created.
+      store.startStreaming()
+      store.addMessage({
+        content: displayText,
+        id: Date.now().toString(),
+        role: 'user',
+        timestamp: new Date(),
+      })
       let conversationId = store.currentConversationId
-      let isNewConversation = false
+      const isNewConversation = !conversationId
       if (!conversationId) {
-        isNewConversation = true
         try {
           const conv = await createConversation()
           conversationId = conv.id
-          store.setCurrentConversation(conv.id)
+          // setState, not setCurrentConversation, which clears messages.
+          useAssistantStore.setState({ currentConversationId: conv.id })
         } catch (err) {
           console.error('[Assistant] Failed to create conversation:', err)
-          store.addMessage({
+          const st = useAssistantStore.getState()
+          st.finishStreaming(Date.now().toString())
+          st.addMessage({
             content: 'Failed to start conversation. Please try again.',
             id: (Date.now() + 1).toString(),
             role: 'assistant',
@@ -50,19 +62,10 @@ export function useAssistantChat() {
         }
       }
 
-      const s = useAssistantStore.getState()
-      s.addMessage({
-        content: displayText,
-        id: Date.now().toString(),
-        role: 'user',
-        timestamp: new Date(),
-      })
-
       const fullContent = isNewConversation
         ? buildUserContext(user, selectedOrganization) + messageContent
         : messageContent
 
-      s.startStreaming()
       const abort = new AbortController()
       abortController = abort
 
