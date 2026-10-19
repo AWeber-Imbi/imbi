@@ -5,6 +5,12 @@ resolution. The token is limited to the repositories of the task and to
 the permissions of the purpose, and it lasts one hour at most. Release
 revokes it with ``DELETE /installation/token``.
 
+A binding without an ``installation_id`` finds the installation of the
+repositories with the App JWT (``GET /repos/{owner}/{repo}/installation``
+or ``GET /repositories/{id}/installation``), so one binding works in each
+org that the App is installed in. The repositories of one token must be
+in one installation.
+
 The App private key is not in Imbi: the binding names the ``secret://``
 reference of another binding (for example an ``aws_secrets_manager``
 binding), and imbi-api reads the key through the broker for each call.
@@ -165,12 +171,16 @@ class _Locator(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid')
 
     app_id: str = pydantic.Field(pattern=r'^[0-9]{1,20}$')
-    installation_id: str = pydantic.Field(pattern=r'^[0-9]{1,20}$')
+    #: ``None``: find the installation of each request's repositories.
+    installation_id: str | None = pydantic.Field(
+        default=None, pattern=r'^[0-9]{1,20}$'
+    )
     #: The ``secret://`` reference of the App private key (PEM, or
     #: base64 PEM), in a binding that is not ``dynamic``.
     private_key: str
-    #: ``owner/name`` repositories for ``marketplace_fetch``. Other
-    #: purposes use the repositories of the task's project.
+    #: ``owner/name`` repositories for ``marketplace_fetch``: the
+    #: marketplaces and their external plugins. Other purposes use the
+    #: repositories of the task's project.
     repositories: list[str] = pydantic.Field(default_factory=list[str])
 
     @pydantic.field_validator('private_key')
@@ -411,6 +421,36 @@ class GitHubApp(providers.Provider):
         response.raise_for_status()
         return typing.cast(dict[str, typing.Any], response.json())
 
+    async def _installation_for(
+        self,
+        client: httpx.AsyncClient,
+        repositories: list[str],
+        repository_ids: list[int] | None,
+    ) -> dict[str, typing.Any]:
+        """The one installation of the repositories.
+
+        Raises:
+            BrokerError: ``repositories_span_installations`` when two
+                repositories are in different installations.
+
+        """
+        paths = [f'/repos/{name}/installation' for name in repositories] + [
+            f'/repositories/{rid}/installation' for rid in repository_ids or []
+        ]
+        # ponytail: one lookup for each repository and resolution; cache
+        # by repository when this is too many GitHub calls.
+        found: dict[str, dict[str, typing.Any]] = {}
+        for path in paths:
+            response = await client.get(path)
+            response.raise_for_status()
+            installation = typing.cast(dict[str, typing.Any], response.json())
+            found[str(installation.get('id'))] = installation
+        if len(found) != 1:
+            raise providers.BrokerError(
+                'secret_access_denied', 'repositories_span_installations'
+            )
+        return next(iter(found.values()))
+
     async def _mint(
         self,
         client: httpx.AsyncClient,
@@ -457,8 +497,13 @@ class GitHubApp(providers.Provider):
         """Mint a token and return its metadata only, never the token.
 
         The token has only ``metadata: read`` and is revoked before this
-        returns.
+        returns. Without an ``installation_id``, list the installations
+        of the App instead; no token is minted.
         """
+        if not locator.get('installation_id'):
+            return await self._installations(
+                config, locator, organization_id, binding_id
+            )
         with _github_errors('secret_materialization_failed'):
             async with self._app_client(
                 config,
@@ -502,6 +547,50 @@ class GitHubApp(providers.Provider):
             'token_expires_at': expires_at.isoformat(),
         }
 
+    async def _installations(
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        organization_id: str,
+        binding_id: uuid.UUID | None,
+    ) -> dict[str, typing.Any]:
+        """The App and the accounts it is installed on."""
+        with _github_errors('secret_materialization_failed'):
+            async with self._app_client(
+                config,
+                locator,
+                organization_id,
+                consumer=binding_id,
+                task_id=None,
+            ) as client:
+                app = await client.get('/app')
+                app.raise_for_status()
+                installations: list[dict[str, typing.Any]] = []
+                page = 1
+                while True:
+                    listed = await client.get(
+                        '/app/installations',
+                        params={'per_page': 100, 'page': page},
+                    )
+                    listed.raise_for_status()
+                    batch = typing.cast(
+                        list[dict[str, typing.Any]], listed.json()
+                    )
+                    installations.extend(batch)
+                    if len(batch) < 100:
+                        break
+                    page += 1
+        return {
+            'app_slug': typing.cast(dict[str, typing.Any], app.json()).get(
+                'slug'
+            ),
+            'installation_id': None,
+            'installations': [
+                {'id': str(i.get('id')), 'account': _account(i)}
+                for i in installations
+            ],
+        }
+
     async def resolve(
         self,
         config: dict[str, typing.Any],
@@ -511,9 +600,10 @@ class GitHubApp(providers.Provider):
     ) -> providers.Material:
         """Mint a token for the task's repositories and the purpose.
 
-        ``marketplace_fetch`` uses the ``repositories`` of the binding.
-        The other purposes use the verified repository ids of the task's
-        project (:func:`project_repository_ids`).
+        ``marketplace_fetch`` uses the repository that the runner asks
+        for, which must be in the ``repositories`` of the binding; with
+        none, all of them. The other purposes use the verified repository
+        ids of the task's project (:func:`project_repository_ids`).
 
         Raises:
             BrokerError: The purpose is unknown, the task has no
@@ -532,6 +622,14 @@ class GitHubApp(providers.Provider):
         repository_ids: list[int] | None = None
         if context.purpose == 'marketplace_fetch':
             repositories = list(locator.get('repositories', []))
+            if context.repository is not None:
+                if context.repository.lower() not in {
+                    name.lower() for name in repositories
+                }:
+                    raise providers.BrokerError(
+                        'secret_access_denied', 'repository_not_allowed'
+                    )
+                repositories = [context.repository]
         else:
             repository_ids = await project_repository_ids(
                 _host(config), context.project_id
@@ -550,15 +648,23 @@ class GitHubApp(providers.Provider):
                 consumer=context.binding_id,
                 task_id=context.task_id,
             ) as client:
-                names = None
-                if repositories:
-                    installation = await self._installation(
-                        client, locator['installation_id']
+                installation_id = locator.get('installation_id')
+                installation = None
+                if not installation_id:
+                    installation = await self._installation_for(
+                        client, repositories, repository_ids
                     )
+                    installation_id = str(installation['id'])
+                elif repositories:
+                    installation = await self._installation(
+                        client, installation_id
+                    )
+                names = None
+                if installation is not None and repositories:
                     names = _names(installation, repositories)
                 token, expires_at = await self._mint(
                     client,
-                    locator['installation_id'],
+                    installation_id,
                     permissions,
                     names,
                     repository_ids,

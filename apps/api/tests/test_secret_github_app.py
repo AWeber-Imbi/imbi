@@ -55,7 +55,9 @@ LEASE = json.dumps({'host': 'github.com', 'token': TOKEN})
 
 
 def _context(
-    purpose: str, binding_id: uuid.UUID | None = None
+    purpose: str,
+    binding_id: uuid.UUID | None = None,
+    repository: str | None = None,
 ) -> providers.ResolveContext:
     return providers.ResolveContext(
         organization_id='org',
@@ -65,6 +67,7 @@ def _context(
         ttl_seconds=300,
         credential_class='dynamic',
         binding_id=binding_id,
+        repository=repository,
     )
 
 
@@ -237,6 +240,86 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(route.called)
 
     @respx.mock
+    async def test_marketplace_fetch_for_one_repository(self) -> None:
+        route = _mock_github()
+        locator = LOCATOR | {'repositories': ['octo/plugins', 'Octo/Lint']}
+        await APP.resolve(
+            CONFIG,
+            locator,
+            None,
+            _context('marketplace_fetch', repository='octo/lint'),
+        )
+        body = json.loads(route.calls.last.request.content)
+        self.assertEqual(body['repositories'], ['lint'])
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await APP.resolve(
+                CONFIG,
+                locator,
+                None,
+                _context('marketplace_fetch', repository='octo/other'),
+            )
+        self.assertEqual(ctx.exception.reason, 'repository_not_allowed')
+
+    @respx.mock
+    async def test_finds_the_installation_of_the_repositories(self) -> None:
+        """A binding without an installation_id works in each org."""
+        tools = {'id': 77, 'account': {'login': 'tools'}}
+        respx.get(f'{BASE}/repos/tools/lint/installation').mock(
+            return_value=httpx.Response(200, json=tools)
+        )
+        respx.get(f'{BASE}/repositories/101/installation').mock(
+            return_value=httpx.Response(200, json=INSTALLATION)
+        )
+        tokens = respx.post(url__regex=rf'{BASE}/app/installations/\d+/.*')
+        tokens.mock(
+            return_value=httpx.Response(
+                201,
+                json={'token': TOKEN, 'expires_at': '2099-01-01T00:00:00Z'},
+            )
+        )
+        locator = {
+            k: v for k, v in LOCATOR.items() if k != 'installation_id'
+        } | {'repositories': ['octo/plugins', 'tools/lint']}
+        await APP.resolve(
+            CONFIG,
+            locator,
+            None,
+            _context('marketplace_fetch', repository='tools/lint'),
+        )
+        self.assertEqual(
+            str(tokens.calls.last.request.url),
+            f'{BASE}/app/installations/77/access_tokens',
+        )
+        self.assertEqual(
+            json.loads(tokens.calls.last.request.content)['repositories'],
+            ['lint'],
+        )
+        await APP.resolve(CONFIG, locator, None, _context('github_write'))
+        self.assertEqual(str(tokens.calls.last.request.url), f'{TOKENS_URL}')
+        # Two installations cannot share one token.
+        self.project_repository_ids.return_value = [101, 202]
+        respx.get(f'{BASE}/repositories/202/installation').mock(
+            return_value=httpx.Response(200, json=tools)
+        )
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await APP.resolve(CONFIG, locator, None, _context('github_write'))
+        self.assertEqual(
+            ctx.exception.reason, 'repositories_span_installations'
+        )
+        # An App that is not installed for the repository.
+        respx.get(f'{BASE}/repos/tools/lint/installation').mock(
+            return_value=httpx.Response(404)
+        )
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await APP.resolve(
+                CONFIG,
+                locator,
+                None,
+                _context('marketplace_fetch', repository='tools/lint'),
+            )
+        self.assertEqual(ctx.exception.reason, 'installation_not_found')
+
+    @respx.mock
     async def test_disallowed_host_gets_no_jwt(self) -> None:
         """A host that left the allowlist after the provider was saved."""
         route = respx.route().mock(return_value=httpx.Response(200))
@@ -382,6 +465,31 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
                 'token_expires_at': '2099-01-01T00:00:00+00:00',
             },
         )
+
+    @respx.mock
+    async def test_binding_test_without_installation_lists_them(self) -> None:
+        respx.get(f'{BASE}/app').mock(
+            return_value=httpx.Response(200, json={'slug': 'imbi-agent'})
+        )
+        respx.get(f'{BASE}/app/installations').mock(
+            return_value=httpx.Response(
+                200, json=[INSTALLATION, {'id': 77, 'account': {'login': 'x'}}]
+            )
+        )
+        mint = respx.post(url__regex=rf'{BASE}/app/installations/.*')
+        locator = {k: v for k, v in LOCATOR.items() if k != 'installation_id'}
+        self.assertEqual(
+            await APP.validate_binding(CONFIG, locator, 'org'),
+            {
+                'app_slug': 'imbi-agent',
+                'installation_id': None,
+                'installations': [
+                    {'id': '42', 'account': 'Octo'},
+                    {'id': '77', 'account': 'x'},
+                ],
+            },
+        )
+        self.assertFalse(mint.called)
 
     @respx.mock
     async def test_health(self) -> None:

@@ -347,6 +347,14 @@ class SecretResolutionCreate(pydantic.BaseModel):
     purpose: secrets_api.Purpose
     ttl_seconds: secrets_api.Ttl = 300
     delivery: SecretDelivery
+    repository: str | None = pydantic.Field(
+        default=None,
+        pattern=r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$',
+        description=(
+            'The owner/name repository that a marketplace_fetch token is '
+            'for. It must be in the repositories of the binding.'
+        ),
+    )
 
 
 class SecretResolutionCreated(pydantic.BaseModel):
@@ -1730,6 +1738,7 @@ async def create_harness_secret_resolution(
                 delivery_mode=data.delivery.mode,
                 delivery_target=data.delivery.target,
                 idempotency_key=idempotency_key,
+                repository=data.repository,
             ),
         )
     except providers.BrokerError as err:

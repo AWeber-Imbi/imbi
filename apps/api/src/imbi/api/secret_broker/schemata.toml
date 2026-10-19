@@ -126,6 +126,8 @@ runner_id = "TEXT NOT NULL"
 purpose = "TEXT NOT NULL"
 delivery_mode = "TEXT NOT NULL"
 delivery_target = "TEXT"
+# The `owner/name` repository that a `marketplace_fetch` token is for.
+repository = "TEXT"
 ttl_seconds = "INTEGER NOT NULL"
 state = "TEXT NOT NULL DEFAULT 'active'"
 failure_reason = "TEXT"
