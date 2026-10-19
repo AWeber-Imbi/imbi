@@ -268,14 +268,16 @@ export function Navigation({ currentView }: NavigationProps) {
               aria-pressed={assistantOpen}
               className={cn(
                 'rounded-full',
-                assistantOpen ? 'bg-secondary' : 'hover:bg-secondary',
+                assistantOpen
+                  ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
+                  : 'text-secondary hover:bg-secondary',
               )}
               onClick={() => setAssistantOpen(!assistantOpen)}
               size="icon"
               title="Assistant"
               variant="ghost"
             >
-              <Sparkles className="text-amber-text size-4" />
+              <Sparkles className="size-4" />
             </Button>
 
             {/* Theme Toggle */}
