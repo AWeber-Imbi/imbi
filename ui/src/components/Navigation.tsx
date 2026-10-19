@@ -257,7 +257,7 @@ export function Navigation({ currentView }: NavigationProps) {
                 {canCreateTask && (
                   <DropdownMenuItem onClick={() => setNewTaskOpen(true)}>
                     <Inbox className="mr-2 size-4" />
-                    <span>New Task</span>
+                    <span>New Agent Task</span>
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
