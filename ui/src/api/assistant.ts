@@ -71,7 +71,11 @@ export const listConversations = (
 }
 
 export const getConversation = (id: string, signal?: AbortSignal) =>
-  assistantFetch<ConversationWithMessages>(`/conversations/${id}`, {}, signal)
+  assistantFetch<ConversationWithMessages>(
+    `/conversations/${encodeURIComponent(id)}`,
+    {},
+    signal,
+  )
 
 export const deleteConversation = (id: string) =>
   assistantFetch<void>(`/conversations/${id}`, { method: 'DELETE' })
