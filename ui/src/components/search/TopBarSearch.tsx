@@ -81,8 +81,12 @@ export function TopBarSearch() {
     queryKey: ['search', orgSlug, query],
     staleTime: 30_000,
   })
-  const enrichment = useSearchEnrichment(results, orgSlug)
-  const groups = useMemo(() => groupHits(results), [results])
+  // Results belong to the debounced query; while the input differs,
+  // show and select none, so Enter never opens a hit for older text.
+  const current = query === input.trim()
+  const shown = useMemo(() => (current ? results : []), [current, results])
+  const enrichment = useSearchEnrichment(shown, orgSlug)
+  const groups = useMemo(() => groupHits(shown), [shown])
   const hits = groups.flatMap(([, items]) => items)
   // The last row, after every hit, is "Ask Imbi".
   const askIndex = hits.length
@@ -103,7 +107,7 @@ export function TopBarSearch() {
   const ask = () => {
     const text = input.trim()
     if (!text) return
-    const top3 = results
+    const top3 = shown
       .filter((r) => getConfidenceLabel(r.distance) !== null)
       .slice(0, 3)
     newAssistantConversation()
@@ -123,7 +127,7 @@ export function TopBarSearch() {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActive((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Tab' && input.trim()) {
+    } else if (e.key === 'Tab' && !e.shiftKey && input.trim()) {
       e.preventDefault()
       ask()
     } else if (e.key === 'Enter') {
@@ -137,10 +141,11 @@ export function TopBarSearch() {
   let index = -1
 
   return (
-    <div className="relative hidden lg:block">
-      <div className="border-tertiary bg-primary focus-within:border-action flex h-9 w-72 items-center gap-2 rounded-lg border px-3 xl:w-80">
+    <div className="relative">
+      <div className="border-tertiary bg-primary focus-within:border-action flex h-9 w-48 items-center gap-2 rounded-lg border px-3 lg:w-72 xl:w-80">
         <Search className="text-tertiary size-4 shrink-0" />
         <input
+          aria-activedescendant={showPanel ? optionId(active) : undefined}
           aria-controls="top-bar-search-results"
           aria-expanded={showPanel}
           aria-label="Search Imbi"
@@ -171,9 +176,7 @@ export function TopBarSearch() {
           <div className="max-h-[60vh] overflow-y-auto p-2">
             {groups.length === 0 && (
               <p className="text-tertiary px-3 py-4 text-sm">
-                {isFetching || input.trim() !== query
-                  ? 'Searching…'
-                  : 'No results.'}
+                {isFetching || !current ? 'Searching…' : 'No results.'}
               </p>
             )}
             {groups.map(([label, items]) => (
@@ -189,6 +192,7 @@ export function TopBarSearch() {
                       active={active === i}
                       enriched={enrichment.get(hit.result.node_id)}
                       hit={hit}
+                      id={optionId(i)}
                       key={hit.result.node_id}
                       onHover={() => setActive(i)}
                       onSelect={() => go(hit)}
@@ -204,6 +208,7 @@ export function TopBarSearch() {
               'flex w-full items-center gap-3 border-t border-tertiary px-5 py-3 text-left text-sm text-primary',
               active === askIndex ? 'bg-secondary' : 'bg-tertiary',
             )}
+            id={optionId(askIndex)}
             onClick={ask}
             onMouseEnter={() => setActive(askIndex)}
             role="option"
@@ -255,10 +260,6 @@ function buildSearchContext(query: string, results: SearchResult[]): string {
   )
 }
 
-/**
- * One hit per node (a node matches on several attributes), only the
- * confident and navigable ones, grouped by type with projects first.
- */
 function groupHits(results: SearchResult[]): [string, Hit[]][] {
   const seen = new Set<string>()
   // Projects first, then documents, then the rest as they come.
@@ -282,12 +283,14 @@ function HitRow({
   active,
   enriched,
   hit,
+  id,
   onHover,
   onSelect,
 }: {
   active: boolean
   enriched?: EnrichedInfo
   hit: Hit
+  id: string
   onHover: () => void
   onSelect: () => void
 }) {
@@ -302,6 +305,7 @@ function HitRow({
         'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
         active && 'bg-secondary',
       )}
+      id={id}
       onClick={onSelect}
       onMouseEnter={onHover}
       role="option"
@@ -324,4 +328,12 @@ function HitRow({
       />
     </button>
   )
+}
+
+/**
+ * One hit per node (a node matches on several attributes), only the
+ * confident and navigable ones, grouped by type with projects first.
+ */
+function optionId(index: number) {
+  return `top-bar-search-option-${index}`
 }

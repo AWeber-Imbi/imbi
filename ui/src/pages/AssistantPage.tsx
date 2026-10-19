@@ -35,8 +35,8 @@ export function AssistantPage() {
   usePageTitle(title || 'Assistant')
 
   useEffect(() => {
-    if (!conversationId) return
     setLoadError(false)
+    if (!conversationId) return
     openAssistantConversation(conversationId).catch(() => setLoadError(true))
   }, [conversationId])
 

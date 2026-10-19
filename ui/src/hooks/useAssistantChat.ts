@@ -188,18 +188,24 @@ export function rememberAssistantReturnPath(path: string) {
 let abortController: AbortController | null = null
 
 export function newAssistantConversation() {
+  openRequest += 1
   abortController?.abort()
   abortController = null
   useAssistantStore.getState().clearConversation()
 }
 
 /** Load a stored conversation into the store, unless it is already open. */
+let openRequest = 0
+
 export async function openAssistantConversation(id: string) {
   const store = useAssistantStore.getState()
   if (store.currentConversationId === id) return
+  const request = ++openRequest
+  const conv = await getConversation(id)
+  // A later open or a new conversation supersedes this one.
+  if (request !== openRequest) return
   abortController?.abort()
   abortController = null
-  const conv = await getConversation(id)
   store.setCurrentConversation(conv.id)
   store.setMessages(toStoreMessages(conv.messages))
 }

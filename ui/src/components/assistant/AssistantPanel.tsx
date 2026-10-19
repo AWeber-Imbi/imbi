@@ -59,7 +59,11 @@ export function AssistantPanel() {
       aria-label="Assistant"
       className="border-tertiary bg-primary fixed top-16 right-0 bottom-0 z-40 flex flex-col border-l"
       onKeyDown={(e) => {
-        if (e.key === 'Escape') setOpen(false)
+        // Menus portal out of the panel, but their keys still bubble
+        // here; Escape in one closes the menu only.
+        if (e.key === 'Escape' && e.currentTarget.contains(e.target as Node)) {
+          setOpen(false)
+        }
       }}
       style={{ width: PANEL_WIDTH }}
     >
