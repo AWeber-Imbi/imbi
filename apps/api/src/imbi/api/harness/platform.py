@@ -202,8 +202,7 @@ def pin_plugins(
 
     Raises:
         ValueError: A plugin is given two times, or its marketplace or
-            catalog entry is missing, or its source is outside the
-            marketplace repository.
+            catalog entry is missing, or its source cannot be loaded.
 
     """
     pinned = {(p.marketplace, p.plugin): p for p in current}
@@ -246,11 +245,18 @@ def _pin(
     if entry is None:
         raise ValueError(f'Plugin {name} is not in the marketplace catalog')
     if entry.get('path') is None:
-        # ponytail: rev 1 runners clone only the marketplace; support
-        # github/url/git-subdir sources when a runner clones them too.
-        raise ValueError(
-            f'Plugin {name} is outside the marketplace repository; '
-            'runners load only plugins inside it'
+        # A url or github source: pin the plugin's own repository.
+        if not entry.get('repository_url') or not entry.get('repository_sha'):
+            raise ValueError(
+                f'Plugin {name} has a source that runners cannot load, or '
+                'its commit was not resolved at the last sync'
+            )
+        return models.AgentPlugin(
+            marketplace=plugin.marketplace,
+            plugin=plugin.plugin,
+            url=entry['repository_url'],
+            sha=entry['repository_sha'],
+            path='.',
         )
     return models.AgentPlugin(
         marketplace=plugin.marketplace,

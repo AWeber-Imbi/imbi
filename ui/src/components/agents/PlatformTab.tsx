@@ -189,11 +189,11 @@ function MarketplacePlugins({
             (p) =>
               p.marketplace === marketplace.slug && p.plugin === plugin.name,
           )
-          const outside = plugin.path == null
-          const stale =
-            chosen?.sha &&
-            marketplace.head_sha &&
-            chosen.sha !== marketplace.head_sha
+          // An external plugin pins its own repository commit.
+          const external = plugin.path == null
+          const head = external ? plugin.repository_sha : marketplace.head_sha
+          const outside = external && !head
+          const stale = chosen?.sha && head && chosen.sha !== head
           return (
             <li className="flex items-start gap-3 px-3 py-2" key={plugin.name}>
               <Checkbox
@@ -216,10 +216,10 @@ function MarketplacePlugins({
                   {isDefault && <Badge variant="outline">default</Badge>}
                   {outside && (
                     <Badge
-                      title="Runners load only plugins inside the marketplace repository"
+                      title="Runners cannot load this source, or the last sync did not resolve its commit"
                       variant="neutral"
                     >
-                      external source
+                      unsupported source
                     </Badge>
                   )}
                   {chosen?.sha && (
@@ -233,7 +233,7 @@ function MarketplacePlugins({
                       onClick={() => onRepin(chosen)}
                       type="button"
                     >
-                      Pin {short(marketplace.head_sha)}
+                      Pin {short(head)}
                     </button>
                   )}
                 </div>

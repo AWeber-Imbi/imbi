@@ -77,6 +77,11 @@ function marketplace(): AgentMarketplace {
       plugin('commit-commands'),
       plugin('feature-dev'),
       plugin('remote', null),
+      {
+        ...plugin('linked', null),
+        repository_sha: 'c'.repeat(40),
+        repository_url: 'https://github.com/a/linked.git',
+      },
     ],
     slug: 'claude-code',
     sync_error: null,
@@ -103,8 +108,9 @@ describe('PlatformTab', () => {
     expect(screen.getByText('feature-dev')).toBeInTheDocument()
     // A default plugin is on and cannot be turned off.
     expect(screen.getByLabelText('commit-commands')).toBeDisabled()
-    // A plugin outside the marketplace repository cannot be pinned.
+    // An external plugin needs a resolved commit to be pinned.
     expect(screen.getByLabelText('remote')).toBeDisabled()
+    expect(screen.getByLabelText('linked')).toBeEnabled()
   })
 
   it('shows the GitHub App binding in the P4 select', async () => {

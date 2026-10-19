@@ -10,10 +10,12 @@ The format is the marketplace reference of Claude Code
 (https://code.claude.com/docs/en/plugins/marketplace-reference).
 """
 
+import collections.abc
 import datetime
 import json
 import logging
 import posixpath
+import re
 import typing
 
 import pydantic
@@ -31,6 +33,8 @@ MARKETPLACE_FILE = '.claude-plugin/marketplace.json'
 
 _CAPABILITY = 'deployment'
 _NAME: pydantic.TypeAdapter[str] = pydantic.TypeAdapter(models.PluginName)
+_GITHUB_REPO = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
+_SHA = re.compile(r'[0-9a-f]{40}')
 
 
 class SyncError(Exception):
@@ -50,6 +54,11 @@ class CatalogPlugin(pydantic.BaseModel):
     #: plugin is inside the marketplace repository. ``None`` for a
     #: plugin from another source (``github``, ``url``, ``npm``, ...).
     path: str | None = None
+    #: The git URL of a ``url`` or ``github`` source.
+    repository_url: str | None = None
+    #: The commit of ``repository_url`` that the last sync resolved.
+    #: ``None`` when the sync could not resolve it.
+    repository_sha: str | None = None
 
 
 class Catalog(pydantic.BaseModel):
@@ -75,6 +84,21 @@ def _relative_path(source: str, plugin_root: str | None) -> str | None:
     if '\\' in source or '..' in source.split('/'):
         return None
     return posixpath.normpath(source)
+
+
+def _repository_url(source: dict[str, typing.Any]) -> str | None:
+    """Return the https git URL of a ``url`` or ``github`` source."""
+    kind, url, repo = (
+        source.get('source'),
+        source.get('url'),
+        source.get('repo'),
+    )
+    if kind == 'url' and isinstance(url, str) and url.startswith('https://'):
+        return url
+    if kind == 'github' and isinstance(repo, str):
+        if _GITHUB_REPO.fullmatch(repo):
+            return f'https://github.com/{repo}.git'
+    return None
 
 
 def parse(text: str) -> Catalog:
@@ -138,6 +162,13 @@ def parse(text: str) -> Catalog:
                     if isinstance(source, str)
                     else None
                 ),
+                repository_url=(
+                    _repository_url(
+                        typing.cast('dict[str, typing.Any]', source)
+                    )
+                    if isinstance(source, dict)
+                    else None
+                ),
             )
         )
     return Catalog(
@@ -159,12 +190,82 @@ class Head(typing.NamedTuple):
 async def fetch(db: graph.Graph, org_slug: str, url: str) -> Head:
     """Read the marketplace file at the head of the default branch.
 
-    Each integration of the organization whose plugin has a
-    ``deployment`` capability that can read files is tried in turn. An
-    integration for another host cannot resolve the URL and is skipped.
-
     Raises:
         SyncError: No integration could read the file.
+
+    """
+
+    async def read(
+        handler: base.DeploymentCapability,
+        ctx: base.PluginContext,
+        credentials: dict[str, str],
+    ) -> Head | None:
+        refs = await handler.list_refs(ctx, credentials, kind='default')
+        if not refs or not refs[0].sha:
+            raise SyncError('the default branch has no commit')
+        text = await handler.get_file(
+            ctx, credentials, MARKETPLACE_FILE, refs[0].sha
+        )
+        return None if text is None else Head(refs[0].name, refs[0].sha, text)
+
+    return await _read(
+        db, org_slug, url, read, f'{MARKETPLACE_FILE} not found'
+    )
+
+
+async def resolve_commit(
+    db: graph.Graph, org_slug: str, plugin: CatalogPlugin
+) -> str:
+    """Return the commit of an external plugin's repository.
+
+    The ``sha`` of the source wins, then its ``ref``, then the head of
+    the default branch.
+
+    Raises:
+        SyncError: No integration could resolve the commit.
+
+    """
+    source = plugin.source if isinstance(plugin.source, dict) else {}
+    sha, ref = source.get('sha'), source.get('ref')
+    if isinstance(sha, str) and _SHA.fullmatch(sha):
+        return sha
+
+    async def read(
+        handler: base.DeploymentCapability,
+        ctx: base.PluginContext,
+        credentials: dict[str, str],
+    ) -> str | None:
+        if isinstance(ref, str) and ref:
+            return (
+                await handler.resolve_committish(ctx, credentials, ref)
+            ).sha
+        refs = await handler.list_refs(ctx, credentials, kind='default')
+        return refs[0].sha if refs else None
+
+    return await _read(
+        db, org_slug, str(plugin.repository_url), read, 'commit not found'
+    )
+
+
+async def _read[T](
+    db: graph.Graph,
+    org_slug: str,
+    url: str,
+    read: collections.abc.Callable[
+        [base.DeploymentCapability, base.PluginContext, dict[str, str]],
+        collections.abc.Awaitable[T | None],
+    ],
+    missing: str,
+) -> T:
+    """Read from a repository through the organization's integrations.
+
+    Each integration whose plugin has a ``deployment`` capability is
+    tried in turn. An integration for another host cannot resolve the
+    URL and is skipped. ``read`` returns ``None`` when the integration
+    cannot find what it reads; then the next integration is tried.
+
+    Raises:
+        SyncError: No integration could read it.
 
     """
     errors: list[str] = []
@@ -190,12 +291,7 @@ async def fetch(db: graph.Graph, org_slug: str, url: str) -> Head:
             integration.get('encrypted_credentials') or {}
         )
         try:
-            refs = await handler.list_refs(ctx, credentials, kind='default')
-            if not refs or not refs[0].sha:
-                raise SyncError('the default branch has no commit')
-            text = await handler.get_file(
-                ctx, credentials, MARKETPLACE_FILE, refs[0].sha
-            )
+            result = await read(handler, ctx, credentials)
         except NotImplementedError:
             continue
         except Exception as err:  # noqa: BLE001 - try the next one
@@ -207,13 +303,11 @@ async def fetch(db: graph.Graph, org_slug: str, url: str) -> Head:
             )
             errors.append(f'{integration.get("slug")}: {err}')
             continue
-        if text is None:
+        if result is None:
             # Another integration can have access to the repository.
-            errors.append(
-                f'{integration.get("slug")}: {MARKETPLACE_FILE} not found'
-            )
+            errors.append(f'{integration.get("slug")}: {missing}')
             continue
-        return Head(refs[0].name, refs[0].sha, text)
+        return result
     if not errors:
         raise SyncError(
             'The organization has no integration that can read '
@@ -257,6 +351,20 @@ async def sync(
     except SyncError as err:
         changes: dict[str, typing.Any] = {'sync_error': str(err)[:2000]}
     else:
+        for plugin in catalog.plugins:
+            if plugin.repository_url is None:
+                continue
+            try:
+                plugin.repository_sha = await resolve_commit(
+                    db, org_slug, plugin
+                )
+            except SyncError as err:
+                LOGGER.info(
+                    'Marketplace %s: cannot resolve plugin %s: %s',
+                    marketplace['slug'],
+                    plugin.name,
+                    err,
+                )
         changes = {
             'name': catalog.name,
             'description': catalog.description,

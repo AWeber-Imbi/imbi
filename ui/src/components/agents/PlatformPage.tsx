@@ -581,7 +581,9 @@ function ConfigCard({
                       checked={defaults.some(
                         (d) => d.marketplace === m.slug && d.plugin === p.name,
                       )}
-                      disabled={!canWrite || p.path == null}
+                      disabled={
+                        !canWrite || (p.path == null && !p.repository_sha)
+                      }
                       onCheckedChange={(on) =>
                         toggleDefault(m.slug, p.name, on === true)
                       }
