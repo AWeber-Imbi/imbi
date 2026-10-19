@@ -141,7 +141,10 @@ export function ReleaseReadyCard({
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
   useEffect(() => {
+    // A different commit is a different decision — never carry either
+    // acknowledgement across a selection change.
     setCiAcknowledged(false)
+    setBreakingAcknowledged(false)
     // A refusal names the commit or the workflow that would have built
     // it; once another commit is selected it no longer describes what
     // the button would do.

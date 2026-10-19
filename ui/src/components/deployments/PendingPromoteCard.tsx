@@ -130,8 +130,11 @@ export function PendingPromoteCard({
   )
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  // A different commit is a different decision — never carry either
+  // acknowledgement across a selection change.
   useEffect(() => {
     setCiAcknowledged(false)
+    setBreakingAcknowledged(false)
   }, [selectedSha])
   // The org/project-type tag policy the promote endpoint enforces.
   const {

@@ -201,10 +201,11 @@ export function PromoteTab({
   )
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
-  // A different commit is a different decision — never carry the
+  // A different commit is a different decision — never carry either
   // acknowledgement across a selection change.
   useEffect(() => {
     setCiAcknowledged(false)
+    setBreakingAcknowledged(false)
   }, [selectedSha])
 
   const queryClient = useQueryClient()
@@ -338,6 +339,9 @@ export function PromoteTab({
     tagValid &&
     !!selectedSha &&
     !promoteMutation.isPending &&
+    // Until the draft answers there is no breaking-change evidence to
+    // show, so a promote now would skip the acknowledgement it may need.
+    !draftMutation.isPending &&
     // A promote cuts a tag and dispatches a build, so it is the same
     // move the release form makes -- and must be just as inert while one
     // is already running, or while the last one is still unanswered.

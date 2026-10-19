@@ -370,6 +370,32 @@ describe('ReleaseReadyCard', () => {
         )
       })
     })
+
+    it('drops the acknowledgement when another commit is picked', async () => {
+      const user = userEvent.setup()
+      renderCard(AFTER_RELEASE)
+      await waitFor(() => {
+        expect(screen.getByText('Drops the v1 routes')).toBeInTheDocument()
+      })
+      const tagInput = screen.getByPlaceholderText('vX.Y.Z')
+      await user.clear(tagInput)
+      await user.type(tagInput, 'v1.3.0')
+      const ack = screen.getByRole('checkbox', {
+        name: /Release v1.3.0 anyway/i,
+      })
+      await user.click(ack)
+      expect(ack).toBeChecked()
+      // A different commit is a different decision.
+      await user.click(screen.getByText('fix: a bug'))
+      await waitFor(() => {
+        expect(
+          screen.getByRole('checkbox', { name: /Release v1.3.0 anyway/i }),
+        ).not.toBeChecked()
+      })
+      expect(
+        screen.getByRole('button', { name: /Tag v1.3.0 & release/i }),
+      ).toBeDisabled()
+    })
   })
 
   it('stays silent when the CI status cannot be resolved', async () => {
