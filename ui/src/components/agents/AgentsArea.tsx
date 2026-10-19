@@ -72,7 +72,7 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
     <aside
       className={cn(
         'sticky top-16 flex h-[calc(100vh-4rem)] shrink-0 flex-col border-r border-tertiary bg-primary transition-all duration-300',
-        open ? 'w-62.5' : 'w-20',
+        open ? 'w-62.5' : 'w-16',
       )}
     >
       <nav
@@ -99,7 +99,8 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
                 <Link
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm transition-colors',
+                    'flex h-10 w-full items-center gap-3 rounded-md text-sm transition-colors',
+                    open ? 'px-3' : 'justify-center',
                     active
                       ? 'bg-amber-bg font-medium text-amber-text'
                       : 'text-secondary hover:bg-secondary hover:text-primary',
@@ -130,7 +131,10 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
       <div className="border-tertiary bg-primary shrink-0 border-t p-3">
         <button
           aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
-          className="text-secondary hover:bg-secondary hover:text-primary flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm"
+          className={cn(
+            'text-secondary hover:bg-secondary hover:text-primary flex h-10 w-full items-center gap-3 rounded-md text-sm',
+            open ? 'px-3' : 'justify-center',
+          )}
           onClick={() => setOpen(!open)}
           type="button"
         >
