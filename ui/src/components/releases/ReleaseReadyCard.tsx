@@ -5,6 +5,10 @@ import { Check, Loader2, RefreshCw, Rocket, Sparkles, Tag } from 'lucide-react'
 
 import { draftReleaseNotes } from '@/api/endpoints'
 import {
+  BreakingChangeNotice,
+  breakingNeedsAcknowledgement,
+} from '@/components/deploy/BreakingChangeNotice'
+import {
   CiFailureNotice,
   ciNeedsAcknowledgement,
   useCommitCheckStatus,
@@ -17,6 +21,7 @@ import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { SkText } from '@/components/ui/skeleton'
 import { isTagAllowed, tagFormatHint } from '@/lib/versionFormats'
 import type {
+  BreakingChange,
   DraftReleaseNotesResponse,
   ReleaseDrift,
   SemverBump,
@@ -75,6 +80,15 @@ export function ReleaseReadyCard({
     bump: SemverBump
     version: string
   }>(null)
+  // The draft's breaking changes, and the operator's acknowledgement of
+  // shipping them under a tag that is not a breaking-change bump. A new
+  // draft is new evidence, so it clears the acknowledgement.
+  const [breakingChanges, setBreakingChanges] = useState<BreakingChange[]>([])
+  const [breakingAcknowledged, setBreakingAcknowledged] = useState(false)
+  const takeBreakingChanges = (data: DraftReleaseNotesResponse) => {
+    setBreakingChanges(data.breaking_changes ?? [])
+    setBreakingAcknowledged(false)
+  }
 
   // With a prior tag the draft diffs against it; for the first-ever
   // release the API drafts from the synced history up to the commit.
@@ -89,6 +103,7 @@ export function ReleaseReadyCard({
   })
   const seedFromDraft = (data: DraftReleaseNotesResponse) => {
     setAiSuggestion({ bump: data.bump, version: data.version })
+    takeBreakingChanges(data)
     if (!tagDirty) setTag(data.version)
     if (!notesDirty) setNotes(data.notes_markdown)
   }
@@ -157,6 +172,11 @@ export function ReleaseReadyCard({
   }
 
   const tagValid = formats !== null && isTagAllowed(tag, formats)
+  const breakingNeedsAck = breakingNeedsAcknowledgement(
+    breakingChanges,
+    drift.latest_tag,
+    tag,
+  )
   const isDrafting = draftMutation.isPending
   const canSubmit =
     tagValid &&
@@ -168,7 +188,8 @@ export function ReleaseReadyCard({
     // be told apart from a green one, and releasing on it skips the
     // acknowledgement the server would then demand with a 409.
     !ciPending &&
-    !(ciFailed && !ciAcknowledged)
+    !(ciFailed && !ciAcknowledged) &&
+    !(breakingNeedsAck && !breakingAcknowledged)
   const reset = () => {
     setSelectedSha(commits[0]?.sha ?? null)
     setTag(drift.suggested_tag)
@@ -176,12 +197,15 @@ export function ReleaseReadyCard({
     setTagDirty(false)
     setNotesDirty(false)
     setAiSuggestion(null)
+    setBreakingChanges([])
+    setBreakingAcknowledged(false)
     setCiAcknowledged(false)
     clearCutError()
   }
   const submit = () => {
     if (!selectedSha) return
     cut({
+      acknowledge_breaking_changes: breakingNeedsAck && breakingAcknowledged,
       acknowledge_ci_failure: ciAcknowledged,
       committish: selectedSha,
       release_name: tag,
@@ -238,6 +262,14 @@ export function ReleaseReadyCard({
           <p className="text-tertiary text-xs tracking-wider uppercase">
             Tag & release notes
           </p>
+          <BreakingChangeNotice
+            acknowledged={breakingAcknowledged}
+            action="release"
+            breakingChanges={breakingChanges}
+            lastTag={drift.latest_tag}
+            onAcknowledgedChange={setBreakingAcknowledged}
+            tag={tag}
+          />
           <TagFields
             latestTag={drift.latest_tag}
             onChange={(v) => {
@@ -291,6 +323,7 @@ export function ReleaseReadyCard({
                           bump: data.bump,
                           version: data.version,
                         })
+                        takeBreakingChanges(data)
                         setTagDirty(false)
                         setNotesDirty(false)
                         setTag(data.version)

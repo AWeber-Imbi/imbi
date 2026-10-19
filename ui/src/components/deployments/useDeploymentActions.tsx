@@ -46,6 +46,13 @@ export interface DeployRequest {
 
 export interface PromoteRequest {
   /**
+   * Operator acknowledgement that `tag` is not a breaking-change bump
+   * although the promote ships a commit marked breaking. Without it the
+   * API refuses the promote with a 409. Required for the same reason as
+   * {@link PromoteRequest.acknowledgeCiFailure}.
+   */
+  acknowledgeBreakingChanges: boolean
+  /**
    * Operator acknowledgement that `sha` has a failing CI run. Without it
    * the API refuses the promote with a 409.
    *
@@ -165,6 +172,7 @@ export function useDeploymentActions({
   const promoteMutation = useMutation({
     mutationFn: (req: PromoteRequest) =>
       promoteDeployment(orgSlug, projectId, {
+        acknowledge_breaking_changes: req.acknowledgeBreakingChanges,
         acknowledge_ci_failure: req.acknowledgeCiFailure,
         action: 'promote',
         from_committish: req.sha,

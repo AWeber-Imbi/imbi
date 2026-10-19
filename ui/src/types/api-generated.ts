@@ -11404,6 +11404,23 @@ export interface components {
             refresh_token?: string | null;
         };
         /**
+         * BreakingChange
+         * @description One commit in a release range that breaks the project's consumers.
+         */
+        BreakingChange: {
+            /** Commit */
+            commit: string;
+            /** Description */
+            description: string;
+            /**
+             * Declared
+             * @default false
+             */
+            declared: boolean;
+            /** Url */
+            url?: string | null;
+        };
+        /**
          * BundleMcpServer
          * @description A third-party MCP server that the runner relays (plan P7).
          *
@@ -13094,6 +13111,11 @@ export interface components {
             version: string;
             /** Reasoning */
             reasoning: string;
+            /**
+             * Breaking Changes
+             * @default []
+             */
+            breaking_changes: components["schemas"]["BreakingChange"][];
             /** Notes Markdown */
             notes_markdown: string;
             /**
@@ -16555,6 +16577,11 @@ export interface components {
              * @default false
              */
             acknowledge_ci_failure: boolean;
+            /**
+             * Acknowledge Breaking Changes
+             * @default false
+             */
+            acknowledge_breaking_changes: boolean;
         };
         /**
          * PromoteStatus
@@ -17352,6 +17379,11 @@ export interface components {
              * @default false
              */
             acknowledge_ci_failure: boolean;
+            /**
+             * Acknowledge Breaking Changes
+             * @default false
+             */
+            acknowledge_breaking_changes: boolean;
         };
         /**
          * ReleaseCutResponse
@@ -17554,6 +17586,10 @@ export interface components {
             ci_override_by?: string | null;
             /** Ci Override At */
             ci_override_at?: string | null;
+            /** Breaking Override By */
+            breaking_override_by?: string | null;
+            /** Breaking Override At */
+            breaking_override_at?: string | null;
             /** Drift Detected */
             drift_detected?: boolean | null;
         };

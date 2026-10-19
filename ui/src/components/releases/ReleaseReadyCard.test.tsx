@@ -140,6 +140,7 @@ describe('ReleaseReadyCard', () => {
     await user.click(screen.getByRole('button', { name: /& release/i }))
     await waitFor(() => {
       expect(releases.cutRelease).toHaveBeenCalledWith('acme', 'p1', {
+        acknowledge_breaking_changes: false,
         acknowledge_ci_failure: false,
         committish: 'aaa1111',
         release_name: 'v0.1.0',
@@ -287,6 +288,87 @@ describe('ReleaseReadyCard', () => {
         ).not.toBeChecked()
       })
       expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+    })
+  })
+
+  describe('breaking changes in the draft', () => {
+    const AFTER_RELEASE: ReleaseDrift = {
+      ...FIRST_RELEASE,
+      latest_tag: 'v1.2.0',
+      latest_tag_sha: 'ccc3333',
+      suggested_tag: 'v1.3.0',
+    }
+
+    beforeEach(() => {
+      vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+        breaking_changes: [
+          {
+            commit: 'aaa1111',
+            declared: true,
+            description: 'Drops the v1 routes',
+          },
+        ],
+        bump: 'major',
+        commits_considered: 2,
+        degraded: false,
+        notes_markdown: '## Breaking Changes',
+        reasoning: 'removes routes',
+        version: 'v2.0.0',
+      })
+    })
+
+    it('shows the evidence and cuts the major without asking', async () => {
+      const user = userEvent.setup()
+      renderCard(AFTER_RELEASE)
+      await waitFor(() => {
+        expect(screen.getByText('Drops the v1 routes')).toBeInTheDocument()
+      })
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: /Tag v2.0.0 & release/i }),
+      )
+      await waitFor(() => {
+        expect(releases.cutRelease).toHaveBeenCalledWith(
+          'acme',
+          'p1',
+          expect.objectContaining({
+            acknowledge_breaking_changes: false,
+            tag: 'v2.0.0',
+          }),
+        )
+      })
+    })
+
+    it('holds a non-breaking tag until it is acknowledged', async () => {
+      const user = userEvent.setup()
+      renderCard(AFTER_RELEASE)
+      await waitFor(() => {
+        expect(screen.getByText('Drops the v1 routes')).toBeInTheDocument()
+      })
+      const tagInput = screen.getByPlaceholderText('vX.Y.Z')
+      await user.clear(tagInput)
+      await user.type(tagInput, 'v1.3.0')
+      expect(
+        screen.getByText('v1.3.0 is not a breaking-change release'),
+      ).toBeInTheDocument()
+      const button = screen.getByRole('button', {
+        name: /Tag v1.3.0 & release/i,
+      })
+      expect(button).toBeDisabled()
+      await user.click(
+        screen.getByRole('checkbox', { name: /Release v1.3.0 anyway/i }),
+      )
+      await user.click(button)
+      await waitFor(() => {
+        expect(releases.cutRelease).toHaveBeenCalledWith(
+          'acme',
+          'p1',
+          expect.objectContaining({
+            acknowledge_breaking_changes: true,
+            tag: 'v1.3.0',
+          }),
+        )
+      })
     })
   })
 

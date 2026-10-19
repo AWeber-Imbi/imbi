@@ -824,6 +824,24 @@ export interface BlueprintCreate {
 // Blueprint types
 export type BlueprintFilter = Schemas['BlueprintFilter']
 
+/**
+ * One commit in a release range that breaks the project's consumers, from
+ * the release-notes draft.
+ */
+export interface BreakingChange {
+  /** Short SHA. */
+  commit: string
+  /**
+   * The commit's author marked it breaking (`type!:` subject or a
+   * `BREAKING CHANGE:` footer). Only these are enforced by the API's
+   * promote and release gates; the rest are the model's judgment.
+   */
+  declared?: boolean
+  /** What consumers must change. */
+  description: string
+  url?: null | string
+}
+
 export type ClientCredential = Schemas['ClientCredentialResponse']
 
 export type ClientCredentialCreate = Schemas['ClientCredentialCreate']
@@ -890,6 +908,13 @@ export interface CurrentReleaseEnvironment {
 }
 
 export interface CutReleaseRequest {
+  /**
+   * Operator acknowledgement that `tag` is not a breaking-change bump
+   * although the release includes a commit marked breaking. Without it
+   * the API refuses the cut with a 409; with it the release proceeds and
+   * the override is recorded.
+   */
+  acknowledge_breaking_changes?: boolean
   /**
    * Operator acknowledgement that `committish` has a failing CI run.
    * Without it the API refuses the cut with a 409; with it the release
@@ -960,6 +985,8 @@ export interface DeploymentCompareResult {
 }
 
 export interface DeploymentPromoteRequest {
+  /** See {@link CutReleaseRequest.acknowledge_breaking_changes}. */
+  acknowledge_breaking_changes?: boolean
   /** See {@link CutReleaseRequest.acknowledge_ci_failure}. */
   acknowledge_ci_failure?: boolean
   action: 'promote'
@@ -1142,6 +1169,7 @@ export interface DraftReleaseNotesRequest {
 }
 
 export interface DraftReleaseNotesResponse {
+  breaking_changes?: BreakingChange[]
   bump: SemverBump
   commits_considered: number
   degraded: boolean
@@ -1662,6 +1690,12 @@ export interface ReleaseHistoryEntry {
   /** Every open blocker on the release; the `blocked_*` fields above
    * mirror the newest of them. */
   blockers?: ReleaseBlocker[]
+  /**
+   * Set when an operator cut this release as a non-breaking version bump
+   * over a commit marked breaking, and acknowledged it.
+   */
+  breaking_override_at?: null | string
+  breaking_override_by?: null | string
   /**
    * Set when an operator cut this release over a *failing* CI run and
    * acknowledged it. `ci_status` below is the commit's state right now;

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   GitCompareArrows,
   ShieldAlert,
+  TriangleAlert,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -198,6 +199,30 @@ function BlockedNote({
 }
 
 /**
+ * The record of an operator shipping a commit marked breaking under a
+ * version bump that does not announce it.
+ */
+function BreakingOverrideNote({ rel }: { rel: ReleaseHistoryEntry }) {
+  return (
+    <div className="border-warning bg-warning text-warning mt-1 mb-3 flex items-start gap-2 rounded-md border px-3 py-2.5">
+      <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0 flex-1 text-xs leading-relaxed">
+        <p>Released over a breaking change without a breaking version bump</p>
+        <p className="mt-1 opacity-80">
+          acknowledged by {rel.breaking_override_by}
+          {rel.breaking_override_at ? (
+            <>
+              {' · '}
+              <RelativeTime tooltip={false} value={rel.breaking_override_at} />
+            </>
+          ) : null}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/**
  * The record of an operator shipping over a failing CI run.
  *
  * Distinct from the row's `CiStatusDot`, which reports the commit's CI
@@ -289,6 +314,12 @@ function ReleaseRow({
               CI overridden
             </Badge>
           ) : null}
+          {rel.breaking_override_by ? (
+            <Badge className="inline-flex items-center gap-1" variant="warning">
+              <TriangleAlert className="size-3" />
+              Breaking overridden
+            </Badge>
+          ) : null}
           {isCurrent ? <Badge variant="accent">Latest</Badge> : null}
         </span>
       </button>
@@ -304,6 +335,7 @@ function ReleaseRow({
             />
           ) : null}
           {rel.ci_override_by ? <CiOverrideNote rel={rel} /> : null}
+          {rel.breaking_override_by ? <BreakingOverrideNote rel={rel} /> : null}
           {rel.notes_markdown ? (
             <div className="document-markdown max-w-none text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
               <RichMarkdown>{rel.notes_markdown}</RichMarkdown>

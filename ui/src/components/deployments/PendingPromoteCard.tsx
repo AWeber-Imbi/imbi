@@ -12,6 +12,10 @@ import {
 
 import { draftReleaseNotes } from '@/api/endpoints'
 import {
+  BreakingChangeNotice,
+  breakingNeedsAcknowledgement,
+} from '@/components/deploy/BreakingChangeNotice'
+import {
   CiFailureNotice,
   ciNeedsAcknowledgement,
   useCommitCheckStatus,
@@ -108,6 +112,13 @@ export function PendingPromoteCard({
     if (!notesDirty) setNotes(draft.notes_markdown)
   }, [draft, tagDirty, notesDirty])
 
+  // Shipping the draft's breaking changes under a tag that is not a
+  // breaking-change bump. A new draft is new evidence, so it clears it.
+  const [breakingAcknowledged, setBreakingAcknowledged] = useState(false)
+  useEffect(() => {
+    setBreakingAcknowledged(false)
+  }, [draft])
+
   // Live CI status for the commit being tagged. The picker's dots come from
   // imbi's synced history and can lag; this is the state the API's promote
   // gate will actually see. Read before the early returns below — it's a
@@ -143,6 +154,11 @@ export function PendingPromoteCard({
   }
 
   const tagValid = formats !== null && isTagAllowed(tag, formats)
+  const breakingNeedsAck = breakingNeedsAcknowledgement(
+    draft?.breaking_changes,
+    bumpFrom,
+    tag,
+  )
   const isDrafting = draftMutation.isPending
   const canSubmit =
     tagValid &&
@@ -154,7 +170,8 @@ export function PendingPromoteCard({
     // be told apart from a green one, and promoting on it skips the
     // acknowledgement the server would then demand with a 409.
     !ciPending &&
-    !(ciFailed && !ciAcknowledged)
+    !(ciFailed && !ciAcknowledged) &&
+    !(breakingNeedsAck && !breakingAcknowledged)
   const selIdx = commits.findIndex((c) => c.sha === selectedSha)
   const heldCount = selIdx > 0 ? selIdx : 0
   const reset = () => {
@@ -163,6 +180,7 @@ export function PendingPromoteCard({
     setNotes(draft?.notes_markdown ?? '')
     setTagDirty(false)
     setNotesDirty(false)
+    setBreakingAcknowledged(false)
     setCiAcknowledged(false)
   }
 
@@ -237,6 +255,14 @@ export function PendingPromoteCard({
               </span>
             ) : null}
           </div>
+          <BreakingChangeNotice
+            acknowledged={breakingAcknowledged}
+            action="promote"
+            breakingChanges={draft?.breaking_changes}
+            lastTag={bumpFrom}
+            onAcknowledgedChange={setBreakingAcknowledged}
+            tag={tag}
+          />
           <div className="grid grid-cols-2 gap-3">
             <Label className="text-tertiary flex flex-col gap-1 text-xs">
               Bumping from
@@ -354,6 +380,8 @@ export function PendingPromoteCard({
             onClick={() => {
               if (!selectedSha) return
               actions.promote({
+                acknowledgeBreakingChanges:
+                  breakingNeedsAck && breakingAcknowledged,
                 acknowledgeCiFailure: ciAcknowledged,
                 fromEnvironment: stage.upstream?.slug ?? '',
                 notes,

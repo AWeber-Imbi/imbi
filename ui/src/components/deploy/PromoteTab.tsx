@@ -11,6 +11,10 @@ import {
   listCurrentReleases,
   promoteDeployment,
 } from '@/api/endpoints'
+import {
+  BreakingChangeNotice,
+  breakingNeedsAcknowledgement,
+} from '@/components/deploy/BreakingChangeNotice'
 import { DriftIndicator } from '@/components/releases/DriftIndicator'
 import {
   cutBlockedLabel,
@@ -175,6 +179,18 @@ export function PromoteTab({
     if (!notesDirty) setNotes(draft.notes_markdown)
   }, [draft, tagDirty, notesDirty])
 
+  // Shipping the draft's breaking changes under a tag that is not a
+  // breaking-change bump. A new draft is new evidence, so it clears it.
+  const [breakingAcknowledged, setBreakingAcknowledged] = useState(false)
+  useEffect(() => {
+    setBreakingAcknowledged(false)
+  }, [draft])
+  const breakingNeedsAck = breakingNeedsAcknowledgement(
+    draft?.breaking_changes,
+    lastTag,
+    tag,
+  )
+
   // Live CI status for the build being promoted. The commit list here comes
   // from `compare()`, which carries no check status at all, so this is the
   // only CI signal this form has.
@@ -195,6 +211,7 @@ export function PromoteTab({
   const promoteMutation = useMutation({
     mutationFn: () =>
       promoteDeployment(orgSlug, projectId, {
+        acknowledge_breaking_changes: breakingNeedsAck && breakingAcknowledged,
         acknowledge_ci_failure: ciAcknowledged,
         action: 'promote',
         from_committish: selectedSha ?? '',
@@ -329,7 +346,8 @@ export function PromoteTab({
     // be told apart from a green one, and promoting on it skips the
     // acknowledgement the server would then demand with a 409.
     !ciPending &&
-    !(ciFailed && !ciAcknowledged)
+    !(ciFailed && !ciAcknowledged) &&
+    !(breakingNeedsAck && !breakingAcknowledged)
 
   return (
     <div className="flex flex-col gap-4">
@@ -450,6 +468,14 @@ export function PromoteTab({
         <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
           Step 2 — Tag & release notes
         </p>
+        <BreakingChangeNotice
+          acknowledged={breakingAcknowledged}
+          action="promote"
+          breakingChanges={draft?.breaking_changes}
+          lastTag={lastTag}
+          onAcknowledgedChange={setBreakingAcknowledged}
+          tag={tag}
+        />
         <div className="grid grid-cols-[160px_160px_1fr] gap-3">
           <Label className="text-tertiary flex flex-col gap-1 text-xs">
             Current

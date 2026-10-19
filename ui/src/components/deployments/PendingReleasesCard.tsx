@@ -11,6 +11,7 @@ import {
   Loader2,
   Rocket,
   ShieldAlert,
+  TriangleAlert,
 } from 'lucide-react'
 
 import { compareDeploymentRefs } from '@/api/endpoints'
@@ -386,6 +387,17 @@ function ReleaseStack({
                 >
                   <ShieldAlert className="size-3" />
                   CI overridden
+                </Badge>
+              ) : null}
+              {/* Shipped over a commit marked breaking without a breaking
+                  version bump. */}
+              {rel.breaking_override_by ? (
+                <Badge
+                  className="inline-flex shrink-0 items-center gap-1"
+                  variant="warning"
+                >
+                  <TriangleAlert className="size-3" />
+                  Breaking overridden
                 </Badge>
               ) : null}
               <span className="text-secondary min-w-0 flex-1 truncate text-xs">
