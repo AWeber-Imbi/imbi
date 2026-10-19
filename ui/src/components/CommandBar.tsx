@@ -56,6 +56,18 @@ export function CommandBar() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const dragRef = useRef<null | { startHeight: number; startY: number }>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+  // The input bar grows with its hint row, so measure it.
+  const [barHeight, setBarHeight] = useState(72)
+  useEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+    const observer = new ResizeObserver(() =>
+      setBarHeight(bar.getBoundingClientRect().height),
+    )
+    observer.observe(bar)
+    return () => observer.disconnect()
+  }, [])
   const [unreadAssistant, setUnreadAssistant] = useState(false)
 
   // useShallow keeps the consumer subscribed only to the listed fields
@@ -122,14 +134,13 @@ export function CommandBar() {
   })
 
   // Set CSS custom property so page content can avoid being hidden
-  const INPUT_BAR_HEIGHT = 72
   useEffect(() => {
-    const total = isExpanded ? panelHeight + INPUT_BAR_HEIGHT : INPUT_BAR_HEIGHT
+    const total = isExpanded ? panelHeight + barHeight : barHeight
     document.documentElement.style.setProperty(
       '--assistant-height',
       `${total}px`,
     )
-  }, [isExpanded, panelHeight])
+  }, [barHeight, isExpanded, panelHeight])
 
   // Auto-scroll to bottom on new assistant content
   useEffect(() => {
@@ -405,7 +416,7 @@ export function CommandBar() {
         className={`fixed right-0 left-0 z-40 flex flex-col transition-transform duration-300 ease-out ${
           isExpanded ? 'translate-y-0' : 'translate-y-full'
         } border-border bg-secondary border-t shadow-2xl`}
-        style={{ bottom: `${INPUT_BAR_HEIGHT}px`, height: `${panelHeight}px` }}
+        style={{ bottom: `${barHeight}px`, height: `${panelHeight}px` }}
       >
         {/* Resize Handle */}
         <div
@@ -547,7 +558,10 @@ export function CommandBar() {
       </div>
 
       {/* Command Input Bar */}
-      <div className="border-border bg-card fixed right-0 bottom-0 left-0 z-50 border-t">
+      <div
+        className="border-border bg-card fixed right-0 bottom-0 left-0 z-50 border-t"
+        ref={barRef}
+      >
         {/* Tray Toggle */}
         <div className="flex justify-center">
           <Button
