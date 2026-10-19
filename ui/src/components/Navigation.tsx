@@ -171,22 +171,6 @@ export function Navigation({ currentView }: NavigationProps) {
           {/* Right Side Actions */}
           <div className="flex items-center gap-3">
             <TopBarSearch />
-            <Button
-              aria-pressed={assistantOpen}
-              className={cn(
-                'gap-2 border-tertiary text-primary',
-                assistantOpen
-                  ? 'bg-secondary'
-                  : 'bg-primary hover:bg-secondary',
-              )}
-              onClick={() => setAssistantOpen(!assistantOpen)}
-              size="sm"
-              variant="outline"
-            >
-              <Sparkles className="text-amber-text size-4" />
-              Assistant
-            </Button>
-
             {/* Organization Selector */}
             {organizations.length > 0 &&
               selectedOrganization &&
@@ -278,6 +262,21 @@ export function Navigation({ currentView }: NavigationProps) {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <Button
+              aria-label="Assistant"
+              aria-pressed={assistantOpen}
+              className={cn(
+                'rounded-full',
+                assistantOpen ? 'bg-secondary' : 'hover:bg-secondary',
+              )}
+              onClick={() => setAssistantOpen(!assistantOpen)}
+              size="icon"
+              title="Assistant"
+              variant="ghost"
+            >
+              <Sparkles className="text-amber-text size-4" />
+            </Button>
 
             {/* Theme Toggle */}
             <Button

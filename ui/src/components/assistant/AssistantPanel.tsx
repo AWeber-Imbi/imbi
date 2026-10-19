@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -15,6 +15,7 @@ import {
 import {
   newAssistantConversation,
   openAssistantConversation,
+  rememberAssistantReturnPath,
   useAssistantConversations,
 } from '@/hooks/useAssistantChat'
 import { useAssistantStore } from '@/stores/assistantStore'
@@ -29,7 +30,7 @@ const PANEL_WIDTH = 440
  */
 export function AssistantPanel() {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const isOpen = useAssistantStore((s) => s.isExpanded)
   const setOpen = useAssistantStore((s) => s.setExpanded)
   const conversationId = useAssistantStore((s) => s.currentConversationId)
@@ -37,6 +38,12 @@ export function AssistantPanel() {
   // The full-page assistant shows the same conversation.
   const visible = isOpen && !pathname.startsWith('/assistant')
   const title = conversations.find((c) => c.id === conversationId)?.title
+
+  useEffect(() => {
+    if (!pathname.startsWith('/assistant')) {
+      rememberAssistantReturnPath(pathname + search)
+    }
+  }, [pathname, search])
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty(

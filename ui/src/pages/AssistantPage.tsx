@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { Check, Copy, Minimize2, Search, SquarePen } from 'lucide-react'
+import { Minimize2, Search, SquarePen } from 'lucide-react'
 
 import {
   AssistantComposer,
@@ -12,11 +12,11 @@ import { Navigation } from '@/components/Navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  assistantReturnPath,
   newAssistantConversation,
   openAssistantConversation,
   useAssistantConversations,
 } from '@/hooks/useAssistantChat'
-import { useClipboard } from '@/hooks/useClipboard'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 import { useAssistantStore } from '@/stores/assistantStore'
@@ -31,7 +31,6 @@ export function AssistantPage() {
   const { data: conversations = [], isLoading } = useAssistantConversations()
   const [filter, setFilter] = useState('')
   const [loadError, setLoadError] = useState(false)
-  const { copied, copy } = useClipboard()
   const title = conversations.find((c) => c.id === currentId)?.title
   usePageTitle(title || 'Assistant')
 
@@ -59,9 +58,7 @@ export function AssistantPage() {
 
   const openInPanel = () => {
     setPanelOpen(true)
-    // Go back to the page the reader came from, if there is one.
-    if ((window.history.state as null | { idx?: number })?.idx) navigate(-1)
-    else navigate('/dashboard')
+    navigate(assistantReturnPath())
   }
 
   return (
@@ -127,18 +124,6 @@ export function AssistantPage() {
             <Button onClick={openInPanel} variant="ghost">
               <Minimize2 className="size-4" />
               Open in side panel
-            </Button>
-            <Button
-              disabled={!currentId}
-              onClick={() => void copy(window.location.href)}
-              variant="outline"
-            >
-              {copied ? (
-                <Check className="text-success size-4" />
-              ) : (
-                <Copy className="size-4" />
-              )}
-              Copy link
             </Button>
           </header>
           {loadError ? (

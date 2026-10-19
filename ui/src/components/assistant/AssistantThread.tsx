@@ -178,7 +178,7 @@ function ToolCalls({ names }: { names: { id: string; name: string }[] }) {
       {names.map((t) => (
         <li className="flex items-center gap-1.5" key={t.id}>
           <CircleCheck className="size-3.5" />
-          {toolLabel(t.name)}
+          {toolLabel(t.name, true)}
         </li>
       ))}
     </ul>

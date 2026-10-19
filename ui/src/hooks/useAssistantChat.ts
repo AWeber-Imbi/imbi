@@ -172,6 +172,18 @@ export function useAssistantConversations() {
   })
 }
 
+// The last page outside the full-page assistant, so "Open in side panel"
+// returns there rather than to another conversation.
+let returnPath = '/dashboard'
+
+export function assistantReturnPath() {
+  return returnPath
+}
+
+export function rememberAssistantReturnPath(path: string) {
+  returnPath = path
+}
+
 // One stream at a time across both views, so stop works from either.
 let abortController: AbortController | null = null
 

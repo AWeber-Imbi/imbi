@@ -9,6 +9,8 @@ const TOOL_FRIENDLY_NAMES: Record<string, string> = {
 }
 
 /** A readable label for a tool call. */
-export function toolLabel(toolName: string): string {
-  return TOOL_FRIENDLY_NAMES[toolName] ?? `Running ${toolName}`
+export function toolLabel(toolName: string, done = false): string {
+  return (
+    TOOL_FRIENDLY_NAMES[toolName] ?? `${done ? 'Ran' : 'Running'} ${toolName}`
+  )
 }
