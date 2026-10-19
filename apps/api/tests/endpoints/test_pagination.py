@@ -116,6 +116,12 @@ class BuildLinkHeaderTests(unittest.TestCase):
         self.assertIn('cursor=newcursor', header)
         self.assertNotIn('cursor=old', header)
 
+    def test_repeated_params_preserved(self) -> None:
+        header = _pagination.build_link_header(
+            self._request('filter=a&filter=b'), 'next'
+        )
+        self.assertEqual(header.count('filter=a&filter=b'), 2)
+
 
 if __name__ == '__main__':
     unittest.main()
