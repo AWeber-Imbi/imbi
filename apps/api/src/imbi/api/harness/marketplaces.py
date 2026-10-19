@@ -17,6 +17,7 @@ import logging
 import posixpath
 import re
 import typing
+import urllib.parse
 
 import pydantic
 
@@ -99,6 +100,10 @@ def _repository_url(source: dict[str, typing.Any]) -> str | None:
         if _GITHUB_REPO.fullmatch(repo):
             return f'https://github.com/{repo}.git'
     return None
+
+
+def _host(url: str) -> str | None:
+    return urllib.parse.urlsplit(url).hostname
 
 
 def parse(text: str) -> Catalog:
@@ -351,8 +356,20 @@ async def sync(
     except SyncError as err:
         changes: dict[str, typing.Any] = {'sync_error': str(err)[:2000]}
     else:
+        # The runner sends its marketplace_fetch token to the plugin
+        # host, so a plugin can only live on the marketplace host or on
+        # github.com.
+        hosts = {_host(str(marketplace['url'])), 'github.com'}
         for plugin in catalog.plugins:
             if plugin.repository_url is None:
+                continue
+            if _host(plugin.repository_url) not in hosts:
+                LOGGER.info(
+                    'Marketplace %s: plugin %s is on another host',
+                    marketplace['slug'],
+                    plugin.name,
+                )
+                plugin.repository_url = None
                 continue
             try:
                 plugin.repository_sha = await resolve_commit(

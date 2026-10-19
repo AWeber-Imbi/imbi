@@ -674,11 +674,32 @@ class WorkspaceTestCase(TaskTestCase):
         (request,) = self.clone_calls()
         self.assertEqual(request['sha'], '0123456789abcdef0123')
         self.assertNotIn('push_helper', request)
-        dest = self.tmp / 'chain' / 'plugins' / 'tools-0123456789ab'
-        self.assertEqual(request['dest'], str(dest))
+        dest = pathlib.Path(request['dest'])
+        self.assertEqual(dest.parent, self.tmp / 'chain' / 'plugins')
+        self.assertTrue(dest.name.startswith('tools-'))
         self.assertEqual(
             subject.plugins, [dest / 'plugins' / 'hello', dest / 'bye']
         )
+
+    async def test_one_clone_per_repository(self) -> None:
+        # An external plugin with the same commit as the marketplace
+        # still gets its own clone.
+        subject = self.make(
+            plugins=[
+                self.plugin(),
+                self.plugin(
+                    plugin='other',
+                    url='https://github.com/acme/other.git',
+                    path='.',
+                ),
+            ]
+        )
+        subject.bundle['repositories'] = []
+        self.call.return_value = {'exit_code': 0, 'output': ''}
+        await subject.build_workspace()
+        first, second = self.clone_calls()
+        self.assertNotEqual(first['dest'], second['dest'])
+        self.assertEqual(second['url'], 'https://github.com/acme/other.git')
 
     async def test_marketplace_with_a_token(self) -> None:
         subject = self.make(

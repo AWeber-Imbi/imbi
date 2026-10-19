@@ -256,6 +256,14 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                         'name': 'gone',
                         'source': {'source': 'url', 'url': 'https://h/b.git'},
                     },
+                    {
+                        'name': 'elsewhere',
+                        'source': {'source': 'url', 'url': 'https://x/c.git'},
+                    },
+                    {
+                        'name': 'hub',
+                        'source': {'source': 'github', 'repo': 'a/d'},
+                    },
                 ],
             }
         )
@@ -282,13 +290,21 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 mock.Mock(),
                 store,
                 'acme',
-                {'id': 'm1', 'slug': 'm', 'url': 'u'},
+                {'id': 'm1', 'slug': 'm', 'url': 'https://h/market'},
             )
         changes = store.set_marketplace_sync.call_args.args[1]
         self.assertEqual(
             {p['name']: p['repository_sha'] for p in changes['plugins']},
-            {'local': None, 'ok': 'b' * 40, 'gone': None},
+            {
+                'local': None,
+                'ok': 'b' * 40,
+                'gone': None,
+                'elsewhere': None,
+                'hub': 'b' * 40,
+            },
         )
+        # A plugin on another host is not loadable.
+        self.assertIsNone(changes['plugins'][3]['repository_url'])
         self.assertIsNone(changes['sync_error'])
 
     async def test_no_integration(self) -> None:
