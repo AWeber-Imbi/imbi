@@ -264,6 +264,24 @@ class SecretStore:
             await _audit(conn, event, row)
             return row is not None
 
+    async def agent_references(
+        self, organization_id: str, agent_id: str
+    ) -> list[str]:
+        """The references that an agent can request for a command: an
+        enabled grant for the agent, with ``environment`` delivery, on
+        an enabled binding."""
+        found = await self._all(
+            'SELECT DISTINCT b.reference FROM secrets.grants g'
+            ' JOIN secrets.bindings b ON b.id = ANY(g.binding_ids)'
+            ' WHERE g.organization_id = %s AND g.enabled AND b.enabled'
+            ' AND b.organization_id = g.organization_id'
+            ' AND %s = ANY(g.agent_ids)'
+            " AND 'environment' = ANY(g.delivery_modes)"
+            ' ORDER BY b.reference',
+            (organization_id, agent_id),
+        )
+        return [str(row['reference']) for row in found]
+
     async def evaluate(
         self,
         organization_id: str,
