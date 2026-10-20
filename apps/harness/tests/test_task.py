@@ -681,6 +681,50 @@ class WorkspaceTestCase(TaskTestCase):
             subject.plugins, [dest / 'plugins' / 'hello', dest / 'bye']
         )
 
+    def marketplace(self, *entries: dict[str, typing.Any]) -> pathlib.Path:
+        clone = self.tmp / 'chain' / 'plugins' / 'tools-abc'
+        (clone / '.claude-plugin').mkdir(parents=True)
+        (clone / '.claude-plugin' / 'marketplace.json').write_text(
+            json.dumps({'name': 'tools', 'plugins': list(entries)})
+        )
+        (clone / '.git').mkdir()
+        return clone
+
+    def test_inline_plugin_gets_a_manifest(self) -> None:
+        # An entry with no plugin.json is its own manifest (#445).
+        entry = {
+            'name': 'grafana-mcp',
+            'source': './',
+            'category': 'ops',
+            'mcpServers': {'grafana': {'type': 'sse', 'url': 'https://g'}},
+        }
+        clone = self.marketplace(entry, {'name': 'zoekt-mcp', 'source': './'})
+        path = self.run_task._manifest('grafana-mcp', clone, clone)
+        self.assertEqual(path, clone.with_name('tools-abc-grafana-mcp'))
+        self.assertEqual(
+            json.loads((path / '.claude-plugin' / 'plugin.json').read_text()),
+            {
+                'name': 'grafana-mcp',
+                'mcpServers': {'grafana': {'type': 'sse', 'url': 'https://g'}},
+            },
+        )
+        self.assertFalse((path / '.git').exists())
+        # The clone itself is left as it was.
+        self.assertFalse((clone / '.claude-plugin' / 'plugin.json').exists())
+
+    def test_plugin_with_a_manifest_loads_in_place(self) -> None:
+        clone = self.marketplace({'name': 'hello', 'source': './hello'})
+        (clone / 'hello' / '.claude-plugin').mkdir(parents=True)
+        (clone / 'hello' / '.claude-plugin' / 'plugin.json').write_text('{}')
+        self.assertEqual(
+            self.run_task._manifest('hello', clone, clone / 'hello'),
+            clone / 'hello',
+        )
+
+    def test_plugin_missing_from_the_marketplace_loads_in_place(self) -> None:
+        clone = self.marketplace({'name': 'other', 'source': './'})
+        self.assertEqual(self.run_task._manifest('hello', clone, clone), clone)
+
     async def test_one_clone_per_repository(self) -> None:
         # An external plugin with the same commit as the marketplace
         # still gets its own clone.

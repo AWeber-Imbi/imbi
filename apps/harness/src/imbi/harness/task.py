@@ -357,6 +357,34 @@ def _repository(url: str) -> str | None:
     return f'{owner}/{name}'
 
 
+PLUGIN_MANIFEST = pathlib.PurePosixPath('.claude-plugin/plugin.json')
+MARKETPLACE_FILE = pathlib.PurePosixPath('.claude-plugin/marketplace.json')
+
+_PLUGIN_NAME = re.compile(r'[a-z0-9][a-z0-9._-]*')
+
+#: Fields of a marketplace entry that are not plugin manifest fields.
+_MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
+
+
+def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
+    """The entry for ``name`` in the marketplace file of a clone."""
+    try:
+        document = json.loads((clone / MARKETPLACE_FILE).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    entries = typing.cast('Body', document).get('plugins')
+    if not isinstance(entries, list):
+        return None
+    for entry in typing.cast('list[object]', entries):
+        if isinstance(entry, dict):
+            found = typing.cast('Body', entry)
+            if found.get('name') == name:
+                return found
+    return None
+
+
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
     """A plugin path in a marketplace: relative, with no ``..``."""
     path = pathlib.PurePosixPath(str(value or '.'))
@@ -746,7 +774,54 @@ class TaskRun:
             if dest not in cloned:
                 await self._marketplace(plugin, dest, binding)
                 cloned.add(dest)
-            self.plugins.append(dest / _relative(plugin.get('path')))
+            self.plugins.append(
+                self._manifest(
+                    str(plugin['plugin']),
+                    dest,
+                    dest / _relative(plugin.get('path')),
+                )
+            )
+
+    def _manifest(
+        self, name: str, clone: pathlib.Path, path: pathlib.Path
+    ) -> pathlib.Path:
+        """Return the directory to load for one plugin (#445).
+
+        A marketplace entry can define its plugin inline: the plugin
+        directory has no ``.claude-plugin/plugin.json`` and the entry is
+        the manifest. Copy the directory, write the entry there as
+        ``plugin.json``, and load the copy. The entry comes from the
+        marketplace file of the pinned commit, so the pin covers it.
+        Several inline plugins can share one directory, so each one
+        gets its own copy.
+        """
+        with privilege.effective(privilege.AGENT):
+            if (path / PLUGIN_MANIFEST).is_file():
+                return path
+            entry = _marketplace_entry(clone, name)
+            if entry is None or not _PLUGIN_NAME.fullmatch(name):
+                return path
+            copy = clone.with_name(f'{clone.name}-{name}')
+            shutil.rmtree(copy, ignore_errors=True)
+            shutil.copytree(
+                path,
+                copy,
+                symlinks=True,
+                ignore=shutil.ignore_patterns('.git'),
+            )
+            manifest = copy / PLUGIN_MANIFEST
+            manifest.parent.mkdir(exist_ok=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        key: value
+                        for key, value in entry.items()
+                        if key not in _MARKETPLACE_ONLY
+                    }
+                )
+            )
+        LOGGER.info('Plugin %s: manifest from the marketplace entry', name)
+        return copy
 
     async def _marketplace(
         self, plugin: Body, dest: pathlib.Path, binding: typing.Any
