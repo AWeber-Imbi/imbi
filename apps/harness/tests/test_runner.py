@@ -415,6 +415,15 @@ class EndOfPodTestCase(unittest.IsolatedAsyncioTestCase):
             settings = runner.Settings.from_environment()
         self.assertEqual(settings.end_of_chain, 'exit')
         self.assertEqual(settings.idle_exit_seconds, 120)
+        for bad in ('60s', '-5'):
+            env['IMBI_HARNESS_IDLE_EXIT_SECONDS'] = bad
+            with (
+                mock.patch.dict(runner.os.environ, env, clear=True),
+                self.assertRaisesRegex(
+                    SystemExit, 'IMBI_HARNESS_IDLE_EXIT_SECONDS'
+                ),
+            ):
+                runner.Settings.from_environment()
 
     async def test_shutdown_steps(self) -> None:
         subject = make_runner()

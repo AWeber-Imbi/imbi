@@ -1,4 +1,4 @@
-{{- if eq .Values.pool.mode "scaledJob" }}
+{{- if eq (include "imbi-harness.mode" .) "scaledJob" }}
 # Optional autoscaling with KEDA (which the cluster must have): one Job
 # per chain that the pool could claim. KEDA polls
 # GET /harness/pools/{name}/queue with the pool credential as HTTP Basic

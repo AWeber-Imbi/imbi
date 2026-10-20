@@ -620,6 +620,31 @@ class QueueLimitTests(RunnerTestCase):
         await self.claim(await self.register())
         self.assertEqual(await self.depth(), 1)
 
+    async def test_a_chain_counts_once(self) -> None:
+        # A chain back in the queue with two queued tasks needs one
+        # runner: claim_child gives the rest to that runner.
+        row = await self.task_row()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.chains (root_task_id, organization_id,'
+                " state) VALUES (%s, %s, 'queued')",
+                (row['id'], row['organization_id']),
+            )
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                (row['id'], row['id']),
+            )
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        second = await self.task_row('T-2')
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                (row['id'], second['id']),
+            )
+        self.assertEqual(await self.depth(), 1)
+
     async def test_a_pool_without_the_label_counts_nothing(self) -> None:
         pool = await self.make_pool(['gpu'], [self.org], 'gpu')
         self.assertEqual(await self.depth(pool), 0)

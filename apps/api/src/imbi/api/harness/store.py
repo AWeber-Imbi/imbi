@@ -113,7 +113,9 @@ _CLAIM_QUERY: typing.LiteralString = ''.join(
 #: hold (for ``max_concurrent_tasks``).
 _QUEUED_QUERY: typing.LiteralString = ''.join(
     (
-        'SELECT t.agent_id, count(*) AS queued, ',
+        # One runner takes a whole chain, so count chains, not tasks.
+        'SELECT t.agent_id,',
+        ' count(DISTINCT COALESCE(t.chain_id, t.id)) AS queued, ',
         _BUSY,
         ' AS busy',
         _CLAIMABLE,

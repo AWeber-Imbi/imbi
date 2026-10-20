@@ -79,11 +79,21 @@ class Settings:
                 if os.environ.get('IMBI_HARNESS_END_OF_CHAIN') == 'exit'
                 else 'delete_pod'
             ),
-            idle_exit_seconds=int(
-                os.environ.get('IMBI_HARNESS_IDLE_EXIT_SECONDS') or 0
-            )
-            or None,
+            idle_exit_seconds=_seconds('IMBI_HARNESS_IDLE_EXIT_SECONDS'),
         )
+
+
+def _seconds(name: str) -> int | None:
+    """A whole number of seconds from the environment; empty or 0 is
+    ``None``."""
+    value = os.environ.get(name, '').strip()
+    if not value:
+        return None
+    if not value.isdigit():
+        raise SystemExit(
+            f'{name} must be a whole number of seconds: {value!r}'
+        )
+    return int(value) or None
 
 
 def _fence(reason: str) -> typing.NoReturn:

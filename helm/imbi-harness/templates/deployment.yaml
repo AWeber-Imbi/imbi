@@ -1,4 +1,4 @@
-{{- if ne .Values.pool.mode "scaledJob" }}
+{{- if ne (include "imbi-harness.mode" .) "scaledJob" }}
 # A fixed-size pool: each pod runs one chain, deletes itself, and the
 # ReplicaSet starts a clean one (plan section 6.1).
 apiVersion: apps/v1

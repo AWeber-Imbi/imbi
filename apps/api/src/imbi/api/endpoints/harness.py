@@ -1111,6 +1111,13 @@ async def list_harness_pools(
     ]
 
 
+def _queue_rate_key(request: fastapi.Request) -> str:
+    return (
+        f'{rate_limit.get_rate_limit_key(request)}'
+        f':pool-queue:{request.path_params.get("name", "")}'
+    )
+
+
 class PoolQueue(pydantic.BaseModel):
     pool: str
     #: The tasks that a new runner of the pool could claim now.
@@ -1142,8 +1149,11 @@ def _basic_credentials(request: fastapi.Request) -> tuple[str, str]:
 
 
 @harness_router.get('/pools/{name}/queue', response_model=PoolQueue)
-# Each call checks a password hash. KEDA polls every 30 s by default.
-@rate_limit.limiter.limit('30/minute')  # type: ignore[untyped-decorator]
+# Each call checks a password hash. Per pool and source, so the pools
+# that one KEDA operator polls (30 s by default) do not share a bucket.
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    '30/minute', key_func=_queue_rate_key
+)
 async def harness_pool_queue(
     name: str,
     request: fastapi.Request,

@@ -9,7 +9,7 @@ metadata:
   labels:
     {{- include "imbi-harness.labels" . | nindent 4 }}
 automountServiceAccountToken: false
-{{- if ne .Values.pool.mode "scaledJob" }}
+{{- if ne (include "imbi-harness.mode" .) "scaledJob" }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

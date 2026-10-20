@@ -83,15 +83,25 @@ async def refresh(store: HarnessStore, db: graph.Graph) -> None:
 
 
 async def run_refresher(store: HarnessStore, *, stop: asyncio.Event) -> None:
-    """Refresh the gauges every interval until ``stop`` is set."""
-    db = graph.Graph()
-    await db.open()
+    """Refresh the gauges every interval until ``stop`` is set. A graph
+    that cannot be opened sets `UP` to 0 and is tried again next time."""
+    db: graph.Graph | None = None
     try:
         while not stop.is_set():
-            await refresh(store, db)
+            if db is None:
+                candidate = graph.Graph()
+                try:
+                    await candidate.open()
+                    db = candidate
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning('Harness gauges: no graph: %s', err)
+                    UP.set(0)
+            if db is not None:
+                await refresh(store, db)
             try:
                 await asyncio.wait_for(stop.wait(), REFRESH_INTERVAL_SECONDS)
             except TimeoutError:
                 pass
     finally:
-        await db.close()
+        if db is not None:
+            await db.close()

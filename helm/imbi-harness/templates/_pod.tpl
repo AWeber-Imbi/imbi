@@ -20,7 +20,7 @@ capabilities:
 - name: executor
   image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
   imagePullPolicy: {{ .Values.image.pullPolicy }}
-  {{- if eq .Values.pool.mode "scaledJob" }}
+  {{- if eq (include "imbi-harness.mode" .) "scaledJob" }}
   # A native sidecar (Kubernetes 1.29+): it stops when the runner exits,
   # so the Job completes.
   restartPolicy: Always
@@ -40,7 +40,7 @@ capabilities:
 {{- end }}
 
 {{- define "imbi-harness.podSpec" -}}
-{{- $job := eq .Values.pool.mode "scaledJob" -}}
+{{- $job := eq (include "imbi-harness.mode" .) "scaledJob" -}}
 serviceAccountName: {{ include "imbi-harness.pool" . }}
 automountServiceAccountToken: false
 enableServiceLinks: false
