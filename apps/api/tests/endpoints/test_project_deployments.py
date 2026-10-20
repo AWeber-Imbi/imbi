@@ -2627,6 +2627,11 @@ class BreakingChangeHelpersTestCase(unittest.TestCase):
             ('feat: x', 'BREAKING CHANGE: clients must upgrade', True),
             ('feat: x', 'Summary\n\nBREAKING-CHANGE: gone', True),
             ('feat: x', 'Mentions a BREAKING CHANGE: inline', False),
+            # Whole commit text in message, no body (ClickHouse rows).
+            ('feat: x\n\nBREAKING CHANGE: v1 is gone', None, True),
+            ('feat: x\n\nWhy\n\nBREAKING-CHANGE: gone', None, True),
+            ('feat: x\n\nMentions a BREAKING CHANGE: inline', None, False),
+            ('BREAKING CHANGE: not a footer', None, False),
         ]
         for message, body, expected in cases:
             with self.subTest(message=message, body=body):

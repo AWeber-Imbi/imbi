@@ -5785,10 +5785,17 @@ def _version_allowed(
 
 
 def _declares_breaking(commit: Commit) -> bool:
-    """Whether the commit's author marked it a breaking change."""
+    """Whether the commit's author marked it a breaking change.
+
+    The footer is looked for in ``body`` and, for commits that carry the
+    whole commit text in ``message`` (the ClickHouse ``commits`` table),
+    in everything after the subject line.
+    """
+    trailer = commit.message.partition('\n')[2]
     return bool(
         _BREAKING_SUBJECT_RE.match(commit.message)
         or (commit.body and _BREAKING_FOOTER_RE.search(commit.body))
+        or _BREAKING_FOOTER_RE.search(trailer)
     )
 
 
