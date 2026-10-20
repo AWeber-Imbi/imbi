@@ -21,6 +21,7 @@ import hashlib
 import http
 import json
 import logging
+import os
 import pathlib
 import re
 import shutil
@@ -383,6 +384,13 @@ def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
             if found.get('name') == name:
                 return found
     return None
+
+
+def _extra_ca() -> dict[str, str]:
+    """Trust the chart's ``extraCaCerts`` in the CLI, for MCP servers
+    behind a private CA."""
+    path = os.environ.get('IMBI_HARNESS_EXTRA_CA')
+    return {'NODE_EXTRA_CA_CERTS': path} if path else {}
 
 
 def _json(path: pathlib.Path) -> Body:
@@ -1290,6 +1298,7 @@ class TaskRun:
                 # agent-cli sets TMPDIR from this: glibc secure mode
                 # removes TMPDIR.
                 'HARNESS_TMPDIR': str(self.home / 'tmp'),
+                **_extra_ca(),
             },
             system_prompt={
                 'type': 'preset',
@@ -1453,6 +1462,7 @@ class TaskRun:
             approval_tools=list(api.items(self.config, 'approval_tools')),
             automation=origin.get('kind') != 'human',
             servers={name: each.key for name, each in self.external.items()},
+            plugin_servers=self.plugin_servers,
         )
         reason = checked.deny
         decision: Body = {'approval': checked.approval}

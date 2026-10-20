@@ -43,6 +43,13 @@ poolCredential:
   clientId: ""
   clientSecret: ""
 
+# Certificate authorities to trust besides the system bundle, for MCP
+# servers behind a private CA. The CLI gets the file as NODE_EXTRA_CA_CERTS,
+# so plugin MCP servers can verify it. A ConfigMap with a PEM bundle.
+extraCaCerts:
+  configMap: ""
+  key: ca.crt
+
 # Leave time for the shutdown steps after SIGTERM: the runner fences at 20 s.
 terminationGracePeriodSeconds: 30
 

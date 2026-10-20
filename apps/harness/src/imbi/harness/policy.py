@@ -29,7 +29,6 @@ HARNESS_TOOLS = frozenset(
 #: The model must always be able to report the outcome of its task: no
 #: deny rule, approval, or rate limit applies to it.
 REPORT_OUTCOME = 'mcp__imbi__report_outcome'
-PLUGIN_PREFIX = 'mcp__plugin_'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -58,20 +57,12 @@ def tool_key(name: str, servers: dict[str, str] | None = None) -> str | None:
     return f'{keys.get(server, server)}.{tool}'
 
 
-def _always_allowed(
-    name: str, allowed: list[str], approval_tools: list[str], automation: bool
-) -> Check | None:
-    """``report_outcome``, and the tools of a plugin's MCP servers: a
-    plugin that is on allows all of them (#445)."""
-    if name == REPORT_OUTCOME:
-        return Check()
-    for rule in allowed:
-        if rule.startswith(PLUGIN_PREFIX) and name.startswith(f'{rule}__'):
-            return Check(
-                approval=automation
-                and bool({name, rule} & set(approval_tools))
-            )
-    return None
+def _plugin_server(name: str, plugin_servers: list[str]) -> str | None:
+    """The plugin MCP server rule that ``name`` is a tool of, if any."""
+    return next(
+        (rule for rule in plugin_servers if name.startswith(f'{rule}__')),
+        None,
+    )
 
 
 def check(  # noqa: PLR0913 - keyword-only inputs
@@ -83,11 +74,14 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     approval_tools: list[str],
     automation: bool,
     servers: dict[str, str] | None = None,
+    plugin_servers: list[str] | None = None,
 ) -> Check:
-    early = _always_allowed(name, allowed, approval_tools, automation)
-    if early is not None:
-        return early
+    if name == REPORT_OUTCOME:
+        return Check()
     key = tool_key(name, servers)
+    # A plugin that is on allows its MCP servers' tools (#445); a tool
+    # map entry, if one matches, still applies.
+    plugin = _plugin_server(name, plugin_servers or [])
     config: dict[str, typing.Any] = {}
     if name.removeprefix('mcp__imbi_api__') in HARNESS_TOOLS:
         # A relayed tool never takes a harness tool's name or config.
@@ -97,7 +91,7 @@ def check(  # noqa: PLR0913 - keyword-only inputs
             return Check(deny='tool_not_allowed')
     elif key in tool_map:
         config = tool_map[key] or {}
-    elif key.removeprefix('imbi.') not in HARNESS_TOOLS:
+    elif plugin is None and key.removeprefix('imbi.') not in HARNESS_TOOLS:
         return Check(deny='tool_not_configured')
     environments = config.get('environments')
     if (
@@ -108,6 +102,6 @@ def check(  # noqa: PLR0913 - keyword-only inputs
         return Check(deny='environment_not_allowed')
     return Check(
         approval=bool(config.get('approval'))
-        or (automation and bool({name, key} & set(approval_tools))),
+        or (automation and bool({name, key, plugin} & set(approval_tools))),
         rate_key=key if config.get('rate_limit') else None,
     )
