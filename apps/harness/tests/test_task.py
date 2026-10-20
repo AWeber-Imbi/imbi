@@ -712,6 +712,33 @@ class WorkspaceTestCase(TaskTestCase):
         # The clone itself is left as it was.
         self.assertFalse((clone / '.claude-plugin' / 'plugin.json').exists())
 
+    def test_plugin_servers(self) -> None:
+        plugin = self.tmp / 'p'
+        (plugin / '.claude-plugin').mkdir(parents=True)
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'name': 'ops', 'mcpServers': {'graf.ana': {}}})
+        )
+        (plugin / '.mcp.json').write_text(
+            json.dumps({'mcpServers': {'sentry': {}}})
+        )
+        self.assertEqual(
+            task._plugin_servers(plugin, 'fallback'),
+            ['mcp__plugin_ops_graf_ana', 'mcp__plugin_ops_sentry'],
+        )
+        # A manifest can name a JSON file of servers.
+        (plugin / '.mcp.json').unlink()
+        (plugin / 'servers.json').write_text(
+            json.dumps({'mcpServers': {'zoekt': {}}})
+        )
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'mcpServers': './servers.json'})
+        )
+        self.assertEqual(
+            task._plugin_servers(plugin, 'search'),
+            ['mcp__plugin_search_zoekt'],
+        )
+        self.assertEqual(task._plugin_servers(self.tmp / 'none', 'x'), [])
+
     def test_plugin_with_a_manifest_loads_in_place(self) -> None:
         clone = self.marketplace({'name': 'hello', 'source': './hello'})
         (clone / 'hello' / '.claude-plugin').mkdir(parents=True)

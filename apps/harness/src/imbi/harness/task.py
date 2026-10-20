@@ -385,6 +385,44 @@ def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
     return None
 
 
+def _json(path: pathlib.Path) -> Body:
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return typing.cast('Body', document) if isinstance(document, dict) else {}
+
+
+def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
+    """The permission rules for the MCP servers of a plugin directory.
+
+    Claude Code names a plugin server ``plugin:<plugin>:<server>`` and
+    its tools ``mcp__plugin_<plugin>_<server>__<tool>``, with each
+    character outside ``[A-Za-z0-9_-]`` as ``_``. A plugin declares
+    servers in ``plugin.json`` (an object, or the path of a JSON file)
+    and in ``.mcp.json``.
+    """
+    manifest = _json(path / PLUGIN_MANIFEST)
+    name = str(manifest.get('name') or name)
+    declared: typing.Any = manifest.get('mcpServers')
+    if isinstance(declared, str):
+        relative = _relative(declared)
+        declared = _json(path / relative).get(
+            'mcpServers', _json(path / relative)
+        )
+    servers: set[str] = set()
+    for source in (declared, _json(path / '.mcp.json').get('mcpServers')):
+        if isinstance(source, dict):
+            servers.update(str(key) for key in typing.cast('Body', source))
+    return [
+        _MCP_NAME.sub('_', f'mcp__plugin_{name}_{server}')
+        for server in sorted(servers)
+    ]
+
+
+_MCP_NAME = re.compile(r'[^A-Za-z0-9_-]')
+
+
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
     """A plugin path in a marketplace: relative, with no ``..``."""
     path = pathlib.PurePosixPath(str(value or '.'))
@@ -435,6 +473,9 @@ class TaskRun:
         self.home = layout.task(str(self.task['id']))
         self.cwd = layout.repos
         self.plugins: list[pathlib.Path] = []
+        #: ``mcp__plugin_<plugin>_<server>`` of each MCP server that a
+        #: pinned plugin brings. A plugin that is on allows its servers.
+        self.plugin_servers: list[str] = []
         self.session_id = ''
         self.control = 'run'
         self.closed = False
@@ -774,13 +815,16 @@ class TaskRun:
             if dest not in cloned:
                 await self._marketplace(plugin, dest, binding)
                 cloned.add(dest)
-            self.plugins.append(
-                self._manifest(
-                    str(plugin['plugin']),
-                    dest,
-                    dest / _relative(plugin.get('path')),
-                )
+            path = self._manifest(
+                str(plugin['plugin']),
+                dest,
+                dest / _relative(plugin.get('path')),
             )
+            self.plugins.append(path)
+            with privilege.effective(privilege.AGENT):
+                self.plugin_servers.extend(
+                    _plugin_servers(path, str(plugin['plugin']))
+                )
 
     def _manifest(
         self, name: str, clone: pathlib.Path, path: pathlib.Path
@@ -1093,7 +1137,7 @@ class TaskRun:
         relayed = [
             name for each in self.relays() for name in each.allowed_tools()
         ]
-        return [*allowed, *IMBI_TOOLS, *relayed], denied
+        return [*allowed, *IMBI_TOOLS, *relayed, *self.plugin_servers], denied
 
     def write_config(self) -> None:
         """Write ``settings.json`` and ``CLAUDE.md`` of the task's
@@ -1336,6 +1380,11 @@ class TaskRun:
             and self.plugins
         ):
             return
+        LOGGER.info(
+            'SDK init: plugins %s, MCP servers %s',
+            api.items(message.data, 'plugins'),
+            api.items(message.data, 'mcp_servers'),
+        )
         plugins = typing.cast('list[Body]', api.items(message.data, 'plugins'))
         loaded = {str(item.get('path')) for item in plugins}
         missing = [path for path in self.plugins if str(path) not in loaded]

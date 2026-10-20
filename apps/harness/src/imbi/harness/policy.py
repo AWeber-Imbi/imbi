@@ -29,6 +29,7 @@ HARNESS_TOOLS = frozenset(
 #: The model must always be able to report the outcome of its task: no
 #: deny rule, approval, or rate limit applies to it.
 REPORT_OUTCOME = 'mcp__imbi__report_outcome'
+PLUGIN_PREFIX = 'mcp__plugin_'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -57,6 +58,22 @@ def tool_key(name: str, servers: dict[str, str] | None = None) -> str | None:
     return f'{keys.get(server, server)}.{tool}'
 
 
+def _always_allowed(
+    name: str, allowed: list[str], approval_tools: list[str], automation: bool
+) -> Check | None:
+    """``report_outcome``, and the tools of a plugin's MCP servers: a
+    plugin that is on allows all of them (#445)."""
+    if name == REPORT_OUTCOME:
+        return Check()
+    for rule in allowed:
+        if rule.startswith(PLUGIN_PREFIX) and name.startswith(f'{rule}__'):
+            return Check(
+                approval=automation
+                and bool({name, rule} & set(approval_tools))
+            )
+    return None
+
+
 def check(  # noqa: PLR0913 - keyword-only inputs
     name: str,
     arguments: dict[str, typing.Any],
@@ -67,8 +84,9 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     automation: bool,
     servers: dict[str, str] | None = None,
 ) -> Check:
-    if name == REPORT_OUTCOME:
-        return Check()
+    early = _always_allowed(name, allowed, approval_tools, automation)
+    if early is not None:
+        return early
     key = tool_key(name, servers)
     config: dict[str, typing.Any] = {}
     if name.removeprefix('mcp__imbi_api__') in HARNESS_TOOLS:
