@@ -74,13 +74,21 @@ class Settings:
             instance=os.environ.get('HOSTNAME', 'runner'),
             model=os.environ.get('IMBI_HARNESS_MODEL') or None,
             mcp_url=os.environ.get('IMBI_HARNESS_MCP_URL') or None,
-            end_of_chain=(
-                'exit'
-                if os.environ.get('IMBI_HARNESS_END_OF_CHAIN') == 'exit'
-                else 'delete_pod'
-            ),
+            end_of_chain=_end_of_chain(),
             idle_exit_seconds=_seconds('IMBI_HARNESS_IDLE_EXIT_SECONDS'),
         )
+
+
+def _end_of_chain() -> typing.Literal['delete_pod', 'exit']:
+    """``IMBI_HARNESS_END_OF_CHAIN``; unset is ``delete_pod``."""
+    value = os.environ.get('IMBI_HARNESS_END_OF_CHAIN', '').strip()
+    if value in ('', 'delete_pod'):
+        return 'delete_pod'
+    if value == 'exit':
+        return 'exit'
+    raise SystemExit(
+        f'IMBI_HARNESS_END_OF_CHAIN must be delete_pod or exit: {value!r}'
+    )
 
 
 def _seconds(name: str) -> int | None:

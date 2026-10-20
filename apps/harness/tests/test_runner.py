@@ -424,6 +424,15 @@ class EndOfPodTestCase(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 runner.Settings.from_environment()
+        env |= {
+            'IMBI_HARNESS_END_OF_CHAIN': 'Exit',
+            'IMBI_HARNESS_IDLE_EXIT_SECONDS': '',
+        }
+        with (
+            mock.patch.dict(runner.os.environ, env, clear=True),
+            self.assertRaisesRegex(SystemExit, 'IMBI_HARNESS_END_OF_CHAIN'),
+        ):
+            runner.Settings.from_environment()
 
     async def test_shutdown_steps(self) -> None:
         subject = make_runner()
