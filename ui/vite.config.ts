@@ -29,7 +29,13 @@ function hmrKeepalive(): Plugin {
   return {
     configureServer(server: ViteDevServer) {
       const timer = setInterval(() => server.ws.send({ type: 'ping' }), 30_000)
-      server.httpServer?.on('close', () => clearInterval(timer))
+      // A config change restarts the server through close(); stop the
+      // timer of the old server there.
+      const close = server.close.bind(server)
+      server.close = () => {
+        clearInterval(timer)
+        return close()
+      }
     },
     name: 'hmr-keepalive',
   }
