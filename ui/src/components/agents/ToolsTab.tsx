@@ -121,10 +121,15 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-secondary text-sm">
-        Imbi does not run agents yet. These settings are stored for when it
-        does.
-      </p>
+      <div>
+        <div className="text-overline text-tertiary uppercase">Tools</div>
+        <p className="text-tertiary mt-1 text-xs">
+          Switch on each tool the agent may call. Imbi tools come from the Imbi
+          API. The other groups are the MCP servers in Admin › Assistant › MCP
+          servers, which the assistant and the Slack bot also use. Plugin MCP
+          servers are not listed here: they come with their plugin.
+        </p>
+      </div>
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <Input

@@ -17,9 +17,11 @@ vi.mock('@/api/endpoints', () => ({
   createTag: vi.fn(),
   deleteAgent: vi.fn(),
   deleteUpload: vi.fn(),
+  getAgentPlatformConfig: vi.fn(),
   getAgentToolCatalog: vi.fn(),
   getAgentUsage: vi.fn(),
   getUploadThumbnailUrl: vi.fn(),
+  listAgentMarketplaces: vi.fn(),
   listAgents: vi.fn(),
   listAgentVersions: vi.fn(),
   listAIModels: vi.fn(),
@@ -444,19 +446,24 @@ describe('AgentsArea', () => {
     expect(screen.getByRole('button', { name: 'Delete agent' })).toBeEnabled()
   })
 
-  it('saves a tool change from the Tools and MCPs tab', async () => {
+  it('saves a tool change from the Tools and plugins tab', async () => {
     vi.mocked(endpoints.updateAgent).mockResolvedValue(agent())
+    vi.mocked(endpoints.getAgentPlatformConfig).mockResolvedValue({
+      config: { allowed_marketplaces: [], default_plugins: [] },
+      version: 1,
+    } as never)
+    vi.mocked(endpoints.listAgentMarketplaces).mockResolvedValue([])
     renderAt('/agents/manage/mender/edit')
     await screen.findByText('Edit Mender')
-    const tab = screen.getByRole('tab', { name: /Tools and MCPs/ })
-    expect(tab).toHaveTextContent('Tools and MCPs0')
+    const tab = screen.getByRole('tab', { name: /Tools and plugins/ })
+    expect(tab).toHaveTextContent('Tools and plugins0')
     fireEvent.click(tab)
     await screen.findByText('0 of 4 enabled')
     fireEvent.click(screen.getByRole('button', { name: /GitHub/ }))
     fireEvent.click(
       screen.getByRole('switch', { name: 'Enable github.read_file' }),
     )
-    expect(tab).toHaveTextContent('Tools and MCPs1')
+    expect(tab).toHaveTextContent('Tools and plugins1')
     fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }))
     await waitFor(() => expect(endpoints.updateAgent).toHaveBeenCalled())
     expect(vi.mocked(endpoints.updateAgent).mock.calls[0][2]).toEqual(

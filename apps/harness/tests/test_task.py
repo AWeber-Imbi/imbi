@@ -681,6 +681,108 @@ class WorkspaceTestCase(TaskTestCase):
             subject.plugins, [dest / 'plugins' / 'hello', dest / 'bye']
         )
 
+    def marketplace(self, *entries: dict[str, typing.Any]) -> pathlib.Path:
+        clone = self.tmp / 'chain' / 'plugins' / 'tools-abc'
+        (clone / '.claude-plugin').mkdir(parents=True)
+        (clone / '.claude-plugin' / 'marketplace.json').write_text(
+            json.dumps({'name': 'tools', 'plugins': list(entries)})
+        )
+        (clone / '.git').mkdir()
+        return clone
+
+    def marketplace_entry_named(self, clone: pathlib.Path, name: str) -> None:
+        path = clone / '.claude-plugin' / 'marketplace.json'
+        document = json.loads(path.read_text())
+        document['plugins'].append({'name': name, 'source': './'})
+        path.write_text(json.dumps(document))
+
+    def test_inline_plugin_gets_a_manifest(self) -> None:
+        # An entry with no plugin.json is its own manifest (#445).
+        entry = {
+            'name': 'grafana-mcp',
+            'source': './',
+            'category': 'ops',
+            'mcpServers': {'grafana': {'type': 'sse', 'url': 'https://g'}},
+        }
+        clone = self.marketplace(entry, {'name': 'zoekt-mcp', 'source': './'})
+        path = self.run_task._manifest('grafana-mcp', clone, clone)
+        self.assertEqual(path, clone.with_name('tools-abc-grafana-mcp'))
+        # Names follow models.PluginName, upper case included.
+        self.marketplace_entry_named(clone, 'Grafana')
+        self.assertEqual(
+            self.run_task._manifest('Grafana', clone, clone),
+            clone.with_name('tools-abc-Grafana'),
+        )
+        self.assertEqual(
+            json.loads((path / '.claude-plugin' / 'plugin.json').read_text()),
+            {
+                'name': 'grafana-mcp',
+                'mcpServers': {'grafana': {'type': 'sse', 'url': 'https://g'}},
+            },
+        )
+        self.assertFalse((path / '.git').exists())
+        # The clone itself is left as it was.
+        self.assertFalse((clone / '.claude-plugin' / 'plugin.json').exists())
+
+    def test_plugin_servers(self) -> None:
+        plugin = self.tmp / 'p'
+        (plugin / '.claude-plugin').mkdir(parents=True)
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'name': 'ops', 'mcpServers': {'graf.ana': {}}})
+        )
+        (plugin / '.mcp.json').write_text(
+            json.dumps({'mcpServers': {'sentry': {}}})
+        )
+        self.assertEqual(
+            task._plugin_servers(plugin, 'fallback'),
+            ['mcp__plugin_ops_graf_ana', 'mcp__plugin_ops_sentry'],
+        )
+        # A manifest can name a JSON file of servers.
+        (plugin / '.mcp.json').unlink()
+        (plugin / 'servers.json').write_text(
+            json.dumps({'mcpServers': {'zoekt': {}}})
+        )
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'mcpServers': './servers.json'})
+        )
+        self.assertEqual(
+            task._plugin_servers(plugin, 'search'),
+            ['mcp__plugin_search_zoekt'],
+        )
+        # Or a list of objects and files.
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'mcpServers': ['./servers.json', {'grafana': {}}]})
+        )
+        self.assertEqual(
+            task._plugin_servers(plugin, 'ops'),
+            ['mcp__plugin_ops_grafana', 'mcp__plugin_ops_zoekt'],
+        )
+        self.assertEqual(task._plugin_servers(self.tmp / 'none', 'x'), [])
+
+    def test_plugin_with_a_manifest_loads_in_place(self) -> None:
+        clone = self.marketplace({'name': 'hello', 'source': './hello'})
+        (clone / 'hello' / '.claude-plugin').mkdir(parents=True)
+        (clone / 'hello' / '.claude-plugin' / 'plugin.json').write_text('{}')
+        self.assertEqual(
+            self.run_task._manifest('hello', clone, clone / 'hello'),
+            clone / 'hello',
+        )
+
+    def test_inline_plugin_skips_an_entry_without_a_source(self) -> None:
+        clone = self.marketplace(
+            {'name': 'ops', 'mcpServers': {'broken': {}}},
+            {'name': 'ops', 'source': './', 'mcpServers': {'good': {}}},
+        )
+        path = self.run_task._manifest('ops', clone, clone)
+        manifest = json.loads(
+            (path / '.claude-plugin' / 'plugin.json').read_text()
+        )
+        self.assertEqual(manifest['mcpServers'], {'good': {}})
+
+    def test_plugin_missing_from_the_marketplace_loads_in_place(self) -> None:
+        clone = self.marketplace({'name': 'other', 'source': './'})
+        self.assertEqual(self.run_task._manifest('hello', clone, clone), clone)
+
     async def test_one_clone_per_repository(self) -> None:
         # An external plugin with the same commit as the marketplace
         # still gets its own clone.

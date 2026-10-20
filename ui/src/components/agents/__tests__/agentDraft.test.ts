@@ -91,12 +91,11 @@ describe('agentDraft', () => {
     expect(settings.github_app_binding).toBe('secret://gh/mender')
   })
 
-  it('checks the secret references', () => {
+  it('checks the GitHub App binding reference', () => {
     const draft = draftFromAgent(agent(), null)
-    draft.settings.secrets = 'secret://ci/token#value\n\nsecret://ci/x'
-    expect(draftErrors(draft).secrets).toBeUndefined()
+    // The stored secrets list is no longer edited, so not checked.
     draft.settings.secrets = 'ci/token'
-    expect(draftErrors(draft).secrets).toBeTruthy()
+    expect(draftErrors(draft).secrets).toBeUndefined()
     draft.settings.githubAppBinding = 'secret://gh/bot#field'
     expect(draftErrors(draft).githubAppBinding).toBeTruthy()
   })

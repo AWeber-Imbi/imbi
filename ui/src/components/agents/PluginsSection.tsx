@@ -1,19 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { getAgentPlatformConfig, listAgentMarketplaces } from '@/api/endpoints'
-import { GitHubAppBindingSelect } from '@/components/admin/secrets/GitHubAppBindingSelect'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { Textarea } from '@/components/ui/textarea'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentMarketplace, AgentPlugin } from '@/types'
 
 import type { SettingsDraft } from './agentDraft'
-import { Field } from './OverviewTab'
 
-interface PlatformTabProps {
-  errors: Record<string, string>
+interface PluginsSectionProps {
   onChange: (settings: SettingsDraft) => void
   orgSlug: string
   value: SettingsDraft
@@ -22,17 +18,17 @@ interface PlatformTabProps {
 const short = (sha?: null | string) => (sha ? sha.slice(0, 7) : '')
 
 /**
- * What the runner gives the agent (ADR 0022): plugins from the
- * marketplaces that the organization allows, the secrets that it may
- * request, and its GitHub App. The organization configuration is the
- * upper limit; the API pins each plugin to a marketplace commit.
+ * The plugins that the runner loads for the agent (ADR 0022), from the
+ * marketplaces that the organization allows. The organization
+ * configuration is the upper limit; the API pins each plugin to a
+ * marketplace commit. A plugin's MCP servers come with it: while the
+ * plugin is on, the agent can use all of their tools.
  */
-export function PlatformTab({
-  errors,
+export function PluginsSection({
   onChange,
   orgSlug,
   value,
-}: PlatformTabProps) {
+}: PluginsSectionProps) {
   const set = (patch: Partial<SettingsDraft>) =>
     onChange({ ...value, ...patch })
   const config = useQuery({
@@ -82,9 +78,10 @@ export function PlatformTab({
         <div>
           <div className="text-overline text-tertiary uppercase">Plugins</div>
           <p className="text-tertiary mt-1 text-xs">
-            From the marketplaces that the organization allows. A save pins each
-            new plugin to the commit that Imbi synced last: the marketplace
-            commit, or the plugin repository commit for an external plugin.
+            Skills, commands, subagents, and MCP servers from the marketplaces
+            that the organization allows (Agents › Platform). While a plugin is
+            on, the agent can use every tool of its MCP servers. A save pins
+            each new plugin to the commit that Imbi synced last.
           </p>
         </div>
         {shown.length === 0 && !config.isLoading && (
@@ -122,36 +119,6 @@ export function PlatformTab({
           </div>
         )}
       </section>
-      <div className="grid grid-cols-2 gap-4">
-        <Field
-          error={errors.secrets}
-          help="The secret:// references that the agent may request, one on each line. A grant is still necessary."
-          htmlFor="agent-secrets"
-          label="Secrets"
-        >
-          <Textarea
-            className="font-mono text-xs"
-            id="agent-secrets"
-            onChange={(e) => set({ secrets: e.target.value })}
-            placeholder="secret://ci/npm_token"
-            rows={4}
-            value={value.secrets}
-          />
-        </Field>
-        <Field
-          error={errors.githubAppBinding}
-          help="An enabled github_app binding: the agent's own GitHub App."
-          htmlFor="agent-github-app"
-          label="GitHub App binding"
-        >
-          <GitHubAppBindingSelect
-            id="agent-github-app"
-            onChange={(reference) => set({ githubAppBinding: reference ?? '' })}
-            orgSlug={orgSlug}
-            value={value.githubAppBinding || null}
-          />
-        </Field>
-      </div>
     </div>
   )
 }
@@ -245,6 +212,14 @@ function MarketplacePlugins({
                 {plugin.description && (
                   <p className="text-secondary mt-0.5 text-xs">
                     {plugin.description}
+                  </p>
+                )}
+                {plugin.mcp_servers.length > 0 && (
+                  <p className="text-tertiary mt-0.5 text-xs">
+                    MCP {plugin.mcp_servers.length > 1 ? 'servers' : 'server'}:{' '}
+                    <span className="font-mono">
+                      {plugin.mcp_servers.join(', ')}
+                    </span>
                   </p>
                 )}
               </div>

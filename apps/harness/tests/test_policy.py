@@ -46,6 +46,33 @@ class PolicyTestCase(unittest.TestCase):
             'imbi.run_with_secret',
         )
 
+    def test_plugin_tools_follow_their_plugin(self) -> None:
+        # A plugin that is on allows its MCP servers' tools (#445).
+        grafana = 'mcp__plugin_grafana-mcp_grafana'
+        on = {'plugin_servers': [grafana]}
+        self.assertEqual(check(f'{grafana}__search', **on), policy.Check())
+        self.assertEqual(
+            check(f'{grafana}__search').deny, 'tool_not_configured'
+        )
+        # Only the runner's plugin list counts, not allowed_tools.
+        self.assertEqual(
+            check(f'{grafana}__search', allowed=[grafana]).deny,
+            'tool_not_configured',
+        )
+        # A prefix of the rule is not the rule.
+        self.assertEqual(
+            check('mcp__plugin_grafana-mcp_graf__x', **on).deny,
+            'tool_not_configured',
+        )
+        self.assertTrue(
+            check(
+                f'{grafana}__search',
+                approval_tools=[grafana],
+                automation=True,
+                **on,
+            ).approval
+        )
+
     def test_environment_limit(self) -> None:
         self.assertEqual(
             check('mcp__deploy__run', {'environment': 'production'}).deny,

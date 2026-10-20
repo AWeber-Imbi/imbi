@@ -1224,6 +1224,65 @@ class McpServerBundleTests(RunnerTestCase):
                     (uuid.uuid4(), self.org, [self.agent_id], [binding]),
                 )
 
+    async def test_secrets_come_from_the_agents_grants(self) -> None:
+        # The bundle lists the references that the agent's grants allow
+        # for a command, not a list stored in the agent (#445).
+        refs = [f'secret://ci/{uuid.uuid4().hex}' for _ in range(6)]
+        provider = uuid.uuid4()
+        bindings = [uuid.uuid4() for _ in refs]
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO secrets.providers (id, organization_id, name,'
+                " type, created_by) VALUES (%s, %s, 'ci', 'fake', 'test')",
+                (provider, self.org),
+            )
+            both = ['environment', 'file_descriptor']
+            for ref, binding, enabled, modes in zip(
+                refs,
+                bindings,
+                [True, True, True, False, True, True],
+                [both, both, both, both, ['file_descriptor'], both],
+                strict=True,
+            ):
+                await conn.execute(
+                    'INSERT INTO secrets.bindings (id, organization_id,'
+                    ' reference, provider_id, credential_class,'
+                    ' allowed_delivery_modes, max_ttl_seconds, enabled,'
+                    " created_by) VALUES (%s, %s, %s, %s, 'static',"
+                    " %s, 900, %s, 'test')",
+                    (binding, self.org, ref, provider, modes, enabled),
+                )
+            for binding, mode, agents, projects in [
+                (bindings[0], 'environment', [self.agent_id], []),
+                (bindings[1], 'file_descriptor', [self.agent_id], []),
+                (bindings[2], 'environment', ['someone-else'], []),
+                # A disabled binding, a binding that refuses environment
+                # delivery, and a grant for another project.
+                (bindings[3], 'environment', [self.agent_id], []),
+                (bindings[4], 'environment', [self.agent_id], []),
+                (bindings[5], 'environment', [self.agent_id], ['other']),
+            ]:
+                await conn.execute(
+                    'INSERT INTO secrets.grants (id, organization_id,'
+                    ' agent_ids, binding_ids, project_ids, purposes,'
+                    ' delivery_modes, max_ttl_seconds, created_by) VALUES'
+                    " (%s, %s, %s, %s, %s, '{npm}', %s, 900, 'test')",
+                    (
+                        uuid.uuid4(),
+                        self.org,
+                        agents,
+                        [binding],
+                        projects,
+                        [mode],
+                    ),
+                )
+        await self.make_version(
+            {'settings': {'secrets': ['secret://ci/stale']}}
+        )
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(claim['bundle']['config']['secrets'], [refs[0]])
+
     async def test_only_usable_servers_of_the_tool_map(self) -> None:
         ref = f'secret://mcp/{uuid.uuid4().hex}'
         bound = await self.server(

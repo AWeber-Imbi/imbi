@@ -21,6 +21,7 @@ import hashlib
 import http
 import json
 import logging
+import os
 import pathlib
 import re
 import shutil
@@ -357,6 +358,99 @@ def _repository(url: str) -> str | None:
     return f'{owner}/{name}'
 
 
+PLUGIN_MANIFEST = pathlib.PurePosixPath('.claude-plugin/plugin.json')
+MARKETPLACE_FILE = pathlib.PurePosixPath('.claude-plugin/marketplace.json')
+
+#: models.PluginName, which the API checks on save.
+_PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
+
+#: Fields of a marketplace entry that are not plugin manifest fields.
+_MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
+
+
+def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
+    """The entry for ``name`` in the marketplace file of a clone."""
+    try:
+        document = json.loads(
+            (clone / MARKETPLACE_FILE).read_text(encoding='utf-8')
+        )
+    except (OSError, ValueError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    entries = typing.cast('Body', document).get('plugins')
+    if not isinstance(entries, list):
+        return None
+    for entry in typing.cast('list[object]', entries):
+        if isinstance(entry, dict):
+            found = typing.cast('Body', entry)
+            # Like the catalog: an entry needs a source, and the first
+            # valid entry of a name wins.
+            if found.get('name') == name and isinstance(
+                found.get('source'), (str, dict)
+            ):
+                return found
+    return None
+
+
+def _extra_ca() -> dict[str, str]:
+    """Trust the chart's ``extraCaCerts`` in the CLI, for MCP servers
+    behind a private CA."""
+    path = os.environ.get('IMBI_HARNESS_EXTRA_CA')
+    return {'NODE_EXTRA_CA_CERTS': path} if path else {}
+
+
+def _json(path: pathlib.Path) -> Body:
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return typing.cast('Body', document) if isinstance(document, dict) else {}
+
+
+def _servers(path: pathlib.Path, source: typing.Any) -> list[str]:
+    """The server names of one ``mcpServers`` source: an object, or a
+    JSON file (relative to the plugin) of one."""
+    if isinstance(source, str):
+        source = path / _relative(source)
+    if isinstance(source, pathlib.Path):
+        document = _json(source)
+        source = document.get('mcpServers', document)
+    if not isinstance(source, dict):
+        return []
+    return [str(key) for key in typing.cast('Body', source)]
+
+
+def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
+    """The permission rules for the MCP servers of a plugin directory.
+
+    Claude Code names a plugin server ``plugin:<plugin>:<server>`` and
+    its tools ``mcp__plugin_<plugin>_<server>__<tool>``, with each
+    character outside ``[A-Za-z0-9_-]`` as ``_``. A plugin declares
+    servers in ``plugin.json`` ``mcpServers`` (an object, the path of a
+    JSON file, or a list of both) and in ``.mcp.json``.
+    """
+    manifest = _json(path / PLUGIN_MANIFEST)
+    name = str(manifest.get('name') or name)
+    declared: typing.Any = manifest.get('mcpServers')
+    sources: list[typing.Any] = (
+        list(typing.cast('abc.Iterable[typing.Any]', declared))
+        if isinstance(declared, list)
+        else [declared]
+    )
+    sources.append(path / '.mcp.json')
+    servers = {
+        server for source in sources for server in _servers(path, source)
+    }
+    return [
+        _MCP_NAME.sub('_', f'mcp__plugin_{name}_{server}')
+        for server in sorted(servers)
+    ]
+
+
+_MCP_NAME = re.compile(r'[^A-Za-z0-9_-]')
+
+
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
     """A plugin path in a marketplace: relative, with no ``..``."""
     path = pathlib.PurePosixPath(str(value or '.'))
@@ -407,6 +501,9 @@ class TaskRun:
         self.home = layout.task(str(self.task['id']))
         self.cwd = layout.repos
         self.plugins: list[pathlib.Path] = []
+        #: ``mcp__plugin_<plugin>_<server>`` of each MCP server that a
+        #: pinned plugin brings. A plugin that is on allows its servers.
+        self.plugin_servers: list[str] = []
         self.session_id = ''
         self.control = 'run'
         self.closed = False
@@ -746,7 +843,58 @@ class TaskRun:
             if dest not in cloned:
                 await self._marketplace(plugin, dest, binding)
                 cloned.add(dest)
-            self.plugins.append(dest / _relative(plugin.get('path')))
+            path = self._manifest(
+                str(plugin['plugin']),
+                dest,
+                dest / _relative(plugin.get('path')),
+            )
+            self.plugins.append(path)
+            with privilege.effective(privilege.AGENT):
+                self.plugin_servers.extend(
+                    _plugin_servers(path, str(plugin['plugin']))
+                )
+
+    def _manifest(
+        self, name: str, clone: pathlib.Path, path: pathlib.Path
+    ) -> pathlib.Path:
+        """Return the directory to load for one plugin (#445).
+
+        A marketplace entry can define its plugin inline: the plugin
+        directory has no ``.claude-plugin/plugin.json`` and the entry is
+        the manifest. Copy the directory, write the entry there as
+        ``plugin.json``, and load the copy. The entry comes from the
+        marketplace file of the pinned commit, so the pin covers it.
+        Several inline plugins can share one directory, so each one
+        gets its own copy.
+        """
+        with privilege.effective(privilege.AGENT):
+            if (path / PLUGIN_MANIFEST).is_file():
+                return path
+            entry = _marketplace_entry(clone, name)
+            if entry is None or not _PLUGIN_NAME.fullmatch(name):
+                return path
+            copy = clone.with_name(f'{clone.name}-{name}')
+            shutil.rmtree(copy, ignore_errors=True)
+            shutil.copytree(
+                path,
+                copy,
+                symlinks=True,
+                ignore=shutil.ignore_patterns('.git'),
+            )
+            manifest = copy / PLUGIN_MANIFEST
+            manifest.parent.mkdir(exist_ok=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        key: value
+                        for key, value in entry.items()
+                        if key not in _MARKETPLACE_ONLY
+                    }
+                ),
+                encoding='utf-8',
+            )
+        LOGGER.info('Plugin %s: manifest from the marketplace entry', name)
+        return copy
 
     async def _marketplace(
         self, plugin: Body, dest: pathlib.Path, binding: typing.Any
@@ -1018,7 +1166,7 @@ class TaskRun:
         relayed = [
             name for each in self.relays() for name in each.allowed_tools()
         ]
-        return [*allowed, *IMBI_TOOLS, *relayed], denied
+        return [*allowed, *IMBI_TOOLS, *relayed, *self.plugin_servers], denied
 
     def write_config(self) -> None:
         """Write ``settings.json`` and ``CLAUDE.md`` of the task's
@@ -1171,6 +1319,7 @@ class TaskRun:
                 # agent-cli sets TMPDIR from this: glibc secure mode
                 # removes TMPDIR.
                 'HARNESS_TMPDIR': str(self.home / 'tmp'),
+                **_extra_ca(),
             },
             system_prompt={
                 'type': 'preset',
@@ -1261,6 +1410,11 @@ class TaskRun:
             and self.plugins
         ):
             return
+        LOGGER.info(
+            'SDK init: plugins %s, MCP servers %s',
+            api.items(message.data, 'plugins'),
+            api.items(message.data, 'mcp_servers'),
+        )
         plugins = typing.cast('list[Body]', api.items(message.data, 'plugins'))
         loaded = {str(item.get('path')) for item in plugins}
         missing = [path for path in self.plugins if str(path) not in loaded]
@@ -1329,6 +1483,7 @@ class TaskRun:
             approval_tools=list(api.items(self.config, 'approval_tools')),
             automation=origin.get('kind') != 'human',
             servers={name: each.key for name, each in self.external.items()},
+            plugin_servers=self.plugin_servers,
         )
         reason = checked.deny
         decision: Body = {'approval': checked.approval}

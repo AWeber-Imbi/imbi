@@ -264,6 +264,31 @@ class SecretStore:
             await _audit(conn, event, row)
             return row is not None
 
+    async def agent_references(
+        self,
+        organization_id: str,
+        agent_id: str,
+        project_id: str | None = None,
+    ) -> list[str]:
+        """The references that an agent can request for a command in a
+        task of ``project_id``: an enabled grant for the agent and the
+        project, with ``environment`` delivery, on an enabled binding
+        that allows it. The same rules as :func:`broker.evaluate`."""
+        found = await self._all(
+            'SELECT DISTINCT b.reference FROM secrets.grants g'
+            ' JOIN secrets.bindings b ON b.id = ANY(g.binding_ids)'
+            ' WHERE g.organization_id = %s AND g.enabled AND b.enabled'
+            ' AND b.organization_id = g.organization_id'
+            ' AND %s = ANY(g.agent_ids)'
+            " AND 'environment' = ANY(g.delivery_modes)"
+            " AND 'environment' = ANY(b.allowed_delivery_modes)"
+            ' AND (cardinality(g.project_ids) = 0'
+            '      OR %s::TEXT = ANY(g.project_ids))'
+            ' ORDER BY b.reference',
+            (organization_id, agent_id, project_id),
+        )
+        return [str(row['reference']) for row in found]
+
     async def evaluate(
         self,
         organization_id: str,

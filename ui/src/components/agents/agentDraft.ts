@@ -144,8 +144,6 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
   if (parseLabels(s.requiredLabels).some((l) => !RUNNER_LABEL.test(l)))
     errors.requiredLabels =
       'Use lower-case letters, digits, ".", "_", and "-", for example gpu'
-  if (parseLines(s.secrets).some((r) => !SECRET_REF.test(r)))
-    errors.secrets = 'Use secret://<scope>/<path>, with an optional #field'
   if (s.githubAppBinding.trim() && !BINDING_REF.test(s.githubAppBinding.trim()))
     errors.githubAppBinding = 'Use secret://<scope>/<path>'
   for (const key of Object.keys(PARAM_FIELDS) as ParamKey[]) {
@@ -407,7 +405,9 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
     plugins: draft.plugins,
     required_labels: parseLabels(draft.requiredLabels),
     response_sla: draft.responseSla || null,
-    secrets: parseLines(draft.secrets),
+    // The grants decide what the agent may request; the stored list
+    // is no longer edited, so a save clears it.
+    secrets: [],
     task_budget: draft.taskBudget.trim() ? parseMoney(draft.taskBudget) : null,
     task_timeout_seconds: draft.taskTimeout.trim()
       ? parseDuration(draft.taskTimeout)
@@ -420,9 +420,6 @@ const RUNNER_LABEL = /^[a-z0-9][a-z0-9_.-]*$/
 
 /** A `secret://` reference, as the secrets broker accepts it. */
 const BINDING_REF = /^secret:\/\/[a-z0-9_]+\/[a-z0-9_]+(?:\/[a-z0-9_]+)*$/
-const SECRET_REF = new RegExp(
-  `${BINDING_REF.source.slice(0, -1)}(?:#[A-Za-z0-9_-]+)?$`,
-)
 
 /** The sorted, distinct labels in a comma-separated list. */
 export function parseLabels(value: string): string[] {
@@ -431,15 +428,6 @@ export function parseLabels(value: string): string[] {
     .map((l) => l.trim())
     .filter(Boolean)
   return [...new Set(labels)].sort()
-}
-
-/** The sorted, distinct lines of a text, without blank lines. */
-export function parseLines(value: string): string[] {
-  const lines = value
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-  return [...new Set(lines)].sort()
 }
 
 export function slaLabel(value: null | string | undefined): null | string {

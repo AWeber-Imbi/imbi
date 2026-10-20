@@ -67,7 +67,9 @@ describe('ToolsTab', () => {
   it('shows the groups, the counts, and a server error', async () => {
     render(<Harness initial={{ 'github.read_file': {} as never }} />)
     expect(await screen.findByText('1 of 4 enabled')).toBeInTheDocument()
-    expect(screen.getByText(/Imbi does not run agents yet/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Admin › Assistant › MCP servers/),
+    ).toBeInTheDocument()
     expect(
       within(group('GitHub')).getByText('1 of 2 enabled'),
     ).toBeInTheDocument()

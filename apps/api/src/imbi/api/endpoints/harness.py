@@ -769,7 +769,17 @@ async def _identity(
             'prompt': prompt,
             'prompt_error': prompt_error,
             'platform_config_version': version,
-            'config': platform.merge(config, settings),
+            'config': platform.merge(config, settings).model_copy(
+                update={
+                    # What the agent may request comes from its grants,
+                    # not from a list in the agent (#445).
+                    'secrets': await secrets.agent_references(
+                        task['organization_id'],
+                        task['agent_id'],
+                        task.get('project_id'),
+                    )
+                }
+            ),
             'repositories': await _repositories(db, store, task, settings),
             'subagents': await _subagents(db, bundle.snapshot),
             'mcp_servers': mcp_servers,
