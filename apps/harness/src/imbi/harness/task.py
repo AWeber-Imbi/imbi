@@ -370,7 +370,9 @@ _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
     """The entry for ``name`` in the marketplace file of a clone."""
     try:
-        document = json.loads((clone / MARKETPLACE_FILE).read_text())
+        document = json.loads(
+            (clone / MARKETPLACE_FILE).read_text(encoding='utf-8')
+        )
     except (OSError, ValueError):
         return None
     if not isinstance(document, dict):
@@ -395,7 +397,7 @@ def _extra_ca() -> dict[str, str]:
 
 def _json(path: pathlib.Path) -> Body:
     try:
-        document = json.loads(path.read_text())
+        document = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return {}
     return typing.cast('Body', document) if isinstance(document, dict) else {}
@@ -870,7 +872,8 @@ class TaskRun:
                         for key, value in entry.items()
                         if key not in _MARKETPLACE_ONLY
                     }
-                )
+                ),
+                encoding='utf-8',
             )
         LOGGER.info('Plugin %s: manifest from the marketplace entry', name)
         return copy

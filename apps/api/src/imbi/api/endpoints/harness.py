@@ -774,7 +774,9 @@ async def _identity(
                     # What the agent may request comes from its grants,
                     # not from a list in the agent (#445).
                     'secrets': await secrets.agent_references(
-                        task['organization_id'], task['agent_id']
+                        task['organization_id'],
+                        task['agent_id'],
+                        task.get('project_id'),
                     )
                 }
             ),

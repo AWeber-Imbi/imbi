@@ -55,7 +55,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'versions', label: 'Version history' },
 ]
 
-const ACCESS_FIELDS = new Set(['githubAppBinding', 'secrets'])
+const ACCESS_FIELDS = new Set(['githubAppBinding'])
 
 const SETTINGS_FIELDS = new Set([
   'maxConcurrentTasks',
