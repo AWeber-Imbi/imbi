@@ -2786,6 +2786,26 @@ class ReconcileBreakingChangesTestCase(unittest.TestCase):
             ],
         )
 
+    def test_a_missed_footer_break_is_described_by_its_subject(
+        self,
+    ) -> None:
+        commits = [
+            Commit(
+                sha='d1e2c3a4b5',
+                short_sha='d1e2c3a',
+                message=(
+                    'Rename the config key\n\n'
+                    'Longer body.\n\n'
+                    'BREAKING CHANGE: the old key is gone'
+                ),
+            ),
+        ]
+        result = self._reconcile(self._notes('patch'), commits)
+        self.assertEqual(
+            ['Rename the config key'],
+            [b.description for b in result.breaking_changes],
+        )
+
     def test_collapses_duplicate_entries(self) -> None:
         result = self._reconcile(
             self._notes(

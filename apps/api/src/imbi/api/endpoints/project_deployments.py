@@ -5885,9 +5885,11 @@ def _reconcile_breaking_changes(
         )
     for commit in commits:
         if commit.sha not in entries and _declares_breaking(commit):
+            # Subject only: a first-release draft's commits carry the
+            # whole message, and the field is a one-line description.
             entries[commit.sha] = BreakingChange(
                 commit=commit.short_sha,
-                description=commit.message,
+                description=commit.message.partition('\n')[0].strip(),
                 declared=True,
                 url=commit.url,
             )
