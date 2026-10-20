@@ -11567,6 +11567,11 @@ export interface components {
             repository_url?: string | null;
             /** Repository Sha */
             repository_sha?: string | null;
+            /**
+             * Mcp Servers
+             * @default []
+             */
+            mcp_servers: string[];
         };
         /** ChildTaskCreate */
         ChildTaskCreate: {

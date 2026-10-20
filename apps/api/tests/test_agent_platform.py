@@ -58,7 +58,11 @@ class ParseTests(unittest.TestCase):
                     },
                     'plugins': [
                         {'name': 'bare', 'source': 'bare'},
-                        {'name': 'root', 'source': '.'},
+                        {
+                            'name': 'root',
+                            'source': '.',
+                            'mcpServers': {'grafana': {}, 'alerts': {}},
+                        },
                         {'name': 'escape', 'source': './../x'},
                         {'name': 'nested', 'source': 'a/b'},
                         {
@@ -113,6 +117,10 @@ class ParseTests(unittest.TestCase):
                 'remote': 'https://github.com/a/b.git',
                 'url': 'https://ghe.example.com/a/c.git',
             },
+        )
+        self.assertEqual(
+            {p.name: p.mcp_servers for p in catalog.plugins if p.mcp_servers},
+            {'root': ['alerts', 'grafana']},
         )
 
     def test_invalid_documents(self) -> None:

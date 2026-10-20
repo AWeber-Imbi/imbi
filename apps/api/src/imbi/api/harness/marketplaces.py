@@ -60,6 +60,9 @@ class CatalogPlugin(pydantic.BaseModel):
     #: The commit of ``repository_url`` that the last sync resolved.
     #: ``None`` when the sync could not resolve it.
     repository_sha: str | None = None
+    #: The names of the MCP servers that the entry declares inline. A
+    #: plugin that declares its servers in its own files lists none.
+    mcp_servers: list[str] = []
 
 
 class Catalog(pydantic.BaseModel):
@@ -100,6 +103,12 @@ def _repository_url(source: dict[str, typing.Any]) -> str | None:
         if _GITHUB_REPO.fullmatch(repo):
             return f'https://github.com/{repo}.git'
     return None
+
+
+def _mcp_servers(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    return sorted(str(key) for key in typing.cast('dict[str, object]', value))
 
 
 def _host(url: str) -> str | None:
@@ -164,6 +173,7 @@ def parse(text: str) -> Catalog:
                 description=_text(entry.get('description')),
                 version=_text(entry.get('version')),
                 category=_text(entry.get('category')),
+                mcp_servers=_mcp_servers(entry.get('mcpServers')),
                 source=typing.cast('str | dict[str, typing.Any]', source),
                 path=(
                     _relative_path(source, plugin_root)
