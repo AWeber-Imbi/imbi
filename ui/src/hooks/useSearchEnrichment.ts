@@ -14,6 +14,7 @@ export interface EnrichedInfo {
   breadcrumb?: string
   description?: null | string
   name?: string
+  score?: null | number
 }
 
 // fallow-ignore-next-line complexity
@@ -85,6 +86,7 @@ export function useSearchEnrichment(
         breadcrumb: projectBreadcrumb(p),
         description: p.description,
         name: p.name,
+        score: p.score,
       })
     }
   }
@@ -131,8 +133,9 @@ export function useSearchEnrichment(
 function projectBreadcrumb(p: {
   project_type?: null | { name: string }
   project_types?: { name: string }[]
+  slug: string
   team: { name: string }
 }): string {
   const ptName = p.project_types?.[0]?.name ?? p.project_type?.name
-  return ptName ?? p.team.name
+  return [ptName, p.team.name, p.slug].filter(Boolean).join(' · ')
 }

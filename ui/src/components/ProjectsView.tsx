@@ -799,7 +799,7 @@ export function ProjectsView() {
           <div
             className="divide-tertiary divide-y overflow-y-auto"
             style={{
-              maxHeight: 'calc(100vh - 330px - var(--assistant-height, 64px))',
+              maxHeight: 'calc(100vh - 320px)',
             }}
           >
             {filteredProjects.map((project) => (

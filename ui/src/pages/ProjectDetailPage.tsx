@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import { getProject } from '@/api/endpoints'
-import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { ProjectDetail } from '@/components/ProjectDetail'
 import { Sk } from '@/components/ui/skeleton'
@@ -37,12 +36,7 @@ export function ProjectDetailPage() {
   return (
     <div className="bg-tertiary text-primary min-h-screen">
       <Navigation currentView="projects" />
-      <main
-        className="pt-16"
-        style={{
-          paddingBottom: 'var(--assistant-height, 64px)',
-        }}
-      >
+      <main className="pt-16">
         {!orgSlug && (
           <div className="mx-auto max-w-7xl px-6 py-8">
             <div className="py-12 text-center text-amber-600">
@@ -67,7 +61,6 @@ export function ProjectDetailPage() {
           />
         )}
       </main>
-      <CommandBar />
     </div>
   )
 }

@@ -13,7 +13,6 @@ import {
   listProjectTypes,
   patchOrgDocument,
 } from '@/api/endpoints'
-import { CommandBar } from '@/components/CommandBar'
 import { DocumentsFeed } from '@/components/documents/DocumentsFeed'
 import {
   attachmentDisplay,
@@ -65,10 +64,7 @@ export function DocumentsIndexPage() {
   return (
     <div className="bg-tertiary text-primary min-h-screen">
       <Navigation currentView="documents" />
-      <main
-        className="px-6 pt-20 pb-12"
-        style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
-      >
+      <main className="px-6 pt-20 pb-12">
         {/* The reader lays out its own rail / content / margin columns and
             wants the whole viewport for them, so the content column can grow;
             every other view stays measured. */}
@@ -84,7 +80,6 @@ export function DocumentsIndexPage() {
           )}
         </div>
       </main>
-      <CommandBar />
     </div>
   )
 }

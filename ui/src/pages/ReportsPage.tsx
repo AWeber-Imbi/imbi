@@ -16,7 +16,6 @@ import {
   TrendingUp,
 } from 'lucide-react'
 
-import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { DocumentReadershipReport } from '@/components/reports/DocumentReadershipReport'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
@@ -142,10 +141,7 @@ export function ReportsPage() {
   return (
     <div className="bg-tertiary text-primary min-h-screen">
       <Navigation />
-      <main
-        className="pt-16"
-        style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
-      >
+      <main className="pt-16">
         <div className="mx-auto flex max-w-screen-2xl gap-6 px-6 py-7">
           {/* Left sidebar — report list */}
           <aside className="w-56 shrink-0">
@@ -195,7 +191,6 @@ export function ReportsPage() {
           </div>
         </div>
       </main>
-      <CommandBar />
     </div>
   )
 }

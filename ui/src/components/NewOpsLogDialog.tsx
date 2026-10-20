@@ -182,7 +182,7 @@ export function NewOpsLogDialog({
       <DialogContent
         className="sm:max-w-2xl"
         style={{
-          maxHeight: 'calc(100vh - var(--assistant-height, 0px) - 2rem - 10px)',
+          maxHeight: 'calc(100vh - 2rem - 10px)',
         }}
       >
         {/* Header */}

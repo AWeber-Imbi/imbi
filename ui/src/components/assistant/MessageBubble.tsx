@@ -66,9 +66,10 @@ export function SessionEntry({
 }: SessionEntryProps) {
   if (role === 'user') {
     return (
-      <div className="text-info font-mono text-sm">
-        <span className="text-tertiary select-none">{'> '}</span>
-        {content}
+      <div className="flex justify-end">
+        <div className="bg-secondary text-primary max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap">
+          {content}
+        </div>
       </div>
     )
   }

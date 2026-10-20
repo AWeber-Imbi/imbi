@@ -345,6 +345,8 @@
     font-family: var(--font-sans);
     font-size: 15.5px;
     line-height: 1.5;
+    /* The docked assistant panel sets this while it is open. */
+    padding-right: var(--assistant-width, 0px);
   }
 }
 

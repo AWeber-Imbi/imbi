@@ -5,7 +5,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import { getAdminUser, listUserDocuments } from '@/api/endpoints'
-import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { Sk, Swap } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -92,10 +91,7 @@ export function UserProfilePage() {
   return (
     <div className="bg-tertiary text-primary min-h-screen">
       <Navigation currentView="users" />
-      <main
-        className="px-6 pt-20 pb-12"
-        style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
-      >
+      <main className="px-6 pt-20 pb-12">
         <div className="mx-auto max-w-5xl space-y-4">
           {userQuery.error && (
             <p className="border-danger bg-danger text-danger rounded-md border p-4 text-sm">
@@ -174,7 +170,6 @@ export function UserProfilePage() {
           )}
         </div>
       </main>
-      <CommandBar />
     </div>
   )
 }
