@@ -1143,10 +1143,10 @@ async def _assert_breaking_changes_acknowledged(
     cannot answer lets the release through -- and an autonomous
     principal cannot make the acknowledgement.
 
-    A tag whose ``Release`` already carries a breaking override is not
-    judged again: re-promoting it before its tag reaches ClickHouse
-    would otherwise measure it against the release before it and ask
-    for the same acknowledgement a second time.
+    A tag whose ``Release`` already carries a breaking override for
+    ``committish`` is not judged again: re-promoting it before its tag
+    reaches ClickHouse would otherwise measure it against the release
+    before it and ask for the same acknowledgement a second time.
     """
     autonomous.require_no_breaking_override(
         auth, acknowledged=acknowledged, tag=tag
@@ -1157,7 +1157,9 @@ async def _assert_breaking_changes_acknowledged(
     last_tag, last_sha = latest
     if not _skips_breaking_bump(last_tag, tag):
         return False
-    if await _tag_has_breaking_override(db, project_id=project_id, tag=tag):
+    if await _tag_has_breaking_override(
+        db, project_id=project_id, tag=tag, committish=committish
+    ):
         return False
     try:
         result = await call_with_timeout(
@@ -1200,29 +1202,44 @@ async def _assert_breaking_changes_acknowledged(
 
 
 async def _tag_has_breaking_override(
-    db: graph.Graph, *, project_id: str, tag: str
+    db: graph.Graph, *, project_id: str, tag: str, committish: str
 ) -> bool:
-    """Whether ``tag``'s ``Release`` was already shipped over a break.
+    """Whether ``tag``'s ``Release`` already shipped ``committish``
+    over a break.
 
-    A failed lookup answers ``False``, so the tag is judged as usual.
+    The acknowledgement covered one commit, so it is reused only for a
+    retry of that commit -- the one the release was promoted at or the
+    one its tag was healed to (:func:`_set_release_committish`).  A
+    retry of the tag at any other commit is judged as usual.  A failed
+    lookup answers ``False``, so the tag is judged as usual.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+    WHERE r.tag = {tag}
+      AND (r.committish = {committish}
+           OR r.promoted_committish = {committish})
+    RETURN r.breaking_override_by AS overridden_by
     """
     try:
-        release_id = await _release_id_for(
-            db, project_id=project_id, committish='', tag=tag
+        rows = await db.execute(
+            query,
+            {
+                'project_id': project_id,
+                'tag': tag,
+                # Stored short, so a full SHA from the request must be too.
+                'committish': versioning.short_committish(committish),
+            },
+            ['overridden_by'],
         )
     except Exception:  # noqa: BLE001
         LOGGER.debug(
-            'Release lookup failed for project %s tag %s',
+            'Breaking override lookup failed for project %s tag %s',
             project_id,
             tag,
             exc_info=True,
         )
         return False
-    if release_id is None:
-        return False
-    return await _release_breaking_override(
-        db, project_id=project_id, release_id=release_id
-    )
+    return any(graph.parse_agtype(row.get('overridden_by')) for row in rows)
 
 
 def _require_deployment_sync_support(resolved: ResolvedCapability) -> None:
