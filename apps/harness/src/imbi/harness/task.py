@@ -383,7 +383,11 @@ def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
     for entry in typing.cast('list[object]', entries):
         if isinstance(entry, dict):
             found = typing.cast('Body', entry)
-            if found.get('name') == name:
+            # Like the catalog: an entry needs a source, and the first
+            # valid entry of a name wins.
+            if found.get('name') == name and isinstance(
+                found.get('source'), (str, dict)
+            ):
                 return found
     return None
 

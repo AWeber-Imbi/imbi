@@ -405,7 +405,9 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
     plugins: draft.plugins,
     required_labels: parseLabels(draft.requiredLabels),
     response_sla: draft.responseSla || null,
-    secrets: parseLines(draft.secrets),
+    // The grants decide what the agent may request; the stored list
+    // is no longer edited, so a save clears it.
+    secrets: [],
     task_budget: draft.taskBudget.trim() ? parseMoney(draft.taskBudget) : null,
     task_timeout_seconds: draft.taskTimeout.trim()
       ? parseDuration(draft.taskTimeout)
@@ -426,15 +428,6 @@ export function parseLabels(value: string): string[] {
     .map((l) => l.trim())
     .filter(Boolean)
   return [...new Set(labels)].sort()
-}
-
-/** The sorted, distinct lines of a text, without blank lines. */
-export function parseLines(value: string): string[] {
-  const lines = value
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-  return [...new Set(lines)].sort()
 }
 
 export function slaLabel(value: null | string | undefined): null | string {

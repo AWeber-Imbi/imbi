@@ -748,6 +748,17 @@ class WorkspaceTestCase(TaskTestCase):
             clone / 'hello',
         )
 
+    def test_inline_plugin_skips_an_entry_without_a_source(self) -> None:
+        clone = self.marketplace(
+            {'name': 'ops', 'mcpServers': {'broken': {}}},
+            {'name': 'ops', 'source': './', 'mcpServers': {'good': {}}},
+        )
+        path = self.run_task._manifest('ops', clone, clone)
+        manifest = json.loads(
+            (path / '.claude-plugin' / 'plugin.json').read_text()
+        )
+        self.assertEqual(manifest['mcpServers'], {'good': {}})
+
     def test_plugin_missing_from_the_marketplace_loads_in_place(self) -> None:
         clone = self.marketplace({'name': 'other', 'source': './'})
         self.assertEqual(self.run_task._manifest('hello', clone, clone), clone)
