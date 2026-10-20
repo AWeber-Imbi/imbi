@@ -196,6 +196,14 @@ function AgentSecrets({
   rows: AccessRow[]
 }) {
   const [adding, setAdding] = useState(false)
+  // run_with_secret delivers by environment; anything else is a setup
+  // secret of the runner.
+  const agentRows = rows.filter((r) =>
+    r.grant.delivery_modes.includes('environment'),
+  )
+  const runnerRows = rows.filter(
+    (r) => !r.grant.delivery_modes.includes('environment'),
+  )
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
@@ -217,43 +225,21 @@ function AgentSecrets({
         </Link>
         .
       </p>
-      {rows.length === 0 ? (
-        <p className="text-tertiary text-sm">No grant names this agent.</p>
+      {agentRows.length === 0 ? (
+        <p className="text-tertiary text-sm">
+          No grant lets the agent request a secret.
+        </p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-tertiary text-left text-xs">
-            <tr>
-              <th className="py-1 font-normal">Reference</th>
-              <th className="py-1 font-normal">Purposes</th>
-              <th className="py-1 font-normal">Delivery</th>
-              <th className="py-1 font-normal">TTL</th>
-            </tr>
-          </thead>
-          <tbody className="divide-tertiary divide-y">
-            {rows.map(({ binding, grant }) => (
-              <tr key={`${grant.id}-${binding.id}`}>
-                <td className="py-2 font-mono text-xs">
-                  {binding.reference}
-                  {grant.agent_ids.length > 1 && (
-                    <span className="text-tertiary ml-2 font-sans">
-                      shared with {grant.agent_ids.length - 1} other
-                      {grant.agent_ids.length > 2 ? ' agents' : ' agent'}
-                    </span>
-                  )}
-                </td>
-                <td className="py-2 font-mono text-xs">
-                  {grant.purposes.join(', ')}
-                </td>
-                <td className="py-2 font-mono text-xs">
-                  {grant.delivery_modes.join(', ')}
-                </td>
-                <td className="py-2 font-mono text-xs">
-                  {grant.max_ttl_seconds}s
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <GrantTable rows={agentRows} />
+      )}
+      {runnerRows.length > 0 && (
+        <>
+          <p className="text-tertiary mt-2 text-xs">
+            Used by the runner for the agent, never given to it: the model key,
+            MCP server credentials.
+          </p>
+          <GrantTable rows={runnerRows} />
+        </>
       )}
       {adding && (
         <SecretDialog
@@ -292,5 +278,42 @@ function AgentSecrets({
         />
       )}
     </section>
+  )
+}
+
+function GrantTable({ rows }: { rows: AccessRow[] }) {
+  return (
+    <table className="w-full text-sm">
+      <thead className="text-tertiary text-left text-xs">
+        <tr>
+          <th className="py-1 font-normal">Reference</th>
+          <th className="py-1 font-normal">Purposes</th>
+          <th className="py-1 font-normal">Delivery</th>
+          <th className="py-1 font-normal">TTL</th>
+        </tr>
+      </thead>
+      <tbody className="divide-tertiary divide-y">
+        {rows.map(({ binding, grant }) => (
+          <tr key={`${grant.id}-${binding.id}`}>
+            <td className="py-2 font-mono text-xs">
+              {binding.reference}
+              {grant.agent_ids.length > 1 && (
+                <span className="text-tertiary ml-2 font-sans">
+                  shared with {grant.agent_ids.length - 1} other
+                  {grant.agent_ids.length > 2 ? ' agents' : ' agent'}
+                </span>
+              )}
+            </td>
+            <td className="py-2 font-mono text-xs">
+              {grant.purposes.join(', ')}
+            </td>
+            <td className="py-2 font-mono text-xs">
+              {grant.delivery_modes.join(', ')}
+            </td>
+            <td className="py-2 font-mono text-xs">{grant.max_ttl_seconds}s</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
