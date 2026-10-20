@@ -21,6 +21,8 @@
 """
 
 import asyncio
+import base64
+import binascii
 import datetime
 import decimal
 import json
@@ -37,6 +39,7 @@ from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
 from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.endpoints import agents as agents_api
+from imbi.api.endpoints import auth as auth_endpoints
 from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import platform, tokens
@@ -1105,6 +1108,75 @@ async def list_harness_pools(
         )
         for pool in pools
     ]
+
+
+class PoolQueue(pydantic.BaseModel):
+    pool: str
+    #: The tasks that a new runner of the pool could claim now.
+    queued: int
+
+
+def _basic_credentials(request: fastapi.Request) -> tuple[str, str]:
+    """The user and password of an HTTP Basic ``Authorization`` header.
+
+    Raises:
+        401: No Basic credentials.
+
+    """
+    scheme, _, value = request.headers.get('authorization', '').partition(' ')
+    user = password = sep = ''
+    try:
+        user, sep, password = (
+            base64.b64decode(value, validate=True).decode().partition(':')
+        )
+    except (binascii.Error, UnicodeDecodeError):
+        pass
+    if scheme.lower() != 'basic' or not sep:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Pool credential required (HTTP Basic)',
+            headers={'WWW-Authenticate': 'Basic'},
+        )
+    return user, password
+
+
+@harness_router.get('/pools/{name}/queue', response_model=PoolQueue)
+async def harness_pool_queue(
+    name: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    store: harness.Store,
+) -> PoolQueue:
+    """The work waiting for a new runner of the pool, for an autoscaler.
+
+    KEDA's ``metrics-api`` scaler polls this. It has no OAuth client
+    credentials flow, so the caller sends the pool credential (its
+    ``client_id`` and ``client_secret``) as HTTP Basic credentials.
+    The count follows the claim rules: the pool's labels and
+    organizations, and each agent's free places. ``imbi_harness_pool_queued``
+    on ``/metrics`` has the same number.
+
+    Raises:
+        401: No pool credential, or a wrong one.
+        403: The credential is not the credential of this pool.
+        404: The pool does not exist.
+
+    """
+    client_id, client_secret = _basic_credentials(request)
+    _, service_account = await auth_endpoints.verify_client_credential(
+        db, client_id, client_secret
+    )
+    pool = await store.pool(name)
+    if pool is None:
+        raise fastapi.HTTPException(status_code=404, detail='Pool not found')
+    if pool['service_account'] != service_account.slug:
+        raise fastapi.HTTPException(
+            status_code=403, detail='Not the credential of this pool'
+        )
+    agents, limits = await eligible_agents(db)
+    return PoolQueue(
+        pool=name, queued=await store.queue_depth(pool, agents, limits)
+    )
 
 
 @harness_router.post('/pools', status_code=201, response_model=PoolResponse)

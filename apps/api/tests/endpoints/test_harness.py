@@ -16,9 +16,11 @@ import httpx
 from apps.api.tests.endpoints import test_agent_task_harness
 from apps.api.tests.endpoints.test_agent_task_log import ClickHouseTestCase
 from imbi.api import models, secret_broker
+from imbi.api.auth import password as password_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agent_task_harness
 from imbi.api.endpoints import harness as harness_api
+from imbi.api.harness import metrics as harness_metrics
 from imbi.api.harness import sweeper
 from imbi.api.secret_broker import store as secret_store
 
@@ -507,6 +509,120 @@ class ConcurrencyTests(RunnerTestCase):
         self.assertEqual(
             sorted(c is None for c in (first, second)), [False, True]
         )
+
+
+class QueueTests(RunnerTestCase):
+    """``GET /harness/pools/{name}/queue`` and the pool gauges."""
+
+    async def credential(self) -> tuple[str, str]:
+        """A client credential of the pool's service account."""
+        client_id, secret = f'cid-{self.org}', 'pool-secret'
+        await self.graph.execute(
+            'MATCH (s:ServiceAccount {{slug: {slug}}})'
+            ' CREATE (c:ClientCredential {{client_id: {cid},'
+            ' client_secret_hash: {hash}, revoked: false}})'
+            '-[:OWNED_BY]->(s) RETURN 1 AS ok',
+            {
+                'slug': self.pool_account.slug,
+                'cid': client_id,
+                'hash': password_auth.hash_password(secret),
+            },
+            ['ok'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (c:ClientCredential {{client_id: {cid}}}) DETACH DELETE c'
+            ' RETURN 1 AS ok',
+            {'cid': client_id},
+            ['ok'],
+        )
+        return client_id, secret
+
+    async def queued(
+        self, pool: str | None = None, auth: tuple[str, str] | None = None
+    ) -> httpx.Response:
+        return await self.client.get(
+            f'/harness/pools/{pool or self.pool_name}/queue',
+            auth=auth or await self.credential(),
+        )
+
+    async def test_counts_the_claimable_tasks(self) -> None:
+        auth = await self.credential()
+        response = await self.queued(auth=auth)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(), {'pool': self.pool_name, 'queued': 1}
+        )
+        self.assertIsNotNone(await self.claim(await self.register()))
+        self.assertEqual((await self.queued(auth=auth)).json()['queued'], 0)
+
+    async def test_needs_the_pool_credential(self) -> None:
+        response = await self.client.get(
+            f'/harness/pools/{self.pool_name}/queue'
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers['www-authenticate'], 'Basic')
+        client_id, _ = await self.credential()
+        response = await self.queued(auth=(client_id, 'wrong'))
+        self.assertEqual(response.status_code, 401)
+
+    async def test_refuses_another_pools_credential(self) -> None:
+        auth = await self.credential()
+        other = await self.harness.create_pool(
+            f'other-{self.org}',
+            description=None,
+            labels=['general'],
+            organization_ids=[self.org],
+            service_account='someone-else',
+            service_account_id='someone-else',
+        )
+        response = await self.queued(other['name'], auth)
+        self.assertEqual(response.status_code, 403)
+        response = await self.queued(f'missing-{self.org}', auth)
+        self.assertEqual(response.status_code, 404)
+
+    async def test_gauges(self) -> None:
+        await harness_metrics.refresh(self.harness, self.graph)
+        self.assertEqual(
+            harness_metrics.QUEUED.labels(self.pool_name)._value.get(), 1
+        )
+        await self.register()
+        await harness_metrics.refresh(self.harness, self.graph)
+        self.assertEqual(
+            harness_metrics.RUNNERS.labels(
+                self.pool_name, 'idle'
+            )._value.get(),
+            1,
+        )
+        self.assertEqual(harness_metrics.UP._value.get(), 1)
+
+
+class QueueLimitTests(RunnerTestCase):
+    agent_settings: typing.ClassVar[dict[str, typing.Any]] = {
+        'task_budget': '1',
+        'max_concurrent_tasks': 2,
+        'required_labels': ['general'],
+    }
+
+    async def depth(self, pool: str | None = None) -> int:
+        row = await self.harness.pool(pool or self.pool_name)
+        assert row is not None
+        agents, limits = await harness_api.eligible_agents(self.graph)
+        return await self.harness.queue_depth(row, agents, limits)
+
+    async def test_free_places_cap_the_count(self) -> None:
+        self.act_as_user()
+        for _ in range(3):
+            await self.create_task()
+        self.act_as(self.account)
+        # Four tasks wait, but the agent has two places.
+        self.assertEqual(await self.depth(), 2)
+        await self.claim(await self.register())
+        self.assertEqual(await self.depth(), 1)
+
+    async def test_a_pool_without_the_label_counts_nothing(self) -> None:
+        pool = await self.make_pool(['gpu'], [self.org], 'gpu')
+        self.assertEqual(await self.depth(pool), 0)
 
 
 class AgentTokenTests(RunnerTestCase):

@@ -20,7 +20,7 @@ from collections import abc
 import fastapi
 
 from imbi.api.agent_tasks import create_pool
-from imbi.api.harness import sweeper, tokens
+from imbi.api.harness import metrics, sweeper, tokens
 from imbi.api.harness.store import (
     GRACE_SECONDS,
     LEASE_SECONDS,
@@ -47,7 +47,8 @@ async def initialize() -> None:
 
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[HarnessStore]:
-    """Initialize the schema, hold the store open, and sweep leases."""
+    """Initialize the schema, hold the store open, sweep leases, and
+    refresh the pool gauges."""
     await initialize()
     pool = create_pool()
     try:
@@ -55,13 +56,15 @@ async def store_lifespan() -> abc.AsyncGenerator[HarnessStore]:
         store = HarnessStore(pool)
         stop = asyncio.Event()
         sweep = asyncio.create_task(sweeper.run_sweeper(store, stop=stop))
+        gauges = asyncio.create_task(metrics.run_refresher(store, stop=stop))
         try:
             yield store
         finally:
             stop.set()
-            sweep.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sweep
+            for task in (sweep, gauges):
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
     finally:
         await pool.close()
 
@@ -85,6 +88,7 @@ __all__ = [
     'RunnerBusy',
     'Store',
     'initialize',
+    'metrics',
     'store_lifespan',
     'sweeper',
     'tokens',
