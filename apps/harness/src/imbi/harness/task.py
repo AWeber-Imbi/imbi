@@ -408,27 +408,40 @@ def _json(path: pathlib.Path) -> Body:
     return typing.cast('Body', document) if isinstance(document, dict) else {}
 
 
+def _servers(path: pathlib.Path, source: typing.Any) -> list[str]:
+    """The server names of one ``mcpServers`` source: an object, or a
+    JSON file (relative to the plugin) of one."""
+    if isinstance(source, str):
+        source = path / _relative(source)
+    if isinstance(source, pathlib.Path):
+        document = _json(source)
+        source = document.get('mcpServers', document)
+    if not isinstance(source, dict):
+        return []
+    return [str(key) for key in typing.cast('Body', source)]
+
+
 def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
     """The permission rules for the MCP servers of a plugin directory.
 
     Claude Code names a plugin server ``plugin:<plugin>:<server>`` and
     its tools ``mcp__plugin_<plugin>_<server>__<tool>``, with each
     character outside ``[A-Za-z0-9_-]`` as ``_``. A plugin declares
-    servers in ``plugin.json`` (an object, or the path of a JSON file)
-    and in ``.mcp.json``.
+    servers in ``plugin.json`` ``mcpServers`` (an object, the path of a
+    JSON file, or a list of both) and in ``.mcp.json``.
     """
     manifest = _json(path / PLUGIN_MANIFEST)
     name = str(manifest.get('name') or name)
     declared: typing.Any = manifest.get('mcpServers')
-    if isinstance(declared, str):
-        relative = _relative(declared)
-        declared = _json(path / relative).get(
-            'mcpServers', _json(path / relative)
-        )
-    servers: set[str] = set()
-    for source in (declared, _json(path / '.mcp.json').get('mcpServers')):
-        if isinstance(source, dict):
-            servers.update(str(key) for key in typing.cast('Body', source))
+    sources: list[typing.Any] = (
+        list(typing.cast('abc.Iterable[typing.Any]', declared))
+        if isinstance(declared, list)
+        else [declared]
+    )
+    sources.append(path / '.mcp.json')
+    servers = {
+        server for source in sources for server in _servers(path, source)
+    }
     return [
         _MCP_NAME.sub('_', f'mcp__plugin_{name}_{server}')
         for server in sorted(servers)

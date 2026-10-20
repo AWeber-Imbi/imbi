@@ -749,6 +749,14 @@ class WorkspaceTestCase(TaskTestCase):
             task._plugin_servers(plugin, 'search'),
             ['mcp__plugin_search_zoekt'],
         )
+        # Or a list of objects and files.
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'mcpServers': ['./servers.json', {'grafana': {}}]})
+        )
+        self.assertEqual(
+            task._plugin_servers(plugin, 'ops'),
+            ['mcp__plugin_ops_grafana', 'mcp__plugin_ops_zoekt'],
+        )
         self.assertEqual(task._plugin_servers(self.tmp / 'none', 'x'), [])
 
     def test_plugin_with_a_manifest_loads_in_place(self) -> None:
