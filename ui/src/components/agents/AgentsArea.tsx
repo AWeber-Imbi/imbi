@@ -128,7 +128,7 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
           </div>
         ))}
       </nav>
-      <div className="border-tertiary bg-primary shrink-0 border-t p-3">
+      <div className="border-tertiary bg-primary shrink-0 border-t px-3 py-1.5">
         <button
           aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
           className={cn(
