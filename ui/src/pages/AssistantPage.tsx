@@ -140,11 +140,15 @@ export function AssistantPage() {
           ) : (
             <AssistantThread className="px-6 py-6 [&>div]:mx-auto [&>div]:max-w-3xl" />
           )}
-          <div className="border-tertiary border-t px-6 py-4">
-            <div className="mx-auto max-w-3xl">
-              <AssistantComposer autoFocus />
+          {/* After a failed load the store still holds the previous
+              conversation; do not let a message go there unseen. */}
+          {!loadError && (
+            <div className="border-tertiary border-t px-6 py-4">
+              <div className="mx-auto max-w-3xl">
+                <AssistantComposer autoFocus />
+              </div>
             </div>
-          </div>
+          )}
         </section>
       </main>
     </div>

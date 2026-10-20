@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { History, Maximize2, SquarePen, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -105,7 +106,11 @@ export function AssistantPanel() {
             {conversations.slice(0, 10).map((c) => (
               <DropdownMenuItem
                 key={c.id}
-                onClick={() => void openAssistantConversation(c.id)}
+                onClick={() =>
+                  openAssistantConversation(c.id).catch(() =>
+                    toast.error('Could not open that conversation.'),
+                  )
+                }
               >
                 <span className="truncate">{c.title || 'Untitled'}</span>
               </DropdownMenuItem>

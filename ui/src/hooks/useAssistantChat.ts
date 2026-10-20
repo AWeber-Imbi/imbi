@@ -205,8 +205,10 @@ let openRequest = 0
 
 export async function openAssistantConversation(id: string) {
   const store = useAssistantStore.getState()
-  if (store.currentConversationId === id) return
+  // Count even a reselect of the current conversation, so a load still
+  // in flight cannot replace it.
   const request = ++openRequest
+  if (store.currentConversationId === id) return
   const conv = await getConversation(id)
   // A later open or a new conversation supersedes this one.
   if (request !== openRequest) return
