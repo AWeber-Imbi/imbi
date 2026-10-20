@@ -1150,7 +1150,10 @@ def _basic_credentials(request: fastapi.Request) -> tuple[str, str]:
 
 @harness_router.get('/pools/{name}/queue', response_model=PoolQueue)
 # Each call checks a password hash. Per pool and source, so the pools
-# that one KEDA operator polls (30 s by default) do not share a bucket.
+# that one KEDA operator polls (30 s by default) do not share a bucket;
+# and per source overall, so new pool names in the URL do not buy more
+# guesses (about 300 pools at the default interval).
+@rate_limit.limiter.limit('600/minute')  # type: ignore[untyped-decorator]
 @rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
     '30/minute', key_func=_queue_rate_key
 )
