@@ -60,6 +60,11 @@ export function AssistantPanel() {
       '--assistant-width',
       visible ? `${PANEL_WIDTH}px` : '0px',
     )
+    // Pages without Navigation (login, the route fallback) unmount the
+    // panel; do not leave them padded.
+    return () => {
+      document.documentElement.style.setProperty('--assistant-width', '0px')
+    }
   }, [visible])
 
   if (!visible) return null

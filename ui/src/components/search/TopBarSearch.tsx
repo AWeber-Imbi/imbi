@@ -116,9 +116,15 @@ export function TopBarSearch() {
     close()
   }
 
+  const showPanel = open && !!input.trim()
+
   // fallow-ignore-next-line complexity
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Enter' && !showPanel) {
+      // The list was dismissed; Enter shows it again.
+      e.preventDefault()
+      setOpen(true)
+    } else if (e.key === 'Escape') {
       close()
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -126,7 +132,7 @@ export function TopBarSearch() {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActive((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Tab' && !e.shiftKey && input.trim()) {
+    } else if (e.key === 'Tab' && !e.shiftKey && showPanel) {
       e.preventDefault()
       ask()
     } else if (e.key === 'Enter') {
@@ -136,7 +142,6 @@ export function TopBarSearch() {
     }
   }
 
-  const showPanel = open && !!input.trim()
   let index = -1
 
   return (
