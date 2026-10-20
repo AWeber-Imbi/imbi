@@ -7,14 +7,12 @@ import { fireEvent, render, screen } from '@/test/utils'
 import type { AgentMarketplace, AgentPlatformConfigResponse } from '@/types'
 
 import { emptyDraft, type SettingsDraft } from '../agentDraft'
-import { PlatformTab } from '../PlatformTab'
+import { PluginsSection } from '../PluginsSection'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   getAgentPlatformConfig: vi.fn(),
   listAgentMarketplaces: vi.fn(),
-  listSecretBindings: vi.fn(),
-  listSecretProviders: vi.fn(),
 }))
 
 const auth = vi.hoisted(() => ({
@@ -43,12 +41,7 @@ function Harness({ initial }: { initial: SettingsDraft }) {
   const [value, setValue] = useState(initial)
   return (
     <>
-      <PlatformTab
-        errors={{}}
-        onChange={setValue}
-        orgSlug="acme"
-        value={value}
-      />
+      <PluginsSection onChange={setValue} orgSlug="acme" value={value} />
       <output data-testid="plugins">{JSON.stringify(value.plugins)}</output>
     </>
   )
@@ -59,6 +52,7 @@ function marketplace(): AgentMarketplace {
   const plugin = (name: string, path: null | string = `plugins/${name}`) => ({
     category: null,
     description: `${name} plugin`,
+    mcp_servers: [] as string[],
     name,
     path,
     source: path ? `./${path}` : { repo: 'a/b', source: 'github' },
@@ -76,6 +70,7 @@ function marketplace(): AgentMarketplace {
       plugin('code-review'),
       plugin('commit-commands'),
       plugin('feature-dev'),
+      { ...plugin('grafana-mcp', '.'), mcp_servers: ['grafana'] },
       plugin('remote', null),
       {
         ...plugin('linked', null),
@@ -91,15 +86,13 @@ function marketplace(): AgentMarketplace {
   }
 }
 
-describe('PlatformTab', () => {
+describe('PluginsSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(endpoints.getAgentPlatformConfig).mockResolvedValue(config())
     vi.mocked(endpoints.listAgentMarketplaces).mockResolvedValue([
       marketplace(),
     ])
-    vi.mocked(endpoints.listSecretBindings).mockResolvedValue([])
-    vi.mocked(endpoints.listSecretProviders).mockResolvedValue([])
   })
 
   it('lists the plugins of the allowed marketplaces', async () => {
@@ -113,18 +106,10 @@ describe('PlatformTab', () => {
     expect(screen.getByLabelText('linked')).toBeEnabled()
   })
 
-  it('shows the GitHub App binding in the P4 select', async () => {
-    render(
-      <Harness
-        initial={{
-          ...emptyDraft().settings,
-          githubAppBinding: 'secret://gh/bot',
-        }}
-      />,
-    )
-    expect(
-      await screen.findByRole('combobox', { name: 'GitHub App binding' }),
-    ).toHaveTextContent('secret://gh/bot')
+  it('names the MCP servers that a plugin brings', async () => {
+    render(<Harness initial={emptyDraft().settings} />)
+    expect(await screen.findByText('grafana')).toBeInTheDocument()
+    expect(screen.getByText(/MCP server:/)).toBeInTheDocument()
   })
 
   it('adds a plugin without a sha, so the API pins it', async () => {

@@ -98,10 +98,6 @@ export function SubagentsTab({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-secondary text-sm">
-        Imbi does not run agents yet. These settings are stored for when it
-        does.
-      </p>
       {/* Keep an active search visible, so you can clear it. */}
       {(choices.length > SEARCH_THRESHOLD || search !== '') && (
         <Input

@@ -14,6 +14,7 @@ import { queryKeys } from '@/lib/queryKeys'
 import { cn, slugify } from '@/lib/utils'
 import type { Agent, PromptVersion } from '@/types'
 
+import { AccessTab } from './AccessTab'
 import {
   type AgentDraft,
   draftErrors,
@@ -25,7 +26,7 @@ import { usePromptResolution } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ModelTab } from './ModelTab'
 import { OverviewTab } from './OverviewTab'
-import { PlatformTab } from './PlatformTab'
+import { PluginsSection } from './PluginsSection'
 import { saveAgent } from './saveAgent'
 import { SettingsTab } from './SettingsTab'
 import { SubagentsTab } from './SubagentsTab'
@@ -34,9 +35,9 @@ import { ToolsTab } from './ToolsTab'
 import { VersionHistoryTab } from './VersionHistoryTab'
 
 type TabKey =
+  | 'access'
   | 'model'
   | 'overview'
-  | 'platform'
   | 'prompt'
   | 'settings'
   | 'subagents'
@@ -46,15 +47,15 @@ type TabKey =
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'prompt', label: 'System prompt' },
-  { key: 'tools', label: 'Tools and MCPs' },
   { key: 'model', label: 'Model' },
+  { key: 'tools', label: 'Tools and plugins' },
+  { key: 'access', label: 'Access' },
   { key: 'subagents', label: 'Subagents' },
   { key: 'settings', label: 'Settings' },
-  { key: 'platform', label: 'Plugins and secrets' },
   { key: 'versions', label: 'Version history' },
 ]
 
-const PLATFORM_FIELDS = new Set(['githubAppBinding', 'secrets'])
+const ACCESS_FIELDS = new Set(['githubAppBinding', 'secrets'])
 
 const SETTINGS_FIELDS = new Set([
   'maxConcurrentTasks',
@@ -168,8 +169,8 @@ function AgentEditorForm({
           ? 'model'
           : SETTINGS_FIELDS.has(first)
             ? 'settings'
-            : PLATFORM_FIELDS.has(first)
-              ? 'platform'
+            : ACCESS_FIELDS.has(first)
+              ? 'access'
               : 'overview',
       )
       return
@@ -255,10 +256,26 @@ function AgentEditorForm({
         />
       )}
       {tab === 'tools' && (
-        <ToolsTab
-          onChange={(tools) => update({ tools })}
+        <div className="flex flex-col gap-10">
+          <PluginsSection
+            onChange={(settings) => update({ settings })}
+            orgSlug={orgSlug}
+            value={draft.settings}
+          />
+          <ToolsTab
+            onChange={(tools) => update({ tools })}
+            orgSlug={orgSlug}
+            value={draft.tools}
+          />
+        </div>
+      )}
+      {tab === 'access' && (
+        <AccessTab
+          agent={agent ? { id: agent.id, name: agent.name } : null}
+          errors={errors}
+          onChange={(settings) => update({ settings })}
           orgSlug={orgSlug}
-          value={draft.tools}
+          value={draft.settings}
         />
       )}
       {tab === 'model' && (
@@ -281,14 +298,6 @@ function AgentEditorForm({
         <SettingsTab
           errors={errors}
           onChange={(settings) => update({ settings })}
-          value={draft.settings}
-        />
-      )}
-      {tab === 'platform' && (
-        <PlatformTab
-          errors={errors}
-          onChange={(settings) => update({ settings })}
-          orgSlug={orgSlug}
           value={draft.settings}
         />
       )}

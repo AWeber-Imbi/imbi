@@ -72,7 +72,6 @@ describe('SubagentsTab', () => {
     expect(screen.queryByText('Mender')).not.toBeInTheDocument()
     expect(screen.queryByText('Auditor')).not.toBeInTheDocument()
     expect(screen.getByText(/Delegation depth is capped at 2/)).toBeVisible()
-    expect(screen.getByText(/Imbi does not run agents yet/)).toBeVisible()
     expect(
       screen.queryByRole('textbox', { name: 'Search agents' }),
     ).not.toBeInTheDocument()
