@@ -79,4 +79,21 @@ describe('useAssistantChat', () => {
     expect(assistant.sendMessageSSE).not.toHaveBeenCalled()
     expect(useAssistantStore.getState().isStreaming).toBe(false)
   })
+  it('settles a stream that closes without a done event', async () => {
+    useAssistantStore.getState().setCurrentConversation('c-1')
+    vi.mocked(assistant.sendMessageSSE).mockImplementation(
+      async (_id, _content, handlers) => {
+        handlers.onText?.('partial')
+      },
+    )
+    const { result } = renderHook(() => useAssistantChat(), {
+      wrapper: MemoryRouter,
+    })
+
+    await result.current.send('question')
+
+    const { isStreaming, messages } = useAssistantStore.getState()
+    expect(isStreaming).toBe(false)
+    expect(messages.map((m) => m.content)).toEqual(['question', 'partial'])
+  })
 })

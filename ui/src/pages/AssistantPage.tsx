@@ -50,10 +50,20 @@ export function AssistantPage() {
   // A first message creates the conversation; put its id in the URL.
   // Reads the param through a ref so that opening another conversation
   // (param changes first, store follows) does not navigate back.
+  // On mount a routed id wins over the id the store already holds;
+  // only an id that changes later, or a bare /assistant, follows the
+  // store.
   const paramRef = useRef(conversationId)
   paramRef.current = conversationId
+  const lastIdRef = useRef(currentId)
   useEffect(() => {
-    if (currentId && currentId !== paramRef.current) {
+    const changed = currentId !== lastIdRef.current
+    lastIdRef.current = currentId
+    if (
+      currentId &&
+      currentId !== paramRef.current &&
+      (changed || !paramRef.current)
+    ) {
       navigate(`/assistant/${currentId}`, { replace: true })
     }
   }, [currentId, navigate])

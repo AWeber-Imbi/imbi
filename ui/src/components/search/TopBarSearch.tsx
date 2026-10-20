@@ -74,7 +74,11 @@ export function TopBarSearch() {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  const { data: results = [], isFetching } = useQuery({
+  const {
+    data: results = [],
+    isError,
+    isFetching,
+  } = useQuery({
     enabled: !!query && !!orgSlug,
     queryFn: ({ signal }) =>
       searchOrg(orgSlug!, query, { limit: 20, threshold: 0.75 }, signal),
@@ -91,7 +95,7 @@ export function TopBarSearch() {
   // The last row, after every hit, is "Ask Imbi".
   const askIndex = hits.length
 
-  useEffect(() => setActive(0), [query])
+  useEffect(() => setActive(0), [query, orgSlug])
 
   const close = () => {
     setOpen(false)
@@ -180,7 +184,11 @@ export function TopBarSearch() {
           <div className="max-h-[60vh] overflow-y-auto p-2">
             {groups.length === 0 && (
               <p className="text-tertiary px-3 py-4 text-sm">
-                {isFetching || !current ? 'Searching…' : 'No results.'}
+                {isFetching || !current
+                  ? 'Searching…'
+                  : isError
+                    ? 'Search failed. Try again.'
+                    : 'No results.'}
               </p>
             )}
             {groups.map(([label, items]) => (

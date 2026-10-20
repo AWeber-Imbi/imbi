@@ -139,6 +139,12 @@ export function useAssistantChat() {
           },
           abort.signal,
         )
+        // The stream can close without a done event (server crash, proxy
+        // timeout); settle it unless Stop or a switch already did.
+        const st = useAssistantStore.getState()
+        if (abortController === abort && st.isStreaming) {
+          st.finishStreaming(Date.now().toString())
+        }
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.error('[Assistant] Streaming error:', err)
