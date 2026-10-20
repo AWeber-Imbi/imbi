@@ -200,6 +200,9 @@ The GitHub write purpose uses the `environment` delivery mode:
 |---|---|
 | `github_write` | Pushing, and opening pull requests and issues |
 
+A grant allows each of its purposes with each of its delivery modes. Put
+purposes that need different delivery modes in separate grants.
+
 Any other purpose is for the agent's own commands. Choose a short name such
 as `grafana` or `npm`: lower case letters, digits, and `_`.
 

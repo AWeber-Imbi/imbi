@@ -172,7 +172,7 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
               name: 'project_ids',
             },
             {
-              description: 'Comma separated, e.g. github_write, workspace_checkout',
+              description: 'Comma separated, e.g. npm, sentry',
               kind: 'list',
               label: 'Purposes',
               name: 'purposes',
