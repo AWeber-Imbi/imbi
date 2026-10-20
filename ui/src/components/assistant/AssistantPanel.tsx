@@ -40,9 +40,10 @@ export function AssistantPanel() {
   const isOpen = useAssistantStore((s) => s.isExpanded)
   const setOpen = useAssistantStore((s) => s.setExpanded)
   const conversationId = useAssistantStore((s) => s.currentConversationId)
-  const { data: conversations = [] } = useAssistantConversations()
   // The full-page assistant shows the same conversation.
   const visible = isOpen && !pathname.startsWith('/assistant')
+  // Navigation mounts on every page; fetch only while the panel shows.
+  const { data: conversations = [] } = useAssistantConversations(visible)
   const title = conversations.find((c) => c.id === conversationId)?.title
 
   useEffect(() => {

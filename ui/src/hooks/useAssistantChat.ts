@@ -170,8 +170,9 @@ export function useAssistantChat() {
 }
 
 /** The reader's recent conversations, newest first. */
-export function useAssistantConversations() {
+export function useAssistantConversations(enabled = true) {
   return useQuery({
+    enabled,
     queryFn: ({ signal }) => listConversations({ limit: 100 }, signal),
     queryKey: ['assistant-conversations'],
     staleTime: 30_000,
