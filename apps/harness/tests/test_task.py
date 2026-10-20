@@ -690,6 +690,12 @@ class WorkspaceTestCase(TaskTestCase):
         (clone / '.git').mkdir()
         return clone
 
+    def marketplace_entry_named(self, clone: pathlib.Path, name: str) -> None:
+        path = clone / '.claude-plugin' / 'marketplace.json'
+        document = json.loads(path.read_text())
+        document['plugins'].append({'name': name, 'source': './'})
+        path.write_text(json.dumps(document))
+
     def test_inline_plugin_gets_a_manifest(self) -> None:
         # An entry with no plugin.json is its own manifest (#445).
         entry = {
@@ -701,6 +707,12 @@ class WorkspaceTestCase(TaskTestCase):
         clone = self.marketplace(entry, {'name': 'zoekt-mcp', 'source': './'})
         path = self.run_task._manifest('grafana-mcp', clone, clone)
         self.assertEqual(path, clone.with_name('tools-abc-grafana-mcp'))
+        # Names follow models.PluginName, upper case included.
+        self.marketplace_entry_named(clone, 'Grafana')
+        self.assertEqual(
+            self.run_task._manifest('Grafana', clone, clone),
+            clone.with_name('tools-abc-Grafana'),
+        )
         self.assertEqual(
             json.loads((path / '.claude-plugin' / 'plugin.json').read_text()),
             {

@@ -95,7 +95,7 @@ spec:
         {{- if .Values.extraCaCerts.configMap }}
         - name: extra-ca
           configMap:
-            name: {{ .Values.extraCaCerts.configMap }}
+            name: {{ .Values.extraCaCerts.configMap | quote }}
         {{- end }}
         - name: work
           emptyDir:

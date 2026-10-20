@@ -361,7 +361,8 @@ def _repository(url: str) -> str | None:
 PLUGIN_MANIFEST = pathlib.PurePosixPath('.claude-plugin/plugin.json')
 MARKETPLACE_FILE = pathlib.PurePosixPath('.claude-plugin/marketplace.json')
 
-_PLUGIN_NAME = re.compile(r'[a-z0-9][a-z0-9._-]*')
+#: models.PluginName, which the API checks on save.
+_PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
 
 #: Fields of a marketplace entry that are not plugin manifest fields.
 _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
