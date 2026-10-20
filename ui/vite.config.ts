@@ -22,18 +22,6 @@ function resolveBuildId(): string {
 
 const BUILD_ID = resolveBuildId()
 
-function requestLogger(): Plugin {
-  return {
-    configureServer(server: ViteDevServer) {
-      server.middlewares.use((req, res, next) => {
-        console.log(`${req.method} ${req.url}`)
-        next()
-      })
-    },
-    name: 'request-logger',
-  }
-}
-
 // The dev ingress closes a websocket after 60 s with no traffic, and the
 // Vite client reloads the page when its HMR socket closes. A ping every
 // 30 s keeps the socket open.
@@ -44,6 +32,18 @@ function hmrKeepalive(): Plugin {
       server.httpServer?.on('close', () => clearInterval(timer))
     },
     name: 'hmr-keepalive',
+  }
+}
+
+function requestLogger(): Plugin {
+  return {
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method} ${req.url}`)
+        next()
+      })
+    },
+    name: 'request-logger',
   }
 }
 
