@@ -579,7 +579,7 @@ class QueueTests(RunnerTestCase):
         response = await self.queued(other['name'], auth)
         self.assertEqual(response.status_code, 403)
         response = await self.queued(f'missing-{self.org}', auth)
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 403)
 
     async def test_gauges(self) -> None:
         await harness_metrics.refresh(self.harness, self.graph)

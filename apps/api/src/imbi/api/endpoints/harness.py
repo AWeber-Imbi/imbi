@@ -44,6 +44,7 @@ from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
+from imbi.api.middleware import rate_limit
 from imbi.api.secret_broker import broker, providers
 from imbi.api.secret_broker import store as secret_store
 from imbi.common import graph, models
@@ -1141,6 +1142,8 @@ def _basic_credentials(request: fastapi.Request) -> tuple[str, str]:
 
 
 @harness_router.get('/pools/{name}/queue', response_model=PoolQueue)
+# Each call checks a password hash. KEDA polls every 30 s by default.
+@rate_limit.limiter.limit('30/minute')  # type: ignore[untyped-decorator]
 async def harness_pool_queue(
     name: str,
     request: fastapi.Request,
@@ -1158,8 +1161,8 @@ async def harness_pool_queue(
 
     Raises:
         401: No pool credential, or a wrong one.
-        403: The credential is not the credential of this pool.
-        404: The pool does not exist.
+        403: No such pool, or the credential is not the pool's: one
+            answer for both, so the route does not list pool names.
 
     """
     client_id, client_secret = _basic_credentials(request)
@@ -1167,9 +1170,8 @@ async def harness_pool_queue(
         db, client_id, client_secret
     )
     pool = await store.pool(name)
-    if pool is None:
-        raise fastapi.HTTPException(status_code=404, detail='Pool not found')
-    if pool['service_account'] != service_account.slug:
+    # The id, not the slug: a slug can be reused after a deletion.
+    if pool is None or pool['service_account_id'] != service_account.id:
         raise fastapi.HTTPException(
             status_code=403, detail='Not the credential of this pool'
         )
