@@ -56,6 +56,15 @@ class Settings:
     #: ``apps/mcp`` for the Imbi relay (plan P7); operator
     #: configuration, the in-cluster URL.
     mcp_url: str | None = None
+    #: What ends the pod after its chain. ``delete_pod``: the pod deletes
+    #: itself and its ReplicaSet starts a clean one (a Deployment).
+    #: ``exit``: the process exits 0, so a Job completes (a KEDA
+    #: ScaledJob starts the next one).
+    end_of_chain: typing.Literal['delete_pod', 'exit'] = 'delete_pod'
+    #: With ``exit``: exit when no chain comes in this many seconds, so a
+    #: Job that started for work another runner took does not wait
+    #: forever. ``None``: wait.
+    idle_exit_seconds: int | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -65,7 +74,34 @@ class Settings:
             instance=os.environ.get('HOSTNAME', 'runner'),
             model=os.environ.get('IMBI_HARNESS_MODEL') or None,
             mcp_url=os.environ.get('IMBI_HARNESS_MCP_URL') or None,
+            end_of_chain=_end_of_chain(),
+            idle_exit_seconds=_seconds('IMBI_HARNESS_IDLE_EXIT_SECONDS'),
         )
+
+
+def _end_of_chain() -> typing.Literal['delete_pod', 'exit']:
+    """``IMBI_HARNESS_END_OF_CHAIN``; unset is ``delete_pod``."""
+    value = os.environ.get('IMBI_HARNESS_END_OF_CHAIN', '').strip()
+    if value in ('', 'delete_pod'):
+        return 'delete_pod'
+    if value == 'exit':
+        return 'exit'
+    raise SystemExit(
+        f'IMBI_HARNESS_END_OF_CHAIN must be delete_pod or exit: {value!r}'
+    )
+
+
+def _seconds(name: str) -> int | None:
+    """A whole number of seconds from the environment; empty or 0 is
+    ``None``."""
+    value = os.environ.get(name, '').strip()
+    if not value:
+        return None
+    if not value.isdigit():
+        raise SystemExit(
+            f'{name} must be a whole number of seconds: {value!r}'
+        )
+    return int(value) or None
 
 
 def _fence(reason: str) -> typing.NoReturn:
@@ -102,6 +138,8 @@ class Runner:
         #: One claimer at a time: a child that one parent claims is in
         #: :attr:`runs` before another parent looks for its own.
         self.claiming = asyncio.Lock()
+        #: No chain came in ``idle_exit_seconds``.
+        self.idle_expired = False
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
@@ -112,10 +150,13 @@ class Runner:
                 await self.cycle()
             except (api.Refused, httpx.HTTPError, OSError) as err:
                 LOGGER.warning('Runner cycle failed: %s', err)
-            if self.claimed:
-                # One chain per process, also after a failure. The
-                # ReplicaSet starts a clean pod for the next chain.
-                await kube.delete_own_pod()
+            if self.claimed or self.idle_expired:
+                # One chain per process, also after a failure.
+                if self.settings.end_of_chain == 'exit':
+                    LOGGER.info('Exiting: the Job is done')
+                else:
+                    # The ReplicaSet starts a clean pod for the next chain.
+                    await kube.delete_own_pod()
                 return
             await asyncio.sleep(5)
 
@@ -168,8 +209,18 @@ class Runner:
             self.heartbeat(int(registered['lease_seconds']))
         )
         try:
+            idle = self.settings.idle_exit_seconds
+            deadline = (
+                time.monotonic() + idle
+                if idle is not None and self.settings.end_of_chain == 'exit'
+                else None
+            )
             while (claim := await self._claim()) is None:
-                pass
+                if deadline is not None and time.monotonic() >= deadline:
+                    LOGGER.info('No chain in %d s: going offline', idle)
+                    self.idle_expired = True
+                    await self.api.finish(self.runner_id, self.runner_token)
+                    return
             self.claimed = True
             layout = task.Layout(WORK / str(claim['chain_id']))
             try:

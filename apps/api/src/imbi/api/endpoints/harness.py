@@ -21,6 +21,8 @@
 """
 
 import asyncio
+import base64
+import binascii
 import datetime
 import decimal
 import json
@@ -37,10 +39,12 @@ from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
 from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.endpoints import agents as agents_api
+from imbi.api.endpoints import auth as auth_endpoints
 from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
+from imbi.api.middleware import rate_limit
 from imbi.api.secret_broker import broker, providers
 from imbi.api.secret_broker import store as secret_store
 from imbi.common import graph, models
@@ -63,6 +67,12 @@ _REPOSITORY_LINK = 'github-repository'
 # --- Schemas -----------------------------------------------------------
 
 
+_EXCLUSIVE = (
+    'Claim only agents that require at least one label, all of them in '
+    'the pool labels. An agent that requires no label never runs here.'
+)
+
+
 class PoolCreate(pydantic.BaseModel):
     name: str = pydantic.Field(
         min_length=1,
@@ -83,6 +93,10 @@ class PoolCreate(pydantic.BaseModel):
             'registers runners of the pool.'
         ),
     )
+    exclusive: bool = pydantic.Field(
+        default=False,
+        description=_EXCLUSIVE,
+    )
 
 
 class PoolUpdate(pydantic.BaseModel):
@@ -90,6 +104,9 @@ class PoolUpdate(pydantic.BaseModel):
     labels: list[models.RunnerLabel] | None = None
     organizations: list[str] | None = None
     service_account: str | None = pydantic.Field(default=None, min_length=1)
+    exclusive: bool | None = pydantic.Field(
+        default=None, description=_EXCLUSIVE
+    )
 
 
 class RunnerChain(pydantic.BaseModel):
@@ -122,6 +139,8 @@ class PoolResponse(pydantic.BaseModel):
     name: str
     description: str | None = None
     labels: list[str]
+    #: Only agents that require at least one label, all in ``labels``.
+    exclusive: bool = False
     #: The slugs of the allowlist. Empty means all organizations. A
     #: caller who is not a platform administrator sees only the
     #: organization that they asked for.
@@ -1107,6 +1126,89 @@ async def list_harness_pools(
     ]
 
 
+def _queue_rate_key(request: fastapi.Request) -> str:
+    return (
+        f'{rate_limit.get_rate_limit_key(request)}'
+        f':pool-queue:{request.path_params.get("name", "")}'
+    )
+
+
+class PoolQueue(pydantic.BaseModel):
+    pool: str
+    #: The tasks that a new runner of the pool could claim now.
+    queued: int
+
+
+def _basic_credentials(request: fastapi.Request) -> tuple[str, str]:
+    """The user and password of an HTTP Basic ``Authorization`` header.
+
+    Raises:
+        401: No Basic credentials.
+
+    """
+    scheme, _, value = request.headers.get('authorization', '').partition(' ')
+    user = password = sep = ''
+    try:
+        user, sep, password = (
+            base64.b64decode(value, validate=True).decode().partition(':')
+        )
+    except (binascii.Error, UnicodeDecodeError):
+        pass
+    if scheme.lower() != 'basic' or not sep:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Pool credential required (HTTP Basic)',
+            headers={'WWW-Authenticate': 'Basic'},
+        )
+    return user, password
+
+
+@harness_router.get('/pools/{name}/queue', response_model=PoolQueue)
+# Each call checks a password hash. Per pool and source, so the pools
+# that one KEDA operator polls (30 s by default) do not share a bucket;
+# and per source overall, so new pool names in the URL do not buy more
+# guesses (about 300 pools at the default interval).
+@rate_limit.limiter.limit('600/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    '30/minute', key_func=_queue_rate_key
+)
+async def harness_pool_queue(
+    name: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    store: harness.Store,
+) -> PoolQueue:
+    """The work waiting for a new runner of the pool, for an autoscaler.
+
+    KEDA's ``metrics-api`` scaler polls this. It has no OAuth client
+    credentials flow, so the caller sends the pool credential (its
+    ``client_id`` and ``client_secret``) as HTTP Basic credentials.
+    The count follows the claim rules: the pool's labels and
+    organizations, and each agent's free places. ``imbi_harness_pool_queued``
+    on ``/metrics`` has the same number.
+
+    Raises:
+        401: No pool credential, or a wrong one.
+        403: No such pool, or the credential is not the pool's: one
+            answer for both, so the route does not list pool names.
+
+    """
+    client_id, client_secret = _basic_credentials(request)
+    _, service_account = await auth_endpoints.verify_client_credential(
+        db, client_id, client_secret
+    )
+    pool = await store.pool(name)
+    # The id, not the slug: a slug can be reused after a deletion.
+    if pool is None or pool['service_account_id'] != service_account.id:
+        raise fastapi.HTTPException(
+            status_code=403, detail='Not the credential of this pool'
+        )
+    agents, limits = await eligible_agents(db)
+    return PoolQueue(
+        pool=name, queued=await store.queue_depth(pool, agents, limits)
+    )
+
+
 @harness_router.post('/pools', status_code=201, response_model=PoolResponse)
 async def create_harness_pool(
     data: PoolCreate,
@@ -1134,6 +1236,7 @@ async def create_harness_pool(
             organization_ids=org_ids,
             service_account=data.service_account,
             service_account_id=account_id,
+            exclusive=data.exclusive,
         )
     except harness.PoolExists as err:
         raise _conflict('pool_exists', f'Pool {data.name!r} exists') from err
@@ -1165,6 +1268,8 @@ async def update_harness_pool(
         changes['description'] = data.description
     if data.labels is not None:
         changes['labels'] = sorted(set(data.labels))
+    if data.exclusive is not None:
+        changes['exclusive'] = data.exclusive
     if data.organizations is not None:
         changes['organization_ids'] = await _org_ids(db, data.organizations)
     if data.service_account is not None:

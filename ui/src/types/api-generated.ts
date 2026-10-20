@@ -15818,6 +15818,12 @@ export interface components {
              * @description The slug of the service account whose client credential registers runners of the pool.
              */
             service_account: string;
+            /**
+             * Exclusive
+             * @description Claim only agents that require at least one label, all of them in the pool labels. An agent that requires no label never runs here.
+             * @default false
+             */
+            exclusive: boolean;
         };
         /** PoolResponse */
         PoolResponse: {
@@ -15827,6 +15833,11 @@ export interface components {
             description?: string | null;
             /** Labels */
             labels: string[];
+            /**
+             * Exclusive
+             * @default false
+             */
+            exclusive: boolean;
             /** Organizations */
             organizations: string[];
             /** Service Account */
@@ -15857,6 +15868,11 @@ export interface components {
             organizations?: string[] | null;
             /** Service Account */
             service_account?: string | null;
+            /**
+             * Exclusive
+             * @description Claim only agents that require at least one label, all of them in the pool labels. An agent that requires no label never runs here.
+             */
+            exclusive?: boolean | null;
         };
         /** Position */
         Position: {

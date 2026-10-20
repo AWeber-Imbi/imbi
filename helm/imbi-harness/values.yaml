@@ -20,8 +20,12 @@ pool:
   # The name of the pool in Imbi (POST /harness/pools) and of the Deployment.
   # Empty uses the release name.
   name: ""
-  # The fixed pool size. Each pod runs one chain, then deletes itself, and
-  # the ReplicaSet starts a clean pod.
+  # deployment: a fixed-size Deployment. Each pod runs one chain, then
+  # deletes itself, and the ReplicaSet starts a clean pod.
+  # scaledJob: KEDA (installed separately) starts one Job per chain that
+  # the pool could claim; each Job runs one chain and exits. See scaledJob.
+  mode: deployment
+  # The pool size in deployment mode.
   replicas: 1
 
 imbi:
@@ -49,6 +53,21 @@ poolCredential:
 extraCaCerts:
   configMap: ""
   key: ca.crt
+
+# pool.mode scaledJob only.
+scaledJob:
+  # imbi-api's URL with its route prefix, as KEDA's operator reaches it.
+  # Empty uses imbi.apiUrl; a short in-namespace name such as imbi-api
+  # does not resolve from the keda namespace, so use the full service name,
+  # e.g. http://imbi-api.imbi.svc.cluster.local:8000/api
+  apiUrl: ""
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # A Job whose chain another runner took exits after this many seconds.
+  idleExitSeconds: 120
 
 # Leave time for the shutdown steps after SIGTERM: the runner fences at 20 s.
 terminationGracePeriodSeconds: 30

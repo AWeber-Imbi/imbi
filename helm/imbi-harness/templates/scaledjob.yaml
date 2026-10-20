@@ -1,0 +1,54 @@
+{{- if eq (include "imbi-harness.mode" .) "scaledJob" }}
+# Optional autoscaling with KEDA (which the cluster must have): one Job
+# per chain that the pool could claim. KEDA polls
+# GET /harness/pools/{name}/queue with the pool credential as HTTP Basic
+# credentials. The count excludes claimed chains, hence "accurate".
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: {{ include "imbi-harness.pool" . }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  jobTargetRef:
+    # A failed chain goes back to the queue through Imbi, not a retry.
+    backoffLimit: 0
+    template:
+      metadata:
+        labels:
+          {{- include "imbi-harness.selectorLabels" . | nindent 10 }}
+      spec:
+        {{- include "imbi-harness.podSpec" . | nindent 8 }}
+  pollingInterval: {{ .Values.scaledJob.pollingInterval }}
+  minReplicaCount: {{ .Values.scaledJob.minReplicaCount }}
+  maxReplicaCount: {{ .Values.scaledJob.maxReplicaCount }}
+  successfulJobsHistoryLimit: {{ .Values.scaledJob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.scaledJob.failedJobsHistoryLimit }}
+  scalingStrategy:
+    strategy: accurate
+  triggers:
+    - type: metrics-api
+      metadata:
+        url: {{ printf "%s/harness/pools/%s/queue" (default .Values.imbi.apiUrl .Values.scaledJob.apiUrl | trimSuffix "/") (include "imbi-harness.pool" .) | quote }}
+        format: json
+        valueLocation: queued
+        targetValue: "1"
+        authMode: basic
+      authenticationRef:
+        name: {{ include "imbi-harness.pool" . }}-queue
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "imbi-harness.pool" . }}-queue
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: username
+      name: {{ include "imbi-harness.secretName" . }}
+      key: client_id
+    - parameter: password
+      name: {{ include "imbi-harness.secretName" . }}
+      key: client_secret
+{{- end }}

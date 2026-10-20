@@ -15,6 +15,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 imbi.aweber.com/pool: {{ include "imbi-harness.pool" . }}
 {{- end }}
 
+{{/* pool.mode, checked: a typo must not quietly render a Deployment. */}}
+{{- define "imbi-harness.mode" -}}
+{{- $mode := .Values.pool.mode -}}
+{{- if not (has $mode (list "deployment" "scaledJob")) -}}
+{{- fail (printf "pool.mode must be deployment or scaledJob, not %q" $mode) -}}
+{{- end -}}
+{{- $mode -}}
+{{- end }}
+
 {{- define "imbi-harness.secretName" -}}
 {{- default (printf "%s-pool" (include "imbi-harness.pool" .)) .Values.poolCredential.existingSecret }}
 {{- end }}

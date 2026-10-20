@@ -6,6 +6,7 @@ The SDK session and the user switches need the pod; the kind suite in
 
 import asyncio
 import contextlib
+import itertools
 import pathlib
 import tempfile
 import typing
@@ -22,12 +23,13 @@ class Fenced(BaseException):
     catch its own fence."""
 
 
-def make_runner() -> runner.Runner:
+def make_runner(**changes: typing.Any) -> runner.Runner:
     settings = runner.Settings(
         api_url='http://imbi.test',
         pool='general',
         instance='pod',
         model=None,
+        **changes,
     )
     return runner.Runner(
         settings, ('id', 'secret'), pathlib.Path('/nonexistent')
@@ -351,6 +353,86 @@ class EndOfPodTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await subject.serve()
         delete.assert_awaited_once_with()
+
+    async def test_exit_mode_keeps_the_pod(self) -> None:
+        # A Job pod exits; the ScaledJob starts the next one.
+        subject = make_runner(end_of_chain='exit')
+
+        async def cycle() -> None:
+            subject.claimed = True
+
+        subject.cycle = cycle  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(pathlib.Path, 'exists', return_value=True),
+            mock.patch.object(
+                runner.kube, 'delete_own_pod', mock.AsyncMock()
+            ) as delete,
+        ):
+            await asyncio.wait_for(subject.serve(), 2)
+        delete.assert_not_awaited()
+
+    async def test_idle_runner_goes_offline_and_exits(self) -> None:
+        subject = make_runner(end_of_chain='exit', idle_exit_seconds=60)
+        subject.api = mock.AsyncMock()
+        subject.api.register.return_value = {
+            'runner_id': 'r-1',
+            'runner_token': 'rt',
+            'executor_token': 'et',
+            'lease_seconds': 60,
+        }
+        subject.api.claim.return_value = None
+        subject.heartbeat = mock.AsyncMock()  # type: ignore[method-assign]
+        subject._write_credential = mock.Mock()  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(pathlib.Path, 'exists', return_value=True),
+            mock.patch.object(runner.ipc, 'call', mock.AsyncMock()),
+            mock.patch.object(
+                runner.time, 'monotonic', side_effect=itertools.count(0, 31)
+            ),
+            mock.patch.object(
+                runner.kube, 'delete_own_pod', mock.AsyncMock()
+            ) as delete,
+        ):
+            await asyncio.wait_for(subject.serve(), 2)
+        subject.api.claim.assert_awaited()
+        subject.api.finish.assert_awaited_once_with('r-1', 'rt')
+        self.assertFalse(subject.claimed)
+        delete.assert_not_awaited()
+
+    def test_settings_from_the_environment(self) -> None:
+        env = {'IMBI_API_URL': 'http://imbi.test'}
+        with mock.patch.dict(runner.os.environ, env, clear=True):
+            settings = runner.Settings.from_environment()
+        self.assertEqual(settings.end_of_chain, 'delete_pod')
+        self.assertIsNone(settings.idle_exit_seconds)
+        env |= {
+            'IMBI_HARNESS_END_OF_CHAIN': 'exit',
+            'IMBI_HARNESS_IDLE_EXIT_SECONDS': '120',
+        }
+        with mock.patch.dict(runner.os.environ, env, clear=True):
+            settings = runner.Settings.from_environment()
+        self.assertEqual(settings.end_of_chain, 'exit')
+        self.assertEqual(settings.idle_exit_seconds, 120)
+        for bad in ('60s', '-5'):
+            env['IMBI_HARNESS_IDLE_EXIT_SECONDS'] = bad
+            with (
+                mock.patch.dict(runner.os.environ, env, clear=True),
+                self.assertRaisesRegex(
+                    SystemExit, 'IMBI_HARNESS_IDLE_EXIT_SECONDS'
+                ),
+            ):
+                runner.Settings.from_environment()
+        env |= {
+            'IMBI_HARNESS_END_OF_CHAIN': 'Exit',
+            'IMBI_HARNESS_IDLE_EXIT_SECONDS': '',
+        }
+        with (
+            mock.patch.dict(runner.os.environ, env, clear=True),
+            self.assertRaisesRegex(SystemExit, 'IMBI_HARNESS_END_OF_CHAIN'),
+        ):
+            runner.Settings.from_environment()
 
     async def test_shutdown_steps(self) -> None:
         subject = make_runner()

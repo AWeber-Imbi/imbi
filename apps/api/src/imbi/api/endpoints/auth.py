@@ -321,53 +321,18 @@ async def _refresh_token_grant(
     )
 
 
-@auth_router.post('/token', response_model=models.OAuth2TokenResponse)
-@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
-async def token(
-    request: fastapi.Request,
-    db: graph.Pool,
-    valkey_client: OptionalValkeyClient,
-    grant_type: typing.Annotated[str, fastapi.Form()],
-    client_id: typing.Annotated[str | None, fastapi.Form()] = None,
-    client_secret: typing.Annotated[str | None, fastapi.Form()] = None,
-    scope: typing.Annotated[str | None, fastapi.Form()] = None,
-    code: typing.Annotated[str | None, fastapi.Form()] = None,
-    redirect_uri: typing.Annotated[str | None, fastapi.Form()] = None,
-    code_verifier: typing.Annotated[str | None, fastapi.Form()] = None,
-    refresh_token: typing.Annotated[str | None, fastapi.Form()] = None,
-) -> models.OAuth2TokenResponse:
-    """OAuth2 token endpoint (RFC 6749), form-encoded.
+async def verify_client_credential(
+    db: graph.Graph, client_id: str | None, client_secret: str | None
+) -> tuple[dict[str, typing.Any], models.ServiceAccount]:
+    """Check a service account client credential.
 
-    Dispatches on ``grant_type``:
+    Return the credential and its active service account.
 
-    * ``authorization_code`` -- exchange a PKCE-protected code minted by
-      ``/auth/authorize`` for an Imbi access+refresh pair (public client,
-      no secret).
-    * ``refresh_token`` -- rotate an Imbi refresh token.
-    * ``client_credentials`` -- service-account machine-to-machine grant
-      (requires ``client_id`` + ``client_secret``).
-
-    Returns:
-        OAuth2TokenResponse with access and (for code/refresh) refresh
-        tokens.
+    Raises:
+        401: The credential is unknown, revoked, expired, or wrong, or
+            the service account is inactive.
 
     """
-    if grant_type == 'authorization_code':
-        return await _authorization_code_grant(
-            db,
-            valkey_client,
-            code=code,
-            redirect_uri=redirect_uri,
-            client_id=client_id,
-            code_verifier=code_verifier,
-        )
-    if grant_type == 'refresh_token':
-        return await _refresh_token_grant(db, refresh_token)
-    if grant_type != 'client_credentials':
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='Unsupported grant_type',
-        )
     if not client_id or not client_secret:
         raise fastapi.HTTPException(
             status_code=401,
@@ -433,6 +398,60 @@ async def token(
             status_code=401,
             detail='Service account is inactive',
         )
+
+    return cred_data, sa
+
+
+@auth_router.post('/token', response_model=models.OAuth2TokenResponse)
+@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
+async def token(
+    request: fastapi.Request,
+    db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
+    grant_type: typing.Annotated[str, fastapi.Form()],
+    client_id: typing.Annotated[str | None, fastapi.Form()] = None,
+    client_secret: typing.Annotated[str | None, fastapi.Form()] = None,
+    scope: typing.Annotated[str | None, fastapi.Form()] = None,
+    code: typing.Annotated[str | None, fastapi.Form()] = None,
+    redirect_uri: typing.Annotated[str | None, fastapi.Form()] = None,
+    code_verifier: typing.Annotated[str | None, fastapi.Form()] = None,
+    refresh_token: typing.Annotated[str | None, fastapi.Form()] = None,
+) -> models.OAuth2TokenResponse:
+    """OAuth2 token endpoint (RFC 6749), form-encoded.
+
+    Dispatches on ``grant_type``:
+
+    * ``authorization_code`` -- exchange a PKCE-protected code minted by
+      ``/auth/authorize`` for an Imbi access+refresh pair (public client,
+      no secret).
+    * ``refresh_token`` -- rotate an Imbi refresh token.
+    * ``client_credentials`` -- service-account machine-to-machine grant
+      (requires ``client_id`` + ``client_secret``).
+
+    Returns:
+        OAuth2TokenResponse with access and (for code/refresh) refresh
+        tokens.
+
+    """
+    if grant_type == 'authorization_code':
+        return await _authorization_code_grant(
+            db,
+            valkey_client,
+            code=code,
+            redirect_uri=redirect_uri,
+            client_id=client_id,
+            code_verifier=code_verifier,
+        )
+    if grant_type == 'refresh_token':
+        return await _refresh_token_grant(db, refresh_token)
+    if grant_type != 'client_credentials':
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Unsupported grant_type',
+        )
+    cred_data, sa = await verify_client_credential(
+        db, client_id, client_secret
+    )
 
     # Resolve scopes
     cred_scopes: set[str] = set(

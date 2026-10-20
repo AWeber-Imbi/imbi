@@ -58,8 +58,28 @@ _CLAIM_LOCK = 'harness.claim'
 #: agents that the runner may run; ``%(limits)s`` maps an agent id to its
 #: ``max_concurrent_tasks``. A root task needs no chain row; any task of
 #: a chain that is back in the queue (``queued``) is claimable too.
-_CLAIM_QUERY: typing.LiteralString = """
-SELECT t.*
+#: The tasks of agent ``t.agent_id`` that hold a place under its
+#: ``max_concurrent_tasks``: open, in a pinned chain or with an open
+#: session.
+_BUSY: typing.LiteralString = """
+(SELECT count(*) FROM agent_runtime.tasks AS b
+  WHERE b.agent_id = t.agent_id
+    AND b.status <> 'closed'
+    AND (EXISTS (SELECT 1 FROM harness.chains AS bc
+                  WHERE bc.root_task_id = COALESCE(b.chain_id, b.id)
+                    AND bc.state = ANY(%(pinned)s))
+         OR EXISTS (SELECT 1 FROM agent_runtime.sessions AS s
+                     WHERE s.task_id = b.id
+                       AND s.closed_at IS NULL)))
+"""
+
+#: The tasks that a runner may claim. ``%(agents)s`` are the agents
+#: that the runner may run; ``%(limits)s`` maps an agent id to its
+#: ``max_concurrent_tasks``. A root task needs no chain row; any task of
+#: a chain that is back in the queue (``queued``) is claimable too.
+_CLAIMABLE: typing.LiteralString = ''.join(
+    (
+        """
   FROM agent_runtime.tasks AS t
   LEFT JOIN harness.chains AS c
     ON c.root_task_id = COALESCE(t.chain_id, t.id)
@@ -73,21 +93,35 @@ SELECT t.*
    AND NOT EXISTS (
        SELECT 1 FROM jsonb_each_text(%(limits)s) AS l(agent_id, max)
         WHERE l.agent_id = t.agent_id
-          AND (SELECT count(*) FROM agent_runtime.tasks AS b
-                WHERE b.agent_id = t.agent_id
-                  AND b.status <> 'closed'
-                  AND (EXISTS (SELECT 1 FROM harness.chains AS bc
-                                WHERE bc.root_task_id
-                                      = COALESCE(b.chain_id, b.id)
-                                  AND bc.state = ANY(%(pinned)s))
-                       OR EXISTS (SELECT 1 FROM agent_runtime.sessions AS s
-                                   WHERE s.task_id = b.id
-                                     AND s.closed_at IS NULL))
-              ) >= l.max::int)
- ORDER BY t.created_at, t.id
- LIMIT 1
-   FOR UPDATE OF t SKIP LOCKED
-"""
+          AND """,
+        _BUSY,
+        """ >= l.max::int)
+""",
+    )
+)
+
+#: The oldest task that a runner may claim.
+_CLAIM_QUERY: typing.LiteralString = ''.join(
+    (
+        'SELECT t.*',
+        _CLAIMABLE,
+        ' ORDER BY t.created_at, t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED',
+    )
+)
+
+#: The claimable tasks of each agent, with the places that its tasks
+#: hold (for ``max_concurrent_tasks``).
+_QUEUED_QUERY: typing.LiteralString = ''.join(
+    (
+        # One runner takes a whole chain, so count chains, not tasks.
+        'SELECT t.agent_id,',
+        ' count(DISTINCT COALESCE(t.chain_id, t.id)) AS queued, ',
+        _BUSY,
+        ' AS busy',
+        _CLAIMABLE,
+        ' GROUP BY t.agent_id',
+    )
+)
 
 _CHAIN_CLAIM_QUERY: typing.LiteralString = """
 SELECT t.*
@@ -119,6 +153,32 @@ SELECT r.id, r.pool, r.instance, p.labels, r.state, r.chain_id,
    AND (%(pools)s::text[] IS NULL OR r.pool = ANY(%(pools)s))
  ORDER BY r.pool, r.registered_at, r.id
 """
+
+
+def pool_runs(pool: Row, required: list[str]) -> bool:
+    """Whether a runner of ``pool`` may run an agent that requires the
+    labels ``required``: the pool has every one, and an ``exclusive``
+    pool takes only agents that require at least one."""
+    if pool.get('exclusive') and not required:
+        return False
+    return set(required) <= set(pool['labels'])
+
+
+def _claim_params(
+    pool: Row, agents: dict[str, list[str]], limits: dict[str, int]
+) -> Row:
+    """The parameters of the claim and the queue count for ``pool``,
+    built in one place so that the two cannot disagree."""
+    return {
+        'agents': [
+            agent_id
+            for agent_id, required in agents.items()
+            if pool_runs(pool, required)
+        ],
+        'orgs': pool['organization_ids'],
+        'limits': pg_json.Jsonb(limits),
+        'pinned': list(PINNED),
+    }
 
 
 class PoolExists(ValueError):
@@ -166,6 +226,7 @@ class HarnessStore:
         organization_ids: list[str],
         service_account: str,
         service_account_id: str,
+        exclusive: bool = False,
     ) -> Row:
         """Insert a pool.
 
@@ -176,8 +237,9 @@ class HarnessStore:
         try:
             row = await self._fetch_one(
                 'INSERT INTO harness.pools (name, description, labels,'
-                ' organization_ids, service_account, service_account_id)'
-                ' VALUES (%s, %s, %s, %s, %s, %s) RETURNING *',
+                ' organization_ids, service_account, service_account_id,'
+                ' exclusive) VALUES (%s, %s, %s, %s, %s, %s, %s)'
+                ' RETURNING *',
                 (
                     name,
                     description,
@@ -185,6 +247,7 @@ class HarnessStore:
                     organization_ids,
                     service_account,
                     service_account_id,
+                    exclusive,
                 ),
             )
         except psycopg.errors.UniqueViolation as err:
@@ -245,6 +308,44 @@ class HarnessStore:
     async def runners(self, pools: list[str] | None = None) -> list[Row]:
         """Return the runners that are not offline, with their chain."""
         return await self._fetch_all(_RUNNERS_QUERY, {'pools': pools})
+
+    async def queue_depth(
+        self,
+        pool: Row,
+        agents: dict[str, list[str]],
+        limits: dict[str, int],
+    ) -> int:
+        """The tasks that a new runner of ``pool`` could claim now.
+
+        The same rules as :meth:`claim`, less the claim lock: the labels
+        and organizations of the pool, and for each agent with a
+        ``max_concurrent_tasks``, no more than its free places.
+        """
+        rows = await self._fetch_all(
+            _QUEUED_QUERY, _claim_params(pool, agents, limits)
+        )
+        return sum(
+            min(row['queued'], limits[row['agent_id']] - row['busy'])
+            if row['agent_id'] in limits
+            else row['queued']
+            for row in rows
+        )
+
+    async def runner_counts(self) -> list[Row]:
+        """The runners of each pool by state, offline ones excluded."""
+        return await self._fetch_all(
+            'SELECT pool, state, count(*) AS runners FROM harness.runners'
+            " WHERE state <> 'offline' GROUP BY pool, state",
+            (),
+        )
+
+    async def chain_counts(self) -> list[Row]:
+        """The chains by state, finished ones excluded."""
+        return await self._fetch_all(
+            'SELECT state, count(*) AS chains FROM harness.chains'
+            " WHERE state <> 'done' GROUP BY state",
+            (),
+        )
 
     # --- Runners -------------------------------------------------------
 
@@ -340,23 +441,11 @@ class HarnessStore:
         """
         async with self._pool.connection() as conn, conn.transaction():
             pool = await self._lock_idle(conn, runner['id'])
-            labels = set(pool['labels'])
             await conn.execute(
                 'SELECT pg_advisory_xact_lock(hashtext(%s))', (_CLAIM_LOCK,)
             )
             task = await _fetch_one(
-                conn,
-                _CLAIM_QUERY,
-                {
-                    'agents': [
-                        agent_id
-                        for agent_id, required in agents.items()
-                        if set(required) <= labels
-                    ],
-                    'orgs': pool['organization_ids'],
-                    'limits': pg_json.Jsonb(limits),
-                    'pinned': list(PINNED),
-                },
+                conn, _CLAIM_QUERY, _claim_params(pool, agents, limits)
             )
             if task is None:
                 return None
@@ -778,11 +867,11 @@ class HarnessStore:
     # --- Helpers -------------------------------------------------------
 
     async def _lock_idle(self, conn: Conn, runner_id: uuid.UUID) -> Row:
-        """Lock an idle runner; return the labels and allowlist of its
-        pool as they are now."""
+        """Lock an idle runner; return the labels, allowlist, and
+        ``exclusive`` of its pool as they are now."""
         row = await _fetch_one(
             conn,
-            'SELECT r.state, p.labels, p.organization_ids'
+            'SELECT r.state, p.labels, p.organization_ids, p.exclusive'
             ' FROM harness.runners AS r'
             ' JOIN harness.pools AS p ON p.name = r.pool'
             ' WHERE r.id = %s FOR UPDATE OF r FOR SHARE OF p',
