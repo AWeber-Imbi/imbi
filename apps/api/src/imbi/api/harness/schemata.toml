@@ -15,6 +15,9 @@
 # slug of a deleted one cannot register. `service_account` is its slug,
 # for display. A pool made before the id column has no id and refuses
 # every registration until an update sets the service account again.
+# An `exclusive` pool claims only agents that require at least one label
+# (all of them in `labels`): a pool for special runners, such as a
+# browser image, takes no general work.
 [[tables]]
 name = "pools"
 
@@ -23,6 +26,7 @@ name = "TEXT NOT NULL"
 description = "TEXT"
 labels = "TEXT[] NOT NULL DEFAULT '{}'"
 organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+exclusive = "BOOLEAN NOT NULL DEFAULT FALSE"
 service_account = "TEXT NOT NULL"
 service_account_id = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"

@@ -87,7 +87,12 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
         )
 
     async def make_pool(
-        self, labels: list[str], orgs: list[str], name: str = 'general'
+        self,
+        labels: list[str],
+        orgs: list[str],
+        name: str = 'general',
+        *,
+        exclusive: bool = False,
     ) -> str:
         pool = await self.harness.create_pool(
             f'{name}-{self.org}',
@@ -96,6 +101,7 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
             organization_ids=orgs,
             service_account=self.pool_account.slug,
             service_account_id=self.pool_account.id,
+            exclusive=exclusive,
         )
         return str(pool['name'])
 
@@ -650,6 +656,61 @@ class QueueLimitTests(RunnerTestCase):
         self.assertEqual(await self.depth(pool), 0)
 
 
+class ExclusivePoolTests(RunnerTestCase):
+    """The agent's T-1 requires ``required``. Each test makes one pool
+    and checks whether a runner of it takes T-1; the queue count must
+    say the same as the claim (#448)."""
+
+    required: typing.ClassVar[list[str]] = []
+
+    async def asyncSetUp(self) -> None:
+        self.agent_settings = {
+            'task_budget': '1',
+            'required_labels': self.required,
+        }
+        await super().asyncSetUp()
+
+    async def takes(self, labels: list[str], *, exclusive: bool) -> bool:
+        name = await self.make_pool(
+            labels, [self.org], 'case', exclusive=exclusive
+        )
+        row = await self.harness.pool(name)
+        assert row is not None
+        agents, limits = await harness_api.eligible_agents(self.graph)
+        counted = await self.harness.queue_depth(row, agents, limits)
+        claimed = await self.claim(await self.register(name))
+        self.assertEqual(counted, int(claimed is not None))
+        return claimed is not None
+
+
+class ExclusivePoolGeneralAgentTests(ExclusivePoolTests):
+    """An agent that requires no label."""
+
+    async def test_not_in_an_exclusive_pool(self) -> None:
+        self.assertFalse(await self.takes(['browser'], exclusive=True))
+
+    async def test_in_a_labeled_pool_that_is_not_exclusive(self) -> None:
+        self.assertTrue(await self.takes(['browser'], exclusive=False))
+
+    async def test_in_a_pool_without_labels(self) -> None:
+        self.assertTrue(await self.takes([], exclusive=False))
+
+
+class ExclusivePoolBrowserAgentTests(ExclusivePoolTests):
+    """An agent that requires ``browser``."""
+
+    required: typing.ClassVar[list[str]] = ['browser']
+
+    async def test_in_an_exclusive_pool(self) -> None:
+        self.assertTrue(await self.takes(['browser'], exclusive=True))
+
+    async def test_in_a_pool_that_is_not_exclusive(self) -> None:
+        self.assertTrue(await self.takes(['browser'], exclusive=False))
+
+    async def test_never_in_a_pool_without_labels(self) -> None:
+        self.assertFalse(await self.takes([], exclusive=False))
+
+
 class AgentTokenTests(RunnerTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -1191,6 +1252,7 @@ class PoolApiTests(RunnerTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['labels'], ['general'])
         self.assertEqual(response.json()['organizations'], [self.org])
+        self.assertFalse(response.json()['exclusive'])
         response = await self.client.post('/harness/pools', json=body)
         self.assertEqual(response.status_code, 409, response.text)
         response = await self.client.post(
@@ -1203,6 +1265,18 @@ class PoolApiTests(RunnerTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['labels'], ['gpu'])
+        for exclusive in (True, False):
+            response = await self.client.patch(
+                f'/harness/pools/x-{self.org}', json={'exclusive': exclusive}
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertIs(response.json()['exclusive'], exclusive)
+        response = await self.client.post(
+            '/harness/pools',
+            json={**body, 'name': f'z-{self.org}', 'exclusive': True},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertTrue(response.json()['exclusive'])
         # A live runner holds the pool.
         await self.register(f'x-{self.org}')
         self.act_as_user()

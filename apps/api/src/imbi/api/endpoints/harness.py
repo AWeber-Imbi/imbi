@@ -67,6 +67,12 @@ _REPOSITORY_LINK = 'github-repository'
 # --- Schemas -----------------------------------------------------------
 
 
+_EXCLUSIVE = (
+    'Claim only agents that require at least one label, all of them in '
+    'the pool labels. An agent that requires no label never runs here.'
+)
+
+
 class PoolCreate(pydantic.BaseModel):
     name: str = pydantic.Field(
         min_length=1,
@@ -87,6 +93,10 @@ class PoolCreate(pydantic.BaseModel):
             'registers runners of the pool.'
         ),
     )
+    exclusive: bool = pydantic.Field(
+        default=False,
+        description=_EXCLUSIVE,
+    )
 
 
 class PoolUpdate(pydantic.BaseModel):
@@ -94,6 +104,9 @@ class PoolUpdate(pydantic.BaseModel):
     labels: list[models.RunnerLabel] | None = None
     organizations: list[str] | None = None
     service_account: str | None = pydantic.Field(default=None, min_length=1)
+    exclusive: bool | None = pydantic.Field(
+        default=None, description=_EXCLUSIVE
+    )
 
 
 class RunnerChain(pydantic.BaseModel):
@@ -126,6 +139,8 @@ class PoolResponse(pydantic.BaseModel):
     name: str
     description: str | None = None
     labels: list[str]
+    #: Only agents that require at least one label, all in ``labels``.
+    exclusive: bool = False
     #: The slugs of the allowlist. Empty means all organizations. A
     #: caller who is not a platform administrator sees only the
     #: organization that they asked for.
@@ -1221,6 +1236,7 @@ async def create_harness_pool(
             organization_ids=org_ids,
             service_account=data.service_account,
             service_account_id=account_id,
+            exclusive=data.exclusive,
         )
     except harness.PoolExists as err:
         raise _conflict('pool_exists', f'Pool {data.name!r} exists') from err
@@ -1252,6 +1268,8 @@ async def update_harness_pool(
         changes['description'] = data.description
     if data.labels is not None:
         changes['labels'] = sorted(set(data.labels))
+    if data.exclusive is not None:
+        changes['exclusive'] = data.exclusive
     if data.organizations is not None:
         changes['organization_ids'] = await _org_ids(db, data.organizations)
     if data.service_account is not None:

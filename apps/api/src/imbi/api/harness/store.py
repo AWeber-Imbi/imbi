@@ -155,6 +155,32 @@ SELECT r.id, r.pool, r.instance, p.labels, r.state, r.chain_id,
 """
 
 
+def pool_runs(pool: Row, required: list[str]) -> bool:
+    """Whether a runner of ``pool`` may run an agent that requires the
+    labels ``required``: the pool has every one, and an ``exclusive``
+    pool takes only agents that require at least one."""
+    if pool.get('exclusive') and not required:
+        return False
+    return set(required) <= set(pool['labels'])
+
+
+def _claim_params(
+    pool: Row, agents: dict[str, list[str]], limits: dict[str, int]
+) -> Row:
+    """The parameters of the claim and the queue count for ``pool``,
+    built in one place so that the two cannot disagree."""
+    return {
+        'agents': [
+            agent_id
+            for agent_id, required in agents.items()
+            if pool_runs(pool, required)
+        ],
+        'orgs': pool['organization_ids'],
+        'limits': pg_json.Jsonb(limits),
+        'pinned': list(PINNED),
+    }
+
+
 class PoolExists(ValueError):
     """A pool with this name exists."""
 
@@ -200,6 +226,7 @@ class HarnessStore:
         organization_ids: list[str],
         service_account: str,
         service_account_id: str,
+        exclusive: bool = False,
     ) -> Row:
         """Insert a pool.
 
@@ -210,8 +237,9 @@ class HarnessStore:
         try:
             row = await self._fetch_one(
                 'INSERT INTO harness.pools (name, description, labels,'
-                ' organization_ids, service_account, service_account_id)'
-                ' VALUES (%s, %s, %s, %s, %s, %s) RETURNING *',
+                ' organization_ids, service_account, service_account_id,'
+                ' exclusive) VALUES (%s, %s, %s, %s, %s, %s, %s)'
+                ' RETURNING *',
                 (
                     name,
                     description,
@@ -219,6 +247,7 @@ class HarnessStore:
                     organization_ids,
                     service_account,
                     service_account_id,
+                    exclusive,
                 ),
             )
         except psycopg.errors.UniqueViolation as err:
@@ -292,19 +321,8 @@ class HarnessStore:
         and organizations of the pool, and for each agent with a
         ``max_concurrent_tasks``, no more than its free places.
         """
-        labels = set(pool['labels'])
         rows = await self._fetch_all(
-            _QUEUED_QUERY,
-            {
-                'agents': [
-                    agent_id
-                    for agent_id, required in agents.items()
-                    if set(required) <= labels
-                ],
-                'orgs': pool['organization_ids'],
-                'limits': pg_json.Jsonb(limits),
-                'pinned': list(PINNED),
-            },
+            _QUEUED_QUERY, _claim_params(pool, agents, limits)
         )
         return sum(
             min(row['queued'], limits[row['agent_id']] - row['busy'])
@@ -423,23 +441,11 @@ class HarnessStore:
         """
         async with self._pool.connection() as conn, conn.transaction():
             pool = await self._lock_idle(conn, runner['id'])
-            labels = set(pool['labels'])
             await conn.execute(
                 'SELECT pg_advisory_xact_lock(hashtext(%s))', (_CLAIM_LOCK,)
             )
             task = await _fetch_one(
-                conn,
-                _CLAIM_QUERY,
-                {
-                    'agents': [
-                        agent_id
-                        for agent_id, required in agents.items()
-                        if set(required) <= labels
-                    ],
-                    'orgs': pool['organization_ids'],
-                    'limits': pg_json.Jsonb(limits),
-                    'pinned': list(PINNED),
-                },
+                conn, _CLAIM_QUERY, _claim_params(pool, agents, limits)
             )
             if task is None:
                 return None
@@ -861,11 +867,11 @@ class HarnessStore:
     # --- Helpers -------------------------------------------------------
 
     async def _lock_idle(self, conn: Conn, runner_id: uuid.UUID) -> Row:
-        """Lock an idle runner; return the labels and allowlist of its
-        pool as they are now."""
+        """Lock an idle runner; return the labels, allowlist, and
+        ``exclusive`` of its pool as they are now."""
         row = await _fetch_one(
             conn,
-            'SELECT r.state, p.labels, p.organization_ids'
+            'SELECT r.state, p.labels, p.organization_ids, p.exclusive'
             ' FROM harness.runners AS r'
             ' JOIN harness.pools AS p ON p.name = r.pool'
             ' WHERE r.id = %s FOR UPDATE OF r FOR SHARE OF p',

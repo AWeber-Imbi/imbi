@@ -91,6 +91,14 @@ function PoolCard({ pool }: { pool: HarnessPool }) {
           </span>
         </div>
         <div className="ml-auto flex flex-wrap gap-1">
+          {pool.exclusive && (
+            <Badge
+              title="Only agents that require one of these labels"
+              variant="neutral"
+            >
+              exclusive
+            </Badge>
+          )}
           {pool.labels.map((label) => (
             <Badge key={label} variant="outline">
               {label}
