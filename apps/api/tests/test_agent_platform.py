@@ -5,6 +5,8 @@ import pathlib
 import unittest
 from unittest import mock
 
+import respx
+
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces, platform
 from imbi.api.plugins import assignments
@@ -336,6 +338,39 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
         for plugin in changes['plugins'][3:]:
             self.assertIsNone(plugin['repository_url'])
         self.assertIsNone(changes['sync_error'])
+
+    @respx.mock
+    async def test_a_public_github_repository_is_read_anonymously(
+        self,
+    ) -> None:
+        handler = mock.AsyncMock(spec=base.DeploymentCapability)
+        handler.list_refs.side_effect = RuntimeError('no installation')
+        api = 'https://api.github.com/repos/anthropics/plugins'
+        respx.get(api).respond(json={'default_branch': 'main'})
+        respx.get(f'{api}/commits/main').respond(json={'sha': SHA})
+        respx.get(
+            f'{api}/contents/.claude-plugin/marketplace.json',
+            params={'ref': SHA},
+        ).respond(text='{}')
+        with (
+            mock.patch.object(
+                assignments,
+                'org_integrations',
+                return_value={'i1': {'slug': 'gh', 'plugin': 'github'}},
+            ),
+            mock.patch.object(marketplaces, '_handler', return_value=handler),
+        ):
+            head = await marketplaces.fetch(
+                mock.Mock(), 'acme', 'https://github.com/anthropics/plugins'
+            )
+            self.assertEqual(head, marketplaces.Head('main', SHA, '{}'))
+            # Another host is never read anonymously.
+            with self.assertRaisesRegex(
+                marketplaces.SyncError, '^gh: no installation$'
+            ):
+                await marketplaces.fetch(
+                    mock.Mock(), 'acme', 'https://ghe.example.com/a/b'
+                )
 
     async def test_no_integration(self) -> None:
         with mock.patch.object(
