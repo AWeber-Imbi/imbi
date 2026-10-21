@@ -19,6 +19,7 @@ import re
 import typing
 import urllib.parse
 
+import httpx
 import pydantic
 
 from imbi.api.harness import store as harness_store
@@ -335,12 +336,88 @@ async def _read[T](
             errors.append(f'{integration.get("slug")}: {missing}')
             continue
         return result
+    public = _PublicGitHub.for_url(url)
+    if public is not None:
+        # As the runner does: a public github.com repository needs no
+        # installation, so read it anonymously.
+        try:
+            result = await read(
+                typing.cast('base.DeploymentCapability', public),
+                typing.cast('base.PluginContext', None),
+                {},
+            )
+        except Exception as err:  # noqa: BLE001 - report with the rest
+            errors.append(f'anonymous: {err}')
+        else:
+            if result is not None:
+                return result
+            errors.append(f'anonymous: {missing}')
     if not errors:
         raise SyncError(
             'The organization has no integration that can read '
             'repositories (the github plugin)'
         )
     raise SyncError('; '.join(errors))
+
+
+class _PublicGitHub:
+    """The reads of :func:`fetch` and :func:`resolve_commit`, without
+    credentials, for a public ``github.com`` repository.
+
+    The arguments other than the ref and path are not used.
+    """
+
+    # ponytail: 60 unauthenticated requests an hour per API pod IP; use
+    # an org token if many public marketplaces sync often.
+    def __init__(self, owner: str, repo: str) -> None:
+        self.base = f'https://api.github.com/repos/{owner}/{repo}'
+
+    @classmethod
+    def for_url(cls, url: str) -> _PublicGitHub | None:
+        parts = urllib.parse.urlsplit(url)
+        path = parts.path.strip('/').removesuffix('.git')
+        if parts.hostname != 'github.com' or not _GITHUB_REPO.fullmatch(path):
+            return None
+        return cls(*path.split('/'))
+
+    async def _get(
+        self, path: str, accept: str = 'application/vnd.github+json'
+    ) -> httpx.Response:
+        # A renamed or moved repository answers 301 to /repositories/{id}.
+        async with httpx.AsyncClient(
+            timeout=30, follow_redirects=True
+        ) as client:
+            return await client.get(
+                f'{self.base}{path}', headers={'Accept': accept}
+            )
+
+    async def resolve_committish(
+        self, _ctx: object, _credentials: object, ref: str
+    ) -> base.Ref:
+        response = await self._get(f'/commits/{urllib.parse.quote(ref)}')
+        response.raise_for_status()
+        return base.Ref(name=ref, kind='branch', sha=response.json()['sha'])
+
+    async def list_refs(
+        self, _ctx: object, _credentials: object, kind: str
+    ) -> list[base.Ref]:
+        response = await self._get('')
+        response.raise_for_status()
+        branch = str(response.json()['default_branch'])
+        ref = await self.resolve_committish(None, None, branch)
+        return [ref.model_copy(update={'kind': 'default', 'is_default': True})]
+
+    async def get_file(
+        self, _ctx: object, _credentials: object, path: str, ref: str
+    ) -> str | None:
+        response = await self._get(
+            f'/contents/{urllib.parse.quote(path)}?ref={ref}',
+            'application/vnd.github.raw+json',
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.text
 
 
 async def _handler(
