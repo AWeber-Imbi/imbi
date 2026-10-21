@@ -1129,19 +1129,24 @@ async def _assert_breaking_changes_acknowledged(
 ) -> bool:
     """Refuse a non-breaking bump over a declared breaking change.
 
-    Returns ``True`` when the operator acknowledged one, so the caller
-    records the override (:func:`_set_release_breaking_override`).
+    Returns ``True`` when the operator acknowledged shipping breaking
+    changes under ``tag``, so the caller records the override
+    (:func:`_set_release_breaking_override`).
 
     Only commits their author marked breaking (``type!:`` subject or a
     ``BREAKING CHANGE:`` footer) gate: those are facts the server can
     re-derive here from the commits between the current release and
     ``committish``.  The breaking changes the release-notes draft infers
     are a model's judgment, so they are evidence the UI shows, not a
-    gate the API holds.
+    gate the API holds -- but an operator's acknowledgement of them is
+    still a decision, and is recorded like one.  So the acknowledgement
+    is recorded whenever it was made, unless ``tag`` is plainly not a
+    version it could apply to (a breaking bump, or not a newer release).
 
     Like the CI gate this fails open -- a release lookup or compare that
-    cannot answer lets the release through -- and an autonomous
-    principal cannot make the acknowledgement.
+    cannot answer lets the release through, still recording an
+    acknowledgement that was made -- and an autonomous principal cannot
+    make the acknowledgement.
 
     A tag whose ``Release`` already carries a breaking override for
     ``committish`` is not judged again: re-promoting it before its tag
@@ -1153,7 +1158,7 @@ async def _assert_breaking_changes_acknowledged(
     )
     latest = await _latest_release(project_id)
     if latest is None:
-        return False
+        return acknowledged
     last_tag, last_sha = latest
     if not _skips_breaking_bump(last_tag, tag):
         return False
@@ -1173,10 +1178,12 @@ async def _assert_breaking_changes_acknowledged(
             committish,
             exc_info=True,
         )
-        return False
+        return acknowledged
     declared = [c for c in result.commits if _declares_breaking(c)]
     if not declared:
-        return False
+        # Only the model judged anything breaking, if anything did; the
+        # operator's acknowledgement of that is theirs to make.
+        return acknowledged
     if not acknowledged:
         # Structured, like the autonomous 403s, so the UI can put the
         # acknowledgement in front of the operator from this answer alone.

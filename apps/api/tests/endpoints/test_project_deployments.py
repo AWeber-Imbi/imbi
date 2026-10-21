@@ -4025,11 +4025,45 @@ class BreakingChangeGateTestCase(ProjectDeploymentsTestCase):
         self.assertTrue(overrides[0]['overridden_at'])
         self.assertTrue(self._audit_description()['breaking_override'])
 
-    def test_unneeded_acknowledgement_records_nothing(self) -> None:
-        """Only an acknowledgement the gate needed is an override."""
+    def test_acknowledging_model_judged_changes_is_recorded(self) -> None:
+        """No commit is marked, but the operator still made the call.
+
+        The draft's model-judged breaking changes never reach the gate,
+        so the acknowledgement is the only trace of the decision to ship
+        them under a non-breaking tag.
+        """
         self._use(declared=False)
         self.assertEqual(
             202, self._promote(acknowledge_breaking_changes=True).status_code
+        )
+        self.assertEqual(1, len(self._override_writes()))
+        self.assertTrue(self._audit_description()['breaking_override'])
+
+    def test_acknowledgement_is_recorded_when_the_gate_cannot_answer(
+        self,
+    ) -> None:
+        for kwargs in ({'latest': None}, {'raises': True}):
+            with self.subTest(**kwargs):
+                self.mock_db.execute.reset_mock()
+                self._use(**kwargs)
+                self.assertEqual(
+                    202,
+                    self._promote(
+                        acknowledge_breaking_changes=True
+                    ).status_code,
+                )
+                self.assertEqual(1, len(self._override_writes()))
+
+    def test_acknowledgement_of_a_breaking_bump_records_nothing(
+        self,
+    ) -> None:
+        """A major tag announces the breaks; there is nothing to own."""
+        self._use()
+        self.assertEqual(
+            202,
+            self._promote(
+                tag='v7.0.0', acknowledge_breaking_changes=True
+            ).status_code,
         )
         self.assertEqual([], self._override_writes())
         self.assertFalse(self._audit_description()['breaking_override'])

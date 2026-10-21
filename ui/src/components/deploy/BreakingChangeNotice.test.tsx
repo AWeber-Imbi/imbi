@@ -278,19 +278,18 @@ describe('BreakingChangeNotice', () => {
     ).toBeInTheDocument()
   })
 
-  it('promises a record only over an author-marked commit', () => {
+  it('promises a record whoever judged the changes breaking', () => {
     const { unmount } = renderNotice()
     expect(
       screen.getByText(/Promoting anyway will be recorded against the release/),
     ).toBeVisible()
     unmount()
-    // The API gate never sees a commit only the model judged breaking,
-    // so nothing records that acknowledgement.
+    // Only the model judged this one breaking; the API records the
+    // operator's acknowledgement of it all the same.
     renderNotice({ breakingChanges: [CHANGES[1]] })
-    expect(screen.getByText(/confirm they are not breaking\.$/)).toBeVisible()
     expect(
-      screen.queryByText(/will be recorded against the release/),
-    ).not.toBeInTheDocument()
+      screen.getByText(/Promoting anyway will be recorded against the release/),
+    ).toBeVisible()
   })
 
   it('asks for a minor below 1.0.0', () => {

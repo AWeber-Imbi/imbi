@@ -62,8 +62,8 @@ interface BreakingChangeNoticeProps {
  * version an operator is about to ship. Once the tag is edited down to one
  * that hides them, a danger strip with an acknowledgement checkbox, in the
  * same shape as {@link CiFailureNotice}: shipping it is still the
- * operator's call, and over an author-marked commit it is recorded
- * against the release.
+ * operator's call, but it is recorded against the release, whether the
+ * changes were marked by their authors or judged by the model.
  *
  * The API only refuses the commits their authors marked breaking (it can
  * re-derive those); the rest are the model's judgment, so this checkbox is
@@ -133,11 +133,7 @@ export function BreakingChangeNotice({
               Consumers upgrading from {lastTag} to {tag} will not expect{' '}
               {changes.length === 1 ? 'this change' : 'these changes'}. Release
               a {breakingBump(lastTag)} version instead, or confirm they are not
-              breaking
-              {changes.some((change) => change.declared)
-                ? ` — ${gerund} anyway will be recorded against the release`
-                : ''}
-              .
+              breaking — {gerund} anyway will be recorded against the release.
             </span>
             <label className="flex w-fit cursor-pointer items-center gap-2 text-xs font-medium">
               <Checkbox

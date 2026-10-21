@@ -55,9 +55,10 @@ breaking from its message. A commit the model judged breaking is marked
 as such, not as one its author declared, so you can weigh it.
 
 If you change the tag to a version that does not announce the breaking
-changes, the form asks you to confirm. For a commit its author marked,
-the API refuses the release until you do, and records the confirmed
-release with who confirmed it and when; it shows a **Breaking
+changes, the form asks you to confirm; for a commit its author marked,
+the API refuses the release until you do. A confirmed release is
+recorded with who confirmed it and when, whether the changes were marked
+by their authors or judged by the model, and shows a **Breaking
 overridden** badge in the release history, next to the **CI overridden**
 badge for releases shipped over a failing CI run.
 
