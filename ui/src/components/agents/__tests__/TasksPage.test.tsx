@@ -458,6 +458,28 @@ describe('Tasks', () => {
     ).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('cancels a task after a confirm', async () => {
+    vi.mocked(endpoints.controlAgentTask).mockResolvedValue({
+      ...BLOCKED,
+      control: 'cancel',
+    })
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel task' }))
+    expect(endpoints.controlAgentTask).not.toHaveBeenCalled()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel task',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.controlAgentTask).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'cancel',
+      ),
+    )
+  })
+
   it('sends Reply and hold', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
     renderAt('/agents/tasks/acme/T-3/conversation')
