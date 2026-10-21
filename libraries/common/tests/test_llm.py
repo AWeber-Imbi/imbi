@@ -38,6 +38,30 @@ class ExtractJsonTestCase(unittest.TestCase):
         payload = '{"a": {"b": 1}, "c": 2}'
         self.assertEqual(_extract_json(payload), {'a': {'b': 1}, 'c': 2})
 
+    def test_handles_deep_nesting_and_braces_in_strings(self) -> None:
+        payload = (
+            'Here you go: {"bump": "major", "breaking_changes": '
+            '[{"sha": "abc", "description": "GET /v1/exports/{id} '
+            'removed", "shape": {"name": {"x": 1}}}]} done'
+        )
+        self.assertEqual(
+            _extract_json(payload),
+            {
+                'bump': 'major',
+                'breaking_changes': [
+                    {
+                        'sha': 'abc',
+                        'description': 'GET /v1/exports/{id} removed',
+                        'shape': {'name': {'x': 1}},
+                    }
+                ],
+            },
+        )
+
+    def test_skips_stray_brace_before_object(self) -> None:
+        payload = 'Use {id} paths. {"a": 1}'
+        self.assertEqual(_extract_json(payload), {'a': 1})
+
     def test_returns_none_when_missing(self) -> None:
         self.assertIsNone(_extract_json('no json here'))
 

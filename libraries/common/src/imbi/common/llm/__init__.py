@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import typing
 
 import pydantic
@@ -75,21 +74,27 @@ class CompletionResult[T: pydantic.BaseModel](pydantic.BaseModel):
     degraded: bool = False
 
 
-_JSON_OBJECT = re.compile(r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}', re.DOTALL)
+_DECODER = json.JSONDecoder()
 
 
 def _extract_json(text: str) -> dict[str, typing.Any] | None:
-    """Pull the first JSON object out of a free-form response."""
-    match = _JSON_OBJECT.search(text)
-    if not match:
-        return None
-    try:
-        parsed: typing.Any = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    return typing.cast(dict[str, typing.Any], parsed)
+    """Pull the first JSON object out of a free-form response.
+
+    Decodes from each ``{`` in turn, so the object may nest to any
+    depth and carry braces inside its strings (a templated path such
+    as ``/v1/exports/{id}`` in a breaking-change description).
+
+    """
+    start = text.find('{')
+    while start != -1:
+        try:
+            parsed: typing.Any = _DECODER.raw_decode(text, start)[0]
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return typing.cast(dict[str, typing.Any], parsed)
+        start = text.find('{', start + 1)
+    return None
 
 
 class AnthropicClient:
