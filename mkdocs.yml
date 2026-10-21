@@ -51,9 +51,13 @@ nav:
       - AI Models: admin/ai-models.md
       - Prompts: admin/prompts.md
       - Secrets: admin/secrets.md
+      - Agents: admin/agents.md
+      - Agent Tasks: admin/agent-tasks.md
+      - Workflows: admin/workflows.md
   - Deployment:
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
+      - Agent Runners: deployment/agent-runners.md
   - Architecture:
       - Overview: architecture/overview.md
       - Services: architecture/services.md

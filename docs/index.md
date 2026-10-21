@@ -21,6 +21,12 @@ Imbi provides a centralized service catalog that tracks:
 - **Graph Visualization** - Explore service dependencies visually
 - **Scheduled Tasks** - Cron, interval, and one-shot triggers that call the API
   or the gateway on a schedule
+- **[Agents](admin/agents.md)** - Define AI agents and give them
+  [tasks](admin/agent-tasks.md) to do against your projects
+- **[Workflows](admin/workflows.md)** - Chain deploy, rollback, agent, email, and
+  wait steps that start manually, on a schedule, or from a webhook
+- **[Agent Runners](deployment/agent-runners.md)** - Run agent tasks in runner
+  pools that you deploy in your own Kubernetes cluster
 
 ## Architecture
 
@@ -34,10 +40,15 @@ Imbi is composed of several services packaged into a single Docker image:
 | **imbi-mcp** | MCP server for AI agent integration |
 | **imbi-scheduler** | Triggers scheduled tasks against imbi-api and imbi-gateway |
 | **imbi-slackbot** | Slack bot for querying and updating the catalog from Slack |
+| **imbi-workflows** | Workflow engine that executes workflow runs |
 | **imbi-ui** | React-based web interface |
 
 All services run behind [Caddy](https://caddyserver.com/) as a reverse proxy,
-except imbi-slackbot, which connects out to Slack over socket mode.
+except imbi-slackbot, which connects out to Slack over socket mode, and
+imbi-workflows, which has no public route.
+
+The agent runner, imbi-harness, is not in this image. It has its own image
+and Helm chart. See [Agent Runners](deployment/agent-runners.md).
 
 ## Data Stores
 

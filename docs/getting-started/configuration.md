@@ -49,6 +49,24 @@ settings (`IMBI_SCHEDULER_API_PREFIX`, `IMBI_SCHEDULER_SCHEMA`,
 `IMBI_SCHEDULER_GATEWAY_URL`, concurrency and poll-interval limits) and for why
 the internal and public API URLs are two separate variables.
 
+### Workflows
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_URL` | Workflow definitions and runs |
+| `IMBI_AUTH_ENCRYPTION_KEY` | Decrypts AI provider credentials |
+| `IMBI_WORKFLOWS_SA_CLIENT_ID` | The workflow engine's service-account client id |
+| `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | Its client secret |
+| `IMBI_INTERNAL_API_URL` | Bare origin where imbi-workflows *connects* to imbi-api |
+| `IMBI_API_URL` | imbi-api's *public* URL, whose path is the prefix it mounts its routes under |
+
+`imbi-api setup` seeds the `imbi-workflows` service account. Deploy and
+rollback steps call imbi-api as this account, so without the credentials every
+such step fails. In `IMBI_SERVICE=all` mode the entrypoint provisions the
+credentials when you do not set them. See
+[API configuration](../api/configuration.md#workflow-engine-imbi_workflows_)
+for the optional settings.
+
 ## ClickHouse
 
 | Variable | Description | Default |
@@ -108,6 +126,8 @@ the internal and public API URLs are two separate variables.
 | `IMBI_ASSISTANT_ENABLED` | Enable the AI assistant | `false` (auto-enabled if API key set) |
 | `IMBI_ASSISTANT_MODEL` | Claude model to use | `claude-sonnet-4-6` |
 | `IMBI_ASSISTANT_MAX_TOKENS` | Maximum response tokens | `16384` |
+| `IMBI_ASSISTANT_PROMPT_REF` | Prompt CMS reference for the system prompt | `imbi-assistant/system@stable` |
+| `IMBI_SLACKBOT_PROMPT_REF` | Prompt CMS reference for the Slack bot's system prompt | `imbi-slackbot/system@stable` |
 
 ## Gateway
 
@@ -125,10 +145,25 @@ the internal and public API URLs are two separate variables.
 | `S3_BUCKET` | S3 bucket name | `imbi-uploads` |
 | `S3_REGION` | AWS region | `us-east-1` |
 
+## Prompt Rendering and Secrets
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `IMBI_PROMPT_WORKERS` | Prompt render worker processes per service process | `2` |
+| `IMBI_PROMPT_WORKER_MAX_RENDERS` | Renders before a worker is replaced | `500` |
+| `IMBI_PROMPT_WORKER_MEMORY_MB` | Address space a worker can add after start (Linux only) | `256` |
+| `IMBI_PROMPT_RENDER_INPROCESS` | Render in the service process (debugging only) | `false` |
+| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | Comma-separated GHES hosts that GitHub App secret bindings can use | - |
+| `IMBI_SECRETS_AWS_ENDPOINT_URL` | AWS endpoint override (LocalStack) | - (AWS) |
+| `IMBI_INTERNAL_WORKFLOWS_URL` | Internal URL of imbi-workflows, for the status dashboard | - |
+
+See [API configuration](../api/configuration.md#agents-workflows-and-secrets)
+for the details and the imbi-workflows settings.
+
 ## Service Selection
 
 When running the Docker image, you can select which service to run:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `IMBI_SERVICE` | Service to run: `all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot` | `all` |
+| `IMBI_SERVICE` | Service to run: `all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`, `ui`, `workflows` | `all` |

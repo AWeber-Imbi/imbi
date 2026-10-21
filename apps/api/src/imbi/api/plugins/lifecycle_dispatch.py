@@ -78,8 +78,12 @@ _EVENT_METHOD: dict[LifecycleEvent, str] = {
 }
 
 
-def build_project_ui_url(org_slug: str, project_id: str) -> str | None:
+def build_project_ui_url(project_id: str) -> str | None:
     """Resolve the canonical UI deep link for a project.
+
+    The UI's project detail route is ``/projects/{project_id}`` (see
+    ``ui/src/App.tsx`` and the UI's ``llms.txt``); projects are keyed
+    by id alone, so the organization is not part of the path.
 
     Returns ``None`` when ``IMBI_UI_URL`` is unset so lifecycle plugins
     can skip writing the equivalent of a GitHub repo ``homepage``
@@ -87,14 +91,15 @@ def build_project_ui_url(org_slug: str, project_id: str) -> str | None:
     nothing meaningful for a third party.
 
     Lives here rather than in the endpoint module because
-    :func:`dispatch_lifecycle` derives the value for every event; it is
-    pure -- configuration plus two arguments -- so it needs no lookup
-    and has no place in :class:`LifecycleContextBundle`.
+    :func:`dispatch_lifecycle` derives the value for every event and the
+    GitHub doctor compares the repo ``homepage`` against it; it is pure
+    -- configuration plus one argument -- so it needs no lookup and has
+    no place in :class:`LifecycleContextBundle`.
     """
     base = get_server_config().ui_url
     if not base:
         return None
-    return f'{base}/organizations/{org_slug}/projects/{project_id}'
+    return f'{base}/projects/{project_id}'
 
 
 class _Unset:
@@ -262,11 +267,11 @@ async def dispatch_lifecycle(
         if isinstance(project_description, _Unset)
         else project_description
     )
-    # Derived from configuration plus two arguments this function
-    # already has, so it needs no lookup and does not belong in the
-    # bundle (which carries graph state read before a destructive write).
+    # Derived from configuration plus an argument this function already
+    # has, so it needs no lookup and does not belong in the bundle
+    # (which carries graph state read before a destructive write).
     resolved_ui_url = (
-        build_project_ui_url(org_slug, project_id)
+        build_project_ui_url(project_id)
         if isinstance(project_ui_url, _Unset)
         else project_ui_url
     )
