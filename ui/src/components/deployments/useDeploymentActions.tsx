@@ -19,6 +19,11 @@ import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 export interface DeploymentActions {
+  /**
+   * Forget the last promote's outcome, {@link promoteRefusal} included:
+   * a refusal describes the commit it was made for, not the next one.
+   */
+  clearPromoteRefusal: () => void
   deploy: (req: DeployRequest) => void
   deployPending: boolean
   /** SHA of the deploy currently in flight (drives per-row spinners). */
@@ -280,6 +285,7 @@ export function useDeploymentActions({
   })
 
   return {
+    clearPromoteRefusal: promoteMutation.reset,
     deploy: (req) => deployMutation.mutate(req),
     deployPending: deployMutation.isPending,
     deployPendingSha: deployMutation.isPending

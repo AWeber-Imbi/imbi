@@ -13,6 +13,7 @@ import {
 import { draftReleaseNotes } from '@/api/endpoints'
 import {
   BreakingChangeNotice,
+  commitsAfter,
   resolveBreakingGate,
 } from '@/components/deploy/BreakingChangeNotice'
 import {
@@ -131,11 +132,14 @@ export function PendingPromoteCard({
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
   // A different commit is a different decision — never carry either
-  // acknowledgement across a selection change.
+  // acknowledgement across a selection change, nor a refusal made for the
+  // last commit (its tag is usually still in the form).
+  const { clearPromoteRefusal } = actions
   useEffect(() => {
     setCiAcknowledged(false)
     setBreakingAcknowledged(false)
-  }, [selectedSha])
+    clearPromoteRefusal()
+  }, [selectedSha, clearPromoteRefusal])
   // The org/project-type tag policy the promote endpoint enforces.
   const {
     formats,
@@ -159,6 +163,7 @@ export function PendingPromoteCard({
   const tagValid = formats !== null && isTagAllowed(tag, formats)
   const breakingGate = resolveBreakingGate({
     draftChanges: draft?.breaking_changes,
+    heldBack: commitsAfter(commits, selectedSha),
     lastTag: bumpFrom,
     refusal: actions.promoteRefusal,
     tag,
@@ -187,6 +192,7 @@ export function PendingPromoteCard({
     setNotesDirty(false)
     setBreakingAcknowledged(false)
     setCiAcknowledged(false)
+    clearPromoteRefusal()
   }
 
   return (

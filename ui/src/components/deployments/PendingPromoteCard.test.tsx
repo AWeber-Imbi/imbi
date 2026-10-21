@@ -87,6 +87,7 @@ const STAGE: PipelineStage = {
 }
 
 const makeActions = (): DeploymentActions => ({
+  clearPromoteRefusal: vi.fn(),
   deploy: vi.fn(),
   deployPending: false,
   deployPendingSha: null,
@@ -248,6 +249,49 @@ describe('PendingPromoteCard — a breaking-change refusal from the API', () => 
     expect(actions.promote).toHaveBeenCalledWith(
       expect.objectContaining({ acknowledgeBreakingChanges: true }),
     )
+  })
+
+  it('forgets the refusal when another commit is selected', async () => {
+    const user = userEvent.setup()
+    const actions = renderCard()
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('0.1.14')).toBeInTheDocument()
+    })
+    const before = vi.mocked(actions.clearPromoteRefusal).mock.calls.length
+    await user.click(screen.getByText('feat: an earlier change'))
+    await waitFor(() => {
+      expect(
+        vi.mocked(actions.clearPromoteRefusal).mock.calls.length,
+      ).toBeGreaterThan(before)
+    })
+  })
+
+  it('drops a held-back commit from the draft evidence', async () => {
+    const user = userEvent.setup()
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      breaking_changes: [
+        { commit: 'aab005f', description: 'Drop the legacy field' },
+      ],
+      bump: 'patch',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '### Fixed\n- Corrected test behavior',
+      reasoning: 'a fix landed',
+      version: '0.1.14',
+    })
+    renderCard()
+    await waitFor(() => {
+      expect(
+        screen.getByText('0.1.14 is not a breaking-change release'),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('feat: an earlier change'))
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Drop the legacy field'),
+      ).not.toBeInTheDocument()
+    })
+    expect(promoteButton()).not.toBeDisabled()
   })
 })
 

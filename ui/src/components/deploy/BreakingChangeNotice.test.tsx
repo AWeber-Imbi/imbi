@@ -11,6 +11,7 @@ import {
   breakingNeedsAcknowledgement,
   type BreakingRefusal,
   breakingRefusal,
+  commitsAfter,
   resolveBreakingGate,
   skipsBreakingBump,
 } from './BreakingChangeNotice'
@@ -176,6 +177,45 @@ describe('resolveBreakingGate', () => {
     expect(
       resolveBreakingGate({
         draftChanges: undefined,
+        lastTag: 'v6.3.0',
+        refusal: null,
+        tag: 'v6.4.0',
+      }),
+    ).toEqual({ changes: [], lastTag: 'v6.3.0', needsAck: false })
+  })
+})
+
+describe('held-back commits', () => {
+  const NEWEST_FIRST = [
+    { sha: 'b7e1d2c0000000000000000000000000000000000' },
+    { sha: 'c0ffee10000000000000000000000000000000000' },
+    { sha: 'aaaaaaa0000000000000000000000000000000000' },
+  ]
+
+  it('names the commits newer than the selection', () => {
+    expect(commitsAfter(NEWEST_FIRST, NEWEST_FIRST[2].sha)).toEqual([
+      NEWEST_FIRST[0].sha,
+      NEWEST_FIRST[1].sha,
+    ])
+    expect(commitsAfter(NEWEST_FIRST, NEWEST_FIRST[0].sha)).toEqual([])
+    expect(commitsAfter(NEWEST_FIRST, null)).toEqual([])
+    expect(commitsAfter(NEWEST_FIRST, 'unknown')).toEqual([])
+  })
+
+  it('leaves their draft findings out of the gate', () => {
+    const gate = resolveBreakingGate({
+      draftChanges: CHANGES,
+      heldBack: commitsAfter(NEWEST_FIRST, NEWEST_FIRST[1].sha),
+      lastTag: 'v6.3.0',
+      refusal: null,
+      tag: 'v6.4.0',
+    })
+    expect(gate.changes.map((c) => c.commit)).toEqual(['c0ffee1'])
+    expect(gate.needsAck).toBe(true)
+    expect(
+      resolveBreakingGate({
+        draftChanges: CHANGES,
+        heldBack: commitsAfter(NEWEST_FIRST, NEWEST_FIRST[2].sha),
         lastTag: 'v6.3.0',
         refusal: null,
         tag: 'v6.4.0',

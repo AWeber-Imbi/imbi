@@ -125,6 +125,7 @@ const STAGE: PipelineStage = {
 }
 
 const makeActions = (): DeploymentActions => ({
+  clearPromoteRefusal: vi.fn(),
   deploy: vi.fn(),
   deployPending: false,
   deployPendingSha: null,

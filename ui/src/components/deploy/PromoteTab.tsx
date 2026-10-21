@@ -14,6 +14,7 @@ import {
 import {
   BreakingChangeNotice,
   breakingRefusal,
+  commitsAfter,
   resolveBreakingGate,
 } from '@/components/deploy/BreakingChangeNotice'
 import { DriftIndicator } from '@/components/releases/DriftIndicator'
@@ -330,6 +331,8 @@ export function PromoteTab({
   const promoteError = dispatchFailureDetail(promoteMutation.error)
   const breakingGate = resolveBreakingGate({
     draftChanges: draft?.breaking_changes,
+    // Oldest-first here; the tip is last.
+    heldBack: commitsAfter([...commits].reverse(), selectedSha),
     lastTag,
     refusal: breakingRefusal(promoteMutation.error),
     tag,

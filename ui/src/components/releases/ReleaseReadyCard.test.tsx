@@ -433,8 +433,16 @@ describe('ReleaseReadyCard', () => {
       })
       await user.click(ack)
       expect(ack).toBeChecked()
-      // A different commit is a different decision.
+      // A different commit is a different decision. The older one holds
+      // the breaking commit back, so its evidence leaves the form.
       await user.click(screen.getByText('fix: a bug'))
+      await waitFor(() => {
+        expect(
+          screen.queryByText('Drops the v1 routes'),
+        ).not.toBeInTheDocument()
+      })
+      // Back at the tip the evidence returns, unacknowledged.
+      await user.click(screen.getByText('feat: a new thing'))
       await waitFor(() => {
         expect(
           screen.getByRole('checkbox', { name: /Release v1.3.0 anyway/i }),

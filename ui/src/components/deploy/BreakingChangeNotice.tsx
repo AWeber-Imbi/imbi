@@ -187,6 +187,19 @@ export function breakingRefusal(error: unknown): BreakingRefusal | null {
 }
 
 /**
+ * The SHAs of the commits newer than `selectedSha` in a newest-first
+ * list: the ones an operator holds back by picking an older commit. Empty
+ * when nothing is selected or the selection is not in the list.
+ */
+export function commitsAfter(
+  newestFirst: { sha: string }[],
+  selectedSha: null | string,
+): string[] {
+  const index = newestFirst.findIndex((c) => c.sha === selectedSha)
+  return index > 0 ? newestFirst.slice(0, index).map((c) => c.sha) : []
+}
+
+/**
  * What a form shows, and whether it must hold submit for the
  * acknowledgement.
  *
@@ -197,18 +210,26 @@ export function breakingRefusal(error: unknown): BreakingRefusal | null {
  * run. Without this, a promote the API refuses could leave no checkbox on
  * screen to satisfy it. The draft's own findings stay listed beside the
  * server's.
+ *
+ * `heldBack` names the commits newer than the one being shipped (see
+ * {@link commitsAfter}). The draft is made for one commit, usually the
+ * newest, so picking an older one leaves some of its findings out of the
+ * release; those are dropped rather than held against the tag.
  */
 export function resolveBreakingGate({
-  draftChanges,
+  draftChanges: allDraftChanges,
+  heldBack = [],
   lastTag,
   refusal,
   tag,
 }: {
   draftChanges: BreakingChange[] | undefined
+  heldBack?: string[]
   lastTag: null | string
   refusal: BreakingRefusal | null
   tag: string
 }): BreakingGate {
+  const draftChanges = withoutHeldBack(allDraftChanges, heldBack)
   if (refusal && refusal.tag === tag) {
     const seen = new Set(refusal.breaking_changes.map((c) => c.commit))
     return {
@@ -262,4 +283,16 @@ function breakingBump(lastTag: null | string): 'major' | 'minor' {
 function parse(tag: string): [number, number, number] | null {
   const match = SEMVER_RE.exec(tag)
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+}
+
+/** `changes` without those on a held-back commit (by short-SHA prefix). */
+function withoutHeldBack(
+  changes: BreakingChange[] | undefined,
+  heldBack: string[],
+): BreakingChange[] | undefined {
+  if (!changes || heldBack.length === 0) return changes
+  return changes.filter(
+    (change) =>
+      !change.commit || !heldBack.some((sha) => sha.startsWith(change.commit)),
+  )
 }

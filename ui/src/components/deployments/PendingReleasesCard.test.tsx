@@ -111,6 +111,7 @@ const RECENT_COMMITS: RecentCommit[] = [
 ]
 
 const makeActions = (): DeploymentActions => ({
+  clearPromoteRefusal: vi.fn(),
   deploy: vi.fn(),
   deployPending: false,
   deployPendingSha: null,

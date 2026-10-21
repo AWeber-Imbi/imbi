@@ -6,6 +6,7 @@ import { Check, Loader2, RefreshCw, Rocket, Sparkles, Tag } from 'lucide-react'
 import { draftReleaseNotes } from '@/api/endpoints'
 import {
   BreakingChangeNotice,
+  commitsAfter,
   resolveBreakingGate,
 } from '@/components/deploy/BreakingChangeNotice'
 import {
@@ -178,6 +179,7 @@ export function ReleaseReadyCard({
   const tagValid = formats !== null && isTagAllowed(tag, formats)
   const breakingGate = resolveBreakingGate({
     draftChanges: breakingChanges,
+    heldBack: commitsAfter(commits, selectedSha),
     lastTag: drift.latest_tag,
     refusal: cutRefusal,
     tag,
