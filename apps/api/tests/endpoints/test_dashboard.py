@@ -97,7 +97,7 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.pg_size_patch = mock.patch.object(
             dashboard, '_postgres_size', mock.AsyncMock(return_value=4096)
         )
-        # All five sibling services configured.
+        # All six sibling services configured.
         self.services_patch = mock.patch.object(
             dashboard.settings,
             'get_internal_services',
@@ -107,6 +107,7 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
                 mcp_url='http://mcp:8001',
                 scheduler_url='http://scheduler:8005',
                 slackbot_url='http://slackbot:8004',
+                workflows_url='http://workflows:8006',
             ),
         )
         self.clickhouse_patch.start()
@@ -145,7 +146,15 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
 
         services = {s['name']: s for s in body['services']}
         self.assertEqual(
-            {'API', 'Assistant', 'Gateway', 'MCP', 'Scheduler', 'Slackbot'},
+            {
+                'API',
+                'Assistant',
+                'Gateway',
+                'MCP',
+                'Scheduler',
+                'Slackbot',
+                'Workflows',
+            },
             set(services),
         )
         for entry in services.values():
@@ -229,6 +238,8 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual('not configured', services['Slackbot']['detail'])
         self.assertEqual('down', services['Scheduler']['status'])
         self.assertEqual('not configured', services['Scheduler']['detail'])
+        self.assertEqual('down', services['Workflows']['status'])
+        self.assertEqual('not configured', services['Workflows']['detail'])
 
     def test_requires_permission(self) -> None:
         """A non-admin without admin:dashboard:read is forbidden."""

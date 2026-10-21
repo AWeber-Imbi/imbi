@@ -27,6 +27,7 @@ import {
   Sparkles,
   Waypoints,
   Webhook,
+  Workflow,
   Zap,
 } from 'lucide-react'
 
@@ -61,6 +62,7 @@ const SERVICE_ICONS: Record<string, LucideIcon> = {
   MCP: Plug,
   Scheduler: CalendarClock,
   Slackbot: Hash,
+  Workflows: Workflow,
 }
 
 // ---------------------------------------------------------------------------

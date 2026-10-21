@@ -311,6 +311,9 @@ async def get_dashboard_status(
                     http_client, 'Scheduler', internal.scheduler_url
                 ),
                 _check_service(http_client, 'Slackbot', internal.slackbot_url),
+                _check_service(
+                    http_client, 'Workflows', internal.workflows_url
+                ),
             ),
         )
     # The API is this process -- report its own version without an HTTP hop.
