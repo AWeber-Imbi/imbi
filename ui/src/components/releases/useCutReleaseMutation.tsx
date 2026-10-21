@@ -10,6 +10,7 @@ import {
 import type { ReleaseBuildStarted } from '@/components/deploy/DeploymentModal'
 import { dispatchFailureDetail } from '@/components/deploy/DispatchFailureNotice'
 import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
+import { useSettledReset } from '@/hooks/useSettledReset'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { CutReleaseRequest } from '@/types'
 
@@ -25,7 +26,10 @@ interface UseCutReleaseOptions {
 }
 
 interface UseCutReleaseResult {
-  /** Drops a standing refusal, e.g. once the operator edits the form. */
+  /**
+   * Drops a standing refusal, e.g. once the operator edits the form. A
+   * no-op while a cut is in flight, so its result still lands.
+   */
   clearError: () => void
   cut: (body: CutReleaseRequest) => void
   /**
@@ -116,10 +120,11 @@ export function useCutReleaseMutation({
     },
   })
 
+  // Stable, so callers can put it in effect dependency lists.
+  const clearError = useSettledReset(mutation)
+
   return {
-    // ``reset`` itself, not a wrapper: callers put it in effect
-    // dependency lists, and a fresh identity each render would loop.
-    clearError: mutation.reset,
+    clearError,
     // Clearing first so a retry never renders the previous refusal beside
     // a request that is still in flight.
     cut: (body: CutReleaseRequest) => {

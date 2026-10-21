@@ -32,6 +32,7 @@ import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useSettledReset } from '@/hooks/useSettledReset'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 import type { DraftReleaseNotesResponse, Environment } from '@/types'
@@ -340,11 +341,12 @@ export function PromoteTab({
   const breakingNeedsAck = breakingGate.needsAck
   // A refusal names the commit or the workflow that would have built it,
   // so it stops describing what the button does once another commit is
-  // picked.
+  // picked. Never mid-request, though: resetting a pending mutation
+  // drops its spinner and its eventual answer.
+  const clearPromote = useSettledReset(promoteMutation)
   useEffect(() => {
-    promoteMutation.reset()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSha])
+    clearPromote()
+  }, [selectedSha, clearPromote])
 
   const tagValid = SEMVER_RE.test(tag)
   const canPromote =

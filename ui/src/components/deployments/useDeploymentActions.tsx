@@ -16,12 +16,14 @@ import type {
   ReleaseBuildStarted,
 } from '@/components/deploy/DeploymentModal'
 import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
+import { useSettledReset } from '@/hooks/useSettledReset'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 export interface DeploymentActions {
   /**
    * Forget the last promote's outcome, {@link promoteRefusal} included:
    * a refusal describes the commit it was made for, not the next one.
+   * A no-op while a promote is in flight, so its result still lands.
    */
   clearPromoteRefusal: () => void
   deploy: (req: DeployRequest) => void
@@ -284,8 +286,10 @@ export function useDeploymentActions({
     },
   })
 
+  const clearPromoteRefusal = useSettledReset(promoteMutation)
+
   return {
-    clearPromoteRefusal: promoteMutation.reset,
+    clearPromoteRefusal,
     deploy: (req) => deployMutation.mutate(req),
     deployPending: deployMutation.isPending,
     deployPendingSha: deployMutation.isPending
