@@ -16,6 +16,12 @@ runs regardless of subclass overrides:
   into the next test that reuses the cached app.
 * Any :class:`starlette.testclient.TestClient` stored as an instance
   attribute is closed so its portal thread/transport is not leaked.
+
+The tests give a caller its permissions in a fake ``AuthContext`` and
+seed no ``Role`` nodes. So :func:`run` also makes
+``organizations.org_permissions`` return ``AuthContext.permissions``
+as it is, instead of the permissions of the caller's role in the
+organization, which would be none.
 """
 
 import collections.abc
@@ -34,6 +40,22 @@ from imbi.common import clickhouse, iggy
 from imbi.common.iggy import client as iggy_client
 from imbi.common.plugins.base import Plugin, PluginManifest
 from imbi.common.plugins.registry import RegistryEntry
+
+
+async def _given_permissions(
+    db: object, auth: typing.Any, org_slug: str
+) -> set[str]:
+    return set(auth.permissions)
+
+
+def _use_given_permissions(case: unittest.TestCase) -> None:
+    from imbi.api.auth import organizations
+
+    patcher = mock.patch.object(
+        organizations, 'org_permissions', _given_permissions
+    )
+    patcher.start()
+    case.addCleanup(patcher.stop)
 
 
 @functools.cache
@@ -101,6 +123,7 @@ class SharedAppTestCase(unittest.TestCase):
         self, result: unittest.result.TestResult | None = None
     ) -> unittest.result.TestResult | None:
         self.addCleanup(_reset, self, self.test_app)
+        _use_given_permissions(self)
         return super().run(result)
 
 
@@ -118,6 +141,7 @@ class SharedAppAsyncTestCase(unittest.IsolatedAsyncioTestCase):
         self, result: unittest.result.TestResult | None = None
     ) -> unittest.result.TestResult | None:
         self.addCleanup(_reset, self, self.test_app)
+        _use_given_permissions(self)
         return super().run(result)
 
 

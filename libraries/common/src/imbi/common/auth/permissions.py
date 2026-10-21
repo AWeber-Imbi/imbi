@@ -106,6 +106,10 @@ class AuthContext(pydantic.BaseModel):
     #: ``channel`` claim. Only a holder of the JWT secret can set it:
     #: imbi-slackbot sets ``slack``. ``None`` for every other token.
     channel: typing.Literal['slack'] | None = None
+    #: On a route of one organization, only the permissions of the
+    #: principal's role in that organization (see
+    #: ``imbi.api.auth.organizations.check_member``); elsewhere, the
+    #: permissions of their roles in all organizations.
     permissions: set[str] = pydantic.Field(default_factory=set)
     identities: list[IdentityInfo] = pydantic.Field(default_factory=list)
 
@@ -179,19 +183,20 @@ def _api_key_cache_lookup(key: str) -> AuthContext | None:
     ctx = _api_key_cache.get(_api_key_cache_key(key))
     if ctx is None:
         return None
-    # A copy, not the cached instance. `AuthContext` is not frozen, so handing
-    # out the shared object means anything that mutated it -- adding a
-    # permission, replacing `identities` -- would change what every later
-    # request authenticating with the same API key sees. Nothing mutates it
-    # today, so this is latent rather than a live bug; a copy costs one model
-    # construction per cache hit and removes the trap rather than documenting
-    # it.
+    # A copy, not the cached instance. `AuthContext` is not frozen, and
+    # `imbi.api.auth.organizations.check_member` narrows `permissions` to one
+    # organization, so handing out the shared object would change what every
+    # later request authenticating with the same API key sees.
     return ctx.model_copy(deep=True)
 
 
 def _api_key_cache_store(key: str, ctx: AuthContext) -> None:
-    """Store an AuthContext in the bounded LRU cache."""
-    _api_key_cache.set(_api_key_cache_key(key), ctx)
+    """Store a copy of an AuthContext in the bounded LRU cache.
+
+    A copy, because the caller returns ``ctx`` to the request, which can
+    change it (see :func:`_api_key_cache_lookup`).
+    """
+    _api_key_cache.set(_api_key_cache_key(key), ctx.model_copy(deep=True))
 
 
 def clear_api_key_cache() -> None:
@@ -269,12 +274,14 @@ async def load_principal_permissions(
     label: PrincipalLabel,
     match_prop: PrincipalMatchProp,
     value: str,
+    org_slug: str | None = None,
 ) -> set[str]:
     """Get permission names granted to a principal (user or SA).
 
     Collects permissions from the principal's organization memberships,
     following role inheritance via ``INHERITS_FROM`` and ``GRANTS``
-    relationships.
+    relationships. With ``org_slug``, only the role in that
+    organization counts; without it, the roles in all of them.
 
     Parameters:
         db: Graph database connection.
@@ -283,6 +290,7 @@ async def load_principal_permissions(
         match_prop: Property name on the principal used to match
             (``'email'`` for users, ``'slug'`` for service accounts).
         value: Value of ``match_prop`` identifying the principal.
+        org_slug: The organization to resolve the permissions in.
 
     Returns:
         Set of permission names (for example, ``'blueprint:read'``).
@@ -304,7 +312,8 @@ async def load_principal_permissions(
     query = (
         f'MATCH (p:{label} {{{{{match_prop}: {{value}}}}}})'
         '-[m:MEMBER_OF]->(o:Organization) '
-        'MATCH (r:Role {{slug: m.role}}) '
+        + ('WHERE o.slug = {org_slug} ' if org_slug is not None else '')
+        + 'MATCH (r:Role {{slug: m.role}}) '
         'OPTIONAL MATCH (r)-[:INHERITS_FROM*1..]->(ancestor:Role) '
         'WITH r, collect(DISTINCT ancestor) AS ancestors '
         'UNWIND ancestors + [r] AS role '
@@ -312,9 +321,10 @@ async def load_principal_permissions(
         'OPTIONAL MATCH (role)-[:GRANTS]->(perm:Permission) '
         'RETURN collect(DISTINCT perm.name)'
     )
-    records = await db.execute(
-        query, {'value': value}, columns=['permissions']
-    )
+    params = {'value': value}
+    if org_slug is not None:
+        params['org_slug'] = org_slug
+    records = await db.execute(query, params, columns=['permissions'])
     if not records:
         return set()
     raw: typing.Any = graph.parse_agtype(records[0].get('permissions'))
