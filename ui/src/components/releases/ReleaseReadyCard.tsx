@@ -6,7 +6,7 @@ import { Check, Loader2, RefreshCw, Rocket, Sparkles, Tag } from 'lucide-react'
 import { draftReleaseNotes } from '@/api/endpoints'
 import {
   BreakingChangeNotice,
-  breakingNeedsAcknowledgement,
+  resolveBreakingGate,
 } from '@/components/deploy/BreakingChangeNotice'
 import {
   CiFailureNotice,
@@ -124,6 +124,7 @@ export function ReleaseReadyCard({
     cut,
     error: cutError,
     isPending,
+    refusal: cutRefusal,
   } = useCutReleaseMutation({
     onBuildStarted,
     onSuccess: onCut,
@@ -175,11 +176,13 @@ export function ReleaseReadyCard({
   }
 
   const tagValid = formats !== null && isTagAllowed(tag, formats)
-  const breakingNeedsAck = breakingNeedsAcknowledgement(
-    breakingChanges,
-    drift.latest_tag,
+  const breakingGate = resolveBreakingGate({
+    draftChanges: breakingChanges,
+    lastTag: drift.latest_tag,
+    refusal: cutRefusal,
     tag,
-  )
+  })
+  const breakingNeedsAck = breakingGate.needsAck
   const isDrafting = draftMutation.isPending
   const canSubmit =
     tagValid &&
@@ -268,9 +271,10 @@ export function ReleaseReadyCard({
           <BreakingChangeNotice
             acknowledged={breakingAcknowledged}
             action="release"
-            breakingChanges={breakingChanges}
-            lastTag={drift.latest_tag}
+            breakingChanges={breakingGate.changes}
+            lastTag={breakingGate.lastTag}
             onAcknowledgedChange={setBreakingAcknowledged}
+            required={breakingGate.needsAck}
             tag={tag}
           />
           <TagFields

@@ -3,6 +3,10 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import { cutRelease } from '@/api/releases'
+import {
+  type BreakingRefusal,
+  breakingRefusal,
+} from '@/components/deploy/BreakingChangeNotice'
 import type { ReleaseBuildStarted } from '@/components/deploy/DeploymentModal'
 import { dispatchFailureDetail } from '@/components/deploy/DispatchFailureNotice'
 import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
@@ -31,6 +35,11 @@ interface UseCutReleaseResult {
    */
   error: null | string
   isPending: boolean
+  /**
+   * The API's refusal of a non-breaking tag over commits marked breaking,
+   * for the caller's BreakingChangeNotice. Never also in `error`.
+   */
+  refusal: BreakingRefusal | null
 }
 
 /**
@@ -56,7 +65,7 @@ export function useCutReleaseMutation({
     // the caller instead: those details name the workflow and the fix, and
     // a toast dismisses itself long before anyone acts on them.
     onError: (err) => {
-      if (dispatchFailureDetail(err)) return
+      if (dispatchFailureDetail(err) || breakingRefusal(err)) return
       toast.error(
         err instanceof ApiError
           ? (extractApiErrorDetail(err) ?? err.message)
@@ -119,5 +128,6 @@ export function useCutReleaseMutation({
     },
     error: dispatchFailureDetail(mutation.error),
     isPending: mutation.isPending,
+    refusal: breakingRefusal(mutation.error),
   }
 }

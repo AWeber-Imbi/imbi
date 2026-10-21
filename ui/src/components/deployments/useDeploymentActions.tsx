@@ -7,6 +7,10 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import { promoteDeployment, triggerDeployment } from '@/api/endpoints'
+import {
+  type BreakingRefusal,
+  breakingRefusal,
+} from '@/components/deploy/BreakingChangeNotice'
 import type {
   DeploymentRunStarted,
   ReleaseBuildStarted,
@@ -21,6 +25,11 @@ export interface DeploymentActions {
   deployPendingSha: null | string
   promote: (req: PromoteRequest) => void
   promotePending: boolean
+  /**
+   * The API's refusal of the last promote's non-breaking tag over commits
+   * marked breaking, for the caller's BreakingChangeNotice. Not toasted.
+   */
+  promoteRefusal: BreakingRefusal | null
 }
 
 export interface DeployRequest {
@@ -183,7 +192,10 @@ export function useDeploymentActions({
         tag: req.tag,
         to_environment: req.toEnvironment,
       }),
-    onError,
+    onError: (err) => {
+      if (breakingRefusal(err)) return
+      onError(err)
+    },
     // fallow-ignore-next-line complexity
     onSuccess: (data, req) => {
       invalidate()
@@ -275,5 +287,6 @@ export function useDeploymentActions({
       : null,
     promote: (req) => promoteMutation.mutate(req),
     promotePending: promoteMutation.isPending,
+    promoteRefusal: breakingRefusal(promoteMutation.error),
   }
 }

@@ -291,6 +291,54 @@ describe('ReleaseReadyCard', () => {
     })
   })
 
+  it('answers a breaking-change refusal with the acknowledgement', async () => {
+    // The draft saw nothing (first release, no prior tag), so only the
+    // API's refusal can put the checkbox on screen.
+    const user = userEvent.setup()
+    vi.mocked(releases.cutRelease).mockRejectedValueOnce(
+      new ApiError(409, 'Conflict', {
+        detail: {
+          breaking_changes: [
+            {
+              commit: 'aaa1111',
+              declared: true,
+              description: 'feat!: drop the v1 routes',
+              url: null,
+            },
+          ],
+          bump: 'major',
+          error: 'breaking_changes_unacknowledged',
+          last_tag: 'v0.0.9',
+          message: 'v0.1.0 is not a breaking-change release after v0.0.9, …',
+          tag: 'v0.1.0',
+        },
+      }),
+    )
+    renderCard(FIRST_RELEASE)
+    await user.click(screen.getByRole('button', { name: /& release/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByText('v0.1.0 is not a breaking-change release'),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText('feat!: drop the v1 routes')).toBeInTheDocument()
+    // Answered by the notice, not by a refusal strip or a toast.
+    expect(screen.queryByText('Release refused')).not.toBeInTheDocument()
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+    await user.click(
+      screen.getByRole('checkbox', { name: /Release v0.1.0 anyway/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /& release/i }))
+    await waitFor(() => {
+      expect(releases.cutRelease).toHaveBeenLastCalledWith(
+        'acme',
+        'p1',
+        expect.objectContaining({ acknowledge_breaking_changes: true }),
+      )
+    })
+  })
+
   describe('breaking changes in the draft', () => {
     const AFTER_RELEASE: ReleaseDrift = {
       ...FIRST_RELEASE,

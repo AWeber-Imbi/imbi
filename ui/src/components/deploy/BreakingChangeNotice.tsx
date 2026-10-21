@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { ApiError } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { BreakingChange } from '@/types'
@@ -11,15 +12,44 @@ const ACTION_COPY = {
 
 export type BreakingChangeAction = keyof typeof ACTION_COPY
 
+/** What a form shows and requires, from its draft and any refusal. */
+export interface BreakingGate {
+  changes: BreakingChange[]
+  lastTag: null | string
+  needsAck: boolean
+}
+
+/**
+ * The API's 409 for a non-breaking tag over commits marked breaking:
+ * `detail` on the `breaking_changes_unacknowledged` refusal.
+ */
+export interface BreakingRefusal {
+  /** The declared breaking commits the server found. */
+  breaking_changes: BreakingChange[]
+  bump: 'major' | 'minor'
+  /** The release the server measured `tag` against. */
+  last_tag: string
+  message: string
+  tag: string
+}
+
 interface BreakingChangeNoticeProps {
   acknowledged: boolean
   /** What the operator is about to do, for the confirmation copy. */
   action: BreakingChangeAction
-  /** From the release-notes draft; nothing renders until it has run. */
+  /**
+   * The release-notes draft's, plus any an API refusal named; nothing
+   * renders until one of them has.
+   */
   breakingChanges: BreakingChange[] | undefined
   /** The release the new tag is bumped from. */
   lastTag: null | string
   onAcknowledgedChange: (next: boolean) => void
+  /**
+   * Ask for the acknowledgement whatever the tags say: the API refused
+   * this tag (see {@link resolveBreakingGate}).
+   */
+  required?: boolean
   /** The tag about to be cut. */
   tag: string
 }
@@ -36,7 +66,8 @@ interface BreakingChangeNoticeProps {
  *
  * The API only refuses the commits their authors marked breaking (it can
  * re-derive those); the rest are the model's judgment, so this checkbox is
- * what holds them to the same bar.
+ * what holds them to the same bar. When the API refuses anyway, the form
+ * passes its answer through {@link resolveBreakingGate} and `required`.
  */
 export function BreakingChangeNotice({
   acknowledged,
@@ -44,11 +75,13 @@ export function BreakingChangeNotice({
   breakingChanges,
   lastTag,
   onAcknowledgedChange,
+  required = false,
   tag,
 }: BreakingChangeNoticeProps) {
   const changes = breakingChanges ?? []
   if (changes.length === 0) return null
-  const needsAck = breakingNeedsAcknowledgement(changes, lastTag, tag)
+  const needsAck =
+    required || breakingNeedsAcknowledgement(changes, lastTag, tag)
   const { gerund, verb } = ACTION_COPY[action]
   const count = `${changes.length} breaking change${changes.length === 1 ? '' : 's'}`
   return (
@@ -131,6 +164,67 @@ export function breakingNeedsAcknowledgement(
   return (
     (changes?.length ?? 0) > 0 && !!lastTag && skipsBreakingBump(lastTag, tag)
   )
+}
+
+/**
+ * The refusal carried by a promote or cut error, or `null` for any other
+ * error.
+ */
+export function breakingRefusal(error: unknown): BreakingRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = (error.data as undefined | { detail?: unknown })?.detail
+  if (!detail || typeof detail !== 'object') return null
+  const refusal = detail as Partial<BreakingRefusal> & { error?: unknown }
+  if (
+    refusal.error !== 'breaking_changes_unacknowledged' ||
+    !Array.isArray(refusal.breaking_changes) ||
+    typeof refusal.tag !== 'string' ||
+    typeof refusal.last_tag !== 'string'
+  ) {
+    return null
+  }
+  return refusal as BreakingRefusal
+}
+
+/**
+ * What a form shows, and whether it must hold submit for the
+ * acknowledgement.
+ *
+ * The draft is the early warning; a refusal for the tag still in the form
+ * is the API's answer and wins. The two can disagree: the API measures
+ * against the project's latest release and re-reads the commits itself,
+ * while the form has only its own base tag and a draft that may not have
+ * run. Without this, a promote the API refuses could leave no checkbox on
+ * screen to satisfy it. The draft's own findings stay listed beside the
+ * server's.
+ */
+export function resolveBreakingGate({
+  draftChanges,
+  lastTag,
+  refusal,
+  tag,
+}: {
+  draftChanges: BreakingChange[] | undefined
+  lastTag: null | string
+  refusal: BreakingRefusal | null
+  tag: string
+}): BreakingGate {
+  if (refusal && refusal.tag === tag) {
+    const seen = new Set(refusal.breaking_changes.map((c) => c.commit))
+    return {
+      changes: [
+        ...refusal.breaking_changes,
+        ...(draftChanges ?? []).filter((c) => !seen.has(c.commit)),
+      ],
+      lastTag: refusal.last_tag,
+      needsAck: true,
+    }
+  }
+  return {
+    changes: draftChanges ?? [],
+    lastTag,
+    needsAck: breakingNeedsAcknowledgement(draftChanges, lastTag, tag),
+  }
 }
 
 const SEMVER_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/

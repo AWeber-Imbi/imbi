@@ -13,7 +13,7 @@ import {
 import { draftReleaseNotes } from '@/api/endpoints'
 import {
   BreakingChangeNotice,
-  breakingNeedsAcknowledgement,
+  resolveBreakingGate,
 } from '@/components/deploy/BreakingChangeNotice'
 import {
   CiFailureNotice,
@@ -157,11 +157,13 @@ export function PendingPromoteCard({
   }
 
   const tagValid = formats !== null && isTagAllowed(tag, formats)
-  const breakingNeedsAck = breakingNeedsAcknowledgement(
-    draft?.breaking_changes,
-    bumpFrom,
+  const breakingGate = resolveBreakingGate({
+    draftChanges: draft?.breaking_changes,
+    lastTag: bumpFrom,
+    refusal: actions.promoteRefusal,
     tag,
-  )
+  })
+  const breakingNeedsAck = breakingGate.needsAck
   const isDrafting = draftMutation.isPending
   const canSubmit =
     tagValid &&
@@ -261,9 +263,10 @@ export function PendingPromoteCard({
           <BreakingChangeNotice
             acknowledged={breakingAcknowledged}
             action="promote"
-            breakingChanges={draft?.breaking_changes}
-            lastTag={bumpFrom}
+            breakingChanges={breakingGate.changes}
+            lastTag={breakingGate.lastTag}
             onAcknowledgedChange={setBreakingAcknowledged}
+            required={breakingGate.needsAck}
             tag={tag}
           />
           <div className="grid grid-cols-2 gap-3">

@@ -238,6 +238,59 @@ describe('PromoteTab — failing CI on the build being promoted', () => {
     expect(screen.queryByText(/CI failed/)).not.toBeInTheDocument()
   })
 
+  it('answers a breaking-change refusal with the acknowledgement', async () => {
+    // The API measures against the project's latest release, not this
+    // environment's tag, so it can refuse a promote the draft did not warn
+    // about; the refusal itself has to put the checkbox on screen.
+    const user = userEvent.setup()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+    vi.mocked(endpoints.promoteDeployment).mockRejectedValueOnce(
+      new ApiError(409, 'Conflict', {
+        detail: {
+          breaking_changes: [
+            {
+              commit: 'aaa1111',
+              declared: true,
+              description: 'feat!: drop the v1 routes',
+              url: null,
+            },
+          ],
+          bump: 'major',
+          error: 'breaking_changes_unacknowledged',
+          last_tag: 'v2.7.5',
+          message: 'v2.8.0 is not a breaking-change release after v2.7.5, …',
+          tag: 'v2.8.0',
+        },
+      }),
+    )
+    renderPromoteTab()
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('v2.8.0')).toBeInTheDocument()
+    })
+    await user.click(promoteButton())
+    await waitFor(() => {
+      expect(
+        screen.getByText('v2.8.0 is not a breaking-change release'),
+      ).toBeInTheDocument()
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(promoteButton()).toBeDisabled()
+    await user.click(
+      screen.getByRole('checkbox', { name: /Promote v2.8.0 anyway/i }),
+    )
+    await user.click(promoteButton())
+    await waitFor(() => {
+      expect(endpoints.promoteDeployment).toHaveBeenLastCalledWith(
+        'acme',
+        'p1',
+        expect.objectContaining({ acknowledge_breaking_changes: true }),
+      )
+    })
+  })
+
   it('sends acknowledge_ci_failure=false when nothing was overridden', async () => {
     const user = userEvent.setup()
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({

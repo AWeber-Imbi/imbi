@@ -81,6 +81,7 @@ const makeActions = (): DeploymentActions => ({
   deployPendingSha: null,
   promote: vi.fn(),
   promotePending: false,
+  promoteRefusal: null,
 })
 
 const RECENT = [

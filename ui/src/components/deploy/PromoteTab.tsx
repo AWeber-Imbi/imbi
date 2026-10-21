@@ -13,7 +13,8 @@ import {
 } from '@/api/endpoints'
 import {
   BreakingChangeNotice,
-  breakingNeedsAcknowledgement,
+  breakingRefusal,
+  resolveBreakingGate,
 } from '@/components/deploy/BreakingChangeNotice'
 import { DriftIndicator } from '@/components/releases/DriftIndicator'
 import {
@@ -185,11 +186,6 @@ export function PromoteTab({
   useEffect(() => {
     setBreakingAcknowledged(false)
   }, [draft])
-  const breakingNeedsAck = breakingNeedsAcknowledgement(
-    draft?.breaking_changes,
-    lastTag,
-    tag,
-  )
 
   // Live CI status for the build being promoted. The commit list here comes
   // from `compare()`, which carries no check status at all, so this is the
@@ -210,9 +206,15 @@ export function PromoteTab({
 
   const queryClient = useQueryClient()
   const promoteMutation = useMutation({
-    mutationFn: () =>
+    // The breaking acknowledgement rides in with the click: whether it is
+    // needed depends on this mutation's own last refusal.
+    mutationFn: ({
+      acknowledgeBreakingChanges,
+    }: {
+      acknowledgeBreakingChanges: boolean
+    }) =>
       promoteDeployment(orgSlug, projectId, {
-        acknowledge_breaking_changes: breakingNeedsAck && breakingAcknowledged,
+        acknowledge_breaking_changes: acknowledgeBreakingChanges,
         acknowledge_ci_failure: ciAcknowledged,
         action: 'promote',
         from_committish: selectedSha ?? '',
@@ -227,7 +229,7 @@ export function PromoteTab({
     // below instead: those details name the workflow and the fix, and a
     // toast dismisses itself long before anyone acts on them.
     onError: (err) => {
-      if (dispatchFailureDetail(err)) return
+      if (dispatchFailureDetail(err) || breakingRefusal(err)) return
       toast.error(
         err instanceof ApiError
           ? (extractApiErrorDetail(err) ?? err.message)
@@ -326,6 +328,13 @@ export function PromoteTab({
   })
 
   const promoteError = dispatchFailureDetail(promoteMutation.error)
+  const breakingGate = resolveBreakingGate({
+    draftChanges: draft?.breaking_changes,
+    lastTag,
+    refusal: breakingRefusal(promoteMutation.error),
+    tag,
+  })
+  const breakingNeedsAck = breakingGate.needsAck
   // A refusal names the commit or the workflow that would have built it,
   // so it stops describing what the button does once another commit is
   // picked.
@@ -475,9 +484,10 @@ export function PromoteTab({
         <BreakingChangeNotice
           acknowledged={breakingAcknowledged}
           action="promote"
-          breakingChanges={draft?.breaking_changes}
-          lastTag={lastTag}
+          breakingChanges={breakingGate.changes}
+          lastTag={breakingGate.lastTag}
           onAcknowledgedChange={setBreakingAcknowledged}
+          required={breakingGate.needsAck}
           tag={tag}
         />
         <div className="grid grid-cols-[160px_160px_1fr] gap-3">
@@ -598,7 +608,12 @@ export function PromoteTab({
         </Button>
         <Button
           disabled={!canPromote}
-          onClick={() => promoteMutation.mutate()}
+          onClick={() =>
+            promoteMutation.mutate({
+              acknowledgeBreakingChanges:
+                breakingNeedsAck && breakingAcknowledged,
+            })
+          }
           type="button"
         >
           {promoteMutation.isPending || inFlight.blocked ? (

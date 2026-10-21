@@ -92,6 +92,7 @@ const makeActions = (): DeploymentActions => ({
   deployPendingSha: null,
   promote: vi.fn(),
   promotePending: false,
+  promoteRefusal: null,
 })
 
 function renderCard(actions = makeActions(), stage: PipelineStage = STAGE) {
@@ -193,6 +194,60 @@ describe('PendingPromoteCard — failing CI on the commit being tagged', () => {
       ).not.toBeChecked()
     })
     expect(promoteButton()).toBeDisabled()
+  })
+})
+
+describe('PendingPromoteCard — a breaking-change refusal from the API', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([])
+    // The draft saw nothing breaking, so only the refusal can say so.
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'patch',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '### Fixed\n- Corrected test behavior',
+      reasoning: 'a fix landed',
+      version: '0.1.14',
+    })
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: TIP.short_sha,
+    })
+  })
+
+  it('puts the acknowledgement on screen and sends it', async () => {
+    const user = userEvent.setup()
+    const actions = renderCard({
+      ...makeActions(),
+      promoteRefusal: {
+        breaking_changes: [
+          {
+            commit: 'aab005f',
+            declared: true,
+            description: 'fix!: drop the legacy field',
+          },
+        ],
+        bump: 'minor',
+        last_tag: '0.1.13',
+        message: '0.1.14 is not a breaking-change release after 0.1.13, …',
+        tag: '0.1.14',
+      },
+    })
+    await waitFor(() => {
+      expect(
+        screen.getByText('0.1.14 is not a breaking-change release'),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText('fix!: drop the legacy field')).toBeInTheDocument()
+    expect(promoteButton()).toBeDisabled()
+    await user.click(
+      screen.getByRole('checkbox', { name: /Promote 0.1.14 anyway/i }),
+    )
+    await user.click(promoteButton())
+    expect(actions.promote).toHaveBeenCalledWith(
+      expect.objectContaining({ acknowledgeBreakingChanges: true }),
+    )
   })
 })
 

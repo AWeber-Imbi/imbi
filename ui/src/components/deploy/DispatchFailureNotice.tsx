@@ -1,4 +1,5 @@
 import { ApiError } from '@/api/client'
+import { breakingRefusal } from '@/components/deploy/BreakingChangeNotice'
 import { Alert } from '@/components/ui/alert'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
@@ -19,6 +20,9 @@ interface DispatchFailureNoticeProps {
  */
 export function dispatchFailureDetail(error: unknown): null | string {
   if (!(error instanceof ApiError)) return null
+  // Answered by the form's BreakingChangeNotice, with a checkbox, rather
+  // than by a strip that can only say what went wrong.
+  if (breakingRefusal(error)) return null
   if (error.status !== 502 && (error.status < 400 || error.status >= 500)) {
     return null
   }
