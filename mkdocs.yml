@@ -50,6 +50,7 @@ nav:
       - Blueprints: admin/blueprints.md
       - AI Models: admin/ai-models.md
       - Prompts: admin/prompts.md
+      - Secrets: admin/secrets.md
   - Deployment:
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
