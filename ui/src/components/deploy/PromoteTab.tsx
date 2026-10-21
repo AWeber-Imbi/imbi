@@ -341,8 +341,8 @@ export function PromoteTab({
   const breakingNeedsAck = breakingGate.needsAck
   // A refusal names the commit or the workflow that would have built it,
   // so it stops describing what the button does once another commit is
-  // picked. Never mid-request, though: resetting a pending mutation
-  // drops its spinner and its eventual answer.
+  // picked. Mid-request it waits for the answer: resetting a pending
+  // mutation drops its spinner and its eventual answer.
   const clearPromote = useSettledReset(promoteMutation)
   useEffect(() => {
     clearPromote()

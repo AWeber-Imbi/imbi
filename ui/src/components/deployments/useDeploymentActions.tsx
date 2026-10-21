@@ -23,7 +23,9 @@ export interface DeploymentActions {
   /**
    * Forget the last promote's outcome, {@link promoteRefusal} included:
    * a refusal describes the commit it was made for, not the next one.
-   * A no-op while a promote is in flight, so its result still lands.
+   * While a promote is in flight it waits for the promote to settle,
+   * so the promote still finishes but its answer does not outlive the
+   * selection it was made for.
    */
   clearPromoteRefusal: () => void
   deploy: (req: DeployRequest) => void

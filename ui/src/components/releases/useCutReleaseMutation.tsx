@@ -27,8 +27,9 @@ interface UseCutReleaseOptions {
 
 interface UseCutReleaseResult {
   /**
-   * Drops a standing refusal, e.g. once the operator edits the form. A
-   * no-op while a cut is in flight, so its result still lands.
+   * Drops a standing refusal, e.g. once the operator edits the form.
+   * While a cut is in flight it waits for the cut to settle, so the cut
+   * still finishes but its answer does not outlive the edit.
    */
   clearError: () => void
   cut: (body: CutReleaseRequest) => void
