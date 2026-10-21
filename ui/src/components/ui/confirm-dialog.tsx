@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +29,9 @@ export function ConfirmDialog({
   open,
   title,
 }: ConfirmDialogProps) {
+  // The dialog has no Radix trigger, so Radix cannot return focus on
+  // close. Keep the element that had focus on open and focus it again.
+  const opener = useRef<HTMLElement | null>(null)
   return (
     <AlertDialog
       onOpenChange={(next) => {
@@ -34,7 +39,16 @@ export function ConfirmDialog({
       }}
       open={open}
     >
-      <AlertDialogContent className="sm:max-w-md">
+      <AlertDialogContent
+        className="sm:max-w-md"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          opener.current?.focus()
+        }}
+        onOpenAutoFocus={() => {
+          opener.current = document.activeElement as HTMLElement | null
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description && (

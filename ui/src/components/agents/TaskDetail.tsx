@@ -299,12 +299,16 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   )
   if (!canManage || task.status === 'closed') return null
   const cancelling = task.control === 'cancel'
-  const error = control.error ?? cancel.error ?? reassign.error
+  const pending = control.isPending || cancel.isPending
+  // Show the error of the most recent failed action.
+  const error = [control, cancel, reassign]
+    .filter((m) => m.error)
+    .sort((a, b) => b.submittedAt - a.submittedAt)[0]?.error
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Button
         aria-label={paused ? 'Resume task' : 'Pause task'}
-        disabled={control.isPending || cancelling}
+        disabled={pending || cancelling}
         onClick={() => control.mutate(undefined)}
         size="sm"
         title={paused ? 'Resume' : 'Pause'}
@@ -314,7 +318,7 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
       </Button>
       <Button
         aria-label="Cancel task"
-        disabled={cancel.isPending || cancelling}
+        disabled={pending || cancelling}
         onClick={() => setConfirmCancel(true)}
         size="sm"
         title={cancelling ? 'Cancelling' : 'Cancel'}
