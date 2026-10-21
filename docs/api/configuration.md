@@ -250,6 +250,70 @@ To enable a separate public login host:
     not yet derived per host and continues to use `IMBI_API_URL`, so its
     callback must remain registered against the `IMBI_API_URL` origin.
 
+## Agents, Workflows, and Secrets
+
+### Workflow Engine (`IMBI_WORKFLOWS_*`)
+
+Only imbi-workflows reads the `IMBI_WORKFLOWS_*` variables. Other services also read the two URL variables. Postgres and the graph use the shared `POSTGRES_*` settings.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_INTERNAL_API_URL` | `http://localhost:8000` | In-cluster origin of imbi-api. Unprefixed, shared with the other services. |
+| `IMBI_API_URL` | `''` | imbi-api's public URL. imbi-workflows adds its path to `IMBI_INTERNAL_API_URL` as the route prefix. |
+| `IMBI_WORKFLOWS_SA_CLIENT_ID` | *(none)* | Client id of the `imbi-workflows` service account. Deploy and rollback steps fail without it. |
+| `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | *(none)* | Its client secret |
+| `IMBI_WORKFLOWS_WORKERS` | `10` | Runs worked on at the same time |
+| `IMBI_WORKFLOWS_POLL_INTERVAL` | `10.0` | Maximum seconds between polls. A lost `NOTIFY` costs latency, not a run. |
+| `IMBI_WORKFLOWS_LEASE_SECONDS` | `300` | How long a claim on a run lasts. One step call must end in this time. Must be more than `30`. |
+| `IMBI_WORKFLOWS_DEPLOY_POLL_SECONDS` | `15` | Seconds between deployment polls |
+| `IMBI_WORKFLOWS_AGENT_POLL_SECONDS` | `30` | Seconds between agent task polls |
+| `IMBI_WORKFLOWS_SCHEDULER_URL` | `http://localhost:8005/api` | imbi-scheduler's task API, with its route prefix. The trigger reconciler writes the scheduler task of each schedule trigger here. |
+| `IMBI_WORKFLOWS_RECONCILE_INTERVAL` | `300.0` | Seconds between passes of the trigger reconciler. imbi-api also wakes it after each activation and pause. |
+
+### Prompt Rendering (`IMBI_PROMPT_*`)
+
+imbi-api, imbi-assistant, imbi-slackbot, and imbi-workflows render prompt templates in a pool of worker processes, so that a template cannot stop the service. Each service process reads these variables.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_PROMPT_WORKERS` | `2` | Worker processes per service process |
+| `IMBI_PROMPT_WORKER_MAX_RENDERS` | `500` | Renders before a worker is replaced |
+| `IMBI_PROMPT_WORKER_MEMORY_MB` | `256` | Address space in MiB that a worker can add after it starts. Linux only. |
+| `IMBI_PROMPT_RENDER_INPROCESS` | `false` | `true` renders in the service process. For debugging only: it removes the isolation. |
+
+### System Prompts
+
+imbi-assistant and imbi-slackbot read their system prompt from the prompt CMS. If the CMS cannot supply the prompt, they use the packaged prompt. Run `imbi-api setup-prompts` to seed the defaults.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_ASSISTANT_PROMPT_REF` | `imbi-assistant/system@stable` | Prompt CMS reference for imbi-assistant |
+| `IMBI_SLACKBOT_PROMPT_REF` | `imbi-slackbot/system@stable` | Prompt CMS reference for imbi-slackbot |
+
+`IMBI_ASSISTANT_SYSTEM_PROMPT` and `IMBI_SLACKBOT_SYSTEM_PROMPT` replace both the CMS prompt and the packaged prompt. They use Jinja syntax, for example `{{ display_name }}`.
+
+### Secrets Broker (`IMBI_SECRETS_*`)
+
+Read by imbi-api. Tenant configuration cannot set these values. See [Secrets](../admin/secrets.md).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | *(none)* | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use. `github.com` and `<tenant>.ghe.com` are always allowed. Imbi ignores a value that is not a host or that is not a public address, and logs a warning. |
+| `IMBI_SECRETS_AWS_ENDPOINT_URL` | *(none — real AWS)* | AWS endpoint override for LocalStack in tests and development |
+
+### Internal Service URLs (`IMBI_INTERNAL_*`)
+
+imbi-api probes these URLs for the status dashboard. An empty value marks the service as not deployed, and the dashboard does not probe it.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_INTERNAL_ASSISTANT_URL` | `''` | Internal base URL of imbi-assistant |
+| `IMBI_INTERNAL_GATEWAY_URL` | `''` | Internal base URL of imbi-gateway |
+| `IMBI_INTERNAL_MCP_URL` | `''` | Internal base URL of imbi-mcp |
+| `IMBI_INTERNAL_SCHEDULER_URL` | `''` | Internal base URL of imbi-scheduler |
+| `IMBI_INTERNAL_SLACKBOT_URL` | `''` | Internal base URL of imbi-slackbot |
+| `IMBI_INTERNAL_WORKFLOWS_URL` | `''` | Internal base URL of imbi-workflows |
+
 ## Other Settings
 
 ### Releases (`IMBI_RELEASES_*`)

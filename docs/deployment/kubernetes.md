@@ -56,7 +56,8 @@ service:
 
 # Scaled-out mode — one service per release
 service:
-  mode: api        # or assistant, gateway, mcp, scheduler, slackbot, ui
+  mode: api        # or assistant, gateway, mcp, scheduler, slackbot, ui,
+                   # workflows
   api:
     replicas: 3
   assistant:
@@ -68,6 +69,8 @@ service:
   scheduler:
     replicas: 1
   slackbot:
+    replicas: 1
+  workflows:
     replicas: 1
   ui:
     replicas: 2
@@ -120,6 +123,49 @@ disjoint claims. See
 
 Using `existingSecret`, the scheduler reads the optional
 `scheduler-sa-client-id` and `scheduler-sa-client-secret` keys from it.
+
+### Workflows
+
+The `imbi-workflows` worker runs workflow runs. It listens on port 8006. In
+`all` mode it starts in the same pod as the other services. To run it as
+its own release, set `service.mode: workflows`:
+
+```yaml
+service:
+  mode: workflows
+  internalApiUrl: http://imbi-api.imbi.svc.cluster.local:8000
+  publicApiUrl: https://imbi.example.com/api
+  workflows:
+    replicas: 1
+
+workflows:
+  serviceAccount:
+    clientId: "imbi-workflows-client-id"
+    clientSecret: "imbi-workflows-client-secret"
+  schedulerUrl: http://imbi-scheduler.imbi.svc.cluster.local:8005/api
+```
+
+- The chart refuses to render in `workflows` mode when `internalApiUrl` is
+  the loopback default or `publicApiUrl` is empty.
+- `imbi-api setup` seeds the `imbi-workflows` service account with the
+  `workflows.serviceAccount` values, as it does for the scheduler. Set both
+  values or neither. Using `existingSecret`, the worker reads the
+  `workflows-sa-client-id` and `workflows-sa-client-secret` keys from it.
+  In `workflows` mode the container does not start without them.
+- `workflows.schedulerUrl` is imbi-scheduler's task API, with its route
+  prefix. The worker writes the scheduler task of each schedule trigger
+  there. Empty uses `http://localhost:8005/api`, which works in `all` mode
+  only.
+- More than one replica is safe. A replica claims a run with
+  `FOR UPDATE SKIP LOCKED` and holds it with a lease.
+
+See [Workflows](../admin/workflows.md).
+
+### Agent runners
+
+Agent tasks run on runner pods from a separate chart, `helm/imbi-harness`.
+Install one release for each runner pool, in its own namespace. See
+[Agent Runners](agent-runners.md).
 
 ### Database Configuration
 
@@ -253,7 +299,8 @@ it by pod IP. The bundled Caddy does not route it. The chart adds the
 annotations in `api`, `gateway` and `scheduler` mode. In `all` mode the three
 services share one pod, and the annotations name imbi-api on port 8000 only,
 so the gateway and scheduler counters are not scraped. The connectors runtime
-pod is annotated for its own metrics on port 8081.
+pod is annotated for its own metrics on port 8081. The `workflows` mode pod
+has no metrics annotations.
 
 | Metric | Type | Labels | Exported by |
 | --- | --- | --- | --- |
@@ -264,6 +311,10 @@ pod is annotated for its own metrics on port 8081.
 | `imbi_iggy_topic_messages` | gauge | `stream`, `topic` | api |
 | `imbi_iggy_consumer_group_members` | gauge | `stream`, `topic` | api |
 | `imbi_iggy_consumer_group_members_owning` | gauge | `stream`, `topic` | api |
+| `imbi_harness_pool_queued` | gauge | `pool` | api |
+| `imbi_harness_runners` | gauge | `pool`, `state` | api |
+| `imbi_harness_chains` | gauge | `state` | api |
+| `imbi_harness_metrics_up` | gauge | none | api |
 
 - The two counters count messages, one per row, in the process that
   published them. Every topic in `imbi.common.iggy.TOPICS` starts at 0.
@@ -275,6 +326,11 @@ pod is annotated for its own metrics on port 8081.
   refresh.
 - A consumer group with more members than owning members has a member that
   reads nothing (apache/iggy#4273), and its topic does not drain.
+- The `imbi_harness_*` gauges describe the agent runner pools. Each
+  imbi-api pod refreshes them every 15 seconds and reports the same global
+  values, so aggregate them with `max()`. `imbi_harness_metrics_up` is 0
+  when the last refresh failed. See
+  [Agent Runners: Metrics](agent-runners.md#metrics).
 
 ### Ingress
 

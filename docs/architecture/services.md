@@ -14,6 +14,7 @@ ports:
 | imbi-gateway | 8003 | HTTP |
 | imbi-slackbot | 8004 | HTTP |
 | imbi-scheduler | 8005 | HTTP |
+| imbi-workflows | 8006 | HTTP |
 
 ## URL Routing
 
@@ -48,7 +49,9 @@ never match. Without this route it fell through to the static UI, which answers
 readiness probes passed against a dead API.
 
 imbi-slackbot has no route: it connects out to Slack over socket mode and its
-port exists only for its health check.
+port exists only for its health check. imbi-workflows has no route either: it
+takes workflow runs from Postgres and calls imbi-api and imbi-scheduler, and
+its port exists only for its health check.
 
 ## Health Checks
 
@@ -61,6 +64,7 @@ Each service exposes a health check endpoint:
 | imbi-gateway | `GET /status` | `/gateway/status` |
 | imbi-scheduler | `GET /status` | `/scheduler/status` |
 | imbi-slackbot | `GET /status` | On the pod only |
+| imbi-workflows | `GET /status` | On the pod only |
 
 imbi-api and imbi-assistant prefix their status route along with everything
 else, so the path a probe requests depends on their configured public URL.
@@ -83,3 +87,13 @@ individually and scale them independently behind a load balancer.
 | imbi-mcp | Horizontal - stateless, scale based on agent connections |
 | imbi-scheduler | Horizontal - firings are claimed with `FOR UPDATE SKIP LOCKED`, so replicas take disjoint claims and only one claims a given occurrence |
 | imbi-slackbot | Horizontal - socket mode gives each replica its own connection, and Slack delivers an event to one of them |
+| imbi-workflows | Horizontal - runs are claimed with `FOR UPDATE SKIP LOCKED` and a lease, so replicas take disjoint runs |
+
+## imbi-harness
+
+imbi-harness is the agent runner. It is not in the all-in-one image and it
+has no `IMBI_SERVICE` mode. It has its own image
+(`ghcr.io/aweber-imbi/imbi-harness`) and its own Helm chart
+(`helm/imbi-harness`). One chart release is one runner pool. The runners
+connect out to imbi-api to claim agent tasks, so imbi-api needs no route to
+them. See [Agent Runners](../deployment/agent-runners.md).
