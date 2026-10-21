@@ -537,6 +537,25 @@ def _prompt_org(namespace: str, slug: str) -> str | None:
     return org if namespace == _ORG_NAMESPACE and dot else None
 
 
+def can_promote(
+    auth: permissions.AuthContext, namespace: str, slug: str
+) -> bool:
+    """Whether the caller may point a label of the prompt at a version.
+
+    ``prompt:promote`` (or an admin) may move any label. An
+    organization's agent prompt is part of the agent, so ``agent:write``
+    may also move its labels; otherwise a developer could change an
+    agent's prompt but never make the agent use it. Membership of that
+    organization is checked by :func:`_require_access` before this.
+    """
+    if auth.is_admin or 'prompt:promote' in auth.permissions:
+        return True
+    return (
+        _prompt_org(namespace, slug) is not None
+        and 'agent:write' in auth.permissions
+    )
+
+
 async def _require_access(
     db: graph.Graph,
     auth: permissions.AuthContext,
@@ -771,8 +790,8 @@ async def create_prompt(
 ) -> PromptResponse:
     """Create a prompt with its first version.
 
-    When the caller may promote (``prompt:promote``, or an admin), the
-    default label points at version 1. Otherwise the prompt is created
+    When the caller may promote (see :func:`can_promote`), the default
+    label points at version 1. Otherwise the prompt is created
     with no labels: pointing a label at a version changes what consumers
     run, and only ``promote`` may do that. Until a promote holder sets a
     label, a reference to the prompt does not resolve, and a consumer
@@ -785,9 +804,11 @@ async def create_prompt(
 
     """
     await _require_access(db, auth, data.namespace, data.slug or '')
-    can_promote = auth.is_admin or 'prompt:promote' in auth.permissions
     return await insert_prompt(
-        db, data, auth.principal_name, label_first_version=can_promote
+        db,
+        data,
+        auth.principal_name,
+        label_first_version=can_promote(auth, data.namespace, data.slug or ''),
     )
 
 
@@ -1390,15 +1411,16 @@ async def set_prompt_label(
     data: LabelUpdate,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:promote')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptResponse:
     """Point a label at a version, creating the label if needed.
 
-    This changes what every consumer of ``namespace/slug@label`` gets.
+    This changes what every consumer of ``namespace/slug@label`` gets,
+    so it needs :func:`can_promote`.
 
     Raises:
+        403: The caller cannot promote this prompt.
         404: No such prompt or version.
         409: The prompt changed while this request ran.
         422: The label is made only of digits.
@@ -1406,6 +1428,12 @@ async def set_prompt_label(
     """
     _check_label_name(label)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    if not can_promote(auth, namespace, slug):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'Moving a label of {namespace}/{slug} requires '
+            'prompt:promote',
+        )
     await _fetch_version(db, prompt, data.version)
     labels = moved_labels(prompt, label, data.version, auth.principal_name)
     updated = await _write_labels(db, prompt, labels, prompt.default_label)
