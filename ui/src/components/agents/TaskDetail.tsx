@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import {
+  Ban,
   Box,
   Check,
   Circle,
@@ -17,6 +18,7 @@ import { ApiError } from '@/api/client'
 import { controlAgentTask, reassignAgentTask } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
@@ -275,26 +277,38 @@ function OverviewTab({
   )
 }
 
-/** Pause or resume, and reassign. Hidden without `agent_task:manage`. */
+/**
+ * Pause or resume, cancel, and reassign. Hidden without
+ * `agent_task:manage`.
+ */
 function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   const canManage = useHasPermission('agent_task:manage')
   const [owner, setOwner] = useState('')
   const [open, setOpen] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const { users } = useUserDisplayNames()
   const paused = task.control === 'pause'
   const control = useAgentTaskMutation(orgSlug, task.short_id, () =>
     controlAgentTask(orgSlug, task.short_id, paused ? 'resume' : 'pause'),
   )
+  const cancel = useAgentTaskMutation(orgSlug, task.short_id, () =>
+    controlAgentTask(orgSlug, task.short_id, 'cancel'),
+  )
   const reassign = useAgentTaskMutation(orgSlug, task.short_id, (to: string) =>
     reassignAgentTask(orgSlug, task.short_id, to),
   )
   if (!canManage || task.status === 'closed') return null
-  const error = control.error ?? reassign.error
+  const cancelling = task.control === 'cancel'
+  const pending = control.isPending || cancel.isPending
+  // Show the error of the most recent failed action.
+  const error = [control, cancel, reassign]
+    .filter((m) => m.error)
+    .sort((a, b) => b.submittedAt - a.submittedAt)[0]?.error
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Button
         aria-label={paused ? 'Resume task' : 'Pause task'}
-        disabled={control.isPending || task.control === 'cancel'}
+        disabled={pending || cancelling}
         onClick={() => control.mutate(undefined)}
         size="sm"
         title={paused ? 'Resume' : 'Pause'}
@@ -302,6 +316,27 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
       >
         {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
       </Button>
+      <Button
+        aria-label="Cancel task"
+        disabled={pending || cancelling}
+        onClick={() => setConfirmCancel(true)}
+        size="sm"
+        title={cancelling ? 'Cancelling' : 'Cancel'}
+        variant="outline"
+      >
+        <Ban className="size-4" />
+      </Button>
+      <ConfirmDialog
+        confirmLabel="Cancel task"
+        description="Imbi closes the task as cancelled_by_human. A runner that holds it stops first. You cannot resume a cancelled task."
+        onCancel={() => setConfirmCancel(false)}
+        onConfirm={() => {
+          setConfirmCancel(false)
+          cancel.mutate(undefined)
+        }}
+        open={confirmCancel}
+        title={`Cancel ${task.short_id}?`}
+      />
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverTrigger asChild>
           <Button

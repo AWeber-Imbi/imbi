@@ -236,6 +236,32 @@ class CreatePromptTestCase(PromptTestBase):
         params = router.params_for(CREATE_PROMPT)
         self.assertEqual(json.loads(params['labels']), [])
 
+    def test_create_org_agent_prompt_with_agent_write_labels_it(
+        self,
+    ) -> None:
+        # An organization's agent prompt is part of the agent, so
+        # agent:write may label it without prompt:promote.
+        self.as_principal('prompt:create', 'agent:write')
+        self.route(
+            (MODEL, MODEL_ROW), (CREATE_PROMPT, [{'p': prompt_props()}])
+        )
+        body = {
+            **self._body(),
+            'namespace': 'agents',
+            'slug': 'engineering.triage',
+        }
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={'engineering'}),
+        ):
+            response = self.client.post(BASE + '/', json=body)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [(lb['name'], lb['version']) for lb in response.json()['labels']],
+            [('stable', 1)],
+        )
+
     def test_create_with_promote_labels_version_one(self) -> None:
         self.as_principal('prompt:create', 'prompt:promote')
         self.route(
@@ -452,11 +478,48 @@ class LabelTestCase(PromptTestBase):
         self.assertEqual(response.status_code, 422)
 
     def test_promote_needs_promote_permission(self) -> None:
-        self.as_principal('prompt:read', 'prompt:update')
+        self.as_principal('prompt:read', 'prompt:update', 'agent:write')
+        router = self.route((GET_PROMPT, prompt_row(2)))
         response = self.client.put(
             BASE + '/mender/core/labels/stable', json={'version': 1}
         )
         self.assertEqual(response.status_code, 403)
+        # 403 comes before the read, so it does not confirm the prompt.
+        self.assertEqual(router.calls, [])
+
+    def test_agent_write_moves_label_of_org_agent_prompt(self) -> None:
+        self.as_principal('prompt:update', 'agent:write')
+        agent_prompt = {'namespace': 'agents', 'slug': 'engineering.triage'}
+        router = self.route(
+            (GET_PROMPT, prompt_row(2, **agent_prompt)),
+            (GET_VERSION, version_row(2)),
+            (SET_LABELS, [{'p': prompt_props(**agent_prompt)}]),
+        )
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={'engineering'}),
+        ):
+            response = self.client.put(
+                BASE + '/agents/engineering.triage/labels/stable',
+                json={'version': 2},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        (written,) = json.loads(router.params_for(SET_LABELS)['labels'])
+        self.assertEqual((written['name'], written['version']), ('stable', 2))
+
+    def test_agent_write_needs_membership_of_the_prompt_org(self) -> None:
+        self.as_principal('prompt:update', 'agent:write')
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={'marketing'}),
+        ):
+            response = self.client.put(
+                BASE + '/agents/engineering.triage/labels/stable',
+                json={'version': 2},
+            )
+        self.assertEqual(response.status_code, 404)
 
     def test_delete_default_label_is_409(self) -> None:
         self.route((GET_PROMPT, prompt_row()))

@@ -6,6 +6,7 @@ import type {
   AgentSubagent,
   AgentToolConfig,
   PromptParams,
+  PromptVariable,
   PromptVersion,
   PromptVersionCreate,
 } from '@/types'
@@ -360,6 +361,31 @@ export function promptDraftFromVersion(
 }
 
 /**
+ * The variables that imbi-api gives an agent's system prompt when a
+ * runner claims a task. The renderer refuses a variable that the version
+ * does not declare, so every version that the editor writes declares
+ * these.
+ */
+export const AGENT_PROMPT_VARIABLES: Record<string, PromptVariable> = {
+  agent: { description: 'The agent slug', required: false, type: 'str' },
+  organization: {
+    description: 'The organization slug',
+    required: false,
+    type: 'str',
+  },
+  project: {
+    description: 'The project slug of the task, or empty',
+    required: false,
+    type: 'str',
+  },
+  task: {
+    description: 'The task id, such as T-42',
+    required: false,
+    type: 'str',
+  },
+}
+
+/**
  * The body of the new prompt version. Fields that the agent editor does
  * not show (messages, tools, variables, other params) come from the
  * baseline version, so a save from here does not remove them.
@@ -385,7 +411,10 @@ export function promptVersionBody(
     summary,
     system: draft.system,
     tools: baseline?.tools ?? [],
-    variable_schema: baseline?.variable_schema ?? {},
+    variable_schema: {
+      ...AGENT_PROMPT_VARIABLES,
+      ...(baseline?.variable_schema ?? {}),
+    },
   }
 }
 

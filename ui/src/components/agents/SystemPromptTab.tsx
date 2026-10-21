@@ -8,17 +8,14 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { wordCount } from './agentDraft'
+import { AGENT_PROMPT_VARIABLES, wordCount } from './agentDraft'
 
 type Mode = 'preview' | 'split' | 'write'
 
-// Reference only: agents do not run yet, so nothing fills in these
-// values. The prompt CMS renders Jinja, so the tokens use that syntax.
-const VARIABLES = [
-  { note: 'This agent’s display name', token: '{{ agent.name }}' },
-  { note: 'The Imbi task identifier', token: '{{ task.id }}' },
-  { note: 'The owning project on the task', token: '{{ project.slug }}' },
-]
+// The prompt CMS renders Jinja, so the tokens use that syntax.
+const VARIABLES = Object.entries(AGENT_PROMPT_VARIABLES).map(
+  ([name, spec]) => ({ note: spec.description, token: `{{ ${name} }}` }),
+)
 
 interface SystemPromptTabProps {
   onChange: (system: string) => void
@@ -75,8 +72,7 @@ export function SystemPromptTab({ onChange, value }: SystemPromptTabProps) {
           Available variables
         </div>
         <p className="text-tertiary mb-3 text-xs">
-          For reference. Agents do not run yet, so nothing fills in these
-          values.
+          Imbi fills in these values when a runner starts a task.
         </p>
         <div className="flex flex-col gap-2">
           {VARIABLES.map((v) => (

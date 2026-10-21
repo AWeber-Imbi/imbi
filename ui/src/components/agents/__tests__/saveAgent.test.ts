@@ -98,6 +98,29 @@ describe('saveAgent', () => {
     expect(doc.version_summary).toBe('prompt v4')
   })
 
+  it('declares the variables that a runner gives the prompt', async () => {
+    const existing = agent()
+    const baseline = {
+      ...promptVersion(),
+      variable_schema: {
+        team: { required: true, type: 'str' as const },
+      },
+    }
+    const draft = draftFromAgent(existing, baseline)
+    draft.prompt.system = 'You work for {{ organization }} on {{ task }}.'
+
+    await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
+
+    const body = vi.mocked(endpoints.createPromptVersion).mock.calls[0][2]
+    expect(Object.keys(body.variable_schema ?? {}).sort()).toEqual([
+      'agent',
+      'organization',
+      'project',
+      'task',
+      'team',
+    ])
+  })
+
   it('stores the model parameters under the prompt params keys', async () => {
     const existing = agent()
     const baseline = promptVersion()

@@ -7,8 +7,10 @@ parameters as one unit, and cannot change after it is saved. A **label**
 `namespace/slug@label`.
 
 Moving a label changes what consumers run, so it needs the
-`prompt:promote` permission. A prompt created by someone without that
-permission has no labels: its version 1 exists, but no reference
+`prompt:promote` permission. An agent's own prompt
+(`agents/<organization slug>.<agent slug>`) is the exception:
+`agent:write` in that organization is also enough. A prompt created by
+someone without the permission has no labels: its version 1 exists, but no reference
 resolves until a promote holder points a label at a version. Until
 then, a consumer such as the assistant keeps using its packaged prompt.
 

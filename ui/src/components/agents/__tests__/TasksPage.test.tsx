@@ -458,6 +458,42 @@ describe('Tasks', () => {
     ).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('cancels a task after a confirm', async () => {
+    vi.mocked(endpoints.controlAgentTask).mockResolvedValue({
+      ...BLOCKED,
+      control: 'cancel',
+    })
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel task' }))
+    expect(endpoints.controlAgentTask).not.toHaveBeenCalled()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel task',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.controlAgentTask).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'cancel',
+      ),
+    )
+  })
+
+  it('returns focus to Cancel when the confirm closes', async () => {
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    const button = await screen.findByRole('button', { name: 'Cancel task' })
+    button.focus()
+    fireEvent.click(button)
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    )
+    await waitFor(() => expect(button).toHaveFocus())
+    expect(endpoints.controlAgentTask).not.toHaveBeenCalled()
+  })
+
   it('sends Reply and hold', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
     renderAt('/agents/tasks/acme/T-3/conversation')

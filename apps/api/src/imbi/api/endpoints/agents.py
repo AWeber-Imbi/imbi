@@ -1493,15 +1493,15 @@ async def restore_agent_version(
 
     When the snapshot has ``prompt_ref`` and ``prompt_version``, the
     label that the reference names (the default label when it names
-    none) moves to that prompt version in the same transaction. This
-    needs ``prompt:promote``, as a label move in the prompt CMS does.
-    A reference that names a version number moves no label. A label
+    none) moves to that prompt version in the same transaction. The
+    ``agent:write`` that this route needs is enough for that (see
+    :func:`prompts.can_promote`). A reference that names a version
+    number moves no label. A label
     moves only on the agent's own prompt: a prompt in the ``agents``
     namespace that the ``prompt_ref`` of the agent names now, with a
     slug that starts with ``<org_slug>.``.
 
     Raises:
-        403: The label must move and the caller cannot promote.
         404: No such agent or version.
         409: The snapshot slug is taken by another agent, the label
             must move on a prompt that is not the agent's own
@@ -1554,13 +1554,12 @@ async def _restore_label_move(
     namespace that the agent uses now, and only when the prompt slug
     starts with ``<org_slug>.``. Any caller with ``agent:write`` can
     write any ``prompt_ref`` into a version. Without these checks, a
-    later restore by a caller with ``prompt:promote`` could move the
+    later restore by a caller with ``agent:write`` could move the
     label of a prompt that other consumers use, or that an agent in
     another organization uses. When the label is already at the
     version, nothing moves and the checks do not apply.
 
     Raises:
-        403: The caller cannot promote prompts.
         409: The label must move on a prompt that is not the agent's
             own org-scoped prompt, or the prompt or the prompt version
             no longer exists.
@@ -1573,6 +1572,21 @@ async def _restore_label_move(
     )
     if selector is not None and selector.isascii() and selector.isdigit():
         return None
+    # Reject the prompt of another organization before the fetch, so
+    # the response does not tell if that prompt exists (issue #414).
+    if (
+        namespace == AGENT_PROMPT_NAMESPACE
+        and '.' in prompt_slug
+        and not prompt_slug.startswith(f'{org_slug}.')
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Restoring this version moves a label of {namespace}/'
+                f'{prompt_slug}, which is not a prompt of the {org_slug!r} '
+                'organization. Move the label in the prompt CMS instead.'
+            ),
+        )
     try:
         prompt, _latest = await prompt_resolve.fetch_prompt(
             db, namespace, prompt_slug
@@ -1622,14 +1636,6 @@ async def _restore_label_move(
                 'prompt CMS instead.'
             )
         raise fastapi.HTTPException(status_code=409, detail=detail)
-    if not (auth.is_admin or 'prompt:promote' in auth.permissions):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail=(
-                f'Restoring this version moves the {label!r} label of '
-                f'{namespace}/{prompt_slug}; that needs prompt:promote'
-            ),
-        )
     return prompts.labels_statement(
         prompt,
         prompts.moved_labels(

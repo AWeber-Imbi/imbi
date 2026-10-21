@@ -868,16 +868,21 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 409, response.text)
         self.mock_db._execute_batch.assert_not_awaited()
 
-    def test_restore_label_move_requires_promote(self) -> None:
+    def test_restore_label_move_needs_only_agent_write(self) -> None:
+        # The agent's own prompt is part of the agent: agent:write moves
+        # its label without prompt:promote.
+        self.assertNotIn('prompt:promote', self.auth_context.permissions)
         self.mock_db.execute.side_effect = [
             [self._row(latest=3, slack_channel='#new', prompt_version=5)],
             [self._version(1, prompt_version=4)],
             self._prompt(stable=5),
             test_prompts.version_row(4),
+            [self._row(latest=4, prompt_version=4)],
         ]
         response = self.client.post(BASE + '/triage/versions/1/restore')
-        self.assertEqual(response.status_code, 403, response.text)
-        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(response.status_code, 200, response.text)
+        (label,) = json.loads(self._batch()[0].params['labels'])
+        self.assertEqual(label['version'], 4)
 
     def test_restore_prompt_changed_conflicts(self) -> None:
         self._allow_promote()
@@ -984,20 +989,21 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual((label['name'], label['version']), ('stable', 4))
 
     def test_restore_cross_org_prompt_conflicts(self) -> None:
-        # The agent uses the prompt of another organization now.
+        # The agent uses the prompt of another organization now. The
+        # restore rejects it before it reads the prompt, so the
+        # response does not tell if the prompt exists.
         self._allow_promote()
         ref = 'agents/other.triage@stable'
         self.mock_db.execute.side_effect = [
             [self._row(latest=3, prompt_ref=ref, prompt_version=5)],
             [self._version(1, prompt_ref=ref, prompt_version=4)],
-            self._prompt(stable=5),
-            test_prompts.version_row(4),
         ]
         response = self.client.post(BASE + '/triage/versions/1/restore')
         self.assertEqual(response.status_code, 409, response.text)
         detail = response.json()['detail']
         self.assertIn('agents/other.triage', detail)
         self.assertIn("'engineering' organization", detail)
+        self.assertEqual(self.mock_db.execute.await_count, 2)
         self.mock_db._execute_batch.assert_not_awaited()
         self.assertEqual(self._version_writes(), [])
 
