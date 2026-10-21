@@ -997,7 +997,7 @@ class ContextHydrationTestCase(unittest.TestCase):
             ctx = self._dispatch()
         self.assertEqual(
             ctx.project_ui_url,
-            'https://imbi.example.com/organizations/org-1/projects/proj-1',
+            'https://imbi.example.com/projects/proj-1',
         )
 
     def test_ui_url_is_none_when_unconfigured(self) -> None:

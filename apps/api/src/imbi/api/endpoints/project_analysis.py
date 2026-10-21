@@ -42,6 +42,7 @@ from imbi.api.identity import errors as identity_errors
 from imbi.api.identity import resolution as identity_resolution
 from imbi.api.identity.host_integration import call_with_identity_retry
 from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.lifecycle_dispatch import build_project_ui_url
 from imbi.api.plugins.resolution import (
     ResolvedCapability,
     resolve_all_capabilities,
@@ -126,6 +127,11 @@ async def _build_context(
         integration_slug=resolved.integration_slug,
         service_connections=service_connections,
         dependencies=dependencies or [],
+        # The same canonical UI link the lifecycle dispatcher hands to
+        # plugins, so a doctor can verify what the lifecycle sync wrote
+        # (e.g. the GitHub repo ``homepage``).  ``None`` when
+        # ``IMBI_UI_URL`` is unset.
+        project_ui_url=build_project_ui_url(project_id),
         # No resolver when the dependency lookup failed, so a fix does
         # not remove remote state on partial data.
         resolve_linked_identifiers=(

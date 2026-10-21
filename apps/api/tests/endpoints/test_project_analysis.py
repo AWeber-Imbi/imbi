@@ -98,6 +98,23 @@ class _RemediablePlugin(AnalysisCapability):
         )
 
 
+class _ContextProbePlugin(AnalysisCapability):
+    """Reports the ``project_ui_url`` it was handed as a finding."""
+
+    _SLUG = 'probe-plugin'
+    _NAME = 'Probe'
+
+    async def analyze(self, ctx, credentials) -> list[AnalysisResultItem]:  # type: ignore[override]
+        return [
+            AnalysisResultItem(
+                slug='probe-plugin:ui-url',
+                title='UI URL',
+                description=repr(ctx.project_ui_url),
+                status='pass',
+            )
+        ]
+
+
 class _FakePlugin(Plugin):
     pass
 
@@ -230,6 +247,30 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         body = resp.json()
         self.assertEqual('pass', body['overall_status'])
         self.assertEqual([], body['results'])
+
+    def test_run_hands_plugins_the_project_ui_url(self) -> None:
+        # The doctor context carries the same canonical UI link the
+        # lifecycle dispatcher builds, so a doctor can verify what the
+        # lifecycle sync wrote (e.g. the GitHub repo homepage).
+        with (
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[_resolved('p1', _ContextProbePlugin)],
+            ),
+            mock.patch(
+                'imbi.api.plugins.lifecycle_dispatch.get_server_config'
+            ) as config,
+        ):
+            config.return_value.ui_url = 'https://imbi.example.com'
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/run'
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual(
+            repr('https://imbi.example.com/projects/proj-1'),
+            resp.json()['results'][0]['description'],
+        )
 
     def test_run_returns_worst_status_and_sorted_results(self) -> None:
         with mock.patch(

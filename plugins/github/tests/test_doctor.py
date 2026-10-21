@@ -1,5 +1,6 @@
 """Tests for the GitHub-native project-doctor analysis plugin."""
 
+import json
 import unittest
 
 import httpx
@@ -20,6 +21,7 @@ from imbi.plugins.github import _app_auth
 from imbi.plugins.github.doctor import (
     _REPAIR_EDGE,
     _REPAIR_GITHUB_LINK,
+    _REPAIR_HOMEPAGE,
     GitHubDoctor,
 )
 
@@ -27,7 +29,15 @@ _HOST = 'aweber.ghe.com'
 _API_BASE = 'https://api.aweber.ghe.com'
 _CANONICAL = f'{_API_BASE}/repositories/134741'
 _DASHBOARD = f'https://{_HOST}/aweber/demo'
-_REPO_PAYLOAD = {'id': 134741, 'html_url': _DASHBOARD, 'name': 'demo'}
+_UI_URL = 'https://imbi.example.com/projects/p'
+_REPO_PAYLOAD = {
+    'id': 134741,
+    'html_url': _DASHBOARD,
+    'name': 'demo',
+    'full_name': 'aweber/demo',
+    'homepage': _UI_URL,
+}
+_PATCH_URL = f'{_API_BASE}/repos/aweber/demo'
 
 _TPS_SLUG = 'aweber-github'
 _CREDS = {'access_token': 'gho_test'}
@@ -53,6 +63,7 @@ def _ctx(
     connections: list[ServiceConnection] | None = None,
     links: dict[str, str] | None = None,
     options: dict[str, str] | None = None,
+    project_ui_url: str | None = _UI_URL,
 ) -> PluginContext:
     if connections is None:
         connections = [
@@ -79,6 +90,7 @@ def _ctx(
         ),
         service_connections=connections,
         project_links=links if links is not None else default_links,
+        project_ui_url=project_ui_url,
     )
 
 
@@ -143,7 +155,7 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDoctor()
         results = await plugin.analyze(_ctx(), _CREDS)
         by = _by_slug(results)
-        self.assertEqual(len(results), 8)
+        self.assertEqual(len(results), 9)
         self.assertEqual(by['exists-in'].status, 'pass')
         self.assertEqual(by['identifier-verified'].status, 'pass')
         self.assertEqual(by['canonical-url'].status, 'pass')
@@ -152,6 +164,7 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(by['canonical-url-shape'].status, 'pass')
         self.assertEqual(by['dashboard-url-match'].status, 'pass')
         self.assertEqual(by['github-repository-link-match'].status, 'pass')
+        self.assertEqual(by['homepage-url-match'].status, 'pass')
 
     @respx.mock
     async def test_identifier_not_integer(self) -> None:
@@ -323,6 +336,52 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
             _by_slug(results)['github-repository-link-match'].status,
             'pass',
         )
+
+    @respx.mock
+    async def test_homepage_mismatch(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(
+                200,
+                json={**_REPO_PAYLOAD, 'homepage': 'https://example.com'},
+            )
+        )
+        results = await GitHubDoctor().analyze(_ctx(), _CREDS)
+        item = _by_slug(results)['homepage-url-match']
+        self.assertEqual(item.status, 'fail')
+        self.assertIn(_UI_URL, item.description)
+        assert item.remediation is not None
+        self.assertEqual(item.remediation.id, _REPAIR_HOMEPAGE)
+
+    @respx.mock
+    async def test_homepage_unset(self) -> None:
+        # GitHub reports an unset homepage as null (or '' on some
+        # flavors); both are a soft finding with the repair offered.
+        for unset in (None, ''):
+            with self.subTest(homepage=unset):
+                respx.get(_CANONICAL).mock(
+                    return_value=httpx.Response(
+                        200, json={**_REPO_PAYLOAD, 'homepage': unset}
+                    )
+                )
+                results = await GitHubDoctor().analyze(_ctx(), _CREDS)
+                item = _by_slug(results)['homepage-url-match']
+                self.assertEqual(item.status, 'warn')
+                assert item.remediation is not None
+                self.assertEqual(item.remediation.id, _REPAIR_HOMEPAGE)
+
+    @respx.mock
+    async def test_homepage_unverifiable_without_ui_url(self) -> None:
+        # No IMBI_UI_URL on the API: nothing to compare against, and no
+        # repair is offered because there is nothing to write.
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        results = await GitHubDoctor().analyze(
+            _ctx(project_ui_url=None), _CREDS
+        )
+        item = _by_slug(results)['homepage-url-match']
+        self.assertEqual(item.status, 'warn')
+        self.assertIsNone(item.remediation)
 
     @respx.mock
     async def test_canonical_fetch_fails_401_no_token(self) -> None:
@@ -613,6 +672,107 @@ class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
         result = await plugin.remediate(ctx, _CREDS, _REPAIR_GITHUB_LINK)
         self.assertEqual(result.status, 'noop')
         self.assertIsNone(ctx.link_writeback)
+
+    @respx.mock
+    async def test_homepage_repair_patches_github(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(
+                200, json={**_REPO_PAYLOAD, 'homepage': ''}
+            )
+        )
+        patch = respx.patch(_PATCH_URL).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        ctx = _ctx()
+        result = await GitHubDoctor().remediate(ctx, _CREDS, _REPAIR_HOMEPAGE)
+        self.assertEqual(result.status, 'fixed')
+        self.assertTrue(patch.called)
+        self.assertEqual(
+            json.loads(patch.calls.last.request.content),
+            {'homepage': _UI_URL},
+        )
+        # Writes to GitHub, not back into Imbi.
+        self.assertIsNone(ctx.link_writeback)
+        self.assertIsNone(ctx.service_writeback)
+
+    @respx.mock
+    async def test_homepage_repair_noop_when_correct(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        patch = respx.patch(_PATCH_URL)
+        result = await GitHubDoctor().remediate(
+            _ctx(), _CREDS, _REPAIR_HOMEPAGE
+        )
+        self.assertEqual(result.status, 'noop')
+        self.assertFalse(patch.called)
+
+    async def test_homepage_repair_no_connection_failed(self) -> None:
+        result = await GitHubDoctor().remediate(
+            _ctx(connections=[]), _CREDS, _REPAIR_HOMEPAGE
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_homepage_repair_without_ui_url_failed(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(
+                200, json={**_REPO_PAYLOAD, 'homepage': ''}
+            )
+        )
+        result = await GitHubDoctor().remediate(
+            _ctx(project_ui_url=None), _CREDS, _REPAIR_HOMEPAGE
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_homepage_repair_missing_full_name_failed(self) -> None:
+        payload = {**_REPO_PAYLOAD, 'homepage': ''}
+        del payload['full_name']
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        result = await GitHubDoctor().remediate(
+            _ctx(), _CREDS, _REPAIR_HOMEPAGE
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_homepage_repair_patch_rejected_failed(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(
+                200, json={**_REPO_PAYLOAD, 'homepage': ''}
+            )
+        )
+        respx.patch(_PATCH_URL).mock(return_value=httpx.Response(403))
+        result = await GitHubDoctor().remediate(
+            _ctx(), _CREDS, _REPAIR_HOMEPAGE
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_homepage_repair_patch_401_propagates(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(
+                200, json={**_REPO_PAYLOAD, 'homepage': ''}
+            )
+        )
+        respx.patch(_PATCH_URL).mock(return_value=httpx.Response(401))
+        with self.assertRaises(PluginAuthenticationFailed):
+            await GitHubDoctor().remediate(_ctx(), _CREDS, _REPAIR_HOMEPAGE)
+
+    @respx.mock
+    async def test_homepage_repair_transport_error_failed(self) -> None:
+        respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(
+                200, json={**_REPO_PAYLOAD, 'homepage': ''}
+            )
+        )
+        respx.patch(_PATCH_URL).mock(side_effect=httpx.ConnectError('down'))
+        result = await GitHubDoctor().remediate(
+            _ctx(), _CREDS, _REPAIR_HOMEPAGE
+        )
+        self.assertEqual(result.status, 'failed')
 
     @respx.mock
     async def test_401_propagates_for_identity_retry(self) -> None:

@@ -410,8 +410,9 @@ class GitHubPlugin(Plugin):
                 description=(
                     'Validate the GitHub repository link (EXISTS_IN edge) '
                     'against the live GitHub API — identifier, canonical '
-                    'URL shape, and dashboard / github-repository links — '
-                    'and offer one-click repairs.'
+                    'URL shape, dashboard / github-repository links, and '
+                    "the repository homepage pointing at the project's "
+                    'Imbi page — and offer one-click repairs.'
                 ),
                 handler=GitHubDoctor,
             ),
