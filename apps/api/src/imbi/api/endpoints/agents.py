@@ -1572,6 +1572,21 @@ async def _restore_label_move(
     )
     if selector is not None and selector.isascii() and selector.isdigit():
         return None
+    # Reject the prompt of another organization before the fetch, so
+    # the response does not tell if that prompt exists (issue #414).
+    if (
+        namespace == AGENT_PROMPT_NAMESPACE
+        and '.' in prompt_slug
+        and not prompt_slug.startswith(f'{org_slug}.')
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Restoring this version moves a label of {namespace}/'
+                f'{prompt_slug}, which is not a prompt of the {org_slug!r} '
+                'organization. Move the label in the prompt CMS instead.'
+            ),
+        )
     try:
         prompt, _latest = await prompt_resolve.fetch_prompt(
             db, namespace, prompt_slug
