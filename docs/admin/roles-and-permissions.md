@@ -127,6 +127,11 @@ automatically on first login.
 | `secret_resolution:read` / `:manage` | View, or release, secret resolutions and revoke provider leases | | | |
 | `secret_audit:read` | View secret audit events | | | |
 
+To activate a workflow, you also need the permissions that its steps need,
+for example `scheduled_task:create` for a Schedule step and
+`webhook:update` for a Webhook step. See the step table in
+[Workflows](workflows.md).
+
 Only platform administrators (users with `is_admin`) can change runner
 pools. This is not a permission, because an organization administrator can
 grant a permission to a role.

@@ -202,8 +202,8 @@ Open **Agents > Tasks**. The inbox has four groups:
 
 | Group | Tasks |
 |---|---|
-| Human input required | Tasks with an open request, also paused tasks. The oldest request is first |
-| Running | Running and paused tasks |
+| Human input required | Tasks with an open request, also paused tasks with an open request. The oldest request is first |
+| Running | Running tasks, and paused tasks without an open request |
 | Queued | Tasks that wait for a runner |
 | Recently closed | Closed tasks, newest first |
 

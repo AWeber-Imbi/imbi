@@ -254,7 +254,7 @@ To enable a separate public login host:
 
 ### Workflow Engine (`IMBI_WORKFLOWS_*`)
 
-Read by imbi-workflows only. Postgres and the graph use the shared `POSTGRES_*` settings.
+Only imbi-workflows reads the `IMBI_WORKFLOWS_*` variables. Other services also read the two URL variables. Postgres and the graph use the shared `POSTGRES_*` settings.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
