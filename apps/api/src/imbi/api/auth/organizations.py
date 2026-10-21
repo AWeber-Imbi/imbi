@@ -7,6 +7,13 @@ can only use the routes of an organization that they are a member of
 (``MEMBER_OF``). A caller that is not a member gets
 ``403 organization_forbidden``, as in :mod:`imbi.api.auth.autonomous`.
 There is no admin bypass.
+
+A member's permissions on these routes are those of their role in that
+organization only (issue #455): :func:`check_member` narrows
+``AuthContext.permissions`` to them. FastAPI gives every dependency of a
+request the same ``AuthContext``, and a router dependency runs before
+the route's own, so each ``require_permission`` check sees the narrowed
+set.
 """
 
 import logging
@@ -16,6 +23,7 @@ import fastapi
 
 from imbi.api.auth import autonomous, permissions
 from imbi.common import graph
+from imbi.common.auth import permissions as common_permissions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +55,27 @@ def organization_id(value: object, slug: str) -> str:
             status_code=500, detail=f'Organization {slug!r} has no id'
         )
     return str(value)
+
+
+async def org_permissions(
+    db: graph.Graph, auth: permissions.AuthContext, org_slug: str
+) -> set[str]:
+    """The caller's permissions in ``org_slug``: those of their role in
+    that organization, still limited by the scopes of an API key."""
+    granted: set[str] = set()
+    if auth.user is not None:
+        granted = await common_permissions.load_principal_permissions(
+            db, 'User', 'email', auth.user.email, org_slug=org_slug
+        )
+    elif auth.service_account is not None:
+        granted = await common_permissions.load_principal_permissions(
+            db,
+            'ServiceAccount',
+            'slug',
+            auth.service_account.slug,
+            org_slug=org_slug,
+        )
+    return auth.permissions & granted
 
 
 async def member_org_id(
@@ -102,6 +131,7 @@ async def check_member(
             ),
             org_slug=org_slug,
         )
+    auth.permissions = await org_permissions(db, auth, org_slug)
     return organization_id(graph.parse_agtype(records[0]['id']), org_slug)
 
 

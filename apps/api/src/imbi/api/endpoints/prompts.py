@@ -26,7 +26,7 @@ import fastapi
 import pydantic
 import slugify
 
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
     caller_org_slugs,
@@ -537,22 +537,26 @@ def _prompt_org(namespace: str, slug: str) -> str | None:
     return org if namespace == _ORG_NAMESPACE and dot else None
 
 
-def can_promote(
-    auth: permissions.AuthContext, namespace: str, slug: str
+async def can_promote(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    namespace: str,
+    slug: str,
 ) -> bool:
     """Whether the caller may point a label of the prompt at a version.
 
     ``prompt:promote`` (or an admin) may move any label. An
     organization's agent prompt is part of the agent, so ``agent:write``
-    may also move its labels; otherwise a developer could change an
-    agent's prompt but never make the agent use it. Membership of that
-    organization is checked by :func:`_require_access` before this.
+    in that organization may also move its labels; otherwise a developer
+    could change an agent's prompt but never make the agent use it.
+    Membership of that organization is checked by :func:`_require_access`
+    before this.
     """
     if auth.is_admin or 'prompt:promote' in auth.permissions:
         return True
-    return (
-        _prompt_org(namespace, slug) is not None
-        and 'agent:write' in auth.permissions
+    org = _prompt_org(namespace, slug)
+    return org is not None and 'agent:write' in (
+        await organizations.org_permissions(db, auth, org)
     )
 
 
@@ -808,7 +812,9 @@ async def create_prompt(
         db,
         data,
         auth.principal_name,
-        label_first_version=can_promote(auth, data.namespace, data.slug or ''),
+        label_first_version=await can_promote(
+            db, auth, data.namespace, data.slug or ''
+        ),
     )
 
 
@@ -1429,7 +1435,7 @@ async def set_prompt_label(
     _check_label_name(label)
     # Check before the read, so a 404 cannot tell a caller that
     # cannot promote that the prompt exists.
-    if not can_promote(auth, namespace, slug):
+    if not await can_promote(db, auth, namespace, slug):
         raise fastapi.HTTPException(
             status_code=403,
             detail=f'Moving a label of {namespace}/{slug} requires '
