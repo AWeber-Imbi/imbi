@@ -235,16 +235,16 @@ of the task.
 | Related tasks | Dependencies, the parent task, and child tasks |
 | Associated projects | The primary project and the other projects of the task |
 
-### Pause, resume, and reassign
+### Pause, resume, cancel, and reassign
 
 You need `agent_task:manage`. The controls do not show on a closed task.
 
 - Click the pause button to pause the task. Click it again to resume.
+- Click the cancel button, then click **Cancel task** in the dialog. You
+  cannot resume a cancelled task. The API is
+  `POST /organizations/{org}/agent-tasks/{short_id}/cancel`.
 - Click the reassign button, enter the email of the new owner, and click
   **Reassign**. The new owner must be a member of the organization.
-
-To cancel a task, use the API:
-`POST /organizations/{org}/agent-tasks/{short_id}/cancel`.
 
 ## Answer a request
 

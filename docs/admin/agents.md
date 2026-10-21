@@ -30,7 +30,7 @@ The area has these pages:
 | `agent:write` | Edit, enable, disable, and restore agents. Refresh the tool catalog | `admin`, `developer` |
 | `agent:delete` | Delete agents | `admin` |
 | `agent_platform_config:write` | Change the base configuration and the marketplaces | `admin` |
-| `prompt:create`, `prompt:update`, `prompt:promote` | Save a change to the system prompt or the model | `admin`. `developer` has `prompt:create` and `prompt:update` only |
+| `prompt:create`, `prompt:update` | Save a change to the system prompt or the model | `admin`, `developer` |
 | `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See and add grants on the **Access** tab | `admin` |
 
 You must also be a member of the organization. For the task permissions,
@@ -75,9 +75,20 @@ Imbi does these steps:
 2. It moves the `stable` label to the new version.
 3. It saves the agent, with the number of the prompt version.
 
-Step 2 needs `prompt:promote`. If you do not have it, the save stops after
-step 1. The message tells you that the label did not move. The agent does
-not change.
+Step 2 needs `agent:write` or `prompt:promote`. `agent:write` is enough
+because the prompt belongs to the agent. On any other prompt, a label
+move needs `prompt:promote`.
+
+The system prompt can use these variables. Imbi fills them in when a
+runner starts a task. Each prompt version that the editor saves declares
+them.
+
+| Variable | Value |
+|---|---|
+| `{{ organization }}` | The organization slug |
+| `{{ agent }}` | The agent slug |
+| `{{ task }}` | The task id, for example `T-42` |
+| `{{ project }}` | The project slug of the task, or empty |
 
 The **System prompt** tab is a Markdown editor. The **Model** tab has these
 fields:
@@ -233,8 +244,7 @@ To restore a version:
 4. Confirm.
 
 The restore writes a new version with the summary `Restored v<n>`. It
-needs `agent:write`. When it moves the prompt label, it also needs
-`prompt:promote`.
+needs `agent:write`. That is also enough to move the prompt label.
 
 - A restore moves a label only on the agent's own
   `agents/<organization slug>.` prompt. For any other prompt, it returns
