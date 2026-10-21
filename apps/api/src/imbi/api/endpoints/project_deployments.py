@@ -1178,16 +1178,38 @@ async def _assert_breaking_changes_acknowledged(
     if not declared:
         return False
     if not acknowledged:
+        # Structured, like the autonomous 403s, so the UI can put the
+        # acknowledgement in front of the operator from this answer alone.
+        # The form's own warning comes from the release-notes draft and the
+        # base tag it was shown; when either disagrees with what this gate
+        # measured, the refusal is the only thing that can say why.
         shas = ', '.join(c.short_sha for c in declared)
+        bump = _breaking_bump(last_tag)
         raise fastapi.HTTPException(
             status_code=409,
-            detail=(
-                f'{tag} is not a breaking-change release after {last_tag}, '
-                f'but {shas} {"is" if len(declared) == 1 else "are"} marked '
-                f'breaking. Release a {_breaking_bump(last_tag)} version, '
-                f'or to {action} {tag} anyway, resubmit with '
-                'acknowledge_breaking_changes=true.'
-            ),
+            detail={
+                'error': 'breaking_changes_unacknowledged',
+                'message': (
+                    f'{tag} is not a breaking-change release after '
+                    f'{last_tag}, but {shas} '
+                    f'{"is" if len(declared) == 1 else "are"} marked '
+                    f'breaking. Release a {bump} version, or to {action} '
+                    f'{tag} anyway, resubmit with '
+                    'acknowledge_breaking_changes=true.'
+                ),
+                'tag': tag,
+                'last_tag': last_tag,
+                'bump': bump,
+                'breaking_changes': [
+                    BreakingChange(
+                        commit=c.short_sha,
+                        description=c.message.partition('\n')[0].strip(),
+                        declared=True,
+                        url=c.url,
+                    ).model_dump()
+                    for c in declared
+                ],
+            },
         )
     LOGGER.warning(
         'Breaking change overridden: project=%s action=%s tag=%s '

@@ -3926,10 +3926,28 @@ class BreakingChangeGateTestCase(ProjectDeploymentsTestCase):
         response = self._promote()
         self.assertEqual(response.status_code, 409)
         detail = response.json()['detail']
-        self.assertIn('v6.4.0 is not a breaking-change release', detail)
-        self.assertIn('b7e1d2c is marked breaking', detail)
-        self.assertIn('Release a major version', detail)
-        self.assertIn('acknowledge_breaking_changes=true', detail)
+        self.assertEqual('breaking_changes_unacknowledged', detail['error'])
+        message = detail['message']
+        self.assertIn('v6.4.0 is not a breaking-change release', message)
+        self.assertIn('b7e1d2c is marked breaking', message)
+        self.assertIn('Release a major version', message)
+        self.assertIn('acknowledge_breaking_changes=true', message)
+        # Enough for the UI to put the acknowledgement on screen from the
+        # refusal alone, whatever its own draft said.
+        self.assertEqual('v6.4.0', detail['tag'])
+        self.assertEqual('v6.3.0', detail['last_tag'])
+        self.assertEqual('major', detail['bump'])
+        self.assertEqual(
+            [
+                {
+                    'commit': 'b7e1d2c',
+                    'description': 'feat(api)!: drop the v1 routes',
+                    'declared': True,
+                    'url': 'https://gh/commit/b7e1d2c',
+                }
+            ],
+            detail['breaking_changes'],
+        )
 
     def test_promote_gate_runs_before_any_side_effect(self) -> None:
         self._use()
@@ -3990,7 +4008,9 @@ class BreakingChangeGateTestCase(ProjectDeploymentsTestCase):
         self._use(latest=('0.3.0', 'a1b2c3d4'))
         response = self._promote(tag='0.3.1')
         self.assertEqual(409, response.status_code)
-        self.assertIn('Release a minor version', response.json()['detail'])
+        detail = response.json()['detail']
+        self.assertIn('Release a minor version', detail['message'])
+        self.assertEqual('minor', detail['bump'])
         self.assertEqual(202, self._promote(tag='0.4.0').status_code)
 
     # -- The record -------------------------------------------------------
@@ -4020,7 +4040,9 @@ class BreakingChangeGateTestCase(ProjectDeploymentsTestCase):
         self._use()
         response = self._cut()
         self.assertEqual(response.status_code, 409)
-        self.assertIn('to release v6.4.0 anyway', response.json()['detail'])
+        self.assertIn(
+            'to release v6.4.0 anyway', response.json()['detail']['message']
+        )
 
     def test_acknowledged_cut_stamps_and_audits(self) -> None:
         self._use()
