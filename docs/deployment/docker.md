@@ -29,6 +29,7 @@ This starts:
 | 8003 | imbi-gateway (internal)                                                                                                  |
 | 8005 | imbi-scheduler (internal, started only when `IMBI_SCHEDULER_SA_CLIENT_ID` and `IMBI_SCHEDULER_SA_CLIENT_SECRET` are set) |
 | 8004 | imbi-slackbot (internal, started only when the Slack tokens and `ANTHROPIC_API_KEY` are set)                             |
+| 8006 | imbi-workflows (internal, started with imbi-scheduler, only when the internal service accounts are seeded)                 |
 
 Caddy serves imbi-scheduler under `/scheduler`, stripping that prefix before
 the request reaches it — so `/scheduler/api/tasks` hits `/api/tasks` on the
@@ -38,7 +39,7 @@ service and `/scheduler/status` reaches its unprefixed health endpoint.
 
 For production deployments where you want to scale services independently,
 set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
-`scheduler`, `slackbot`, or `ui`:
+`scheduler`, `slackbot`, `workflows`, or `ui`:
 
 ```bash
 # Run only the API
@@ -89,6 +90,35 @@ If the reverse proxy in front of it passes `/scheduler` through instead of
 stripping it, set `IMBI_SCHEDULER_API_PREFIX=/scheduler/api`. More than one
 replica is safe — see
 [Scheduler configuration](../scheduler/configuration.md).
+
+Running the workflow engine on its own needs its service-account
+credentials and both API URLs too. The entrypoint refuses to start without
+them:
+
+```bash
+docker run -p 8006:8006 \
+  -e IMBI_SERVICE=workflows \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
+  -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
+  -e IMBI_AUTH_JWT_SECRET=your-secret \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
+  -e IMBI_WORKFLOWS_SA_CLIENT_ID=... \
+  -e IMBI_WORKFLOWS_SA_CLIENT_SECRET=... \
+  -e IMBI_INTERNAL_API_URL=http://imbi-api:8000 \
+  -e IMBI_API_URL=https://imbi.example.com/api \
+  -e IMBI_WORKFLOWS_SCHEDULER_URL=http://imbi-scheduler:8005/api \
+  ghcr.io/aweber-imbi/imbi:latest
+```
+
+`IMBI_WORKFLOWS_SCHEDULER_URL` is imbi-scheduler's task API, with its route
+prefix. Its default, `http://localhost:8005/api`, works in all-in-one mode
+only. Caddy does not route to imbi-workflows.
+
+To show imbi-workflows in the admin System health card, set
+`IMBI_INTERNAL_WORKFLOWS_URL` on imbi-api, for example
+`http://imbi-workflows:8006`. It works like the other `IMBI_INTERNAL_*_URL`
+settings. Empty shows the service as "not configured".
 
 ## The Iggy connectors runtime
 
