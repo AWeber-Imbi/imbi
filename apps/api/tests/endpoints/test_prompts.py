@@ -484,7 +484,8 @@ class LabelTestCase(PromptTestBase):
             BASE + '/mender/core/labels/stable', json={'version': 1}
         )
         self.assertEqual(response.status_code, 403)
-        self.assertFalse(any(SET_LABELS in query for query, _ in router.calls))
+        # 403 comes before the read, so it does not confirm the prompt.
+        self.assertEqual(router.calls, [])
 
     def test_agent_write_moves_label_of_org_agent_prompt(self) -> None:
         self.as_principal('prompt:update', 'agent:write')

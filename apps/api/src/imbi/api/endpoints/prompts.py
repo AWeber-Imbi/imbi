@@ -1427,13 +1427,15 @@ async def set_prompt_label(
 
     """
     _check_label_name(label)
-    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    # Check before the read, so a 404 cannot tell a caller that
+    # cannot promote that the prompt exists.
     if not can_promote(auth, namespace, slug):
         raise fastapi.HTTPException(
             status_code=403,
             detail=f'Moving a label of {namespace}/{slug} requires '
             'prompt:promote',
         )
+    prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     await _fetch_version(db, prompt, data.version)
     labels = moved_labels(prompt, label, data.version, auth.principal_name)
     updated = await _write_labels(db, prompt, labels, prompt.default_label)
