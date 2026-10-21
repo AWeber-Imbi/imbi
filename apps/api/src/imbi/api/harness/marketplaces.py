@@ -383,7 +383,10 @@ class _PublicGitHub:
     async def _get(
         self, path: str, accept: str = 'application/vnd.github+json'
     ) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=30) as client:
+        # A renamed or moved repository answers 301 to /repositories/{id}.
+        async with httpx.AsyncClient(
+            timeout=30, follow_redirects=True
+        ) as client:
             return await client.get(
                 f'{self.base}{path}', headers={'Accept': accept}
             )
