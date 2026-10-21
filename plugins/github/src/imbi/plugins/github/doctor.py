@@ -2,8 +2,9 @@
 
 Performs richer, GitHub-aware validation than the generic exists-in doctor:
 identifier is an integer, canonical URL follows the /repositories/{id} shape
-that the lifecycle plugin writes, dashboard link matches the API html_url, and
-the legacy github-repository link matches as well.
+that the lifecycle plugin writes, dashboard link matches the API html_url,
+the legacy github-repository link matches as well, and the repository
+``homepage`` points back at the project's Imbi page.
 
 A single analysis capability covers github.com, GHEC tenants, and GHES
 appliances: the GitHub host is resolved from the Integration's ``flavor`` +
@@ -53,8 +54,14 @@ _REPO_ID_RE = re.compile(r'.*/repositories/(\d+)$')
 # edge-shaped discrepancy (identifier, canonical URL shape, dashboard
 # link) is repaired by one ``ServiceWriteback`` so they share an id; the
 # legacy ``github-repository`` link is a separate ``LinkWriteback``.
+# The ``homepage`` repair is the one that writes *to* GitHub: it PATCHes
+# the repository so its homepage is the project's Imbi page.
 _REPAIR_EDGE = 'repair-edge'
 _REPAIR_GITHUB_LINK = 'repair-github-link'
+_REPAIR_HOMEPAGE = 'repair-homepage'
+_REMEDIATION_IDS = frozenset(
+    {_REPAIR_EDGE, _REPAIR_GITHUB_LINK, _REPAIR_HOMEPAGE}
+)
 
 
 async def _raise_on_401(response: httpx.Response) -> None:
@@ -554,6 +561,8 @@ class GitHubDoctor(AnalysisCapability):
                 )
             )
 
+        results.append(_homepage_item(ctx, body))
+
         return results
 
     async def remediate(  # noqa: C901 — flat sequence of guard clauses
@@ -573,7 +582,7 @@ class GitHubDoctor(AnalysisCapability):
         ``PluginAuthenticationFailed`` so the host can refresh the actor's
         identity and retry once.
         """
-        if remediation_id not in (_REPAIR_EDGE, _REPAIR_GITHUB_LINK):
+        if remediation_id not in _REMEDIATION_IDS:
             return await super().remediate(ctx, credentials, remediation_id)
 
         try:
@@ -593,9 +602,9 @@ class GitHubDoctor(AnalysisCapability):
         connection = _find_connection(ctx.service_connections, slug)
         # ``_REPAIR_EDGE`` creates a missing edge from GitHub, so a
         # missing connection is only fatal for the github-repository
-        # link repair (which never needs the edge but is only ever
-        # offered once the edge is present).
-        if connection is None and remediation_id == _REPAIR_GITHUB_LINK:
+        # link and homepage repairs (which never need the edge but are
+        # only ever offered once the edge is present).
+        if connection is None and remediation_id != _REPAIR_EDGE:
             return RemediationResult(
                 status='failed',
                 message=(
@@ -660,6 +669,9 @@ class GitHubDoctor(AnalysisCapability):
                 status='failed',
                 message='GitHub response did not include an html_url.',
             )
+
+        if remediation_id == _REPAIR_HOMEPAGE:
+            return await _repair_homepage(ctx, body, api_base, headers)
 
         if remediation_id == _REPAIR_GITHUB_LINK:
             if ctx.project_links.get('github-repository') == html_url:
@@ -769,4 +781,129 @@ def _body_unavailable_items() -> list[AnalysisResultItem]:
             'warn',
             'Cannot verify github-repository link: repository fetch failed.',
         ),
+        _item(
+            'homepage-url-match',
+            'Homepage URL match',
+            'warn',
+            'Cannot verify the repository homepage: repository fetch failed.',
+        ),
     ]
+
+
+def _repo_homepage(body: dict[str, typing.Any]) -> str:
+    """Return the repository ``homepage``, normalising unset to ``''``.
+
+    GitHub reports an unset homepage as ``null`` on some flavors and as
+    the empty string on others; both mean "not set".
+    """
+    homepage = body.get('homepage')
+    return homepage if isinstance(homepage, str) else ''
+
+
+def _homepage_item(
+    ctx: PluginContext, body: dict[str, typing.Any]
+) -> AnalysisResultItem:
+    """Check that the repository ``homepage`` is the project's Imbi page.
+
+    The expected value is ``ctx.project_ui_url``, the same deep link the
+    lifecycle plugin writes on create / update.  It is ``None`` when the
+    API has no ``IMBI_UI_URL`` configured, in which case there is
+    nothing to compare against and no repair to offer.
+    """
+    expected = ctx.project_ui_url
+    actual = _repo_homepage(body)
+    if expected is None:
+        return _item(
+            'homepage-url-match',
+            'Homepage URL match',
+            'warn',
+            'Cannot verify the repository homepage: IMBI_UI_URL is not '
+            'configured on the API, so the project has no canonical '
+            'Imbi page URL.',
+        )
+    if actual == expected:
+        return _item(
+            'homepage-url-match',
+            'Homepage URL match',
+            'pass',
+            f"Repository homepage {actual!r} matches the project's Imbi page.",
+        )
+    offer = RemediationOffer(
+        id=_REPAIR_HOMEPAGE,
+        label="Set the repository homepage to the project's Imbi page",
+    )
+    if not actual:
+        return _item(
+            'homepage-url-match',
+            'Homepage URL match',
+            'warn',
+            'The repository has no homepage set. Use the Fix action to '
+            f"point it at the project's Imbi page {expected!r}.",
+            offer,
+        )
+    return _item(
+        'homepage-url-match',
+        'Homepage URL match',
+        'fail',
+        f"Repository homepage {actual!r} does not match the project's "
+        f'Imbi page {expected!r}. Use the Fix action to update it.',
+        offer,
+    )
+
+
+async def _repair_homepage(
+    ctx: PluginContext,
+    body: dict[str, typing.Any],
+    api_base: str,
+    headers: dict[str, str],
+) -> RemediationResult:
+    """PATCH the repository ``homepage`` to the project's Imbi page.
+
+    Unlike the edge / link repairs, which write back into Imbi, this
+    one writes to GitHub -- the same ``PATCH /repos/{owner}/{repo}``
+    the lifecycle plugin uses on update.  ``body`` is the freshly
+    fetched repository, so ``full_name`` reflects any rename or
+    transfer.  Idempotent: ``noop`` when GitHub already matches.
+    """
+    expected = ctx.project_ui_url
+    if expected is None:
+        return RemediationResult(
+            status='failed',
+            message=(
+                'IMBI_UI_URL is not configured on the API, so there is no '
+                'Imbi page URL to write as the repository homepage.'
+            ),
+        )
+    if _repo_homepage(body) == expected:
+        return RemediationResult(
+            status='noop',
+            message='Repository homepage already matches the Imbi page.',
+        )
+    full_name = body.get('full_name')
+    if not isinstance(full_name, str) or not full_name:
+        return RemediationResult(
+            status='failed',
+            message='GitHub response did not include a full_name.',
+        )
+    patch_url = f'{api_base}/repos/{full_name}'
+    try:
+        async with httpx.AsyncClient(
+            headers=headers,
+            timeout=_TIMEOUT,
+            event_hooks={'response': [_raise_on_401]},
+        ) as client:
+            resp = await client.patch(patch_url, json={'homepage': expected})
+    except httpx.TransportError as exc:
+        return RemediationResult(
+            status='failed',
+            message=f'Transport error patching {patch_url!r}: {exc}',
+        )
+    if not resp.is_success:
+        return RemediationResult(
+            status='failed',
+            message=f'HTTP {resp.status_code} patching {patch_url!r}.',
+        )
+    return RemediationResult(
+        status='fixed',
+        message=f'Set the repository homepage to {expected}.',
+    )
