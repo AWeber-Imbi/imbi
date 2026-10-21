@@ -248,6 +248,7 @@ class InternalServices(pydantic_settings.BaseSettings):
     mcp_url: str = ''
     scheduler_url: str = ''
     slackbot_url: str = ''
+    workflows_url: str = ''
 
     @pydantic.field_validator(
         'assistant_url',
@@ -255,6 +256,7 @@ class InternalServices(pydantic_settings.BaseSettings):
         'mcp_url',
         'scheduler_url',
         'slackbot_url',
+        'workflows_url',
     )
     @classmethod
     def _strip_slash(cls, value: str) -> str:
