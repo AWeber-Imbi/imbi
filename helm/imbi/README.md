@@ -17,23 +17,39 @@ for operator setup and an example CloudNativePG `Cluster` manifest.
 
 ## Install
 
-```bash
-helm install imbi helm/imbi \
-  --set auth.jwtSecret=your-secret \
-  --set auth.encryptionKey=your-fernet-key \
-  --set auth.configEncryptionKey=another-fernet-key \
-  --set externalPostgresql.url=postgresql://imbi:password@imbi-pg-rw:5432/imbi \
-  --set externalClickhouse.url=clickhouse+http://default:password@clickhouse-imbi:8123/imbi \
-  --set externalIggy.url=iggy+tcp://iggy:iggy@imbi-iggy:8090 \
-  --set externalValkey.url=valkey://imbi-valkey:6379/0 \
-  --set service.publicApiUrl=https://imbi.example.com/api \
-  --set iggyConnect.apiKey=REPLACE-WITH-A-RANDOM-API-KEY \
-  --set iggyConnect.iggy.address=imbi-iggy:8090 \
-  --set iggyConnect.iggy.password=REPLACE-WITH-THE-IGGY-PASSWORD
+Put the secret values in a values file that only you can read, so they do
+not go into your shell history or the process list:
+
+```yaml
+# imbi-secrets.yaml (chmod 600)
+auth:
+  jwtSecret: REPLACE-WITH-A-RANDOM-SECRET
+  encryptionKey: REPLACE-WITH-A-FERNET-KEY
+  configEncryptionKey: REPLACE-WITH-ANOTHER-FERNET-KEY
+externalPostgresql:
+  url: postgresql://imbi:REPLACE-ME@imbi-pg-rw:5432/imbi
+externalClickhouse:
+  url: clickhouse+http://default:REPLACE-ME@clickhouse-imbi:8123/imbi
+externalIggy:
+  url: iggy+tcp://iggy:REPLACE-ME@imbi-iggy:8090
+iggyConnect:
+  apiKey: REPLACE-WITH-A-RANDOM-API-KEY
+  iggy:
+    password: REPLACE-WITH-THE-IGGY-PASSWORD
 ```
 
-Replace every value with your own. Make a unique random value for each
-secret, and do not copy the examples above.
+```bash
+helm install imbi helm/imbi \
+  -f imbi-secrets.yaml \
+  --set externalValkey.url=valkey://imbi-valkey:6379/0 \
+  --set service.publicApiUrl=https://imbi.example.com/api \
+  --set iggyConnect.iggy.address=imbi-iggy:8090
+```
+
+Make a unique random value for each secret, and do not copy the examples
+above. To keep the secrets out of Helm values completely, set
+`existingSecret` to a Secret that you manage. See
+[Existing secret](../../docs/deployment/kubernetes.md#existing-secret).
 
 `environment` defaults to `production`, so the three `auth` values are
 required. `extraEnv` and `extraEnvFrom` set any variable that has no chart
