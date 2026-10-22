@@ -183,7 +183,8 @@ from imbi.common import graph, clickhouse, logging
 async def test_connections() -> None:
     logging.configure_logging(dev=True)
 
-    # Test PostgreSQL + AGE
+    # Test PostgreSQL + AGE. cypher() fails until the graph exists.
+    await graph.initialize()
     db = graph.Graph()
     await db.open()
     # execute() wraps the query in AGE cypher(), so use Cypher, not SQL
