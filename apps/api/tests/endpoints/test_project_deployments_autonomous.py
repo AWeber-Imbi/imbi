@@ -24,7 +24,13 @@ from apps.api.tests.endpoints.test_project_deployments import (
     _make_resolved,
 )
 from imbi.api import models
-from imbi.api.auth import autonomous, password, permissions, principals
+from imbi.api.auth import (
+    autonomous,
+    organizations,
+    password,
+    permissions,
+    principals,
+)
 from imbi.api.endpoints.project_deployments import _EnvFlags
 from imbi.common import graph
 
@@ -73,6 +79,11 @@ class _AutonomousBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # Org scoping has its own real-graph tests (test_organizations);
+        # this keeps the endpoint's own membership gate under test.
+        self.test_app.dependency_overrides[
+            organizations.member_project_org_id
+        ] = lambda: 'org-id'
 
         self.mocks = {
             'resolve_capability': self._start(

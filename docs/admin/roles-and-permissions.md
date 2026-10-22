@@ -17,7 +17,7 @@ are for the service accounts of Imbi services.
 | Role | Name | For | What it gives |
 |---|---|---|---|
 | `admin` | Administrator | People | Every permission |
-| `developer` | Developer | People | Read most resources. Create and change projects, blueprints, agents, agent tasks, workflows, prompts, scheduled tasks, documents, comments, and tags. Change organizations, teams, integrations, webhooks, and link definitions. No `role:read` and no `operations_log:read` |
+| `developer` | Developer | People | Read most resources. Create and change projects, blueprints, agents, agent tasks, workflows, prompts, scheduled tasks, documents, comments, and tags. Change organizations, teams, integrations, webhooks, and link definitions. Deploy and promote projects, sync commits and pull requests, and read the operations log. No `role:read` |
 | `default` | Default | People | Read most resources, and rescore projects (`scoring_policy:rescore`). Imbi gives this role to a new user on first sign-in |
 | `readonly` | Read Only | People | The `default` role without `scoring_policy:rescore` |
 | `imbi-scheduler` | Imbi Scheduler | `imbi-scheduler` | Manage and run scheduled tasks, start agent tasks and workflow runs, and read the resources that a task looks at |
@@ -215,7 +215,7 @@ it.
 | `service_account:update` | Update service accounts | yes |  |  |  |  |  |  |
 | `service_account:delete` | Delete service accounts | yes |  |  |  |  |  |  |
 | `operations_log:create` | Create operations log entries | yes |  |  |  |  |  |  |
-| `operations_log:read` | View operations log entries | yes |  | yes | yes | yes |  |  |
+| `operations_log:read` | View operations log entries | yes | yes | yes | yes | yes |  |  |
 | `operations_log:update` | Update operations log entries | yes |  |  |  |  |  |  |
 | `operations_log:delete` | Delete operations log entries | yes |  |  |  |  |  |  |
 | `component:read` | View package governance and the package reports | yes | yes | yes | yes |  |  |  |
@@ -276,12 +276,12 @@ it.
 | `project:configuration:read_secrets` | Read secret configuration values via plugins | yes |  |  |  |  |  |  |
 | `project:configuration:write` | Write project configuration via plugins | yes |  |  |  |  |  |  |
 | `project:logs:read` | Read project logs via plugins | yes |  |  |  |  |  |  |
-| `project:deployment:read` | Read project deployment state via plugins | yes |  |  |  |  |  | yes |
-| `project:deployment:write` | Trigger deployments and promotions via plugins | yes |  |  |  |  |  | yes |
-| `project:commits:read` | Read commit history synced via plugins | yes |  |  |  |  |  |  |
-| `project:commits:write` | Trigger commit-history sync via plugins | yes |  |  |  |  |  |  |
-| `project:pull-requests:read` | Read pull request history synced via plugins | yes |  |  |  |  |  |  |
-| `project:pull-requests:write` | Trigger pull-request sync via plugins | yes |  |  |  |  |  |  |
+| `project:deployment:read` | Read project deployment state via plugins | yes | yes | yes | yes |  |  | yes |
+| `project:deployment:write` | Trigger deployments and promotions via plugins | yes | yes |  |  |  |  | yes |
+| `project:commits:read` | Read commit history synced via plugins | yes | yes | yes | yes |  |  |  |
+| `project:commits:write` | Trigger commit-history sync via plugins | yes | yes |  |  |  |  |  |
+| `project:pull-requests:read` | Read pull request history synced via plugins | yes | yes | yes | yes |  |  |  |
+| `project:pull-requests:write` | Trigger pull-request sync via plugins | yes | yes |  |  |  |  |  |
 | `search:read` | Search nodes by semantic similarity | yes | yes | yes | yes | yes |  |  |
 | `me:identities:manage` | Connect, refresh, and disconnect own third-party identities | yes | yes | yes | yes |  |  |  |
 | `admin:identities:read` | List identity connections across users (audit / support) | yes |  |  |  |  |  |  |

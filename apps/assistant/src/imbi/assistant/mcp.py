@@ -13,6 +13,7 @@ import logging
 import typing
 
 import fastmcp
+import fastmcp.server.dependencies
 import httpx
 
 from imbi.assistant import settings
@@ -36,6 +37,32 @@ REFRESH_TOOL: dict[str, typing.Any] = {
         'properties': {},
     },
 }
+
+
+# Request-meta key that carries a tool call's bearer token to the
+# in-process server. The token must travel with the call, not on the
+# shared httpx client, because concurrent callers share that client.
+AUTH_META_KEY = 'imbi_authorization'
+
+
+async def _apply_caller_auth(request: httpx.Request) -> None:
+    """Set the Authorization header from the calling tool's request meta.
+
+    Runs as an httpx request hook inside the in-process MCP server, where
+    the current MCP request context belongs to the tool call that made
+    this HTTP request. A call without a token sends no Authorization
+    header.
+
+    """
+    request.headers.pop('authorization', None)
+    try:
+        ctx = fastmcp.server.dependencies.get_context().request_context
+    except RuntimeError:
+        return
+    extra = (ctx.meta.model_extra or {}) if ctx and ctx.meta else {}
+    value = extra.get(AUTH_META_KEY)
+    if isinstance(value, str) and value:
+        request.headers['authorization'] = value
 
 
 def _mcp_tool_to_anthropic(
@@ -94,6 +121,7 @@ class MCPManager:
         self._http_client = httpx.AsyncClient(
             base_url=api_url,
             timeout=30,
+            event_hooks={'request': [_apply_caller_auth]},
         )
 
         self._server = fastmcp.FastMCP.from_openapi(
@@ -160,13 +188,14 @@ class MCPManager:
         if not self._client or not self._http_client:
             return json.dumps({'error': 'MCP tools not initialized'}), True
 
-        # Inject the caller's auth token for this request.
-        if auth_token:
-            self._http_client.headers['authorization'] = f'Bearer {auth_token}'
+        # Send the caller's token with this call only (see
+        # _apply_caller_auth); the shared HTTP client is never changed.
+        meta = {AUTH_META_KEY: f'Bearer {auth_token}'} if auth_token else None
         try:
             result = await self._client.call_tool(
                 tool_name,
                 tool_input,
+                meta=meta,
             )
             # call_tool returns a CallToolResult with .content
             parts: list[str] = []
@@ -208,9 +237,6 @@ class MCPManager:
             )
         else:
             return body, False
-        finally:
-            # Clear the auth header after the request.
-            self._http_client.headers.pop('authorization', None)
 
     async def reinitialize(self) -> tuple[bool, int]:
         """Re-fetch the OpenAPI spec and rebuild the tool list.
