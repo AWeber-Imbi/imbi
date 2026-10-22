@@ -988,6 +988,38 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         merged_user = self.mock_db.merge.call_args.args[0]
         self.assertIsNone(merged_user.password_hash)
 
+    def test_reset_mfa_success(self) -> None:
+        """Admin reset deletes the user's TOTP secret."""
+        self.mock_db.match.return_value = [self.test_user]
+        self.mock_db.execute.return_value = []
+
+        response = self.client.delete('/users/test%40example.com/mfa')
+
+        self.assertEqual(response.status_code, 204)
+        query, params = self.mock_db.execute.call_args.args
+        self.assertIn('TOTPSecret', query)
+        self.assertIn('DETACH DELETE', query)
+        self.assertEqual(params, {'email': 'test@example.com'})
+
+    def test_reset_mfa_user_not_found(self) -> None:
+        """Admin reset of an unknown user returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.delete('/users/missing@example.com/mfa')
+
+        self.assertEqual(response.status_code, 404)
+        self.mock_db.execute.assert_not_called()
+
+    def test_reset_mfa_requires_user_update(self) -> None:
+        """Without user:update, the reset is forbidden."""
+        self.auth_context.user.is_admin = False
+        self.auth_context.permissions = {'user:read'}
+
+        response = self.client.delete('/users/test@example.com/mfa')
+
+        self.assertEqual(response.status_code, 403)
+        self.mock_db.execute.assert_not_called()
+
 
 class OrgMembershipEndpointsTestCase(support.SharedAppTestCase):
     """Test org membership endpoints on users."""

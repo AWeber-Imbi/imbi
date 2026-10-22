@@ -151,16 +151,27 @@ default role:
 
 ## Multi-factor authentication
 
-Imbi supports TOTP multi-factor authentication (MFA) through the API only.
-The **Settings > Security** page has no working MFA control. A user turns MFA
-on with `POST /mfa/setup` and `POST /mfa/verify`, and turns it off with
-`DELETE /mfa/disable`. Setup returns backup codes.
+Imbi supports TOTP multi-factor authentication (MFA). A user turns it on
+and off on **Settings > Security**
+(see [Settings](../user-guide/settings.md#multi-factor-authentication)).
+The API equivalents are `POST /mfa/setup`, `POST /mfa/verify` and
+`DELETE /mfa/disable`.
 
-!!! warning
-    The UI sign-in form does not ask for an MFA code. A password user who
-    turns MFA on cannot sign in through the UI. Do not turn on MFA for a user
-    who signs in to the UI with a password
-    ([#480](https://github.com/AWeber-Imbi/imbi/issues/480)).
+When MFA is on, the sign-in page asks for a code after the password is
+correct. The user enters the code from the authenticator app, or one of the
+backup codes. Each backup code works one time.
+
+### Reset a user's MFA
+
+If a user loses the authenticator app and the backup codes, reset their MFA:
+
+1. Open **Admin > Users** and open the user.
+2. In **Security**, click **Reset MFA** and confirm.
+
+The reset deletes the user's TOTP secret and backup codes. The user then
+signs in with the password only and can set up MFA again. The API is
+`DELETE /users/{email}/mfa`. It needs the `user:update` permission, the same
+permission that lets an administrator reset another user's password.
 
 MFA applies to password sign-in only. SSO sign-in does not ask for an Imbi
 MFA code. Administrators cannot make MFA mandatory.

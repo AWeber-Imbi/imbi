@@ -1340,6 +1340,8 @@ export interface LogHistogramBucket {
 
 export interface LoginRequest {
   email: string
+  // TOTP or backup code; the API asks for it when MFA is on.
+  mfa_code?: string
   password: string
 }
 
@@ -1403,6 +1405,14 @@ export type MCPServerTestConfig = Omit<MCPServerCreate, 'name' | 'slug'> & {
 export type MCPServerTestResult = Schemas['MCPServerTestResult']
 
 export type MCPServerUpdate = Schemas['MCPServerUpdate']
+
+export type MfaSetup = Schemas['MFASetupResponse']
+
+export interface MfaStatus {
+  backup_codes_remaining: number
+  enabled: boolean
+  has_password: boolean
+}
 
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 

@@ -140,6 +140,8 @@ import type {
   MCPServerTestConfig,
   MCPServerTestResult,
   MCPServerUpdate,
+  MfaSetup,
+  MfaStatus,
   OperationsLogFilters,
   OperationsLogRecord,
   Organization,
@@ -202,7 +204,7 @@ import type {
   CreateThreadBody,
 } from '@/types/comments'
 
-import { apiClient, apiUrl } from './client'
+import { apiClient, ApiError, apiUrl } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -224,6 +226,28 @@ export const getAuthProviders = (signal?: AbortSignal) =>
 
 export const loginWithPassword = (credentials: LoginRequest) =>
   apiClient.post<TokenResponse>('/auth/login', credentials)
+
+// The API answers a password login for an MFA user that sent no code with
+// 401 "MFA code required". ApiError does not keep the X-MFA-Required
+// header, so match the detail instead.
+export const isMfaRequiredError = (error: unknown): boolean =>
+  error instanceof ApiError &&
+  error.status === 401 &&
+  (error.data as undefined | { detail?: unknown })?.detail ===
+    'MFA code required'
+
+export const getMfaStatus = (signal?: AbortSignal) =>
+  apiClient.get<MfaStatus>('/mfa/status', undefined, signal)
+
+export const setupMfa = () => apiClient.post<MfaSetup>('/mfa/setup')
+
+export const verifyMfa = (code: string) =>
+  apiClient.post<void>('/mfa/verify', { code })
+
+// Password users confirm with their password; OAuth-only users with a code.
+export const disableMfa = (
+  body: { current_password: string } | { mfa_code: string },
+) => apiClient.delete<void>('/mfa/disable', undefined, body)
 
 // The refresh token is sent as an HttpOnly cookie (C2), not in the body.
 export const refreshToken = () =>
@@ -950,6 +974,9 @@ export const updateAdminUser = (email: string, operations: PatchOperation[]) =>
 
 export const deleteAdminUser = (email: string) =>
   apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
+
+export const resetUserMfa = (email: string) =>
+  apiClient.delete<void>(`/users/${encodeURIComponent(email)}/mfa`)
 
 // User organization membership
 export const addUserToOrg = (

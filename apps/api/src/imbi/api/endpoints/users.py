@@ -852,6 +852,41 @@ async def change_password(
     await db.merge(user, match_on=['email'])
 
 
+@users_router.delete('/{email}/mfa', status_code=204)
+async def reset_user_mfa(
+    email: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('user:update')),
+    ],
+) -> None:
+    """Remove a user's MFA so a locked-out user can sign in again.
+
+    Deletes the TOTP secret and backup codes. The user signs in with
+    the password only and can enroll again from Settings > Security.
+    Gated by ``user:update``, the permission that also lets an admin
+    reset another user's password.
+
+    Raises:
+        fastapi.HTTPException: HTTP 404 if user not found.
+
+    """
+    email = urlparse.unquote(email)
+    if not await db.match(models.User, {'email': email}):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'User with email {email!r} not found',
+        )
+    query: typing.LiteralString = """
+    MATCH (u:User {{email: {email}}})
+          <-[:MFA_FOR]-(t:TOTPSecret)
+    DETACH DELETE t
+    """
+    await db.execute(query, {'email': email})
+    LOGGER.info('MFA reset for user %s by %s', email, auth.principal_name)
+
+
 @users_router.post('/{email}/organizations', status_code=204)
 async def add_to_organization(
     email: str,

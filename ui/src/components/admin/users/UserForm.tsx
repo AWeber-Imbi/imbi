@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
   AlertTriangle,
@@ -19,8 +19,9 @@ import {
   User,
   X as XIcon,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { getLocalAuthConfig, getRoles } from '@/api/endpoints'
+import { getLocalAuthConfig, getRoles, resetUserMfa } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -50,6 +51,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDateTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 import type { AdminUser, AdminUserCreate } from '@/types'
@@ -132,6 +134,14 @@ export function UserForm({
 
   const [resetOpen, setResetOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [resetMfaOpen, setResetMfaOpen] = useState(false)
+
+  const resetMfaMutation = useMutation({
+    mutationFn: resetUserMfa,
+    onError: (err) =>
+      toast.error(`Failed to reset MFA: ${extractApiErrorDetail(err)}`),
+    onSuccess: () => toast.success('MFA reset'),
+  })
 
   const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
     queryFn: ({ signal }) => getRoles(signal),
@@ -665,11 +675,17 @@ export function UserForm({
                       Multi-factor authentication
                     </div>
                     <p className="text-secondary mt-0.5 text-sm">
-                      Force re-enrollment of multi-factor authentication on next
-                      sign-in.
+                      Remove the user&apos;s authenticator and backup codes.
+                      They sign in with the password only and can enroll again.
                     </p>
                   </div>
-                  <Button disabled size="sm" type="button" variant="outline">
+                  <Button
+                    disabled={isLoading || resetMfaMutation.isPending}
+                    onClick={() => setResetMfaOpen(true)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     <ShieldAlert className="mr-2 size-4" />
                     Reset MFA
                   </Button>
@@ -894,6 +910,20 @@ export function UserForm({
             setResetOpen(false)
           }}
           open={resetOpen}
+        />
+      )}
+
+      {isEditing && (
+        <ConfirmDialog
+          confirmLabel="Reset MFA"
+          description={`Remove multi-factor authentication for ${user.display_name}? They can sign in with the password only until they enroll again.`}
+          onCancel={() => setResetMfaOpen(false)}
+          onConfirm={() => {
+            setResetMfaOpen(false)
+            resetMfaMutation.mutate(user.email)
+          }}
+          open={resetMfaOpen}
+          title="Reset MFA"
         />
       )}
 

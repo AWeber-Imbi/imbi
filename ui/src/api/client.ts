@@ -111,8 +111,12 @@ const SKIP_AUTH_PATHS = [
 ]
 
 class ApiClient {
-  async delete<T>(url: string, signal?: AbortSignal): Promise<T> {
-    return this.request<T>('DELETE', url, { signal })
+  async delete<T>(
+    url: string,
+    signal?: AbortSignal,
+    data?: unknown,
+  ): Promise<T> {
+    return this.request<T>('DELETE', url, { body: data, signal })
   }
 
   async get<T>(
