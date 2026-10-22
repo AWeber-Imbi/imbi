@@ -330,7 +330,31 @@ async def complete_login_flow(
         state_data.redirect_uri,
         state_data.code_verifier,
     )
+    _check_allowed_domains(integration, profile)
     return profile, exchanged, integration_id, state_data.return_to
+
+
+def _check_allowed_domains(
+    integration: dict[str, typing.Any], profile: IdentityProfile
+) -> None:
+    """Reject a login when the provider's ``allowed_domains`` option is
+    set and the profile's email is not verified or not in a listed
+    domain. An empty list allows every domain."""
+    options = typing.cast(
+        'dict[str, typing.Any]', integration.get('options') or {}
+    )
+    domains = typing.cast('list[str]', options.get('allowed_domains') or [])
+    allowed = {str(domain).lower() for domain in domains}
+    if not allowed:
+        return
+    if not profile.email or not profile.email_verified:
+        raise ValueError(
+            'Login provider restricts domains but did not assert a '
+            'verified email'
+        )
+    domain = profile.email.rpartition('@')[2].lower()
+    if domain not in allowed:
+        raise ValueError(f'Email domain {domain!r} is not allowed to log in')
 
 
 async def refresh_connection(

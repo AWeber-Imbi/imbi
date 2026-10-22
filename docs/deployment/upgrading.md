@@ -89,6 +89,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    organization of the path. A platform administrator who is not a member
    gets `403 organization_forbidden`. See
    [Roles and Permissions](../admin/roles-and-permissions.md#permissions-across-organizations).
+3. Examine the `IMBI_AUTH_PASSWORD_*` and `IMBI_AUTH_RATE_LIMIT_*` values
+   in your environment. Imbi now reads them. Before, it used the defaults.
+   Remove `IMBI_AUTH_RATE_LIMIT_API_KEY`. Imbi does not have this setting
+   now. The password rules now also apply when an administrator creates a
+   user with a password.
+4. Examine the `allowed_domains` option of your login provider. Imbi now
+   rejects a sign-in from a domain that is not in a list that is not empty.
+   See [Authentication](../admin/authentication.md#sso-login-providers).
 
 ## 2.39.1
 

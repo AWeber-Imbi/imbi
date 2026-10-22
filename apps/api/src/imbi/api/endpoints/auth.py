@@ -11,6 +11,7 @@ from urllib import parse as urlparse
 
 import fastapi
 import jwt
+import limits
 import psycopg
 import pydantic
 from valkey import asyncio as valkey_module
@@ -43,6 +44,13 @@ LOGGER = logging.getLogger(__name__)
 # the existence of a user (vs. service-account, OAuth-only, or unknown
 # email) could be inferred from the response time.
 _DUMMY_PASSWORD_HASH = password_auth.hash_password(secrets.token_hex(32))
+
+# Rate-limit bucket shared by /auth/token/refresh and the refresh_token
+# grant of /auth/token.
+_REFRESH_LIMIT_SCOPE = 'token-refresh'
+# Rate-limit bucket for the other grants of /auth/token.
+_TOKEN_LIMIT_SCOPE = 'token'
+_TOKEN_LIMIT = '10/minute'
 
 
 def _redact_email(email: str) -> str:
@@ -302,16 +310,55 @@ async def _authorization_code_grant(
     )
 
 
+def _refresh_limit() -> str:
+    return settings.get_auth_settings().rate_limit_token_refresh
+
+
+def _hit_limits(request: fastapi.Request, value: str, scope: str) -> None:
+    """Count the request against ``value`` in the ``scope`` bucket.
+
+    /auth/token chooses its limit from the form's ``grant_type``, which
+    a slowapi decorator cannot see, so it counts hits here. The value
+    can hold several limits (e.g. "10/minute;100/hour"). Build the
+    storage key the same way as slowapi's __evaluate_limits (optional
+    key prefix, client key, scope), and like slowapi, stop at the first
+    limit that is exceeded.
+
+    Raises:
+        429: A limit is exceeded.
+
+    """
+    limiter = rate_limit.limiter
+    if not limiter.enabled:
+        return
+    key = [rate_limit.get_rate_limit_key(request), scope]
+    # slowapi has no public accessor for the key prefix.
+    prefix = limiter._key_prefix  # pyright: ignore[reportPrivateUsage]
+    if prefix:
+        key.insert(0, prefix)
+    for item in limits.parse_many(value):
+        if not limiter.limiter.hit(item, *key):
+            raise fastapi.HTTPException(
+                status_code=429, detail=f'Rate limit exceeded: {item}'
+            )
+
+
 async def _refresh_token_grant(
+    request: fastapi.Request,
     db: graph.Graph,
     refresh_token_value: str | None,
 ) -> models.OAuth2TokenResponse:
     """Rotate a refresh token presented via the OAuth token endpoint."""
+    auth_settings = settings.get_auth_settings()
+    # Count this grant in the same bucket as /auth/token/refresh, so the
+    # /auth/token route cannot bypass IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH.
+    _hit_limits(
+        request, auth_settings.rate_limit_token_refresh, _REFRESH_LIMIT_SCOPE
+    )
     if not refresh_token_value:
         raise fastapi.HTTPException(
             status_code=400, detail='Missing refresh_token'
         )
-    auth_settings = settings.get_auth_settings()
     access_token, new_refresh_token = await _rotate_refresh_token(
         db, refresh_token_value, auth_settings
     )
@@ -405,7 +452,6 @@ async def verify_client_credential(
 
 
 @auth_router.post('/token', response_model=models.OAuth2TokenResponse)
-@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
 async def token(
     request: fastapi.Request,
     db: graph.Pool,
@@ -435,6 +481,11 @@ async def token(
         tokens.
 
     """
+    # The refresh_token grant uses only the configured refresh limit.
+    # The other grants share a fixed limit.
+    if grant_type == 'refresh_token':
+        return await _refresh_token_grant(request, db, refresh_token)
+    _hit_limits(request, _TOKEN_LIMIT, _TOKEN_LIMIT_SCOPE)
     if grant_type == 'authorization_code':
         return await _authorization_code_grant(
             db,
@@ -444,8 +495,6 @@ async def token(
             client_id=client_id,
             code_verifier=code_verifier,
         )
-    if grant_type == 'refresh_token':
-        return await _refresh_token_grant(db, refresh_token)
     if grant_type != 'client_credentials':
         raise fastapi.HTTPException(
             status_code=400,
@@ -903,7 +952,9 @@ async def register_oauth_client(
 
 
 @auth_router.post('/login', response_model=auth_models.TokenResponse)
-@rate_limit.limiter.limit('5/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    lambda: settings.get_auth_settings().rate_limit_login
+)
 async def login(
     request: fastapi.Request,
     response: fastapi.Response,
@@ -1294,7 +1345,9 @@ async def _rotate_refresh_token(
 
 
 @auth_router.post('/token/refresh', response_model=auth_models.TokenResponse)
-@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.shared_limit(  # type: ignore[untyped-decorator]
+    _refresh_limit, scope=_REFRESH_LIMIT_SCOPE
+)
 async def refresh_token(
     request: fastapi.Request,
     response: fastapi.Response,
@@ -1468,7 +1521,9 @@ async def logout(
 
 
 @auth_router.get('/oauth/{provider}')
-@rate_limit.limiter.limit('3/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    lambda: settings.get_auth_settings().rate_limit_oauth_init
+)
 async def oauth_login(
     request: fastapi.Request,
     db: graph.Pool,
