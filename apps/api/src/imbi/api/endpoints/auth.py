@@ -46,6 +46,9 @@ _DUMMY_PASSWORD_HASH = password_auth.hash_password(secrets.token_hex(32))
 # Rate-limit bucket shared by /auth/token/refresh and the refresh_token
 # grant of /auth/token.
 _REFRESH_LIMIT_SCOPE = 'token-refresh'
+# Rate-limit bucket for the other grants of /auth/token.
+_TOKEN_LIMIT_SCOPE = 'token'
+_TOKEN_LIMIT = '10/minute'
 
 
 def _redact_email(email: str) -> str:
@@ -309,6 +312,35 @@ def _refresh_limit() -> str:
     return settings.get_auth_settings().rate_limit_token_refresh
 
 
+def _hit_limits(request: fastapi.Request, value: str, scope: str) -> None:
+    """Count the request against ``value`` in the ``scope`` bucket.
+
+    /auth/token chooses its limit from the form's ``grant_type``, which
+    a slowapi decorator cannot see, so it counts hits here. The value
+    can hold several limits (e.g. "10/minute;100/hour"). Build the
+    storage key the same way as slowapi's __evaluate_limits (optional
+    key prefix, client key, scope), and like slowapi, stop at the first
+    limit that is exceeded.
+
+    Raises:
+        429: A limit is exceeded.
+
+    """
+    limiter = rate_limit.limiter
+    if not limiter.enabled:
+        return
+    key = [rate_limit.get_rate_limit_key(request), scope]
+    # slowapi has no public accessor for the key prefix.
+    prefix = limiter._key_prefix  # pyright: ignore[reportPrivateUsage]
+    if prefix:
+        key.insert(0, prefix)
+    for item in limits.parse_many(value):
+        if not limiter.limiter.hit(item, *key):
+            raise fastapi.HTTPException(
+                status_code=429, detail=f'Rate limit exceeded: {item}'
+            )
+
+
 async def _refresh_token_grant(
     request: fastapi.Request,
     db: graph.Graph,
@@ -318,24 +350,9 @@ async def _refresh_token_grant(
     auth_settings = settings.get_auth_settings()
     # Count this grant in the same bucket as /auth/token/refresh, so the
     # /auth/token route cannot bypass IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH.
-    # The setting can hold several limits (e.g. "10/minute;100/hour").
-    # Build the storage key the same way as slowapi's __evaluate_limits
-    # (optional key prefix, client key, scope), and like slowapi, stop at
-    # the first limit that is exceeded.
-    limiter = rate_limit.limiter
-    key = [rate_limit.get_rate_limit_key(request), _REFRESH_LIMIT_SCOPE]
-    # slowapi has no public accessor for the key prefix.
-    prefix = limiter._key_prefix  # pyright: ignore[reportPrivateUsage]
-    if prefix:
-        key.insert(0, prefix)
-    for refresh_limit in limits.parse_many(
-        auth_settings.rate_limit_token_refresh
-    ):
-        if limiter.enabled and not limiter.limiter.hit(refresh_limit, *key):
-            raise fastapi.HTTPException(
-                status_code=429,
-                detail=f'Rate limit exceeded: {refresh_limit}',
-            )
+    _hit_limits(
+        request, auth_settings.rate_limit_token_refresh, _REFRESH_LIMIT_SCOPE
+    )
     if not refresh_token_value:
         raise fastapi.HTTPException(
             status_code=400, detail='Missing refresh_token'
@@ -433,7 +450,6 @@ async def verify_client_credential(
 
 
 @auth_router.post('/token', response_model=models.OAuth2TokenResponse)
-@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
 async def token(
     request: fastapi.Request,
     db: graph.Pool,
@@ -463,6 +479,11 @@ async def token(
         tokens.
 
     """
+    # The refresh_token grant uses only the configured refresh limit.
+    # The other grants share a fixed limit.
+    if grant_type == 'refresh_token':
+        return await _refresh_token_grant(request, db, refresh_token)
+    _hit_limits(request, _TOKEN_LIMIT, _TOKEN_LIMIT_SCOPE)
     if grant_type == 'authorization_code':
         return await _authorization_code_grant(
             db,
@@ -472,8 +493,6 @@ async def token(
             client_id=client_id,
             code_verifier=code_verifier,
         )
-    if grant_type == 'refresh_token':
-        return await _refresh_token_grant(request, db, refresh_token)
     if grant_type != 'client_credentials':
         raise fastapi.HTTPException(
             status_code=400,

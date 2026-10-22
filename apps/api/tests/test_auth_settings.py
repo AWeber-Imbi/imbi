@@ -156,3 +156,22 @@ class SharedRefreshBucketTestCase(support.SharedAppTestCase):
                 self.assertEqual(grant.status_code, 400)
                 refresh = self.client.post('/auth/token/refresh')
                 self.assertEqual(refresh.status_code, 429)
+
+    def test_refresh_grant_is_not_capped_by_token_limit(self) -> None:
+        with _patch_auth(rate_limit_token_refresh='20/minute'):
+            for _ in range(11):
+                grant = self.client.post(
+                    '/auth/token', data={'grant_type': 'refresh_token'}
+                )
+                self.assertEqual(grant.status_code, 400)
+
+    def test_other_grants_keep_the_fixed_limit(self) -> None:
+        for _ in range(10):
+            grant = self.client.post(
+                '/auth/token', data={'grant_type': 'unsupported'}
+            )
+            self.assertEqual(grant.status_code, 400)
+        grant = self.client.post(
+            '/auth/token', data={'grant_type': 'unsupported'}
+        )
+        self.assertEqual(grant.status_code, 429)
