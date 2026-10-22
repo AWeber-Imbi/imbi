@@ -85,8 +85,8 @@ For each call, Imbi uses the first value that it finds:
 | Value | Order |
 |---|---|
 | Account | The account mapped to the environment, then the account stored at connect time (`default_account_id`) |
-| Role | The `default_role_name` of the mapped account, then the integration `default_role_name` |
-| Region | The `default_region` of the mapped account, then the integration `region` |
+| Role | The `default_role_name` of the mapped account, then the integration `default_role_name`, then `aws_role_name` stored at connect time, then the `default_role_name` option of the identity plugin |
+| Region | The `default_region` of the mapped account, then the integration `region`, then `aws_region` stored at connect time, then the `region` option of the identity plugin |
 
 If Imbi finds no account or no role, the call fails with `503` and a
 message that names the environment.

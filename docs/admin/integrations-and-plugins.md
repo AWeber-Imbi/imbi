@@ -74,7 +74,7 @@ use the `imbi_plugin_*` module name, add its import path to
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `admin:plugins:read` | See the installed plugins | `admin` |
-| `admin:plugins:manage` | Enable and disable plugins | `admin` |
+| `admin:plugins:manage` | Enable or disable installed plugins, and create, change, or delete plugin entities | `admin` |
 
 ## Integrations
 

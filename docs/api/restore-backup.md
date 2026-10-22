@@ -33,10 +33,13 @@ pg_dump --dbname "$POSTGRES_URL" --format custom --no-owner \
 
 ## 2. Prepare the Target Database
 
-AGE must be installed before restore. Connect to the target DB and run:
+AGE and `pg_cron` must be installed before restore. `pg_cron` needs a
+superuser, so the `imbi` role cannot create it during the restore. Connect
+to the target DB as a superuser and run:
 
 ```sql
 CREATE EXTENSION age;
+CREATE EXTENSION pg_cron;
 LOAD 'age';
 SET search_path = ag_catalog, "$user", public;
 ```
@@ -53,8 +56,12 @@ Or for plain SQL:
 psql -d imbi -f imbi.sql
 ```
 
-The restore can log errors for AGE catalog objects that `CREATE EXTENSION`
-already made. Continue with the next steps.
+The restore can log errors for objects in the `ag_catalog` schema that
+`CREATE EXTENSION age` already made. You can ignore only these errors.
+`pg_restore` continues after an error and prints the number of errors
+(`errors ignored on restore: N`) at the end. Examine each error. If an
+error is for an object outside `ag_catalog`, stop. Correct the cause, drop
+and create the target database again, and restart from step 2.
 
 ## 4. Verify Graph Catalog Integrity
 

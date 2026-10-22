@@ -288,7 +288,7 @@ The broker has these rules:
 |---|---|---|
 | `GET /status` | Each service | Returns service status only |
 | `GET /metrics` | imbi-api, imbi-gateway, imbi-scheduler | On the root of each service, for Prometheus to scrape by pod IP. Caddy does not route it: `/gateway/metrics*` and `/scheduler/metrics*` return 404, and the `/metrics` of imbi-api is outside `/api`. Do not expose a service port directly |
-| `POST /gateway/{webhook_id}` | imbi-gateway | The webhook id is a random id of 21 characters. See [Webhook signatures](#webhook-signatures) |
+| `POST /gateway/notifications/{webhook_id}` | imbi-gateway | The webhook id is a random id of 21 characters. See [Webhook signatures](#webhook-signatures) |
 | `/.well-known/oauth-*`, `POST /auth/register` | imbi-api, imbi-mcp | OAuth discovery and DCR. See [MCP OAuth clients](#mcp-oauth-clients) |
 | `POST /auth/login`, `POST /auth/token` | imbi-api | Rate limits for each client address |
 | `GET /api/iggy/connectors/...` | imbi-api | Needs a key from `IMBI_IGGY_CONNECTORS_API_KEYS`. With no key set, it returns 503 |

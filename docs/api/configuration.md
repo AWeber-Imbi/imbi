@@ -449,11 +449,12 @@ To add a public sign-in host:
 1. Add the public origin to `IMBI_API_CORS_ALLOWED_ORIGINS`, for example
    `https://imbi-public.example.com`. Keep `IMBI_API_URL` on the internal
    host.
-2. Route `/mcp`, `/.well-known/oauth-*`, and `/api/auth/*` on the public
-   host to Imbi. For browser sign-in on that host, also serve the UI
+2. Route `/mcp`, `/.well-known/oauth-*`, and `<api-path>/auth/*` on the
+   public host to Imbi. `<api-path>` is the path of `IMBI_API_URL`, for
+   example `/api`. For browser sign-in on that host, also serve the UI
    (`index.html` at `/` and `/login`, and its static files).
 3. If sign-in uses an IdP, register the callback of the public host with
-   the IdP: `https://<public-host>/api/auth/oauth/<slug>/callback`.
+   the IdP: `https://<public-host><api-path>/auth/oauth/<slug>/callback`.
 
 !!! note "Known limit"
     The flow that connects an extra identity from the account settings page

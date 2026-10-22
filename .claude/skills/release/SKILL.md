@@ -179,8 +179,9 @@ the "Use X or later for a new install" line when this release fixes a
 fresh-install problem.
 
 Commit it on `main` as `Add <TAG> to the upgrading page` and push it before
-you tag, so the tag includes it. If the release has no manual steps, skip
-this step.
+you tag, so the tag includes it. If the release has no manual steps, add no
+section, but still update the new-install line when the release fixes a
+fresh-install problem. Skip this step only when neither change applies.
 
 ## Step 4 — create the signed, annotated tag
 

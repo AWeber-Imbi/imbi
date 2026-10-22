@@ -67,6 +67,10 @@ section in the file, `load_config()` makes the settings class with the keys
 of the section. **A key in the file wins over the environment variable.** The
 environment supplies only the keys that the file does not set.
 
+The next example has an effect only for code that calls `load_config()`
+and reads `postgres` or `clickhouse` from the result. The built-in clients
+do not read `config.toml`, so it does not change them:
+
 ```toml
 [postgres]
 url = "postgresql://imbi_app:secret@db-prod:5432/imbi"

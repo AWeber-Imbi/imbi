@@ -297,7 +297,7 @@ under `[tool.coverage.run]` and `[tool.coverage.report]`. It measures
 
 1. **Isolate Tests**: Each test should be independent
 2. **Clean Up**: Always clean up test data in `tearDown`/`asyncTearDown`
-3. **Use Fixtures**: Create reusable test data with fixtures
+3. **Share Setup**: Create reusable test data in `setUp`/`asyncSetUp` or in helper methods
 4. **Mock External Services**: Don't hit real APIs in unit tests
 5. **Test Edge Cases**: Test error conditions and boundary cases
 6. **Fast Unit Tests**: Keep unit tests fast by avoiding I/O

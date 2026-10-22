@@ -28,7 +28,9 @@ Use 2.39.1 or later for a new install.
     one time. One run applies the changes of all the releases.
     `setup-permissions` must run before `setup-service-accounts`, because
     `setup-service-accounts` gives each internal service account a role by
-    name. [Applying Upgrades](../getting-started/setup.md#applying-upgrades)
+    name. When more than one organization exists, run
+    `imbi-api setup-service-accounts --organization <slug>`.
+    [Applying Upgrades](../getting-started/setup.md#applying-upgrades)
     tells what each command does.
 
 6. If a release adds an Iggy stream, restart the Iggy connectors runtime
