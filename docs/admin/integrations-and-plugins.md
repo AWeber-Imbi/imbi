@@ -125,19 +125,15 @@ sections:
   provider. For a `webhook-actions` capability, the row shows the
   **Delivery URL** of each webhook of the integration. To make a webhook,
   see [Webhooks](webhooks.md).
-- **Danger zone**: disable or delete the integration.
+- **Danger zone**: disable, enable, or delete the integration.
 
 Click the name to change it.
 
 **Disable** sets the integration status to `inactive`. Imbi keeps the
-configuration.
-
-!!! warning
-    In this release, the `inactive` status stops only a login provider.
-    Imbi continues to use the capabilities of an inactive organization
-    integration. The UI has no control to set the status back to
-    `active`. To stop an integration, turn off each of its capabilities
-    instead.
+configuration, but it stops all capabilities of the integration: Imbi
+does not bind the integration to projects, does not call its
+capabilities, and does not use it as a login provider or an identity
+source. **Enable** sets the status back to `active`.
 
 **Delete** removes the integration, its credentials, its assignments, the
 `EXISTS_IN` links of projects to it, and the identity connections of all

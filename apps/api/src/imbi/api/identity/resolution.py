@@ -66,9 +66,10 @@ async def hydrate_identity(
     # capability handler and decrypt its credentials for ``materialize``
     # (e.g. AWS IAM IC exchanges the IdP token for STS credentials).
     integration = await load_integration(db, integration_id)
-    if integration is None:
+    if integration is None or integration.get('status') == 'inactive':
         LOGGER.error(
-            'Integration %r missing for identity hydration', integration_id
+            'Integration %r missing or inactive for identity hydration',
+            integration_id,
         )
         raise identity_errors.IdentityRequiredError(
             integration_id=integration_id,

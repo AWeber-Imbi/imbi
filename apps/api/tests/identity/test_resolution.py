@@ -121,6 +121,34 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
                     self.db, self.ctx, 'integration-1'
                 )
 
+    async def test_inactive_integration_raises_identity_required(
+        self,
+    ) -> None:
+        connection = mock.MagicMock()
+        connection.status = 'active'
+        connection.expires_at = None
+        connection.refresh_token = None
+        with (
+            mock.patch.object(
+                resolution.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=connection),
+            ),
+            mock.patch.object(
+                resolution,
+                'load_integration',
+                new=mock.AsyncMock(
+                    return_value={'plugin': 'aws', 'status': 'inactive'}
+                ),
+            ),
+            mock.patch.object(resolution, 'get_capability') as get_cap,
+        ):
+            with self.assertRaises(identity_errors.IdentityRequiredError):
+                await resolution.hydrate_identity(
+                    self.db, self.ctx, 'integration-1'
+                )
+        get_cap.assert_not_called()
+
     async def test_capability_not_found_raises_identity_required(
         self,
     ) -> None:

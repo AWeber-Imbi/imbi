@@ -145,6 +145,19 @@ class EffectiveBindingsTestCase(unittest.TestCase):
         bindings = _run(assignments.effective_bindings(db, 'p1', 'logs'))
         self.assertEqual(bindings, [])
 
+    def test_inactive_integration_excluded(self) -> None:
+        db = mock.AsyncMock()
+        # Even an explicit project edge does not bind a disabled
+        # Integration, so no capability call is dispatched to it.
+        proj_edges = [{'id': '1', 'default': True}]
+        db.execute.side_effect = [
+            self._project_context(proj_edges=proj_edges),
+            [{'i': {**self._integration('1'), 'status': 'inactive'}}],
+            [{'ids': ['1']}],
+        ]
+        bindings = _run(assignments.effective_bindings(db, 'p1', 'logs'))
+        self.assertEqual(bindings, [])
+
     def test_assigned_elsewhere_not_default_all(self) -> None:
         db = mock.AsyncMock()
         # integration is assigned to some project type (in assigned_ids)

@@ -391,6 +391,10 @@ class AWSIdentity(IdentityCapability):
     ) -> tuple[str | None, str | None, str | None]:
         """Walk ``Environment.slug -> MAPS_TO -> AwsAccount``.
 
+        The match is scoped to ``ctx.org_slug``: environment slugs are
+        unique per organization only, so an unscoped match can return
+        another organization's AWS account.
+
         Returns ``(account_id, role_name, region)`` from the matched
         :class:`AwsAccount`.  Any element may be ``None`` if absent;
         the caller falls back to other sources for what's missing.
@@ -409,7 +413,8 @@ class AWSIdentity(IdentityCapability):
         if db is None or not ctx.environment:
             return None, None, None
         query: typing.LiteralString = (
-            'MATCH (e:Environment {{slug: {env}}})'
+            'MATCH (:Organization {{slug: {org}}})'
+            '<-[:BELONGS_TO]-(e:Environment {{slug: {env}}})'
             '-[:MAPS_TO]->(a:AwsAccount) '
             'RETURN a.account_id AS account_id, '
             'a.default_role_name AS role_name, '
@@ -418,7 +423,7 @@ class AWSIdentity(IdentityCapability):
         )
         rows = await db.execute(
             query,
-            {'env': ctx.environment},
+            {'org': ctx.org_slug, 'env': ctx.environment},
             ['account_id', 'role_name', 'region'],
         )
         if not rows:

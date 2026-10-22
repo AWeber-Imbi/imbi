@@ -464,25 +464,29 @@ export function IntegrationDetail({
                   <div className="flex items-center justify-between gap-4 pt-3">
                     <div>
                       <div className="text-primary text-sm font-medium">
-                        Disable integration
+                        {integration.status === 'inactive'
+                          ? 'Enable integration'
+                          : 'Disable integration'}
                       </div>
                       <div className="text-secondary text-sm">
-                        Stops all capabilities. Configuration is kept.
+                        {integration.status === 'inactive'
+                          ? 'All capabilities are stopped. Enable to start them again.'
+                          : 'Stops all capabilities. Configuration is kept.'}
                       </div>
                     </div>
                     <Button
-                      disabled={
-                        integration.status === 'inactive' ||
-                        patchMutation.isPending
-                      }
+                      disabled={patchMutation.isPending}
                       onClick={() =>
-                        patchMutation.mutate({ status: 'inactive' })
+                        patchMutation.mutate({
+                          status:
+                            integration.status === 'inactive'
+                              ? 'active'
+                              : 'inactive',
+                        })
                       }
                       variant="secondary"
                     >
-                      {integration.status === 'inactive'
-                        ? 'Disabled'
-                        : 'Disable'}
+                      {integration.status === 'inactive' ? 'Enable' : 'Disable'}
                     </Button>
                   </div>
                   <div className="border-tertiary mt-3.5 flex items-center justify-between gap-4 border-t pt-3.5">
