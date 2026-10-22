@@ -190,9 +190,11 @@ The built-in formats are:
 
 A format list saved before this release keeps the old semantic
 versioning pattern, which rejects a leading `v`. The list shows it as
-the built-in row. To store the new pattern, turn **Semantic versioning**
-off and click **Save changes**, then turn it on and click **Save
-changes** again.
+the built-in row with the new pattern, and **Save changes** is enabled.
+Until you save, Imbi uses the old pattern, but the test field uses the
+new one. To store the new pattern, click **Save changes**. For a project
+type, turn **Semantic versioning** off and on again, then save the
+project type.
 
 Use **Test a version string** to see which enabled formats accept a
 version.

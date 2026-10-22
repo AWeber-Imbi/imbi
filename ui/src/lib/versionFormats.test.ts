@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildRows,
+  hasLegacyPattern,
   isTagAllowed,
   tagFormatHint,
   toFormats,
@@ -87,5 +88,15 @@ describe('Semantic versioning built-in', () => {
     ])
     expect(rows.filter((r) => !r.builtin)).toHaveLength(0)
     expect(toFormats(rows)[0].pattern.startsWith('^v?')).toBe(true)
+  })
+
+  it('detects a stored previous pattern', () => {
+    const legacy = {
+      label: 'Semantic versioning',
+      pattern:
+        '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+    }
+    expect(hasLegacyPattern([legacy])).toBe(true)
+    expect(hasLegacyPattern(toFormats(buildRows([legacy])))).toBe(false)
   })
 })

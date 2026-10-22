@@ -355,7 +355,7 @@ export function ScoringPolicyForm({
         status_score_map: Object.fromEntries(
           Object.entries(deploymentScores)
             .filter(([, v]) => v.trim() !== '')
-            .map(([k, v]) => [k, parseInt(v, 10)]),
+            .map(([k, v]) => [k, Number(v)]),
         ),
       })
       return
@@ -1272,10 +1272,20 @@ function validateCategoryFields(args: {
   presentScore: string
 }): Record<string, string> {
   if (args.category === 'deployment_status') {
-    const bad = Object.values(args.deploymentScores).some(
-      (v) => v.trim() !== '' && !isScoreInRange(v),
+    const scores = Object.values(args.deploymentScores).filter(
+      (v) => v.trim() !== '',
     )
-    return bad ? { deployment_scores: 'Scores must be 0–100' } : {}
+    if (scores.length === 0) {
+      return { deployment_scores: 'Enter at least one score' }
+    }
+    // Check the value that handleSave stores, so "1e2" is not saved as 1.
+    const bad = scores.some((v) => {
+      const n = Number(v)
+      return !Number.isInteger(n) || n < 0 || n > 100
+    })
+    return bad
+      ? { deployment_scores: 'Scores must be whole numbers 0–100' }
+      : {}
   }
   if (args.category === 'age') {
     const err = validateAgeMap(args.ageMapRows)

@@ -115,6 +115,11 @@ export function fullMatch(pattern: string, value: string): boolean {
   }
 }
 
+/** Whether `formats` holds an earlier revision of a built-in pattern. */
+export function hasLegacyPattern(formats: TagFormat[]): boolean {
+  return formats.some((f) => LEGACY_BUILTIN_PATTERNS.has(f.pattern))
+}
+
 /**
  * Whether ``tag`` satisfies the resolved tag-format policy. Mirrors the
  * backend's ``matches_tag_formats``, except that with no policy configured

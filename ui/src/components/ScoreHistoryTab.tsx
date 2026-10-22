@@ -368,7 +368,14 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
             </div>
           </div>
           <div className="flex gap-2">
-            <Select onValueChange={setReasonFilter} value={reasonFilter}>
+            <Select
+              onValueChange={(value) => {
+                // The hovered index points into the old filtered list.
+                setHoveredEvent(null)
+                setReasonFilter(value)
+              }}
+              value={reasonFilter}
+            >
               <SelectTrigger
                 aria-label="Filter by reason"
                 className="h-7 w-auto min-w-32 gap-2 py-1 text-xs"

@@ -767,6 +767,17 @@ function validateConditionPolicy(
   }
 }
 
+// The keys of a deployment_status map. Keep in step with
+// DEPLOYMENT_STATUSES in ScoringPolicyForm.
+const DEPLOYMENT_SCORE_KEYS = new Set([
+  'failed',
+  'in_progress',
+  'missing',
+  'pending',
+  'rolled_back',
+  'success',
+])
+
 function validateDeploymentStatusPolicy(
   obj: Record<string, unknown>,
   base: PolicyBase,
@@ -775,6 +786,20 @@ function validateDeploymentStatusPolicy(
   if (!envCheck.ok) return { error: envCheck.error, valid: false }
   const map = readScoreMap(obj.status_score_map, 'status_score_map')
   if (!map.ok) return { error: map.error, valid: false }
+  for (const [key, score] of Object.entries(map.value ?? {})) {
+    if (!DEPLOYMENT_SCORE_KEYS.has(key)) {
+      return {
+        error: `"status_score_map" has an unknown status "${key}".`,
+        valid: false,
+      }
+    }
+    if (!isNumberInRange(score, 0, 100)) {
+      return {
+        error: '"status_score_map" values must be between 0 and 100.',
+        valid: false,
+      }
+    }
+  }
   return {
     policy: {
       ...base,

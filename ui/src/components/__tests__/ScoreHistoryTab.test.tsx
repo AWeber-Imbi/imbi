@@ -50,4 +50,16 @@ describe('ScoreHistoryTab change events', () => {
       [['2026-10-01T00:00:00Z', 'policy_change', 70, 75]],
     )
   })
+
+  it('clears the hovered event when the filter changes', async () => {
+    render(<ScoreHistoryTab orgSlug="acme" projectId="p-1" />)
+    const rows = (await screen.findByText('ana')).closest('.grid')!
+      .parentElement!.children
+    fireEvent.mouseEnter(rows[rows.length - 1])
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Filter by reason' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Policy' }))
+
+    await waitFor(() => expect(screen.queryByText('ana')).toBeNull())
+  })
 })
