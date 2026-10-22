@@ -9,12 +9,19 @@ Use image 2.39.1 or later. On a new install, 2.39.0 cannot create its Iggy
 topics, and imbi-api exits at startup (see
 [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
 
+The examples on this page reach PostgreSQL, ClickHouse, Iggy, and Valkey by
+container name. Docker resolves container names only on a user-defined
+network, so run the dependencies and the Imbi containers on the same one
+(`docker network create <network>`), and replace `<network>` in the
+examples with its name. The credentials in the examples are placeholders.
+Use the credentials of your own services.
+
 ## All-in-One Mode
 
 By default, the container starts all services behind a Caddy reverse proxy:
 
 ```bash
-docker run -p 8080:8080 \
+docker run -p 8080:8080 --network <network> \
   -e ENVIRONMENT=production \
   -e IMBI_API_URL=https://imbi.example.com/api \
   -e VITE_API_URL=https://imbi.example.com/api \
@@ -76,7 +83,7 @@ set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
 
 ```bash
 # Run only the API
-docker run -p 8000:8000 \
+docker run -p 8000:8000 --network <network> \
   -e IMBI_SERVICE=api \
   -e ENVIRONMENT=production \
   -e IMBI_API_URL=https://imbi.example.com/api \
@@ -116,10 +123,13 @@ both API URLs; the entrypoint refuses to start without them:
 ```bash
 docker run -p 8005:8005 \
   -e IMBI_SERVICE=scheduler \
+  -e ENVIRONMENT=production \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
+  -e IMBI_CONFIG_ENCRYPTION_KEY=your-other-fernet-key \
   -e IMBI_SCHEDULER_SA_CLIENT_ID=... \
   -e IMBI_SCHEDULER_SA_CLIENT_SECRET=... \
   -e IMBI_INTERNAL_API_URL=http://imbi-api:8000 \
@@ -139,11 +149,13 @@ them:
 ```bash
 docker run -p 8006:8006 \
   -e IMBI_SERVICE=workflows \
+  -e ENVIRONMENT=production \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
-  -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
+  -e IMBI_CONFIG_ENCRYPTION_KEY=your-other-fernet-key \
   -e IMBI_WORKFLOWS_SA_CLIENT_ID=... \
   -e IMBI_WORKFLOWS_SA_CLIENT_SECRET=... \
   -e IMBI_INTERNAL_API_URL=http://imbi-api:8000 \
@@ -204,7 +216,7 @@ prompts, and the ClickHouse schema. It asks for input. See
 [Initial Setup](../getting-started/setup.md).
 
 ```bash
-docker run -it \
+docker run -it --network <network> \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \

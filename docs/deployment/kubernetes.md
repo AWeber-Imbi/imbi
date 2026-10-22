@@ -23,8 +23,10 @@ them with their respective Kubernetes operators:
 The chart cannot set these variables. Issue
 [#459](https://github.com/AWeber-Imbi/imbi/issues/459) tracks the fix.
 
-- **`ENVIRONMENT` and `IMBI_CONFIG_ENCRYPTION_KEY`.** Every chart install
-  runs with `ENVIRONMENT` unset, which is `development`. Each process then
+- **`ENVIRONMENT` and `IMBI_CONFIG_ENCRYPTION_KEY`.** The chart value
+  `auth.encryptionKey` sets `IMBI_AUTH_ENCRYPTION_KEY`, not
+  `IMBI_CONFIG_ENCRYPTION_KEY`. These are two different keys. Every chart
+  install runs with `ENVIRONMENT` unset, which is `development`. Each process then
   generates its own configuration encryption key. Encrypted configuration
   values, such as AI provider keys, cannot be decrypted after a restart or by
   another process.
@@ -60,6 +62,9 @@ topics, and imbi-api exits at startup (see
     service:
       publicApiUrl: https://imbi.example.com/api
     ```
+
+    The secrets and passwords above are placeholders. Replace them with your
+    own values.
 
     `service.publicApiUrl` is the public URL of the API. imbi-api mounts its
     routes under its path, and the bundled Caddy sends `/api/*` to imbi-api,

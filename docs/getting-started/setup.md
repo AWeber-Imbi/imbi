@@ -14,7 +14,9 @@ itself. In 2.39.0, setup cannot connect to a new database and stops with a
 
 Setup needs the same PostgreSQL, ClickHouse, and Iggy connections as
 imbi-api. Attach the container to the Docker network of those services.
-Replace `<network>` with its name:
+Replace `<network>` with its name. The credentials below are the evaluation
+values from the [Installation](installation.md) Compose file. Replace them
+with the credentials of your services:
 
 ```bash
 docker run -it --network <network> \
