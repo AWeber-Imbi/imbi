@@ -232,10 +232,12 @@ are set. Caddy serves the `.map` files only when `SERVE_SOURCE_MAPS` is
 
 ### OpenTelemetry
 
-imbi-common and imbi-api have an optional `otel` extra. The container image
-does not install it, and no service starts OpenTelemetry instrumentation by
-itself. If you run a service with OpenTelemetry instrumentation, the access
-log adds the trace ID of each request.
+imbi-common and imbi-api have an `otel` extra. The `imbi` meta-package
+depends on `imbi-common[otel]`, so the container image installs the
+OpenTelemetry packages. But no service starts the OpenTelemetry SDK, and
+the entrypoint does not run the services under `opentelemetry-instrument`.
+If you run a service with OpenTelemetry instrumentation, the access log
+adds the trace ID of each request.
 
 ### Access logs
 
