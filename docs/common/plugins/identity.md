@@ -85,7 +85,9 @@ class GitHubIdentity(IdentityCapability):
   the IdP token for a backend-specific credential at call time (AWS IAM
   IC overrides this to call `GetRoleCredentials` and return STS keys in
   `IdentityCredentials.extra`). The default returns the stored
-  connection unchanged.
+  connection unchanged. It also receives two keyword-only arguments:
+  `db`, the host's `Graph`, and `identity_options`, the identity
+  capability's own resolved option values.
 
 ## Hints
 

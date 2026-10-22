@@ -15,6 +15,8 @@ context, credential decryption, and error conventions shared by every
 plugin.
 
 ```python
+import typing
+
 from imbi.common.plugins import (
     CompareResult,
     Commit,
@@ -30,7 +32,7 @@ class GitHubDeployment(DeploymentCapability):
         self,
         ctx: PluginContext,
         credentials: dict[str, str],
-        kind: str = 'all',
+        kind: typing.Literal['default', 'branch', 'tag', 'all'] = 'all',
         query: str | None = None,
     ) -> list[Ref]:
         ...
@@ -145,6 +147,58 @@ These default to returning `'unknown'` or `None`, or raising
   release concept, or that cannot resolve one for the tag, return `None`
   (the default) so the host never fails a write on a missing or unreadable
   release.
+- **`get_release`** — return a `RemoteRelease` for a tag: the notes body
+  plus the title, the URL, and who cut the release on the remote
+  (`author`, and `author_subject` for identity resolution). The host uses
+  it to attribute a release to a person. Return `None` (the default) when
+  the remote has no release for the tag. The host then falls back to
+  `get_release_notes`.
+- **`get_file`** — return the text of the file at `path` on `ref`, or
+  `None` when the file does not exist. The default raises
+  `NotImplementedError`. The host uses it to read agent plugin
+  marketplace files from a repository.
+
+### Release builds
+
+The promote and release-cut flows can build the artifact before they
+deploy it. These two methods are optional and work as a pair. The
+default implementations raise `NotImplementedError`.
+
+- **`create_deployment_artifact`** — start the remote build that makes
+  the deployable artifact for `ref`, under the release identity
+  `version`. The remote build cuts the tag and pushes version-bump
+  commits, so these do not exist yet when the method returns. Return an
+  `ArtifactRun` as soon as the remote accepts the build. `run_id` can be
+  `None` when the remote does not report the run it started. That is a
+  success, not an error.
+- **`get_artifact_run_status`** — report the status of a build by the
+  `run_id` that `create_deployment_artifact` returned. Resolve it against
+  the remote's build endpoint, not its deployment endpoint.
+
+`ArtifactRun` and `DeploymentRun` are separate models on purpose. The
+two IDs come from different identifier spaces on the same remote (for
+GitHub, a workflow run ID and a Deployment ID).
+
+### Git notes
+
+The host reads drift verdicts from git notes (the `imbi-drift` notes
+ref). Three optional methods give it access. Each default raises
+`NotImplementedError`, so the host can tell "no note" from "cannot
+answer". `namespace` is the notes ref name without the `refs/notes/`
+prefix.
+
+- **`get_commit_note`** — return the note body on one commit, or `None`
+  when the ref or the note does not exist. The commit can be a short SHA;
+  resolve it to the full SHA first.
+- **`list_commit_notes`** — return every note in the ref as a
+  `NotesListing` (`notes`, keyed by full SHA, and `complete`). Skip
+  reading the bodies of the SHAs in `skip_shas`, but still enumerate the
+  ref. Set `complete=False` when a note could not be read. A missing ref
+  is an empty listing, not an error.
+- **`diff_commit_notes`** — return the notes that changed between two
+  commits *of the notes ref* (what a push to `refs/notes/<namespace>`
+  reports). A `None` value means the push removed that note. An all-zero
+  `before` means the ref is new; return every note in `after`.
 
 ## Hints
 
@@ -181,3 +235,13 @@ self-heals the stored project link. See
 ::: imbi.common.plugins.RemoteDeployment
 
 ::: imbi.common.plugins.EnvironmentDeploymentState
+
+::: imbi.common.plugins.ArtifactRun
+
+::: imbi.common.plugins.RemoteRelease
+
+::: imbi.common.plugins.base.NotesListing
+
+::: imbi.common.plugins.CheckStatus
+
+::: imbi.common.plugins.DeploymentEventStatus

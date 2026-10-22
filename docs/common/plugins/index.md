@@ -75,6 +75,9 @@ and credentials are declared **once**; capabilities are
 enabled/configured per Integration. The host treats the manifest as
 immutable once registered.
 
+The example below is abridged. The real GitHub manifest also declares an
+`analysis` capability, more credentials, and capability options.
+
 ```python
 from imbi.common.plugins import (
     Capability,
@@ -303,6 +306,16 @@ load.
 
 ::: imbi.common.plugins.CapabilityHandler
 
+::: imbi.common.plugins.CapabilityKind
+
+::: imbi.common.plugins.CapabilitySurface
+
+::: imbi.common.plugins.CAPABILITY_CONTRACTS
+
+::: imbi.common.plugins.CAPABILITY_SURFACES
+
+::: imbi.common.plugins.HINT_ALLOWLIST
+
 ## Plugin Context
 
 Every capability call receives a `PluginContext` carrying the resolved
@@ -340,6 +353,26 @@ lookup, the imbi-api worker a direct graph query. It is a live callable
 rather than data, so it is excluded from serialization and is `None` on
 any deserialized context. Callers should cache results.
 
+Other host-populated fields:
+
+| Field | What it holds |
+| --- | --- |
+| `dependencies` | The project's `DEPENDS_ON` neighbours in both directions, as `ProjectDependency` items. Each item has its own `service_connections`. The host populates it for lifecycle dispatch and analysis. It is empty in other calls |
+| `resolve_linked_identifiers` | An optional host-injected coroutine. It takes remote identifiers for `integration_slug` and returns the subset that an `EXISTS_IN` edge binds to an Imbi project in the same organization. Use it before you remove a remote resource, to tell an Imbi-managed resource from one made outside Imbi. When it is `None`, do not remove remote state that you cannot attribute. It is excluded from serialization |
+| `project_name`, `project_description`, `project_ui_url` | The display name, the description, and the Imbi UI link. The host populates them on create and update events |
+| `previous_project_slug`, `previous_project_type_slugs`, `previous_team_slug` | The values before the in-flight update or relocation. Empty or `None` for other events |
+| `environment`, `environment_config` | The target environment, and the per-environment payload from the `USES` edge `env_payloads` map |
+| `project_links`, `project_type_slugs` | The project's external links and its project type slugs |
+
+The capability can also set `credential_note`, an output side channel.
+Set it when the capability acted with the Integration's own credential
+and not with the actor's identity (for example
+`'github-app installation 12345678'`). The host records it on the audit
+trail. `None` means the actor's own token was used.
+
+The field comments in the source are `#` comments, so the reference below
+does not show per-field text.
+
 ::: imbi.common.plugins.PluginContext
 
 ::: imbi.common.plugins.LinkWriteback
@@ -347,6 +380,8 @@ any deserialized context. Callers should cache results.
 ::: imbi.common.plugins.ServiceWriteback
 
 ::: imbi.common.plugins.ServiceConnection
+
+::: imbi.common.plugins.ProjectDependency
 
 ## Credentials
 
@@ -401,8 +436,8 @@ configuration errors surface early instead of during a search.
 ## Registry and Loading
 
 The host calls `load_plugins()` at startup (and `reload_plugins()` on
-demand) to populate the registry from the convention scan unioned with
-`IMBI_PLUGINS`. Every discovered plugin is validated fail-loud at load:
+demand) to populate the registry from the first-party `imbi.plugins`
+scan, the `imbi_plugin_*` convention scan, and `IMBI_PLUGINS`. Every discovered plugin is validated fail-loud at load:
 the class must subclass `Plugin`; its `manifest` must be a
 `PluginManifest` with a supported `api_version`; every capability's
 `handler` must subclass the contract for its kind; `webhook-actions` and
@@ -453,6 +488,7 @@ the exception. The author-relevant ones:
 | Exception | When to raise |
 | --- | --- |
 | `PluginCredentialsMissing` | A required credential is absent or empty in the `credentials` dict. |
+| `PluginInstallationMissing` | The credential is valid but grants nothing on the target resource (for example, a GitHub App that is not installed on the repository). The API returns a terminal `403`, because a retry does not change the result. Carries `owner_repo` and `integration_slug`. |
 | `PluginAuthenticationFailed` | The upstream rejected the call for an auth reason (HTTP 401, expired token); host may refresh and retry once. |
 | `PluginRateLimited` | The upstream's rate limit is exhausted; carries `retry_at` so the host can pause and keep the job queued. |
 | `PluginTimeoutError` | An upstream call exceeded the capability's internal timeout budget. |
@@ -467,6 +503,8 @@ the exception. The author-relevant ones:
 should not raise it.
 
 ::: imbi.common.plugins.PluginCredentialsMissing
+
+::: imbi.common.plugins.PluginInstallationMissing
 
 ::: imbi.common.plugins.PluginAuthenticationFailed
 
@@ -506,5 +544,5 @@ async def list_keys(self, ctx, credentials):
 Capabilities can be unit-tested in isolation: instantiate the handler
 class directly and call its methods with synthesized `PluginContext`
 objects and a credentials dict. For registry-level integration tests,
-see `tests/test_plugins/test_registry.py` in this repository for examples
+see `libraries/common/tests/test_plugins/test_registry.py` in the monorepo for examples
 of injecting a plugin without installing a real distribution.
