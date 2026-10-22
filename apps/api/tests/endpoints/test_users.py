@@ -1020,6 +1020,42 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 403)
         self.mock_db.execute.assert_not_called()
 
+    def test_reset_mfa_refuses_own_account(self) -> None:
+        """The caller turns off their own MFA through /mfa/disable."""
+        response = self.client.delete('/users/admin%40example.com/mfa')
+
+        self.assertEqual(response.status_code, 400)
+        self.mock_db.execute.assert_not_called()
+
+    def test_reset_mfa_non_admin_cannot_reset_admin(self) -> None:
+        """user:update alone cannot remove a platform admin's MFA."""
+        self.auth_context.user.is_admin = False
+        self.auth_context.permissions = {'user:update'}
+        self.test_user.is_admin = True
+        self.mock_db.match.return_value = [self.test_user]
+
+        response = self.client.delete('/users/test%40example.com/mfa')
+
+        self.assertEqual(response.status_code, 403)
+        self.mock_db.execute.assert_not_called()
+
+    def test_change_password_non_admin_cannot_set_admin_password(
+        self,
+    ) -> None:
+        """user:update alone cannot set a platform admin's password."""
+        self.auth_context.user.is_admin = False
+        self.auth_context.permissions = {'user:update'}
+        self.test_user.is_admin = True
+        self.mock_db.match.return_value = [self.test_user]
+
+        response = self.client.post(
+            '/users/test%40example.com/password',
+            json={'new_password': 'NewP@ssw0rd!Long'},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.mock_db.merge.assert_not_called()
+
 
 class OrgMembershipEndpointsTestCase(support.SharedAppTestCase):
     """Test org membership endpoints on users."""

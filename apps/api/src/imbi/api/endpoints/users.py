@@ -821,6 +821,14 @@ async def change_password(
         )
     user = results[0]
 
+    # Only a platform admin may set a platform admin's password; anyone
+    # else with user:update could otherwise take over an admin account.
+    if not is_self and user.is_admin and not auth.require_user.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only admins can change an admin password',
+        )
+
     # Prevent password changes for service accounts
     if user.is_service_account:
         raise fastapi.HTTPException(
@@ -869,14 +877,28 @@ async def reset_user_mfa(
     reset another user's password.
 
     Raises:
-        fastapi.HTTPException: HTTP 404 if user not found.
+        fastapi.HTTPException: HTTP 400 for the caller's own account
+            (use ``DELETE /mfa/disable``, which needs the password or a
+            code), HTTP 403 if a non-admin targets an admin, or HTTP 404
+            if user not found.
 
     """
     email = urlparse.unquote(email)
-    if not await db.match(models.User, {'email': email}):
+    if email == auth.require_user.email:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Use DELETE /mfa/disable to turn off your own MFA',
+        )
+    results = await db.match(models.User, {'email': email})
+    if not results:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User with email {email!r} not found',
+        )
+    if results[0].is_admin and not auth.require_user.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only admins can reset MFA for admin users',
         )
     query: typing.LiteralString = """
     MATCH (u:User {{email: {email}}})
