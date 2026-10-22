@@ -120,3 +120,15 @@ export function rangeNeedsAction(
   if (!pair.baseSha || !pair.headSha) return true
   return ranges?.[`${pair.baseSha}..${pair.headSha}`] !== false
 }
+
+// Whether the tag..HEAD verdict proves the unreleased commits clean. A
+// project with no tag has no evaluated range, so its `false` default is
+// not a verdict and does not count.
+export function releaseRangeClean(
+  summary:
+    | null
+    | undefined
+    | { drift_detected?: boolean; latest_tag: null | string },
+): boolean {
+  return !!summary?.latest_tag && summary.drift_detected === false
+}

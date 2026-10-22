@@ -103,7 +103,11 @@ import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
-import { computeDriftPairs, rangeNeedsAction } from '@/lib/deployment-drift'
+import {
+  computeDriftPairs,
+  rangeNeedsAction,
+  releaseRangeClean,
+} from '@/lib/deployment-drift'
 import { upstreamBySlug } from '@/lib/environment-chains'
 import { formatDateTime } from '@/lib/formatDate'
 import { projectRepoUrl } from '@/lib/github-refs'
@@ -800,7 +804,7 @@ export function ProjectDetail({
   const driftVerdicts = useProjectDriftVerdicts(orgSlug, project.id)
   const hasReleaseDrift =
     (releaseDrift?.commits_since_tag ?? 0) > 0 &&
-    driftVerdicts?.release_summary?.drift_detected !== false
+    !releaseRangeClean(driftVerdicts?.release_summary)
   const hasDeploymentDrift = useMemo(
     () =>
       computeDriftPairs(sortedEnvironments, deploymentStatus).some(
