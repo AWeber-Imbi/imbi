@@ -45,7 +45,7 @@ nav:
       - Initial Setup: getting-started/setup.md
   - Administration:
       - Authentication: admin/authentication.md
-      - Users and Groups: admin/users-and-groups.md
+      - Users, Teams, and Organizations: admin/users-teams-organizations.md
       - Roles and Permissions: admin/roles-and-permissions.md
       - Blueprints: admin/blueprints.md
       - AI Models: admin/ai-models.md
