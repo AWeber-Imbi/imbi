@@ -210,15 +210,22 @@ fi
 # Service startup
 # --------------------------------------------------------------------------
 
-# Exec a Python service. When OTEL_TRACES_EXPORTER names an exporter, run
-# it under opentelemetry-instrument so the FastAPI, httpx, MCP, psycopg and
-# redis instrumentations in the image load. OTEL_SERVICE_NAME defaults to
-# the command, so each service in 'all' mode reports under its own name.
+# Exec a Python service. When OTEL_TRACES_EXPORTER or OTEL_METRICS_EXPORTER
+# names an exporter, run it under opentelemetry-instrument so the FastAPI,
+# httpx, MCP, psycopg and redis instrumentations in the image load.
+# opentelemetry-distro sets every unset signal to "otlp", so an unset signal
+# is set to "none" here: only the signals that are configured are exported.
+# OTEL_SERVICE_NAME defaults to the command, so each service in 'all' mode
+# reports under its own name.
 run_service() {
-    if [ "${OTEL_TRACES_EXPORTER:-none}" = "none" ]; then
+    if [ "${OTEL_TRACES_EXPORTER:-none}" = "none" ] &&
+        [ "${OTEL_METRICS_EXPORTER:-none}" = "none" ]; then
         exec "$@"
     fi
-    OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-$1}" \
+    OTEL_TRACES_EXPORTER="${OTEL_TRACES_EXPORTER:-none}" \
+        OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-none}" \
+        OTEL_LOGS_EXPORTER="${OTEL_LOGS_EXPORTER:-none}" \
+        OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-$1}" \
         exec opentelemetry-instrument "$@"
 }
 

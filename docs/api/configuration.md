@@ -486,25 +486,32 @@ templates in worker processes, so that a template cannot stop the service.
 - Plugins (`IMBI_PLUGINS*`): [Plugins](../common/plugins/index.md).
 - Agent runner pods (`IMBI_HARNESS_*`): [Agent runners](../deployment/agent-runners.md).
 
-### Tracing (`OTEL_*`)
+### Tracing and metrics (`OTEL_*`)
 
 The images install the OpenTelemetry distro and the FastAPI, httpx, MCP,
-psycopg, and redis instrumentations. When `OTEL_TRACES_EXPORTER` is set and
-is not `none`, the container entrypoint starts each Python service under
-`opentelemetry-instrument`. The standard `OTEL_*` variables configure the SDK.
+psycopg, and redis instrumentations. When `OTEL_TRACES_EXPORTER` or
+`OTEL_METRICS_EXPORTER` is set and is not `none`, the container entrypoint
+starts each Python service under `opentelemetry-instrument`. The standard
+`OTEL_*` variables configure the SDK. A signal that is not set is not
+exported: the entrypoint sets it to `none`.
 
 | Variable | Value |
 |---|---|
 | `OTEL_TRACES_EXPORTER` | `otlp` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | The collector, for example `http://collector:4318` |
-| `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER` | `none` |
+| `OTEL_METRICS_EXPORTER` | `prometheus` to serve `/metrics` for scraping, or unset |
+| `OTEL_EXPORTER_PROMETHEUS_PORT` | Optional. The `/metrics` port, default `9464` |
 | `OTEL_SERVICE_NAME` | Optional. Defaults to the service command, for example `imbi-mcp` |
 
 !!! warning "Set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`"
     The images include only the OTLP/HTTP exporter. Without a protocol,
     `otlp` selects the gRPC exporter, which is not installed, and the
     service does not send traces.
+
+With `OTEL_METRICS_EXPORTER=prometheus`, each service serves its HTTP server
+and client metrics on `:9464/metrics`. Use it with one service per
+container: in `all` mode every service tries to bind the same port.
 
 ## Development stack
 
