@@ -2,7 +2,8 @@
 
 The Imbi Docker image packages all services into a single container that
 can run everything together or individual services for scaled-out
-deployments.
+deployments. To try Imbi on one host, use the Compose file in
+[Installation](../getting-started/installation.md#docker-compose).
 
 ## All-in-One Mode
 
@@ -10,13 +11,32 @@ By default, the container starts all services behind a Caddy reverse proxy:
 
 ```bash
 docker run -p 8080:8080 \
+  -e ENVIRONMENT=production \
+  -e IMBI_API_URL=https://imbi.example.com/api \
+  -e VITE_API_URL=https://imbi.example.com/api \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
+  -e VALKEY_URL=valkey://valkey:6379/0 \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
-  -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
+  -e IMBI_CONFIG_ENCRYPTION_KEY=your-other-fernet-key \
   ghcr.io/aweber-imbi/imbi:latest
 ```
+
+- `IMBI_API_URL` is the public URL of the API. imbi-api mounts its routes
+  under its path. Caddy sends `/api/*` to imbi-api and keeps the prefix, so
+  the path must be `/api`. Without it, every API call through Caddy gets a
+  404.
+- `VITE_API_URL` is the same URL for the UI. Without it, the UI does not
+  load.
+- `ENVIRONMENT=production` makes Imbi refuse to start without the three
+  keys. When `ENVIRONMENT` is unset, each process generates the keys that
+  are not set, and the services cannot decrypt each other's values.
+- Without `VALKEY_URL`, imbi-api does not start its background workers.
+- imbi-api also needs S3-compatible storage (`S3_*`) and an SMTP server
+  (`IMBI_EMAIL_*`) at startup. See
+  [Installation](../getting-started/installation.md#prerequisites).
 
 This starts:
 
@@ -27,7 +47,7 @@ This starts:
 | 8001 | imbi-mcp (internal)                                                                                                      |
 | 8002 | imbi-assistant (internal)                                                                                                |
 | 8003 | imbi-gateway (internal)                                                                                                  |
-| 8005 | imbi-scheduler (internal, started only when `IMBI_SCHEDULER_SA_CLIENT_ID` and `IMBI_SCHEDULER_SA_CLIENT_SECRET` are set) |
+| 8005 | imbi-scheduler (internal, started only when the internal service accounts are seeded; the entrypoint makes the credentials when they are unset) |
 | 8004 | imbi-slackbot (internal, started only when the Slack tokens and `ANTHROPIC_API_KEY` are set)                             |
 | 8006 | imbi-workflows (internal, started with imbi-scheduler, only when the internal service accounts are seeded)                 |
 
@@ -45,6 +65,8 @@ set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
 # Run only the API
 docker run -p 8000:8000 \
   -e IMBI_SERVICE=api \
+  -e IMBI_API_URL=https://imbi.example.com/api \
+  -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
@@ -157,15 +179,23 @@ both.
 
 ## Running Setup
 
-The `setup` command initializes the authentication system:
+The `setup` command creates the organization and the first admin user, and
+seeds permissions, roles, the internal service accounts, the default
+prompts, and the ClickHouse schema. It asks for input. See
+[Initial Setup](../getting-started/setup.md).
 
 ```bash
 docker run -it \
+  -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
-  -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
   ghcr.io/aweber-imbi/imbi:latest setup
 ```
+
+On a new database, run `imbi-api setup-postgres` first, or start imbi-api
+first. Setup needs the PostgreSQL schema that those create.
 
 ## Custom Caddyfile
 

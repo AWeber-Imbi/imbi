@@ -1,24 +1,38 @@
 # Initial Setup
 
-After installing Imbi and configuring the environment, you need to run
-the setup command to initialize the authentication system and create
-your first admin user.
+After you install Imbi, run the setup command one time. It creates your
+organization and your first admin user, and seeds the data that Imbi needs.
+
+Setup needs the PostgreSQL schema. imbi-api creates the schema when it
+starts. On a new database where imbi-api has not started yet, run
+`imbi-api setup-postgres` first. Without the schema, setup cannot connect to
+PostgreSQL and stops with a `PoolTimeout` error (see
+[issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
 
 ## Running Setup
 
 ### Docker
 
+Setup needs the same PostgreSQL, ClickHouse, and Iggy connections as
+imbi-api. Attach the container to the network of those services:
+
 ```bash
-docker run -it \
+docker run -it --network imbi \
+  -e POSTGRES_URL=postgresql://postgres:secret@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
-  -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
   ghcr.io/aweber-imbi/imbi:latest setup
 ```
 
+The entrypoint refuses to run `setup` without `CLICKHOUSE_URL`, `IGGY_URL`,
+`IMBI_AUTH_JWT_SECRET`, and `IMBI_AUTH_ENCRYPTION_KEY`. It does not check
+`POSTGRES_URL`. Without it, setup connects to PostgreSQL on `localhost`.
+
 ### Docker Compose
 
-If you are using Docker Compose:
+If you use the Compose file from [Installation](installation.md):
 
 ```bash
 docker compose run --rm imbi setup
@@ -26,31 +40,40 @@ docker compose run --rm imbi setup
 
 ### Kubernetes
 
+Run setup in a pod that has the imbi-api environment. That is the `all` mode
+release, or the `api` mode release when you run the services separately. The
+Deployment name is the release name, or `<release>-imbi` when the release
+name does not contain `imbi`:
+
 ```bash
 kubectl exec -it deploy/imbi -- imbi-api setup
 ```
 
 ## What Setup Does
 
-The setup command performs the following:
+Setup asks for input at steps 1 and 2:
 
-1. **Seeds the permission system** - Creates the default set of permissions
-   used for authorization
-2. **Creates default roles** - Sets up `admin`, `developer`, and `readonly`
-   roles with appropriate permissions
-3. **Creates the admin user** - Interactively prompts for email, display
-   name, and password
-4. **Creates the internal service accounts** - `imbi-scheduler`,
+1. **Creates the organization and seeds permissions and roles.** It asks for
+   the organization name and slug. The defaults are `AWeber` and `aweber`.
+   Type your own values. It then creates the default set of permissions and
+   the default roles.
+2. **Creates the admin user.** It asks for the email, display name, and
+   password. The user is a system admin and has the `admin` role in the
+   organization.
+3. **Creates the internal service accounts.** These are `imbi-scheduler`,
    `imbi-gateway`, and `imbi-workflows`, each with a least-privilege role
-   and a credential
-5. **Seeds the default prompts** - Creates `imbi-assistant/system` and
+   and a credential. See [Internal Service Credentials](#internal-service-credentials).
+4. **Seeds the default prompts.** It creates `imbi-assistant/system` and
    `imbi-slackbot/system` in the prompt CMS (see
-   [Prompts](../admin/prompts.md))
-6. **Creates the ClickHouse schema** - Executes the DDL for the analytics
-   tables and materialized views
+   [Prompts](../admin/prompts.md)).
+5. **Creates the ClickHouse schema.** It runs the DDL for the analytics
+   tables and materialized views.
 
-The setup command is idempotent: it checks whether the system has already
-been seeded before making changes, so it is safe to run multiple times.
+When the system already has its permissions, roles, an organization, and an
+admin user, setup asks
+"Continue anyway? This will create additional data." The default answer is
+no. To apply the changes of a new release, use the commands in
+[Applying Upgrades](#applying-upgrades) instead.
 
 ### Internal Service Credentials
 
@@ -137,12 +160,18 @@ and Iggy streams are `agent_task_events`, `agent_usage`, `workflow_runs`,
 
 ## Post-Setup
 
-After setup completes, you can access Imbi at `http://localhost:8080` (or
-your configured host) and log in with the admin credentials you created.
+After setup completes, open Imbi at `http://localhost:8080` (or your
+configured host) and log in with the admin user you created.
 
-From the admin interface you can:
+In `all` mode, imbi-scheduler and imbi-workflows start only when the
+container seeds the internal service accounts at startup. If the container
+started before you ran setup, restart it, so that the seeding runs again.
 
-- Configure OAuth providers for SSO
-- Create organizations and teams
-- Define blueprints for custom metadata schemas
-- Invite additional users
+Next:
+
+- [Authentication](../admin/authentication.md): set up single sign-on
+- [Users and Groups](../admin/users-and-groups.md): add users
+- [Blueprints](../admin/blueprints.md): define custom metadata schemas
+- [AI Models](../admin/ai-models.md) and [Secrets](../admin/secrets.md):
+  configure the AI providers and the secrets that agents use
+- [Agent Runners](../deployment/agent-runners.md): install a runner pool
