@@ -51,13 +51,10 @@ max_pool_size = 20
 
 ### Schema Initialization
 
-The graph schema is initialized from `schema/postgres/` SQL scripts. In
-the project Docker setup these are mounted into
-`/docker-entrypoint-initdb.d/` and run automatically on first start.
-
-For the graph itself, `graph_lifespan` (or `graph.initialize()`) creates
-the AGE graph, vertex labels, indexes, the embeddings table, and supporting
-functions on startup.
+No SQL init scripts are necessary. `graph_lifespan` (or
+`graph.initialize()`) creates the AGE graph, vertex labels, indexes, the
+embeddings table, and supporting functions on startup. The vertex labels
+come from `graph/schemata.toml` in `imbi-common`.
 
 ```python
 from imbi.common import graph
@@ -186,10 +183,12 @@ from imbi.common import graph, clickhouse, logging
 async def test_connections() -> None:
     logging.configure_logging(dev=True)
 
-    # Test PostgreSQL + AGE
+    # Test PostgreSQL + AGE. cypher() fails until the graph exists.
+    await graph.initialize()
     db = graph.Graph()
     await db.open()
-    rows = await db.execute("SELECT 1 AS test")
+    # execute() wraps the query in AGE cypher(), so use Cypher, not SQL
+    rows = await db.execute("RETURN 1", columns=["test"])
     print(f"PostgreSQL connected! Test value: {rows[0]['test']}")
     await db.close()
 

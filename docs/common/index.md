@@ -81,9 +81,8 @@ Model Context Protocol server that enables Claude to query and manage Imbi data 
 
 ## Support
 
-- [GitHub Issues](https://github.com/aweber/imbi-common/issues)
-- [Contributing Guide](https://github.com/aweber/imbi-common/blob/main/CONTRIBUTING.md)
+- [GitHub Issues](https://github.com/AWeber-Imbi/imbi/issues)
 
 ## License
 
-BSD-3-Clause - See [LICENSE](https://github.com/aweber/imbi-common/blob/main/LICENSE) for details.
+BSD-3-Clause - See [LICENSE](https://github.com/AWeber-Imbi/imbi/blob/main/LICENSE) for details.

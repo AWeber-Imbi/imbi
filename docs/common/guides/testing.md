@@ -144,21 +144,13 @@ class TestLogging(unittest.TestCase):
 
 ## Integration Tests
 
-Integration tests require Docker services.
-
-### Environment Variable Control
-
-Skip integration tests when databases are unavailable:
+Integration tests require Docker services. Start them with
+`moon run root:services` before you run the tests.
 
 ```python
-import os
 import unittest
-from imbi.common import graph, models
+from imbi.common import graph
 
-@unittest.skipIf(
-    os.environ.get('SKIP_INTEGRATION_TESTS'),
-    "Skipping integration tests (SKIP_INTEGRATION_TESTS set)"
-)
 class TestGraphIntegration(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.db = graph.Graph()
@@ -168,48 +160,24 @@ class TestGraphIntegration(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
 
     async def test_database_connection(self):
-        rows = await self.db.execute("SELECT 1 AS status")
-        self.assertEqual(rows[0]["status"], 1)
+        # execute() wraps the query in AGE cypher(), so use Cypher, not SQL
+        rows = await self.db.execute("RETURN 1", columns=["status"])
+        self.assertEqual(len(rows), 1)
 ```
 
 ### Docker Compose for Tests
 
-Use the project's `compose.ci.yaml` (run via `moon run root:services`), or create a
-minimal test compose file:
-
-```yaml
-services:
-  postgres-test:
-    image: ghcr.io/aweber-imbi/postgres:latest
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_PASSWORD: secret
-    tmpfs:
-      - /var/lib/postgresql/data
-
-  clickhouse-test:
-    image: clickhouse/clickhouse-server:latest
-    ports:
-      - "8123:8123"
-    tmpfs:
-      - /var/lib/clickhouse
-```
-
-Start test databases:
+Start the test services. This command starts `compose.ci.yaml` and writes
+the service ports to `.env.test`:
 
 ```bash
-docker compose -f docker-compose.test.yml up -d
+moon run root:services
 ```
 
 Run tests:
 
 ```bash
-# Run all tests
 moon run common:test
-
-# Skip integration tests
-SKIP_INTEGRATION_TESTS=1 python -m unittest discover tests
 ```
 
 ## Mocking
@@ -252,19 +220,19 @@ class TestAnalytics(unittest.IsolatedAsyncioTestCase):
     @patch('imbi.common.clickhouse.query')
     async def test_query_analytics(self, mock_query):
         mock_query.return_value = [
-            {"user_id": "user1", "count": 10},
-            {"user_id": "user2", "count": 5}
+            {"project_id": "project1", "count": 10},
+            {"project_id": "project2", "count": 5}
         ]
 
         from imbi.common import clickhouse
 
         results = await clickhouse.query(
-            "SELECT user_id, COUNT(*) as count "
-            "FROM session_activity GROUP BY user_id"
+            "SELECT project_id, COUNT(*) AS count "
+            "FROM commits FINAL GROUP BY project_id"
         )
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0]["user_id"], "user1")
+        self.assertEqual(results[0]["project_id"], "project1")
 ```
 
 ## Running Tests
@@ -295,50 +263,8 @@ python -m unittest discover tests -v
 
 ## Continuous Integration
 
-### GitHub Actions Example
-
-```yaml
-name: Tests
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: ghcr.io/aweber-imbi/postgres:latest
-        env:
-          POSTGRES_PASSWORD: secret
-        ports:
-          - 5432:5432
-
-      clickhouse:
-        image: clickhouse/clickhouse-server:latest
-        ports:
-          - 8123:8123
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
-
-      - name: Run unit tests
-        run: SKIP_INTEGRATION_TESTS=1 python -m unittest discover tests
-
-      - name: Run integration tests
-        env:
-          POSTGRES_URL: postgresql://postgres:secret@localhost:5432/imbi
-          CLICKHOUSE_URL: clickhouse+http://localhost:8123
-        run: python -m unittest discover tests
-```
+CI runs `moon ci` in `.github/workflows/test.yml`. Use that workflow as
+the reference for how CI starts the services and runs the tests.
 
 ## Test Coverage
 

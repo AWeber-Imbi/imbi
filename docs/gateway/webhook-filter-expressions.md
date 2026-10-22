@@ -17,8 +17,8 @@ project-independent fields of that row are exposed as top-level variables:
 
 | Variable | Type | Contents |
 |---|---|---|
-| `type` | string | Resolved event type — the value selected by the service's `event_type_selector` (e.g. the `X-GitHub-Event` header value). `''` when no selector is configured. |
-| `third_party_service` | string | The service slug (e.g. `github`). |
+| `type` | string | Resolved event type — the value selected by the webhook's `event_type_selector` (e.g. the `X-GitHub-Event` header value). `''` when no selector is configured. |
+| `integration` | string | The Integration slug (e.g. `github`). |
 | `attributed_to` | string | The resolved Imbi user; `''` when the delivery maps to no user. |
 | `metadata.headers` | map | The request headers, **keys lower-cased**, sensitive values redacted (see below). |
 | `payload` | map | The webhook request body, exactly as received. |
@@ -34,7 +34,7 @@ project-independent fields of that row are exposed as top-level variables:
 metadata.headers["x-github-event"] == "push"
 
 // Same, via the resolved event type (requires event_type_selector:
-// X-GitHub-Event on the service)
+// X-GitHub-Event on the webhook)
 type == "push"
 
 // Match on a body field

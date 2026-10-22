@@ -46,14 +46,14 @@ PLUGIN = GitHubPlugin
 `load_plugins()` finds plugins three ways, unions them, and dedupes by
 slug:
 
-1. **First-party scan** — every subpackage of `imbi.plugins` (the
-   plugins shipped with the `imbi` distribution) is imported and its
-   module-level `PLUGIN` attribute (a `Plugin` subclass) is read.
-   Plugin code always ships; a plugin whose optional dependencies are
-   not installed (see the `imbi[plugin-*]` extras) is recorded as
-   *skipped*, not as an error. Individual plugins can be turned off by
-   slug with the `IMBI_PLUGINS_DISABLED` setting (comma-separated env
-   var or list).
+1. **First-party scan** — every subpackage of `imbi.plugins` is
+   imported and its module-level `PLUGIN` attribute (a `Plugin`
+   subclass) is read. Each first-party plugin is its own `imbi-plugin-*`
+   distribution, and the `imbi` distribution depends on all of them. A
+   plugin whose import raises `ImportError` (for example, its
+   distribution is not installed) is recorded as *skipped*, not as an
+   error. Individual plugins can be turned off by slug with the
+   `IMBI_PLUGINS_DISABLED` setting (comma-separated env var or list).
 2. **Convention scan** — every installed top-level module named
    `imbi_plugin_*` is imported and its module-level `PLUGIN` attribute
    (a `Plugin` subclass) is read. This is the packaging convention for

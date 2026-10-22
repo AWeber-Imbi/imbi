@@ -13,7 +13,7 @@ provide the two tokens to the service.
 | `SLACK_APP_TOKEN` | *Basic Information* → *App-Level Tokens* → create one with the `connections:write` scope (`xapp-…`) |
 
 The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
-`IMBI_INTERNAL_API_URL` / `POSTGRES_URL` (see the README).
+`IMBI_INTERNAL_API_URL` / `POSTGRES_URL`.
 
 ## Required scopes & why
 

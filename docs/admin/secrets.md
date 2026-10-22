@@ -6,7 +6,8 @@ value only when an agent or its runner needs it, and only when a grant
 allows the request.
 
 Open the section at **Admin > <organization> Admin > Secrets**. Each organization has
-its own providers, bindings, and grants.
+its own providers, bindings, and grants. You must be a member of the
+organization. The permissions come from your role in that organization only.
 
 Setup has four steps:
 

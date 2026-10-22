@@ -98,8 +98,8 @@ Calls `imbi-api` as the task's identity.
 ```json
 {
   "kind": "api",
-  "method": "POST",
-  "path": "/projects/{{ task.organization }}/refresh",
+  "method": "GET",
+  "path": "/organizations/acme/projects/",
   "query": {},
   "body": null
 }
