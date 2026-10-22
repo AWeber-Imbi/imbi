@@ -67,6 +67,19 @@ def _stub_identity_plugin_provider(
     )
 
 
+def _enable_local_auth(test: unittest.TestCase) -> None:
+    """Stub the local-auth toggle on, so ``db.match`` mocks serve users."""
+    patcher = mock.patch.object(
+        local_auth,
+        'get_config',
+        mock.AsyncMock(
+            return_value=domain_models.LocalAuthConfig(enabled=True)
+        ),
+    )
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 def _patch_providers(
     rows: list[login_providers.LoginApp],
 ) -> typing.Any:
@@ -518,6 +531,7 @@ class LoginPasswordRehashTestCase(support.SharedAppTestCase):
 
         self.client = testclient.TestClient(self.test_app)
         rate_limit.limiter.reset()
+        _enable_local_auth(self)
 
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
@@ -596,6 +610,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
 
         self.client = testclient.TestClient(self.test_app)
         rate_limit.limiter.reset()
+        _enable_local_auth(self)
 
         # Mock encryption for MFA tests
         from imbi.common.auth.encryption import TokenEncryption
@@ -971,6 +986,64 @@ class LoginMFATestCase(support.SharedAppTestCase):
             'Invalid credentials',
             response.json()['detail'],
         )
+
+
+class LoginLocalAuthToggleTestCase(support.SharedAppTestCase):
+    """POST /auth/login enforces the local-auth toggle (#462)."""
+
+    def setUp(self) -> None:
+        from imbi.api.auth import password
+
+        settings._auth_settings = None
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
+        )
+        self.client = testclient.TestClient(self.test_app)
+        rate_limit.limiter.reset()
+        local_auth._invalidate_cache()
+        self.addCleanup(local_auth._invalidate_cache)
+        self.user = domain_models.User(
+            email='test@example.com',
+            display_name='Test User',
+            is_active=True,
+            password_hash=password.hash_password('password123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+    def _login(self, enabled: bool) -> typing.Any:
+        config = domain_models.LocalAuthConfig(enabled=enabled)
+
+        async def fake_match(model: type, *args: typing.Any) -> list[object]:
+            if model is domain_models.LocalAuthConfig:
+                return [config]
+            return [self.user]
+
+        self.mock_db.match.side_effect = fake_match
+        # No TOTP, then issue_token_pair's principal_count
+        self.mock_db.execute.side_effect = [[], [{'principal_count': 1}]]
+        return self.client.post(
+            '/auth/login',
+            json={'email': 'test@example.com', 'password': 'password123'},
+        )
+
+    def test_login_rejected_when_local_auth_disabled(self) -> None:
+        with mock.patch(
+            'imbi.api.auth.password.verify_password', return_value=True
+        ) as mock_verify:
+            response = self._login(enabled=False)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['detail'], 'Invalid credentials')
+        # Argon2 still runs, against the dummy hash, so timing is constant
+        mock_verify.assert_called_once()
+        self.assertNotEqual(
+            mock_verify.call_args.args[1], self.user.password_hash
+        )
+
+    def test_login_accepted_when_local_auth_enabled(self) -> None:
+        response = self._login(enabled=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('access_token', response.json())
 
 
 class TokenRefreshTestCase(support.SharedAppTestCase):
@@ -1563,6 +1636,7 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
 
         self.client = testclient.TestClient(self.test_app)
         rate_limit.limiter.reset()
+        _enable_local_auth(self)
 
         self.sa_user = models.User(
             email='sa@example.com',

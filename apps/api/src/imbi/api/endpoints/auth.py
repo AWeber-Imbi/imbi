@@ -786,11 +786,14 @@ async def login(
 
     # Always run Argon2 verification — against the real hash if the user
     # is eligible for password login, otherwise against a fixed dummy
-    # hash. This collapses every failure mode (unknown email, inactive,
-    # service-account, OAuth-only, wrong password) to the same generic
-    # 401 with constant timing, eliminating the user-enumeration oracle.
+    # hash. This collapses every failure mode (local auth disabled,
+    # unknown email, inactive, service-account, OAuth-only, wrong
+    # password) to the same generic 401 with constant timing, eliminating
+    # the user-enumeration oracle.
+    local_config = await local_auth.get_config(db)
     eligible = bool(
-        user
+        local_config.enabled
+        and user
         and user.is_active
         and not user.is_service_account
         and user.password_hash
