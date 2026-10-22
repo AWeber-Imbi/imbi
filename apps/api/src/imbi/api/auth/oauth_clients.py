@@ -28,13 +28,29 @@ def is_valid_redirect_uri(uri: str) -> bool:
     if not uri or any(c.isspace() for c in uri):
         return False
     parsed = urlparse.urlparse(uri)
-    if parsed.fragment:
+    # Userinfo (``https://trusted@evil/``) makes the host hard to read on
+    # the consent page, and no real client needs it.
+    if parsed.fragment or '@' in parsed.netloc:
+        return False
+    try:
+        parsed.port  # noqa: B018 -- raises ValueError for a bad port
+    except ValueError:
         return False
     if parsed.scheme == 'https' and parsed.netloc:
         return True
     if parsed.scheme == 'http':
         return (parsed.hostname or '') in _LOOPBACK_HOSTS
     return False
+
+
+def display_host(uri: str) -> str:
+    """Return the host (and a non-default port) that *uri* redirects to."""
+    parsed = urlparse.urlsplit(uri)
+    host = parsed.hostname or ''
+    default = {'http': 80, 'https': 443}.get(parsed.scheme)
+    if parsed.port and parsed.port != default:
+        return f'{host}:{parsed.port}'
+    return host
 
 
 async def register_client(

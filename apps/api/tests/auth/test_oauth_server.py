@@ -15,6 +15,7 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models, scoring, settings
 from imbi.api.auth import authorization_codes
+from imbi.api.middleware import rate_limit
 from imbi.common import graph
 from imbi.common.auth import core
 
@@ -30,6 +31,7 @@ class OAuthServerTestCase(support.SharedAppTestCase):
     """Authorization Server endpoint behavior."""
 
     def setUp(self) -> None:
+        rate_limit.limiter.reset()
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long-xxxx',
         )
@@ -167,6 +169,36 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.assertEqual(resp.status_code, 400)
         self.mock_db.create.assert_not_called()
 
+    def test_register_rejects_userinfo_redirect(self) -> None:
+        resp = self.client.post(
+            '/auth/register',
+            json={
+                'redirect_uris': ['https://trusted.example@evil.example/cb']
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.mock_db.create.assert_not_called()
+
+    def test_register_rejects_invalid_port_redirect(self) -> None:
+        resp = self.client.post(
+            '/auth/register',
+            json={'redirect_uris': ['https://app.example:invalid/cb']},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.mock_db.create.assert_not_called()
+
+    def test_display_host_ignores_userinfo_and_default_port(self) -> None:
+        from imbi.api.auth import oauth_clients
+
+        self.assertEqual(
+            oauth_clients.display_host('https://a.example@b.example:443/cb'),
+            'b.example',
+        )
+        self.assertEqual(
+            oauth_clients.display_host('http://127.0.0.1:8123/cb'),
+            '127.0.0.1:8123',
+        )
+
     def test_register_rejects_unsupported_grant_types(self) -> None:
         resp = self.client.post(
             '/auth/register',
@@ -247,20 +279,145 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertIn('/login?return_to=', resp.headers['location'])
 
-    def test_authorize_issues_code_when_authenticated(self) -> None:
-        self.mock_db.match.return_value = [self._client_node()]
-        self.mock_valkey.set.return_value = True
+    def _sign_in(self, email: str = 'user@example.com') -> None:
         token = core.create_access_token(
-            'user@example.com', auth_settings=self.auth_settings
+            email, auth_settings=self.auth_settings
         )
         self.client.cookies.set('imbi_access_token', token)
+
+    def _pending(self, **overrides: object) -> str:
+        pending: dict[str, object] = {
+            'client_id': 'mcp_test',
+            'redirect_uri': 'https://app.example/cb',
+            'code_challenge': _challenge(_VERIFIER),
+            'principal_id': 'user@example.com',
+            'scope': None,
+            'state': 'xyz',
+        }
+        pending.update(overrides)
+        return json.dumps(pending)
+
+    def _consent(self, decision: str, token: str = 'tok') -> object:
+        return self.client.post(
+            '/auth/authorize',
+            data={'consent_token': token, 'decision': decision},
+            follow_redirects=False,
+        )
+
+    def test_authorize_without_consent_shows_page(self) -> None:
+        self.mock_db.match.return_value = [self._client_node()]
+        self.mock_valkey.exists.return_value = 0
+        self.mock_valkey.set.return_value = True
+        self._sign_in()
+        resp = self._authorize()
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('app.example', resp.text)
+        self.assertIn('Not verified', resp.text)
+        self.assertEqual(resp.headers['x-frame-options'], 'DENY')
+        self.assertIn(
+            "frame-ancestors 'none'", resp.headers['content-security-policy']
+        )
+        # Only the consent token is stored; no authorization code.
+        self.mock_valkey.set.assert_awaited_once()
+        key = self.mock_valkey.set.await_args.args[0]
+        self.assertTrue(key.startswith('oauth:consent-token:'))
+        self.assertIn(key.removeprefix('oauth:consent-token:'), resp.text)
+        stored = json.loads(self.mock_valkey.set.await_args.args[1])
+        self.assertEqual(stored['principal_id'], 'user@example.com')
+        self.assertEqual(stored['code_challenge'], _challenge(_VERIFIER))
+
+    def test_authorize_escapes_client_name(self) -> None:
+        client = self._client_node()
+        client.client_name = '<script>x</script>'
+        self.mock_db.match.return_value = [client]
+        self.mock_valkey.exists.return_value = 0
+        self._sign_in()
+        resp = self._authorize()
+        self.assertNotIn('<script>', resp.text)
+        self.assertIn('&lt;script&gt;', resp.text)
+
+    def test_authorize_remembered_consent_issues_code(self) -> None:
+        self.mock_db.match.return_value = [self._client_node()]
+        self.mock_valkey.exists.return_value = 1
+        self._sign_in()
         resp = self._authorize()
         self.assertEqual(resp.status_code, 302)
         location = resp.headers['location']
         self.assertTrue(location.startswith('https://app.example/cb?'))
         self.assertIn('code=', location)
         self.assertIn('state=xyz', location)
-        self.mock_valkey.set.assert_awaited_once()
+        self.mock_valkey.exists.assert_awaited_once_with(
+            'oauth:consent-grant:mcp_test:user@example.com:'
+            'https://app.example/cb'
+        )
+        key = self.mock_valkey.set.await_args.args[0]
+        self.assertTrue(key.startswith('oauth:authcode:'))
+
+    def test_consent_approve_issues_code(self) -> None:
+        self.mock_valkey.getdel.return_value = self._pending()
+        self._sign_in()
+        resp = self._consent('approve')
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers['location']
+        self.assertTrue(location.startswith('https://app.example/cb?code='))
+        self.assertIn('state=xyz', location)
+        self.mock_valkey.getdel.assert_awaited_once_with(
+            'oauth:consent-token:tok'
+        )
+        keys = [c.args[0] for c in self.mock_valkey.set.await_args_list]
+        self.assertEqual(
+            keys[0],
+            'oauth:consent-grant:mcp_test:user@example.com:'
+            'https://app.example/cb',
+        )
+        self.assertTrue(keys[1].startswith('oauth:authcode:'))
+        code_payload = json.loads(
+            self.mock_valkey.set.await_args_list[1].args[1]
+        )
+        self.assertEqual(code_payload['principal_id'], 'user@example.com')
+
+    def test_consent_deny_redirects_access_denied(self) -> None:
+        self.mock_valkey.getdel.return_value = self._pending()
+        self._sign_in()
+        resp = self._consent('deny')
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            resp.headers['location'],
+            'https://app.example/cb?error=access_denied&state=xyz',
+        )
+        self.mock_valkey.set.assert_not_called()
+
+    def test_consent_reused_token_rejected(self) -> None:
+        self.mock_valkey.getdel.return_value = None  # already consumed
+        self._sign_in()
+        resp = self._consent('approve')
+        self.assertEqual(resp.status_code, 400)
+        self.mock_valkey.set.assert_not_called()
+
+    def test_consent_token_for_other_user_rejected(self) -> None:
+        self.mock_valkey.getdel.return_value = self._pending()
+        self._sign_in('attacker@example.com')
+        resp = self._consent('approve')
+        self.assertEqual(resp.status_code, 400)
+        self.mock_valkey.set.assert_not_called()
+
+    def test_consent_without_session_rejected(self) -> None:
+        """A cross-site POST carries no SameSite=Strict cookie."""
+        self.mock_valkey.getdel.return_value = self._pending()
+        resp = self._consent('approve')
+        self.assertEqual(resp.status_code, 400)
+        self.mock_valkey.set.assert_not_called()
+
+    def test_consent_without_token_rejected(self) -> None:
+        self._sign_in()
+        resp = self.client.post(
+            '/auth/authorize',
+            data={'decision': 'approve'},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.mock_valkey.getdel.assert_not_called()
+        self.mock_valkey.set.assert_not_called()
 
     def test_authorize_rejects_plain_pkce(self) -> None:
         self.mock_db.match.return_value = [self._client_node()]
