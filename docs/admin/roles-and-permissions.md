@@ -74,6 +74,9 @@ each. Imbi uses two rules to calculate the permissions of a request:
 2. **All other routes.** These routes use the union of the roles in all
    the organizations of the principal.
 
+An API key can have scopes. On both types of route, the scopes of the key
+limit the permissions that the roles give.
+
 The organization routes are these routes under
 `/organizations/{org_slug}/`:
 

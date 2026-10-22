@@ -87,8 +87,9 @@ Imbi uses it. If there are more, Imbi uses the organization with the slug
 2. Click **New User**.
 3. Enter the display name and the email.
 4. Select the account type.
-5. Under **Membership**, select an organization and a role. A user without
-   a membership has no permissions.
+5. Under **Membership**, select an organization and a role. A regular
+   user without a membership has no permissions. A platform administrator
+   passes the permission checks without a membership.
 6. If local passwords are enabled, enter a password.
 7. Click **Create User**.
 
@@ -124,8 +125,8 @@ A platform administrator is a user with **Account type** set to
 | | Platform administrator (`is_admin`) | `admin` role |
 |---|---|---|
 | Where you set it | On the user account | On a membership in one organization |
-| Scope | The full installation | One organization |
-| Permission checks | Passes every permission check | Has every permission in its organization |
+| Scope | The full installation | The routes of its organization. Other routes use the union of all the roles of the user, so the role also applies there. See [Permissions across organizations](roles-and-permissions.md#permissions-across-organizations) |
+| Permission checks | Passes every permission check | Has every permission |
 | **Admin** menu in the UI | Shows | Does not show |
 | Membership | Still necessary for the agents, agent tasks, workflows, and secrets of an organization | Is a membership |
 | Service accounts | Cannot be one | Can have it |
