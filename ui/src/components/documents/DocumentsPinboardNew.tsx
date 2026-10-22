@@ -6,8 +6,10 @@ import remarkGfm from 'remark-gfm'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { FrontmatterTable } from '@/components/ui/frontmatter-table'
 import { MarkdownToolbar } from '@/components/ui/markdown-editor/MarkdownToolbar'
 import { useMarkdownFormatting } from '@/components/ui/markdown-editor/useMarkdownFormatting'
+import { splitFrontmatter } from '@/lib/frontmatter'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentTemplate, TagRef } from '@/types'
 
@@ -312,9 +314,11 @@ function PreviewPane({ content }: { content: string }) {
       </div>
     )
   }
+  const { body, meta } = splitFrontmatter(content)
   return (
     <div className="document-markdown">
-      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+      {meta && <FrontmatterTable meta={meta} />}
+      <Markdown remarkPlugins={[remarkGfm]}>{body}</Markdown>
     </div>
   )
 }
