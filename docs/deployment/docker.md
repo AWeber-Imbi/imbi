@@ -90,6 +90,10 @@ docker run -p 8000:8000 --network <network> \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
+  -e S3_ENDPOINT_URL=https://s3.example.com \
+  -e S3_ACCESS_KEY=your-access-key \
+  -e S3_SECRET_KEY=your-secret-key \
+  -e IMBI_EMAIL_SMTP_HOST=smtp.example.com \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
   -e IMBI_CONFIG_ENCRYPTION_KEY=your-other-fernet-key \
@@ -106,7 +110,7 @@ the UI on `:8080` and proxying to the other containers. Each upstream defaults
 to the in-pod loopback, so point them at the containers by name:
 
 ```bash
-docker run -p 8080:8080 \
+docker run -p 8080:8080 --network <network> \
   -e IMBI_SERVICE=ui \
   -e VITE_API_URL=http://localhost:8080/api \
   -e IMBI_API_UPSTREAM=imbi-api:8000 \
@@ -121,7 +125,7 @@ Running the scheduler on its own needs the service-account credentials and
 both API URLs; the entrypoint refuses to start without them:
 
 ```bash
-docker run -p 8005:8005 \
+docker run -p 8005:8005 --network <network> \
   -e IMBI_SERVICE=scheduler \
   -e ENVIRONMENT=production \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
@@ -147,7 +151,7 @@ credentials and both API URLs too. The entrypoint refuses to start without
 them:
 
 ```bash
-docker run -p 8006:8006 \
+docker run -p 8006:8006 --network <network> \
   -e IMBI_SERVICE=workflows \
   -e ENVIRONMENT=production \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
@@ -187,7 +191,7 @@ only to a caller presenting a key from `IMBI_IGGY_CONNECTORS_API_KEYS`
 the runtime exits — there is no open default.
 
 ```bash
-docker run \
+docker run --network <network> \
   --restart on-failure \
   -e IGGY_MODE=connectors \
   -e IGGY_CONNECTORS_CONNECTORS_BASE_URL=http://imbi-api:8000/api/iggy/connectors \
