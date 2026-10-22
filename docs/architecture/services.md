@@ -98,9 +98,9 @@ Each service serves `GET /status`:
 | Service | Path on the service | Through Caddy |
 |---|---|---|
 | imbi-api | `/status` under the path of `IMBI_API_URL`, for example `/api/status` | `/api/status`, or `/status` when `IMBI_API_URL` has no path |
-| imbi-assistant | `/status` (no prefix) | Not reachable. `/assistant/status` keeps the prefix and does not match |
+| imbi-assistant | `/status` (no prefix) | `/assistant/status` |
 | imbi-gateway | `/status` | `/gateway/status` |
-| imbi-mcp | `/status` | Not reachable. `/mcp/status` keeps the prefix and does not match |
+| imbi-mcp | `/status` | `/mcp/status` |
 | imbi-scheduler | `/status` (no prefix) | `/scheduler/status` |
 | imbi-slackbot | `/status` | No route |
 | imbi-workflows | `/status` | No route |

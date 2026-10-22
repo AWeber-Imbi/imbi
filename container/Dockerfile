@@ -96,9 +96,6 @@ COPY --chmod=755 container/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/bin:$PATH"
 
-# Caddy Admin
-EXPOSE 2019
-
 # Caddy Public Port
 EXPOSE 8080
 

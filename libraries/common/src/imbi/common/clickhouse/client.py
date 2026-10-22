@@ -271,7 +271,11 @@ class Clickhouse:
         return queries
 
     async def _execute_schemata_queries(self) -> None:
-        """Execute all enabled queries from schemata.toml."""
+        """Execute all enabled queries from schemata.toml.
+
+        Runs every query, then raises :class:`RuntimeError` naming the
+        ones that failed, so ``setup-clickhouse`` exits non-zero.
+        """
         queries = self._load_schemata_queries()
         enabled_queries = [q for q in queries if q.enabled]
         cluster_name = self._settings.cluster_name
@@ -280,6 +284,7 @@ class Clickhouse:
             'Executing %d enabled schemata queries', len(enabled_queries)
         )
 
+        failed: list[str] = []
         for query_obj in enabled_queries:
             LOGGER.debug('Executing schemata query: %s', query_obj.name)
             statement = _render_cluster_placeholders(
@@ -297,5 +302,8 @@ class Clickhouse:
                     err,
                 )
                 # Continue with other queries even if one fails
+                failed.append(query_obj.name)
                 if sentry_sdk:
                     sentry_sdk.capture_exception(err)
+        if failed:
+            raise RuntimeError('Failed schemata queries: ' + ', '.join(failed))

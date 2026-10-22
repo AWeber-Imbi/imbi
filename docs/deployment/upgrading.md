@@ -103,6 +103,41 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    it got all the permissions of the roles of the service account. The
    seeded `imbi-scheduler` and `imbi-workflows` credentials have no
    scopes, so they do not change.
+6. **Helm chart: the chart now runs in production mode.** The new
+   `environment` value defaults to `production`, and the chart sets
+   `ENVIRONMENT` and `IMBI_API_ENVIRONMENT` to it. In production mode Imbi
+   does not generate `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, or
+   `IMBI_CONFIG_ENCRYPTION_KEY` and fails without them, and the auth cookies
+   get the `Secure` flag. Before you upgrade:
+    - Set `auth.configEncryptionKey` to a new Fernet key, or add a
+      `config-encryption-key` key to your `existingSecret`. The chart
+      refuses to render without it. Before this release, each process of a
+      chart install generated its own key, so Imbi cannot decrypt the
+      configuration secrets saved before the upgrade (AI provider keys, MCP
+      server credentials). Enter them again after the upgrade.
+    - Set `service.publicApiUrl` in `all` and `ui` mode. The chart sets
+      `VITE_API_URL` to it and refuses to render without it.
+    - `iggyConnect.enabled` now defaults to `true`. Set `iggyConnect.apiKey`,
+      `iggyConnect.iggy.address`, and `iggyConnect.iggy.password`, or set
+      `iggyConnect.enabled: false` if you run the connectors runtime
+      yourself.
+    - In `gateway` mode, set `gateway.serviceAccount.token` (or the
+      `gateway-sa-token` key of `existingSecret`).
+    - In `slackbot` mode, set `slackbot.botToken`, `slackbot.appToken`, and
+      `assistant.anthropicApiKey`, or the matching `existingSecret` keys.
+
+    New chart values: `environment`, `auth.configEncryptionKey`,
+    `externalValkey.url`, `extraEnv`, `extraEnvFrom`, `slackbot.*`,
+    `iggyConnect.extraEnv`, and `iggyConnect.extraEnvFrom`. See
+    [Kubernetes Deployment](kubernetes.md).
+7. **Container entrypoint.** `gateway` mode now also requires
+   `CLICKHOUSE_URL`, `IGGY_URL`, `IMBI_AUTH_ENCRYPTION_KEY`, and
+   `IMBI_GATEWAY_API_TOKEN`. `slackbot` mode now also requires
+   `IMBI_AUTH_JWT_SECRET`. The image no longer exposes port 2019.
+8. **`setup-clickhouse` exits with status 1** when a DDL statement fails. It
+   still runs the other statements first. An upgrade script must check
+   this status, for example with `set -e`, and stop the upgrade when it
+   is not 0.
 
 ## 2.39.1
 

@@ -6,7 +6,7 @@ import pydantic
 
 import imbi.scheduler.app
 from apps.scheduler.tests import helpers
-from imbi.common import graph
+from imbi.common import graph, sentry
 from imbi.scheduler import lifespans, store
 
 
@@ -26,6 +26,7 @@ class AppTests(helpers.TestCase):
             imbi.scheduler.app.create_app()
         self.assertEqual(
             (
+                sentry.sentry_lifespan,
                 lifespans.clickhouse_hook,
                 lifespans.iggy_hook,
                 graph.graph_lifespan,

@@ -9,8 +9,13 @@ services:
       - "8080:8080"
     environment:
       CLICKHOUSE_URL: clickhouse+http://default:password@clickhouse:8123/imbi
-      IMBI_AUTH_ENCRYPTION_KEY: dev-encryption-key-change-in-prod
+      # ENVIRONMENT is not "development", so the services refuse to start
+      # without these three. The two encryption keys are Fernet keys; make
+      # your own for anything but a local test.
+      ENVIRONMENT: testing
+      IMBI_AUTH_ENCRYPTION_KEY: a9WB1oedVz5Fc1OsFQxvNfapq0QxC0QKSPrXgXeqBto=
       IMBI_AUTH_JWT_SECRET: dev-jwt-secret-change-in-production
+      IMBI_CONFIG_ENCRYPTION_KEY: 8O755L86CK4zBEQgShe7b2PeWmFlWtl3g5xL2Tm1nZQ=
       # Public URL of the API as reachable from a browser; the /api path
       # drives FastAPI route mounting to match the Caddyfile's /api/*
       # handler. VITE_API_URL is the same value injected into the UI's
@@ -25,7 +30,6 @@ services:
       IMBI_EMAIL_SMTP_HOST: mailpit
       IMBI_EMAIL_SMTP_PORT: "1025"
       IMBI_EMAIL_SMTP_USE_TLS: "false"
-      IMBI_ENVIRONMENT: testing
       IGGY_URL: iggy+tcp://iggy:iggy@iggy:8090
       # Bearer key the connectors runtime presents to imbi-api for its
       # sink configuration. Comma-separate to accept two during a
@@ -43,6 +47,7 @@ services:
       S3_ACCESS_KEY: test
       S3_ENDPOINT_URL: http://ministack:4566
       S3_SECRET_KEY: test
+      VALKEY_URL: valkey://valkey:6379/0
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -57,6 +62,8 @@ services:
       mailpit:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
 
   clickhouse:
@@ -180,3 +187,11 @@ services:
       POSTGRES_DB: imbi
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

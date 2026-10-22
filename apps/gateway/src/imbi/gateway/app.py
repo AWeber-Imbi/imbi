@@ -10,6 +10,7 @@ from imbi.common import (
     graph,
     lifespan,
     metrics,
+    sentry,
     server,
     settings,
 )
@@ -42,6 +43,7 @@ def create_app() -> fastapi.FastAPI:
         version=imbi.gateway.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
+            sentry.sentry_lifespan,
             graph.graph_lifespan,
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,

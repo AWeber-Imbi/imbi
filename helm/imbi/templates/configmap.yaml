@@ -5,6 +5,11 @@ metadata:
   labels:
     {{- include "imbi.labels" . | nindent 4 }}
 data:
+  # Anything other than "development" stops the services from generating
+  # the auth and config encryption keys. IMBI_API_ENVIRONMENT is the same
+  # value: it sets the Secure flag on the auth cookies.
+  ENVIRONMENT: {{ .Values.environment | quote }}
+  IMBI_API_ENVIRONMENT: {{ .Values.environment | quote }}
   IMBI_ASSISTANT_ENABLED: {{ .Values.assistant.enabled | quote }}
   # Internal upstream URL used by imbi-assistant, imbi-gateway, imbi-mcp
   # and imbi-scheduler for service-to-service calls to imbi-api. Distinct
@@ -38,6 +43,11 @@ data:
   # its routes under, and the prefix imbi-scheduler re-derives to build the
   # paths it calls. Both read it from here, so they cannot disagree.
   IMBI_API_URL: {{ .Values.service.publicApiUrl | quote }}
+  {{- end }}
+  {{- if has .Values.service.mode (list "all" "ui") }}
+  # The API URL Caddy writes into the UI's index.html. The UI does not load
+  # without it.
+  VITE_API_URL: {{ required (printf "service.publicApiUrl is required when service.mode is '%s' -- it is the VITE_API_URL the UI loads its API from" .Values.service.mode) .Values.service.publicApiUrl | quote }}
   {{- end }}
   {{- if eq .Values.service.mode "ui" }}
   {{- range $name, $upstream := .Values.service.ui.upstreams }}

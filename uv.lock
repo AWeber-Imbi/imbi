@@ -1813,6 +1813,7 @@ dependencies = [
     { name = "imbi-common", extra = ["databases", "server"] },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
+    { name = "sentry-sdk" },
 ]
 
 [package.metadata]
@@ -1822,6 +1823,7 @@ requires-dist = [
     { name = "imbi-common", extras = ["databases", "server"], editable = "libraries/common" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
     { name = "pydantic", specifier = "~=2.12" },
+    { name = "sentry-sdk", specifier = ">=2.48.0" },
 ]
 
 [[package]]

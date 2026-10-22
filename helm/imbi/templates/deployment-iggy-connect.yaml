@@ -1,4 +1,4 @@
-{{- if .Values.iggyConnect.enabled }}
+{{- if include "imbi.iggyConnectEnabled" . }}
 {{- /*
 The Apache Iggy connectors runtime, draining each stream Imbi publishes to
 into its ClickHouse table (ADR 0019 §3). It ships no sink configuration:
@@ -36,6 +36,10 @@ spec:
             - name: http
               containerPort: 8081
               protocol: TCP
+          {{- with .Values.iggyConnect.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             - name: IGGY_MODE
               value: connectors
@@ -55,6 +59,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: iggy-password
+            {{- with .Values.iggyConnect.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- /* The runtime exits when imbi-api is unreachable or when a
                  configured stream does not exist yet, and a restart is the
                  whole recovery. A TCP probe on its own API is what tells

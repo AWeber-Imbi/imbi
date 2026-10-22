@@ -40,6 +40,13 @@
 		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
+	# imbi-assistant and imbi-mcp serve /status unprefixed, but their other
+	# routes keep the prefix, so strip it for the health check only.
+	handle /assistant/status {
+		uri strip_prefix /assistant
+		reverse_proxy {$IMBI_ASSISTANT_UPSTREAM:127.0.0.1:8002}
+	}
+
 	handle /assistant/* {
 		reverse_proxy {$IMBI_ASSISTANT_UPSTREAM:127.0.0.1:8002}
 	}
@@ -85,6 +92,11 @@
 	handle /mcp/.well-known/oauth-authorization-server* {
 		uri strip_prefix /mcp
 		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
+	}
+
+	handle /mcp/status {
+		uri strip_prefix /mcp
+		reverse_proxy {$IMBI_MCP_UPSTREAM:127.0.0.1:8001}
 	}
 
 	@mcp path /mcp /mcp/*

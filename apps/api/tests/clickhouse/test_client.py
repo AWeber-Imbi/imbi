@@ -357,7 +357,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_command.assert_any_call('SELECT 3')
 
     async def test_execute_schemata_queries_with_error(self) -> None:
-        """Test executing schemata queries continues on error."""
+        """Test schemata queries continue on error, then raise."""
         ch = client.Clickhouse.get_instance()
 
         mock_queries = [
@@ -383,8 +383,9 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
                     None,
                 ]
 
-                # Should not raise, should continue with remaining queries
-                await ch._execute_schemata_queries()
+                # Runs the remaining queries, then raises naming the failure
+                with self.assertRaisesRegex(RuntimeError, 'query2'):
+                    await ch._execute_schemata_queries()
 
                 self.assertEqual(mock_command.call_count, 3)
 
@@ -410,7 +411,8 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
                 with mock.patch(
                     'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
                 ):
-                    await ch._execute_schemata_queries()
+                    with self.assertRaises(RuntimeError):
+                        await ch._execute_schemata_queries()
 
                 mock_sentry.capture_exception.assert_called_once()
 

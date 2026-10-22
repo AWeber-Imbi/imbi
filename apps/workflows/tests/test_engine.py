@@ -24,7 +24,7 @@ from imbi.api import agent_tasks, models, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
-from imbi.common import graph, iggy
+from imbi.common import graph, iggy, sentry
 from imbi.common.auth import encryption
 from imbi.common.workflows import history
 from imbi.workflows import app, engine, executors, settings, store
@@ -1549,6 +1549,11 @@ class AgentStepTestCase(EngineTestCase):
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):
+    def test_sentry_is_initialised_first(self) -> None:
+        with mock.patch.object(app.lifespan, 'Lifespan') as composed:
+            app.create_app()
+        self.assertIs(sentry.sentry_lifespan, composed.call_args.args[0])
+
     async def test_status(self) -> None:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app.create_app()),
