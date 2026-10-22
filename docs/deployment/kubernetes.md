@@ -18,23 +18,88 @@ them with their respective Kubernetes operators:
 - The [Altinity ClickHouse operator](https://github.com/Altinity/clickhouse-operator)
   installed in the cluster (or another ClickHouse instance)
 
+## What the Chart Cannot Do Yet
+
+The chart cannot set these variables. Issue
+[#459](https://github.com/AWeber-Imbi/imbi/issues/459) tracks the fix.
+
+- **`ENVIRONMENT` and `IMBI_CONFIG_ENCRYPTION_KEY`.** The chart value
+  `auth.encryptionKey` sets `IMBI_AUTH_ENCRYPTION_KEY`, not
+  `IMBI_CONFIG_ENCRYPTION_KEY`. These are two different keys. Every chart
+  install runs with `ENVIRONMENT` unset, which is `development`. Each process then
+  generates its own configuration encryption key. Encrypted configuration
+  values, such as AI provider keys, cannot be decrypted after a restart or by
+  another process.
+- **`VALKEY_URL`.** imbi-api starts without Valkey, but its background
+  workers (commit, pull request, and deployment sync, release promotion,
+  maintenance, and the sweepers) do not start.
+- **`VITE_API_URL`.** The UI reads the API URL from this variable. Without
+  it, the UI does not load in `all` and `ui` mode.
+- **Other variables.** The chart has no `extraEnv` or `extraEnvFrom` value.
+  It cannot set, for example, `IMBI_UI_URL`, CORS, MCP OAuth, Sentry, SMTP
+  authentication, or the Slack tokens. Thus `service.mode: slackbot` cannot
+  start.
+
 ## Installing the Chart
 
-```bash
-helm install imbi helm/imbi \
-  --set auth.jwtSecret=your-secret \
-  --set auth.encryptionKey=your-key
-```
+Use image 2.39.1 or later. On a new install, 2.39.0 cannot create its Iggy
+topics, and imbi-api exits at startup (see
+[issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
+
+1. Put the five required values in a values file. The chart refuses to
+   render without the connection URLs.
+
+    ```yaml
+    auth:
+      jwtSecret: "your-jwt-secret"
+      encryptionKey: "your-fernet-key"
+    externalPostgresql:
+      url: postgresql://imbi:password@imbi-pg-rw:5432/imbi
+    externalClickhouse:
+      url: clickhouse+http://default:password@clickhouse-imbi:8123/imbi
+    externalIggy:
+      url: iggy+tcp://iggy:iggy@imbi-iggy:8090
+    service:
+      publicApiUrl: https://imbi.example.com/api
+    ```
+
+    The secrets and passwords above are placeholders. Replace them with your
+    own values.
+
+    `service.publicApiUrl` is the public URL of the API. imbi-api mounts its
+    routes under its path, and the bundled Caddy sends `/api/*` to imbi-api,
+    so the path must be `/api`. Without it, every API call through Caddy gets
+    a 404.
+
+2. Install the chart:
+
+    ```bash
+    helm install imbi helm/imbi -f values.yaml --namespace imbi --create-namespace
+    ```
+
+3. Run setup in the pod. The Deployment name is the release name, or
+   `<release>-imbi` when the release name does not contain `imbi`:
+
+    ```bash
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-postgres
+    kubectl -n imbi exec -it deploy/imbi -- imbi-api setup
+    ```
+
+    `setup-postgres` creates the PostgreSQL schema that setup needs. It does
+    nothing when imbi-api has already created the schema. From 2.39.1, it is
+    optional: `setup` creates the schema itself.
+
+    See [Initial Setup](../getting-started/setup.md) for the prompts.
+
+4. Restart the Deployment. In `all` mode, imbi-scheduler and imbi-workflows
+   start only when the container seeds the internal service accounts at
+   startup, and that fails before setup has run:
+
+    ```bash
+    kubectl -n imbi rollout restart deployment/imbi
+    ```
 
 ## Configuration
-
-### Required Values
-
-```yaml
-auth:
-  jwtSecret: "your-jwt-secret"
-  encryptionKey: "your-encryption-key"
-```
 
 ### Image Configuration
 
@@ -75,17 +140,22 @@ service:
   ui:
     replicas: 2
     upstreams:
-      api: imbi-api:8000
-      mcp: imbi-mcp:8001
-      assistant: imbi-assistant:8002
-      gateway: imbi-gateway:8003
-      scheduler: imbi-scheduler:8005
+      api: imbi-api:8080
+      mcp: imbi-mcp:8080
+      assistant: imbi-assistant:8080
+      gateway: imbi-gateway:8080
+      scheduler: imbi-scheduler:8080
 ```
 
 In scaled-out mode the `ui` release is the one to put behind the ingress: it
 runs the bundled Caddy alone, serving the UI and proxying every other path to
 the service named in `service.ui.upstreams`, so the URL layout is the same as
 in `all` mode.
+
+Every Service that the chart creates listens on port 8080, whatever the
+mode. The Service sends the traffic to the container port of the mode. Use
+port 8080 for every in-cluster URL in this page. The Service name follows
+the same rule as the Deployment name.
 
 ### Scheduler
 
@@ -110,7 +180,7 @@ is — both where to *connect* and what path imbi-api mounts its routes under:
 ```yaml
 service:
   mode: scheduler
-  internalApiUrl: http://imbi-api.imbi.svc.cluster.local:8000
+  internalApiUrl: http://imbi-api.imbi.svc.cluster.local:8080
   publicApiUrl: https://imbi.example.com/api
 ```
 
@@ -133,7 +203,7 @@ its own release, set `service.mode: workflows`:
 ```yaml
 service:
   mode: workflows
-  internalApiUrl: http://imbi-api.imbi.svc.cluster.local:8000
+  internalApiUrl: http://imbi-api.imbi.svc.cluster.local:8080
   publicApiUrl: https://imbi.example.com/api
   workflows:
     replicas: 1
@@ -142,7 +212,7 @@ workflows:
   serviceAccount:
     clientId: "imbi-workflows-client-id"
     clientSecret: "imbi-workflows-client-secret"
-  schedulerUrl: http://imbi-scheduler.imbi.svc.cluster.local:8005/api
+  schedulerUrl: http://imbi-scheduler.imbi.svc.cluster.local:8080/api
 ```
 
 - The chart refuses to render in `workflows` mode when `internalApiUrl` is
@@ -351,9 +421,31 @@ ingress:
 
 ## Upgrading
 
-```bash
-helm upgrade imbi helm/imbi
-```
+1. Upgrade the release:
+
+    ```bash
+    helm upgrade imbi helm/imbi -f values.yaml --namespace imbi
+    ```
+
+2. Do the steps that the release notes name, in this order. Run each command
+   in the pod, as in step 3 of [Installing the Chart](#installing-the-chart):
+
+    ```bash
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-permissions
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-service-accounts
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-clickhouse
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-prompts
+    ```
+
+3. When the release adds an Iggy stream, restart the connectors runtime
+   after `setup-clickhouse`:
+
+    ```bash
+    kubectl -n imbi rollout restart deployment/imbi-connect
+    ```
+
+See [Applying Upgrades](../getting-started/setup.md#applying-upgrades) for
+what each command does.
 
 ## Uninstalling
 
