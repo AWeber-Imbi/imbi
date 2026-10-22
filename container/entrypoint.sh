@@ -216,7 +216,9 @@ fi
 # opentelemetry-distro sets every unset signal to "otlp", so an unset signal
 # is set to "none" here: only the signals that are configured are exported.
 # OTEL_SERVICE_NAME defaults to the command, so each service in 'all' mode
-# reports under its own name.
+# reports under its own name. The Prometheus exporter binds to localhost by
+# default, so OTEL_EXPORTER_PROMETHEUS_HOST defaults to 0.0.0.0 here: a
+# scraper outside the container can then read /metrics.
 run_service() {
     if [ "${OTEL_TRACES_EXPORTER:-none}" = "none" ] &&
         [ "${OTEL_METRICS_EXPORTER:-none}" = "none" ]; then
@@ -225,6 +227,7 @@ run_service() {
     OTEL_TRACES_EXPORTER="${OTEL_TRACES_EXPORTER:-none}" \
         OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-none}" \
         OTEL_LOGS_EXPORTER="${OTEL_LOGS_EXPORTER:-none}" \
+        OTEL_EXPORTER_PROMETHEUS_HOST="${OTEL_EXPORTER_PROMETHEUS_HOST:-0.0.0.0}" \
         OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-$1}" \
         exec opentelemetry-instrument "$@"
 }

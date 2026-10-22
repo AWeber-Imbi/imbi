@@ -502,6 +502,7 @@ exported: the entrypoint sets it to `none`.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | The collector, for example `http://collector:4318` |
 | `OTEL_METRICS_EXPORTER` | `prometheus` to serve `/metrics` for scraping, or unset |
 | `OTEL_EXPORTER_PROMETHEUS_PORT` | Optional. The `/metrics` port, default `9464` |
+| `OTEL_EXPORTER_PROMETHEUS_HOST` | Optional. The `/metrics` bind address, default `0.0.0.0` |
 | `OTEL_SERVICE_NAME` | Optional. Defaults to the service command, for example `imbi-mcp` |
 
 !!! warning "Set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`"
