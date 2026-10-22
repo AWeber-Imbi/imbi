@@ -53,12 +53,13 @@ class ManifestTestCase(unittest.TestCase):
         self.assertTrue(issubclass(CloudWatchLogs, LogsCapability))
         self.assertTrue(issubclass(SSMConfiguration, ConfigurationCapability))
 
-    def test_identity_is_integration_wide_login_provider(self) -> None:
+    def test_identity_is_integration_wide_not_login_provider(self) -> None:
         identity = self.manifest.get_capability('identity')
         assert identity is not None
         self.assertFalse(identity.project_scoped)
         self.assertTrue(identity.default_enabled)
-        self.assertTrue(identity.hints['login_capable'])
+        # The device-code flow cannot complete a login and has no email.
+        self.assertNotIn('login_capable', identity.hints)
         self.assertEqual(
             identity.hints['default_scopes'], ['sso:account:access']
         )

@@ -54,10 +54,14 @@ or a project. See
 The base query limits each search to the logs of one project. It can use
 these variables:
 
-- `${project_slug}`
-- `${org_slug}`
-- `${environment}`
-- `${project_id}`
+| Variable | Value |
+|---|---|
+| `${project_slug}` | The project slug |
+| `${org_slug}` | The organization slug |
+| `${team_slug}` | The slug of the owning team |
+| `${environment}` | The selected environment slug |
+| `${project_id}` | The project ID |
+| `${project_type_slug}` | The first project type slug |
 
 Example:
 
@@ -65,10 +69,9 @@ Example:
 kubernetes.namespace_name:${project_slug} AND env:${environment}
 ```
 
-Imbi replaces a variable that has no value with an empty string. A search
-fails if the template has an unknown variable. `${team_slug}` and
-`${project_type_slug}` are accepted, but the Logz.io plugin always
-replaces them with an empty string.
+Imbi replaces a variable that has no value with an empty string. Imbi
+does not examine the template when you save it. A search fails if the
+template has an unknown variable.
 
 ## Filters
 

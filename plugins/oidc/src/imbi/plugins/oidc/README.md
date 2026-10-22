@@ -12,11 +12,10 @@ code + PKCE flow against any provider that publishes a
 | `authorization_endpoint` | no       | Override the discovered authorization endpoint.                        |
 | `token_endpoint`         | no       | Override the discovered token endpoint.                                |
 | `userinfo_endpoint`      | no       | Override the discovered userinfo endpoint.                             |
-| `jwks_uri`               | no       | Override the discovered JWKS URI.                                      |
 | `revocation_endpoint`    | no       | Override the discovered revocation endpoint (optional in OIDC).        |
 | `audience`               | no       | Audience parameter sent on `/authorize`.                               |
 | `pkce_required`          | no       | Force PKCE for public clients (default: `true`).                       |
-| `default_scopes`         | no       | Comma-separated default scopes (default: `openid profile email`).      |
+| `default_scopes`         | no       | Space-separated default scopes (default: `openid profile email`).      |
 
 ## Credentials
 

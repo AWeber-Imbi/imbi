@@ -63,8 +63,9 @@ class GitHubCommitSync(CommitSyncCapability):
   `NotImplementedError`)* — record the commits that are not stored yet,
   for example the version-bump commits that a release build pushed.
   Returns rows written. Bound the walk by the newest stored commit. Use
-  `since` only when no commits are stored. Re-running is safe. No host
-  code calls this method at this time.
+  `since` only when no commits are stored. Re-running is safe.
+  Reserved: no host code calls this method yet. The GitHub plugin
+  implements it so that a per-release commit sync can use it later.
 - **`check_available`** *(optional, default `True`)* — whether an
   on-demand sync can run for `ctx` right now. Override to report `False`
   when the remote / repository cannot be resolved so the host can hide

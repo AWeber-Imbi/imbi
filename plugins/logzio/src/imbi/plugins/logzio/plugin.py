@@ -68,12 +68,7 @@ class LogzioLogs(LogsCapability):
         raw_ef = opts.get('environment_field')
         environment_field = str(raw_ef) if raw_ef else None
 
-        ctx_vars: dict[str, str | None] = {
-            'project_slug': ctx.project_slug,
-            'org_slug': ctx.org_slug,
-            'environment': ctx.environment,
-            'project_id': ctx.project_id,
-        }
+        ctx_vars = _template_vars(ctx)
 
         size = min(query.limit, 1000)
         query_body = build_query_body(
@@ -177,12 +172,7 @@ class LogzioLogs(LogsCapability):
         raw_ef = opts.get('environment_field')
         environment_field = str(raw_ef) if raw_ef else None
 
-        ctx_vars: dict[str, str | None] = {
-            'environment': ctx.environment,
-            'org_slug': ctx.org_slug,
-            'project_id': ctx.project_id,
-            'project_slug': ctx.project_slug,
-        }
+        ctx_vars = _template_vars(ctx)
 
         level_field = str(opts.get('level_field', 'level'))
 
@@ -353,6 +343,20 @@ def _overlay_histogram_levels(
             by_ts[ts] = existing.model_copy(update={'levels': new_levels})
 
 
+def _template_vars(ctx: PluginContext) -> dict[str, str | None]:
+    """Values for the ``${...}`` placeholders in ``base_query``."""
+    return {
+        'environment': ctx.environment,
+        'org_slug': ctx.org_slug,
+        'project_id': ctx.project_id,
+        'project_slug': ctx.project_slug,
+        'project_type_slug': (
+            ctx.project_type_slugs[0] if ctx.project_type_slugs else None
+        ),
+        'team_slug': ctx.team_slug,
+    }
+
+
 def _connection_opts(ctx: PluginContext) -> tuple[str, float]:
     opts = ctx.integration_options
     region = str(opts.get('region', 'us'))
@@ -429,7 +433,8 @@ class LogzioPlugin(Plugin):
                         description=(
                             'Elasticsearch query_string applied as a must '
                             'clause. Supports ${project_slug}, ${org_slug}, '
-                            '${environment}, ${project_id}.'
+                            '${team_slug}, ${environment}, ${project_id}, '
+                            '${project_type_slug}.'
                         ),
                     ),
                     PluginOption(

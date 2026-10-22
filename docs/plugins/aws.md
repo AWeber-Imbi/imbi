@@ -109,9 +109,8 @@ can use these variables:
 | `${project_id}` | The project ID |
 | `${project_type_slug}` | The first project type slug, changed by `project_type_path_map` |
 
-All four options accept all six variables. The option descriptions in the
-UI list fewer variables for `log_group_names` and `base_filter`. A
-template with an unknown variable fails. In a `regex:` log group
+All four options accept all six variables. A template with an unknown
+variable fails. In a `regex:` log group
 selector, Imbi escapes the variable values.
 
 ## Log group selectors
@@ -159,10 +158,9 @@ None.
 
 ## Known limits
 
-- The plugin marks its identity capability as able to sign users in, but
-  sign-in to Imbi through AWS does not complete in this release. The
-  sign-in flow does not handle the device-code step, and the AWS profile
-  has no email address. Use AWS only for user connections.
+- AWS cannot be a login provider. The sign-in flow does not handle the
+  device-code step, and the AWS profile has no email address. Use AWS
+  only for user connections.
 - One Insights query returns 10,000 rows at most.
 - Each user must connect at **Settings > Connections** before the **Logs**
   and **Configuration** tabs work for that user.

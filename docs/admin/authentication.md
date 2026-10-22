@@ -57,7 +57,9 @@ These plugins can do this:
 | `google` | Google OAuth 2.0 with PKCE |
 | `github` | GitHub OAuth app |
 | `oidc` | Any OpenID Connect provider, for example Keycloak or Okta |
-| `aws` | AWS IAM Identity Center (device-code flow) |
+
+The `aws` plugin cannot sign users in. Its device-code flow gives no email
+address. Use it only for user connections.
 
 Login providers are global. Users sign in before they select an
 organization, so a login provider does not belong to an organization.

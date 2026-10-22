@@ -346,6 +346,25 @@ async def test_search_with_base_query_option() -> None:
 
 
 @respx.mock
+async def test_search_base_query_team_and_project_type() -> None:
+    route = respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(200, json=_hits_response([]))
+    )
+    plugin = LogzioLogs()
+    ctx = _make_ctx(
+        base_query='team:${team_slug} AND type:${project_type_slug}'
+    )
+    ctx.team_slug = 'core'
+    ctx.project_type_slugs = ['apis', 'consumers']
+    await plugin.search(ctx, _CREDS, _make_query())
+
+    req_body = json.loads(route.calls[0].request.content)  # type: ignore[union-attr]
+    must = req_body['query']['bool']['must']
+    qs = [c['query_string']['query'] for c in must if 'query_string' in c]
+    assert any('team:core AND type:apis' in q for q in qs)
+
+
+@respx.mock
 async def test_search_naive_timestamp_gets_utc() -> None:
     hit = {
         '_source': {'@timestamp': '2025-01-01T12:00:00', 'message': 'no tz'}

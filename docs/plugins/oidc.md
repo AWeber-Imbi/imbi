@@ -23,7 +23,6 @@ You use it as a login provider. See
 | `authorization_endpoint` | Authorization endpoint | No | Use this URL instead of the discovered one |
 | `token_endpoint` | Token endpoint | No | Use this URL instead of the discovered one |
 | `userinfo_endpoint` | Userinfo endpoint | No | Use this URL instead of the discovered one |
-| `jwks_uri` | JWKS URI | No | Use this URL instead of the discovered one. See [Known limits](#known-limits) |
 | `revocation_endpoint` | Revocation endpoint | No | Use this URL instead of the discovered one |
 | `audience` | Audience | No | Sent as the `audience` parameter of the authorization request |
 | `pkce_required` | Require PKCE | No | Default `true`. Send a PKCE challenge |
@@ -66,9 +65,9 @@ None.
 
 ## Known limits
 
-- Imbi does not validate an ID token. It trusts the userinfo response
-  that it gets with the access token. The `jwks_uri` option is read but
-  not used.
+- Imbi does not use the ID token, so it does not validate one. It gets
+  the profile from the userinfo endpoint with the access token, over
+  TLS.
 - The plugin reads `groups`, but Imbi does not map groups to teams or
   roles.
 - A change to the discovery document shows only after the 24-hour cache
