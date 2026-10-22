@@ -3,8 +3,16 @@
 ## Requirements
 
 - Python 3.14 or higher
-- PostgreSQL 16+ with [Apache AGE](https://age.apache.org/) extension (for graph features)
-- ClickHouse 23.0+ (for analytics features)
+- PostgreSQL with the [Apache AGE](https://age.apache.org/) and pgvector
+  extensions, for the graph. The project image
+  `ghcr.io/aweber-imbi/postgres` has both.
+- ClickHouse, for analytics
+- Apache Iggy and the Iggy connectors runtime, to write analytics rows
+  to ClickHouse
+- Valkey
+
+CI tests with the server images in `compose.ci.yaml`. See
+[Database Setup](guides/database-setup.md).
 
 ## Install from PyPI
 
@@ -46,13 +54,26 @@ moon run root:setup
 ## Verify Installation
 
 ```python
-# Test basic imports
+# Test basic imports. graph and clickhouse need the databases extra.
 from imbi.common import settings, models, graph, clickhouse, auth
 
 print("All modules imported successfully")
 ```
 
 ## Optional Dependencies
+
+| Extra | Installs | Needed for |
+|---|---|---|
+| `databases` | `apache-iggy`, `clickhouse-connect`, `fastembed`, `pgvector`, `psycopg`, `valkey` | `graph`, `clickhouse`, `iggy`, `valkey` |
+| `llm` | `anthropic` | `llm.AnthropicClient`, `llm.discovery` |
+| `mcp` | `fastmcp` | `mcp` |
+| `otel` | The OpenTelemetry SDK, exporter and instrumentation packages | `otel` |
+| `sentry` | `sentry-sdk` | `sentry` |
+| `server` | `fastapi`, `uvicorn` | `server` and the FastAPI helpers |
+
+```bash
+pip install 'imbi-common[databases,server]'
+```
 
 ### Server
 

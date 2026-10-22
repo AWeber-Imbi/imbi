@@ -4,6 +4,14 @@
 
 Accepted
 
+!!! note "Status note (2026-10-21)"
+    The library is no longer a separate `imbi-common` repository. It is a
+    member of the Imbi monorepo at `libraries/common`, and it is still
+    published to PyPI as `imbi-common`. `imbi` is a shared namespace
+    package: `imbi.common`, `imbi.api`, the other services, and the
+    `imbi.plugins.*` plugins. The body below describes the decision as it
+    was made and is not updated.
+
 ## Context
 
 The Imbi ecosystem consists of multiple services (imbi-api, imbi-gateway,

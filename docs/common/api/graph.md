@@ -72,6 +72,45 @@ async def on_graph_ready(db: graph.Graph) -> None:
 graph.set_on_startup(on_graph_ready)
 ```
 
+## Raw Cypher
+
+`execute()` runs a Cypher query. It wraps the query in the AGE
+`cypher()` function, so you cannot send plain SQL through it. Give one
+name in `columns` for each value in the `RETURN` clause. The default is
+`['n']`.
+
+```python
+rows = await db.execute(
+    'MATCH (o:Organization {{slug: {slug}}}) RETURN o.name, o.slug',
+    {'slug': 'my-org'},
+    ['name', 'slug'],
+)
+```
+
+The query is a template. Write each literal brace two times (`{{` and
+`}}`) and refer to a parameter as `{name}`. The client escapes the
+parameter values. Set `raw=True` to run the text as literal Cypher with
+no template pass, for example for a query that a user typed. `raw`
+ignores `params`.
+
+Values come back as AGE `agtype` text. Use `parse_agtype()` to turn a
+value into Python data. For a vertex, it returns the properties.
+
+## Search and Embeddings
+
+`create`, `merge` and `delete` keep the vector embeddings of a node up
+to date. The embeddings are in the `embeddings` table (pgvector), and
+the client makes them on the local machine with fastembed. The
+`EMBEDDINGS_*` settings select the models.
+
+- `search()` embeds the query text and returns `SearchResult` rows, the
+  most similar first. Filter by `node_label`, `attribute` or
+  `node_ids`.
+- `search_nodes()` returns full model instances, one for each node.
+- `embed_node()` and `delete_node_embeddings()` are for code that writes
+  nodes with `execute()`. `execute()` does not see a model, so it does
+  not update the embeddings.
+
 ## API Reference
 
 ### Graph Client
@@ -81,6 +120,16 @@ graph.set_on_startup(on_graph_ready)
 ::: imbi.common.graph.graph_lifespan
 
 ::: imbi.common.graph.Pool
+
+::: imbi.common.graph.initialize
+
+::: imbi.common.graph.parse_agtype
+
+::: imbi.common.graph.SearchResult
+
+::: imbi.common.graph.StatementMatchedNothing
+
+::: imbi.common.graph.embeddable_node_types
 
 ### Cypher Query Generation
 

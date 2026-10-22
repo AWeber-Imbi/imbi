@@ -4,7 +4,17 @@ Date: 2026-05-14
 
 ## Status
 
-Accepted
+Accepted. The mechanism is superseded by
+[API ADR 0019](../../api/adr/0019-apache-iggy-message-streaming.md).
+
+!!! note "Status note (2026-10-21)"
+    The decision to store pull requests in ClickHouse still holds. No
+    materialized view populates the `pull_requests` table. Producers
+    publish pull request rows to the `pull_requests` Iggy stream (topic
+    `github`), and the Iggy ClickHouse sink writes them to the table.
+    The table is a `ReplacingMergeTree` ordered by `(project_id, pr_id)`.
+    The body below describes the decision as it was made and is not
+    updated.
 
 ## Context
 

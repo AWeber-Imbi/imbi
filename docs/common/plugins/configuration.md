@@ -3,9 +3,10 @@
 `ConfigurationCapability` is the contract base for a capability that
 presents a typed key/value store scoped to a project (feature flags,
 secrets, service settings). Bind it with a `Capability(kind='configuration',
-handler=...)` in the plugin's manifest. All four methods receive a
-`PluginContext` (project identity + resolved options) and the
-Integration's decrypted `credentials` dict.
+handler=...)` in the plugin's manifest. The four required methods
+receive a `PluginContext` (project identity + resolved options) and the
+Integration's decrypted `credentials` dict. One optional method,
+`describe_prefix`, receives only the `PluginContext`.
 
 Surfaces: **ui, api**.
 
@@ -69,6 +70,13 @@ class VaultConfiguration(ConfigurationCapability):
   reflect the persisted state, including `last_modified`.
 - **`delete_key`** — idempotent; deleting an absent key should not
   raise.
+- **`describe_prefix`** *(optional, default `None`)* — return the
+  resolved key prefix that the capability reads and writes under. The
+  other methods return keys with this prefix removed, and capability
+  options can contain variables (for example `${project_type_slug}`)
+  that only the plugin can expand. The host returns this value to the UI
+  so it can show the full key path. This method is synchronous. Return
+  `None` when the capability has no prefix.
 
 ## Data types and secrets
 
