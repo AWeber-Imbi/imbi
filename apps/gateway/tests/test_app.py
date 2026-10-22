@@ -1,15 +1,24 @@
 import datetime
+import unittest.mock
 
 import fastapi.testclient
 
 import imbi.gateway.app
 from apps.gateway.tests import helpers
+from imbi.common import sentry
 
 
 class AppTests(helpers.TestCase):
     def test_create_app(self) -> None:
         app_instance = imbi.gateway.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
+
+    def test_sentry_is_initialised_first(self) -> None:
+        with unittest.mock.patch.object(
+            imbi.gateway.app.lifespan, 'Lifespan'
+        ) as composed:
+            imbi.gateway.app.create_app()
+        self.assertIs(sentry.sentry_lifespan, composed.call_args.args[0])
 
     def test_metrics_returns_prometheus_text(self) -> None:
         # No `with`, so the lifespan does not run: the route needs none.

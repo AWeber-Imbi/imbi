@@ -17,7 +17,7 @@ import pydantic
 import typer
 
 import imbi.workflows
-from imbi.common import graph, iggy, lifespan, server
+from imbi.common import graph, iggy, lifespan, sentry, server
 from imbi.common import settings as common_settings
 from imbi.common.prompts import pool as prompt_pool
 from imbi.workflows import bindings, engine, executors, settings, store
@@ -107,7 +107,10 @@ def create_app() -> fastapi.FastAPI:
         version=imbi.workflows.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
-            prompt_pool.pool_lifespan, iggy_lifespan, engine_lifespan
+            sentry.sentry_lifespan,
+            prompt_pool.pool_lifespan,
+            iggy_lifespan,
+            engine_lifespan,
         ),
     )
 

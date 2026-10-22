@@ -6,6 +6,20 @@ image:
 # Number of replicas (used when service.mode is "all")
 replicaCount: 1
 
+# Sets ENVIRONMENT and IMBI_API_ENVIRONMENT. Any value other than
+# "development" stops the services from generating the auth.jwtSecret,
+# auth.encryptionKey and auth.configEncryptionKey values (they fail without
+# them), and sets the Secure flag on the auth cookies.
+environment: production
+
+# Extra environment variables for the Imbi container, as a list of
+# Kubernetes EnvVar objects (e.g. IMBI_API_CORS_ALLOWED_ORIGINS, SENTRY_DSN,
+# IMBI_EMAIL_SMTP_USERNAME).
+extraEnv: []
+# Extra envFrom sources (ConfigMap or Secret references) for the Imbi
+# container.
+extraEnvFrom: []
+
 # Service mode:
 # - "all": run all services in one pod (uses replicaCount above)
 # - "api" | "assistant" | "gateway" | "mcp" | "scheduler" | "slackbot" |
@@ -20,7 +34,7 @@ service:
   # imbi-gateway use to reach imbi-api. The default works for "all" and "api"
   # modes; override when running "mcp", "assistant", "scheduler", or "gateway"
   # as separate pods (e.g.
-  # http://imbi-api.<namespace>.svc.cluster.local:8000). In "scheduler" and
+  # http://imbi-api.<namespace>.svc.cluster.local:8080). In "scheduler" and
   # "gateway" modes the chart fails to render if this is left at the loopback
   # default: there it resolves to that pod itself, and the pod reports healthy
   # while every api-target firing (or gateway action) fails.
@@ -29,6 +43,8 @@ service:
   # its routes under. imbi-scheduler re-derives that prefix to build the
   # paths it calls, so a scheduler pod cannot reach an API mounted under a
   # path (e.g. https://imbi.example.com/api) unless this is set to match.
+  # It is also the VITE_API_URL the UI loads its API from, so it is required
+  # in "all" and "ui" modes.
   publicApiUrl: ""
   api:
     replicas: 1
@@ -60,17 +76,20 @@ service:
     # host:port of each service the Caddyfile proxies to, when they run as
     # their own releases. Left empty, Caddy falls back to the in-pod loopback,
     # which in "ui" mode reaches nothing.
+    # Each chart Service listens on 8080.
     upstreams:
-      api: ""        # e.g. imbi-api:8000
-      mcp: ""        # e.g. imbi-mcp:8001
-      assistant: ""  # e.g. imbi-assistant:8002
-      gateway: ""    # e.g. imbi-gateway:8003
-      scheduler: ""  # e.g. imbi-scheduler:8005
+      api: ""        # e.g. imbi-api:8080
+      mcp: ""        # e.g. imbi-mcp:8080
+      assistant: ""  # e.g. imbi-assistant:8080
+      gateway: ""    # e.g. imbi-gateway:8080
+      scheduler: ""  # e.g. imbi-scheduler:8080
 
-# Required authentication settings
+# Required authentication settings. Use the same values in every release
+# and keep them stable: a changed key makes the encrypted values unreadable.
 auth:
   jwtSecret: ""
-  encryptionKey: ""
+  encryptionKey: ""        # Fernet key: OAuth tokens and client secrets
+  configEncryptionKey: ""  # Fernet key: configuration secrets (AI keys etc.)
 
 # Scheduler configuration
 scheduler:
@@ -103,27 +122,33 @@ workflows:
     clientSecret: ""
   # imbi-scheduler's task API, with its route prefix. The engine writes the
   # scheduler task of each schedule trigger here. Empty uses the in-pod
-  # default (http://localhost:8005/api), which works in "all" mode only.
+  # default (http://localhost:8005/api), which works in "all" mode only
+  # (e.g. http://imbi-scheduler:8080/api for a separate release).
   schedulerUrl: ""
 
 # Gateway configuration
 gateway:
   # The gateway calls back into imbi-api to patch projects and record releases,
   # authenticating with this API key (the `ik_<id>_<secret>` form); patch
-  # attribution is this key's identity. Unset, the gateway starts and serves
-  # webhooks but every action it takes gets a 401.
+  # attribution is this key's identity. Required in "gateway" mode: the
+  # container does not start without it. In "all" mode the entrypoint seeds
+  # one when it is unset.
   #
   # Seeded by `imbi-api setup` exactly like the scheduler credential above.
   serviceAccount:
     token: ""
 
 # Optional: reference an existing secret instead of specifying values above.
-# The secret must contain keys: jwt-secret, encryption-key, clickhouse-url,
-# iggy-url, postgres-url.
+# The secret must contain keys: jwt-secret, encryption-key,
+# config-encryption-key, clickhouse-url, iggy-url, postgres-url.
+#
+# Optional key: valkey-url.
 #
 # Conditionally required, because the deployment reads them from this same
 # secret whenever the corresponding feature is switched on:
-#   - anthropic-api-key            when assistant.enabled
+#   - anthropic-api-key            when assistant.enabled, or the Slack bot
+#     is on (slackbot.enabled or service.mode "slackbot")
+#   - slack-bot-token, slack-app-token  when the Slack bot is on
 #   - s3-access-key, s3-secret-key when storage.accessKey is set
 #   - iggy-connectors-api-key, iggy-password  when iggyConnect.enabled. The
 #     runtime's two refs are not optional, so it will not start without them;
@@ -138,11 +163,10 @@ gateway:
 #   - service.mode "scheduler": require_scheduler_vars() demands both scheduler
 #     keys, so the container exits at startup and the pod CrashLoopBackOffs.
 #   - service.mode "workflows": the same, for the two workflows keys.
+#   - service.mode "gateway": the same, for gateway-sa-token.
 #   - service.mode "all": neither is required. The entrypoint seeds a credential
 #     for each service itself when the environment does not supply one.
 #   - any other mode: nothing reads them, and nothing is affected.
-# gateway-sa-token is never required: without it the gateway serves webhooks and
-# every action it takes gets a 401.
 existingSecret: ""
 
 ingress:
@@ -182,19 +206,28 @@ externalClickhouse:
 externalIggy:
   url: ""  # REQUIRED, e.g. iggy+tcp://iggy:iggy@imbi-iggy:8090
 
+# Valkey connection (external). imbi-api's background workers need it: unset,
+# they do not start and imbi-api logs a warning. Rendered as VALKEY_URL.
+externalValkey:
+  url: ""  # e.g. valkey://imbi-valkey:6379/0
+
 # The Apache Iggy connectors runtime: a second Deployment from the Iggy image
 # that drains each stream into its ClickHouse table (ADR 0019 §3).
 #
-# Off by default. Nothing publishes to Iggy yet, and turning it on obliges the
-# operator to invent an api key; switch it on in the release that moves the
-# first write path onto the stream, and leave it on from then, because the
-# direct ClickHouse insert goes away.
+# On by default: every ClickHouse write goes through Iggy, so without this
+# runtime no analytics, audit or operations-log row reaches ClickHouse. It
+# needs iggyConnect.apiKey (invent one), iggyConnect.iggy.address and
+# iggyConnect.iggy.password.
+#
+# Rendered only in "all" and "api" modes, or in any mode where
+# configBaseUrl is set, so the other releases of a split install need
+# nothing here.
 #
 # The runtime ships no sink configuration. It fetches that from imbi-api once
 # at startup and never re-reads it, so a new stream needs a restart of this
 # Deployment -- `kubectl rollout restart` -- to be consumed.
 iggyConnect:
-  enabled: false
+  enabled: true
   image:
     repository: ghcr.io/aweber-imbi/iggy
     tag: 0.9.0-edge.6-0
@@ -208,7 +241,7 @@ iggyConnect:
   # Where the runtime fetches that configuration. Left empty, the chart
   # derives it from the release's own Service and the path in
   # service.publicApiUrl. Set it to reach an imbi-api Service directly (e.g.
-  # http://imbi-api:8000/api/iggy/connectors) when the API is a separate
+  # http://imbi-api:8080/api/iggy/connectors) when the API is a separate
   # release.
   configBaseUrl: ""
   # How the runtime reaches Iggy. Separate from externalIggy.url above,
@@ -225,6 +258,9 @@ iggyConnect:
     limits:
       cpu: "1"
       memory: 512Mi
+  # Extra EnvVar objects and envFrom sources for the runtime container.
+  extraEnv: []
+  extraEnvFrom: []
 
 # PostgreSQL connection (external, required).
 #
@@ -239,6 +275,13 @@ externalPostgresql:
 assistant:
   enabled: false
   anthropicApiKey: ""
+
+# Slack bot. Always on in "slackbot" mode. In "all" mode, enabled starts it
+# in the same pod. It needs both tokens and assistant.anthropicApiKey.
+slackbot:
+  enabled: false
+  botToken: ""  # xoxb-...
+  appToken: ""  # xapp-... (Socket Mode)
 
 # Email configuration
 email:

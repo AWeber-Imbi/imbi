@@ -80,6 +80,18 @@ not use this.
 {{- required "externalIggy.url is required (point it at your Apache Iggy server)" .Values.externalIggy.url }}
 {{- end }}
 
+{{/*
+"true" when this release runs the connectors runtime: iggyConnect.enabled,
+and a release that can reach imbi-api for the sink configuration.
+*/}}
+{{- define "imbi.iggyConnectEnabled" -}}
+{{- if and .Values.iggyConnect.enabled (or (has .Values.service.mode (list "all" "api")) .Values.iggyConnect.configBaseUrl) }}true{{ end }}
+{{- end }}
+
+{{- define "imbi.slackbotEnabled" -}}
+{{- if or .Values.slackbot.enabled (eq .Values.service.mode "slackbot") }}true{{ end }}
+{{- end }}
+
 {{- define "imbi.iggyConnectFullname" -}}
 {{- printf "%s-connect" (include "imbi.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}

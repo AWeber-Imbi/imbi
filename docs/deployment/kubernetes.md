@@ -18,64 +18,55 @@ them with their respective Kubernetes operators:
 - The [Altinity ClickHouse operator](https://github.com/Altinity/clickhouse-operator)
   installed in the cluster (or another ClickHouse instance)
 
-## What the Chart Cannot Do Yet
-
-The chart cannot set these variables. Issue
-[#459](https://github.com/AWeber-Imbi/imbi/issues/459) tracks the fix.
-
-- **`ENVIRONMENT` and `IMBI_CONFIG_ENCRYPTION_KEY`.** The chart value
-  `auth.encryptionKey` sets `IMBI_AUTH_ENCRYPTION_KEY`, not
-  `IMBI_CONFIG_ENCRYPTION_KEY`. These are two different keys. Every chart
-  install runs with `ENVIRONMENT` unset, which is `development`. Each process then
-  generates its own configuration encryption key. Encrypted configuration
-  values, such as AI provider keys, cannot be decrypted after a restart or by
-  another process.
-- **`VALKEY_URL`.** imbi-api starts without Valkey, but its background
-  workers (commit, pull request, and deployment sync, release promotion,
-  maintenance, and the sweepers) do not start.
-- **`VITE_API_URL`.** The UI reads the API URL from this variable. Without
-  it, the UI does not load in `all` and `ui` mode.
-- **Other variables.** The chart has no `extraEnv` or `extraEnvFrom` value.
-  It cannot set, for example, `IMBI_UI_URL`, the `IMBI_INTERNAL_*_URL`
-  values of the **System health** card, CORS, MCP OAuth, Sentry, SMTP
-  authentication, or the Slack tokens. Thus `service.mode: slackbot` cannot
-  start.
-- **`ANTHROPIC_API_KEY` from `existingSecret`.** The chart sets
-  `ANTHROPIC_API_KEY` only when `assistant.enabled` is true and
-  `assistant.anthropicApiKey` has a value. With `existingSecret` and no
-  `assistant.anthropicApiKey`, the chart does not read the
-  `anthropic-api-key` key.
-
 ## Installing the Chart
 
 Use image 2.39.1 or later. On a new install, 2.39.0 cannot create its Iggy
 topics, and imbi-api exits at startup (see
 [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
 
-1. Put the five required values in a values file. The chart refuses to
-   render without the connection URLs.
+1. Put the required values in a values file. The chart refuses to render
+   without them.
 
     ```yaml
     auth:
       jwtSecret: "your-jwt-secret"
       encryptionKey: "your-fernet-key"
+      configEncryptionKey: "another-fernet-key"
     externalPostgresql:
       url: postgresql://imbi:password@imbi-pg-rw:5432/imbi
     externalClickhouse:
       url: clickhouse+http://default:password@clickhouse-imbi:8123/imbi
     externalIggy:
       url: iggy+tcp://iggy:iggy@imbi-iggy:8090
+    externalValkey:
+      url: valkey://imbi-valkey:6379/0
+    iggyConnect:
+      apiKey: "invent-one-here"
+      iggy:
+        address: imbi-iggy:8090
+        password: iggy
     service:
       publicApiUrl: https://imbi.example.com/api
     ```
 
     The secrets and passwords above are placeholders. Replace them with your
-    own values.
+    own values. To make the keys, see
+    [`ENVIRONMENT` and production](../api/configuration.md#environment-and-production).
+
+    `environment` defaults to `production`. The chart sets `ENVIRONMENT` and
+    `IMBI_API_ENVIRONMENT` to it. Then Imbi does not generate the three
+    `auth` values and fails without them, and the auth cookies have the
+    `Secure` flag.
+
+    `externalValkey.url` is optional. Without it, imbi-api starts, but its
+    background workers (commit, pull request and deployment sync, release
+    promotion, maintenance, and the sweepers) do not start.
 
     `service.publicApiUrl` is the public URL of the API. imbi-api mounts its
     routes under its path, and the bundled Caddy sends `/api/*` to imbi-api,
-    so the path must be `/api`. Without it, every API call through Caddy gets
-    a 404.
+    so the path must be `/api`. The chart also sets `VITE_API_URL` to it,
+    which the UI needs to load. The chart refuses to render in `all` and
+    `ui` mode without it.
 
 2. Install the chart:
 
@@ -122,6 +113,55 @@ Set `image.tag` to a release version in production. The default is
 
 `replicaCount` sets the number of pods in `all` mode. `resources` sets the
 requests and limits of the Imbi container.
+
+### Extra environment variables
+
+`extraEnv` adds environment variables to the Imbi container, and
+`extraEnvFrom` adds ConfigMap or Secret references. Use them for the
+variables that have no chart value, for example `IMBI_UI_URL`, the
+`IMBI_INTERNAL_*_URL` values of the **System health** card, CORS, MCP
+OAuth, Sentry, and SMTP authentication. See
+[Configuration](../api/configuration.md) for the variables.
+
+```yaml
+extraEnv:
+  - name: IMBI_API_CORS_ALLOWED_ORIGINS
+    value: '["https://imbi.example.com"]'
+  - name: SENTRY_DSN
+    valueFrom:
+      secretKeyRef:
+        name: imbi-extra
+        key: sentry-dsn
+extraEnvFrom:
+  - secretRef:
+      name: imbi-smtp
+```
+
+`iggyConnect.extraEnv` and `iggyConnect.extraEnvFrom` do the same for the
+connectors runtime container.
+
+### Slack bot
+
+`service.mode: slackbot` runs the Slack bot. In `all` mode, set
+`slackbot.enabled: true` to start it in the same pod. The bot needs both
+Slack tokens and an Anthropic API key. The chart refuses to render without
+them:
+
+```yaml
+slackbot:
+  enabled: true
+  botToken: "xoxb-..."
+  appToken: "xapp-..."
+assistant:
+  anthropicApiKey: "sk-ant-..."
+```
+
+### Gateway
+
+In `gateway` mode, set `gateway.serviceAccount.token` (or the
+`gateway-sa-token` key of `existingSecret`). The container does not start
+without it. In `all` mode the container seeds one at startup when it is
+empty.
 
 ### Service Scaling
 
@@ -225,15 +265,18 @@ does not make its own Secret, and reads these keys:
 |---|---|---|
 | `jwt-secret` | `IMBI_AUTH_JWT_SECRET` | Always |
 | `encryption-key` | `IMBI_AUTH_ENCRYPTION_KEY` | Always |
+| `config-encryption-key` | `IMBI_CONFIG_ENCRYPTION_KEY` | Always |
 | `clickhouse-url` | `CLICKHOUSE_URL` | Always |
 | `iggy-url` | `IGGY_URL` | Always |
 | `postgres-url` | `POSTGRES_URL` | Always |
+| `valkey-url` | `VALKEY_URL` | Optional |
 | `iggy-connectors-api-key` | `IMBI_IGGY_CONNECTORS_API_KEYS`, `IGGY_CONNECTORS_API_KEY` | Optional for imbi-api. Required by the connectors runtime |
-| `iggy-password` | `IGGY_CONNECTORS_IGGY_PASSWORD` | When `iggyConnect.enabled` |
-| `anthropic-api-key` | `ANTHROPIC_API_KEY` | When `assistant.enabled` and `assistant.anthropicApiKey` are set |
+| `iggy-password` | `IGGY_CONNECTORS_IGGY_PASSWORD` | When the release runs the connectors runtime |
+| `anthropic-api-key` | `ANTHROPIC_API_KEY` | When `assistant.enabled`, or the Slack bot is on |
+| `slack-bot-token`, `slack-app-token` | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | When the Slack bot is on (`slackbot.enabled` or `service.mode: slackbot`) |
 | `scheduler-sa-client-id`, `scheduler-sa-client-secret` | `IMBI_SCHEDULER_SA_CLIENT_*` | Optional |
 | `workflows-sa-client-id`, `workflows-sa-client-secret` | `IMBI_WORKFLOWS_SA_CLIENT_*` | Optional |
-| `gateway-sa-token` | `IMBI_GATEWAY_API_TOKEN` | Optional |
+| `gateway-sa-token` | `IMBI_GATEWAY_API_TOKEN` | Optional. In `gateway` mode the container does not start without it |
 | `s3-access-key`, `s3-secret-key` | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | When `storage.accessKey` and `storage.secretKey` are set |
 
 The Secret must have the keys that the chart reads. A missing key that is
@@ -373,8 +416,10 @@ credentials. See [Operations: Apache Iggy](operations.md#apache-iggy).
 
 Rows bound for ClickHouse travel through Iggy, and it is the connectors
 runtime that drains each stream into its table (see ADR 0019, Apache
-Iggy message streaming). Turning
-`iggyConnect.enabled` on adds a second Deployment from the Iggy image:
+Iggy message streaming). `iggyConnect.enabled` is `true` by default. It adds
+a second Deployment from the Iggy image in `all` and `api` mode, or in any
+mode where `iggyConnect.configBaseUrl` is set. Without it, no row reaches
+ClickHouse:
 
 ```yaml
 iggyConnect:
@@ -389,7 +434,7 @@ service:
   publicApiUrl: https://imbi.example.com/api
 ```
 
-Two things to know before enabling it:
+Two things to know about it:
 
 - **It fetches its sink configuration from imbi-api, once, at startup.** The
   configuration is generated from the streams Imbi publishes to, so a release

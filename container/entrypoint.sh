@@ -35,11 +35,18 @@ require_assistant_vars() {
     require_common_vars
 }
 
+# Shared with 'all' mode, which seeds IMBI_GATEWAY_API_TOKEN itself.
 require_gateway_vars() {
     require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
+    require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
+    require_var IGGY_URL "Iggy connection URL (e.g. iggy+tcp://iggy:iggy@iggy:8090)"
+    require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
 }
 
 require_slackbot_vars() {
+    # In development a missing secret is generated per process, so the bot
+    # signs tokens that imbi-api rejects and every tool call gets a 401.
+    require_common_vars
     require_var SLACK_APP_TOKEN "Slack app-level token for socket mode"
     require_var SLACK_BOT_TOKEN "Slack bot OAuth token"
     require_var ANTHROPIC_API_KEY "Anthropic API key (bot stays disabled without it)"
@@ -120,9 +127,6 @@ fi
 case "$IMBI_SERVICE" in
     all)
         require_common_vars
-        require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
-        require_var IGGY_URL "Iggy connection URL (e.g. iggy+tcp://iggy:iggy@iggy:8090)"
-        require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
         require_gateway_vars
         # Slack bot is optional in 'all' mode: it auto-enables only when
         # ANTHROPIC_API_KEY and the SLACK_* tokens are present, so its vars
@@ -139,6 +143,7 @@ case "$IMBI_SERVICE" in
         ;;
     gateway)
         require_gateway_vars
+        require_var IMBI_GATEWAY_API_TOKEN "API key of the imbi-gateway service account (every gateway action gets a 401 without it)"
         ;;
     mcp)
         # No required vars currently

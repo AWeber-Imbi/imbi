@@ -4,7 +4,14 @@ import fastapi
 import typer
 
 import imbi.scheduler
-from imbi.common import access_log, graph, lifespan, metrics, server
+from imbi.common import (
+    access_log,
+    graph,
+    lifespan,
+    metrics,
+    sentry,
+    server,
+)
 from imbi.scheduler import app_status, endpoints, lifespans, settings, store
 
 
@@ -24,6 +31,7 @@ def create_app() -> fastapi.FastAPI:
         # Order matters: `engine_hook` borrows the pool `store_lifespan`
         # opens, and the run history it writes needs ClickHouse.
         lifespan=lifespan.Lifespan(
+            sentry.sentry_lifespan,
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
             graph.graph_lifespan,

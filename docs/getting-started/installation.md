@@ -235,7 +235,9 @@ topics, and imbi-api exits at startup (see
 ## Kubernetes
 
 See the [Kubernetes deployment guide](../deployment/kubernetes.md) for
-deploying with the Helm chart.
+deploying with the Helm chart. The chart runs Imbi in production mode by
+default, so it refuses to render without `auth.jwtSecret`,
+`auth.encryptionKey`, and `auth.configEncryptionKey`.
 
 ## Next Steps
 

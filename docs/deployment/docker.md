@@ -85,6 +85,7 @@ Caddy sends each path on port 8080 to a service:
 | `/status` | imbi-api | Used only when `IMBI_API_URL` has no path |
 | `/docs`, `/openapi.json`, `/uploads/*` | imbi-api | |
 | `/.well-known/oauth-authorization-server*` | imbi-api | Also under `/mcp/.well-known/...` |
+| `/assistant/status`, `/mcp/status` | imbi-assistant, imbi-mcp | Caddy removes the prefix, so these reach the unprefixed health endpoints |
 | `/assistant/*` | imbi-assistant | |
 | `/gateway/*` | imbi-gateway | Caddy removes the `/gateway` prefix |
 | `/scheduler/*` | imbi-scheduler | Caddy removes the `/scheduler` prefix |
@@ -95,8 +96,7 @@ Caddy sends each path on port 8080 to a service:
 | Other paths | UI files | Unknown paths get `index.html` |
 
 Caddy does not route to imbi-slackbot or imbi-workflows. The Caddy admin
-API listens on `localhost:2019` in the container only, although the image
-exposes port 2019.
+API listens on `localhost:2019` in the container only.
 
 ## Individual Services
 
@@ -109,21 +109,20 @@ not set:
 
 | `IMBI_SERVICE` | Required variables |
 |---|---|
-| `all` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `CLICKHOUSE_URL`, `IGGY_URL`, `POSTGRES_URL` |
+| `all` | `IMBI_AUTH_JWT_SECRET`, `POSTGRES_URL`, `CLICKHOUSE_URL`, `IGGY_URL`, `IMBI_AUTH_ENCRYPTION_KEY` |
 | `api` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `CLICKHOUSE_URL`, `IGGY_URL` |
 | `assistant` | `IMBI_AUTH_JWT_SECRET` |
-| `gateway` | `POSTGRES_URL` |
+| `gateway` | `POSTGRES_URL`, `CLICKHOUSE_URL`, `IGGY_URL`, `IMBI_AUTH_ENCRYPTION_KEY`, `IMBI_GATEWAY_API_TOKEN` |
 | `mcp`, `ui` | none |
 | `scheduler` | `IMBI_AUTH_JWT_SECRET`, `POSTGRES_URL`, `CLICKHOUSE_URL`, `IGGY_URL`, `IMBI_SCHEDULER_SA_CLIENT_ID`, `IMBI_SCHEDULER_SA_CLIENT_SECRET`, `IMBI_API_URL`, `IMBI_INTERNAL_API_URL` |
 | `workflows` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `POSTGRES_URL`, `IMBI_WORKFLOWS_SA_CLIENT_ID`, `IMBI_WORKFLOWS_SA_CLIENT_SECRET`, `IMBI_API_URL`, `IMBI_INTERNAL_API_URL` |
-| `slackbot` | `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `POSTGRES_URL` |
+| `slackbot` | `IMBI_AUTH_JWT_SECRET`, `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `POSTGRES_URL` |
 
 This check is not complete. For example, imbi-api in `api` mode starts
 without `POSTGRES_URL`, and then connects to PostgreSQL on `localhost`. Set
 the connection URLs on every service.
 
-The gateway calls imbi-api with `IMBI_GATEWAY_API_TOKEN`. Without it, the
-gateway receives webhooks, but each action it takes gets a 401. In `all`
+The gateway calls imbi-api with `IMBI_GATEWAY_API_TOKEN`. In `all`
 mode, the container makes this token and the scheduler and workflows
 credentials when they are not set. For each of the two client credential
 pairs, set both variables or neither.

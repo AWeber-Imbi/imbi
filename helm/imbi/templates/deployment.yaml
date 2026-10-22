@@ -40,6 +40,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "imbi.fullname" . }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           env:
             - name: IMBI_SERVICE
               value: {{ .Values.service.mode | quote }}
@@ -53,6 +56,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: encryption-key
+            - name: IMBI_CONFIG_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: config-encryption-key
             - name: CLICKHOUSE_URL
               valueFrom:
                 secretKeyRef:
@@ -68,7 +76,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: postgres-url
-            {{- if or .Values.iggyConnect.enabled .Values.existingSecret }}
+            {{- if or .Values.externalValkey.url .Values.existingSecret }}
+            - name: VALKEY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: valkey-url
+                  optional: true
+            {{- end }}
+            {{- if or (include "imbi.iggyConnectEnabled" .) .Values.existingSecret }}
             {{- /* Only imbi-api reads this, and only to authenticate the
                    connectors runtime fetching its sink configuration.
                    Optional for the same reason as the scheduler keys
@@ -82,7 +98,19 @@ spec:
                   key: iggy-connectors-api-key
                   optional: true
             {{- end }}
-            {{- if and .Values.assistant.enabled .Values.assistant.anthropicApiKey }}
+            {{- if include "imbi.slackbotEnabled" . }}
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: slack-bot-token
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: slack-app-token
+            {{- end }}
+            {{- if and (or .Values.assistant.enabled (include "imbi.slackbotEnabled" .)) (or .Values.assistant.anthropicApiKey .Values.existingSecret) }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -147,6 +175,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: s3-secret-key
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- if has .Values.service.mode (list "all" "api" "ui") }}
           livenessProbe:

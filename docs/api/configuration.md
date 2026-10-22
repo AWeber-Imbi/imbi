@@ -91,18 +91,11 @@ Use a different key for `IMBI_AUTH_ENCRYPTION_KEY` and
     imbi-api also reads `IMBI_API_ENVIRONMENT` (`[server] environment`).
     It controls only the `Secure` flag of the auth cookies: the flag is set
     when the value is not `development`. Set `IMBI_API_ENVIRONMENT=production`
-    too when the UI is served over HTTPS.
+    too when the UI is served over HTTPS. The Helm chart sets both from its
+    `environment` value, which defaults to `production`.
 
 !!! warning "`IMBI_ENVIRONMENT` is not read"
-    No code reads `IMBI_ENVIRONMENT`. `compose.yaml` sets it, so that stack
-    runs in development mode
-    ([#459](https://github.com/AWeber-Imbi/imbi/issues/459)). Use
-    `ENVIRONMENT`.
-
-!!! warning "The Helm chart does not set `ENVIRONMENT`"
-    The `helm/imbi` chart sets neither `ENVIRONMENT` nor
-    `IMBI_CONFIG_ENCRYPTION_KEY`, so a chart install runs in development mode
-    ([#459](https://github.com/AWeber-Imbi/imbi/issues/459)).
+    No code reads `IMBI_ENVIRONMENT`. Use `ENVIRONMENT`.
 
 ### Production checklist
 
