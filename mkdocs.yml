@@ -43,6 +43,12 @@ nav:
       - Installation: getting-started/installation.md
       - Configuration: getting-started/configuration.md
       - Initial Setup: getting-started/setup.md
+  - User Guide:
+      - Projects: user-guide/projects.md
+      - Releases and Deployments: user-guide/releases-and-deployments.md
+      - Drift: user-guide/drift.md
+      - Doctor: user-guide/doctor.md
+      - Operations Log and Scoring: user-guide/operations-log-and-scoring.md
   - Administration:
       - Authentication: admin/authentication.md
       - Users, Teams, and Organizations: admin/users-teams-organizations.md
