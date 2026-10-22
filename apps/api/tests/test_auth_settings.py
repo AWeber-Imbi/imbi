@@ -111,3 +111,18 @@ class RefreshGrantRateLimitTestCase(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(fastapi.HTTPException) as second:
                 await auth._refresh_token_grant(request, mock.Mock(), None)
             self.assertEqual(second.exception.status_code, 429)
+
+    async def test_refresh_grant_enforces_every_limit(self) -> None:
+        request = fastapi.Request(
+            {'type': 'http', 'client': ('203.0.113.10', 1), 'headers': []}
+        )
+        # The first limit allows 10 calls; only the second one can trip.
+        with _patch_auth(rate_limit_token_refresh='10/minute;2/hour'):
+            for _ in range(2):
+                with self.assertRaises(fastapi.HTTPException) as allowed:
+                    await auth._refresh_token_grant(request, mock.Mock(), None)
+                self.assertEqual(allowed.exception.status_code, 400)
+            with self.assertRaises(fastapi.HTTPException) as blocked:
+                await auth._refresh_token_grant(request, mock.Mock(), None)
+            self.assertEqual(blocked.exception.status_code, 429)
+            self.assertIn('2 per 1 hour', blocked.exception.detail)
