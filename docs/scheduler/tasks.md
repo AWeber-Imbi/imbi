@@ -99,7 +99,7 @@ Calls `imbi-api` as the task's identity.
 {
   "kind": "api",
   "method": "GET",
-  "path": "/organizations/{{ task.organization }}/projects/",
+  "path": "/organizations/acme/projects/",
   "query": {},
   "body": null
 }

@@ -167,28 +167,6 @@ class TestGraphIntegration(unittest.IsolatedAsyncioTestCase):
 
 ### Docker Compose for Tests
 
-Use the project's `compose.ci.yaml` (run via `moon run root:services`), or create a
-minimal test compose file:
-
-```yaml
-services:
-  postgres-test:
-    image: ghcr.io/aweber-imbi/postgres:latest
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_PASSWORD: secret
-    tmpfs:
-      - /var/lib/postgresql/data
-
-  clickhouse-test:
-    image: clickhouse/clickhouse-server:latest
-    ports:
-      - "8123:8123"
-    tmpfs:
-      - /var/lib/clickhouse
-```
-
 Start the test services. This command starts `compose.ci.yaml` and writes
 the service ports to `.env.test`:
 

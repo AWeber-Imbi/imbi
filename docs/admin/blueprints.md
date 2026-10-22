@@ -47,6 +47,9 @@ matches. A filter lists project types, environments, or both. A blueprint
 with no filter applies to every record of its type. Imbi applies the
 matching blueprints in `priority` order.
 
+The project create and edit forms match on project type only. A `Project`
+blueprint with an environment filter does not apply to these forms.
+
 When you create or edit a project, fill in the fields that the matching
 blueprints add. You must complete the required fields before you can save
 the project.
