@@ -22,8 +22,12 @@ describe('splitFrontmatter', () => {
     })
   })
 
-  it('leaves a non-mapping or invalid header unchanged', () => {
-    for (const md of ['---\njust prose\n---\nbody', '---\na: [\n---\nbody']) {
+  it('leaves a non-mapping, invalid or aliased header unchanged', () => {
+    for (const md of [
+      '---\njust prose\n---\nbody',
+      '---\na: [\n---\nbody',
+      '---\na: &a [x, x]\nb: [*a, *a]\n---\nbody',
+    ]) {
       expect(splitFrontmatter(md)).toEqual({ body: md, meta: null })
     }
   })

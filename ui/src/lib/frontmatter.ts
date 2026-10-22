@@ -1,6 +1,9 @@
 import yaml from 'js-yaml'
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
+// An alias (*name) lets a small header expand exponentially when
+// formatted ("billion laughs"), so headers that use one are not parsed.
+const YAML_ALIAS = /(?:^|[\s[{,])\*\S/
 
 export interface SplitFrontmatter {
   body: string
@@ -21,7 +24,7 @@ export function formatFrontmatterValue(value: unknown): string {
  */
 export function splitFrontmatter(markdown: string): SplitFrontmatter {
   const match = FRONTMATTER.exec(markdown)
-  if (!match) return { body: markdown, meta: null }
+  if (!match || YAML_ALIAS.test(match[1])) return { body: markdown, meta: null }
   let meta: unknown
   try {
     // CORE_SCHEMA keeps dates such as 2026-10-22 as strings.
