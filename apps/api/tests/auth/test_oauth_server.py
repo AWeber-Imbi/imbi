@@ -15,6 +15,7 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models, scoring, settings
 from imbi.api.auth import authorization_codes
+from imbi.api.middleware import rate_limit
 from imbi.common import graph
 from imbi.common.auth import core
 
@@ -30,6 +31,7 @@ class OAuthServerTestCase(support.SharedAppTestCase):
     """Authorization Server endpoint behavior."""
 
     def setUp(self) -> None:
+        rate_limit.limiter.reset()
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long-xxxx',
         )
@@ -173,6 +175,14 @@ class OAuthServerTestCase(support.SharedAppTestCase):
             json={
                 'redirect_uris': ['https://trusted.example@evil.example/cb']
             },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.mock_db.create.assert_not_called()
+
+    def test_register_rejects_invalid_port_redirect(self) -> None:
+        resp = self.client.post(
+            '/auth/register',
+            json={'redirect_uris': ['https://app.example:invalid/cb']},
         )
         self.assertEqual(resp.status_code, 400)
         self.mock_db.create.assert_not_called()

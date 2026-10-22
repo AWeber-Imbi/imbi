@@ -32,6 +32,10 @@ def is_valid_redirect_uri(uri: str) -> bool:
     # the consent page, and no real client needs it.
     if parsed.fragment or '@' in parsed.netloc:
         return False
+    try:
+        parsed.port  # noqa: B018 -- raises ValueError for a bad port
+    except ValueError:
+        return False
     if parsed.scheme == 'https' and parsed.netloc:
         return True
     if parsed.scheme == 'http':
