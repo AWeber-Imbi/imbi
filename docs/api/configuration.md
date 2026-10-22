@@ -198,19 +198,18 @@ unset.
 | `IMBI_API_FORWARDED_ALLOW_IPS` | str | `''` | Comma-separated proxy IPs (or `*`) whose `X-Forwarded-*` headers are trusted. Empty: off. |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
-| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | int | `12` | Minimum password length. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | bool | `true` | Require an uppercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | bool | `true` | Require a lowercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | bool | `true` | Require a digit. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | bool | `true` | Require a special character. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | int | `12` | Minimum password length |
+| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | bool | `true` | Require an uppercase letter |
+| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | bool | `true` | Require a lowercase letter |
+| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | bool | `true` | Require a digit |
+| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | bool | `true` | Require a special character |
 | `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | int | `365` | Maximum lifetime of an API key or client credential |
 | `IMBI_AUTH_MFA_ISSUER_NAME` | str | `Imbi` | Issuer name in authenticator apps |
 | `IMBI_AUTH_MFA_TOTP_PERIOD` | int | `30` | TOTP time step in seconds |
 | `IMBI_AUTH_MFA_TOTP_DIGITS` | int | `6` | TOTP code length |
-| `IMBI_AUTH_RATE_LIMIT_LOGIN` | str | `5/minute` | Password login rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | str | `10/minute` | Token refresh rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | str | `3/minute` | OAuth flow start rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_RATE_LIMIT_API_KEY` | str | `100/minute` | API key request rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_LOGIN` | str | `5/minute` | Password login rate |
+| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | str | `10/minute` | Token refresh rate |
+| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | str | `3/minute` | OAuth flow start rate |
 | `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` | bool | `true` | Link an SSO sign-in to the user with the same email |
 | `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` | bool | `true` | Create a user at the first SSO sign-in |
 | `IMBI_AUTH_DCR_ENABLED` | bool | `true` | Let OAuth clients register at `/auth/register` (RFC 7591) |

@@ -121,7 +121,6 @@ class Auth(settings.Auth):  # type: ignore[misc]
     rate_limit_login: str = '5/minute'
     rate_limit_token_refresh: str = '10/minute'
     rate_limit_oauth_init: str = '3/minute'
-    rate_limit_api_key: str = '100/minute'
 
     # OAuth Behavior
     # Auto-link an incoming OAuth identity to an existing user when the

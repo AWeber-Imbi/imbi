@@ -35,17 +35,21 @@ Only the `admin` role has these permissions.
 
 ### Password rules
 
-Imbi checks these rules when a user changes a password:
+Imbi checks these rules when a user changes a password, and when an
+administrator sets a password for a new user:
 
-- Minimum 12 characters
-- At least one uppercase letter
-- At least one lowercase letter
-- At least one digit
-- At least one special character from `!@#$%^&*()_+-=[]{}|;:,.<>?`
+| Rule | Setting | Default |
+|---|---|---|
+| Minimum length | `IMBI_AUTH_PASSWORD_MIN_LENGTH` | `12` |
+| At least one uppercase letter | `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | `true` |
+| At least one lowercase letter | `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | `true` |
+| At least one digit | `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | `true` |
+| At least one special character | `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | `true` |
 
-The rules are fixed. The `IMBI_AUTH_PASSWORD_*` settings exist, but the
-API does not read them. Imbi does not apply the rules to the password that
-an administrator sets when they create a user.
+The special characters are `!@#$%^&*()_+-=[]{}|;:,.<>?`.
+
+Imbi does not check passwords that exist already. A new rule applies at
+the next password change.
 
 ## SSO login providers
 
@@ -94,9 +98,21 @@ When a provider is in use, the login page shows a button for it.
 The Google plugin has a **Workspace domain** option. Imbi sends it to Google
 as the `hd` parameter, and it rejects a sign-in unless the `hd` claim that
 Google returns matches the option. Personal Google accounts have no `hd`
-claim, so Imbi rejects them. The generic **Allowed domains** option of a login
-provider is not enforced yet
-([#472](https://github.com/AWeber-Imbi/imbi/issues/472)).
+claim, so Imbi rejects them.
+
+Each login provider also has an `allowed_domains` option. The form does not
+show it, so set it with the API:
+
+```http
+PATCH /login-providers/<provider-slug>
+{"options": {"allowed_domains": ["example.com"]}}
+```
+
+When the list is not empty, Imbi rejects a sign-in unless the provider
+says that the email is verified and the email domain is in the list. The
+compare ignores case. An empty list accepts all domains. The `aws` plugin
+does not supply a verified email, so do not set this option on an `aws`
+login provider.
 
 ### Callback URL
 
@@ -207,17 +223,18 @@ all tokens and all encrypted values unusable.
 
 Imbi limits these requests for each client IP address:
 
-| Request | Limit |
-|---|---|
-| `POST /auth/login` | 5 per minute |
-| `POST /auth/token/refresh` | 10 per minute |
-| `GET /auth/oauth/{provider}` | 3 per minute |
-| `GET /auth/oauth/{provider}/callback` | 10 per minute |
-| `POST /auth/logout` | 30 per minute |
-| `POST /mfa/verify` | 5 per minute |
+| Request | Limit | Setting |
+|---|---|---|
+| `POST /auth/login` | 5 per minute | `IMBI_AUTH_RATE_LIMIT_LOGIN` |
+| `POST /auth/token/refresh` | 10 per minute | `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` |
+| `GET /auth/oauth/{provider}` | 3 per minute | `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` |
+| `GET /auth/oauth/{provider}/callback` | 10 per minute | none |
+| `POST /auth/logout` | 30 per minute | none |
+| `POST /mfa/verify` | 5 per minute | none |
 
-The limits are fixed in the code. The `IMBI_AUTH_RATE_LIMIT_*` settings
-exist, but the API does not read them. Behind a reverse proxy, set
+A setting value uses the slowapi format, for example `5/minute` or
+`100/hour`. If the value is not valid, Imbi logs an error and does not
+limit that request. Behind a reverse proxy, set
 `IMBI_API_FORWARDED_ALLOW_IPS` to the proxy addresses. If you do not, Imbi
 counts all requests against the proxy address.
 

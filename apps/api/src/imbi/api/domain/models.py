@@ -17,6 +17,7 @@ import typing
 
 import pydantic
 
+from imbi.api import settings
 from imbi.common import graph, models
 
 __all__ = [
@@ -404,6 +405,26 @@ class Upload(models.GraphModel):
         return self
 
 
+def validate_password_policy(value: str) -> str:
+    """Validate ``value`` against the ``IMBI_AUTH_PASSWORD_*`` settings."""
+    auth = settings.get_auth_settings()
+    if len(value) < auth.password_min_length:
+        raise ValueError(
+            f'Password must be at least {auth.password_min_length} characters'
+        )
+    if auth.password_require_uppercase and not any(c.isupper() for c in value):
+        raise ValueError('Password must contain at least one uppercase')
+    if auth.password_require_lowercase and not any(c.islower() for c in value):
+        raise ValueError('Password must contain at least one lowercase')
+    if auth.password_require_digit and not any(c.isdigit() for c in value):
+        raise ValueError('Password must contain at least one digit')
+    if auth.password_require_special and not any(
+        c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in value
+    ):
+        raise ValueError('Password must contain at least one special')
+    return value
+
+
 class UserCreate(pydantic.BaseModel):
     """Request model for creating users."""
 
@@ -416,6 +437,12 @@ class UserCreate(pydantic.BaseModel):
     email_notifications: bool = True
     organization_slug: str
     role_slug: str
+
+    @pydantic.field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, value: str | None) -> str | None:
+        """Validate a supplied password against the password policy."""
+        return None if value is None else validate_password_policy(value)
 
 
 class UserResponse(pydantic.BaseModel):
@@ -459,18 +486,8 @@ class PasswordChangeRequest(pydantic.BaseModel):
     @pydantic.field_validator('new_password')
     @classmethod
     def validate_password_strength(cls, value: str) -> str:
-        """Validate password meets minimum security requirements."""
-        if len(value) < 12:
-            raise ValueError('Password must be at least 12 characters')
-        if not any(c.isupper() for c in value):
-            raise ValueError('Password must contain at least one uppercase')
-        if not any(c.islower() for c in value):
-            raise ValueError('Password must contain at least one lowercase')
-        if not any(c.isdigit() for c in value):
-            raise ValueError('Password must contain at least one digit')
-        if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in value):
-            raise ValueError('Password must contain at least one special')
-        return value
+        """Validate password meets the configured password policy."""
+        return validate_password_policy(value)
 
 
 class ServiceAccountCreate(pydantic.BaseModel):

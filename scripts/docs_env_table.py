@@ -293,7 +293,6 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_AUTH_RATE_LIMIT_LOGIN': 'Password login rate',
     'IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH': 'Token refresh rate',
     'IMBI_AUTH_RATE_LIMIT_OAUTH_INIT': 'OAuth flow start rate',
-    'IMBI_AUTH_RATE_LIMIT_API_KEY': 'API key request rate',
     'IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL': 'Link an SSO sign-in to the user '
     'with the same email',
     'IMBI_AUTH_OAUTH_AUTO_CREATE_USERS': 'Create a user at the first SSO '
@@ -435,21 +434,7 @@ DESCRIPTIONS: dict[str, str] = {
     'VITE_SENTRY_DSN': 'Sentry DSN of the UI, written into `index.html`',
 }
 
-_NOT_READ = '. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)).'
-NOTES: dict[str, str] = dict.fromkeys(
-    (
-        'IMBI_AUTH_PASSWORD_MIN_LENGTH',
-        'IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE',
-        'IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE',
-        'IMBI_AUTH_PASSWORD_REQUIRE_DIGIT',
-        'IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL',
-        'IMBI_AUTH_RATE_LIMIT_LOGIN',
-        'IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH',
-        'IMBI_AUTH_RATE_LIMIT_OAUTH_INIT',
-        'IMBI_AUTH_RATE_LIMIT_API_KEY',
-    ),
-    _NOT_READ,
-)
+NOTES: dict[str, str] = {}
 
 _missing: list[str] = []
 

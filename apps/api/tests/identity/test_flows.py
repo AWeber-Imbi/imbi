@@ -509,6 +509,54 @@ class CompleteLoginFlowTestCase(unittest.IsolatedAsyncioTestCase):
                 )
 
 
+class AllowedDomainsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Verify complete_login_flow enforces the allowed_domains option."""
+
+    async def _login(
+        self, allowed_domains: list[str], email: str, verified: bool
+    ) -> None:
+        state_data = mock.MagicMock()
+        state_data.integration_id = 'integration-1'
+        state_data.nonce = 'nonce-ad'
+        profile = IdentityProfile(
+            subject='sub', email=email, email_verified=verified
+        )
+        handler = mock.MagicMock(spec=flows.IdentityCapability)
+        handler.exchange_code = mock.AsyncMock(
+            return_value=(profile, IdentityCredentials(access_token='at'))
+        )
+        integration = {
+            'slug': 'integration-1',
+            'options': {'allowed_domains': allowed_domains},
+        }
+        with (
+            mock.patch.object(
+                flows.state, 'decode_login_state', return_value=state_data
+            ),
+            _patch_load_handler(handler, integration=integration),
+        ):
+            await flows.complete_login_flow(
+                mock.AsyncMock(),
+                code='c',
+                state_token='s',
+                valkey_client=_fresh_nonce_valkey(),
+            )
+
+    async def test_empty_list_allows_any_domain(self) -> None:
+        await self._login([], 'u@anywhere.test', verified=False)
+
+    async def test_matching_domain_is_case_insensitive(self) -> None:
+        await self._login(['Example.COM'], 'u@EXAMPLE.com', verified=True)
+
+    async def test_mismatched_domain_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'not allowed'):
+            await self._login(['example.com'], 'u@evil.test', verified=True)
+
+    async def test_unverified_email_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'verified email'):
+            await self._login(['example.com'], 'u@example.com', verified=False)
+
+
 class RefreshConnectionTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify refresh_connection's success / no-token / IdP-error paths."""
 

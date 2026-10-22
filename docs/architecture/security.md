@@ -318,12 +318,6 @@ authorization headers with `[redacted]` before it stores a delivery. See
   organization routes, the API uses only the role in that organization.
   The UI can thus show an action that returns 403.
   [#458](https://github.com/AWeber-Imbi/imbi/issues/458)
-- The `IMBI_AUTH_PASSWORD_*` and `IMBI_AUTH_RATE_LIMIT_*` settings are not
-  read. The password rules and the rate limits are fixed in the code.
-  [#463](https://github.com/AWeber-Imbi/imbi/issues/463)
-- The `allowed_domains` option of a login provider is not applied. A
-  login provider accepts a sign-in from any email domain.
-  [#472](https://github.com/AWeber-Imbi/imbi/issues/472)
 - Client-credential tokens are not limited by their requested scopes.
   API key scopes do apply.
   [#484](https://github.com/AWeber-Imbi/imbi/issues/484)

@@ -752,7 +752,9 @@ async def register_oauth_client(
 
 
 @auth_router.post('/login', response_model=auth_models.TokenResponse)
-@rate_limit.limiter.limit('5/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    lambda: settings.get_auth_settings().rate_limit_login
+)
 async def login(
     request: fastapi.Request,
     response: fastapi.Response,
@@ -1143,7 +1145,9 @@ async def _rotate_refresh_token(
 
 
 @auth_router.post('/token/refresh', response_model=auth_models.TokenResponse)
-@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    lambda: settings.get_auth_settings().rate_limit_token_refresh
+)
 async def refresh_token(
     request: fastapi.Request,
     response: fastapi.Response,
@@ -1317,7 +1321,9 @@ async def logout(
 
 
 @auth_router.get('/oauth/{provider}')
-@rate_limit.limiter.limit('3/minute')  # type: ignore[untyped-decorator]
+@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
+    lambda: settings.get_auth_settings().rate_limit_oauth_init
+)
 async def oauth_login(
     request: fastapi.Request,
     db: graph.Pool,
