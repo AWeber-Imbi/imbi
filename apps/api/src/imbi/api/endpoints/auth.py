@@ -1310,6 +1310,10 @@ async def _rotate_refresh_token(
         principal_type = 'service_account'
         principal_id = sa.slug
         extra_claims = {'auth_method': 'client_credentials'}
+        # Keep the scopes of the first token. Without them, the rotated
+        # token gets every permission of the account's roles.
+        if payload.get('scope'):
+            extra_claims['scope'] = payload['scope']
     else:
         user_results = await db.match(models.User, {'email': subject})
         user = user_results[0] if user_results else None

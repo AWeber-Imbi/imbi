@@ -329,6 +329,49 @@ class ServiceAccountPermissionTestCase(
         self.assertEqual(ctx.auth_method, 'client_credentials')
         self.assertIn('project:read', ctx.permissions)
 
+    async def test_authenticate_jwt_client_credentials_scope(
+        self,
+    ) -> None:
+        """#484: the scope claim limits a client-credentials token."""
+        from imbi.common import settings
+        from imbi.common.auth import core
+
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long'
+        )
+        mock_db = mock.AsyncMock()
+        mock_db.match.return_value = [
+            models.ServiceAccount(
+                slug='deploy-bot',
+                display_name='Deploy Bot',
+                is_active=True,
+                created_at=datetime.datetime.now(datetime.UTC),
+            )
+        ]
+
+        def execute_side_effect(query, params=None, columns=None):
+            if 'MEMBER_OF' in query:
+                return [{'permissions': ['project:read', 'project:write']}]
+            return []
+
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        for claims, expected in (
+            ({}, {'project:read', 'project:write'}),
+            ({'scope': 'project:read blueprint:read'}, {'project:read'}),
+        ):
+            token = core.create_access_token(
+                'deploy-bot',
+                extra_claims={'auth_method': 'client_credentials', **claims},
+                auth_settings=auth_settings,
+            )
+            with mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ):
+                ctx = await permissions.authenticate_jwt(
+                    mock_db, token, auth_settings
+                )
+            self.assertEqual(expected, ctx.permissions, claims)
+
     async def test_authenticate_jwt_channel_claim(self) -> None:
         """A user JWT's ``channel`` claim sets the context channel."""
         from imbi.common import settings

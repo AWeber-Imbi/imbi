@@ -97,6 +97,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 4. Examine the `allowed_domains` option of your login provider. Imbi now
    rejects a sign-in from a domain that is not in a list that is not empty.
    See [Authentication](../admin/authentication.md#sso-login-providers).
+5. Check each client credential that has scopes, and each client that
+   sends `scope` to `POST /auth/token`. A client-credentials token now
+   gets only the permissions in its scopes, as an API key does. Before,
+   it got all the permissions of the roles of the service account. The
+   seeded `imbi-scheduler` and `imbi-workflows` credentials have no
+   scopes, so they do not change.
 
 ## 2.39.1
 

@@ -99,8 +99,7 @@ Each row in the key list has two actions:
 - **Revoke API key** stops the key. Imbi keeps the revoked key in the list
   for audit.
 
-Each API process keeps a verified key in memory for 60 seconds. A rotated
-or revoked key can work for up to 60 seconds after the change.
+A rotated or revoked key stops at once.
 
 ## Client credentials
 
@@ -134,10 +133,11 @@ access token as `Authorization: Bearer <token>`. To get a new pair, send
 the refresh token with `grant_type=refresh_token`.
 
 You can send `scope` (permission names, separated by spaces) in the token
-request. Imbi writes the granted scopes into the token. In this release,
-Imbi does not apply those scopes to a client-credential token: the token
-gets all the permissions of the roles of the account. To limit a
-credential, limit the role of the service account.
+request. If the credential has scopes, the token gets the scopes that are
+in both lists. Imbi writes the granted scopes into the token, and a token
+refreshed from it keeps them. The token gets only the permissions that are
+both in its scopes and in the roles of the account. A token with no scopes
+gets all the permissions of the roles, as an API key with no scopes does.
 
 **Rotate credential** and **Revoke credential** work like the actions for
 API keys.

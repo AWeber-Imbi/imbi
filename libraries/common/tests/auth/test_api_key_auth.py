@@ -349,8 +349,70 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('read:projects', auth_context.permissions)
         self.assertNotIn('write:projects', auth_context.permissions)
 
+    def _cache_test_db(self) -> mock.AsyncMock:
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
+
+        def execute_side_effect(query, params=None, columns=None):
+            if 'APIKey' in query and 'OWNED_BY' in query:
+                return [{'k': self.api_key_data, 'u': user_dict, 's': None}]
+            if 'Permission' in query or 'GRANTS' in query:
+                return [{'permissions': ['read:projects']}]
+            return []
+
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        return mock_db
+
+    async def test_cache_hit_rejects_a_revoked_key(self) -> None:
+        """#485: revoking a key takes effect at once, cache or not."""
+        mock_db = self._cache_test_db()
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+            self.api_key_data['revoked'] = True
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await permissions.authenticate_api_key(
+                    mock_db, self.full_key, self.auth_settings
+                )
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    async def test_cache_hit_rejects_a_rotated_key(self) -> None:
+        """#485: after a rotation, the old secret fails at once."""
+        mock_db = self._cache_test_db()
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+            self.api_key_data['key_hash'] = password.hash_password('new')
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await permissions.authenticate_api_key(
+                    mock_db, self.full_key, self.auth_settings
+                )
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    async def test_cache_hit_rejects_a_deleted_key(self) -> None:
+        """#485: a key that is gone from the graph fails at once."""
+        mock_db = self._cache_test_db()
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+            mock_db.execute = mock.AsyncMock(return_value=[])
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await permissions.authenticate_api_key(
+                    mock_db, self.full_key, self.auth_settings
+                )
+        self.assertEqual(ctx.exception.status_code, 401)
+
     async def test_second_call_with_same_key_skips_db(self) -> None:
-        """M15: cached auth short-circuits the DB + Argon2 path."""
+        """M15: a cache hit reads only the key, not Argon2 or roles."""
         mock_db = mock.AsyncMock()
         user_dict = self.test_user.model_dump(mode='json')
 
@@ -382,10 +444,14 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_db, self.full_key, self.auth_settings
             )
             calls_after_first = mock_db.execute.await_count
-            second = await permissions.authenticate_api_key(
-                mock_db, self.full_key, self.auth_settings
-            )
-        self.assertEqual(mock_db.execute.await_count, calls_after_first)
+            with mock.patch.object(
+                password, 'verify_password', side_effect=AssertionError
+            ):
+                second = await permissions.authenticate_api_key(
+                    mock_db, self.full_key, self.auth_settings
+                )
+        # One read of the APIKey node, so revocation is seen at once.
+        self.assertEqual(mock_db.execute.await_count, calls_after_first + 1)
         # Equal but not identical: the cache hands out a copy per hit, so a
         # caller that mutated one context cannot change what the next request
         # using the same key sees. This was `assertIs`, which pinned the
@@ -447,17 +513,17 @@ class ApiKeyCacheIsolationTests(unittest.TestCase):
         ctx = permissions.AuthContext(
             auth_method='api_key', permissions={'project:read'}
         )
-        permissions._api_key_cache_store('ik_isolation', ctx)
+        permissions._api_key_cache_store('ik_isolation', 'hash', ctx)
 
-        first = permissions._api_key_cache_lookup('ik_isolation')
-        second = permissions._api_key_cache_lookup('ik_isolation')
+        first = permissions._api_key_cache_lookup('ik_isolation', 'hash')
+        second = permissions._api_key_cache_lookup('ik_isolation', 'hash')
         assert first is not None and second is not None
         self.assertIsNot(first, second)
         self.assertIsNot(first, ctx)
 
         first.permissions.add('project:write')
         self.assertEqual({'project:read'}, second.permissions)
-        third = permissions._api_key_cache_lookup('ik_isolation')
+        third = permissions._api_key_cache_lookup('ik_isolation', 'hash')
         assert third is not None
         self.assertEqual({'project:read'}, third.permissions)
 

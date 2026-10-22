@@ -1059,6 +1059,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         )
 
         self.client = testclient.TestClient(self.test_app)
+        rate_limit.limiter.reset()
 
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
@@ -1121,6 +1122,50 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
             # reuse would miss every descendant minted from this call.
             second_call_params = self.mock_db.execute.call_args_list[1][0][1]
             self.assertEqual(second_call_params['family_id'], 'fam-test')
+
+    def test_refresh_keeps_client_credentials_scope(self) -> None:
+        """#484: a refreshed client-credentials token keeps its scope."""
+        from imbi.api import models
+        from imbi.common.auth import core
+
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+        refresh_token = core.create_refresh_token(
+            'deploy-bot',
+            extra_claims={
+                'auth_method': 'client_credentials',
+                'scope': 'project:read',
+            },
+            auth_settings=auth_settings,
+        )
+        self.mock_db.match.return_value = [
+            models.ServiceAccount(
+                slug='deploy-bot',
+                display_name='Deploy Bot',
+                is_active=True,
+                created_at=datetime.datetime.now(datetime.UTC),
+            )
+        ]
+        self.mock_db.execute.side_effect = [
+            [{'family_id': 'fam-test'}],
+            [{'principal_count': 1}],
+        ]
+
+        with mock.patch(
+            'imbi.api.settings.get_auth_settings',
+            return_value=auth_settings,
+        ):
+            response = self.client.post(
+                '/auth/token/refresh',
+                json={'refresh_token': refresh_token},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        for name in ('access_token', 'refresh_token'):
+            claims = core.verify_token(data[name], auth_settings)
+            self.assertEqual('project:read', claims.get('scope'))
 
     def test_refresh_token_via_cookie(self) -> None:
         """Refresh succeeds from the HttpOnly cookie with no request body."""
