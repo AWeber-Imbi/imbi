@@ -92,8 +92,11 @@ When a provider is in use, the login page shows a button for it.
 | `integration:delete` | Delete a login provider |
 
 The Google plugin has a **Workspace domain** option. Imbi sends it to Google
-as the `hd` parameter. Imbi does not examine the domain in the token that
-Google returns.
+as the `hd` parameter, and it rejects a sign-in unless the `hd` claim that
+Google returns matches the option. Personal Google accounts have no `hd`
+claim, so Imbi rejects them. The generic **Allowed domains** option of a login
+provider is not enforced yet
+([#472](https://github.com/AWeber-Imbi/imbi/issues/472)).
 
 ### Callback URL
 
@@ -148,10 +151,16 @@ default role:
 
 ## Multi-factor authentication
 
-Users turn on TOTP multi-factor authentication (MFA) at
-**Settings > Security**. Imbi gives the user backup codes during setup.
-After setup, password sign-in asks for a code from the authenticator app or
-a backup code.
+Imbi supports TOTP multi-factor authentication (MFA) through the API only.
+The **Settings > Security** page has no working MFA control. A user turns MFA
+on with `POST /mfa/setup` and `POST /mfa/verify`, and turns it off with
+`DELETE /mfa/disable`. Setup returns backup codes.
+
+!!! warning
+    The UI sign-in form does not ask for an MFA code. A password user who
+    turns MFA on cannot sign in through the UI. Do not turn on MFA for a user
+    who signs in to the UI with a password
+    ([#480](https://github.com/AWeber-Imbi/imbi/issues/480)).
 
 MFA applies to password sign-in only. SSO sign-in does not ask for an Imbi
 MFA code. Administrators cannot make MFA mandatory.
