@@ -44,24 +44,38 @@ nav:
       - Configuration: getting-started/configuration.md
       - Initial Setup: getting-started/setup.md
   - User Guide:
+      - Overview: user-guide/index.md
       - Projects: user-guide/projects.md
       - Releases and Deployments: user-guide/releases-and-deployments.md
       - Drift: user-guide/drift.md
       - Doctor: user-guide/doctor.md
       - Operations Log and Scoring: user-guide/operations-log-and-scoring.md
+      - Pull Requests and Dependencies: user-guide/pull-requests-and-dependencies.md
+      - Documents and Reports: user-guide/documents-and-reports.md
+      - Search and Assistant: user-guide/search-and-assistant.md
+      - Your Settings: user-guide/settings.md
   - Administration:
-      - Authentication: admin/authentication.md
-      - Users, Teams, and Organizations: admin/users-teams-organizations.md
-      - Roles and Permissions: admin/roles-and-permissions.md
-      - Blueprints: admin/blueprints.md
-      - AI Models: admin/ai-models.md
-      - Prompts: admin/prompts.md
-      - Secrets: admin/secrets.md
-      - Agents: admin/agents.md
-      - Agent Tasks: admin/agent-tasks.md
-      - Workflows: admin/workflows.md
-      - Integrations and Plugins: admin/integrations-and-plugins.md
-  - Integrations:
+      - Access:
+          - Authentication: admin/authentication.md
+          - Users, Teams, and Organizations: admin/users-teams-organizations.md
+          - Roles and Permissions: admin/roles-and-permissions.md
+          - Service Accounts: admin/service-accounts.md
+      - Catalog:
+          - Catalog Settings: admin/catalog-settings.md
+          - Blueprints: admin/blueprints.md
+          - Scoring Policies: admin/scoring-policies.md
+          - Integrations and Plugins: admin/integrations-and-plugins.md
+          - Webhooks: admin/webhooks.md
+      - AI and Automation:
+          - AI Models: admin/ai-models.md
+          - Prompts: admin/prompts.md
+          - Assistant and MCP Servers: admin/assistant-and-mcp-servers.md
+          - Secrets: admin/secrets.md
+          - Agents: admin/agents.md
+          - Agent Tasks: admin/agent-tasks.md
+          - Workflows: admin/workflows.md
+      - Maintenance: admin/maintenance.md
+  - Plugins:
       - Overview: plugins/index.md
       - AWS: plugins/aws.md
       - GitHub: plugins/github.md
@@ -76,89 +90,19 @@ nav:
       - Agent Runners: deployment/agent-runners.md
       - Upgrading: deployment/upgrading.md
       - Operations: deployment/operations.md
+      - Restore a Backup: api/restore-backup.md
   - Architecture:
       - Overview: architecture/overview.md
       - Services: architecture/services.md
       - Events: architecture/events.md
-      - Flows: architecture/flows.md
-      - Delivery: architecture/delivery.md
-  - API Service:
-      - Overview: api/index.md
-      - Configuration: api/configuration.md
-      - Restore Backup: api/restore-backup.md
-      - Architecture Decision Records:
-          - Overview: api/adr.md
-          - 0001 Record Architecture Decisions: api/adr/0001-record-architecture-decisions.md
-          - 0002 Authentication and Authorization: api/adr/0002-authentication-and-authorization-architecture.md
-          - 0003 Email Sending: api/adr/0003-email-sending-architecture.md
-          - 0004 Phase 5 Authentication Enhancements: api/adr/0004-phase-5-authentication-enhancements.md
-          - 0005 File Upload Storage: api/adr/0005-file-upload-storage-architecture.md
-          - 0006 Project Identity and Multi-Type: api/adr/0006-project-identity-and-multi-type.md
-          - 0007 Relationship Blueprints: api/adr/0007-relationship-blueprints.md
-          - 0008 Plugin System Architecture: api/adr/0008-plugin-system-architecture.md
-          - 0009 Database-Driven OAuth Providers: api/adr/0009-database-driven-oauth-providers.md
-          - 0010 Identity Plugin Architecture: api/adr/0010-identity-plugin-architecture.md
-          - 0011 Graph-Based Project Scoring: api/adr/0011-graph-based-project-scoring.md
-          - 0012 Plugin Manifest Service Template: api/adr/0012-plugin-manifest-service-template.md
-          - 0013 Deployment Plugin Type: api/adr/0013-deployment-plugin-type.md
-          - 0014 Generic Plugin-Entity CRUD: api/adr/0014-generic-plugin-entity-abstraction.md
-          - 0015 CycloneDX 1.7 SBOM Standard: api/adr/0015-cyclonedx-1.7-sbom-standard.md
-          - 0016 Delegated Execution for Scheduled Jobs: api/adr/0016-delegated-execution-for-scheduled-jobs.md
-          - 0017 Autonomous Deployment Principals: api/adr/0017-autonomous-deployment-principals.md
-          - 0018 AI Model Catalog: api/adr/0018-ai-model-catalog.md
-          - 0019 Apache Iggy Message Streaming: api/adr/0019-apache-iggy-message-streaming.md
-          - 0020 Agent Task Contract: api/adr/0020-agent-task-contract.md
-          - 0021 Workflow Contract: api/adr/0021-workflow-contract.md
-          - 0022 Agent Harness and Secrets Broker: api/adr/0022-agent-harness-and-secrets-broker.md
-  - Library Reference:
-      - Overview: common/index.md
-      - Installation: common/installation.md
-      - Quick Start: common/quickstart.md
-      - Configuration: common/configuration.md
-      - API Reference:
-          - Settings: common/api/settings.md
-          - Imbi API Client: common/api/api-client.md
-          - Graph (Apache AGE): common/api/graph.md
-          - ClickHouse Client: common/api/clickhouse.md
-          - Valkey Client: common/api/valkey.md
-          - Iggy: common/api/iggy.md
-          - Models: common/api/models.md
-          - Blueprints: common/api/blueprints.md
-          - JSON Pointer: common/api/json-pointer.md
-          - Authentication: common/api/auth.md
-          - Permissions: common/api/permissions.md
-          - Prompts: common/api/prompts.md
-          - LLM: common/api/llm.md
-          - Workflows: common/api/workflows.md
-          - MCP Toolset Policy: common/api/mcp.md
-          - Logging: common/api/logging.md
-          - OpenTelemetry: common/api/otel.md
-          - Metrics: common/api/metrics.md
-          - Lifespan: common/api/lifespan.md
-      - Guides:
-          - Database Setup: common/guides/database-setup.md
-          - Deployment: common/guides/deployment.md
-          - Authentication: common/guides/authentication.md
-          - Lifespan and Dependency Injection: common/guides/lifespan-di.md
-          - Testing: common/guides/testing.md
-      - Architecture Decision Records:
-          - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
-          - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md
-          - 0003 Use ClickHouse for PR Tracking: common/adr/0003-use-clickhouse-for-pr-tracking.md
-  - Plugins:
-      - Authoring Plugins: common/plugins/index.md
-      - Configuration: common/plugins/configuration.md
-      - Logs: common/plugins/logs.md
-      - Identity: common/plugins/identity.md
-      - Deployment: common/plugins/deployment.md
-      - Lifecycle: common/plugins/lifecycle.md
-      - Webhook Actions: common/plugins/webhook-actions.md
-      - Analysis: common/plugins/analysis.md
-      - Incidents: common/plugins/incidents.md
-      - Commit Sync: common/plugins/commit-sync.md
-      - Pull Request Sync: common/plugins/pr-sync.md
-      - Tools: common/plugins/tools.md
+      - Request Flows: architecture/flows.md
+      - Delivery Model: architecture/delivery.md
+      - Security: architecture/security.md
+      - Agent Runtime: architecture/agent-runtime.md
   - Services:
+      - API:
+          - Overview: api/index.md
+          - Configuration Reference: api/configuration.md
       - Assistant: assistant/index.md
       - Gateway:
           - Overview: gateway/index.md
@@ -168,14 +112,88 @@ nav:
           - Overview: scheduler/index.md
           - Configuration: scheduler/configuration.md
           - Scheduled Tasks: scheduler/tasks.md
-          - Architecture Decision Records:
-              - 0001 Trigger Engine on psycopg3: scheduler/adr/0001-trigger-engine-on-psycopg.md
-              - 0002 No Credential Store in v1: scheduler/adr/0002-no-credential-store-in-v1.md
-              - 0003 No Local Token-Minting Bridge: scheduler/adr/0003-no-local-token-minting-bridge.md
       - Slackbot:
           - Overview: slackbot/index.md
           - Slack App Manifest: slackbot/slack-app-manifest.md
       - Workflows Engine: workflows/index.md
+  - Developer Reference:
+      - Library:
+          - Overview: common/index.md
+          - Installation: common/installation.md
+          - Quick Start: common/quickstart.md
+          - Configuration: common/configuration.md
+          - API Reference:
+              - Settings: common/api/settings.md
+              - Imbi API Client: common/api/api-client.md
+              - Graph (Apache AGE): common/api/graph.md
+              - ClickHouse Client: common/api/clickhouse.md
+              - Valkey Client: common/api/valkey.md
+              - Iggy: common/api/iggy.md
+              - Models: common/api/models.md
+              - Blueprints: common/api/blueprints.md
+              - JSON Pointer: common/api/json-pointer.md
+              - Authentication: common/api/auth.md
+              - Permissions: common/api/permissions.md
+              - Prompts: common/api/prompts.md
+              - LLM: common/api/llm.md
+              - Workflows: common/api/workflows.md
+              - MCP Toolset Policy: common/api/mcp.md
+              - Logging: common/api/logging.md
+              - OpenTelemetry: common/api/otel.md
+              - Metrics: common/api/metrics.md
+              - Lifespan: common/api/lifespan.md
+          - Guides:
+              - Database Setup: common/guides/database-setup.md
+              - Deployment: common/guides/deployment.md
+              - Authentication: common/guides/authentication.md
+              - Lifespan and Dependency Injection: common/guides/lifespan-di.md
+              - Testing: common/guides/testing.md
+      - Plugin Authoring:
+          - Overview: common/plugins/index.md
+          - Configuration: common/plugins/configuration.md
+          - Logs: common/plugins/logs.md
+          - Identity: common/plugins/identity.md
+          - Deployment: common/plugins/deployment.md
+          - Lifecycle: common/plugins/lifecycle.md
+          - Webhook Actions: common/plugins/webhook-actions.md
+          - Analysis: common/plugins/analysis.md
+          - Incidents: common/plugins/incidents.md
+          - Commit Sync: common/plugins/commit-sync.md
+          - Pull Request Sync: common/plugins/pr-sync.md
+          - Tools: common/plugins/tools.md
+      - Architecture Decision Records:
+          - API:
+              - Overview: api/adr.md
+              - 0001 Record Architecture Decisions: api/adr/0001-record-architecture-decisions.md
+              - 0002 Authentication and Authorization: api/adr/0002-authentication-and-authorization-architecture.md
+              - 0003 Email Sending: api/adr/0003-email-sending-architecture.md
+              - 0004 Phase 5 Authentication Enhancements: api/adr/0004-phase-5-authentication-enhancements.md
+              - 0005 File Upload Storage: api/adr/0005-file-upload-storage-architecture.md
+              - 0006 Project Identity and Multi-Type: api/adr/0006-project-identity-and-multi-type.md
+              - 0007 Relationship Blueprints: api/adr/0007-relationship-blueprints.md
+              - 0008 Plugin System Architecture: api/adr/0008-plugin-system-architecture.md
+              - 0009 Database-Driven OAuth Providers: api/adr/0009-database-driven-oauth-providers.md
+              - 0010 Identity Plugin Architecture: api/adr/0010-identity-plugin-architecture.md
+              - 0011 Graph-Based Project Scoring: api/adr/0011-graph-based-project-scoring.md
+              - 0012 Plugin Manifest Service Template: api/adr/0012-plugin-manifest-service-template.md
+              - 0013 Deployment Plugin Type: api/adr/0013-deployment-plugin-type.md
+              - 0014 Generic Plugin-Entity CRUD: api/adr/0014-generic-plugin-entity-abstraction.md
+              - 0015 CycloneDX 1.7 SBOM Standard: api/adr/0015-cyclonedx-1.7-sbom-standard.md
+              - 0016 Delegated Execution for Scheduled Jobs: api/adr/0016-delegated-execution-for-scheduled-jobs.md
+              - 0017 Autonomous Deployment Principals: api/adr/0017-autonomous-deployment-principals.md
+              - 0018 AI Model Catalog: api/adr/0018-ai-model-catalog.md
+              - 0019 Apache Iggy Message Streaming: api/adr/0019-apache-iggy-message-streaming.md
+              - 0020 Agent Task Contract: api/adr/0020-agent-task-contract.md
+              - 0021 Workflow Contract: api/adr/0021-workflow-contract.md
+              - 0022 Agent Harness and Secrets Broker: api/adr/0022-agent-harness-and-secrets-broker.md
+          - Library:
+              - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
+              - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md
+              - 0003 Use ClickHouse for PR Tracking: common/adr/0003-use-clickhouse-for-pr-tracking.md
+          - Scheduler:
+              - 0001 Trigger Engine on psycopg3: scheduler/adr/0001-trigger-engine-on-psycopg.md
+              - 0002 No Credential Store in v1: scheduler/adr/0002-no-credential-store-in-v1.md
+              - 0003 No Local Token-Minting Bridge: scheduler/adr/0003-no-local-token-minting-bridge.md
 
 plugins:
   - search
