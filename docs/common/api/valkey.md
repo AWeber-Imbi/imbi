@@ -42,9 +42,10 @@ async def get_greeting(*, client: valkey.Client) -> dict[str, str | None]:
 
 ## Configuration
 
-The Valkey URL is read from `VALKEY_URL` (or the `[valkey]` section of a
-`config.toml`). The default is `valkey://localhost:6379/0`. Supported
-schemes are `valkey://`, `valkeys://`, and `unix://`.
+`valkey_lifespan` reads the Valkey URL from the `VALKEY_URL` environment
+variable (or a `.env` file). It does not read the `[valkey]` section of a
+`config.toml`. The default is `valkey://localhost:6379/0`. The setting
+accepts only the `valkey://` scheme.
 
 ## API Reference
 

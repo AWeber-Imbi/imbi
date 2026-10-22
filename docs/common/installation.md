@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.12 or higher
+- Python 3.14 or higher
 - PostgreSQL 16+ with [Apache AGE](https://age.apache.org/) extension (for graph features)
 - ClickHouse 23.0+ (for analytics features)
 
@@ -17,9 +17,9 @@ pip install imbi-common
 ### For Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/AWeber-Imbi/imbi-common.git
-cd imbi-common
+# Clone the monorepo. The library is in libraries/common.
+git clone https://github.com/AWeber-Imbi/imbi.git
+cd imbi
 
 # Install dependencies and pre-commit hooks
 moon run root:setup
@@ -42,12 +42,6 @@ moon run root:setup
 
     If a bad build is already cached, add `--reinstall-package
     apache-iggy` and clear it with `uv cache clean apache-iggy`.
-
-### For Production
-
-```bash
-pip install git+https://github.com/AWeber-Imbi/imbi-common.git@main
-```
 
 ## Verify Installation
 
@@ -149,16 +143,15 @@ container, etc.) self-register on install via the
 `opentelemetry_resource_detector` entry-point group and only need to
 be added to `OTEL_EXPERIMENTAL_RESOURCE_DETECTORS` to take effect.
 
-### Documentation
+## Build the Documentation
 
 To build documentation locally:
 
 ```bash
-pip install imbi-common[docs]
-mkdocs serve
+moon run root:docs-serve
 ```
 
-Visit `http://localhost:8000` to view the documentation.
+Visit `http://localhost:8088` to view the documentation.
 
 ## Database Setup
 

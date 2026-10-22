@@ -45,10 +45,9 @@ logging.configure_logging(log_config=custom_config)
 ## Log Configuration
 
 The bundled `log-config.toml` provides:
-- Structured log formatting with timestamps
-- Separate handlers for console and file output
-- Appropriate log levels for different components
-- Rotating file handlers with size limits
+- A readable log format with timestamps
+- One console handler that writes to stdout
+- Log levels for the Imbi access loggers, uvicorn, and httpx
 
 ## Development Mode
 

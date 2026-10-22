@@ -26,13 +26,13 @@ await clickhouse.setup_schema()
 
 # Query data
 results = await clickhouse.query(
-    "SELECT user_id, COUNT(*) as count "
-    "FROM session_activity "
-    "GROUP BY user_id"
+    "SELECT project_id, COUNT(*) AS count "
+    "FROM commits FINAL "
+    "GROUP BY project_id"
 )
 
 for row in results:
-    print(f"{row['user_id']}: {row['count']}")
+    print(f"{row['project_id']}: {row['count']}")
 ```
 
 ## Built-in Tables
@@ -43,7 +43,7 @@ applied by `setup_schema()`. Notable tables:
 | Table            | Engine               | Order key                   | Written by                                   |
 | ---------------- | -------------------- | --------------------------- | -------------------------------------------- |
 | `events`         | `ReplacingMergeTree` | `(project_id, id)`          | `imbi-gateway` raw webhook deliveries        |
-| `pull_requests`  | `ReplacingMergeTree` | `(project_id, pr_id)`       | `pull_requests_mv` over `events`             |
+| `pull_requests`  | `ReplacingMergeTree` | `(project_id, pr_id)`       | the sink, from the Iggy `pull_requests` stream |
 | `operations_log` | `ReplacingMergeTree` | `(project_id, id)`          | ops-log writers                              |
 | `commits`        | `ReplacingMergeTree` | `(project_id, sha)`         | a VCS plugin via [`CommitRecord`](models.md) |
 | `tags`           | `ReplacingMergeTree` | `(project_id, name)`        | a VCS plugin via [`TagRecord`](models.md)    |
@@ -62,24 +62,20 @@ report events rather than outcomes, so readers filter on `event_type`.
 `item_id` is the work item; `project_id` is set only when that item is a
 project, which is every operation but `search-reindex`.
 
-The `events` row carries a `version UInt8 DEFAULT 0` column and a
-sibling `events_latest` view. Writers that update an event after
-its initial insert (e.g. backfilling webhook dispatch outcomes
-into `metadata` once handlers finish) re-insert with the same
-`id` and a higher `version`. The `ReplacingMergeTree(version)`
+The `events` row carries a `version UInt8 DEFAULT 0` column. Writers
+that update an event after its initial insert (e.g. backfilling webhook
+dispatch outcomes into `metadata` once handlers finish) re-insert with the
+same `id` and a higher `version`. The `ReplacingMergeTree(version)`
 engine, keyed on `(project_id, id)`, collapses those re-inserts to
-the highest-`version` row per event on merge. Because merges are
-asynchronous, reads that need the latest state immediately go
-through `events_latest`, which uses a window function to return one
-row per `id` (highest `version`, breaking ties by `recorded_at`)
-even before a merge has run. Inserts always go to `events`.
+the highest-`version` row per event on merge. Merges are asynchronous, so
+a read can see more than one row for an event until a merge runs. Use
+`FINAL` or `argMax(..., version)` when you need one row per event.
 
 The `events.type` column holds the event *category* (`'webhook'`
 for inbound webhook deliveries); the resolved per-source label
 (e.g. `'pull_request'`, `'push'`) lives in `metadata.event_type`.
 Rows written before this split stored the label directly in
-`type`, so `pull_requests_mv` matches both encodings — filter or
-join on either form when reading historical data.
+`type`. Filter or join on either form when reading historical data.
 
 `commits` and `tags` are provider-agnostic commit/tag history keyed by
 `project_id`. Their `ReplacingMergeTree` engines collapse duplicate rows

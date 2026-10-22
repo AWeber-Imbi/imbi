@@ -97,9 +97,9 @@ class GitHubIdentity(IdentityCapability):
   integration" widget prompting the user to link.
 - **`cacheable`** — the host may cache reads from this capability.
 
-The plugin manifest's `vertex_labels` typically declare an
-`IdentityConnection` vlabel so the host can persist per-user connections
-(see [Plugin-declared Graph Schema](index.md#plugin-declared-graph-schema)).
+The host persists per-user connections as `IdentityConnection` vertices.
+The core graph schema declares that label, so the plugin manifest does not
+declare it.
 
 ## API reference
 

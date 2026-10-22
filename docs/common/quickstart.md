@@ -123,14 +123,13 @@ from imbi.common import clickhouse
 
 # Query data
 results = await clickhouse.query(
-    "SELECT user_id, COUNT(*) as login_count "
-    "FROM session_activity "
-    "WHERE activity_type = 'login' "
-    "GROUP BY user_id"
+    "SELECT author_email, COUNT(*) AS commit_count "
+    "FROM commits FINAL "
+    "GROUP BY author_email"
 )
 
 for row in results:
-    print(f"{row['user_id']}: {row['login_count']} logins")
+    print(f"{row['author_email']}: {row['commit_count']} commits")
 ```
 
 ## Blueprint System
