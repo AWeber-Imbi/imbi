@@ -19,7 +19,7 @@ services:
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
     ports:
-      - "4317"
+      - "4318"
       - "16686"
 
   iggy:

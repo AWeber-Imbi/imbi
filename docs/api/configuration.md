@@ -477,11 +477,23 @@ templates in worker processes, so that a template cannot stop the service.
 
 ### Tracing (`OTEL_*`)
 
-The images install the OpenTelemetry distro, but no service starts the
-OpenTelemetry SDK, and the container entrypoint does not run the services
-under `opentelemetry-instrument`. So the standard `OTEL_*` variables have no
-effect in the published image. To send traces, run the service command under
-`opentelemetry-instrument` and set the `OTEL_*` variables.
+The images install the OpenTelemetry distro and the FastAPI, httpx, MCP,
+psycopg, and redis instrumentations. When `OTEL_TRACES_EXPORTER` is set and
+is not `none`, the container entrypoint starts each Python service under
+`opentelemetry-instrument`. The standard `OTEL_*` variables configure the SDK.
+
+| Variable | Value |
+|---|---|
+| `OTEL_TRACES_EXPORTER` | `otlp` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | The collector, for example `http://collector:4318` |
+| `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER` | `none` |
+| `OTEL_SERVICE_NAME` | Optional. Defaults to the service command, for example `imbi-mcp` |
+
+!!! warning "Set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`"
+    The images include only the OTLP/HTTP exporter. Without a protocol,
+    `otlp` selects the gRPC exporter, which is not installed, and the
+    service does not send traces.
 
 ## Development stack
 
@@ -505,7 +517,7 @@ uv run --env-file .env.test imbi-api serve --dev
 | `iggy-connect` | 8081 | Iggy connectors runtime with the ClickHouse sink. In the `connect` profile: `moon run root:services` starts it after it creates the topics |
 | `ministack` | 4566 | S3-compatible storage |
 | `mailpit` | 1025 (SMTP), 8025 (web UI) | SMTP capture |
-| `jaeger` | 4317 (OTLP), 16686 (UI) | Tracing |
+| `jaeger` | 4318 (OTLP/HTTP), 16686 (UI) | Tracing |
 
 To find a host port, run
 `docker compose -f compose.ci.yaml port <service> <container-port>`, or read

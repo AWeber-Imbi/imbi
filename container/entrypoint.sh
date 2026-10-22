@@ -210,9 +210,21 @@ fi
 # Service startup
 # --------------------------------------------------------------------------
 
+# Exec a Python service. When OTEL_TRACES_EXPORTER names an exporter, run
+# it under opentelemetry-instrument so the FastAPI, httpx, MCP, psycopg and
+# redis instrumentations in the image load. OTEL_SERVICE_NAME defaults to
+# the command, so each service in 'all' mode reports under its own name.
+run_service() {
+    if [ "${OTEL_TRACES_EXPORTER:-none}" = "none" ]; then
+        exec "$@"
+    fi
+    OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-$1}" \
+        exec opentelemetry-instrument "$@"
+}
+
 start_api() {
     echo "Starting imbi-api on :8000..."
-    imbi-api serve --host 0.0.0.0 --port 8000 &
+    run_service imbi-api serve --host 0.0.0.0 --port 8000 &
 
     echo "Waiting for imbi-api to become healthy..."
     local attempts=0
@@ -242,32 +254,32 @@ except Exception:
 
 start_assistant() {
     echo "Starting imbi-assistant on :8002..."
-    imbi-assistant serve --host 0.0.0.0 --port 8002 &
+    run_service imbi-assistant serve --host 0.0.0.0 --port 8002 &
 }
 
 start_gateway() {
     echo "Starting imbi-gateway on :8003..."
-    imbi-gateway serve --host 0.0.0.0 --port 8003 &
+    run_service imbi-gateway serve --host 0.0.0.0 --port 8003 &
 }
 
 start_mcp() {
     echo "Starting imbi-mcp on :8001..."
-    imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001 &
+    run_service imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001 &
 }
 
 start_slackbot() {
     echo "Starting imbi-slackbot on :8004..."
-    imbi-slackbot serve --host 0.0.0.0 --port 8004 &
+    run_service imbi-slackbot serve --host 0.0.0.0 --port 8004 &
 }
 
 start_scheduler() {
     echo "Starting imbi-scheduler on :8005..."
-    imbi-scheduler serve --host 0.0.0.0 --port 8005 &
+    run_service imbi-scheduler serve --host 0.0.0.0 --port 8005 &
 }
 
 start_workflows() {
     echo "Starting imbi-workflows on :8006..."
-    imbi-workflows serve --host 0.0.0.0 --port 8006 &
+    run_service imbi-workflows serve --host 0.0.0.0 --port 8006 &
 }
 
 start_caddy() {
@@ -406,25 +418,25 @@ case "$IMBI_SERVICE" in
         start_caddy
         ;;
     api)
-        exec imbi-api serve --host 0.0.0.0 --port 8000
+        run_service imbi-api serve --host 0.0.0.0 --port 8000
         ;;
     assistant)
-        exec imbi-assistant serve --host 0.0.0.0 --port 8002
+        run_service imbi-assistant serve --host 0.0.0.0 --port 8002
         ;;
     gateway)
-        exec imbi-gateway serve --host 0.0.0.0 --port 8003
+        run_service imbi-gateway serve --host 0.0.0.0 --port 8003
         ;;
     mcp)
-        exec imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001
+        run_service imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001
         ;;
     scheduler)
-        exec imbi-scheduler serve --host 0.0.0.0 --port 8005
+        run_service imbi-scheduler serve --host 0.0.0.0 --port 8005
         ;;
     workflows)
-        exec imbi-workflows serve --host 0.0.0.0 --port 8006
+        run_service imbi-workflows serve --host 0.0.0.0 --port 8006
         ;;
     slackbot)
-        exec imbi-slackbot serve --host 0.0.0.0 --port 8004
+        run_service imbi-slackbot serve --host 0.0.0.0 --port 8004
         ;;
     ui)
         exec caddy run --config /etc/caddy/Caddyfile
