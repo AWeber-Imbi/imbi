@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAuth } from '@/hooks/useAuth'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDateTime } from '@/lib/formatDate'
@@ -102,6 +103,9 @@ export function UserForm({
   user,
 }: UserFormProps) {
   const isEditing = !!user
+  // The API refuses an admin reset of the caller's own MFA.
+  const { user: currentUser } = useAuth()
+  const isSelf = isEditing && currentUser?.email === user.email
 
   const [email, setEmail] = useState(user?.email || '')
   const [displayName, setDisplayName] = useState(user?.display_name || '')
@@ -675,20 +679,23 @@ export function UserForm({
                       Multi-factor authentication
                     </div>
                     <p className="text-secondary mt-0.5 text-sm">
-                      Remove the user&apos;s authenticator and backup codes.
-                      They sign in with the password only and can enroll again.
+                      {isSelf
+                        ? 'To turn off your own MFA, use Settings > Security.'
+                        : 'Remove the user’s authenticator and backup codes. A user with a password then signs in with the password only and can enroll again. SSO sign-in does not change.'}
                     </p>
                   </div>
-                  <Button
-                    disabled={isLoading || resetMfaMutation.isPending}
-                    onClick={() => setResetMfaOpen(true)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <ShieldAlert className="mr-2 size-4" />
-                    Reset MFA
-                  </Button>
+                  {!isSelf && (
+                    <Button
+                      disabled={isLoading || resetMfaMutation.isPending}
+                      onClick={() => setResetMfaOpen(true)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <ShieldAlert className="mr-2 size-4" />
+                      Reset MFA
+                    </Button>
+                  )}
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3 last:pb-0">
                   <div className="min-w-0">
@@ -916,7 +923,7 @@ export function UserForm({
       {isEditing && (
         <ConfirmDialog
           confirmLabel="Reset MFA"
-          description={`Remove multi-factor authentication for ${user.display_name}? They can sign in with the password only until they enroll again.`}
+          description={`Remove multi-factor authentication for ${user.display_name}? If they have a password, they sign in with the password only until they enroll again.`}
           onCancel={() => setResetMfaOpen(false)}
           onConfirm={() => {
             setResetMfaOpen(false)

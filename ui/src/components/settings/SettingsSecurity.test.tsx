@@ -23,6 +23,15 @@ describe('SettingsSecurity two-factor authentication', () => {
     vi.mocked(verifyMfa).mockReset()
   })
 
+  it('shows an error when the status does not load', async () => {
+    vi.mocked(getMfaStatus).mockRejectedValue(new Error('boom'))
+    render(<SettingsSecurity />)
+
+    expect(
+      await screen.findByText(/could not load the two-factor/i),
+    ).toBeInTheDocument()
+  })
+
   it('enrolls: shows the secret and backup codes, then verifies', async () => {
     vi.mocked(getMfaStatus).mockResolvedValue({
       backup_codes_remaining: 0,

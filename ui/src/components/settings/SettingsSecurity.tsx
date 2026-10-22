@@ -94,7 +94,11 @@ function TwoFactorSection() {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
 
-  const { data: status, isLoading } = useQuery({
+  const {
+    data: status,
+    isError,
+    isLoading,
+  } = useQuery({
     queryFn: ({ signal }) => getMfaStatus(signal),
     queryKey: MFA_STATUS_KEY,
   })
@@ -140,6 +144,13 @@ function TwoFactorSection() {
     },
   })
 
+  if (isError) {
+    return (
+      <p className="text-danger text-[12px]">
+        Could not load the two-factor authentication status.
+      </p>
+    )
+  }
   if (isLoading || !status) {
     return <p className="text-tertiary text-[12px]">Loading...</p>
   }

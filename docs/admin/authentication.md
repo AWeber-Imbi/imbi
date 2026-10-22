@@ -168,8 +168,10 @@ If a user loses the authenticator app and the backup codes, reset their MFA:
 1. Open **Admin > Users** and open the user.
 2. In **Security**, click **Reset MFA** and confirm.
 
-The reset deletes the user's TOTP secret and backup codes. The user then
-signs in with the password only and can set up MFA again. The API is
+The reset deletes the user's TOTP secret and backup codes. A user with a
+password then signs in with the password only and can set up MFA again. A
+user without a password continues to sign in with SSO. You cannot reset
+your own MFA here; use **Settings > Security**. The API is
 `DELETE /users/{email}/mfa`. It needs the `user:update` permission, the same
 permission that lets an administrator reset another user's password.
 
