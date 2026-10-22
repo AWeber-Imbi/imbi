@@ -66,6 +66,13 @@ class MFAStatusResponse(pydantic.BaseModel):
     backup_codes_remaining: int = pydantic.Field(
         ..., description='Number of unused backup codes'
     )
+    has_password: bool = pydantic.Field(
+        ...,
+        description=(
+            'Whether the user has a password; DELETE /mfa/disable '
+            'asks for the password if true, else for an MFA code'
+        ),
+    )
 
 
 @mfa_router.get('/status', response_model=MFAStatusResponse)
@@ -96,18 +103,20 @@ async def get_mfa_status(
         {'email': auth.require_user.email},
     )
 
-    if not records:
-        return MFAStatusResponse(enabled=False, backup_codes_remaining=0)
-
-    totp_data = graph.parse_agtype(records[0]['n'])
-
+    has_password = bool(auth.require_user.password_hash)
+    totp_data: dict[str, typing.Any] = (
+        graph.parse_agtype(records[0]['n']) if records else {}
+    )
     if not totp_data.get('enabled', False):
-        return MFAStatusResponse(enabled=False, backup_codes_remaining=0)
+        return MFAStatusResponse(
+            enabled=False, backup_codes_remaining=0, has_password=has_password
+        )
 
     backup_codes = totp_data.get('backup_codes', [])
     return MFAStatusResponse(
         enabled=True,
         backup_codes_remaining=len(backup_codes),
+        has_password=has_password,
     )
 
 

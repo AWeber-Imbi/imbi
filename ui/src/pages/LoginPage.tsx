@@ -4,11 +4,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { getAuthProviders } from '@/api/endpoints'
+import { getAuthProviders, isMfaRequiredError } from '@/api/endpoints'
 import logoDark from '@/assets/logo-dark.svg'
 import logoLight from '@/assets/logo-light.svg'
 import { AuthDivider } from '@/components/auth/AuthDivider'
 import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
+import { MfaCodeForm } from '@/components/auth/MfaCodeForm'
 import { OAuthButton } from '@/components/auth/OAuthButton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -19,6 +20,7 @@ import {
   resolvePostLoginTarget,
 } from '@/lib/postLoginRedirect'
 import { queryKeys } from '@/lib/queryKeys'
+import type { LoginRequest } from '@/types'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
 
@@ -35,6 +37,10 @@ export function LoginPage() {
   } = useAuth()
   const [loginError, setLoginError] = useState<string>('')
   const [rememberedEmail, setRememberedEmail] = useState<string>('')
+  // Set when the API asks for an MFA code; the login is sent again with it.
+  const [mfaCredentials, setMfaCredentials] = useState<LoginRequest | null>(
+    null,
+  )
 
   const { data: providersData, isLoading: providersLoading } = useQuery({
     queryFn: ({ signal }) => getAuthProviders(signal),
@@ -77,16 +83,17 @@ export function LoginPage() {
     }
   }, [isAuthenticated, navigate, searchParams])
 
-  const handlePasswordLogin = async (credentials: {
-    email: string
-    password: string
-  }) => {
+  const handlePasswordLogin = async (credentials: LoginRequest) => {
     try {
       setLoginError('')
       await login(credentials)
       // Remember email on successful login
       localStorage.setItem(REMEMBERED_EMAIL_KEY, credentials.email)
     } catch (error: unknown) {
+      if (isMfaRequiredError(error)) {
+        setMfaCredentials(credentials)
+        return
+      }
       console.error('[Login] Password login failed:', error)
       setLoginError(
         extractApiErrorDetail(
@@ -120,6 +127,7 @@ export function LoginPage() {
 
   const showLocalLogin =
     localLoginEnabled || (oauthProviders.length === 0 && providers.length === 0)
+  const showOAuth = oauthProviders.length > 0 && !mfaCredentials
 
   return (
     <div className="bg-tertiary flex min-h-screen items-center justify-center">
@@ -133,7 +141,7 @@ export function LoginPage() {
           <h1 className="text-primary mb-2 text-2xl">Imbi</h1>
         </div>
 
-        {oauthProviders.length > 0 && (
+        {showOAuth && (
           <div className="mb-6 space-y-3">
             {oauthProviders.map((provider) => (
               <OAuthButton
@@ -146,9 +154,23 @@ export function LoginPage() {
           </div>
         )}
 
-        {oauthProviders.length > 0 && showLocalLogin && <AuthDivider />}
+        {showOAuth && showLocalLogin && <AuthDivider />}
 
-        {showLocalLogin && (
+        {mfaCredentials && (
+          <MfaCodeForm
+            error={loginError}
+            isLoading={authLoading}
+            onCancel={() => {
+              setMfaCredentials(null)
+              setLoginError('')
+            }}
+            onSubmit={(mfa_code) =>
+              handlePasswordLogin({ ...mfaCredentials, mfa_code })
+            }
+          />
+        )}
+
+        {showLocalLogin && !mfaCredentials && (
           <LocalLoginForm
             error={loginError}
             initialEmail={rememberedEmail}

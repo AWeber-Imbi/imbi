@@ -109,6 +109,17 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
                 data['backup_codes_remaining'],
                 0,
             )
+            self.assertTrue(data['has_password'])
+
+    def test_get_mfa_status_oauth_only_user(self) -> None:
+        """has_password is false for a user without a password."""
+        self.test_user.password_hash = None
+        self.mock_db.execute.return_value = []
+
+        response = self.client.get('/mfa/status')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['has_password'])
 
     def test_get_mfa_status_enabled(self) -> None:
         """Test MFA status when enabled."""
@@ -145,6 +156,7 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
                 data['backup_codes_remaining'],
                 3,
             )
+            self.assertTrue(data['has_password'])
 
     def test_get_mfa_status_not_enabled(self) -> None:
         """Test MFA status when setup but not enabled."""

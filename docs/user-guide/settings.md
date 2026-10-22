@@ -157,33 +157,30 @@ For keys that are not personal, use a service account. See
 
 ## Security
 
-The **Security** tab shows switches for two-factor authentication and
-auto-logout, and buttons for sessions and access logs. None of them do
-anything in this release. The **Current authentication method** box
-always shows "Google OAuth", for every user.
+The **Security** tab has the two-factor authentication controls. It also
+shows an auto-logout switch and buttons for sessions and access logs. These
+do nothing in this release.
 
 ### Multi-factor authentication
 
-The API supports TOTP multi-factor authentication (MFA) for password
-sign-in. The UI has no controls for it:
+Multi-factor authentication (MFA) asks for a code from an authenticator app
+when you sign in with a password. To turn it on:
 
-- Settings has no setup flow. Set up MFA with the API:
-    1. `POST /mfa/setup` returns a QR code, the secret, and 10 one-time
-       backup codes. Imbi shows the backup codes one time only.
-    2. Add the secret to your authenticator app.
-    3. `POST /mfa/verify` with a `code` from the app turns MFA on.
-- `GET /mfa/status` shows whether MFA is on, and how many backup codes
-  remain.
-- `DELETE /mfa/disable` turns MFA off. Send `current_password`. A user
-  with no password (SSO only) sends `mfa_code`.
+1. On the **Security** tab, click **Set up**.
+2. Scan the QR code with your authenticator app, or enter the key below it.
+3. Save the 10 backup codes. Imbi shows them one time only.
+4. Enter the code from the app and click **Turn on**.
 
-!!! danger "Do not turn on MFA for a password account that uses the UI"
-    When MFA is on, `POST /auth/login` needs an `mfa_code`. The sign-in
-    page of the UI does not ask for a code. Thus a user with MFA on cannot
-    sign in to the UI with a password. The **Reset MFA** button on the
-    user's page in **Admin** is disabled, and the API has no
-    administrator reset. To turn MFA off, call `DELETE /mfa/disable` with
-    an access token that you got before you turned MFA on.
+The tab then shows **On** and the number of backup codes that remain. When
+you sign in, Imbi asks for the code after your password. A backup code also
+works there, one time each.
+
+To turn MFA off, click **Turn off** and enter your password. A user with no
+password (SSO only) enters a code from the app or a backup code.
+
+If you lose the app and the backup codes, ask an administrator to reset
+your MFA
+(see [Authentication](../admin/authentication.md#reset-a-users-mfa)).
 
 SSO sign-in does not use Imbi MFA. For the MFA settings, see
 [Authentication](../admin/authentication.md#multi-factor-authentication).

@@ -877,6 +877,14 @@ async def change_password(
         )
     user = results[0]
 
+    # Only a platform admin may set a platform admin's password; anyone
+    # else with user:update could otherwise take over an admin account.
+    if not is_self and user.is_admin and not auth.require_user.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only admins can change an admin password',
+        )
+
     # Prevent password changes for service accounts
     if user.is_service_account:
         raise fastapi.HTTPException(
@@ -906,6 +914,55 @@ async def change_password(
         password.hash_password, password_change.new_password
     )
     await db.merge(user, match_on=['email'])
+
+
+@users_router.delete('/{email}/mfa', status_code=204)
+async def reset_user_mfa(
+    email: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('user:update')),
+    ],
+) -> None:
+    """Remove a user's MFA so a locked-out user can sign in again.
+
+    Deletes the TOTP secret and backup codes. The user signs in with
+    the password only and can enroll again from Settings > Security.
+    Gated by ``user:update``, the permission that also lets an admin
+    reset another user's password.
+
+    Raises:
+        fastapi.HTTPException: HTTP 400 for the caller's own account
+            (use ``DELETE /mfa/disable``, which needs the password or a
+            code), HTTP 403 if a non-admin targets an admin, or HTTP 404
+            if user not found.
+
+    """
+    email = urlparse.unquote(email)
+    if email == auth.require_user.email:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Use DELETE /mfa/disable to turn off your own MFA',
+        )
+    results = await db.match(models.User, {'email': email})
+    if not results:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'User with email {email!r} not found',
+        )
+    if results[0].is_admin and not auth.require_user.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only admins can reset MFA for admin users',
+        )
+    query: typing.LiteralString = """
+    MATCH (u:User {{email: {email}}})
+          <-[:MFA_FOR]-(t:TOTPSecret)
+    DETACH DELETE t
+    """
+    await db.execute(query, {'email': email})
+    LOGGER.info('MFA reset for user %s by %s', email, auth.principal_name)
 
 
 @users_router.post('/{email}/organizations', status_code=204)
