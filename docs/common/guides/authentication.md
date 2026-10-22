@@ -5,10 +5,41 @@ primitives.
 
 ## Overview
 
-The auth module provides two core capabilities:
+The auth package has these parts:
 
 1. **JWT Tokens**: Stateless authentication with access/refresh tokens
 2. **Token Encryption**: Fernet encryption for sensitive data at rest
+3. **Config Encryption**: Fernet encryption for stored configuration
+   secrets, with its own key (`IMBI_CONFIG_ENCRYPTION_KEY`). See
+   [Config Encryption](../api/auth.md#config-encryption).
+4. **Permissions**: FastAPI dependencies that authenticate a request
+   (JWT, API key or agent API token) and check a permission
+5. **Password Hashing**: Argon2id hashes for passwords and API key
+   secrets
+
+Most services need only the permission dependencies:
+
+```python
+import typing
+
+import fastapi
+
+from imbi.common.auth import permissions
+
+
+@app.get('/projects')
+async def list_projects(
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('project:read')),
+    ],
+) -> list[dict]:
+    ...
+```
+
+See [Permissions](../api/permissions.md) for the token types, the API key
+cache and the auth settings provider, and
+[Authentication](../api/auth.md#password-hashing) for password hashing.
 
 ## JWT Tokens
 

@@ -66,3 +66,7 @@ for a full walkthrough of the pattern.
 ### Classes
 
 ::: imbi.common.lifespan.Lifespan
+
+### Functions
+
+::: imbi.common.lifespan.get_lifespan

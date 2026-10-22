@@ -3,11 +3,6 @@
 After you install Imbi, run the setup command one time. It creates your
 organization and your first admin user, and seeds the data that Imbi needs.
 
-Setup needs the PostgreSQL schema. From 2.39.1, setup creates the schema
-itself. In 2.39.0, setup cannot connect to a new database and stops with a
-`PoolTimeout` error. Run `imbi-api setup-postgres` first to prevent this (see
-[issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
-
 ## Running Setup
 
 ### Docker
@@ -139,26 +134,8 @@ command applies them.
 
 ### Upgrading
 
-After you upgrade, do these steps when the release notes tell you to:
-
-1. Run `imbi-api setup-permissions` when the release adds permissions or
-   changes the grants of a default role.
-2. Run `imbi-api setup-service-accounts` when the release adds an internal
-   service account. For example, 2.38 adds `imbi-workflows`. In `all` mode the
-   container entrypoint does this step at boot.
-3. Run `imbi-api setup-clickhouse` when the release adds ClickHouse tables or
-   materialized views.
-4. Run `imbi-api setup-prompts` when the release adds a default prompt. Until
-   you run it, imbi-assistant and imbi-slackbot use their packaged prompts.
-5. Restart iggy-connect when the release adds an Iggy stream. iggy-connect
-   gets its sink configuration from imbi-api one time, at startup. imbi-api
-   makes one sink for each stream in `imbi.common.iggy.TOPICS`, so a new stream
-   gets no sink until iggy-connect restarts. Run `setup-clickhouse` first,
-   because the sink writes to the ClickHouse table of the same name.
-
-An upgrade from 2.37 to 2.38 needs all five steps. The new ClickHouse tables
-and Iggy streams are `agent_task_events`, `agent_usage`, `workflow_runs`,
-`workflow_run_events`, and `secret_audit_events`.
+[Upgrading](../deployment/upgrading.md) gives the procedure for an upgrade,
+and the commands that each release needs.
 
 ## Post-Setup
 

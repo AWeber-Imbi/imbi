@@ -44,3 +44,17 @@ auth_config = settings.Auth()
 ::: imbi.common.settings.ConfigSecrets
 
 ::: imbi.common.settings.SSL
+
+::: imbi.common.settings.Iggy
+
+::: imbi.common.settings.Valkey
+
+::: imbi.common.settings.Embeddings
+
+::: imbi.common.settings.Plugins
+
+::: imbi.common.settings.Releases
+
+::: imbi.common.settings.load_config_data
+
+::: imbi.common.settings.base_settings_config

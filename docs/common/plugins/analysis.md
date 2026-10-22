@@ -109,7 +109,27 @@ double-click — or the bulk "fix all" pass — is safe. The default
 implementation raises `PluginRemediationNotSupported`; only capabilities
 that emit offers need override it. Set `RemediationOffer.destructive`
 for fixes that create/remove an edge or delete a value (the UI then
-requires explicit confirmation).
+requires explicit confirmation). Set `RemediationOffer.confirm` to show a
+confirmation prompt before the fix runs.
+
+### Unattended fixes
+
+The `sync-fixes` maintenance operation runs the analysis for every
+project. Then it applies only the offers that have
+`RemediationOffer.sweepable=True`. No person reviews these fixes. Set
+`sweepable=True` only for an idempotent fix that brings a remote back in
+line with Imbi (for example, repoint a PagerDuty escalation policy).
+Never set it for a fix that creates or deletes a remote resource. The
+`remediate` maintenance operation applies every fixable finding,
+`sweepable` or not.
+
+### Dependencies
+
+The host populates `ctx.dependencies` for analysis. Each entry is a
+`ProjectDependency`: one `DEPENDS_ON` neighbour of the project, its
+direction, and its own `EXISTS_IN` connections. Use it in a doctor that
+compares the project's dependencies to a mirror on the remote (for
+example, PagerDuty service dependencies).
 
 ## How findings reach the panel
 

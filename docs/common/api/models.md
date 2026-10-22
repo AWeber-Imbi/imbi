@@ -8,6 +8,12 @@ The models module provides Pydantic models for all core domain entities
 (projects, organizations, teams) and the blueprint system for dynamic
 schema extension.
 
+This page documents the models that services use most. `models.py` has
+more than 70 models, for example `Integration`, `Release`, `User`,
+`ServiceAccount`, `OperationLog`, the agent models, the AI model
+catalog, and the prompt CMS. For the full set, read
+[`libraries/common/src/imbi/common/models.py`](https://github.com/AWeber-Imbi/imbi/blob/main/libraries/common/src/imbi/common/models.py).
+
 ## Model Categories
 
 ### Domain Models
@@ -154,6 +160,10 @@ versioning.matches_tag_formats("nightly", patterns)  # False
 ::: imbi.common.models.ComponentIdentifier
 
 ### Collaboration Models
+
+::: imbi.common.models.Document
+
+::: imbi.common.models.DocumentTemplate
 
 ::: imbi.common.models.CommentThread
 

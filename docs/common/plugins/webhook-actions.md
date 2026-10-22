@@ -33,7 +33,7 @@ validates `handler_config` against `config_model`, and invokes
 logic.
 
 ```python
-# imbi.plugins.sonarqube/capabilities.py
+# imbi/plugins/sonarqube/plugin.py (abridged)
 from imbi.common.plugins import (
     ActionDescriptor,
     WebhookActionsCapability,

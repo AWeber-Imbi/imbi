@@ -1,83 +1,82 @@
 # Imbi Common Library
 
-Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models.
+`imbi-common` is the shared library of the Imbi platform. It holds the
+data access clients, the authentication code, the domain models, the
+plugin contracts and the runtime helpers that every Imbi service uses.
+It lives in the monorepo at `libraries/common` and is published to PyPI
+as `imbi-common`.
 
-## Overview
+## Consumers
 
-`imbi-common` is a Python library that provides common functionality for all Imbi services. It serves as the foundation for:
+Every service and every first-party plugin depends on `imbi-common`:
 
-- **imbi-api**: Main API service for DevOps service management
-- **imbi-gateway**: API gateway service
-- **imbi-mcp**: Model Context Protocol server for Claude integration
+| Package | What it is |
+|---|---|
+| `imbi-api` | The API service |
+| `imbi-assistant` | The AI assistant service |
+| `imbi-gateway` | The webhook receiver |
+| `imbi-harness` | The agent runner and executor |
+| `imbi-mcp` | The MCP server |
+| `imbi-scheduler` | The scheduled task service |
+| `imbi-slackbot` | The Slack bot |
+| `imbi-workflows` | The workflow engine |
+| `imbi-plugin-*` | The first-party plugins (aws, github, google, logzio, oidc, pagerduty, sonarqube) |
+
+For what each service does, see [Services](../architecture/services.md).
 
 ## Key Features
 
-### Database Clients
-
-- **Apache AGE**: Graph database client (PostgreSQL + AGE extension) with connection pooling and Cypher query generation
-- **ClickHouse**: Analytics database client with GDPR-compliant schema management
-
-### Authentication
-
-- **JWT Tokens**: Access and refresh token creation/verification
-- **Token Encryption**: Fernet encryption for sensitive data at rest
-
-### Data Models
-
-- **Domain Models**: Projects, Organizations, Teams, Environments, ProjectTypes
-- **Dynamic Schemas**: Blueprint system for runtime model extension
-
-### Configuration
-
-- **Pydantic Settings**: Type-safe configuration with validation
-- **TOML Support**: Load configuration from files or environment variables
-- **Flexible Sources**: Priority-based config loading (env > local > user > system)
-
-### Logging
-
-- **Consistent Format**: Unified logging across all services
-- **dictConfig Support**: Standard library logging configuration
-- **Development Mode**: Easy DEBUG level activation
-
-### Server
-
-- **Uvicorn Integration**: Reusable `serve` command for Typer-based CLIs
-- **Development Mode**: Auto-reload with debug logging
+| Area | What the library gives you | Page |
+|---|---|---|
+| Graph | Apache AGE client with Cypher generation, vector search and embeddings | [Graph](api/graph.md) |
+| Analytics | ClickHouse query client and the shared table schema | [ClickHouse](api/clickhouse.md) |
+| Streaming | Apache Iggy publisher; the sink writes the rows to ClickHouse | [Iggy](api/iggy.md) |
+| Cache | Valkey client | [Valkey](api/valkey.md) |
+| Authentication | JWT tokens, encryption, password hashing | [Authentication](api/auth.md) |
+| Authorization | Request authentication and permission checks | [Permissions](api/permissions.md) |
+| Models | Pydantic domain models and the blueprint system | [Models](api/models.md), [Blueprints](api/blueprints.md) |
+| Plugins | The plugin manifest, the capability contracts and the registry | [Authoring Plugins](plugins/index.md) |
+| Prompts | Prompt CMS references, sandboxed rendering and render workers | [Prompts](api/prompts.md) |
+| LLM | Anthropic JSON completions, provider drivers, model discovery | [LLM](api/llm.md) |
+| Workflows | Workflow graph models, step types and validation | [Workflows](api/workflows.md) |
+| MCP | Toolset policy for MCP servers made from the OpenAPI document | [MCP](api/mcp.md) |
+| Observability | Logging, access log, OpenTelemetry, Prometheus metrics | [Logging](api/logging.md), [OpenTelemetry](api/otel.md), [Metrics](api/metrics.md) |
+| Runtime | Settings, lifespan composition, the `serve` command | [Settings](api/settings.md), [Lifespan](api/lifespan.md) |
 
 ## Quick Links
 
 - [Installation Guide](installation.md)
 - [Quick Start](quickstart.md)
 - [Configuration Reference](configuration.md)
-- [API Reference](api/settings.md)
 
-## Architecture
+## Package Layout
 
-The library follows a clean architecture with clear separation of concerns:
+The main modules in `libraries/common/src/imbi/common/`:
 
 ```
-imbi.common/
-├── settings.py      # Configuration management
-├── models.py        # Domain models
-├── graph/           # Apache AGE graph database client
-├── clickhouse/      # Analytics database client
-├── auth/            # Authentication primitives
+imbi/common/
+├── access_log.py    # ASGI access log middleware
+├── auth/            # JWT, encryption, passwords, permissions
 ├── blueprints.py    # Dynamic schema system
-├── valkey.py        # Valkey cache client
+├── clickhouse/      # ClickHouse client and schemata.toml
+├── graph/           # Apache AGE client, embeddings, schemata.toml
+├── iggy/            # Iggy publisher and TOPICS
+├── lifespan.py      # Lifespan composition
+├── llm/             # Anthropic client, drivers, discovery, TypeSafe
 ├── logging.py       # Logging configuration
-└── server.py        # Uvicorn serve command
+├── mcp.py           # MCP toolset policy
+├── metrics.py       # Prometheus /metrics route
+├── models.py        # Domain models
+├── otel.py          # OpenTelemetry setup
+├── plugins/         # Plugin contracts and registry
+├── prompts/         # Prompt CMS support
+├── scoring/         # Project scoring engine
+├── sentry.py        # Sentry lifespan hook
+├── server.py        # Uvicorn serve command
+├── settings.py      # Configuration management
+├── valkey.py        # Valkey client
+└── workflows/       # Workflow definitions
 ```
-
-## Services Using imbi-common
-
-### imbi-api
-Main API service providing RESTful endpoints for managing services, projects, teams, and infrastructure.
-
-### imbi-gateway
-API gateway service routing and authenticating requests across Imbi services.
-
-### imbi-mcp
-Model Context Protocol server that enables Claude to query and manage Imbi data through natural language.
 
 ## Support
 

@@ -12,7 +12,10 @@ Testing with imbi-common involves:
 
 ## Test Framework
 
-imbi-common uses Python's standard `unittest` framework (not pytest).
+The tests are written with the standard `unittest` classes
+(`unittest.TestCase` and `unittest.IsolatedAsyncioTestCase`). pytest runs
+them, with `pytest-cov` for coverage. Do not use pytest fixtures or
+pytest-style test functions.
 
 ### Basic Test Structure
 
@@ -243,22 +246,28 @@ class TestAnalytics(unittest.IsolatedAsyncioTestCase):
 moon run common:test
 ```
 
+`moon run common:test` starts the services first (`root:services`).
+
+Run the other commands below from the repository root, after
+`moon run root:services` has written `.env.test`.
+
 ### Run Specific Test File
 
 ```bash
-uv run --env-file .env.test pytest libraries/common/tests/test_settings.py
+uv run --frozen --env-file .env.test pytest libraries/common/tests/test_settings.py
 ```
 
 ### Run Specific Test Method
 
 ```bash
-uv run --env-file .env.test pytest libraries/common/tests/test_settings.py::TestSettings::test_postgres_defaults
+uv run --frozen --env-file .env.test pytest \
+  libraries/common/tests/test_settings.py::PostgresSettingsTestCase::test_default_settings
 ```
 
 ### Run with Verbose Output
 
 ```bash
-python -m unittest discover tests -v
+uv run --frozen --env-file .env.test pytest -v libraries/common/tests
 ```
 
 ## Continuous Integration
@@ -278,30 +287,17 @@ moon run root:coverage
 uv run --env-file .env.test pytest libraries/common/tests/test_settings.py
 ```
 
-Add to `.coveragerc`:
-
-```ini
-[run]
-source = src/imbi.common
-omit =
-    */tests/*
-    */test_*.py
-
-[report]
-exclude_lines =
-    pragma: no cover
-    def __repr__
-    raise AssertionError
-    raise NotImplementedError
-    if __name__ == .__main__.:
-    if TYPE_CHECKING:
-```
+The coverage configuration is in `libraries/common/pyproject.toml`,
+under `[tool.coverage.run]` and `[tool.coverage.report]`. It measures
+`imbi.common` (`source_pkgs`), with branch coverage, and fails under
+85%. `moon run common:test` passes this file to pytest-cov with
+`--cov-config`. There is no `.coveragerc` file.
 
 ## Best Practices
 
 1. **Isolate Tests**: Each test should be independent
 2. **Clean Up**: Always clean up test data in `tearDown`/`asyncTearDown`
-3. **Use Fixtures**: Create reusable test data with fixtures
+3. **Share Setup**: Create reusable test data in `setUp`/`asyncSetUp` or in helper methods
 4. **Mock External Services**: Don't hit real APIs in unit tests
 5. **Test Edge Cases**: Test error conditions and boundary cases
 6. **Fast Unit Tests**: Keep unit tests fast by avoiding I/O

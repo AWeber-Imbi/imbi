@@ -167,9 +167,19 @@ Pass them directly to `Lifespan` — no custom hook code required.
 |----------|------|----------|
 | Apache AGE graph (PostgreSQL) | `graph.graph_lifespan` | `graph.Pool` |
 | Valkey cache | `valkey.valkey_lifespan` | `valkey.Client` |
+| Sentry | `sentry.sentry_lifespan` | none |
+| Prompt render workers | `prompts.pool.pool_lifespan` | none |
 
-ClickHouse uses a module-level singleton (`Clickhouse.get_instance()`)
-rather than the lifespan pattern; no hook is needed.
+`sentry_lifespan` starts the Sentry SDK when `SENTRY_DSN` is set. Put it
+first in the `Lifespan`, so the SDK starts in the event loop before the
+other hooks. `pool_lifespan` starts the warm prompt render workers and
+stops them at shutdown (see [Prompts](../api/prompts.md)).
+
+ClickHouse and Iggy use module-level singletons
+(`Clickhouse.get_instance()` and the Iggy client) rather than the
+lifespan pattern, so they have no ready-made hook. A service that
+publishes to Iggy calls `iggy.initialize()` from its own hook. See
+[Iggy](../api/iggy.md#lifecycle).
 
 ### Complete example
 

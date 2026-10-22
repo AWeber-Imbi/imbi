@@ -227,6 +227,25 @@ tasks:
     outputs:
       - 'site'
 
+  # Fail when a generated docs table (between BEGIN/END GENERATED markers)
+  # no longer matches the output of its scripts/docs_*.py generator. Fix
+  # with `uv run python scripts/docs_check_generated.py --fix`.
+  docs-check-generated:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - 'python'
+      - 'scripts/docs_check_generated.py'
+    deps:
+      - '~:setup-env'
+    inputs:
+      - 'docs/**/*.md'
+      - 'scripts/docs_*.py'
+      - 'apps/*/src/**/*.py'
+      - 'libraries/common/src/**/*'
+      - 'container/*'
+
   # Serve the docs locally with live reload.
   docs-serve:
     command: 'uv'

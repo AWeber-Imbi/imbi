@@ -1,7 +1,10 @@
 # Database Setup Guide
 
-This guide covers setting up PostgreSQL (with Apache AGE) and ClickHouse
-for use with imbi-common.
+This guide covers setting up PostgreSQL (with Apache AGE), ClickHouse,
+Apache Iggy and Valkey for use with imbi-common.
+
+For local development, `moon run root:services` starts all of them from
+`compose.ci.yaml` and writes their ports to `.env.test`.
 
 ## PostgreSQL + Apache AGE Setup
 
@@ -105,6 +108,56 @@ from imbi.common import clickhouse
 await clickhouse.setup_schema()
 ```
 
+`setup_schema()` runs only `CREATE ... IF NOT EXISTS`. Services do not
+call it at startup. When a release adds a table, run
+`imbi-api setup-clickhouse` (or the full `imbi-api setup`) to create it.
+
+For a ClickHouse cluster, set `CLICKHOUSE_CLUSTER_NAME`. See
+[Clustered Deployments](../api/clickhouse.md#clustered-deployments).
+
+## Apache Iggy Setup
+
+Imbi services do not write rows to ClickHouse. They publish the rows to
+Apache Iggy, and the Iggy connectors runtime (`iggy-connect`) runs the
+ClickHouse sink that writes them. See [Iggy](../api/iggy.md) and
+[ADR 0019](../../api/adr/0019-apache-iggy-message-streaming.md).
+
+You need two processes:
+
+| Process | Image | Purpose |
+|---|---|---|
+| `iggy` | `ghcr.io/aweber-imbi/iggy` | The Iggy server. Clients connect on TCP port 8090 |
+| `iggy-connect` | The same image, with `IGGY_MODE=connectors` | The connectors runtime that runs the ClickHouse sink |
+
+Set `IGGY_URL` on every Imbi service, for example
+`iggy+tcp://iggy:iggy@iggy:8090`. A service creates the streams and
+topics at startup. The connectors runtime stops if a stream does not
+exist, so start it after an Imbi service has started. `compose.yaml`
+sets `restart: on-failure` on it for this reason.
+
+The connectors runtime gets its sink configuration from `imbi-api` at
+`/iggy/connectors` under the API prefix (for example
+`http://imbi:8000/api/iggy/connectors`). Set the same key in
+`IGGY_CONNECTORS_API_KEY` on the runtime and in
+`IMBI_IGGY_CONNECTORS_API_KEYS` on `imbi-api`. Without the key,
+`imbi-api` answers `503`. The runtime reads the configuration one time,
+at startup, so restart it after an upgrade that adds a stream or a
+topic. For a working example, see the `iggy` and `iggy-connect` services
+in `compose.yaml`.
+
+In `compose.ci.yaml`, `iggy-connect` is in the `connect` profile, and
+`iggy-config-server` serves the sink configuration in place of
+`imbi-api`.
+
+## Valkey Setup
+
+Imbi services connect to Valkey through `valkey_lifespan`. Set `VALKEY_URL`
+(default `valkey://localhost:6379/0`). The setting accepts only the
+`valkey://` scheme. See [Valkey Client](../api/valkey.md).
+
+`compose.ci.yaml` runs `valkey/valkey:8-alpine`. `compose.yaml` has no
+`valkey` service.
+
 ## Database Credentials
 
 ### Environment Variables
@@ -166,11 +219,8 @@ max_pool_size = 10
 
 ### ClickHouse
 
-ClickHouse uses HTTP connections created per-request. For
-high-throughput scenarios, consider:
-
-- Batch inserts to reduce connection overhead
-- Enabling HTTP keep-alive
+The ClickHouse client is used for queries and schema setup only. The
+Iggy sink does all inserts, in batches.
 
 ## Testing Connections
 
@@ -238,36 +288,13 @@ asyncio.run(test_connections())
 - Verify database user has CREATE privileges
 - Review database logs for detailed error messages
 
-## Docker Compose Example
+## Docker Compose
 
-For local development, use Docker Compose (or the project's `compose.yaml`):
+Do not copy a compose file into your project. Use the files in the
+repository root:
 
-```yaml
-services:
-  postgres:
-    image: ghcr.io/aweber-imbi/postgres:latest
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_PASSWORD: secret
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:latest
-    ports:
-      - "8123:8123"
-      - "9000:9000"
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-
-volumes:
-  postgres-data:
-  clickhouse-data:
-```
-
-Start services:
-
-```bash
-docker compose up -d
-```
+- `compose.ci.yaml` holds the services for the tests: ClickHouse, Iggy,
+  the connectors runtime, Mailpit, Ministack, PostgreSQL, Valkey and
+  Jaeger. `moon run root:services` starts it.
+- `compose.yaml` runs the all-in-one Imbi image with its databases
+  (`docker compose up --build`).

@@ -37,19 +37,43 @@ for row in results:
 
 ## Built-in Tables
 
-`schemata.toml` ships the tables every Imbi service shares. DDL is
-applied by `setup_schema()`. Notable tables:
+`schemata.toml` holds the ClickHouse tables and views that every Imbi
+service shares. `setup_schema()` applies the DDL. It runs only
+`CREATE ... IF NOT EXISTS`, so it adds new tables but does not change
+existing ones.
 
-| Table            | Engine               | Order key                   | Written by                                   |
-| ---------------- | -------------------- | --------------------------- | -------------------------------------------- |
-| `events`         | `ReplacingMergeTree` | `(project_id, id)`          | `imbi-gateway` raw webhook deliveries        |
-| `pull_requests`  | `ReplacingMergeTree` | `(project_id, pr_id)`       | the sink, from the Iggy `pull_requests` stream |
-| `operations_log` | `ReplacingMergeTree` | `(project_id, id)`          | ops-log writers                              |
-| `commits`        | `ReplacingMergeTree` | `(project_id, sha)`         | a VCS plugin via [`CommitRecord`](models.md) |
-| `tags`           | `ReplacingMergeTree` | `(project_id, name)`        | a VCS plugin via [`TagRecord`](models.md)    |
-| `release_components` | `MergeTree` | `(component_id, release_id, batch_id, component_release_id)` | SBoM ingest via [`ReleaseComponentRecord`](models.md) |
-| `release_component_batches` | `MergeTree` | `(release_id, recorded_at, batch_id)` | SBoM ingest via [`ReleaseComponentBatch`](models.md) |
-| `maintenance_log` | `MergeTree`         | `(occurred_at, id)`         | the maintenance worker and its operations    |
+Each table has an Iggy stream with the same name. The topics split the
+stream by the feature that makes the rows. The sink writes every stream
+to its table. See [Iggy](iggy.md) for `TOPICS` and the publish API.
+
+<!-- BEGIN GENERATED: scripts/docs_clickhouse_tables.py -->
+
+| Name | Kind | Engine | Order key | Iggy topics |
+|---|---|---|---|---|
+| `events` | table | `ReplacingMergeTree` | `(project_id, id)` | `comments`, `documents`, `gateway`, `lifecycle`, `projects` |
+| `operations_log` | table | `ReplacingMergeTree` | `(project_id, id)` | `api`, `configuration`, `deployments`, `maintenance` |
+| `pull_requests` | table | `ReplacingMergeTree` | `(project_id, pr_id)` | `github` |
+| `score_history` | table | `MergeTree` | `(project_id, timestamp)` | `scoring` |
+| `score_latest_data` | materialized view | `AggregatingMergeTree` | `project_id` |  |
+| `score_latest` | view |  |  |  |
+| `commits` | table | `ReplacingMergeTree` | `(project_id, sha)` | `github`, `maintenance` |
+| `commit_drift` | table | `ReplacingMergeTree` | `(project_id, sha)` | `drift` |
+| `document_versions` | table | `ReplacingMergeTree` | `(document_id, version)` | `documents` |
+| `tags` | table | `ReplacingMergeTree` | `(project_id, name)` | `github` |
+| `scheduler_runs` | table | `ReplacingMergeTree` | `(task_id, run_id)` | `scheduler` |
+| `document_read_events` | table | `ReplacingMergeTree` | `(org_slug, document_id, session_id, seq)` | `documents` |
+| `document_read_sessions` | table | `ReplacingMergeTree` | `(org_slug, document_id, session_id)` | `documents` |
+| `release_component_batches` | table | `MergeTree` | `(release_id, recorded_at, batch_id)` | `sbom` |
+| `release_components` | table | `MergeTree` | `(component_id, release_id, batch_id, component_release_id)` | `sbom` |
+| `maintenance_log` | table | `MergeTree` | `(occurred_at, id)` | `maintenance` |
+| `email_audit` | table | `MergeTree` | `(sent_at, to_email_hash)` | `email` |
+| `agent_task_events` | table | `ReplacingMergeTree` | `(organization_id, task_id, seq)` | `agent_tasks` |
+| `agent_usage` | table | `ReplacingMergeTree` | `(organization_id, task_id, report_id)` | `agent_tasks` |
+| `workflow_run_events` | table | `ReplacingMergeTree` | `(organization_id, run_id, seq)` | `workflows` |
+| `workflow_runs` | table | `ReplacingMergeTree` | `(organization_id, workflow_id, run_id)` | `workflows` |
+| `secret_audit_events` | table | `ReplacingMergeTree` | `(organization_id, at, event_id)` | `secrets` |
+
+<!-- END GENERATED -->
 
 `maintenance_log` is the durable history of what a global maintenance
 operation did, written best-effort so a ClickHouse problem can never fail

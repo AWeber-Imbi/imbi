@@ -59,6 +59,12 @@ class GitHubCommitSync(CommitSyncCapability):
   not exist on the remote: a build that failed before tagging is an
   expected outcome. A plugin that does not implement it falls back to a
   queued `sync_all_history`.
+- **`sync_new_commits`** *(optional, default raises
+  `NotImplementedError`)* — record the commits that are not stored yet,
+  for example the version-bump commits that a release build pushed.
+  Returns rows written. Bound the walk by the newest stored commit. Use
+  `since` only when no commits are stored. Re-running is safe. No host
+  code calls this method at this time.
 - **`check_available`** *(optional, default `True`)* — whether an
   on-demand sync can run for `ctx` right now. Override to report `False`
   when the remote / repository cannot be resolved so the host can hide

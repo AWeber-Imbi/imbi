@@ -122,8 +122,8 @@ servers.
 
 - The `imbi` group has the tools of the Imbi API.
 - Each other group is an MCP server from **Admin > Global Admin >
-  Assistant > MCP Servers**. The assistant and the Slack bot use the same
-  servers.
+  Assistant > MCP Servers**. The assistant also uses these servers. The Slack
+  bot does not.
 
 The key of a tool is `<server slug>.<tool name>`. Each tool has a
 capability badge: **Read**, **Write**, **Destructive**, or **Unknown**. The
