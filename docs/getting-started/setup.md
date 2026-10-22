@@ -172,7 +172,7 @@ started before you ran setup, restart it, so that the seeding runs again.
 Next:
 
 - [Authentication](../admin/authentication.md): set up single sign-on
-- [Users and Groups](../admin/users-and-groups.md): add users
+- [Users, Teams, and Organizations](../admin/users-teams-organizations.md): add users
 - [Blueprints](../admin/blueprints.md): define custom metadata schemas
 - [AI Models](../admin/ai-models.md) and [Secrets](../admin/secrets.md):
   configure the AI providers and the secrets that agents use
