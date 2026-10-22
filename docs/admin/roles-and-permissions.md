@@ -58,9 +58,10 @@ Roles are global. You can use one role in each organization.
 5. Click **Create Role**.
 
 !!! tip
-    Use the principle of least privilege. Start with the `readonly` role
-    and add permissions as necessary. Do not start with `admin` and remove
-    permissions.
+    Use the principle of least privilege. To give more than `readonly`,
+    create a custom role with the permissions of `readonly`, then add only
+    the permissions that are necessary. Do not start with `admin` and
+    remove permissions.
 
 ## Permissions across organizations
 

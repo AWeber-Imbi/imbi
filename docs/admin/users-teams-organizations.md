@@ -79,7 +79,10 @@ Imbi creates users in three ways:
 When a user without a membership signs in, Imbi adds the user to an
 organization with the `default` role. If there is only one organization,
 Imbi uses it. If there are more, Imbi uses the organization with the slug
-`default`.
+`default`. If there are more organizations and none has the slug
+`default`, or if the `default` role does not exist, Imbi does not add a
+membership. The user can sign in but has no permissions. Add the
+membership manually.
 
 ### Create a user
 
