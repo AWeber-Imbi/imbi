@@ -11,6 +11,10 @@ by any service in the Imbi ecosystem:
 - **Token Encryption**: Fernet encryption for sensitive data at rest
 - **Config Encryption**: Fernet encryption for persisted configuration
   secrets, keyed separately from token encryption
+- **Password Hashing**: Argon2id hashes for passwords and API key secrets
+
+For request authentication and permission checks, see
+[Permissions](permissions.md).
 
 ## JWT Tokens
 
@@ -67,6 +71,22 @@ encrypted = encryption.encrypt_config_value("client-secret")
 decrypted = encryption.decrypt_config_value(encrypted)
 ```
 
+## Password Hashing
+
+`imbi.common.auth.password` hashes with Argon2id. API key verification in
+[Permissions](permissions.md) uses the same hasher for key secrets.
+`verify_password` returns `False` for a wrong password and for a hash
+that is not valid. It does not raise.
+
+```python
+from imbi.common.auth import password
+
+hashed = password.hash_password("correct horse battery staple")
+if password.verify_password("correct horse battery staple", hashed):
+    if password.needs_rehash(hashed):
+        hashed = password.hash_password("correct horse battery staple")
+```
+
 ## API Reference
 
 ### Core Functions
@@ -94,3 +114,11 @@ decrypted = encryption.decrypt_config_value(encrypted)
 ::: imbi.common.auth.encryption.encrypt_config_value
 
 ::: imbi.common.auth.encryption.decrypt_config_value
+
+### Password Functions
+
+::: imbi.common.auth.password.hash_password
+
+::: imbi.common.auth.password.verify_password
+
+::: imbi.common.auth.password.needs_rehash

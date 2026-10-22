@@ -19,6 +19,9 @@ place instead of being copied into each consumer:
 - **`copy_permissions_to_meta`** — an `mcp_component_fn` that records the
   `x-imbi-permission` extension on each generated component's public
   `meta`.
+- **`annotate`** — an `mcp_component_fn` that sets the MCP tool
+  annotations from the HTTP method of the operation. See
+  [Tool annotations](#tool-annotations).
 - **`PermissionFilterMiddleware`** — narrows `tools/list` per caller to
   the operations that caller has permission for. Requires
   `copy_permissions_to_meta`; advisory only, and fails open.
@@ -106,6 +109,27 @@ absent it returns `None` and changes nothing, so a consumer can adopt it
 before or after imbi-api ships the flag. `copy_permissions_to_meta` is
 likewise a no-op on operations with no `x-imbi-permission`.
 
+## Tool annotations
+
+`annotate` sets two MCP tool annotations from the HTTP method:
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` for `GET` and `HEAD` |
+| `destructiveHint` | `true` for `DELETE` |
+
+The agent runner relay reads these hints. It counts a call of an Imbi
+tool that is not read-only as a change. `imbi-api` passes `annotate` as
+the `mcp_component_fn` when it builds the agent tool catalog. `imbi-mcp`
+calls it together with `copy_permissions_to_meta`, because
+`from_openapi` takes only one `mcp_component_fn`:
+
+```python
+def component(route, component):
+    mcp.copy_permissions_to_meta(route, component)
+    mcp.annotate(route, component)
+```
+
 ## Access log context
 
 Every MCP call arrives as `POST /mcp`, so the HTTP access log on its own
@@ -153,6 +177,8 @@ The label is cached per key, so it appears from the caller's first
 ::: imbi.common.mcp.copy_permissions_to_meta
 
 ::: imbi.common.mcp.required_permissions
+
+::: imbi.common.mcp.annotate
 
 ::: imbi.common.mcp.PermissionFilterMiddleware
 

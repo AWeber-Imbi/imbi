@@ -100,13 +100,19 @@ nav:
           - Graph (Apache AGE): common/api/graph.md
           - ClickHouse Client: common/api/clickhouse.md
           - Valkey Client: common/api/valkey.md
+          - Iggy: common/api/iggy.md
           - Models: common/api/models.md
           - Blueprints: common/api/blueprints.md
           - JSON Pointer: common/api/json-pointer.md
           - Authentication: common/api/auth.md
+          - Permissions: common/api/permissions.md
+          - Prompts: common/api/prompts.md
+          - LLM: common/api/llm.md
+          - Workflows: common/api/workflows.md
           - MCP Toolset Policy: common/api/mcp.md
           - Logging: common/api/logging.md
           - OpenTelemetry: common/api/otel.md
+          - Metrics: common/api/metrics.md
           - Lifespan: common/api/lifespan.md
       - Guides:
           - Database Setup: common/guides/database-setup.md
