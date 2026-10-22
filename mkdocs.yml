@@ -43,6 +43,12 @@ nav:
       - Installation: getting-started/installation.md
       - Configuration: getting-started/configuration.md
       - Initial Setup: getting-started/setup.md
+  - User Guide:
+      - user-guide/index.md
+      - Pull Requests and Dependencies: user-guide/pull-requests-and-dependencies.md
+      - Documents, Reports, and the Dashboard: user-guide/documents-and-reports.md
+      - Search and the Assistant: user-guide/search-and-assistant.md
+      - Your Settings: user-guide/settings.md
   - Administration:
       - Authentication: admin/authentication.md
       - Users, Teams, and Organizations: admin/users-teams-organizations.md
