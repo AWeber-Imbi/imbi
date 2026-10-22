@@ -40,10 +40,9 @@ The chart cannot set these variables. Issue
 
 ## Installing the Chart
 
-!!! warning
-    The published 2.39.0 image fails at startup on a new Iggy server: imbi-api
-    cannot create its Iggy topics and exits. See
-    [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469).
+Use image 2.39.1 or later. On a new install, 2.39.0 cannot create its Iggy
+topics, and imbi-api exits at startup (see
+[issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
 
 1. Put the five required values in a values file. The chart refuses to
    render without the connection URLs.
@@ -82,7 +81,8 @@ The chart cannot set these variables. Issue
     ```
 
     `setup-postgres` creates the PostgreSQL schema that setup needs. It does
-    nothing when imbi-api has already created the schema.
+    nothing when imbi-api has already created the schema. From 2.39.1, it is
+    optional: `setup` creates the schema itself.
 
     See [Initial Setup](../getting-started/setup.md) for the prompts.
 

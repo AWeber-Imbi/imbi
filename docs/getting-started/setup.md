@@ -3,10 +3,9 @@
 After you install Imbi, run the setup command one time. It creates your
 organization and your first admin user, and seeds the data that Imbi needs.
 
-Setup needs the PostgreSQL schema. imbi-api creates the schema when it
-starts. On a new database where imbi-api has not started yet, run
-`imbi-api setup-postgres` first. Without the schema, setup cannot connect to
-PostgreSQL and stops with a `PoolTimeout` error (see
+Setup needs the PostgreSQL schema. From 2.39.1, setup creates the schema
+itself. In 2.39.0, setup cannot connect to a new database and stops with a
+`PoolTimeout` error. Run `imbi-api setup-postgres` first to prevent this (see
 [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
 
 ## Running Setup

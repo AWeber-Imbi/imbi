@@ -36,11 +36,9 @@ docker pull ghcr.io/aweber-imbi/imbi:latest
 This Compose file runs Imbi and all of its dependencies on one host. It is
 for evaluation, not for production.
 
-!!! warning
-    The published 2.39.0 image fails at startup on a new Iggy server: imbi-api
-    cannot create its Iggy topics and exits. Steps 1 to 4 work. Steps 5 and 6
-    do not work with 2.39.0 until
-    [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469) is fixed.
+Use image 2.39.1 or later. On a new install, 2.39.0 cannot create its Iggy
+topics, and imbi-api exits at startup (see
+[issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
 
 1. Create a directory, and in it create `compose.yaml`:
 
@@ -195,6 +193,8 @@ for evaluation, not for production.
     ```bash
     docker compose run --rm imbi imbi-api setup-postgres
     ```
+
+    From 2.39.1, this step is optional: `setup` creates the schema itself.
 
 4. Run the interactive setup. See [Initial Setup](setup.md) for the prompts:
 

@@ -5,6 +5,10 @@ can run everything together or individual services for scaled-out
 deployments. To try Imbi on one host, use the Compose file in
 [Installation](../getting-started/installation.md#docker-compose).
 
+Use image 2.39.1 or later. On a new install, 2.39.0 cannot create its Iggy
+topics, and imbi-api exits at startup (see
+[issue #469](https://github.com/AWeber-Imbi/imbi/issues/469)).
+
 ## All-in-One Mode
 
 By default, the container starts all services behind a Caddy reverse proxy:
@@ -209,8 +213,8 @@ docker run -it \
   ghcr.io/aweber-imbi/imbi:latest setup
 ```
 
-On a new database, run `imbi-api setup-postgres` first, or start imbi-api
-first. Setup needs the PostgreSQL schema that those create.
+From 2.39.1, setup creates the PostgreSQL schema itself. With 2.39.0, run
+`imbi-api setup-postgres` first on a new database.
 
 ## Custom Caddyfile
 
