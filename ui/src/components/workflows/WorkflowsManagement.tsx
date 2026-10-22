@@ -24,8 +24,8 @@ export function WorkflowsManagement() {
   const { slug } = useParams<{ slug?: string }>()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('workflow:read')
-  const canCreate = useHasPermission('workflow:create')
+  const canRead = useHasPermission('workflow:read', orgSlug)
+  const canCreate = useHasPermission('workflow:create', orgSlug)
   const list = useWorkflowList(orgSlug)
   const stepTypes = useStepTypes(orgSlug)
   const attention = useWorkflowAttention(orgSlug)

@@ -892,6 +892,10 @@ export interface CurrentReleaseEnvironment {
   release: null | Release
 }
 
+// A membership in GET /users/me, with the caller's permissions in that
+// organization.
+export type CurrentUserOrgMembership = Schemas['CurrentUserOrgMembership']
+
 export interface CutReleaseRequest {
   /**
    * Operator acknowledgement that `committish` has a failing CI run.
@@ -1841,8 +1845,8 @@ export interface UseAuthReturn {
 }
 
 // `UserResponse` stays hand-written: it's a UI-side extension of `User`
-// (inherits `username`, `user_type`, etc.). `permissions`, `is_admin`, and
-// `teams` are populated by GET /users/me (the backend's
+// (inherits `username`, `user_type`, etc.). `permissions`, `is_admin`,
+// `organizations`, and `teams` are populated by GET /users/me (the backend's
 // CurrentUserResponse); other optional fields (`groups`, `roles`) are not
 // yet exposed by the API.
 export interface UserResponse extends User {
@@ -1853,6 +1857,7 @@ export interface UserResponse extends User {
   is_admin?: boolean
   is_service_account?: boolean
   last_login?: null | string
+  organizations?: CurrentUserOrgMembership[]
   permissions?: string[]
   roles?: string[]
   teams?: TeamMembership[]

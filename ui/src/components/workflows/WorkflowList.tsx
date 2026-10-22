@@ -6,6 +6,7 @@ import { AdminSection } from '@/components/admin/AdminSection'
 import { agentsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { cn } from '@/lib/utils'
 
@@ -44,7 +45,11 @@ export function WorkflowList({
   workflows,
 }: WorkflowListProps) {
   const navigate = useNavigate()
-  const canCreate = useHasPermission('workflow:create')
+  const { selectedOrganization } = useOrganization()
+  const canCreate = useHasPermission(
+    'workflow:create',
+    selectedOrganization?.slug,
+  )
   const [search, setSearch] = useState('')
   const labels = useMemo(
     () => Object.fromEntries(stepTypes.map((t) => [t.type, t.label])),

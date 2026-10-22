@@ -61,7 +61,7 @@ export function TasksPage() {
   const { organizations, selectedOrganization, setSelectedOrganization } =
     useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('agent_task:read')
+  const canRead = useHasPermission('agent_task:read', orgSlug)
   const urlOrg = organizations.find((o) => o.slug === taskOrg)
   useEffect(() => {
     if (urlOrg) setSelectedOrganization(urlOrg)
@@ -156,7 +156,7 @@ function TaskInbox({
   const [states, setStates] = useState(new Set<string>())
   const [owners, setOwners] = useState(new Set<string>())
   const [creating, setCreating] = useState(false)
-  const canCreate = useHasPermission('agent_task:create')
+  const canCreate = useHasPermission('agent_task:create', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
   const open = useAgentTaskPages(orgSlug, { mine, q, status: OPEN })
   const closed = useAgentTaskPages(orgSlug, { mine, q, status: ['closed'] })

@@ -68,7 +68,7 @@ interface ConfigForm {
 export function PlatformPage() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canWrite = useHasPermission('agent_platform_config:write')
+  const canWrite = useHasPermission('agent_platform_config:write', orgSlug)
   const config = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => getAgentPlatformConfig(orgSlug!, signal),

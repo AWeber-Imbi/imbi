@@ -224,7 +224,7 @@ export function useAgentTasks(orgSlug: string, params: AgentTaskListParams) {
  * request open), for the badge (O1).
  */
 export function useWaitingTaskCount(orgSlug: string | undefined) {
-  const canRead = useHasPermission('agent_task:read')
+  const canRead = useHasPermission('agent_task:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => countWaitingAgentTasks(orgSlug!, signal),

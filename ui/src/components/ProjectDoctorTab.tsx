@@ -33,6 +33,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useCommitSync } from '@/hooks/useCommitSync'
 import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
+import { hasPermission } from '@/hooks/useHasPermission'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { usePRSync } from '@/hooks/usePRSync'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -68,12 +69,15 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
     isAdmin || (user?.permissions ?? []).includes('project:write')
   const canRescore =
     isAdmin || (user?.permissions ?? []).includes('scoring_policy:rescore')
-  const canResyncDeployments =
-    isAdmin || (user?.permissions ?? []).includes('project:deployment:write')
-  const canSyncCommits =
-    isAdmin || (user?.permissions ?? []).includes('project:commits:write')
-  const canSyncPRs =
-    isAdmin || (user?.permissions ?? []).includes('project:pull-requests:write')
+  // The deployment, commit-sync and PR-sync routes check the caller's role
+  // in the path organization only.
+  const canResyncDeployments = hasPermission(
+    user,
+    'project:deployment:write',
+    orgSlug,
+  )
+  const canSyncCommits = hasPermission(user, 'project:commits:write', orgSlug)
+  const canSyncPRs = hasPermission(user, 'project:pull-requests:write', orgSlug)
 
   // A build-and-release project has no environments to deploy into, so the
   // same resync reads as "Sync Releases" there. ``releasable`` /

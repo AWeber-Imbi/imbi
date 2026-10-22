@@ -282,7 +282,7 @@ function OverviewTab({
  * `agent_task:manage`.
  */
 function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
-  const canManage = useHasPermission('agent_task:manage')
+  const canManage = useHasPermission('agent_task:manage', orgSlug)
   const [owner, setOwner] = useState('')
   const [open, setOpen] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)

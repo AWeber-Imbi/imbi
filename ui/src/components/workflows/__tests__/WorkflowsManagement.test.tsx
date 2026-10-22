@@ -35,7 +35,11 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 }))
 
 const auth = vi.hoisted(() => ({
-  user: { is_admin: true, permissions: [] as string[] },
+  user: {
+    is_admin: true,
+    organizations: [{ organization_slug: 'acme', permissions: [] }],
+    permissions: [] as string[],
+  },
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -56,7 +60,11 @@ function renderAt(path: string) {
 describe('WorkflowsManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    auth.user = { is_admin: true, permissions: [] }
+    auth.user = {
+      is_admin: true,
+      organizations: [{ organization_slug: 'acme', permissions: [] }],
+      permissions: [],
+    }
     const { version: _version, ...summary } = workflow()
     vi.mocked(endpoints.listWorkflows).mockResolvedValue([
       summary,
@@ -282,7 +290,13 @@ describe('WorkflowsManagement', () => {
   })
 
   it('hides New workflow without workflow:create', async () => {
-    auth.user = { is_admin: false, permissions: ['workflow:read'] }
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['workflow:read'] },
+      ],
+      permissions: ['workflow:read'],
+    }
     renderAt('/agents/workflows')
     await screen.findByText('Deploy guard')
     expect(screen.queryByText('New workflow')).not.toBeInTheDocument()

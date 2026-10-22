@@ -211,6 +211,16 @@ class OrgMembership(pydantic.BaseModel):
     role: str | None
 
 
+class CurrentUserOrgMembership(OrgMembership):
+    """Organization membership with the caller's permissions in it.
+
+    Org-scoped routes check the role in the path organization only, so
+    the UI gates org-scoped controls on these, not on the union.
+    """
+
+    permissions: list[str] = []
+
+
 class TeamMembership(pydantic.BaseModel):
     """Team membership for API responses."""
 
@@ -473,6 +483,7 @@ class CurrentUserResponse(UserResponse):
     permissions to avoid disclosing one user's grants to another.
     """
 
+    organizations: list[CurrentUserOrgMembership] = []  # type: ignore[assignment]
     permissions: list[str] = []
     teams: list[TeamMembership] = []
 

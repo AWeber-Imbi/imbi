@@ -12375,6 +12375,26 @@ export interface components {
             performed_by_email?: string | null;
         };
         /**
+         * CurrentUserOrgMembership
+         * @description Organization membership with the caller's permissions in it.
+         *
+         *     Org-scoped routes check the role in the path organization only, so
+         *     the UI gates org-scoped controls on these, not on the union.
+         */
+        CurrentUserOrgMembership: {
+            /** Organization Name */
+            organization_name: string;
+            /** Organization Slug */
+            organization_slug: string;
+            /** Role */
+            role: string;
+            /**
+             * Permissions
+             * @default []
+             */
+            permissions: string[];
+        };
+        /**
          * CurrentUserResponse
          * @description Response model for the authenticated user's own profile.
          *
@@ -12416,7 +12436,7 @@ export interface components {
              * Organizations
              * @default []
              */
-            organizations: components["schemas"]["OrgMembership"][];
+            organizations: components["schemas"]["CurrentUserOrgMembership"][];
             /**
              * Permissions
              * @default []

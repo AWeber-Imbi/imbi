@@ -49,7 +49,11 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 }))
 
 const auth = vi.hoisted(() => ({
-  user: { is_admin: true, permissions: [] as string[] },
+  user: {
+    is_admin: true,
+    organizations: [{ organization_slug: 'acme', permissions: [] }],
+    permissions: [] as string[],
+  },
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -70,7 +74,11 @@ function renderAt(path: string) {
 describe('AgentsArea', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    auth.user = { is_admin: true, permissions: [] }
+    auth.user = {
+      is_admin: true,
+      organizations: [{ organization_slug: 'acme', permissions: [] }],
+      permissions: [],
+    }
     vi.mocked(endpoints.listAgents).mockResolvedValue([
       agent(),
       agent({
@@ -118,7 +126,13 @@ describe('AgentsArea', () => {
   })
 
   it('hides write controls without agent permissions', async () => {
-    auth.user = { is_admin: false, permissions: ['agent:read'] }
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['agent:read'] },
+      ],
+      permissions: ['agent:read'],
+    }
     renderAt('/agents/manage')
     await screen.findByText('Herald')
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
@@ -201,7 +215,13 @@ describe('AgentsArea', () => {
   })
 
   it('says so when the user may not read agent tasks', () => {
-    auth.user = { is_admin: false, permissions: ['agent:read'] }
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['agent:read'] },
+      ],
+      permissions: ['agent:read'],
+    }
     renderAt('/agents/usage')
     expect(screen.getByText(/agent_task:read/)).toBeInTheDocument()
     expect(endpoints.getAgentUsage).not.toHaveBeenCalled()

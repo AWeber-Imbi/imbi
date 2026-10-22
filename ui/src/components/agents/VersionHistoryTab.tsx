@@ -33,8 +33,8 @@ interface VersionHistoryTabProps {
 export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canDelete = useHasPermission('agent:delete')
-  const canWrite = useHasPermission('agent:write')
+  const canDelete = useHasPermission('agent:delete', orgSlug)
+  const canWrite = useHasPermission('agent:write', orgSlug)
   const [restoreTarget, setRestoreTarget] = useState<AgentVersion | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 

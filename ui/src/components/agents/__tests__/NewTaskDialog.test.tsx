@@ -22,7 +22,13 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { is_admin: true, permissions: [] } }),
+  useAuth: () => ({
+    user: {
+      is_admin: true,
+      organizations: [{ organization_slug: 'acme', permissions: [] }],
+      permissions: [],
+    },
+  }),
 }))
 
 function agent(slug: string, enabled = true): Agent {

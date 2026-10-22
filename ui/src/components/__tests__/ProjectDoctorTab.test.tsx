@@ -14,9 +14,25 @@ vi.mock('@/api/endpoints', () => ({
   runProjectAnalysis: vi.fn(),
 }))
 
+interface Membership {
+  organization_slug: string
+  permissions: string[]
+}
+
 const auth = vi.hoisted(() => ({
-  user: { is_admin: false, permissions: [] as string[] },
+  user: {
+    is_admin: false,
+    organizations: [] as Membership[],
+    permissions: [] as string[],
+  },
 }))
+
+// The sync routes check the role in the project's organization (acme)
+// only, so the user holds `permissions` there and in the union.
+function memberOfAcme(permissions: string[]) {
+  auth.user.permissions = permissions
+  auth.user.organizations = [{ organization_slug: 'acme', permissions }]
+}
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
@@ -45,14 +61,11 @@ const PROJECT = { id: 'p-1', project_types: [] } as unknown as Project
 
 describe('ProjectDoctorTab sync gating', () => {
   beforeEach(() => {
-    auth.user = { is_admin: false, permissions: [] }
+    auth.user = { is_admin: false, organizations: [], permissions: [] }
   })
 
   it('gates each sync button on the permission its endpoint checks', () => {
-    auth.user.permissions = [
-      'project:commits:write',
-      'project:pull-requests:write',
-    ]
+    memberOfAcme(['project:commits:write', 'project:pull-requests:write'])
     render(<ProjectDoctorTab project={PROJECT} />)
 
     expect(
@@ -65,7 +78,7 @@ describe('ProjectDoctorTab sync gating', () => {
   })
 
   it('hides commit and PR sync from deployment:write alone', () => {
-    auth.user.permissions = ['project:deployment:write']
+    memberOfAcme(['project:deployment:write'])
     render(<ProjectDoctorTab project={PROJECT} />)
 
     expect(
@@ -77,5 +90,29 @@ describe('ProjectDoctorTab sync gating', () => {
     expect(
       screen.queryByRole('button', { name: 'Sync PRs' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('hides the syncs when the role in the project org lacks them', () => {
+    // Developer in another org, read-only in acme: the union holds every
+    // sync permission, but the routes check acme only.
+    const sync = [
+      'project:commits:write',
+      'project:deployment:write',
+      'project:pull-requests:write',
+    ]
+    auth.user.permissions = sync
+    auth.user.organizations = [
+      { organization_slug: 'acme', permissions: [] },
+      { organization_slug: 'other', permissions: sync },
+    ]
+    render(<ProjectDoctorTab project={PROJECT} />)
+
+    for (const name of [
+      'Sync Commits & Tags',
+      'Sync PRs',
+      'Sync Deployments',
+    ]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
   })
 })

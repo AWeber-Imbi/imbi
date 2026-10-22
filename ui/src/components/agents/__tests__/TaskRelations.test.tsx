@@ -32,7 +32,15 @@ const auth = { permissions: ['agent:read', 'agent_task:manage'] }
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { is_admin: false, permissions: auth.permissions } }),
+  useAuth: () => ({
+    user: {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: auth.permissions },
+      ],
+      permissions: auth.permissions,
+    },
+  }),
 }))
 
 function related(

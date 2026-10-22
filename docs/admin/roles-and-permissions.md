@@ -110,13 +110,13 @@ organization B. The user can create a project in organization B, because
 the projects routes use the union. The user cannot create an agent in
 organization B, because the agents routes use only the `readonly` role.
 
-!!! warning "Known limitation"
-    The UI shows or hides buttons with the union of your roles. On the
-    organization routes, the API uses only the role in that organization.
-    Thus the UI can show a button that returns 403 when you click it. For
-    example, a user with `agent_task:manage` in one organization sees
-    **Pause** and **Cancel** on the tasks of another organization. See
-    [issue #458](https://github.com/AWeber-Imbi/imbi/issues/458).
+The UI uses the same rules. `GET /users/me` returns the union in
+`permissions` and the permissions of each membership in
+`organizations[].permissions`. On the pages of the organization routes,
+the UI shows a button only when your role in that organization gives the
+permission. A platform administrator who is a member of that organization
+sees every button there, whatever the role. In the example, the user does not see **Pause** and
+**Cancel** on the tasks of organization B.
 
 ## Special rules
 
