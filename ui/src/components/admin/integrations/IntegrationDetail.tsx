@@ -46,6 +46,7 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import { statusBadgeVariant } from '@/lib/status-colors'
 import type {
+  CapabilityAssignment,
   CapabilityKind,
   Integration,
   PluginOption,
@@ -137,11 +138,11 @@ export function IntegrationDetail({
       queryKey: ['capability-assignments', orgSlug, slug, kind],
     })),
   })
-  const assignmentsByKind: Record<string, string[]> = {}
+  const assignmentsByKind: Record<string, CapabilityAssignment[]> = {}
+  const assignmentsLoaded: Record<string, boolean> = {}
   scopedKinds.forEach((kind, i) => {
-    assignmentsByKind[kind] = (assignmentQueries[i].data ?? []).map(
-      (a) => a.project_type_slug,
-    )
+    assignmentsByKind[kind] = assignmentQueries[i].data ?? []
+    assignmentsLoaded[kind] = assignmentQueries[i].isSuccess
   })
 
   const invalidate = () => {
@@ -184,20 +185,36 @@ export function IntegrationDetail({
     if (nameEdit.isEditing) nameInputRef.current?.focus()
   }, [nameEdit.isEditing])
 
+  // The PUT replaces every assignment of the kind, so rows that stay must
+  // send their current values back. Only newly added rows get defaults.
   const assignmentMutation = useMutation({
-    mutationFn: ({ kind, slugs }: { kind: string; slugs: string[] }) =>
-      replaceCapabilityAssignments(orgSlug!, slug, kind as CapabilityKind, {
-        assignments: slugs.map((project_type_slug) => ({
-          default: false,
-          env_payloads: {},
-          identity_integration_slug: null,
-          options: {},
-          project_type_slug,
-        })),
-      }),
+    mutationFn: ({ kind, slugs }: { kind: string; slugs: string[] }) => {
+      const current = new Map(
+        (assignmentsByKind[kind] ?? []).map((a) => [a.project_type_slug, a]),
+      )
+      return replaceCapabilityAssignments(
+        orgSlug!,
+        slug,
+        kind as CapabilityKind,
+        {
+          assignments: slugs.map(
+            (project_type_slug) =>
+              current.get(project_type_slug) ?? {
+                default: false,
+                env_payloads: {},
+                identity_integration_slug: null,
+                options: {},
+                project_type_slug,
+              },
+          ),
+        },
+      )
+    },
     onError: (err) => toast.error(`Save failed: ${extractApiErrorDetail(err)}`),
-    onSuccess: (_data, { kind }) => {
-      void queryClient.invalidateQueries({
+    // Awaited so the mutation stays pending until the refetch lands; the
+    // next edit must build its replacement from the refreshed list.
+    onSuccess: async (_data, { kind }) => {
+      await queryClient.invalidateQueries({
         queryKey: ['capability-assignments', orgSlug, slug, kind],
       })
     },
@@ -406,7 +423,13 @@ export function IntegrationDetail({
                           : undefined
                       return (
                         <CapabilityRow
-                          assignedTypeSlugs={assignmentsByKind[cap.kind] ?? []}
+                          assignedTypeSlugs={(
+                            assignmentsByKind[cap.kind] ?? []
+                          ).map((a) => a.project_type_slug)}
+                          assignmentDisabled={
+                            !assignmentsLoaded[cap.kind] ||
+                            assignmentMutation.isPending
+                          }
                           callbackUrl={callbackUrl}
                           description={cap.description}
                           editable={editable}

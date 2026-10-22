@@ -162,6 +162,10 @@ Each assignment can also hold per-environment payloads (`env_payloads`).
 The GitHub deployment capability sends them as workflow inputs. The UI does
 not edit them. Use the API:
 `PUT /organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments`.
+This `PUT` replaces all assignments of the capability, so send every
+assignment that you want to keep. When you change the project types on the
+integration page, the UI keeps the default, options, payloads, and identity
+integration of each assignment that stays.
 
 | Permission | Lets you | Roles that have it |
 |---|---|---|
