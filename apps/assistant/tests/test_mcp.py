@@ -1,9 +1,14 @@
 """Tests for assistant MCP module."""
 
+import asyncio
+import functools
 import json
 import os
+import typing
 import unittest
 from unittest import mock
+
+import httpx
 
 from imbi.assistant import mcp, settings
 from imbi.common.mcp import exclude_non_ai_tools
@@ -272,6 +277,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_client.call_tool.assert_called_once_with(
                 'get_projects',
                 {},
+                meta={mcp.AUTH_META_KEY: 'Bearer test-token'},
             )
 
             await manager.aclose()
@@ -416,6 +422,98 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Pass', payload['detail'])
 
             await manager.aclose()
+
+
+class ExecuteToolAuthIsolationTestCase(unittest.IsolatedAsyncioTestCase):
+    """Concurrent tool calls must each send only their own token.
+
+    Uses a real FastMCP server built from a small spec, with the API
+    served by an httpx MockTransport. The request for caller ``a``
+    waits until the request for caller ``b`` has started, so the two
+    calls overlap.
+
+    """
+
+    SPEC: typing.ClassVar[dict[str, typing.Any]] = {
+        'openapi': '3.1.0',
+        'info': {'title': 'Imbi', 'version': '1'},
+        'paths': {
+            # mount_prefix() needs exactly one path ending in /users/me.
+            '/users/me': {
+                'get': {
+                    'operationId': 'profile',
+                    'responses': {'200': {'description': 'OK'}},
+                }
+            },
+            '/whoami/{caller}': {
+                'get': {
+                    'operationId': 'whoami',
+                    'parameters': [
+                        {
+                            'name': 'caller',
+                            'in': 'path',
+                            'required': True,
+                            'schema': {'type': 'string'},
+                        }
+                    ],
+                    'responses': {'200': {'description': 'OK'}},
+                }
+            },
+        },
+    }
+
+    async def asyncSetUp(self) -> None:
+        settings._assistant_settings = None
+        self.addCleanup(setattr, settings, '_assistant_settings', None)
+        self.seen: dict[str, str | None] = {}
+        self.b_started = asyncio.Event()
+        transport = httpx.MockTransport(self._handle)
+        patches = [
+            mock.patch.dict(
+                os.environ,
+                {'IMBI_INTERNAL_API_URL': 'http://api:8000'},
+                clear=True,
+            ),
+            mock.patch(
+                'imbi.assistant.mcp.httpx.AsyncClient',
+                functools.partial(httpx.AsyncClient, transport=transport),
+            ),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        self.manager = mcp.MCPManager()
+        await self.manager.initialize()
+        self.addAsyncCleanup(self.manager.aclose)
+
+    async def _handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == '/openapi.json':
+            return httpx.Response(200, json=self.SPEC)
+        caller = request.url.path.rsplit('/', 1)[-1]
+        self.seen[caller] = request.headers.get('authorization')
+        if caller == 'a':
+            await asyncio.wait_for(self.b_started.wait(), timeout=5)
+        else:
+            self.b_started.set()
+        return httpx.Response(200, json={'caller': caller})
+
+    async def _call(self, caller: str, token: str | None) -> None:
+        content, is_error = await self.manager.execute_tool(
+            'whoami', {'caller': caller}, auth_token=token
+        )
+        self.assertFalse(is_error, content)
+
+    async def test_concurrent_calls_send_own_token(self) -> None:
+        await asyncio.gather(
+            self._call('a', 'token-a'), self._call('b', 'token-b')
+        )
+        self.assertEqual(
+            self.seen, {'a': 'Bearer token-a', 'b': 'Bearer token-b'}
+        )
+
+    async def test_call_without_token_sends_no_header(self) -> None:
+        await asyncio.gather(self._call('a', 'token-a'), self._call('b', None))
+        self.assertEqual(self.seen, {'a': 'Bearer token-a', 'b': None})
 
 
 class ModuleLevelFunctionsTestCase(
