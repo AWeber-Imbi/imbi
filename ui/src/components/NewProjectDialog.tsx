@@ -78,7 +78,7 @@ export function NewProjectDialog({
       enabled: isOpen,
     })
 
-  const { data: projectSchema } = useQuery({
+  const { data: projectSchema, error: schemaError } = useQuery({
     enabled: isOpen && !!orgSlug && !!projectTypeSlug,
     queryFn: ({ signal }) =>
       getNewProjectSchema(orgSlug, [projectTypeSlug], selectedEnvSlugs, signal),
@@ -112,10 +112,14 @@ export function NewProjectDialog({
 
   const handleSave = () => {
     if (!orgSlug || !canProceed || createMutation.isPending) return
+    // An unchecked required boolean means false, not "not set".
     const blueprintValues = Object.fromEntries(
-      Object.entries(blueprintData).filter(
-        ([key]) => key in requiredSchema.properties,
-      ),
+      Object.entries(requiredSchema.properties)
+        .map(([key, field]) => [
+          key,
+          blueprintData[key] ?? (field.type === 'boolean' ? false : undefined),
+        ])
+        .filter(([, value]) => value !== undefined),
     )
     const errors = validateDynamicFields(requiredSchema, blueprintValues)
     setBlueprintErrors(errors)
@@ -147,7 +151,9 @@ export function NewProjectDialog({
     onClose()
   }
 
-  const canProceed = teamSlug && projectTypeSlug && name && slug
+  // Wait for the blueprint schema, or Save could skip its required fields.
+  const canProceed =
+    teamSlug && projectTypeSlug && name && slug && !!projectSchema
 
   return (
     <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
@@ -303,6 +309,15 @@ export function NewProjectDialog({
         </div>
 
         {/* Error display */}
+        {schemaError && (
+          <div className="px-6 py-2">
+            <Card className="border-destructive/50 bg-destructive/10 p-3">
+              <p className="text-destructive text-sm">
+                Failed to load the blueprint fields: {String(schemaError)}
+              </p>
+            </Card>
+          </div>
+        )}
         {createMutation.error && (
           <div className="px-6 py-2">
             <Card className="border-destructive/50 bg-destructive/10 p-3">

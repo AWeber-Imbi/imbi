@@ -158,6 +158,12 @@ export function DynamicFormFields({
                   — {field.description}
                 </span>
               )}
+              {fieldError && (
+                <span className="text-danger flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
+                  {fieldError}
+                </span>
+              )}
             </div>
           )
         }
