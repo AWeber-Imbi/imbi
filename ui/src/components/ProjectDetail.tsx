@@ -101,8 +101,13 @@ import { ProjectRepoProvider } from '@/contexts/ProjectRepoContext'
 import { useBalancedEnvLayout } from '@/hooks/useBalancedEnvLayout'
 import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
+import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
-import { computeDriftPairs } from '@/lib/deployment-drift'
+import {
+  computeDriftPairs,
+  rangeNeedsAction,
+  releaseRangeClean,
+} from '@/lib/deployment-drift'
 import { upstreamBySlug } from '@/lib/environment-chains'
 import { formatDateTime } from '@/lib/formatDate'
 import { projectRepoUrl } from '@/lib/github-refs'
@@ -794,13 +799,19 @@ export function ProjectDetail({
     queryFn: ({ signal }) => getReleaseDrift(orgSlug, project.id, signal),
     queryKey: ['releaseDrift', orgSlug, project.id],
   })
-  const hasReleaseDrift = (releaseDrift?.commits_since_tag ?? 0) > 0
+  // Same rule as the projects-list badge: a difference is shown unless
+  // CI answered `false` for every commit in it.
+  const driftVerdicts = useProjectDriftVerdicts(orgSlug, project.id)
+  const hasReleaseDrift =
+    (releaseDrift?.commits_since_tag ?? 0) > 0 &&
+    !releaseRangeClean(driftVerdicts?.release_summary)
   const hasDeploymentDrift = useMemo(
     () =>
       computeDriftPairs(sortedEnvironments, deploymentStatus).some(
-        (pair) => pair.drifted,
+        (pair) =>
+          pair.drifted && rangeNeedsAction(driftVerdicts?.drift_ranges, pair),
       ),
-    [sortedEnvironments, deploymentStatus],
+    [sortedEnvironments, deploymentStatus, driftVerdicts],
   )
 
   // Redirect to overview when a deep-link points at a tab that no

@@ -158,11 +158,14 @@ a filtered list.
 The **Deployments** tab (or the **Releases** tab) shows a rocket icon,
 **Ready to ship**, when:
 
-- **Deployments**: two adjacent environments run different commits.
-- **Releases**: the project has commits after its latest tag.
+- **Deployments**: two adjacent environments run different commits, and
+  the range between them is not proven clean.
+- **Releases**: the project has commits after its latest tag, and they are
+  not proven clean.
 
-This icon does not use the CI verdicts. It can show when the projects list
-shows no badge, because the list hides a range that is proven clean.
+A range is proven clean only when every commit in it has a `false` verdict.
+This is the rule of the projects-list badges, so the icon and the badges
+agree.
 
 ### Commit markers
 
@@ -174,8 +177,10 @@ for each commit:
 | Amber package icon | **Drift Detected** | The verdict is `true`, or there is no verdict |
 | Gray circle with a line | **No Drift Detected** | The verdict is `false` |
 
-The card that counts commits ready to release counts all commits after the
-tag. It does not use the verdicts.
+The card on the **Releases** tab counts all commits after the tag. When
+every one of them has a `false` verdict, it shows "N commits since the last
+release, none flagged as drift" instead of "N commits ready to release". You
+can still cut a release from it.
 
 ## Troubleshooting
 
@@ -184,4 +189,3 @@ tag. It does not use the verdicts.
 | Every project shows drift | Your CI writes no drift notes. Each commit has no verdict, so Imbi shows it. Add a CI step that writes a note for each commit |
 | A badge stays after CI wrote `false` notes | Imbi did not receive the notes push. Click **Sync Commits & Tags** on the **Doctor** tab |
 | A badge stays for one old commit | A commit made before your CI wrote notes has no verdict. Write a note for that commit, or release and promote past it |
-| The rocket shows, but the list shows no badge | The rocket ignores verdicts. The list hides a range where every commit is `false` |

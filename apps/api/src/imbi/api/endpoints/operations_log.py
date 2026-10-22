@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import typing
 
@@ -175,6 +176,18 @@ async def _insert_row(row: dict[str, typing.Any], topic: str = 'api') -> None:
     await iggy.publish_rows('operations_log', topic, [row])
 
 
+def _with_status(description: str, status: str) -> str:
+    """Add ``status`` to a JSON-object description, else keep it."""
+    try:
+        payload = json.loads(description)
+    except ValueError:
+        return description
+    if not isinstance(payload, dict):
+        return description
+    payload['status'] = status
+    return json.dumps(payload, sort_keys=True)
+
+
 _BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
     'SELECT * FROM operations_log FINAL '
     'WHERE external_run_id = {run_id:String} '
@@ -183,15 +196,33 @@ _BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
     'ORDER BY _row_version DESC LIMIT 1'
 )
 
+# The latest completed row of a run, for a later terminal report that
+# changes how the run ended (for example success, then rolled_back).
+_COMPLETED_BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
+    'SELECT * FROM operations_log FINAL '
+    'WHERE external_run_id = {run_id:String} '
+    'AND project_id = {project_id:String} '
+    'AND completed_at IS NOT NULL AND is_deleted = 0 '
+    'ORDER BY completed_at DESC, _row_version DESC LIMIT 1'
+)
+
 
 async def complete_opslog_entry(
     external_run_id: str,
     completed_at: datetime.datetime,
     project_id: str,
+    status: str | None = None,
 ) -> bool:
     """Mark the opslog entry of ``project_id`` for ``external_run_id``
     as completed. The project keeps a caller from completing another
     project's entry (of another organization too) with its run id.
+
+    ``status`` is the terminal deployment status (``success``,
+    ``failed``, ``rolled_back``). The row has no status column, so it
+    goes into the JSON ``description`` of a deployment audit row, where
+    the Recent Deployments card reads it. A free-text description is
+    left as it is. When the run has no open row, a ``status`` replaces
+    the status of its latest completed row, and ``completed_at`` stays.
 
     Looks up the latest in-progress row by ``external_run_id``, then
     re-publishes it with ``completed_at`` set and a bumped ``_row_version``
@@ -213,6 +244,12 @@ async def complete_opslog_entry(
         rows = await clickhouse.client.Clickhouse.get_instance().query(
             _BY_EXTERNAL_RUN_SQL, args
         )
+    if not rows and status is not None:
+        rows = await clickhouse.client.Clickhouse.get_instance().query(
+            _COMPLETED_BY_EXTERNAL_RUN_SQL, args
+        )
+        if rows:
+            completed_at = rows[0]['completed_at']
     if not rows:
         LOGGER.debug(
             'complete_opslog_entry: no open entry for external_run_id=%s',
@@ -221,6 +258,8 @@ async def complete_opslog_entry(
         return False
     row = dict(rows[0])
     row['completed_at'] = completed_at
+    if status is not None:
+        row['description'] = _with_status(str(row['description']), status)
     row['_row_version'] = next_row_version(int(row['_row_version']))
     await _insert_row(row, 'deployments')
     return True

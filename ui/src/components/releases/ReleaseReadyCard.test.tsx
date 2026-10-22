@@ -124,6 +124,26 @@ describe('ReleaseReadyCard', () => {
     expect(screen.getByText('Up to date')).toBeInTheDocument()
   })
 
+  it('says ready to release when CI has not cleared the commits', () => {
+    renderCard(FIRST_RELEASE)
+    expect(screen.getByText(/ready to release/)).toBeInTheDocument()
+  })
+
+  it('says no drift when CI cleared every commit', () => {
+    render(
+      <ReleaseReadyCard
+        drift={FIRST_RELEASE}
+        driftDetected={false}
+        onCut={() => {}}
+        orgSlug="acme"
+        projectId="p1"
+        releaseInFlight={inFlight()}
+      />,
+    )
+    expect(screen.getByText(/none flagged as drift/)).toBeInTheDocument()
+    expect(screen.queryByText(/ready to release/)).not.toBeInTheDocument()
+  })
+
   it('shows the author and age of each commit', () => {
     renderCard(FIRST_RELEASE)
     expect(screen.getByText('Alice')).toBeInTheDocument()

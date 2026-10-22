@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { computeDriftPairs } from '../deployment-drift'
+import { computeDriftPairs, releaseRangeClean } from '../deployment-drift'
 
 const ENVS = [
   { name: 'Testing', slug: 'testing', sort_order: 1 },
@@ -89,5 +89,23 @@ describe('computeDriftPairs', () => {
       'Testing->Staging',
     ])
     expect(pairs.every((p) => p.drifted)).toBe(true)
+  })
+})
+
+describe('releaseRangeClean', () => {
+  it('is clean only for an evaluated tag range answered false', () => {
+    expect(
+      releaseRangeClean({ drift_detected: false, latest_tag: '1.2.0' }),
+    ).toBe(true)
+    expect(
+      releaseRangeClean({ drift_detected: true, latest_tag: '1.2.0' }),
+    ).toBe(false)
+  })
+
+  it('does not treat an untagged project as clean', () => {
+    expect(releaseRangeClean({ drift_detected: false, latest_tag: null })).toBe(
+      false,
+    )
+    expect(releaseRangeClean(null)).toBe(false)
   })
 })

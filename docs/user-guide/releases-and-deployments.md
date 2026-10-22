@@ -264,13 +264,10 @@ An administrator sets these on each environment. See
 
 | Setting | Effect |
 |---|---|
+| **Allow Direct Deploys** (`can_deploy`, on by default) | When it is off, the API refuses a deploy into this environment. The tab disables the deploy and roll-back buttons and says why |
+| **Allow Promotion** (`can_promote`, off by default) | When it is off, the API refuses a promote into this environment. The tab disables the promote form and says why |
 | **Terminal Environment** | Ends a pipeline |
 | **Allow Autonomous Deployments** | Lets a service account with no person deploy to this environment |
-
-The API also has `can_deploy` (default true) and `can_promote` (default
-false) on each environment. The API refuses a deploy or a promote that the
-flag does not allow. The admin form has no field for them. The tab does not
-show them, so a refused action shows as an error.
 
 ## Sync commits, tags, and releases
 
@@ -305,20 +302,18 @@ on the project page. It reads the **Deployed** entries of the
 Each row shows the team and project, the version, the environment, the
 status, the person, and the time. Click a row to open the project.
 
-The status comes from the operations log entry, not from the deployment:
+The status comes from the operations log entry, not from the deployment.
+When the deployment webhook reports a final status for the CI run, Imbi
+completes the entry and records that status in it:
 
 | Status | Meaning |
 |---|---|
 | **In Progress** | The entry is not complete |
-| **Success** | The entry is complete |
+| **Success** | The deployment succeeded |
+| **Failed** | The deployment failed |
+| **Rolled Back** | The deployment was rolled back |
 
-This has two known problems:
-
-- A deployment that failed also shows **Success**, because a failed
-  deployment also completes the entry.
-- An entry for a release cut, a release publish, or a deleted blocker has no
-  environment and no CI run. It shows **In Progress** with an empty
-  environment badge, and never completes.
-
-To see the real status of a deployment, open the **Deployments** tab of the
-project.
+An entry for a release cut, a release publish, or a deleted blocker has no
+environment. It is complete when Imbi writes it, and shows **Success** with
+an empty environment badge. An entry that was completed before Imbi recorded
+the status shows **Success**.

@@ -92,3 +92,43 @@ export function computeDriftPairs(
   }
   return pairs
 }
+
+// Same rule as `rangeNeedsAction`, over the tag..HEAD range: commits
+// past the latest tag are suppressed only when the server positively
+// answered `false` -- a `true` verdict or an unanswered commit both
+// keep the range in the queue, and an absent field cannot hide it.
+export function projectReleaseDrifted(
+  project: Pick<DriftProject, 'release_summary'>,
+): boolean {
+  const s = project.release_summary
+  if (!s?.head_sha) return false
+  return s.commits_since_tag > 0 && s.drift_detected !== false
+}
+
+// Whether this promotion step needs acting on. Only proven clean is
+// clean: the pair is suppressed when the server evaluated its range and
+// every commit carried a `false` verdict. A `true` verdict, an
+// unanswered commit, or a range the server could not evaluate at all
+// (absent key, missing committish) each mean show it -- an unverified
+// difference is still work someone must look at. Only called for pairs
+// `computeDriftPairs` marked drifted, so equal pairs never reach the
+// fail-closed branches.
+export function rangeNeedsAction(
+  ranges: Record<string, boolean> | undefined,
+  pair: DriftPair,
+): boolean {
+  if (!pair.baseSha || !pair.headSha) return true
+  return ranges?.[`${pair.baseSha}..${pair.headSha}`] !== false
+}
+
+// Whether the tag..HEAD verdict proves the unreleased commits clean. A
+// project with no tag has no evaluated range, so its `false` default is
+// not a verdict and does not count.
+export function releaseRangeClean(
+  summary:
+    | null
+    | undefined
+    | { drift_detected?: boolean; latest_tag: null | string },
+): boolean {
+  return !!summary?.latest_tag && summary.drift_detected === false
+}

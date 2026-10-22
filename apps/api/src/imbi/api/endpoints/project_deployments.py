@@ -1152,6 +1152,11 @@ async def _record_deployment_audit(
         ci_override=ci_override,
         credential=credential,
     )
+    # A row with no environment records a release action (cut, publish,
+    # blocker delete), not a rollout. Nothing will ever close it, so it
+    # is complete when it is written.
+    if not environment_slug:
+        entry.completed_at = entry.occurred_at
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
     await iggy.publish_rows('operations_log', 'deployments', [row])

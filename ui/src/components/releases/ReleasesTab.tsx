@@ -9,6 +9,8 @@ import {
 } from '@/components/deploy/IntegrationSyncStatus'
 import { useDeploymentSync } from '@/components/deployments/useDeploymentSync'
 import { Sk, SkText, Swap } from '@/components/ui/skeleton'
+import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
+import { releaseRangeClean } from '@/lib/deployment-drift'
 import type { Project } from '@/types'
 
 import { deriveArtifact } from './artifact'
@@ -63,6 +65,10 @@ export function ReleasesTab({
     queryKey: ['releaseHistory', orgSlug, project.id],
   })
 
+  // The verdict the projects list uses, so the card and the list agree.
+  const driftVerdicts = useProjectDriftVerdicts(orgSlug, project.id, enabled)
+  const driftDetected = !releaseRangeClean(driftVerdicts?.release_summary)
+
   const { isSyncing, sync } = useDeploymentSync(orgSlug, project.id)
 
   const artifact = useMemo(() => deriveArtifact(project), [project])
@@ -98,6 +104,7 @@ export function ReleasesTab({
         {drift ? (
           <ReleaseReadyCard
             drift={drift}
+            driftDetected={driftDetected}
             onBuildStarted={onBuildStarted}
             onCut={() => {}}
             orgSlug={orgSlug}

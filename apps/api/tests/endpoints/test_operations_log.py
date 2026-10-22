@@ -1,6 +1,7 @@
 """Tests for operations log endpoints."""
 
 import datetime
+import json
 import typing
 import unittest
 from unittest import mock
@@ -656,3 +657,74 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
         row_dict = rows[0]
         self.assertEqual(row_dict['completed_at'], now)
         self.assertGreater(int(row_dict['_row_version']), 1)
+
+    async def _complete(
+        self, description: str, status: str | None
+    ) -> dict[str, typing.Any]:
+        existing = dict(
+            _sample_row(
+                external_run_id='run-99',
+                description=description,
+                plugin_slug='github',
+            )
+        )
+        instance = mock.MagicMock()
+        instance.query = mock.AsyncMock(return_value=[existing])
+        with mock.patch.object(
+            imbi_clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=instance,
+        ):
+            await operations_log.complete_opslog_entry(
+                'run-99', datetime.datetime.now(datetime.UTC), 'proj-1', status
+            )
+        return self.publish.await_args.args[2][0]
+
+    async def test_records_the_terminal_status(self) -> None:
+        # The Recent Deployments card shows a failed rollout as Failed
+        # only when the closed row says how it ended (#488).
+        row = await self._complete('{"action": "deploy"}', 'failed')
+        self.assertEqual(
+            {'action': 'deploy', 'status': 'failed'},
+            json.loads(row['description']),
+        )
+
+    async def test_later_terminal_report_replaces_the_status(self) -> None:
+        # A run that reported success and then rolled_back has no open
+        # row left; the completed row takes the new status.
+        first_done = datetime.datetime(2026, 10, 1, tzinfo=datetime.UTC)
+        completed = dict(
+            _sample_row(
+                external_run_id='run-99',
+                description='{"action": "deploy", "status": "success"}',
+                completed_at=first_done,
+                _row_version=2,
+            )
+        )
+        instance = mock.MagicMock()
+        instance.query = mock.AsyncMock(side_effect=[[], [], [completed]])
+        with mock.patch.object(
+            imbi_clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=instance,
+        ):
+            result = await operations_log.complete_opslog_entry(
+                'run-99',
+                datetime.datetime.now(datetime.UTC),
+                'proj-1',
+                'rolled_back',
+            )
+        self.assertTrue(result)
+        self.assertIn(
+            'completed_at IS NOT NULL', instance.query.await_args.args[0]
+        )
+        row = self.publish.await_args.args[2][0]
+        self.assertEqual(
+            'rolled_back', json.loads(row['description'])['status']
+        )
+        self.assertEqual(first_done, row['completed_at'])
+        self.assertGreater(int(row['_row_version']), 2)
+
+    async def test_keeps_a_free_text_description(self) -> None:
+        row = await self._complete('Rolled out v2.4.0', 'failed')
+        self.assertEqual('Rolled out v2.4.0', row['description'])

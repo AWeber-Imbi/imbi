@@ -320,6 +320,21 @@ export const getProjectsSlim = async (
   return Array.isArray(response) ? response : []
 }
 
+// The slim list entry of one project, for the fields only the list
+// carries (`drift_ranges`, `release_summary`). Null when not found.
+export const getProjectListItem = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<null | ProjectListItem> => {
+  const response = await apiClient.get<ProjectListItem[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    { include_archived: true, project_id: projectId, slim: true },
+    signal,
+  )
+  return Array.isArray(response) ? (response[0] ?? null) : null
+}
+
 // One keyset page of the slim list; ``nextCursor`` is unset on the
 // last page.
 export const getProjectsSlimPage = async (

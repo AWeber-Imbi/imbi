@@ -33,6 +33,12 @@ import { useTagFormats } from './useTagFormats'
 
 interface ReleaseReadyCardProps {
   drift: ReleaseDrift
+  /**
+   * The projects-list verdict for the commits since the tag: false only
+   * when CI answered `false` for every one. Defaults to true, as an
+   * unanswered commit does.
+   */
+  driftDetected?: boolean
   /** Forwarded when the cut dispatched a build rather than tagging. */
   onBuildStarted?: (
     build: import('@/components/deploy/DeploymentModal').ReleaseBuildStarted,
@@ -54,6 +60,7 @@ interface TagFieldsProps {
 // fallow-ignore-next-line complexity
 export function ReleaseReadyCard({
   drift,
+  driftDetected = true,
   onBuildStarted,
   onCut,
   orgSlug,
@@ -190,18 +197,30 @@ export function ReleaseReadyCard({
     })
   }
 
+  const commitCount = `${drift.commits_since_tag} commit${drift.commits_since_tag === 1 ? '' : 's'}`
+  // CI answered `false` for every commit since the tag: nothing here
+  // needs a release, so the card stays neutral, as the projects list
+  // drops its badge. A release can still be cut.
+  const border = driftDetected ? 'border-action' : 'border-tertiary'
   return (
-    <div className="border-action overflow-hidden rounded-lg border">
-      <div className="border-action bg-action/10 flex items-center gap-3 border-b px-4 py-3">
-        <span className="border-action bg-primary text-action flex size-8 shrink-0 items-center justify-center rounded-md border">
+    <div className={`${border} overflow-hidden rounded-lg border`}>
+      <div
+        className={`${border} ${driftDetected ? 'bg-action/10' : ''} flex items-center gap-3 border-b px-4 py-3`}
+      >
+        <span
+          className={`${border} bg-primary ${driftDetected ? 'text-action' : 'text-tertiary'} flex size-8 shrink-0 items-center justify-center rounded-md border`}
+        >
           <Tag size={16} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">
-            {drift.commits_since_tag} commit
-            {drift.commits_since_tag === 1 ? '' : 's'} ready to release
+            {driftDetected
+              ? `${commitCount} ready to release`
+              : `${commitCount} since the last release, none flagged as drift`}
           </div>
-          <div className="text-action mt-0.5 text-xs">
+          <div
+            className={`${driftDetected ? 'text-action' : 'text-tertiary'} mt-0.5 text-xs`}
+          >
             Build at{' '}
             <span className="font-mono">
               {drift.head_sha?.slice(0, 7) ?? '—'}

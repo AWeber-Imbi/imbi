@@ -56,6 +56,11 @@ export function EnvironmentForm({
     String(environment?.sort_order ?? 0),
   )
   const [terminal, setTerminal] = useState(environment?.terminal ?? false)
+  // Defaults mirror the API model: deployable, opt-in promote.
+  const [canDeploy, setCanDeploy] = useState(environment?.can_deploy ?? true)
+  const [canPromote, setCanPromote] = useState(
+    environment?.can_promote ?? false,
+  )
   const [allowAutonomous, setAllowAutonomous] = useState(
     environment?.allow_autonomous ?? false,
   )
@@ -105,6 +110,8 @@ export function EnvironmentForm({
 
     onSave(orgSlug, {
       allow_autonomous: allowAutonomous,
+      can_deploy: canDeploy,
+      can_promote: canPromote,
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor)
@@ -276,6 +283,49 @@ export function EnvironmentForm({
 
             <div className="flex items-start gap-2">
               <Checkbox
+                checked={canDeploy}
+                disabled={isLoading}
+                id="environment-can-deploy"
+                onCheckedChange={(value) => setCanDeploy(value === true)}
+              />
+              <div>
+                <Label
+                  className="text-secondary block text-sm"
+                  htmlFor="environment-can-deploy"
+                >
+                  Allow Direct Deploys
+                </Label>
+                <p className="text-tertiary mt-1 text-xs">
+                  Lets people deploy a commit or an existing release straight
+                  into this environment. Turn off to make promotion the only way
+                  in
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                checked={canPromote}
+                disabled={isLoading}
+                id="environment-can-promote"
+                onCheckedChange={(value) => setCanPromote(value === true)}
+              />
+              <div>
+                <Label
+                  className="text-secondary block text-sm"
+                  htmlFor="environment-can-promote"
+                >
+                  Allow Promotion
+                </Label>
+                <p className="text-tertiary mt-1 text-xs">
+                  Lets people promote what the previous environment runs into
+                  this one, cutting a new release tag. Off by default
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
                 checked={terminal}
                 disabled={isLoading}
                 id="environment-terminal"
@@ -391,7 +441,3 @@ export function EnvironmentForm({
     </div>
   )
 }
-
-// Release-train flags: drive Deploy / Promote button visibility on a
-// project's release train header.  Defaults mirror the backend model
-// (deployable, opt-in promote).  Extracted from the main form body to

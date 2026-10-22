@@ -4,10 +4,18 @@ import { Link } from 'react-router-dom'
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
-import { CheckCircle, ChevronRight, Clock, Rocket } from 'lucide-react'
+import {
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  Rocket,
+  RotateCcw,
+  XCircle,
+} from 'lucide-react'
 
 import { getProjects, listOperationsLog } from '@/api/endpoints'
 import type { OperationsLogPage } from '@/api/endpoints'
+import { parseDescription } from '@/components/operations-log/parseDescription'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { RelativeTime } from '@/components/ui/RelativeTime'
@@ -164,10 +172,11 @@ function DeploymentRow({
   const projectLabel = project
     ? `${project.team.slug}/${project.slug}`
     : d.project_slug
-  const inProgress = d.completed_at == null
-  const StatusIcon = inProgress ? Clock : CheckCircle
-  const statusVariant: BadgeProps['variant'] = inProgress ? 'info' : 'success'
-  const statusLabel = inProgress ? 'In Progress' : 'Success'
+  const {
+    icon: StatusIcon,
+    label: statusLabel,
+    variant: statusVariant,
+  } = deploymentStatus(d)
   const performer = d.performed_by ?? d.recorded_by
   const to = project
     ? `/projects/${project.id}`
@@ -226,6 +235,31 @@ function DeploymentRow({
       </div>
     </Link>
   )
+}
+
+const STATUS = {
+  failed: { icon: XCircle, label: 'Failed', variant: 'danger' },
+  inProgress: { icon: Clock, label: 'In Progress', variant: 'info' },
+  rolledBack: { icon: RotateCcw, label: 'Rolled Back', variant: 'warning' },
+  success: { icon: CheckCircle, label: 'Success', variant: 'success' },
+} as const satisfies Record<
+  string,
+  { icon: typeof Clock; label: string; variant: BadgeProps['variant'] }
+>
+
+// The row has no status column: an open row is in progress, and the
+// API writes the terminal status into the description JSON when it
+// closes the row. A closed row without one predates that and is shown
+// as a success, as before.
+export function deploymentStatus(
+  d: OperationsLogRecord,
+): (typeof STATUS)[keyof typeof STATUS] {
+  if (d.completed_at == null) return STATUS.inProgress
+  const parsed = parseDescription(d)
+  const status = parsed.kind === 'plugin' ? parsed.payload.status : undefined
+  if (status === 'failed') return STATUS.failed
+  if (status === 'rolled_back') return STATUS.rolledBack
+  return STATUS.success
 }
 
 function DeploymentRowSkeleton() {
