@@ -928,8 +928,11 @@ class WebhookRuleCreate(pydantic.BaseModel):
 
     filter_expression: str = pydantic.Field(min_length=1)
     handler: str = pydantic.Field(
-        min_length=1,
-        description='Python callable in dotted import syntax',
+        pattern=r'^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$',
+        description=(
+            'Webhook action as <plugin_slug>#<action_name>, for example '
+            'gateway-actions#update_project'
+        ),
     )
     handler_config: dict[str, typing.Any] | list[typing.Any] = pydantic.Field(
         default_factory=dict,

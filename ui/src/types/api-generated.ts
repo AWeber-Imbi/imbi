@@ -20337,7 +20337,7 @@ export interface components {
             filter_expression: string;
             /**
              * Handler
-             * @description Python callable in dotted import syntax
+             * @description Webhook action as <plugin_slug>#<action_name>, for example gateway-actions#update_project
              */
             handler: string;
             /**

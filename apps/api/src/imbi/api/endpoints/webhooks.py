@@ -20,6 +20,9 @@ from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph
 from imbi.common import patch as json_patch
 from imbi.common.auth import encryption
+from imbi.common.plugins import base as plugin_base
+from imbi.common.plugins import registry as plugin_registry
+from imbi.common.plugins.errors import PluginNotFoundError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -148,6 +151,40 @@ def _guard_workflow_rules(
                 'rules; activate the workflow to change them.',
             },
         )
+
+
+#: The gateway's built-in plugin. Only the gateway loads it, so the
+#: API registry cannot check its actions.
+_GATEWAY_PLUGIN = 'gateway-actions'
+
+
+def _validate_rule_handlers(rules: list[models.WebhookRuleCreate]) -> None:
+    """Refuse a rule whose plugin or action is not in the registry.
+
+    Raises:
+        422: A rule names a plugin that is not installed, has no
+            webhook actions, or does not expose the action.
+
+    """
+    for rule in rules:
+        slug, action = rule.handler.split('#', 1)
+        if slug == _GATEWAY_PLUGIN:
+            continue
+        try:
+            handler = typing.cast(
+                'type[plugin_base.WebhookActionsCapability]',
+                plugin_registry.get_capability(slug, 'webhook-actions'),
+            )
+        except PluginNotFoundError:
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=f'Plugin {slug!r} has no webhook actions',
+            ) from None
+        if action not in {d.name for d in handler.actions()}:
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=f'Plugin {slug!r} has no action {action!r}',
+            )
 
 
 def _rules_create_clauses(
@@ -281,6 +318,7 @@ async def create_webhook(
     - notification_path: ``/{id}``
     """
     _guard_workflow_rules(auth, [], [rule.model_dump() for rule in data.rules])
+    _validate_rule_handlers(data.rules)
     encryptor = encryption.TokenEncryption.get_instance()
 
     webhook_id = _generate_id()
@@ -629,6 +667,7 @@ async def patch_webhook(
     _guard_workflow_rules(
         auth, patchable['rules'], [rule.model_dump() for rule in data.rules]
     )
+    _validate_rule_handlers(data.rules)
 
     props: dict[str, typing.Any] = {
         'name': data.name,

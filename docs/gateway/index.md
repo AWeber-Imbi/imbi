@@ -142,10 +142,15 @@ A rule's **Handler** has the form `<plugin slug>#<action name>`, for
 example `gateway-actions#create_release`. The plugin slug and the action
 name use lowercase letters, digits, and hyphens or underscores.
 
-The gateway resolves the handler when a delivery arrives. When the plugin or
-the action does not exist, or the `handler_config` is not valid, the gateway
-skips that rule and records it as `skipped`. imbi-api does not check the
-handler when you save the rule.
+imbi-api checks the handler when you save the rule. It refuses a handler
+in another form, and a plugin or action that is not in its plugin
+registry. imbi-api does not load the `gateway-actions` plugin, so it
+checks only the form of a `gateway-actions` handler.
+
+The gateway resolves the handler again when a delivery arrives. When the
+handler has another form, the plugin or the action does not exist, or the
+`handler_config` is not valid, the gateway logs an error and skips that
+rule. The other rules of the webhook still run.
 
 When a plugin declares credentials, its actions get the credentials of the
 webhook's integration. When the integration has no credentials, the gateway

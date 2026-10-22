@@ -3,6 +3,7 @@
 import copy
 import datetime
 import json
+import types
 import typing
 from unittest import mock
 
@@ -12,6 +13,7 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.common import graph
+from imbi.common.plugins.errors import PluginNotFoundError
 
 
 class _WebhookDetails(typing.TypedDict):
@@ -229,7 +231,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         record['rules'] = [
             {
                 'filter_expression': '$.action == "opened"',
-                'handler': 'my.handler',
+                'handler': 'gateway-actions#update_project',
                 'handler_config': '{"key": "value"}',
             },
         ]
@@ -246,7 +248,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             payload['rules'] = [
                 {
                     'filter_expression': '$.action == "opened"',
-                    'handler': 'my.handler',
+                    'handler': 'gateway-actions#update_project',
                     'handler_config': {'key': 'value'},
                 },
             ]
@@ -258,7 +260,52 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(len(data['rules']), 1)
-        self.assertEqual(data['rules'][0]['handler'], 'my.handler')
+        self.assertEqual(
+            data['rules'][0]['handler'], 'gateway-actions#update_project'
+        )
+
+    def _post_rule(self, handler: str, actions: list[str]) -> int:
+        """POST one rule with a stubbed ``webhook-actions`` registry."""
+        capability = mock.MagicMock()
+        capability.actions.return_value = [
+            types.SimpleNamespace(name=n) for n in actions
+        ]
+        self.mock_db.execute.return_value = [self.webhook_record]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.webhooks.plugin_registry.get_capability',
+                side_effect=(None if actions else PluginNotFoundError('stub')),
+                return_value=capability,
+            ),
+        ):
+            payload = dict(self.webhook_create_json)
+            payload['rules'] = [
+                {'filter_expression': 'true', 'handler': handler},
+            ]
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=payload,
+            )
+        return response.status_code
+
+    def test_create_rule_with_registered_action(self) -> None:
+        self.assertEqual(201, self._post_rule('stub#do_thing', ['do_thing']))
+
+    def test_create_rule_with_unknown_action_rejected(self) -> None:
+        self.assertEqual(422, self._post_rule('stub#missing', ['do_thing']))
+
+    def test_create_rule_with_unknown_plugin_rejected(self) -> None:
+        self.assertEqual(422, self._post_rule('stub#do_thing', []))
+
+    def test_create_rule_with_dotted_handler_rejected(self) -> None:
+        self.assertEqual(
+            422, self._post_rule('imbi_gateway.handlers.sync', ['sync'])
+        )
 
     def test_create_slug_collision_returns_409(self) -> None:
         self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
@@ -509,19 +556,19 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         record['rules'] = [
             {
                 'filter_expression': 'true',
-                'handler': 'h.third',
+                'handler': 'gateway-actions#h_third',
                 'handler_config': '{}',
                 'ordinal': 2,
             },
             {
                 'filter_expression': 'true',
-                'handler': 'h.first',
+                'handler': 'gateway-actions#h_first',
                 'handler_config': '{}',
                 'ordinal': 0,
             },
             {
                 'filter_expression': 'true',
-                'handler': 'h.second',
+                'handler': 'gateway-actions#h_second',
                 'handler_config': '{}',
                 'ordinal': 1,
             },
@@ -538,7 +585,11 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [rule['handler'] for rule in response.json()[0]['rules']],
-            ['h.first', 'h.second', 'h.third'],
+            [
+                'gateway-actions#h_first',
+                'gateway-actions#h_second',
+                'gateway-actions#h_third',
+            ],
         )
 
     def test_list_webhooks_empty(self) -> None:
@@ -1300,7 +1351,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
                 [
                     {
                         'filter_expression': '$.action == "push"',
-                        'handler': 'my.handler',
+                        'handler': 'gateway-actions#update_project',
                         'handler_config': '{}',
                     }
                 ]
@@ -1365,13 +1416,13 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
                 [
                     {
                         'filter_expression': 'true',
-                        'handler': 'h.second',
+                        'handler': 'gateway-actions#h_second',
                         'handler_config': '{}',
                         'ordinal': 1,
                     },
                     {
                         'filter_expression': 'true',
-                        'handler': 'h.first',
+                        'handler': 'gateway-actions#h_first',
                         'handler_config': '{}',
                         'ordinal': 0,
                     },
@@ -1403,9 +1454,13 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
         write_params = self.mock_db.execute.call_args_list[1][0][1]
-        self.assertEqual(write_params['rule_0_handler'], 'h.first')
+        self.assertEqual(
+            write_params['rule_0_handler'], 'gateway-actions#h_first'
+        )
         self.assertEqual(write_params['rule_0_ord'], 0)
-        self.assertEqual(write_params['rule_1_handler'], 'h.second')
+        self.assertEqual(
+            write_params['rule_1_handler'], 'gateway-actions#h_second'
+        )
         self.assertEqual(write_params['rule_1_ord'], 1)
 
     # -- Delete --
@@ -1442,7 +1497,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         record['rules'] = [
             {
                 'filter_expression': '$.action',
-                'handler': 'my.handler',
+                'handler': 'gateway-actions#update_project',
                 'handler_config': '{not valid json',
             },
         ]
@@ -1482,7 +1537,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         record['rules'] = [
             {
                 'filter_expression': '$.action',
-                'handler': 'my.handler',
+                'handler': 'gateway-actions#update_project',
                 'handler_config': json.dumps(['step1', 'step2']),
             },
         ]

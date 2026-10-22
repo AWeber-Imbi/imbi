@@ -1155,19 +1155,20 @@ class ProcessNotificationTests(helpers.TestCase):
             any('does not expose action' in line for line in cm.output)
         )
 
-    async def test_invalid_handler_string_fails_rule_validation(self) -> None:
+    async def test_invalid_handler_string_skips_only_that_rule(self) -> None:
         # A handler that doesn't match the `#` shape fails WebhookRule
-        # validation, causing the whole batch to be skipped with an error.
-        await self._add_rule(handler='does.not.exist.handler')
+        # validation; that rule is skipped and the others still run.
+        await self._add_rule(handler='does.not.exist.handler', ordinal=1)
+        await self._add_rule(ordinal=2)
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
             'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
-        self.assertEqual(204, response.status_code)
-        self.assertEqual([], ACTION_CALLS)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
         self.assertTrue(
-            any('failed to deserialize rules' in line for line in cm.output)
+            any('skipping invalid rule' in line for line in cm.output)
         )
 
     async def test_invalid_handler_config_logs_and_skips(self) -> None:

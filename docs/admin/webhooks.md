@@ -113,11 +113,12 @@ For the actions and their configuration, see
 Use the arrows on a rule to change the order. Order is important for the
 release actions: `create_release` must run before `add_deployment_event`.
 
-Imbi does not check the handler when you save. Make sure that each
-handler has the form `<plugin slug>#<action name>`. If one rule of a
-webhook has a handler in another form, the gateway drops every delivery
-to that webhook. If the plugin or the action does not exist, the gateway
-skips that rule only.
+Imbi checks the handler when you save. It refuses a handler that does
+not have the form `<plugin slug>#<action name>`, and a plugin or action
+that is not installed. For `gateway-actions` handlers, Imbi checks only
+the form, so check the action name against the list in
+[Gateway](../gateway/index.md). If a saved rule is not valid, the gateway
+logs an error and skips that rule only.
 
 ### Workflow rules
 
