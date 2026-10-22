@@ -24,6 +24,8 @@ import typing
 from collections import abc
 
 from valkey import asyncio as valkey
+from valkey import exceptions as valkey_exceptions
+from valkey.asyncio import lock as valkey_lock
 
 from imbi.common import blueprints, graph, models
 from imbi.common.scoring import (
@@ -407,6 +409,20 @@ async def _maybe_dead_letter(
     return False
 
 
+async def _renew_lock(lock: valkey_lock.Lock) -> None:
+    """Reset the lock TTL until cancelled, so a long recompute keeps it.
+
+    The TTL only frees the lock of a worker that died.
+    """
+    while True:
+        await asyncio.sleep(LOCK_SECONDS / 3)
+        try:
+            await lock.reacquire()
+        except valkey_exceptions.LockError:
+            LOGGER.warning('lost the score-recompute lock %s', lock.name)
+            return
+
+
 async def _handle_entries(
     client: valkey.Valkey,
     entries: list[tuple[bytes, abc.Mapping[bytes | str, bytes | str]]],
@@ -426,13 +442,17 @@ async def _handle_entries(
                 f'{LOCK_PREFIX}:{project_id}',
                 timeout=LOCK_SECONDS,
                 blocking_timeout=LOCK_WAIT_SECONDS,
-            ):
-                # Release the debounce key before the project state is
-                # read, so a change saved during the recompute queues a
-                # new job instead of being dropped.
-                if project_id:
-                    await client.delete(f'{DEBOUNCE_PREFIX}:{project_id}')
-                await _process_message(db, fields)
+            ) as lock:
+                renew = asyncio.create_task(_renew_lock(lock))
+                try:
+                    # Release the debounce key before the project state
+                    # is read, so a change saved during the recompute
+                    # queues a new job instead of being dropped.
+                    if project_id:
+                        await client.delete(f'{DEBOUNCE_PREFIX}:{project_id}')
+                    await _process_message(db, fields)
+                finally:
+                    renew.cancel()
         except Exception:
             LOGGER.exception('recompute failed for %s', fields)
             continue

@@ -7,6 +7,8 @@ import typing
 import unittest
 from unittest import mock
 
+from valkey import exceptions as valkey_exceptions
+
 from imbi.api.scoring import queue as score_queue
 
 if typing.TYPE_CHECKING:
@@ -108,6 +110,20 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(order, ['acquire', 'process', 'release'])
         client.xack.assert_awaited_once()
+
+    async def test_renews_the_lock_until_it_is_lost(self) -> None:
+        # A recompute longer than LOCK_SECONDS must keep the lock, or a
+        # second worker could take it and write first.
+        lock = mock.MagicMock()
+        lock.reacquire = mock.AsyncMock(
+            side_effect=[True, valkey_exceptions.LockNotOwnedError('gone')]
+        )
+        with mock.patch.object(
+            score_queue.asyncio, 'sleep', mock.AsyncMock()
+        ) as sleep:
+            await score_queue._renew_lock(lock)
+        self.assertEqual(lock.reacquire.await_count, 2)
+        sleep.assert_awaited_with(score_queue.LOCK_SECONDS / 3)
 
     async def test_no_xack_on_exception(self) -> None:
         client = mock.AsyncMock()
