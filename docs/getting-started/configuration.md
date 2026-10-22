@@ -91,7 +91,8 @@ authentication and SSO login providers in the database, at
 | `IMBI_AUTH_DCR_ENABLED` | Let MCP clients register themselves | `true` |
 
 When `ENVIRONMENT` is not `development`, Imbi does not start unless you set
-`IMBI_AUTH_JWT_SECRET` and `IMBI_AUTH_ENCRYPTION_KEY`.
+`IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, and
+`IMBI_CONFIG_ENCRYPTION_KEY`.
 
 The OAuth callback URL is `<IMBI_API_URL>/auth/oauth/<provider-slug>/callback`.
 There is no separate callback setting.
