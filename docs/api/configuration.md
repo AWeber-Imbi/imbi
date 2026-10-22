@@ -511,7 +511,8 @@ exported: the entrypoint sets it to `none`.
     service does not send traces.
 
 With `OTEL_METRICS_EXPORTER=prometheus`, each service serves its HTTP server
-and client metrics on `:9464/metrics`. Use it with one service per
+and client metrics on `:<OTEL_EXPORTER_PROMETHEUS_PORT>/metrics` (default
+`:9464/metrics`). Use it with one service per
 container: in `all` mode every service tries to bind the same port.
 
 ## Development stack
