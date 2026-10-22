@@ -142,6 +142,10 @@ export function DynamicFormFields({
           return (
             <div className="flex items-center gap-2" key={key}>
               <Checkbox
+                aria-describedby={
+                  fieldError ? `dynamic-${key}-error` : undefined
+                }
+                aria-invalid={fieldError ? true : undefined}
                 checked={!!data[key]}
                 disabled={isLoading}
                 id={`dynamic-${key}`}
@@ -159,7 +163,10 @@ export function DynamicFormFields({
                 </span>
               )}
               {fieldError && (
-                <span className="text-danger flex items-center gap-1 text-xs">
+                <span
+                  className="text-danger flex items-center gap-1 text-xs"
+                  id={`dynamic-${key}-error`}
+                >
                   <AlertCircle className="size-3" />
                   {fieldError}
                 </span>
