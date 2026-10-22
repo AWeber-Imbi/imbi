@@ -58,13 +58,19 @@ const BUILTIN_BY_PATTERN = new Map(BUILTIN_FORMATS.map((f) => [f.pattern, f]))
 // Earlier revisions of a built-in pattern, still stored on organizations and
 // project types saved before the change. They render as that built-in row
 // (toggled on) and are persisted with the current pattern on the next save.
+// Only add a revision here when the current pattern accepts every tag the
+// earlier one did.
 const LEGACY_BUILTIN_PATTERNS = new Map<string, string>([
   [
     '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
     'Semantic versioning',
   ],
-  ['^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$', 'Calendar versioning'],
 ])
+
+// The earlier Calendar versioning pattern. The current pattern rejects tags
+// such as `2026.09` that this one accepts, so it stays a custom row and is
+// stored as it is until the user removes it.
+const LEGACY_CALVER_PATTERN = '^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$'
 
 let rowSeq = 0
 
@@ -90,7 +96,10 @@ export function buildRows(formats: TagFormat[]): FormatRow[] {
     if (!builtinForPattern(f.pattern)) {
       rows.push({
         builtin: false,
-        description: 'Custom version format.',
+        description:
+          f.pattern === LEGACY_CALVER_PATTERN
+            ? 'Earlier Calendar versioning pattern. It accepts tags such as 2026.09 that the built-in pattern rejects.'
+            : 'Custom version format.',
         enabled: true,
         example: '',
         id: nextRowId(),
@@ -118,13 +127,10 @@ export function fullMatch(pattern: string, value: string): boolean {
 /**
  * Whether `formats` holds the earlier Semantic versioning pattern. Its
  * current pattern accepts every tag the earlier one did, so storing it
- * is safe. This is not true for Calendar versioning: the current pattern
- * rejects tags such as `2026.09`.
+ * is safe.
  */
 export function hasLegacySemverPattern(formats: TagFormat[]): boolean {
-  return formats.some(
-    (f) => LEGACY_BUILTIN_PATTERNS.get(f.pattern) === 'Semantic versioning',
-  )
+  return formats.some((f) => LEGACY_BUILTIN_PATTERNS.has(f.pattern))
 }
 
 /**

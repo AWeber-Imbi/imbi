@@ -192,6 +192,13 @@ new one. To store the new pattern, click **Save changes**. For a project
 type, turn **Semantic versioning** off and on again, then save the
 project type.
 
+A format list saved before this release can also keep the old calendar
+versioning pattern. The new pattern rejects tags such as `2026.09` that
+the old pattern accepts, so Imbi does not change it. The list shows the
+old pattern as a custom row, and the built-in **Calendar versioning**
+row is off. A save keeps the old pattern. To use the new pattern, turn
+on **Calendar versioning**, delete the custom row, and save.
+
 Use **Test a version string** to see which enabled formats accept a
 version.
 

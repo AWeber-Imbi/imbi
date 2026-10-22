@@ -52,19 +52,26 @@ describe('tagFormatHint', () => {
 })
 
 describe('buildRows', () => {
-  it('renders the previous calver pattern as the built-in row', () => {
-    const rows = buildRows([
-      {
-        label: 'Calendar versioning',
-        pattern: '^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$',
-      },
-    ])
-    const calver = rows.find((r) => r.label === 'Calendar versioning')
-    expect(calver?.builtin).toBe(true)
-    expect(calver?.enabled).toBe(true)
-    expect(rows.filter((r) => !r.builtin)).toHaveLength(0)
-    expect(toFormats(rows)).toEqual([
-      { label: 'Calendar versioning', pattern: CALVER },
+  it('keeps the previous calver pattern as stored', () => {
+    const legacy = {
+      label: 'Calendar versioning',
+      pattern: '^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$',
+    }
+    const formats = [{ label: 'Ticket', pattern: '^REL-\\d+$' }, legacy]
+    const rows = buildRows(formats)
+    expect(
+      rows.find((r) => r.builtin && r.label === 'Calendar versioning')?.enabled,
+    ).toBe(false)
+    const custom = rows.find((r) => r.pattern === legacy.pattern)
+    expect(custom?.builtin).toBe(false)
+    expect(custom?.description).toContain('2026.09')
+    // An edit to another row does not change the stored calver pattern.
+    const edited = rows.map((r) =>
+      r.label === 'Ticket' ? { ...r, pattern: '^REL-\\d{3}$' } : r,
+    )
+    expect(toFormats(edited)).toEqual([
+      { label: 'Ticket', pattern: '^REL-\\d{3}$' },
+      legacy,
     ])
   })
 })
