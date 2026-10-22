@@ -1798,7 +1798,10 @@ async def create_project(
     dynamic_model = await blueprints.get_model(
         db,
         models.Project,
-        context={'project_type': data.project_type_slugs},
+        context={
+            'project_type': data.project_type_slugs,
+            'environment': list(data.environments),
+        },
     )
 
     project_id = nanoid.generate()
@@ -3334,11 +3337,20 @@ async def _execute_project_update(
     """
     effective_team = data.team_slug or existing_team
     effective_types = data.project_type_slugs or existing_types
+    existing_envs: list[typing.Any] = existing_p.get('environments') or []
+    effective_envs: list[str] = (
+        list(data.environments)
+        if data.environments is not None
+        else [e['slug'] for e in existing_envs]
+    )
 
     dynamic_model = await blueprints.get_model(
         db,
         models.Project,
-        context={'project_type': effective_types},
+        context={
+            'project_type': effective_types,
+            'environment': effective_envs,
+        },
     )
 
     # Pre-parse JSON-string fields that the graph stores as strings.

@@ -475,13 +475,13 @@ export interface Project {
   viewer_closed_pr_count?: number
   viewer_open_pr_count?: number
 }
-// `ProjectCreate` stays hand-written: the UI sends `environment_slugs` (a
-// flat slug list) whereas the generated `ProjectCreate` expects an
-// `environments` map of edge-property dicts + a required `project_type_slugs`.
+// `ProjectCreate` stays hand-written: the generated `ProjectCreate` marks
+// `links` and `identifiers` as required because they have server defaults.
 export interface ProjectCreate {
   [key: string]: unknown
   description?: null | string
-  environment_slugs?: string[]
+  // Map of environment slug to DEPLOYED_IN edge properties.
+  environments?: Record<string, Record<string, unknown>>
   icon?: null | string
   identifiers?: Record<string, number | string>
   links?: Record<string, string>

@@ -177,6 +177,8 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                     'description': 'An example API',
                     'team_slug': 'platform',
                     'project_type_slugs': ['api-service'],
+                    # Not a blueprint field: must not reach the node.
+                    'environment_slugs': ['production'],
                 },
             )
 
@@ -185,6 +187,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['slug'], 'my-api')
         self.assertEqual(data['name'], 'My API')
         self.assertIn('relationships', data)
+        create_query, create_params = self.mock_db.execute.call_args.args[:2]
+        self.assertNotIn('environment_slugs', create_query)
+        self.assertNotIn('environment_slugs', create_params)
 
     def test_create_with_environments(self) -> None:
         """Test project creation with environment assignments."""
@@ -250,6 +255,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(len(data['environments']), 1)
+        mock_get_model.assert_awaited_once_with(
+            self.mock_db,
+            models.Project,
+            context={
+                'project_type': ['api-service'],
+                'environment': ['production'],
+            },
+        )
 
     def test_create_validation_error(self) -> None:
         """Test creating project with missing required fields."""
@@ -780,6 +793,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        mock_get_model.assert_awaited_once_with(
+            self.mock_db,
+            models.Project,
+            context={
+                'project_type': ['api-service'],
+                'environment': ['staging'],
+            },
+        )
 
     def test_patch_project_keeps_set_clause_join_free(self) -> None:
         """No statement mixes a property SET with a join.

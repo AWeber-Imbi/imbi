@@ -111,15 +111,14 @@ The list never shows archived projects.
     | **Name** | Required. The name that people see, for example `My Service` |
     | **Slug** | Required. Imbi makes it from the name until you change it: lowercase, with `-` in place of spaces |
     | **Description** | The purpose of the project |
+    | **Environments** | Optional. Click each environment that the project runs in |
 
 4. Click **Save**.
 
 Imbi opens the new project. Imbi then tells the lifecycle plugins about it.
 For example, the GitHub plugin can make the repository.
 
-The dialog also shows environment chips. In this release, Imbi does not
-save the environments that you select there
-([#477](https://github.com/AWeber-Imbi/imbi/issues/477)). Add the environments on the
+To set the URL or other fields of an environment, edit it on the
 **Overview** tab after you create the project. See
 [Environments](#environments).
 
