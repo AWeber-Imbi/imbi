@@ -38,8 +38,9 @@ for evaluation, not for production.
 
 !!! warning
     The published 2.39.0 image fails at startup on a new Iggy server: imbi-api
-    cannot create its Iggy topics and exits. See
-    [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469).
+    cannot create its Iggy topics and exits. Steps 1 to 4 work. Steps 5 and 6
+    do not work with 2.39.0 until
+    [issue #469](https://github.com/AWeber-Imbi/imbi/issues/469) is fixed.
 
 1. Create a directory, and in it create `compose.yaml`:
 

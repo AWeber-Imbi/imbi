@@ -18,6 +18,11 @@ docker run -p 8080:8080 \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e VALKEY_URL=valkey://valkey:6379/0 \
+  -e S3_ENDPOINT_URL=https://s3.example.com \
+  -e S3_ACCESS_KEY=your-access-key \
+  -e S3_SECRET_KEY=your-secret-key \
+  -e IMBI_EMAIL_SMTP_HOST=smtp.example.com \
+  -e IMBI_IGGY_CONNECTORS_API_KEYS=your-connectors-key \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
   -e IMBI_CONFIG_ENCRYPTION_KEY=your-other-fernet-key \
@@ -34,9 +39,13 @@ docker run -p 8080:8080 \
   keys. When `ENVIRONMENT` is unset, each process generates the keys that
   are not set, and the services cannot decrypt each other's values.
 - Without `VALKEY_URL`, imbi-api does not start its background workers.
-- imbi-api also needs S3-compatible storage (`S3_*`) and an SMTP server
-  (`IMBI_EMAIL_*`) at startup. See
+- imbi-api connects to S3-compatible storage (`S3_*`) and to the SMTP
+  server (`IMBI_EMAIL_*`) at startup. Leave `S3_ENDPOINT_URL` unset to use
+  AWS S3. To turn off email, set `IMBI_EMAIL_ENABLED=false`. See
   [Installation](../getting-started/installation.md#prerequisites).
+- `IMBI_IGGY_CONNECTORS_API_KEYS` must have the same value as
+  `IGGY_CONNECTORS_API_KEY` on the connectors runtime. See
+  [The Iggy connectors runtime](#the-iggy-connectors-runtime).
 
 This starts:
 
@@ -65,14 +74,20 @@ set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
 # Run only the API
 docker run -p 8000:8000 \
   -e IMBI_SERVICE=api \
+  -e ENVIRONMENT=production \
   -e IMBI_API_URL=https://imbi.example.com/api \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
-  -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-fernet-key \
+  -e IMBI_CONFIG_ENCRYPTION_KEY=your-other-fernet-key \
   ghcr.io/aweber-imbi/imbi:latest
 ```
+
+Give every service the same `ENVIRONMENT` and the same keys. A service that
+generates its own key cannot decrypt the values that another service
+encrypted.
 
 When running individual services, Caddy is not started. Either provide your
 own reverse proxy, or run `IMBI_SERVICE=ui`: the bundled Caddy alone, serving

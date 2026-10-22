@@ -14,10 +14,11 @@ PostgreSQL and stops with a `PoolTimeout` error (see
 ### Docker
 
 Setup needs the same PostgreSQL, ClickHouse, and Iggy connections as
-imbi-api. Attach the container to the network of those services:
+imbi-api. Attach the container to the Docker network of those services.
+Replace `<network>` with its name:
 
 ```bash
-docker run -it --network imbi \
+docker run -it --network <network> \
   -e POSTGRES_URL=postgresql://postgres:secret@postgres/imbi \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
@@ -46,7 +47,7 @@ Deployment name is the release name, or `<release>-imbi` when the release
 name does not contain `imbi`:
 
 ```bash
-kubectl exec -it deploy/imbi -- imbi-api setup
+kubectl exec -it deploy/<deployment> -- imbi-api setup
 ```
 
 ## What Setup Does

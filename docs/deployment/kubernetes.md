@@ -70,15 +70,19 @@ The chart cannot set these variables. Issue
 2. Install the chart:
 
     ```bash
-    helm install imbi helm/imbi -f values.yaml
+    helm install imbi helm/imbi -f values.yaml --namespace imbi --create-namespace
     ```
 
 3. Run setup in the pod. The Deployment name is the release name, or
    `<release>-imbi` when the release name does not contain `imbi`:
 
     ```bash
-    kubectl exec -it deploy/imbi -- imbi-api setup
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-postgres
+    kubectl -n imbi exec -it deploy/imbi -- imbi-api setup
     ```
+
+    `setup-postgres` creates the PostgreSQL schema that setup needs. It does
+    nothing when imbi-api has already created the schema.
 
     See [Initial Setup](../getting-started/setup.md) for the prompts.
 
@@ -87,7 +91,7 @@ The chart cannot set these variables. Issue
    startup, and that fails before setup has run:
 
     ```bash
-    kubectl rollout restart deployment/imbi
+    kubectl -n imbi rollout restart deployment/imbi
     ```
 
 ## Configuration
@@ -415,24 +419,24 @@ ingress:
 1. Upgrade the release:
 
     ```bash
-    helm upgrade imbi helm/imbi -f values.yaml
+    helm upgrade imbi helm/imbi -f values.yaml --namespace imbi
     ```
 
 2. Do the steps that the release notes name, in this order. Run each command
    in the pod, as in step 3 of [Installing the Chart](#installing-the-chart):
 
     ```bash
-    kubectl exec deploy/imbi -- imbi-api setup-permissions
-    kubectl exec deploy/imbi -- imbi-api setup-service-accounts
-    kubectl exec deploy/imbi -- imbi-api setup-clickhouse
-    kubectl exec deploy/imbi -- imbi-api setup-prompts
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-permissions
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-service-accounts
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-clickhouse
+    kubectl -n imbi exec deploy/imbi -- imbi-api setup-prompts
     ```
 
 3. When the release adds an Iggy stream, restart the connectors runtime
    after `setup-clickhouse`:
 
     ```bash
-    kubectl rollout restart deployment/imbi-connect
+    kubectl -n imbi rollout restart deployment/imbi-connect
     ```
 
 See [Applying Upgrades](../getting-started/setup.md#applying-upgrades) for
