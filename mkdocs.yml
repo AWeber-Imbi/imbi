@@ -60,6 +60,16 @@ nav:
       - Agents: admin/agents.md
       - Agent Tasks: admin/agent-tasks.md
       - Workflows: admin/workflows.md
+      - Integrations and Plugins: admin/integrations-and-plugins.md
+  - Integrations:
+      - Overview: plugins/index.md
+      - AWS: plugins/aws.md
+      - GitHub: plugins/github.md
+      - Google: plugins/google.md
+      - Logz.io: plugins/logzio.md
+      - OIDC: plugins/oidc.md
+      - PagerDuty: plugins/pagerduty.md
+      - SonarQube: plugins/sonarqube.md
   - Deployment:
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
