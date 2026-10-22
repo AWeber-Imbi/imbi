@@ -4,7 +4,7 @@ A workflow is a graph of steps that runs without a person at each step. A
 trigger starts a run. The steps after the trigger wait, ask a decision
 model, send email, deploy, roll back, or give a task to an agent.
 
-Open the section at **Agents > Workflows**. Each organization has its own
+Open the section at **Agents > Settings > Workflows**. Each organization has its own
 workflows. The `imbi-workflows` service runs them.
 
 Setup has four steps:
@@ -40,7 +40,7 @@ See [ADR 0021](../api/adr/0021-workflow-contract.md) for the design.
 
 ## Build a workflow
 
-1. Open **Agents > Workflows** and click **New workflow**.
+1. Open **Agents > Settings > Workflows** and click **New workflow**.
 2. Enter a name in the header. Imbi makes the slug from the name.
 3. Click **Choose a trigger** on the empty canvas, and select a trigger.
 4. Add the steps that follow. See [The canvas](#the-canvas).
@@ -431,7 +431,8 @@ Activation fails in these cases:
 | `422 validation_failed` | The version has issues. Warnings count | Fix every issue, save, and activate again |
 | `403 missing_permissions` | You do not hold a permission that a step needs. The message lists them | Ask an admin to activate it, or to give you the permissions |
 
-The permissions that steps need:
+Imbi checks the permissions of your role in the workflow's organization
+only. The permissions that steps need:
 
 | Step | Permission |
 |---|---|

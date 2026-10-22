@@ -33,7 +33,8 @@ The area has these pages:
 | `prompt:create`, `prompt:update` | Save a change to the system prompt or the model | `admin`, `developer` |
 | `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See and add grants on the **Access** tab | `admin` |
 
-You must also be a member of the organization. For the task permissions,
+You must also be a member of the organization. The permissions come from
+your role in that organization only. For the task permissions,
 see [Agent tasks](agent-tasks.md#permissions). For roles, see
 [Roles and permissions](roles-and-permissions.md).
 
@@ -323,7 +324,10 @@ To add a marketplace:
 5. Click **Save version**.
 
 A sync reads the marketplace file at the head of the default branch. It
-reads through the organization's GitHub integration. A failed sync shows an
+reads through the organization's GitHub integration. When no integration can
+read a `github.com` repository, the sync reads it anonymously. GitHub
+limits anonymous reads to 60 requests an hour for each API pod IP address.
+A repository on another host is never read anonymously. A failed sync shows an
 error badge on the row. Click the sync button of a row to sync it again.
 Imbi does not sync on a schedule.
 
@@ -349,9 +353,11 @@ uses its `marketplace_fetch` token for the plugin, and that token is for
 the marketplace host. A `github` source is on `github.com`. A plugin on
 another host shows **unsupported source**.
 
-With a GitHub App binding, put each marketplace and plugin repository in
-the `repositories` of the binding. Otherwise the task fails with
-`marketplace_fetch_failed`.
+With a GitHub App binding, put each private marketplace and plugin
+repository in the `repositories` of the binding. When the token is refused
+or the clone fails, the runner clones a `github.com` repository
+anonymously. This works only for a public repository. Otherwise, and for a
+repository on another host, the task fails with `marketplace_fetch_failed`.
 
 ## Usage
 

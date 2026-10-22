@@ -127,9 +127,10 @@ Every field in step 2 is optional. Leave a cost empty when the price is
 unknown or set by contract. Enter `0` for a self-hosted model.
 
 !!! warning
-    **Monthly spend cap is advisory.** Imbi does not track spend and does not
-    block calls at the cap. The field records the number for a human to act
-    on.
+    **Monthly spend cap is advisory.** Imbi does not block calls at the cap.
+    The field records the number for a human to act on. Agent usage uses the
+    model prices to calculate cost. See
+    [Agents > Usage](agents.md#usage).
 
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
@@ -192,15 +193,11 @@ deleting it when you plan to bring it back.
 Expand the provider, click the edit icon on the model row, click **Continue**,
 then click **Delete model**.
 
-Providers are deleted through the API, not the UI:
-
-```http
-DELETE /ai-providers/{id}
-```
-
-The request returns `409` while the provider still serves models. Delete the
-models first, or move them to another provider. There is no cascade, so a
-provider cannot take its models with it.
+To delete a provider, click the edit icon on the provider row, then click
+**Delete provider**. The button is disabled while the provider still serves
+models. The API (`DELETE /ai-providers/{id}`) returns `409` for the same
+condition. Delete the models first, or move them to another provider. There
+is no cascade, so a provider cannot take its models with it.
 
 ## Permissions
 

@@ -9,13 +9,13 @@ documentation URL and supported platforms.
 ## How Blueprints Work
 
 Each blueprint defines a set of additional fields (as a JSON Schema)
-that are added to the project creation and edit forms. When someone
-creates a project and selects a blueprint, Imbi shows the blueprint's
-fields in the UI and validates them before saving.
+that are added to the project creation and edit forms. Imbi selects the
+blueprints that match the project. It shows their fields in the UI and
+validates them before saving.
 
 ## Creating a Blueprint
 
-1. Navigate to **Settings > Blueprints** in the admin panel
+1. Navigate to **Admin > <organization> Admin > Blueprints**
 2. Click **New Blueprint**
 3. Fill in the name and description
 4. Define the fields using the schema editor:
@@ -23,7 +23,7 @@ fields in the UI and validates them before saving.
       boolean
     - Mark fields as required or optional
     - For select fields, define the allowed values
-5. Click **Save**
+5. Click **Create Blueprint**
 
 ### Example
 
@@ -41,14 +41,15 @@ team, etc.).
 
 ## Using Blueprints
 
-When creating or editing a project:
+You do not select a blueprint. Imbi applies every enabled blueprint whose
+`type` matches the record (for example `Project`) and whose `filter`
+matches. A filter lists project types, environments, or both. A blueprint
+with no filter applies to every record of its type. Imbi applies the
+matching blueprints in `priority` order.
 
-1. Select a blueprint from the **Blueprint** dropdown
-2. Fill in the blueprint-specific fields that appear
-3. Required fields must be completed before the project can be saved
-
-The blueprint selection can be changed later, but metadata from the
-previous blueprint is not automatically migrated.
+When you create or edit a project, fill in the fields that the matching
+blueprints add. You must complete the required fields before you can save
+the project.
 
 ## Updating Blueprints
 

@@ -31,7 +31,8 @@ A runner pod runs the task. See
 | `agent_task:manage` | Pause, resume, cancel, and reassign tasks. Reply. Change relations and associated projects | `admin`, `developer` |
 | `agent_task:resolve` | Answer feedback requests and resolve approvals | `admin`, `developer` |
 
-You must also be a member of the organization. Only a person can resolve a
+You must also be a member of the organization. The permissions come from
+your role in that organization only. Only a person can resolve a
 request, reply, or change relations. A service account gets `403`, also
 when it has the permission.
 
