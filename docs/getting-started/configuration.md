@@ -75,48 +75,44 @@ for the optional settings.
 
 ## Authentication
 
+Sign-in methods are not environment variables. You configure local
+authentication and SSO login providers in the database, at
+**Admin > Global Admin > Auth Providers**. See
+[Authentication](../admin/authentication.md).
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `IMBI_AUTH_JWT_SECRET` | JWT signing secret | - |
-| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key | - |
-| `IMBI_AUTH_LOCAL_ENABLED` | Enable local password authentication | `true` |
-| `IMBI_AUTH_CALLBACK_BASE_URL` | Base URL for OAuth callbacks | `http://localhost:8000` |
-| `IMBI_AUTH_SESSION_TIMEOUT` | Session duration in seconds | `86400` (24h) |
+| `IMBI_AUTH_JWT_SECRET` | JWT signing secret | Random value in development |
+| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key | Random value in development |
+| `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS` | Access token lifetime | `3600` (1 hour) |
+| `IMBI_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS` | Refresh token lifetime | `2592000` (30 days) |
+| `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` | Create a user at the first SSO sign-in | `true` |
+| `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` | Link an SSO sign-in to the user with the same verified email | `true` |
+| `IMBI_AUTH_DCR_ENABLED` | Let MCP clients register themselves | `true` |
 
-### OAuth Providers
+When `ENVIRONMENT` is not `development`, Imbi does not start unless you set
+`IMBI_AUTH_JWT_SECRET` and `IMBI_AUTH_ENCRYPTION_KEY`.
 
-#### Google
-
-| Variable | Description |
-|----------|-------------|
-| `IMBI_AUTH_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `IMBI_AUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-
-#### GitHub
-
-| Variable | Description |
-|----------|-------------|
-| `IMBI_AUTH_GITHUB_CLIENT_ID` | GitHub OAuth client ID |
-| `IMBI_AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth client secret |
-
-#### OIDC (Keycloak, etc.)
-
-| Variable | Description |
-|----------|-------------|
-| `IMBI_AUTH_OIDC_CLIENT_ID` | OIDC client ID |
-| `IMBI_AUTH_OIDC_CLIENT_SECRET` | OIDC client secret |
-| `IMBI_AUTH_OIDC_DISCOVERY_URL` | OIDC discovery endpoint URL |
+The OAuth callback URL is `<IMBI_API_URL>/auth/oauth/<provider-slug>/callback`.
+There is no separate callback setting.
 
 ## Email
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `IMBI_EMAIL_ENABLED` | Enable email notifications | `false` |
-| `IMBI_EMAIL_SMTP_HOST` | SMTP server hostname | - |
+| `IMBI_EMAIL_ENABLED` | Send email. Set to `false` to stop all email | `true` |
+| `IMBI_EMAIL_DRY_RUN` | Log messages but do not send them | `false` |
+| `IMBI_EMAIL_SMTP_HOST` | SMTP server hostname | `localhost` |
 | `IMBI_EMAIL_SMTP_PORT` | SMTP server port | `587` |
-| `IMBI_EMAIL_SMTP_USE_TLS` | Use TLS for SMTP | `true` |
-| `IMBI_EMAIL_FROM_EMAIL` | Sender email address | - |
-| `IMBI_EMAIL_FROM_NAME` | Sender display name | - |
+| `IMBI_EMAIL_SMTP_USE_TLS` | Use STARTTLS | `true` |
+| `IMBI_EMAIL_SMTP_USE_SSL` | Use implicit TLS (usually port 465) | `false` |
+| `IMBI_EMAIL_SMTP_USERNAME` | SMTP user name | - |
+| `IMBI_EMAIL_SMTP_PASSWORD` | SMTP password | - |
+| `IMBI_EMAIL_FROM_EMAIL` | Sender email address | `noreply@imbi.example.com` |
+| `IMBI_EMAIL_FROM_NAME` | Sender display name | `Imbi` |
+
+See [API configuration](../api/configuration.md) for the retry and timeout
+settings.
 
 ## AI Assistant
 

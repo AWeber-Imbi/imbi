@@ -1,86 +1,221 @@
 # Authentication
 
-Imbi supports multiple authentication methods that can be used
-simultaneously. As an administrator, you configure these during
-deployment via environment variables.
+Users sign in to Imbi with an email address and a password, with a single
+sign-on (SSO) login provider, or with both. You configure the sign-in
+methods in the database, on the **Auth Providers** page. Environment
+variables control only the secrets, the token lifetimes, and some SSO
+behavior.
 
-## Local Authentication
+To open the page, click **Admin** in the top bar, then
+**Global Admin > Auth Providers**. The **Admin** menu shows only for
+platform administrators.
 
-Local authentication allows users to sign in with an email address and
-password. It is enabled by default and is the simplest way to get
-started.
+## Local authentication
 
-When creating a user account (or when users set their own password),
-the following requirements apply:
+Local authentication is sign-in with an email address and a password that
+Imbi stores. It is enabled by default.
+
+The **Local Authentication** card on the **Auth Providers** page has an
+**Enabled** switch. When you disable it, the login page does not show the
+email and password form. The setting is in the database, so it applies to
+all API processes. A change can take up to 30 seconds to show, because each
+process caches the value.
+
+!!! warning
+    The switch hides the form only. The `POST /auth/login` endpoint
+    continues to accept passwords from users that have one. To stop
+    password sign-in for a user, disable the user.
+
+| Permission | Lets you |
+|---|---|
+| `auth_providers:read` | See the setting (`GET /admin/local-auth`) |
+| `auth_providers:write` | Change the setting (`PUT /admin/local-auth`) |
+
+Only the `admin` role has these permissions.
+
+### Password rules
+
+Imbi checks these rules when a user changes a password:
 
 - Minimum 12 characters
 - At least one uppercase letter
 - At least one lowercase letter
 - At least one digit
-- At least one special character
+- At least one special character from `!@#$%^&*()_+-=[]{}|;:,.<>?`
 
-To disable local authentication (for example, if you only want OAuth):
+The rules are fixed. The `IMBI_AUTH_PASSWORD_*` settings exist, but the
+API does not read them. Imbi does not apply the rules to the password that
+an administrator sets when they create a user.
 
-```bash
-IMBI_AUTH_LOCAL_ENABLED=false
+## SSO login providers
+
+A login provider is an integration of a plugin that can sign users in.
+These plugins can do this:
+
+| Plugin | Sign-in method |
+|---|---|
+| `google` | Google OAuth 2.0 with PKCE |
+| `github` | GitHub OAuth app |
+| `oidc` | Any OpenID Connect provider, for example Keycloak or Okta |
+| `aws` | AWS IAM Identity Center (device-code flow) |
+
+Login providers are global. Users sign in before they select an
+organization, so a login provider does not belong to an organization.
+Each plugin can have one login provider. Only one provider at a time can be
+used for sign-in.
+
+### Add a login provider
+
+1. Enable the plugin at **Admin > Global Admin > Plugins**.
+2. Open **Admin > Global Admin > Auth Providers**.
+3. In the **SSO Login Provider** card, click **Add auth provider**.
+4. Select the plugin in **Provider**.
+5. Enter the credentials and options. The fields come from the plugin.
+   For example, `google` and `oidc` ask for **Client ID** and
+   **Client secret**, and `oidc` asks for **Issuer URL**.
+6. Set **Use for sign-in now** to use the provider immediately.
+7. Click **Create**.
+
+Imbi encrypts the credentials with `IMBI_AUTH_ENCRYPTION_KEY` before it
+stores them.
+
+To change the provider that users sign in with, use the switch on the
+provider row. When you turn on a provider, Imbi turns off the provider that
+was in use. You cannot turn on a provider whose status is not `active`.
+When a provider is in use, the login page shows a button for it.
+
+| Permission | Lets you |
+|---|---|
+| `integration:read` | See the login providers |
+| `integration:create` | Add a login provider |
+| `integration:update` | Change credentials and options, and turn a provider on or off |
+| `integration:delete` | Delete a login provider |
+
+The Google plugin has a **Workspace domain** option. Imbi sends it to Google
+as the `hd` parameter. Imbi does not examine the domain in the token that
+Google returns.
+
+### Callback URL
+
+Register this redirect URL with the identity provider:
+
+```text
+<IMBI_API_URL>/auth/oauth/<provider-slug>/callback
 ```
 
-## Single Sign-On (OAuth2 / OIDC)
+`IMBI_API_URL` is the public URL of the API, with its path prefix. The
+provider slug is the plugin slug. For example, if `IMBI_API_URL` is
+`https://imbi.example.com/api`, the Google callback URL is
+`https://imbi.example.com/api/auth/oauth/google/callback`.
 
-For organizations using a centralized identity provider, Imbi supports
-OAuth2 and OpenID Connect. When configured, a "Sign in with ..."
-button appears on the login page. Users who sign in via SSO for the
-first time are automatically provisioned with a default role.
+If `IMBI_API_URL` is not set, Imbi uses
+`http://<IMBI_API_HOST>:<IMBI_API_PORT>` with no prefix. That value is
+correct only for local development.
 
-### Google
+If you serve Imbi on more than one host, Imbi builds the callback URL from
+the host of the sign-in request. It does this only when that host is in
+`IMBI_API_CORS_ALLOWED_ORIGINS` or is the host of `IMBI_API_URL`. For all
+other hosts, it uses `IMBI_API_URL`.
 
-Add these environment variables to enable Google sign-in:
+### First sign-in
 
-```bash
-IMBI_AUTH_GOOGLE_CLIENT_ID=your-client-id
-IMBI_AUTH_GOOGLE_CLIENT_SECRET=your-client-secret
-```
+When a user signs in through a login provider, Imbi finds the user by the
+email address that the provider returns:
 
-### GitHub
+- **No user has that email.** Imbi creates the user when
+  `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` is `true` (the default). If it is
+  `false`, sign-in fails.
+- **A user has that email.** Imbi links the sign-in to that user when
+  `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` is `true` (the default) and the
+  provider says that the email is verified. If the setting is `false`,
+  sign-in through a login provider fails for every user that already
+  exists.
 
-```bash
-IMBI_AUTH_GITHUB_CLIENT_ID=your-client-id
-IMBI_AUTH_GITHUB_CLIENT_SECRET=your-client-secret
-```
+Service accounts cannot sign in through a login provider.
 
-### Generic OIDC (Keycloak, Okta, etc.)
+### Default organization and role
 
-Any OpenID Connect-compatible provider can be used:
+After each sign-in, Imbi examines the organization memberships of the user.
+If the user has none, Imbi adds the user to an organization with the
+default role:
 
-```bash
-IMBI_AUTH_OIDC_CLIENT_ID=your-client-id
-IMBI_AUTH_OIDC_CLIENT_SECRET=your-client-secret
-IMBI_AUTH_OIDC_DISCOVERY_URL=https://your-idp/.well-known/openid-configuration
-```
+- The role is the role marked as the default. The seeded default role is
+  `default`.
+- The organization is the only organization, if there is only one.
+  If not, it is the organization with the slug `default`.
+- If Imbi cannot find the role or the organization, it logs a warning and
+  adds no membership. Sign-in continues, but the user has no permissions.
 
-!!! tip
-    Set `IMBI_AUTH_CALLBACK_BASE_URL` to the public URL of your Imbi
-    instance (e.g. `https://imbi.example.com`) so that OAuth callbacks
-    route correctly.
+## Multi-factor authentication
 
-## Multi-Factor Authentication
+Users turn on TOTP multi-factor authentication (MFA) at
+**Settings > Security**. Imbi gives the user backup codes during setup.
+After setup, password sign-in asks for a code from the authenticator app or
+a backup code.
 
-Users can enable TOTP-based multi-factor authentication from their
-profile settings page. Once enabled, they will be prompted for a
-time-based one-time password after entering their credentials.
+MFA applies to password sign-in only. SSO sign-in does not ask for an Imbi
+MFA code. Administrators cannot make MFA mandatory.
 
-MFA is optional and user-managed -- administrators cannot force it at
-this time, but it is recommended for accounts with elevated privileges.
+| Variable | Default | Description |
+|---|---|---|
+| `IMBI_AUTH_MFA_ISSUER_NAME` | `Imbi` | Issuer name that authenticator apps show |
+| `IMBI_AUTH_MFA_TOTP_PERIOD` | `30` | TOTP time step, in seconds |
+| `IMBI_AUTH_MFA_TOTP_DIGITS` | `6` | Number of digits in a code |
 
-## Sessions
+## Tokens
 
-Imbi manages sessions automatically:
+Imbi issues an access token and a refresh token at sign-in. The UI uses the
+refresh token to get a new access token. When the refresh token expires,
+the user must sign in again.
 
-- **Access tokens** expire after 15 minutes and are refreshed transparently
-- **Refresh tokens** expire after 7 days
-- Maximum 5 concurrent sessions per user
-- Session timeout (inactivity): 24 hours (configurable via
-  `IMBI_AUTH_SESSION_TIMEOUT`)
+| Variable | Default | Description |
+|---|---|---|
+| `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS` | `3600` (1 hour) | Access token lifetime |
+| `IMBI_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS` | `2592000` (30 days) | Refresh token lifetime |
+| `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | `365` | Maximum lifetime of a new API key or client credential |
 
-Users do not need to manage sessions directly. If a session expires,
-they are redirected to the login page.
+Users make their own API keys at **Settings > API Keys**.
+
+## Required secrets
+
+Set these two variables in every deployment:
+
+| Variable | Description |
+|---|---|
+| `IMBI_AUTH_JWT_SECRET` | Secret that signs the tokens |
+| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet key that encrypts provider credentials and tokens |
+
+When `ENVIRONMENT` is not `development`, Imbi does not start if one of
+these variables is not set. `IMBI_CONFIG_ENCRYPTION_KEY` has the same rule.
+In development, Imbi makes random values at start. Then each restart makes
+all tokens and all encrypted values unusable.
+
+!!! note
+    The variable is `ENVIRONMENT`, with no `IMBI_` prefix. Its default is
+    `development`.
+
+## Rate limits
+
+Imbi limits these requests for each client IP address:
+
+| Request | Limit |
+|---|---|
+| `POST /auth/login` | 5 per minute |
+| `POST /auth/token/refresh` | 10 per minute |
+| `GET /auth/oauth/{provider}` | 3 per minute |
+| `GET /auth/oauth/{provider}/callback` | 10 per minute |
+| `POST /auth/logout` | 30 per minute |
+| `POST /mfa/verify` | 5 per minute |
+
+The limits are fixed in the code. The `IMBI_AUTH_RATE_LIMIT_*` settings
+exist, but the API does not read them. Behind a reverse proxy, set
+`IMBI_API_FORWARDED_ALLOW_IPS` to the proxy addresses. If you do not, Imbi
+counts all requests against the proxy address.
+
+## MCP clients
+
+Imbi is an OAuth 2.0 authorization server for MCP clients. Clients find it
+at `/.well-known/oauth-authorization-server`. A client can register itself
+at `POST /auth/register` (dynamic client registration, RFC 7591). To stop
+this, set `IMBI_AUTH_DCR_ENABLED` to `false`. Then you must provision each
+client out of band.
