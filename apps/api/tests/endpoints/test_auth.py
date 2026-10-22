@@ -2022,6 +2022,55 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
                 'project:read',
             )
 
+    def test_client_credentials_scope_no_overlap(self) -> None:
+        """No overlap with the cred scopes refuses the token."""
+        cred_data = {
+            'client_id': 'cc_scoped',
+            'client_secret_hash': '$argon2id$hashed',
+            'revoked': False,
+            'expires_at': None,
+            'scopes': ['project:read'],
+        }
+        sa_data = {
+            'slug': 'scoped-sa',
+            'display_name': 'Scoped SA',
+            'is_active': True,
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
+        }
+        self.mock_db.execute.side_effect = [
+            [{'c': cred_data, 's': sa_data}],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.auth.password.verify_password',
+                return_value=True,
+            ),
+            mock.patch(
+                'imbi.api.auth.tokens.issue_token_pair',
+            ) as issue,
+        ):
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_scoped',
+                    'client_secret': 'secret123',
+                    'scope': 'user:write',
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['detail'], 'invalid_scope')
+        issue.assert_not_called()
+
 
 class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     """Cover the identity-plugin branch of /auth/oauth/{provider}.
