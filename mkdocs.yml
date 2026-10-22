@@ -79,6 +79,9 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Services: architecture/services.md
+      - Events: architecture/events.md
+      - Flows: architecture/flows.md
+      - Delivery: architecture/delivery.md
   - API Service:
       - Overview: api/index.md
       - Configuration: api/configuration.md
@@ -208,7 +211,11 @@ plugins:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
