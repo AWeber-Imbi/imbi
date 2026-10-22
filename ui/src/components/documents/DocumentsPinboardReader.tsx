@@ -260,10 +260,7 @@ export function DocumentsPinboardReader({
       .slice(0, 4)
   }, [allDocuments, document])
 
-  const headings = useMemo(
-    () => extractHeadings(document.content),
-    [document.content],
-  )
+  const headings = useMemo(() => extractHeadings(content.body), [content.body])
   const readTime = useMemo(
     () => formatReadTime(estimatedReadSeconds(document.content)),
     [document.content],
