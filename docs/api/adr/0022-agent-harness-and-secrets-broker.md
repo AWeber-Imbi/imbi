@@ -4,7 +4,7 @@ Date: 2026-10-13
 
 ## Status
 
-Proposed
+Accepted
 
 The plan for this work lives in the dev-environment repository's
 `docs/harness-plan.md`. It replaces the owner's draft "Imbi Agent Secrets

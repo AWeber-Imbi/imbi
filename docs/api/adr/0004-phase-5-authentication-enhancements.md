@@ -1,4 +1,4 @@
-# ADR 0001: Phase 5 Authentication Enhancements
+# ADR 0004: Phase 5 Authentication Enhancements
 
 ## Status
 
