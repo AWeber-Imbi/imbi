@@ -11,7 +11,7 @@ import { buildDiffPatch } from '@/lib/json-patch'
 import {
   buildRows,
   type FormatRow,
-  hasLegacyPattern,
+  hasLegacySemverPattern,
   nextRowId,
   toFormats,
 } from '@/lib/versionFormats'
@@ -36,11 +36,11 @@ export function DefaultSettingsManagement() {
   const [editing, setEditing] = useState<FormatRow | null>(null)
   // Normalize through buildRows/toFormats so the baseline matches the editor's
   // canonical ordering (built-ins first); otherwise a differently-ordered
-  // baseFormats reads as dirty on mount. The rows show a legacy built-in
-  // pattern as its current revision, so a stored legacy pattern is an
-  // unsaved change: one save stores the current pattern.
+  // baseFormats reads as dirty on mount. The rows show the legacy
+  // Semantic versioning pattern as its current revision, so a stored
+  // legacy pattern is an unsaved change: one save stores the current one.
   const baseline = useRef(
-    hasLegacyPattern(baseFormats)
+    hasLegacySemverPattern(baseFormats)
       ? ''
       : JSON.stringify(toFormats(buildRows(baseFormats))),
   )

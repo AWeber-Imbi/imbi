@@ -115,9 +115,16 @@ export function fullMatch(pattern: string, value: string): boolean {
   }
 }
 
-/** Whether `formats` holds an earlier revision of a built-in pattern. */
-export function hasLegacyPattern(formats: TagFormat[]): boolean {
-  return formats.some((f) => LEGACY_BUILTIN_PATTERNS.has(f.pattern))
+/**
+ * Whether `formats` holds the earlier Semantic versioning pattern. Its
+ * current pattern accepts every tag the earlier one did, so storing it
+ * is safe. This is not true for Calendar versioning: the current pattern
+ * rejects tags such as `2026.09`.
+ */
+export function hasLegacySemverPattern(formats: TagFormat[]): boolean {
+  return formats.some(
+    (f) => LEGACY_BUILTIN_PATTERNS.get(f.pattern) === 'Semantic versioning',
+  )
 }
 
 /**

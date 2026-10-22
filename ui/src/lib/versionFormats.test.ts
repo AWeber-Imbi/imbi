@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildRows,
-  hasLegacyPattern,
+  hasLegacySemverPattern,
   isTagAllowed,
   tagFormatHint,
   toFormats,
@@ -96,7 +96,18 @@ describe('Semantic versioning built-in', () => {
       pattern:
         '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
     }
-    expect(hasLegacyPattern([legacy])).toBe(true)
-    expect(hasLegacyPattern(toFormats(buildRows([legacy])))).toBe(false)
+    expect(hasLegacySemverPattern([legacy])).toBe(true)
+    expect(hasLegacySemverPattern(toFormats(buildRows([legacy])))).toBe(false)
+  })
+
+  it('does not flag the previous calendar pattern', () => {
+    expect(
+      hasLegacySemverPattern([
+        {
+          label: 'Calendar versioning',
+          pattern: '^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$',
+        },
+      ]),
+    ).toBe(false)
   })
 })

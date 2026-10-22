@@ -793,9 +793,10 @@ function validateDeploymentStatusPolicy(
         valid: false,
       }
     }
-    if (!isNumberInRange(score, 0, 100)) {
+    // The API stores these scores as int, as the editor does.
+    if (!Number.isInteger(score) || !isNumberInRange(score, 0, 100)) {
       return {
-        error: '"status_score_map" values must be between 0 and 100.',
+        error: '"status_score_map" values must be whole numbers 0 to 100.',
         valid: false,
       }
     }
