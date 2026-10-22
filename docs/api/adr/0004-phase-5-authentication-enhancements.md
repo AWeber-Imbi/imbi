@@ -4,6 +4,14 @@
 
 Accepted
 
+**Status update (2026-10):** This record is historical. Two parts of it do
+not match the current code:
+
+- The concurrent-session limit was not implemented. The limit helpers were
+  removed (see `apps/api/src/imbi/api/auth/sessions.py`).
+- The API key format is `ik_<32 hex characters>_<secret>`, not
+  `ik_<16chars>_<32chars>`.
+
 ## Context
 
 Imbi v2 completed Phase 4 with basic OAuth2/OIDC authentication, but several critical security and usability features remain unimplemented. These gaps create security vulnerabilities (plaintext OAuth tokens, no token revocation) and limit API usability (no API keys, no MFA).
