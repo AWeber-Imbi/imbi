@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-This page documents the key architectural decisions made during the development of Imbi v2. We use Architecture Decision
+This page documents the key architectural decisions made for Imbi. We use Architecture Decision
 Records (ADRs)
 as [described by Michael Nygard](http://thinkrelevance.com/blog/2011/11/15/documenting-architecture-decisions) to
 capture important architectural choices and their rationale.
@@ -43,7 +43,7 @@ API keys, and permission management.
 
 **Key Decisions:**
 
-- Graph database (originally Neo4j, since migrated to Apache AGE on PostgreSQL — see ADR 0006/0007) for user and permission data (natural fit for permission inheritance)
+- Graph database (originally Neo4j, since migrated to Apache AGE on PostgreSQL) for user and permission data (natural fit for permission inheritance)
 - ClickHouse for audit logs (time-series optimized with automatic TTL)
 - JWT tokens with revocation list (stateless with security)
 - Argon2id for password hashing (modern, memory-hard algorithm)
@@ -98,7 +98,7 @@ completion.
 2. **OAuth Token Encryption**: Encrypt provider tokens using Fernet
 3. **Rate Limiting**: Using slowapi library to prevent brute force
 4. **API Keys**: Full-featured API keys with scopes and usage tracking
-5. **Session Management**: Enforce max concurrent sessions setting
+5. **Session Management**: Enforce max concurrent sessions setting (not implemented; the limit helpers were removed)
 6. **MFA/2FA**: TOTP-based multi-factor authentication with backup codes
 7. **Token Rotation**: Rotate refresh tokens on every use (security best practice)
 
@@ -109,11 +109,11 @@ completion.
 - Rate limiting on auth endpoints (5/min login, 10/min refresh, etc.)
 - MFA support with TOTP and backup codes
 - Refresh token rotation (detects token theft)
-- Session limits (prevent session hijacking)
+- Session limits (prevent session hijacking); not implemented
 
 **API Keys:**
 
-- Format: `ik_<16chars>_<32chars>` for easy identification
+- Format: `ik_<32 hex characters>_<secret>` for easy identification
 - Scoped permissions (least privilege)
 - Usage tracking in ClickHouse
 - Rotation support
@@ -163,7 +163,7 @@ Replaces single-type, slug-keyed project identity with a Nano-ID primary key and
 
 #### [ADR 0007: Relationship Blueprints](adr/0007-relationship-blueprints.md)
 
-*Date: 2026-02-20 | Status: Proposed*
+*Date: 2026-02-20 | Status: Accepted*
 
 Extends the blueprint system to relationships (edges), so admins can add custom properties to `[:DEPLOYED_IN]` and other edges without code changes.
 
@@ -181,7 +181,7 @@ Extends the blueprint system to relationships (edges), so admins can add custom 
 
 *Date: 2026-04-27 | Status: Accepted*
 
-Establishes Imbi as a SaaS IDP with a stable, versioned plugin model. Plugins are standalone Python packages discovered via entry points; capabilities are stored as `Plugin` graph nodes linked to a shared `ThirdPartyService`.
+Establishes Imbi as a SaaS IDP with a stable, versioned plugin model. Plugins are standalone Python packages discovered via entry points; capabilities are stored as `Plugin` graph nodes linked to a shared `ThirdPartyService` (now `Integration`).
 
 **Key Decisions:**
 
@@ -281,7 +281,7 @@ Replaces hand-coded per-plugin entity routers (e.g., `aws_accounts.py`) with a g
 - Generic `/admin/plugins/{slug}/entities/{label}` routes mounted once
 - Edge endpoints for plugin-declared `(source, edge, target)` triples
 - Manifest-driven admin UI consuming JSON Schemas
-- Existing AWS-specific code is migrated, not preserved in parallel (alpha, no URL compatibility owed)
+- The AWS-specific code was migrated in place; no URL compatibility was kept (pre-release)
 
 ---
 
@@ -304,7 +304,9 @@ Standardizes the SBoM spec version accepted on `PUT .../releases/{id}/sbom` and 
 
 *Date: 2026-06-29 | Status: Accepted*
 
-Adds an OAuth2 token-exchange (RFC 8693) delegation primitive plus a `Consent` model so the standalone `imbi-scheduler` service can run scheduled jobs as a user, and externalizes the score-recompute daily tick off the API process.
+Adds an OAuth2 token-exchange (RFC 8693) delegation primitive plus a `Consent` model so the `imbi-scheduler` service (`apps/scheduler`) can run scheduled jobs as a user, and externalizes the score-recompute daily tick off the API process.
+
+**Not implemented.** imbi-api has no token-exchange grant, no `Consent` node, and no `auth:delegate` permission. The scheduler refuses run-as-user tasks. See scheduler [ADR 0002](../scheduler/adr/0002-no-credential-store-in-v1.md) and [ADR 0003](../scheduler/adr/0003-no-local-token-minting-bridge.md).
 
 **Key Decisions:**
 
@@ -339,7 +341,7 @@ Lets an Imbi service account drive GitHub-backed deployment capabilities with th
 
 *Date: 2026-09-04 | Status: Accepted*
 
-Adds a per-organization catalog of configured providers and the models they serve alongside the existing environment-based LLM configuration. Nothing resolves a model from the catalog yet; that resolver is follow-up work. Credentials are encrypted at rest and guarded by their own permission.
+Adds a per-organization catalog of configured providers and the models they serve alongside the existing environment-based LLM configuration. Credentials are encrypted at rest and guarded by their own permission.
 
 **Key Decisions:**
 
@@ -351,6 +353,71 @@ Adds a per-organization catalog of configured providers and the models they serv
 - No cascade delete: a provider that still serves models is `409`
 - `monthly_spend_cap` is advisory; Imbi has no spend tracking yet
 - Discovery calls the provider's own list-models API with the stored key, sanitizing every failure to a driver and status line
+
+---
+
+### Messaging, Agents, and Workflows
+
+#### [ADR 0019: Adopt Apache Iggy as the Message Streaming Service](adr/0019-apache-iggy-message-streaming.md)
+
+*Date: 2026-09-04 | Status: Accepted*
+
+Adopts Apache Iggy as the durable message stream. The first use moves every ClickHouse write onto Iggy. The official ClickHouse sink connector writes the rows to ClickHouse.
+
+**Key Decisions:**
+
+- One stream per subject; topics split a stream along a dimension chosen per stream
+- `imbi.common.iggy` publishes rows as JSON on the official `apache-iggy` SDK, with one partition per topic
+- The `TOPICS` mapping in code is the single source for the sink configuration
+- Read-after-write paths and duplicate rows on plain MergeTree tables get explicit handling
+
+---
+
+#### [ADR 0020: Agent Task Contract](adr/0020-agent-task-contract.md)
+
+*Date: 2026-10-07 | Status: Accepted*
+
+Defines the contract between Imbi, any agent harness, and the people who watch and steer agent work. It does not decide how the harness runs.
+
+**Key Decisions:**
+
+- Task state is in the Postgres `agent_runtime` schema; ClickHouse, fed through Iggy, is the permanent event log
+- A task state change and its event commit in one transaction
+- A sweep moves the event log of a finished task out of Postgres after ClickHouse has every event
+- A task pins its agent and prompt versions at creation and has an immutable origin (`human`, `schedule`, `webhook`, or `task`)
+- A hard per-task budget, checked against a Postgres ledger
+
+---
+
+#### [ADR 0021: Workflow Contract](adr/0021-workflow-contract.md)
+
+*Date: 2026-10-12 | Status: Accepted*
+
+Defines workflows: a trigger followed by steps, built on a canvas and run without a person. Definitions and runs are relational. The imbi-workflows service runs them.
+
+**Key Decisions:**
+
+- Definitions are in the Postgres `workflows` schema as immutable versions; only the active version runs, and a run pins its version
+- The graph is a directed acyclic graph; activation requires a graph with no errors and no warnings
+- Step types are a registry shared by imbi-api and the engine; the UI builds its palette from it
+- Run state is in the Postgres `workflow_runtime` schema; ClickHouse is the durable run log
+- Runs execute as the `imbi-workflows` service account; the person who activates a workflow must hold the permissions of every step in it
+
+---
+
+#### [ADR 0022: Agent Harness and Secrets Broker](adr/0022-agent-harness-and-secrets-broker.md)
+
+*Date: 2026-10-13 | Status: Accepted*
+
+Defines the agent harness that runs agent tasks, and a secrets broker in imbi-api that gives agents short-lived access to secrets that external systems hold.
+
+**Key Decisions:**
+
+- Runner pods are in pools; each pool is a fixed-size Kubernetes Deployment
+- Dispatch is pull: a runner long-polls imbi-api and claims a whole task chain
+- One chain per pod; the pod deletes itself when the chain ends
+- Lease expiry fences the runner, revokes its credentials, and only then requeues the chain
+- The broker stores no secret values; a grant must allow each request, and the executor delivers the secret only to the command that needs it
 
 ---
 
@@ -388,12 +455,13 @@ Date: YYYY-MM-DD
 
 When making significant architectural decisions:
 
-1. **Create a new ADR file** in `docs/adr/`
+1. **Create a new ADR file** in `docs/api/adr/`
 2. **Use sequential numbering**: Check existing ADRs and use the next number
 3. **Follow the format**: Use the template structure above
 4. **Be thorough**: Include context, alternatives considered, and trade-offs
 5. **Update this index**: Add a summary entry linking to your new ADR
-6. **Submit for review**: ADRs should go through the same PR process as code
+6. **Update the navigation**: Add the new ADR to the `nav` section of `mkdocs.yml`
+7. **Submit for review**: ADRs should go through the same PR process as code
 
 ## ADR Guidelines
 
@@ -407,7 +475,7 @@ When making significant architectural decisions:
 ## Related Documentation
 
 - **[Configuration Guide](configuration.md)**: Environment variables and settings
-- **[GitHub Repository](https://github.com/AWeber-Imbi/imbi-api)**: Source code and issues
+- **[GitHub Repository](https://github.com/AWeber-Imbi/imbi)**: Source code and issues
 
 ## References
 

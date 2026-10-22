@@ -1,8 +1,16 @@
-# ADR 0001: Phase 5 Authentication Enhancements
+# ADR 0004: Phase 5 Authentication Enhancements
 
 ## Status
 
 Accepted
+
+**Status update (2026-10):** This record is historical. Two parts of it do
+not match the current code:
+
+- The concurrent-session limit was not implemented. The limit helpers were
+  removed (see `apps/api/src/imbi/api/auth/sessions.py`).
+- The API key format is `ik_<32 hex characters>_<secret>`, not
+  `ik_<16chars>_<32chars>`.
 
 ## Context
 

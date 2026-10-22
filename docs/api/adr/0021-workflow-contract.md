@@ -4,7 +4,7 @@ Date: 2026-10-12
 
 ## Status
 
-Proposed
+Accepted
 
 The plan for this work lives in the dev-environment repository's
 `docs/workflows-plan.md`. The UI design is the "Workflow Builder" file in

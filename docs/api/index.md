@@ -25,28 +25,60 @@ Imbi helps organizations answer critical questions about their service landscape
 - **Extensible**: Blueprint system for customizable metadata schemas applied via JSON Schema
 - **Developer Friendly**: Automatic data collection via GitHub webhooks and integrations
 
-## Version 2.0 (Alpha)
+## Platform Components
 
-**Complete rewrite** using modern Python technologies for improved performance, scalability, and AI integration:
+Imbi is a set of services that share one container image. The `IMBI_SERVICE`
+variable selects the service that a container runs. See
+[Services](../architecture/services.md) for ports and URL routing.
 
-- **FastAPI**: Modern async web framework with automatic OpenAPI documentation
-- **PostgreSQL + Apache AGE**: Graph extension on top of PostgreSQL for modeling service relationships and dependencies with Cypher queries
-- **ClickHouse**: Analytics and time-series data storage for operations logs and metrics
-- **Valkey**: Redis-compatible cache and ephemeral state
-- **S3-compatible object storage**: Icons, avatars, and document uploads (LocalStack in development)
-- **Pydantic v2**: Type-safe data validation and settings management
+| Service | What it does | Documentation |
+|---|---|---|
+| imbi-api | The REST API. It owns the data and the background workers. | This section |
+| imbi-ui | The web interface. | [Initial Setup](../getting-started/setup.md) |
+| imbi-gateway | Receives webhooks from integrations and runs their actions. | [Webhook Filter Expressions](../gateway/webhook-filter-expressions.md) |
+| imbi-scheduler | Runs scheduled tasks. | [Scheduler](../scheduler/index.md) |
+| imbi-workflows | Runs workflows. | [Workflows](../admin/workflows.md) |
+| imbi-assistant | The AI assistant in the web interface. | [Prompts](../admin/prompts.md) |
+| imbi-mcp | The Model Context Protocol server for AI clients. | [Services](../architecture/services.md) |
+| imbi-slackbot | The Slack bot. | [Slack App Manifest](../slackbot/slack-app-manifest.md) |
 
-### What's New in v2
+imbi-harness is not in the shared image. It has its own image and Helm chart.
+Its runner pods claim agent tasks from imbi-api. See
+[Agent Runners](../deployment/agent-runners.md).
 
-- **Apache AGE on PostgreSQL**: Replaces both the v1 PostgreSQL relational schema and the alpha Neo4j prototype — graph plus relational data in a single database
-- **Modern API**: FastAPI provides automatic OpenAPI docs, async performance, and better type safety
-- **Blueprints**: JSON-Schema-driven custom metadata that extends domain models at runtime
-- **Full Authentication**: OAuth2/OIDC (Google, GitHub, generic OIDC) and local password authentication with JWT access and refresh tokens
-- **Fine-Grained Authorization**: Permission-based access control with resource-level permissions, roles, and groups
-- **API Keys**: Scoped, rotatable API keys with usage tracking for service-to-service access
-- **MFA/2FA**: TOTP-based multi-factor authentication with backup codes
-- **File Uploads**: S3-backed uploads with magic-byte validation and automatic thumbnail generation
-- **Analytics Ready**: ClickHouse integration for operations logs, audit logs, and time-series metrics
+### Data Stores
+
+| Store | Holds |
+|---|---|
+| PostgreSQL with Apache AGE | The graph of domain entities, and the relational schemas for the scheduler, agent tasks, workflows, the harness, and the secrets broker |
+| ClickHouse | Operations log, events, commits and pull requests, score history, agent task and workflow run events, and email and secret audit logs |
+| Apache Iggy | The message stream that carries rows to ClickHouse. See [ADR 0019](adr/0019-apache-iggy-message-streaming.md) |
+| Valkey | Cache and the background worker queues |
+| S3-compatible object storage | Icons, avatars, and document uploads. Development uses ministack |
+
+### Capability Areas
+
+| Area | Documentation |
+|---|---|
+| Blueprints | [Blueprints](../admin/blueprints.md) |
+| Plugins and integrations | [Plugins](../common/plugins/index.md) |
+| Deployments and releases | [Deployment plugins](../common/plugins/deployment.md) |
+| Project scoring | [ADR 0011](adr/0011-graph-based-project-scoring.md) |
+| Agents and agent tasks | [Agents](../admin/agents.md), [Agent Tasks](../admin/agent-tasks.md) |
+| Workflows | [Workflows](../admin/workflows.md) |
+| Secrets broker | [Secrets](../admin/secrets.md) |
+| AI model catalog | [AI Models](../admin/ai-models.md) |
+| Prompt management | [Prompts](../admin/prompts.md) |
+
+## API Reference
+
+The API serves its own reference. Use it for the list of routes:
+
+- `/docs` shows the interactive reference.
+- `/openapi.json` gives the OpenAPI schema.
+
+Both are at the root of the API host, also when `IMBI_API_URL` has a path
+prefix such as `/api`.
 
 ## Quick Start
 
@@ -58,8 +90,8 @@ This project uses [moon](https://moonrepo.dev) as its task runner and [uv](https
 # Install dependencies and pre-commit hooks
 moon run root:setup
 
-# Start Docker services (Postgres+AGE, ClickHouse, Valkey, LocalStack,
-# Mailpit, Jaeger) and write .env.test with the assigned ports and
+# Start Docker services (Postgres+AGE, ClickHouse, Valkey, Iggy,
+# ministack, Mailpit, Jaeger) and write .env.test with the assigned ports and
 # freshly-generated secrets
 moon run root:services
 
@@ -80,7 +112,7 @@ The server starts on `http://localhost:8000` by default (configurable via `IMBI_
 ```bash
 moon run api:test                                      # The API member's suite
 uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py               # Single module
-uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py::PermissionTests::test_get_permissions
+uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py::ResourceLevelPermissionTestCase::test_check_resource_permission_user_access
 moon run api:lint api:typecheck api:format             # ruff + basedpyright + format check
 ```
 
@@ -105,7 +137,7 @@ Imbi organizes services using a flexible, graph-based data model:
 - **OAuth2/OIDC**: Google, GitHub, and generic OIDC providers — configured at runtime through the admin API and stored in the graph, not via environment variables
 - **Local Authentication**: Password-based authentication with Argon2id hashing
 - **JWT Tokens**: Access tokens (default 1 hour) and refresh tokens (default 30 days) with refresh-token rotation
-- **API Keys**: Format `ik_<16chars>_<32chars>` with scoped permissions and ClickHouse-backed usage tracking
+- **API Keys**: Format `ik_<32 hex characters>_<secret>` with scoped permissions and a last-used timestamp
 - **MFA**: TOTP-based 2FA with backup codes
 - **Permission-Based Access Control**: Fine-grained permissions enforced via FastAPI dependencies
 - **Rate Limiting**: Per-route limits on login, refresh, OAuth initiation, and API-key authentication
@@ -120,20 +152,6 @@ Imbi integrates with your existing DevOps toolchain:
 - **Issue Tracking**: Links to Jira, GitHub Issues, etc.
 - **Incident Management**: PagerDuty integration for on-call management
 
-## Architecture
-
-Imbi v2 uses a multi-database architecture optimized for different data patterns:
-
-- **PostgreSQL + Apache AGE**: Graph plus relational data for service relationships, dependencies, users, permissions, blueprints, and all domain entities
-- **ClickHouse**: Analytics database for operations logs, audit logs, email logs, API-key usage, and time-series metrics (ReplacingMergeTree for idempotent writes)
-- **Valkey**: Redis-compatible cache for ephemeral state
-- **S3-compatible object storage**: Uploads (LocalStack in development, real S3 in production)
-- **Mailpit**: SMTP capture in development
-- **FastAPI**: Async Python web framework for the REST API
-- **Docker Compose**: Development environment with all required services
-
-For detailed architecture decisions, see the [Architecture Decision Records](adr.md).
-
 ## Documentation
 
 - **[Configuration Guide](configuration.md)**: All configuration variables — `config.toml`, environment variables, and `.env`
@@ -141,7 +159,7 @@ For detailed architecture decisions, see the [Architecture Decision Records](adr
 
 ## Contributing
 
-Contributions are welcome! Please see the [GitHub repository](https://github.com/AWeber-Imbi/imbi-api) for:
+Contributions are welcome! Please see the [GitHub repository](https://github.com/AWeber-Imbi/imbi) for:
 
 - Issue tracking and feature requests
 - Pull request process
