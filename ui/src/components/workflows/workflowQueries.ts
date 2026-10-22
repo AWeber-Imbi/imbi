@@ -79,7 +79,7 @@ export function useSourceOptions(orgSlug: string, source: FieldSource) {
 }
 
 export function useStepTypes(orgSlug: string | undefined) {
-  const canRead = useHasPermission('workflow:read')
+  const canRead = useHasPermission('workflow:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => listWorkflowStepTypes(orgSlug!, signal),
@@ -89,7 +89,7 @@ export function useStepTypes(orgSlug: string | undefined) {
 }
 
 export function useWorkflow(orgSlug: string | undefined, slug: string) {
-  const canRead = useHasPermission('workflow:read')
+  const canRead = useHasPermission('workflow:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead && slug !== 'new',
     queryFn: ({ signal }) => getWorkflow(orgSlug!, slug, signal),
@@ -109,7 +109,7 @@ export function useWorkflowAttention(orgSlug: string | undefined) {
 
 /** The workflows of an org. Disabled when the user may not read them. */
 export function useWorkflowList(orgSlug: string | undefined) {
-  const canRead = useHasPermission('workflow:read')
+  const canRead = useHasPermission('workflow:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => listWorkflows(orgSlug!, signal),

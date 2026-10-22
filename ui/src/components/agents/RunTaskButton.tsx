@@ -13,7 +13,10 @@ import { NewTaskDialog } from './NewTaskDialog'
  * Hidden without `agent_task:create` or when the agent is disabled.
  */
 export function RunTaskButton({ agent }: { agent: Agent }) {
-  const canCreate = useHasPermission('agent_task:create')
+  const canCreate = useHasPermission(
+    'agent_task:create',
+    agent.organization.slug,
+  )
   const [open, setOpen] = useState(false)
   if (!canCreate || !agent.enabled) return null
   return (

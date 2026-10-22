@@ -11,7 +11,13 @@ import { ToolsTab } from '../ToolsTab'
 import { catalog } from './fixtures'
 
 const auth = vi.hoisted(() => ({
-  user: { is_admin: false, permissions: ['agent:write'] as string[] },
+  user: {
+    is_admin: false,
+    organizations: [
+      { organization_slug: 'acme', permissions: ['agent:write'] },
+    ],
+    permissions: ['agent:write'] as string[],
+  },
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -56,7 +62,13 @@ describe('ToolsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     changes.length = 0
-    auth.user = { is_admin: false, permissions: ['agent:write'] }
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['agent:write'] },
+      ],
+      permissions: ['agent:write'],
+    }
     vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(catalog())
     vi.mocked(endpoints.listEnvironments).mockResolvedValue([
       env('staging', 2),
@@ -195,7 +207,13 @@ describe('ToolsTab', () => {
   })
 
   it('hides refresh without agent:write', async () => {
-    auth.user = { is_admin: false, permissions: ['agent:read'] }
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['agent:read'] },
+      ],
+      permissions: ['agent:read'],
+    }
     render(<Harness initial={{}} />)
     await screen.findByText('0 of 4 enabled')
     expect(

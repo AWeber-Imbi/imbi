@@ -20,7 +20,11 @@ vi.mock('@/api/endpoints', () => ({
 }))
 
 const auth = vi.hoisted(() => ({
-  user: { is_admin: true, permissions: [] as string[] },
+  user: {
+    is_admin: true,
+    organizations: [{ organization_slug: 'acme', permissions: [] }],
+    permissions: [] as string[],
+  },
 }))
 
 // fallow-ignore-next-line unresolved-import

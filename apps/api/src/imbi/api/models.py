@@ -63,6 +63,7 @@ ClientCredential = _domain.ClientCredential
 ClientCredentialCreate = _domain.ClientCredentialCreate
 ClientCredentialCreateResponse = _domain.ClientCredentialCreateResponse
 ClientCredentialResponse = _domain.ClientCredentialResponse
+CurrentUserOrgMembership = _domain.CurrentUserOrgMembership
 CurrentUserResponse = _domain.CurrentUserResponse
 EmptyRelationship = _domain.EmptyRelationship
 MembershipProperties = _domain.MembershipProperties

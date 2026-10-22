@@ -54,10 +54,10 @@ export function AccessTab({
   orgSlug,
   value,
 }: AccessTabProps) {
-  const canReadGrants = useHasPermission('secret_grant:read')
-  const canReadBindings = useHasPermission('secret_binding:read')
+  const canReadGrants = useHasPermission('secret_grant:read', orgSlug)
+  const canReadBindings = useHasPermission('secret_binding:read', orgSlug)
   const canRead = canReadGrants && canReadBindings
-  const canWrite = useHasPermission('secret_grant:write')
+  const canWrite = useHasPermission('secret_grant:write', orgSlug)
   const queryClient = useQueryClient()
   const grants = useQuery({
     enabled: canRead,

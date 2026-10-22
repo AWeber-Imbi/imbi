@@ -21,8 +21,8 @@ export function AgentsManagement() {
   const [searchParams] = useSearchParams()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canCreate = useHasPermission('agent:create')
-  const canWrite = useHasPermission('agent:write')
+  const canCreate = useHasPermission('agent:create', orgSlug)
+  const canWrite = useHasPermission('agent:write', orgSlug)
   const list = useAgentList(orgSlug)
   const agents = list.data ?? []
 

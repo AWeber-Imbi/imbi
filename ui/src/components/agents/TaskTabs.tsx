@@ -310,7 +310,7 @@ function clock(at: string): string {
 }
 
 function Composer({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
-  const canManage = useHasPermission('agent_task:manage')
+  const canManage = useHasPermission('agent_task:manage', orgSlug)
   const [body, setBody] = useState('')
   const reply = useAgentTaskMutation(orgSlug, task.short_id, (hold: boolean) =>
     replyAgentTask(orgSlug, task.short_id, body.trim(), hold),
@@ -368,7 +368,7 @@ function RequestCard({
   request: TaskRequestView
   task: AgentTask
 }) {
-  const canResolve = useHasPermission('agent_task:resolve')
+  const canResolve = useHasPermission('agent_task:resolve', orgSlug)
   const actorName = useActorName(orgSlug)
   const [answer, setAnswer] = useState('')
   // Someone else resolved it first: collapse in place (I4).

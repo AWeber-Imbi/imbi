@@ -84,7 +84,7 @@ export function CurrentlyRunningCard({
   })
   // What the API's block/unblock endpoints require. ``canTrigger`` is
   // integration readiness, not permission, so it can't stand in.
-  const canBlock = useHasPermission('project:deployment:write')
+  const canBlock = useHasPermission('project:deployment:write', orgSlug)
   const release = stage.current?.release ?? null
   // The tag the env is running. Prefer the history entry: when the deploy was
   // recorded against an untagged release, the entry is the one resolved by

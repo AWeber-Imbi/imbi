@@ -15,7 +15,13 @@ vi.mock('@/api/endpoints', () => ({ listAgents: vi.fn() }))
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { is_admin: true, permissions: [] } }),
+  useAuth: () => ({
+    user: {
+      is_admin: true,
+      organizations: [{ organization_slug: 'acme', permissions: [] }],
+      permissions: [],
+    },
+  }),
 }))
 
 const changes: AgentSubagent[][] = []

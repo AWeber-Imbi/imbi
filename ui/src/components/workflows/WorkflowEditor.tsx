@@ -87,6 +87,7 @@ export function WorkflowEditor({
   const queryClient = useQueryClient()
   const canWrite = useHasPermission(
     workflow ? 'workflow:write' : 'workflow:create',
+    orgSlug,
   )
   const readOnly = !canWrite
   const types: StepTypes = useMemo(
@@ -110,7 +111,7 @@ export function WorkflowEditor({
   )
   const viewportRef = useRef<HTMLDivElement>(null)
   const slug = current?.slug
-  const canRun = useHasPermission('workflow:run')
+  const canRun = useHasPermission('workflow:run', orgSlug)
   // `?run=<id>` opens that run, as the attention list links to it.
   const [searchParams] = useSearchParams()
   const [runId, setRunId] = useState<null | string>(searchParams.get('run'))

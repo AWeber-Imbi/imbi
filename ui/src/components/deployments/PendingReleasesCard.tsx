@@ -119,7 +119,7 @@ export function PendingReleasesCard({
   })
   // What the API's unblock endpoint requires. ``canTrigger`` is
   // integration readiness, not permission, so it can't stand in.
-  const canUnblock = useHasPermission('project:deployment:write')
+  const canUnblock = useHasPermission('project:deployment:write', orgSlug)
 
   if (pending.length === 0 || !active) {
     return <UpToDateCard upstreamName={upstreamName} />

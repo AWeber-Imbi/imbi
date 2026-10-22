@@ -34,8 +34,8 @@ type FacetKey = 'label' | 'status' | 'team'
 
 export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   const navigate = useNavigate()
-  const canCreate = useHasPermission('agent:create')
-  const canWrite = useHasPermission('agent:write')
+  const canCreate = useHasPermission('agent:create', orgSlug)
+  const canWrite = useHasPermission('agent:write', orgSlug)
   const [search, setSearch] = useState('')
   const [facets, setFacets] = useState<Record<FacetKey, string[]>>({
     label: [],

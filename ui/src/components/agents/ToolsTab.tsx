@@ -80,7 +80,7 @@ interface ToolsTabProps {
 export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const { query: catalog, refresh } = useAgentToolCatalog(orgSlug)
   // A refresh connects to each MCP server, so the API needs agent:write.
-  const canRefresh = useHasPermission('agent:write')
+  const canRefresh = useHasPermission('agent:write', orgSlug)
   const environments = useOrgEnvironments(orgSlug)
   const [search, setSearch] = useState('')
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set())

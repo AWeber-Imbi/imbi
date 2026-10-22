@@ -82,7 +82,7 @@ interface SparkBar {
 export function DashboardPage() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('agent_task:read')
+  const canRead = useHasPermission('agent_task:read', orgSlug)
   if (!orgSlug || !canRead) {
     return (
       <div className="text-tertiary p-8 text-center">

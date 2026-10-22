@@ -64,7 +64,7 @@ interface FocusProps {
 export function UsagePage() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('agent_task:read')
+  const canRead = useHasPermission('agent_task:read', orgSlug)
   const [range, setRange] = useState('30')
   const [agentId, setAgentId] = useState(ALL)
   const [metric, setMetric] = useState<Metric>('cost')

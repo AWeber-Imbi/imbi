@@ -15,7 +15,7 @@ import type { PromptVersion } from '@/types'
 
 /** The agents of an org. Disabled when the user may not read agents. */
 export function useAgentList(orgSlug: string | undefined) {
-  const canRead = useHasPermission('agent:read')
+  const canRead = useHasPermission('agent:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => listAgents(orgSlug!, signal),
@@ -50,7 +50,7 @@ export function useAgentUsage(
   orgSlug: string | undefined,
   params: AgentUsageParams = {},
 ) {
-  const canRead = useHasPermission('agent_task:read')
+  const canRead = useHasPermission('agent_task:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => getAgentUsage(orgSlug!, params, signal),

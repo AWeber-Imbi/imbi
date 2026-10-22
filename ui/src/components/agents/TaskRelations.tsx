@@ -80,7 +80,7 @@ export function AssociatedProjectsTab({
   orgSlug: string
   task: AgentTask
 }) {
-  const canManage = useHasPermission('agent_task:manage')
+  const canManage = useHasPermission('agent_task:manage', orgSlug)
   const projects = useAgentTaskProjects(orgSlug, task.short_id)
   const [open, setOpen] = useState(false)
   const unlink = useAgentTaskRelationMutation(orgSlug, (projectId: string) =>
@@ -410,7 +410,7 @@ export function RelatedTasksTab({
   orgSlug: string
   task: AgentTask
 }) {
-  const canManage = useHasPermission('agent_task:manage')
+  const canManage = useHasPermission('agent_task:manage', orgSlug)
   const relations = useAgentTaskRelations(orgSlug, task.short_id)
   const { data: agents } = useAgentList(orgSlug)
   const [open, setOpen] = useState(false)

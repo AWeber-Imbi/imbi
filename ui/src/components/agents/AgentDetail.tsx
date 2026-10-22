@@ -41,8 +41,8 @@ const RUNS_COLOR = 'var(--color-entity-project)'
 
 export function AgentDetail({ agent }: { agent: Agent }) {
   const navigate = useNavigate()
-  const canCreate = useHasPermission('agent:create')
-  const canWrite = useHasPermission('agent:write')
+  const canCreate = useHasPermission('agent:create', agent.organization.slug)
+  const canWrite = useHasPermission('agent:write', agent.organization.slug)
   const Icon = useIcon(agent.icon, Bot)
   const prompt = usePromptResolution(agent.prompt_ref)
   const version = prompt.data ?? null

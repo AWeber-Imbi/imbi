@@ -349,6 +349,11 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
                     'org_slug': 'default',
                     'role': 'developer',
                 },
+                {
+                    'org_name': 'Other',
+                    'org_slug': 'other',
+                    'role': 'readonly',
+                },
             ],
             [
                 {
@@ -359,9 +364,23 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
 
-        with mock.patch(
-            'imbi.common.graph.parse_agtype',
-            side_effect=lambda x: x,
+        org_permissions = {
+            'default': {'project:read', 'scoring_policy:rescore'},
+            'other': {'project:read'},
+        }
+
+        async def mock_org_permissions(db, auth, org_slug):
+            return org_permissions[org_slug]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.auth.organizations.org_permissions',
+                mock_org_permissions,
+            ),
         ):
             response = self.client.get('/users/me')
 
@@ -374,7 +393,18 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
             data['permissions'],
             ['project:read', 'scoring_policy:rescore'],
         )
-        self.assertEqual(len(data['organizations']), 1)
+        # Each membership carries the permissions of the caller's role
+        # in that organization.
+        self.assertEqual(
+            [
+                (o['organization_slug'], o['permissions'])
+                for o in data['organizations']
+            ],
+            [
+                ('default', ['project:read', 'scoring_policy:rescore']),
+                ('other', ['project:read']),
+            ],
+        )
         self.assertEqual(
             data['teams'],
             [

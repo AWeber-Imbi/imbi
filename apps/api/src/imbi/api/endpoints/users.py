@@ -9,6 +9,7 @@ import fastapi
 import pydantic
 
 from imbi.api import models
+from imbi.api.auth import organizations as organizations_auth
 from imbi.api.auth import password, permissions
 from imbi.api.endpoints import _helpers
 from imbi.api.identity import repository as identity_repository
@@ -493,7 +494,17 @@ async def get_current_user_profile(
     user = auth.require_user
 
     memberships = await _load_user_memberships(db, user.email)
-    organizations = [models.OrgMembership(**m) for m in memberships]
+    organizations = [
+        models.CurrentUserOrgMembership(
+            **m,
+            permissions=sorted(
+                await organizations_auth.org_permissions(
+                    db, auth, m['organization_slug']
+                )
+            ),
+        )
+        for m in memberships
+    ]
     team_records = await _load_user_teams(db, user.email)
     teams = [models.TeamMembership(**t) for t in team_records]
 

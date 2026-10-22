@@ -208,6 +208,10 @@ rules:
 2. **All other routes.** These routes use the union of the roles in all
    organizations of the principal.
 
+The UI applies the same two rules to show or hide buttons. `GET
+/users/me` returns the union, and the permissions of the user in each
+organization (`organizations[].permissions`).
+
 For the full list of routes and an example, see
 [Permissions across organizations](../admin/roles-and-permissions.md#permissions-across-organizations).
 
@@ -313,10 +317,3 @@ delivery that is not verified. A dropped delivery returns `204`, the same
 as a delivery with no work. The gateway replaces the signature and
 authorization headers with `[redacted]` before it stores a delivery. See
 [Webhooks](../admin/webhooks.md).
-
-## Known gaps
-
-- The UI shows or hides buttons with the union of your roles. On the
-  organization routes, the API uses only the role in that organization.
-  The UI can thus show an action that returns 403.
-  [#458](https://github.com/AWeber-Imbi/imbi/issues/458)
