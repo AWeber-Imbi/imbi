@@ -75,6 +75,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/project-types/{slug}',
         'GET /organizations/{org_slug}/project-types/{type_slug}/documents/',
         'GET /organizations/{org_slug}/projects/',
+        'GET /organizations/{org_slug}/projects/schema',
         'GET /organizations/{org_slug}/projects/{project_id}',
         'GET /organizations/{org_slug}/projects/{project_id}/analysis/',
         'GET /organizations/{org_slug}/projects/{project_id}/commits/sync-status',
