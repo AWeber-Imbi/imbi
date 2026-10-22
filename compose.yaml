@@ -48,6 +48,11 @@ services:
       S3_ENDPOINT_URL: http://ministack:4566
       S3_SECRET_KEY: test
       VALKEY_URL: valkey://valkey:6379/0
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -141,7 +146,7 @@ services:
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
     ports:
-      - "4317"
+      - "4318"
       - "16686"
 
   mailpit:
