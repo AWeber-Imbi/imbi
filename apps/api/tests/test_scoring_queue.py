@@ -43,6 +43,8 @@ class EnqueueTests(unittest.IsolatedAsyncioTestCase):
 class ConsumerTests(unittest.IsolatedAsyncioTestCase):
     async def test_xack_on_success(self) -> None:
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         client.xack = mock.AsyncMock()
         with mock.patch.object(
             score_queue, '_process_message', mock.AsyncMock()
@@ -60,6 +62,8 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
         # the project state.
         order: list[str] = []
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         client.delete = mock.AsyncMock(
             side_effect=lambda *_a: order.append('delete')
         )
@@ -78,8 +82,37 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(order, ['delete', 'process'])
 
+    async def test_holds_the_project_lock_during_recompute(self) -> None:
+        # Two jobs of one project must not run at the same time, or an
+        # older recompute can write its score after a newer one.
+        order: list[str] = []
+        client = mock.AsyncMock()
+        lock = mock.MagicMock()
+        lock.__aenter__.side_effect = lambda *_a: order.append('acquire')
+        lock.__aexit__.side_effect = lambda *_a: order.append('release')
+        client.lock = mock.MagicMock(return_value=lock)
+
+        async def _process(*_args: object) -> None:
+            order.append('process')
+
+        with mock.patch.object(score_queue, '_process_message', _process):
+            await score_queue._handle_entries(
+                client,
+                [(b'1-0', {b'project_id': b'p1'})],
+                mock.AsyncMock(),
+            )
+        client.lock.assert_called_once_with(
+            f'{score_queue.LOCK_PREFIX}:p1',
+            timeout=score_queue.LOCK_SECONDS,
+            blocking_timeout=score_queue.LOCK_WAIT_SECONDS,
+        )
+        self.assertEqual(order, ['acquire', 'process', 'release'])
+        client.xack.assert_awaited_once()
+
     async def test_no_xack_on_exception(self) -> None:
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         client.xack = mock.AsyncMock()
         with mock.patch.object(
             score_queue,
@@ -216,6 +249,8 @@ class ClaimStaleTests(unittest.IsolatedAsyncioTestCase):
 class HandleEntriesWithDlqTest(unittest.IsolatedAsyncioTestCase):
     async def test_dead_letter_prevents_processing(self) -> None:
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         process = mock.AsyncMock()
         with mock.patch.object(
             score_queue,
@@ -299,6 +334,8 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
 class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
     async def test_processes_messages_then_stops(self) -> None:
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         client.xgroup_create = mock.AsyncMock(
             side_effect=Exception('BUSYGROUP Consumer Group already exists')
         )
@@ -334,6 +371,8 @@ class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
         import asyncio
 
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         client.xgroup_create = mock.AsyncMock(
             side_effect=Exception('BUSYGROUP Consumer Group already exists')
         )
@@ -360,6 +399,8 @@ class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
         import asyncio
 
         client = mock.AsyncMock()
+        # The per-project lock is a sync call returning an async CM.
+        client.lock = mock.MagicMock()
         client.xgroup_create = mock.AsyncMock(
             side_effect=Exception('BUSYGROUP Consumer Group already exists')
         )

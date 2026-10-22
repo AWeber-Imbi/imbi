@@ -9,6 +9,10 @@ not add a job, because the pending job will read them. The worker
 deletes the key before it reads the project, so a change saved after
 that point adds a new job. The 5s TTL only limits how long a lost key
 can block new jobs.
+
+Workers hold a per-project lock for the whole recompute, so two jobs of
+one project never run at the same time. The later job then reads the
+state that the earlier job saw, or newer, and its score is written last.
 """
 
 from __future__ import annotations
@@ -51,6 +55,11 @@ CONSUMER_PREFIX = 'worker'
 DLQ = 'imbi:score-recompute:dlq'
 DEBOUNCE_PREFIX = 'imbi:score-recompute:debounce'
 DEBOUNCE_SECONDS = 5
+LOCK_PREFIX = 'imbi:score-recompute:lock'
+# The lock expires if its worker dies. A worker waits for less than
+# CLAIM_IDLE_MS, so another worker does not claim the waiting entry.
+LOCK_SECONDS = 60
+LOCK_WAIT_SECONDS = 30
 MAX_DELIVERIES = 5
 CLAIM_IDLE_MS = 60_000
 DAILY_TICK_KEY_PREFIX = 'imbi:score-recompute:daily'
@@ -408,13 +417,22 @@ async def _handle_entries(
         fields = _decode_fields(raw_fields)
         if check_dlq and await _maybe_dead_letter(client, msg_id, fields):
             continue
+        project_id = fields.get('project_id', '')
         try:
-            # Release the debounce key before the project state is
-            # read, so a change saved during the recompute queues a
-            # new job instead of being dropped.
-            if project_id := fields.get('project_id'):
-                await client.delete(f'{DEBOUNCE_PREFIX}:{project_id}')
-            await _process_message(db, fields)
+            # One recompute per project at a time, so an older job
+            # cannot write its score after a newer one. On a lock
+            # timeout the entry stays pending and is claimed again.
+            async with client.lock(
+                f'{LOCK_PREFIX}:{project_id}',
+                timeout=LOCK_SECONDS,
+                blocking_timeout=LOCK_WAIT_SECONDS,
+            ):
+                # Release the debounce key before the project state is
+                # read, so a change saved during the recompute queues a
+                # new job instead of being dropped.
+                if project_id:
+                    await client.delete(f'{DEBOUNCE_PREFIX}:{project_id}')
+                await _process_message(db, fields)
         except Exception:
             LOGGER.exception('recompute failed for %s', fields)
             continue
