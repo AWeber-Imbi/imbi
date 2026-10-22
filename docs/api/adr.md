@@ -98,7 +98,7 @@ completion.
 2. **OAuth Token Encryption**: Encrypt provider tokens using Fernet
 3. **Rate Limiting**: Using slowapi library to prevent brute force
 4. **API Keys**: Full-featured API keys with scopes and usage tracking
-5. **Session Management**: Enforce max concurrent sessions setting
+5. **Session Management**: Enforce max concurrent sessions setting (not implemented; the limit helpers were removed)
 6. **MFA/2FA**: TOTP-based multi-factor authentication with backup codes
 7. **Token Rotation**: Rotate refresh tokens on every use (security best practice)
 
@@ -109,7 +109,7 @@ completion.
 - Rate limiting on auth endpoints (5/min login, 10/min refresh, etc.)
 - MFA support with TOTP and backup codes
 - Refresh token rotation (detects token theft)
-- Session limits (prevent session hijacking)
+- Session limits (prevent session hijacking); not implemented
 
 **API Keys:**
 
