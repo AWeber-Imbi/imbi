@@ -38,6 +38,8 @@ export interface CapabilityProjectType {
 
 export interface CapabilityRowProps {
   assignedTypeSlugs: string[]
+  /** Blocks assignment edits while the current list is unknown or saving. */
+  assignmentDisabled?: boolean
   callbackUrl?: null | string
   description?: null | string
   editable?: boolean
@@ -78,6 +80,7 @@ interface CapabilityOptionFieldProps {
 // fallow-ignore-next-line complexity
 export function CapabilityRow({
   assignedTypeSlugs,
+  assignmentDisabled = false,
   callbackUrl,
   description,
   editable = true,
@@ -238,11 +241,12 @@ export function CapabilityRow({
                     return (
                       <button
                         className={cn(
-                          'inline-flex h-7.5 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors',
+                          'inline-flex h-7.5 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                           selected
                             ? 'border-amber-border bg-amber-bg text-amber-text'
                             : 'border-secondary bg-primary text-secondary hover:bg-secondary',
                         )}
+                        disabled={assignmentDisabled}
                         key={t.slug}
                         onClick={() => toggleType(t.slug)}
                         type="button"
@@ -255,6 +259,7 @@ export function CapabilityRow({
                   {assignedTypeSlugs.length > 0 && (
                     <Button
                       className="text-tertiary"
+                      disabled={assignmentDisabled}
                       onClick={() => onAssignmentChange([])}
                       size="sm"
                       variant="ghost"

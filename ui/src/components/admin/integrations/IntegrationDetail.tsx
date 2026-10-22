@@ -139,8 +139,10 @@ export function IntegrationDetail({
     })),
   })
   const assignmentsByKind: Record<string, CapabilityAssignment[]> = {}
+  const assignmentsLoaded: Record<string, boolean> = {}
   scopedKinds.forEach((kind, i) => {
     assignmentsByKind[kind] = assignmentQueries[i].data ?? []
+    assignmentsLoaded[kind] = assignmentQueries[i].isSuccess
   })
 
   const invalidate = () => {
@@ -209,8 +211,10 @@ export function IntegrationDetail({
       )
     },
     onError: (err) => toast.error(`Save failed: ${extractApiErrorDetail(err)}`),
-    onSuccess: (_data, { kind }) => {
-      void queryClient.invalidateQueries({
+    // Awaited so the mutation stays pending until the refetch lands; the
+    // next edit must build its replacement from the refreshed list.
+    onSuccess: async (_data, { kind }) => {
+      await queryClient.invalidateQueries({
         queryKey: ['capability-assignments', orgSlug, slug, kind],
       })
     },
@@ -422,6 +426,10 @@ export function IntegrationDetail({
                           assignedTypeSlugs={(
                             assignmentsByKind[cap.kind] ?? []
                           ).map((a) => a.project_type_slug)}
+                          assignmentDisabled={
+                            !assignmentsLoaded[cap.kind] ||
+                            assignmentMutation.isPending
+                          }
                           callbackUrl={callbackUrl}
                           description={cap.description}
                           editable={editable}

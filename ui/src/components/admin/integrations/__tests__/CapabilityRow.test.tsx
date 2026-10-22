@@ -97,3 +97,45 @@ describe('CapabilityRow webhook delivery URLs', () => {
     expect(screen.queryByText(/Delivery URL/)).not.toBeInTheDocument()
   })
 })
+
+describe('CapabilityRow project-type assignment', () => {
+  const scopedProps = {
+    ...baseProps,
+    assignedTypeSlugs: ['api'],
+    projectScoped: true,
+    projectTypes: [
+      { name: 'API', slug: 'api' },
+      { name: 'Consumer', slug: 'consumer' },
+    ],
+  }
+
+  it('blocks edits while assignmentDisabled is set', () => {
+    const onAssignmentChange = vi.fn()
+    render(
+      <CapabilityRow
+        {...scopedProps}
+        assignmentDisabled
+        onAssignmentChange={onAssignmentChange}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+    const chip = screen.getByRole('button', { name: 'Consumer' })
+    expect(chip).toBeDisabled()
+    expect(screen.getByRole('button', { name: /clear all/i })).toBeDisabled()
+    fireEvent.click(chip)
+    expect(onAssignmentChange).not.toHaveBeenCalled()
+  })
+
+  it('sends the new slug list when enabled', () => {
+    const onAssignmentChange = vi.fn()
+    render(
+      <CapabilityRow
+        {...scopedProps}
+        onAssignmentChange={onAssignmentChange}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Consumer' }))
+    expect(onAssignmentChange).toHaveBeenCalledWith(['api', 'consumer'])
+  })
+})
