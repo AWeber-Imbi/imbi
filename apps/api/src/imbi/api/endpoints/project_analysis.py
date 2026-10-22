@@ -47,7 +47,9 @@ from imbi.api.plugins.resolution import (
     ResolvedCapability,
     resolve_all_capabilities,
 )
+from imbi.api.scoring import queue as score_queue
 from imbi.common import graph
+from imbi.common import valkey as common_valkey
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import (
@@ -526,13 +528,23 @@ async def run_and_persist(
 ) -> AnalysisReport:
     results = await _collect_results(db, org_slug, project_id, auth)
     triggered = auth.user.id if auth.user else None
-    return await _persist_report(
+    report = await _persist_report(
         db,
         project_id=project_id,
         overall_status=_overall_status(results),
         triggered_by_user_id=triggered,
         results=results,
     )
+    # An AnalysisResultPolicy scores the project on this report, so a new
+    # report can change the score.
+    try:
+        client = common_valkey.get_client()
+    except RuntimeError:
+        client = None
+    await score_queue.enqueue_recompute(
+        client, project_id, 'analysis_report', auth.principal_name
+    )
+    return report
 
 
 @project_analysis_router.post('/run', response_model=AnalysisReport)

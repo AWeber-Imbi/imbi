@@ -47,7 +47,7 @@ The page has two tabs: **Operations** and **Activity**.
 | **Apply Sync Fixes** | `sync-fixes` | Run the Project Doctor analysis for every project, then apply only the fixes a plugin marks safe to sweep -- e.g. repointing a PagerDuty escalation policy or syncing PagerDuty service dependencies. Never creates or deletes a remote resource. Projects with no such findings are skipped. |
 | **Recompute Scores** | `rescore` | Enqueue a score recomputation for every project; the scoring workers process the queue. Completion means all projects were enqueued. |
 | **Sync Deployments** | `deployment-resync` | Backfill recent remote deployments for every project with a deployment integration; projects without one are skipped. |
-| **Close Out Stuck Deployments** | `deployment-sweep` | Ask the remote what happened to every deployment still running after 30 minutes, and record the answer. Deployments nothing can resolve for a week are marked failed; a deployment recorded before its release was known is attached to it. Also backfills release drift verdicts from git notes for releases without an existing verdict. Projects without a deployment integration are skipped. Safe to re-run, and scheduled rather than only operator-triggered. |
+| **Close Out Stuck Deployments** | `deployment-sweep` | Ask the remote what happened to every deployment still running after 30 minutes, and record the answer. Deployments nothing can resolve for a week are marked failed; a deployment recorded before its release was known is attached to it. Also backfills release drift verdicts from git notes for releases without an existing verdict. Projects without a deployment integration are skipped. Safe to re-run. Imbi does not run it on a schedule. |
 | **Repair Deployments Mislabelled Rolled Back** | `deployment-status-repair` | Restore deployments that resync marked rolled back over a success. GitHub writes an inactive status on a deployment when a later one supersedes it, and resync read that as the outcome -- so most of a project's deployment history could end up claiming a rollback that never happened. Reads each node's own recorded history rather than the remote, so it makes no API calls and cannot be rate-limited. A node whose history holds no earlier success is left alone: there is nothing to restore. Does not change deployment timestamps, so it cannot move which release an environment reports. Safe to re-run. |
 | **Report Re-stamped Commit Push Times (dry run)** | `commit-pushed-at-check` | Count the commits whose recorded push time a later re-sync overwrote -- the full backfill stamping a whole history with one instant, or a completed workflow run re-syncing its head commit -- without changing anything. Compares each commit against the push delivery that first carried it to its branch. Run this before Repair to see the scope. |
 | **Repair Re-stamped Commit Push Times** | `commit-pushed-at-repair` | Restore the push time of every commit a later re-sync overwrote, from the push delivery that first carried it to its branch. Push order is what the recent-commits feed and the release ranges sliced from it sort on, so a re-stamped commit shows up in the wrong release. Commits with no push delivery on record are left alone. Reads only ClickHouse, so it makes no API calls and cannot be rate-limited. Safe to re-run. |
@@ -60,9 +60,10 @@ The page has two tabs: **Operations** and **Activity**.
 
 <!-- END GENERATED -->
 
-The descriptions come from the code. The description of **Close Out
-Stuck Deployments** says that it is scheduled, but Imbi does not create a
-schedule for it. See [Run an operation](#run-an-operation).
+The descriptions come from the code. Imbi runs no operation on a
+schedule, **Close Out Stuck Deployments** included. Deployments stay
+`pending` until an administrator runs it. See
+[Run an operation](#run-an-operation).
 
 The **Report ... (dry run)** operations change nothing. Run them before
 the operation that they report on, and read the activity log.
@@ -98,11 +99,12 @@ How a run works:
 A run has one of these states: `idle`, `running`, `completed`,
 `cancelled`, or `abandoned`.
 
-Imbi does not run an operation on a schedule by itself. You can start an
-operation from a scheduled task with
-`POST /maintenance/operations/{slug}/run`. The caller needs
-`admin:maintenance:manage`. The `imbi-scheduler` role does not have it.
-See [Scheduler tasks](../scheduler/tasks.md).
+Imbi does not run an operation on a schedule by itself. The API endpoint
+is `POST /maintenance/operations/{slug}/run`, and the caller needs
+`admin:maintenance:manage`. A scheduled task cannot call it today: a
+`service_account` task runs as the scheduler's own account, and the
+`imbi-scheduler` role does not have that permission. A `delegated_user`
+task does not run yet. See [Scheduler tasks](../scheduler/tasks.md).
 
 ### Activity log
 

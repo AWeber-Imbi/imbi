@@ -24,7 +24,9 @@ When you open the tab and no analysis exists, and you have
 `project:write`, the analysis starts automatically.
 
 Imbi stores one report for each project. Each analysis replaces the
-previous report. Imbi keeps no history of reports. No schedule runs the
+previous report. Imbi keeps no history of reports. A new report queues a
+recompute of the project score, because an **Analysis Result** scoring
+policy reads the report. No schedule runs the
 analysis for one project. An administrator can run it for all projects
 (see [Maintenance operations](#maintenance-operations)).
 

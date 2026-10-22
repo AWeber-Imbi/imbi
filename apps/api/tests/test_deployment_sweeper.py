@@ -1,4 +1,4 @@
-"""Tests for the scheduled deployment sweeper."""
+"""Tests for the deployment sweeper."""
 
 from __future__ import annotations
 
