@@ -263,7 +263,7 @@ class WebhookCreateModelTestCase(unittest.TestCase):
                 rules=[
                     {
                         'filter_expression': '$.action',
-                        'handler': 'my.handler',
+                        'handler': 'gateway-actions#update_project',
                     },
                 ],
             ),
@@ -305,7 +305,7 @@ class WebhookRuleCreateModelTestCase(unittest.TestCase):
         obj = domain_models.WebhookRuleCreate.model_validate(
             {
                 'filter_expression': '$.action == "push"',
-                'handler': 'my.module.handle_push',
+                'handler': 'gateway-actions#create_release',
             }
         )
         self.assertEqual(obj.handler_config, {})
@@ -314,7 +314,7 @@ class WebhookRuleCreateModelTestCase(unittest.TestCase):
         obj = domain_models.WebhookRuleCreate.model_validate(
             {
                 'filter_expression': '$.action',
-                'handler': 'my.handler',
+                'handler': 'gateway-actions#update_project',
                 'handler_config': ['step1', 'step2'],
             }
         )
@@ -325,7 +325,7 @@ class WebhookRuleCreateModelTestCase(unittest.TestCase):
             domain_models.WebhookRuleCreate.model_validate(
                 {
                     'filter_expression': '',
-                    'handler': 'my.handler',
+                    'handler': 'gateway-actions#update_project',
                 }
             )
 
@@ -335,6 +335,15 @@ class WebhookRuleCreateModelTestCase(unittest.TestCase):
                 {
                     'filter_expression': '$.action',
                     'handler': '',
+                }
+            )
+
+    def test_dotted_handler_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookRuleCreate.model_validate(
+                {
+                    'filter_expression': '$.action',
+                    'handler': 'imbi_gateway.handlers.sync_project',
                 }
             )
 
@@ -461,14 +470,16 @@ class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
             rules=[
                 {
                     'filter_expression': '$.action == "push"',
-                    'handler': 'my.module.handle_push',
+                    'handler': 'gateway-actions#create_release',
                     'handler_config': '{"branch": "main"}',
                 },
             ],
         )
         response = domain_models.WebhookResponse.from_graph_record(record)
         self.assertEqual(len(response.rules), 1)
-        self.assertEqual(response.rules[0].handler, 'my.module.handle_push')
+        self.assertEqual(
+            response.rules[0].handler, 'gateway-actions#create_release'
+        )
         self.assertEqual(
             response.rules[0].handler_config,
             {'branch': 'main'},
@@ -480,7 +491,7 @@ class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
             rules=[
                 {
                     'filter_expression': '$.action',
-                    'handler': 'my.handler',
+                    'handler': 'gateway-actions#update_project',
                 },
             ],
         )
@@ -544,15 +555,19 @@ class WebhookRuleOrderingTestCase(unittest.TestCase):
     def test_rules_sorted_by_ordinal(self) -> None:
         record = self._record(
             [
-                self._rule('h.third', ordinal=2),
-                self._rule('h.first', ordinal=0),
-                self._rule('h.second', ordinal=1),
+                self._rule('gateway-actions#h_third', ordinal=2),
+                self._rule('gateway-actions#h_first', ordinal=0),
+                self._rule('gateway-actions#h_second', ordinal=1),
             ]
         )
         response = domain_models.WebhookResponse.from_graph_record(record)
         self.assertEqual(
             [rule.handler for rule in response.rules],
-            ['h.first', 'h.second', 'h.third'],
+            [
+                'gateway-actions#h_first',
+                'gateway-actions#h_second',
+                'gateway-actions#h_third',
+            ],
         )
 
     def test_ordinal_is_not_exposed_in_the_response(self) -> None:

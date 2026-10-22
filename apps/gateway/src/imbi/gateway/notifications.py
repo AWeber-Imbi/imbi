@@ -200,6 +200,25 @@ class WebhookRule(pydantic.BaseModel):
         return None
 
 
+def _parse_rules(rows: list[typing.Any], webhook_id: str) -> list[WebhookRule]:
+    """Validate each rule row, and skip the rows that are not valid.
+
+    One stale handler must not stop the other rules of the webhook.
+    """
+    rules: list[WebhookRule] = []
+    for row in rows:
+        try:
+            rules.append(WebhookRule.model_validate(row))
+        except pydantic.ValidationError as e:
+            LOGGER.error(
+                'skipping invalid rule for webhook_id=%r: %s',
+                webhook_id,
+                e,
+                extra={'webhook_id': webhook_id},
+            )
+    return rules
+
+
 @router.post('/{webhook_id}', include_in_schema=False)
 async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipeline reads top-down
     webhook_id: str,
@@ -245,17 +264,7 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
     sel = graph.parse_agtype(record['sel'])  # maybe None
     raw_rules = record['rules']
 
-    parsed_rules: list[typing.Any] = graph.parse_agtype(raw_rules) or []
-    try:
-        rules = [WebhookRule.model_validate(row) for row in parsed_rules]
-    except pydantic.ValidationError as e:
-        LOGGER.error(
-            'failed to deserialize rules for webhook_id=%r: %s',
-            webhook_id,
-            e,
-            extra={'webhook_id': webhook_id, 'rules_count': len(parsed_rules)},
-        )
-        return
+    rules = _parse_rules(graph.parse_agtype(raw_rules) or [], webhook_id)
     # Dispatch order is load-bearing, not cosmetic: ``add_deployment_event``
     # looks its release up and drops the event when it is missing, so it
     # has to run after ``create_release``; ``publish_release`` has to run

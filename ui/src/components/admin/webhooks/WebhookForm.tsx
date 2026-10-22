@@ -730,7 +730,7 @@ export function WebhookForm({
                                   e.target.value,
                                 )
                               }
-                              placeholder='e.g., body.action == "push"'
+                              placeholder='e.g., payload.action == "push"'
                               value={rule.filter_expression}
                             />
                             {errors[`rule_${index}_filter`] && (
@@ -762,7 +762,7 @@ export function WebhookForm({
                                   e.target.value,
                                 )
                               }
-                              placeholder="e.g., imbi_gateway.handlers.sync_project"
+                              placeholder="e.g., gateway-actions#update_project"
                               value={rule.handler}
                             />
                             {errors[`rule_${index}_handler`] && (
