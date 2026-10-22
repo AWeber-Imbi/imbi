@@ -131,8 +131,9 @@ async def effective_bindings(
 ) -> list[CapabilityBinding]:
     """Return every Integration bound to ``project_id`` for ``kind``.
 
-    Applies the default-all rule and filters to Integrations whose
-    ``capabilities[kind].enabled`` is true. Registry / registration
+    Applies the default-all rule and filters to Integrations that are
+    not ``inactive`` and whose ``capabilities[kind].enabled`` is true.
+    Registry / registration
     filtering is left to :mod:`imbi.api.plugins.resolution`.
 
     Raises:
@@ -232,6 +233,9 @@ async def org_integrations(
         if not isinstance(raw, dict):
             continue
         props = typing.cast('dict[str, typing.Any]', raw)
+        # A disabled Integration serves no capability (issue #481).
+        if props.get('status') == 'inactive':
+            continue
         if props.get('id'):
             out[str(props['id'])] = hydrate_integration(props)
     return out

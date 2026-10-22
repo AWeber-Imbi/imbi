@@ -59,21 +59,24 @@ async def hydrate_identity(
             start_url=_start_url_for(integration_id),
         )
 
-    if _should_refresh(connection):
-        connection = await _refresh_and_reload(db, integration_id, user_id)
-
     # Load the Integration so we can resolve its plugin's identity
     # capability handler and decrypt its credentials for ``materialize``
     # (e.g. AWS IAM IC exchanges the IdP token for STS credentials).
+    # Check it before any refresh, so an inactive integration never
+    # triggers a token refresh with the provider.
     integration = await load_integration(db, integration_id)
-    if integration is None:
+    if integration is None or integration.get('status') == 'inactive':
         LOGGER.error(
-            'Integration %r missing for identity hydration', integration_id
+            'Integration %r missing or inactive for identity hydration',
+            integration_id,
         )
         raise identity_errors.IdentityRequiredError(
             integration_id=integration_id,
             start_url=_start_url_for(integration_id),
         )
+
+    if _should_refresh(connection):
+        connection = await _refresh_and_reload(db, integration_id, user_id)
 
     plugin_slug = str(integration.get('plugin') or '')
     try:

@@ -91,9 +91,9 @@ For each call, Imbi uses the first value that it finds:
 If Imbi finds no account or no role, the call fails with `503` and a
 message that names the environment.
 
-The account lookup uses the environment slug only. If two organizations
-have an environment with the same slug, the lookup uses the first mapping
-that it finds.
+The account lookup uses the environment of the project's organization.
+Two organizations can have an environment with the same slug, and each
+gets its own account mapping.
 
 ## Template variables
 

@@ -607,6 +607,44 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.extra['aws_account_id'], '222222222222')
 
 
+class ResolveAccountOrgScopeTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_shared_env_slug_resolves_own_org_account(self) -> None:
+        """Two orgs with a ``production`` environment each map to their
+        own AWS account; the lookup must return the caller's."""
+
+        # Each org has its own ``production`` mapping. ``other-org``
+        # comes first, so an unscoped match would return it.
+        mappings = {
+            ('other-org', 'production'): '999999999999',
+            ('org', 'production'): '111111111111',
+        }
+
+        class _FakeDB:
+            async def execute(
+                self,
+                query: str,
+                params: dict[str, object],
+                _columns: list[str],
+            ) -> list[dict[str, object]]:
+                scoped = ':Organization' in query
+                return [
+                    {
+                        'account_id': f'"{account}"',
+                        'role_name': None,
+                        'region': None,
+                    }
+                    for (org, env), account in mappings.items()
+                    if env == params['env']
+                    and (not scoped or org == params.get('org'))
+                ]
+
+        ctx = _ctx(environment='production')
+        account_id, _, _ = await AWSIdentity()._resolve_account(  # pyright: ignore[reportPrivateUsage]
+            _FakeDB(), ctx
+        )
+        self.assertEqual(account_id, '111111111111')
+
+
 class RefreshTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_happy_path(self) -> None:
