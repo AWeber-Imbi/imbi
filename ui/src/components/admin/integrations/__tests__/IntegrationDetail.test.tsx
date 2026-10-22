@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   getIntegration,
+  listCapabilityAssignments,
   listPluginPackages,
   listProjectTypes,
+  replaceCapabilityAssignments,
   updateIntegration,
 } from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
-import type { Integration } from '@/types'
+import type { CapabilityAssignment, Integration, PluginPackage } from '@/types'
 
 import { IntegrationDetail } from '../IntegrationDetail'
 
@@ -18,7 +20,7 @@ vi.mock('@/api/endpoints', () => ({
   listCapabilityAssignments: vi.fn(),
   listPluginPackages: vi.fn(),
   listProjectTypes: vi.fn(),
-  listWebhooks: vi.fn(),
+  listWebhooks: vi.fn().mockResolvedValue([]),
   replaceCapabilityAssignments: vi.fn(),
   updateIntegration: vi.fn(),
   updateIntegrationCredentials: vi.fn(),
@@ -29,7 +31,7 @@ vi.mock('@/contexts/OrganizationContext', () => ({
   useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
 }))
 
-const integration = (status: string) =>
+const integrationWithStatus = (status: string) =>
   ({
     capabilities: {},
     credential_fields: [],
@@ -42,11 +44,11 @@ const integration = (status: string) =>
   }) as unknown as Integration
 
 const renderDetail = (status: string) => {
-  vi.mocked(getIntegration).mockResolvedValue(integration(status))
+  vi.mocked(getIntegration).mockResolvedValue(integrationWithStatus(status))
   return render(
     <IntegrationDetail
       onBack={vi.fn()}
-      seed={integration(status)}
+      seed={integrationWithStatus(status)}
       slug="github"
     />,
   )
@@ -54,6 +56,7 @@ const renderDetail = (status: string) => {
 
 describe('IntegrationDetail danger zone', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.mocked(listPluginPackages).mockResolvedValue([])
     vi.mocked(listProjectTypes).mockResolvedValue([])
     vi.mocked(updateIntegration).mockResolvedValue({} as never)
@@ -77,6 +80,85 @@ describe('IntegrationDetail danger zone', () => {
       expect(updateIntegration).toHaveBeenCalledWith('acme', 'github', {
         status: 'active',
       }),
+    )
+  })
+})
+
+const integration = {
+  capabilities: { deployment: { enabled: true, options: {} } },
+  credential_fields: [],
+  name: 'GitHub',
+  options: {},
+  plugin: 'github',
+  slug: 'github',
+  status: 'active',
+} as unknown as Integration
+
+const plugin = {
+  capabilities: [
+    {
+      description: null,
+      kind: 'deployment',
+      label: 'Deployment',
+      options: [],
+      project_scoped: true,
+    },
+  ],
+  credentials: [],
+  enabled: true,
+  options: [],
+  slug: 'github',
+} as unknown as PluginPackage
+
+const existing: CapabilityAssignment = {
+  default: true,
+  env_payloads: { production: { region: 'us-east-1' } },
+  identity_integration_slug: 'github-identity',
+  options: { workflow: 'deploy.yml' },
+  project_type_slug: 'api',
+}
+
+describe('IntegrationDetail assignments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getIntegration).mockResolvedValue(integration)
+    vi.mocked(listPluginPackages).mockResolvedValue([plugin])
+    vi.mocked(listProjectTypes).mockResolvedValue([
+      { name: 'API', slug: 'api' },
+      { name: 'Consumer', slug: 'consumer' },
+    ] as never)
+    vi.mocked(listCapabilityAssignments).mockResolvedValue([existing])
+    vi.mocked(replaceCapabilityAssignments).mockResolvedValue([])
+  })
+
+  it('keeps existing assignment values when a project type is added', async () => {
+    render(
+      <IntegrationDetail onBack={vi.fn()} seed={integration} slug="github" />,
+    )
+
+    // The assigned type renders once the current assignments are loaded.
+    await screen.findByText('API')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Consumer' }))
+
+    await waitFor(() =>
+      expect(replaceCapabilityAssignments).toHaveBeenCalledWith(
+        'acme',
+        'github',
+        'deployment',
+        {
+          assignments: [
+            existing,
+            {
+              default: false,
+              env_payloads: {},
+              identity_integration_slug: null,
+              options: {},
+              project_type_slug: 'consumer',
+            },
+          ],
+        },
+      ),
     )
   })
 })
