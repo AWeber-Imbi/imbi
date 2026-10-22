@@ -163,7 +163,7 @@ For sign-in methods, login providers, and how these settings behave, see [Authen
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | `365` | Maximum lifetime allowed when creating an API key |
+| `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | `365` | Maximum lifetime allowed when creating an API key, client credential, or service-account API key |
 
 ### MFA (TOTP)
 
