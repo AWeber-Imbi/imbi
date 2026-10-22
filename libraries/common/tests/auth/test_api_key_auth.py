@@ -379,6 +379,32 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(ctx.exception.status_code, 401)
 
+    async def test_cache_hit_rejects_an_inactive_owner(self) -> None:
+        """Deactivating the key's owner takes effect at once."""
+        user_dict = self.test_user.model_dump(mode='json')
+        mock_db = mock.AsyncMock()
+
+        def execute_side_effect(query, params=None, columns=None):
+            if 'APIKey' in query and 'OWNED_BY' in query:
+                return [{'k': self.api_key_data, 'u': user_dict, 's': None}]
+            if 'Permission' in query or 'GRANTS' in query:
+                return [{'permissions': ['read:projects']}]
+            return []
+
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+            user_dict['is_active'] = False
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await permissions.authenticate_api_key(
+                    mock_db, self.full_key, self.auth_settings
+                )
+        self.assertEqual(ctx.exception.status_code, 401)
+
     async def test_cache_hit_rejects_a_rotated_key(self) -> None:
         """#485: after a rotation, the old secret fails at once."""
         mock_db = self._cache_test_db()

@@ -640,6 +640,17 @@ async def authenticate_api_key(
     # call. It comes after the revoked and expiry checks above, so
     # those take effect at once. ``_stamp_api_key_last_used`` runs
     # only on a miss, so ``last_used`` updates at most once per TTL.
+    # The owner row is already loaded, so check it before a cache hit:
+    # deactivating the owner then takes effect at once as well.
+    owner = sa_data or user_data
+    if not owner.get('is_active', True):
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Service account is inactive'
+            if sa_data
+            else 'User account is inactive',
+        )
+
     cached = _api_key_cache_lookup(key, key_hash) if key_hash else None
     if cached is not None:
         return cached
