@@ -14617,7 +14617,7 @@ export interface components {
         };
         /**
          * MCPServerStatusReport
-         * @description Runtime status report, posted by the assistant on tool failure.
+         * @description Runtime status report from an external caller, such as a monitor.
          */
         MCPServerStatusReport: {
             /**

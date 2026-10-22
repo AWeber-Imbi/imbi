@@ -66,8 +66,10 @@ None.
 ## Known limits
 
 - Imbi does not use the ID token, so it does not validate one. It gets
-  the profile from the userinfo endpoint with the access token, over
-  TLS.
+  the profile from the userinfo endpoint with the access token. The
+  request uses TLS only when the endpoint URL starts with `https://`.
+  Imbi does not check the scheme of a `userinfo_endpoint` override, so
+  use an `https://` URL.
 - The plugin reads `groups`, but Imbi does not map groups to teams or
   roles.
 - A change to the discovery document shows only after the 24-hour cache

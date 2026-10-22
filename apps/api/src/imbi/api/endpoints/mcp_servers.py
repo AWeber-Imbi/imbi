@@ -189,7 +189,7 @@ class MCPServerTestResult(pydantic.BaseModel):
 
 
 class MCPServerStatusReport(pydantic.BaseModel):
-    """Runtime status report, posted by the assistant on tool failure."""
+    """Runtime status report from an external caller, such as a monitor."""
 
     status: typing.Literal['healthy', 'degraded', 'unreachable']
     error: str | None = None
