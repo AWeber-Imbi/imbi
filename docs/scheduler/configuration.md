@@ -10,7 +10,8 @@ shared with the rest of the platform and keep their platform-wide names.
 | --- | --- |
 | `IMBI_AUTH_JWT_SECRET` | Verifies the bearer tokens presented to the API |
 | `POSTGRES_URL` | Task definitions, trigger state, and the run leases |
-| `CLICKHOUSE_URL` | Run history (`imbi.scheduler_runs`) |
+| `CLICKHOUSE_URL` | Reads run history (`imbi.scheduler_runs`) |
+| `IGGY_URL` | Publishes run history to the `scheduler_runs` stream |
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | The scheduler's own service-account client id |
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | Its client secret |
 | `IMBI_API_URL` | imbi-api's **public** URL — see [Reaching imbi-api](#reaching-imbi-api) |
@@ -21,8 +22,7 @@ schedules, but no `api` target can resolve a principal, so every such firing is
 recorded as `skipped`. The container entrypoint therefore refuses to start in
 `scheduler` mode without them.
 
-The account itself is seeded. `imbi-api setup` — or `imbi-api
-setup-service-accounts` on an install that predates it — creates the
+The account itself is seeded. `imbi-api setup` creates the
 `imbi-scheduler` service account, gives it the seeded `imbi-scheduler` role, and
 either adopts the credential these two variables name or generates one and
 prints it once. Set them before running setup and they are what the account
@@ -58,6 +58,18 @@ above it calls `http://imbi-api:8000/api/...`. Setting only the internal URL
 means every request omits the prefix and 404s — including the token request,
 whose 404 becomes an `IdentityError`, so every `api`-target firing is recorded
 as `skipped` rather than failed. Both are required.
+
+## Wiring into the platform
+
+- `imbi-api setup-clickhouse` creates the `imbi.scheduler_runs` table.
+- Set `IMBI_INTERNAL_SCHEDULER_URL` on imbi-api, for example
+  `http://imbi-scheduler:8005`. The **System health** card of the Admin
+  overview reads `/status` there. When it is empty, imbi-api does not probe
+  the scheduler, and reports it as `not configured`.
+- The `imbi-scheduler` service account must be a member of each
+  organization that its tasks address. For an organization other than the
+  first, run `imbi-api setup-service-accounts --organization <organization
+  slug>`.
 
 ## Optional
 

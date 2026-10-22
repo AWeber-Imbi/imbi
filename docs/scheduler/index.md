@@ -3,6 +3,18 @@
 `imbi-scheduler` triggers remote execution on a schedule. It runs on port 8005
 and is served under `/scheduler` in the all-in-one image.
 
+There is no UI for scheduled tasks. Use the REST API at
+`/scheduler/api/tasks` (see [Scheduled Tasks](tasks.md)). Workflow schedule
+triggers and other platform jobs use the same API.
+
+```shell
+curl -f -H "Authorization: Bearer $IMBI_API_KEY" \
+  https://imbi.example.com/scheduler/api/tasks
+```
+
+The bearer token can be an `ik_` API key or an Imbi access token. The caller
+needs `scheduled_task:read`.
+
 The scheduler **triggers**; it does not execute work. Every run is a single
 synchronous HTTP call, and the outcome is recorded. Two target kinds cover the
 platform:
@@ -34,7 +46,9 @@ service owns them. The scheduler pokes that service and records what came back.
    templates over `{now, task, run, last_run}`, matching the templating model
    `imbi-automations` uses so operators learn it once.
 4. One HTTP call, bounded by the task's `timeout`, retried per its policy.
-5. The result is classified and written to `imbi.scheduler_runs` in ClickHouse.
+5. The result is classified and published to the Iggy stream
+   `scheduler_runs`. The sink writes it to `imbi.scheduler_runs` in
+   ClickHouse.
 
 A failure to resolve identity is a `skipped` run, not a failed one, and it does
 not consume retries — consent that has been revoked should stop a task quietly
@@ -45,7 +59,7 @@ rather than look like an outage.
 | Data | Where |
 | --- | --- |
 | Task definitions, trigger state | Postgres, schema `scheduler` |
-| Run history | ClickHouse, `imbi.scheduler_runs` |
+| Run history | ClickHouse, `imbi.scheduler_runs`, written through Iggy |
 | Consent for delegated tasks | The graph, owned by `imbi-api`. The scheduler stores only a `consent_id` |
 
 The scheduler stores no secrets. See
