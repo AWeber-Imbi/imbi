@@ -2309,6 +2309,16 @@ async def list_projects(
             ),
         ),
     ] = None,
+    project_id: typing.Annotated[
+        str | None,
+        fastapi.Query(
+            description=(
+                'Restrict results to the project with this id, so a '
+                'project page reads the same list-only fields (e.g. '
+                '``drift_ranges``) as the projects list.'
+            ),
+        ),
+    ] = None,
     filters: typing.Annotated[
         list[str] | None,
         fastapi.Query(
@@ -2403,9 +2413,14 @@ async def list_projects(
         )
         fragment, attr_params = _build_attribute_filter(filters, whitelist)
         attr_filter = '\n    ' + fragment + '\n' if fragment else ''
+    project_pattern: typing.LiteralString = (
+        '(p:Project {{id: {project_id}}})' if project_id else '(p:Project)'
+    )
     query: str = (
         """
-    MATCH (p:Project)-[:OWNED_BY]->(:Team)
+    MATCH """
+        + project_pattern
+        + """-[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     """
         + archived_filter
@@ -2431,6 +2446,7 @@ async def list_projects(
             'project_type': project_type,
             'integration_slug': integration_slug,
             'identifier': identifier,
+            'project_id': project_id,
             **page_params,
             **attr_params,
         },

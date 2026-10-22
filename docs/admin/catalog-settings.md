@@ -67,6 +67,8 @@ promotion pipeline use environments.
 | Environment Name | Required. Imbi makes the slug from the name |
 | Slug | Required. You cannot change the slug later |
 | Sort Order | The display order. Lower numbers show first. The promotion pipeline also goes from one environment to the next by this order |
+| Allow Direct Deploys | On by default. Lets people deploy a commit or an existing release into this environment. Clear it to make promotion the only way in |
+| Allow Promotion | Off by default. Lets people promote what the previous environment runs into this environment, which cuts a new release tag |
 | Terminal Environment | Ends the promotion pipeline. Imbi makes no promotion step from this environment to the next one. The next environment starts a new pipeline |
 | Allow Autonomous Deployments | Lets a service account that acts with the integration's own credential deploy or promote into this environment. Off by default. It does not change what people can do |
 | Description | Optional |
@@ -79,19 +81,13 @@ deploy and rollback steps of [workflows](workflows.md) need it.
 
 ### Deploy and promote flags
 
-An environment also has two flags that the form does not show:
+**Allow Direct Deploys** and **Allow Promotion** are the `can_deploy` and
+`can_promote` fields of the environment:
 
 | Flag | Default | Effect |
 |---|---|---|
-| `can_deploy` | `true` | The release train shows **Deploy** for this environment |
-| `can_promote` | `false` | The release train shows **Promote** for this environment |
-
-To change them, send a JSON Patch to
-`PATCH /organizations/{org}/environments/{slug}`, for example:
-
-```json
-[{"op": "replace", "path": "/can_promote", "value": true}]
-```
+| `can_deploy` | `true` | The API accepts a deploy into this environment. When it is off, the **Deployments** tab disables the deploy and roll-back buttons and says why |
+| `can_promote` | `false` | The API accepts a promote into this environment. When it is off, the **Deployments** tab disables the promote form and says why |
 
 ### Delete an environment
 

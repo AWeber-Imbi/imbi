@@ -1845,6 +1845,7 @@ async def record_deployment(
             data.external_run_id,
             datetime.datetime.now(datetime.UTC),
             project_id,
+            data.status,
         )
 
     # A DeploymentStatusPolicy may score this project on its current

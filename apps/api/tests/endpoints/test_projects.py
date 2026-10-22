@@ -1547,6 +1547,25 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(params['integration_slug'], 'github')
         self.assertIsNone(params['identifier'])
 
+    def test_list_by_project_id(self) -> None:
+        """``project_id`` narrows the list to one project, so a project
+        page reads the list's drift fields (#488)."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/?slim=true&project_id=p1',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        query = self.mock_db.execute.call_args.args[0]
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertIn('MATCH (p:Project {{id: {project_id}}})', query)
+        self.assertEqual(params['project_id'], 'p1')
+
     def test_list_identifier_without_service_rejected(self) -> None:
         """``identifier`` is meaningless without a service slug."""
         with mock.patch(

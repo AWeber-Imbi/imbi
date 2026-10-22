@@ -2609,6 +2609,36 @@ class DeployedOperationLogTestCase(unittest.TestCase):
         self.assertIsNone(description['commit_sha'])
 
 
+class RecordDeploymentAuditTestCase(unittest.IsolatedAsyncioTestCase):
+    """A release-action row is complete when it is written (#488)."""
+
+    async def _record(self, environment_slug: str) -> dict[str, typing.Any]:
+        with mock.patch(
+            f'{_MODULE}.iggy.publish_rows', new_callable=mock.AsyncMock
+        ) as publish:
+            await project_deployments._record_deployment_audit(
+                project_id='p1',
+                project_slug='webform',
+                environment_slug=environment_slug,
+                recorded_by='dang@aweber.com',
+                action='release' if not environment_slug else 'deploy',
+                tag='1.2.3',
+                committish='c67213d',
+                plugin_slug='github',
+                run_url=None,
+            )
+        return publish.await_args.args[2][0]
+
+    async def test_release_action_row_is_born_completed(self) -> None:
+        row = await self._record('')
+        self.assertIsNotNone(row['completed_at'])
+        self.assertEqual(row['occurred_at'], row['completed_at'])
+
+    async def test_rollout_row_stays_open(self) -> None:
+        row = await self._record('production')
+        self.assertIsNone(row['completed_at'])
+
+
 class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
     """Promote dispatches the Release workflow when one is configured.
 

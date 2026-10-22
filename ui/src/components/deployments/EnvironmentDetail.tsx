@@ -1,3 +1,5 @@
+import { Info } from 'lucide-react'
+
 import type { ChipColors } from '@/lib/chip-colors'
 import type { RecentCommit } from '@/types'
 
@@ -40,17 +42,26 @@ export function EnvironmentDetail({
   recentCommits,
   stage,
 }: EnvironmentDetailProps) {
+  // The API refuses a deploy into an env with `can_deploy` false and a
+  // promote into one without `can_promote`. Unset flags take the API
+  // defaults: deployable, not promotable.
+  const canDeploy = stage.env.can_deploy !== false
+  const canPromote = stage.env.can_promote === true
+  const envName = stage.env.name
   if (stage.kind === 'commit') {
     return (
-      <CommitDeployCard
-        accent={accent}
-        actions={actions}
-        canTrigger={canTrigger}
-        orgSlug={orgSlug}
-        projectId={projectId}
-        recentCommits={recentCommits}
-        stage={stage}
-      />
+      <div className="flex min-w-0 flex-col gap-4">
+        {canDeploy ? null : <DisabledNotice action="deploy" env={envName} />}
+        <CommitDeployCard
+          accent={accent}
+          actions={actions}
+          canTrigger={canTrigger && canDeploy}
+          orgSlug={orgSlug}
+          projectId={projectId}
+          recentCommits={recentCommits}
+          stage={stage}
+        />
+      </div>
     )
   }
   // On a promote stage the form is the hero. It steps aside only when a
@@ -62,11 +73,17 @@ export function EnvironmentDetail({
     (stage.pendingReleases.length === 0 || stage.promotableCommits.length > 0)
   return (
     <div className="flex min-w-0 flex-col gap-4">
+      {showPromote && !canPromote ? (
+        <DisabledNotice action="promote" env={envName} />
+      ) : null}
+      {!showPromote && !canDeploy ? (
+        <DisabledNotice action="deploy" env={envName} />
+      ) : null}
       {showPromote ? (
         <PendingPromoteCard
           accent={accent}
           actions={actions}
-          canTrigger={canTrigger}
+          canTrigger={canTrigger && canPromote}
           orgSlug={orgSlug}
           projectId={projectId}
           stage={stage}
@@ -75,7 +92,7 @@ export function EnvironmentDetail({
         <PendingReleasesCard
           accent={accent}
           actions={actions}
-          canTrigger={canTrigger}
+          canTrigger={canTrigger && canDeploy}
           orgSlug={orgSlug}
           projectId={projectId}
           recentCommits={recentCommits}
@@ -85,11 +102,30 @@ export function EnvironmentDetail({
       <CurrentlyRunningCard
         accent={accent}
         actions={actions}
-        canTrigger={canTrigger}
+        canTrigger={canTrigger && canDeploy}
         orgSlug={orgSlug}
         projectId={projectId}
         stage={stage}
       />
+    </div>
+  )
+}
+
+function DisabledNotice({
+  action,
+  env,
+}: {
+  action: 'deploy' | 'promote'
+  env: string
+}) {
+  return (
+    <div className="border-tertiary text-secondary flex gap-2 rounded-md border px-3 py-2.5">
+      <Info className="mt-0.5 size-3.5 shrink-0" />
+      <span className="text-xs leading-relaxed">
+        {action === 'deploy'
+          ? `Direct deploys into ${env} are turned off. An admin can allow them on the environment.`
+          : `Promotion into ${env} is turned off. An admin can allow it on the environment.`}
+      </span>
     </div>
   )
 }
