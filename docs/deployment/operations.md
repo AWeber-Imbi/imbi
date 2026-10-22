@@ -375,5 +375,6 @@ Monitoring and recovery:
 - [ ] After each Iggy server restart, restart iggy-connect and look for
       ghost consumer-group members.
 
-The Helm chart cannot set all of these variables yet. See
-[Kubernetes: What the Chart Cannot Do Yet](kubernetes.md#what-the-chart-cannot-do-yet).
+With the Helm chart, set the variables that have no chart value with
+`extraEnv`. See
+[Kubernetes: Extra environment variables](kubernetes.md#extra-environment-variables).

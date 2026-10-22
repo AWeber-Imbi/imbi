@@ -89,7 +89,7 @@ and a release that can reach imbi-api for the sink configuration.
 {{- end }}
 
 {{- define "imbi.slackbotEnabled" -}}
-{{- if or .Values.slackbot.enabled (eq .Values.service.mode "slackbot") }}true{{ end }}
+{{- if or (eq .Values.service.mode "slackbot") (and (eq .Values.service.mode "all") .Values.slackbot.enabled) }}true{{ end }}
 {{- end }}
 
 {{- define "imbi.iggyConnectFullname" -}}

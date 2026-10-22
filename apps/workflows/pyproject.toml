@@ -15,6 +15,7 @@ dependencies = [
   "imbi-common[databases,server]==2.39.1",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
+  "sentry-sdk>=2.48.0",
 ]
 
 [project.scripts]

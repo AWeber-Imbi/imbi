@@ -147,7 +147,7 @@ gateway:
 # Conditionally required, because the deployment reads them from this same
 # secret whenever the corresponding feature is switched on:
 #   - anthropic-api-key            when assistant.enabled, or the Slack bot
-#     is on (slackbot.enabled or service.mode "slackbot")
+#     is on (service.mode "slackbot", or "all" with slackbot.enabled)
 #   - slack-bot-token, slack-app-token  when the Slack bot is on
 #   - s3-access-key, s3-secret-key when storage.accessKey is set
 #   - iggy-connectors-api-key, iggy-password  when iggyConnect.enabled. The
@@ -277,7 +277,7 @@ assistant:
   anthropicApiKey: ""
 
 # Slack bot. Always on in "slackbot" mode. In "all" mode, enabled starts it
-# in the same pod. It needs both tokens and assistant.anthropicApiKey.
+# in the same pod. Other modes ignore enabled and get no Slack credentials. It needs both tokens and assistant.anthropicApiKey.
 slackbot:
   enabled: false
   botToken: ""  # xoxb-...

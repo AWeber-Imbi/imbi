@@ -27,10 +27,13 @@ helm install imbi helm/imbi \
   --set externalIggy.url=iggy+tcp://iggy:iggy@imbi-iggy:8090 \
   --set externalValkey.url=valkey://imbi-valkey:6379/0 \
   --set service.publicApiUrl=https://imbi.example.com/api \
-  --set iggyConnect.apiKey=invent-one \
+  --set iggyConnect.apiKey=REPLACE-WITH-A-RANDOM-API-KEY \
   --set iggyConnect.iggy.address=imbi-iggy:8090 \
-  --set iggyConnect.iggy.password=iggy
+  --set iggyConnect.iggy.password=REPLACE-WITH-THE-IGGY-PASSWORD
 ```
+
+Replace every value with your own. Make a unique random value for each
+secret, and do not copy the examples above.
 
 `environment` defaults to `production`, so the three `auth` values are
 required. `extraEnv` and `extraEnvFrom` set any variable that has no chart

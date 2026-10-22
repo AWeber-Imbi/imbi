@@ -135,8 +135,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    `IMBI_GATEWAY_API_TOKEN`. `slackbot` mode now also requires
    `IMBI_AUTH_JWT_SECRET`. The image no longer exposes port 2019.
 8. **`setup-clickhouse` exits with status 1** when a DDL statement fails. It
-   still runs the other statements first. A script or job that ignored a
-   failure now stops.
+   still runs the other statements first. An upgrade script must check
+   this status, for example with `set -e`, and stop the upgrade when it
+   is not 0.
 
 ## 2.39.1
 
