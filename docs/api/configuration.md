@@ -1,7 +1,8 @@
 # Configuration
 
-Every Imbi service reads its configuration from environment variables. This
-page is the full reference. For the minimum set that starts each service,
+Every Imbi service reads its configuration from environment variables and,
+for some settings classes, from a `config.toml` file. This page is the full
+reference. For the minimum set that starts each service,
 see [Configuration](../getting-started/configuration.md) in Getting Started.
 
 ## Sources and precedence
@@ -13,7 +14,10 @@ Each service reads values from these sources:
 1. **Environment variables.**
 2. **A `.env` file** in the working directory. An environment variable wins
    over the same name in `.env`.
-3. **Built-in defaults.** The tables below show them.
+3. **A `config.toml` file**, for the settings classes in the next section.
+   An environment variable or a `.env` entry wins over the same key in
+   `config.toml`.
+4. **Built-in defaults.** The tables below show them.
 
 The settings classes accept variable names in upper or lower case. Some
 variables are read directly from the process environment, for example
@@ -22,33 +26,40 @@ and the `.env` file does not set them.
 
 ### `config.toml`
 
-Only imbi-api reads a `config.toml` file, and only for two sections:
+Each section of `config.toml` sets one settings class. The key is the field
+name, which is the variable name without the prefix, in lower case:
 
-| Section | Settings | Read by |
+| Section | Settings | Services |
 |---|---|---|
-| `[server]` | The `IMBI_API_*` fields, `url`, `ui_url` | The OAuth and MCP discovery URLs, the auth cookie flags and path, the UI deep links |
-| `[storage]` | The `S3_*` fields | The upload store |
+| `[auth]` | The `IMBI_AUTH_*` fields | All |
+| `[clickhouse]` | The `CLICKHOUSE_*` fields | All |
+| `[embeddings]` | The `EMBEDDINGS_*` fields | All |
+| `[plugins]` | `imbi_plugins`, `imbi_plugins_disabled` (lists) | All |
+| `[postgres]` | The `POSTGRES_*` fields | All |
+| `[releases]` | The `IMBI_RELEASES_*` fields | All |
+| `[ssl]` | `cert_dir` | All |
+| `[valkey]` | The `VALKEY_*` fields | All |
+| `[server]` | The `IMBI_API_*` fields, `url`, `ui_url` | imbi-api |
+| `[email]` | The `IMBI_EMAIL_*` fields | imbi-api |
+| `[storage]` | The `S3_*` fields | imbi-api |
 
-imbi-api looks for the file in these places, in this order. A key in an
+Other settings classes, for example `Iggy`, `ConfigSecrets`, and the
+Anthropic settings, do not read `config.toml`. Use their environment
+variables.
+
+Each service looks for the file in these places, in this order. A key in an
 earlier file wins over the same key in a later file:
 
 1. `./config.toml`
 2. `~/.config/imbi/config.toml`
 3. `/etc/imbi/config.toml`
 
-!!! warning "A key in `config.toml` wins over the environment variable"
-    In the `[server]` and `[storage]` sections, a key that is set in
-    `config.toml` overrides the environment variable of the same setting.
-    The environment variable supplies only the keys that the file does not
-    set. All other sections, and all other services, ignore `config.toml`.
+An environment variable always wins over the same key in `config.toml`.
+The file supplies only the keys that the environment does not set.
 
-!!! warning "Set `[server]` values as environment variables"
-    imbi-api reads the CORS origins, the forwarded IPs, and the route prefix
-    (the path of `IMBI_API_URL`) from the environment only, when the
-    application starts. If `config.toml` sets `url` and the environment does
-    not set `IMBI_API_URL`, the routes mount with no prefix but the OAuth
-    URLs use the prefix of the file. Use environment variables for all
-    `[server]` values.
+imbi-api reads `[server]` one time, when the application starts. The route
+prefix (the path of `url`), the CORS origins, the forwarded IPs, the OAuth
+URLs, and the cookie path all come from that one read.
 
 Example:
 

@@ -38,16 +38,21 @@ Postgres = settings.Postgres
 base_settings_config = settings.base_settings_config
 
 
-class ServerConfig(pydantic_settings.BaseSettings):
+class ServerConfig(settings.ConfigFileSettings):
     """API server bind configuration."""
 
-    model_config = settings.base_settings_config(env_prefix='IMBI_API_')
+    # ``populate_by_name`` lets ``config.toml`` use the ``url`` and
+    # ``ui_url`` field names in place of their aliases.
+    model_config = settings.base_settings_config(env_prefix='IMBI_API_') | {
+        'populate_by_name': True
+    }
+    config_section = 'server'
     environment: str = 'development'
     host: str = 'localhost'
     port: typing.Annotated[int, pydantic.BeforeValidator(_parse_k8s_port)] = (
         8000
     )
-    cors_allowed_origins: list[str] = []
+    cors_allowed_origins: list[str] = []  # noqa: RUF012
     # Comma-separated list (or '*') of trusted proxy IPs whose
     # X-Forwarded-* headers are honored. Must be set when deploying
     # behind a reverse proxy so rate limiting keys on the real client
@@ -148,10 +153,11 @@ class Auth(settings.Auth):  # type: ignore[misc]
     dcr_enabled: bool = True
 
 
-class Email(pydantic_settings.BaseSettings):
+class Email(settings.ConfigFileSettings):
     """Email sending configuration."""
 
     model_config = settings.base_settings_config(env_prefix='IMBI_EMAIL_')
+    config_section = 'email'
 
     # Feature flags
     enabled: bool = True
@@ -180,7 +186,7 @@ class Email(pydantic_settings.BaseSettings):
     @pydantic.model_validator(mode='after')
     def configure_mailpit_defaults(self) -> Email:
         """Auto-configure for Mailpit in development."""
-        if os.getenv('ENVIRONMENT', 'development') != 'development':
+        if os.getenv('ENVIRONMENT', 'development').lower() != 'development':
             return self
         if self.smtp_host == 'localhost' and self.smtp_port == 587:
             mailpit_port = os.getenv('MAILPIT_SMTP_PORT')
@@ -191,10 +197,11 @@ class Email(pydantic_settings.BaseSettings):
         return self
 
 
-class Storage(pydantic_settings.BaseSettings):
+class Storage(settings.ConfigFileSettings):
     """S3-compatible object storage configuration."""
 
     model_config = settings.base_settings_config(env_prefix='S3_')
+    config_section = 'storage'
 
     endpoint_url: str | None = None  # None = real AWS S3
     access_key: str | None = None
@@ -205,7 +212,7 @@ class Storage(pydantic_settings.BaseSettings):
 
     # Upload constraints
     max_file_size: int = 50 * 1024 * 1024  # 50 MB
-    allowed_content_types: list[str] = [
+    allowed_content_types: list[str] = [  # noqa: RUF012
         'image/jpeg',
         'image/png',
         'image/gif',
@@ -300,33 +307,20 @@ def get_auth_settings() -> Auth:
 def get_server_config() -> ServerConfig:
     """Get the singleton ServerConfig instance.
 
-    Prefers values from a config file (when discoverable) over a fresh
-    ``ServerConfig()`` so TOML overrides for ``[server]`` (notably the
-    public URL) win over env-only defaults. Falls back to a plain
-    ``ServerConfig()`` when no config file is found or it fails to
-    parse, preserving dev-loopback behavior.
+    Every consumer (route mounting, CORS, forwarded IPs, OAuth URLs,
+    cookie paths) reads this one instance, so they agree.
     """
     global _server_config
     if _server_config is None:
-        try:
-            _server_config = load_config().server
-        except FileNotFoundError, OSError, ValueError, TypeError:
-            _server_config = ServerConfig()
+        _server_config = ServerConfig()
     return _server_config
 
 
 def get_storage_settings() -> Storage:
-    """Get the singleton Storage settings instance.
-
-    Mirrors :func:`get_server_config` — prefers a TOML ``[storage]``
-    section when one is present, falling back to env-only defaults.
-    """
+    """Get the singleton Storage settings instance."""
     global _storage_settings
     if _storage_settings is None:
-        try:
-            _storage_settings = load_config().storage
-        except FileNotFoundError, OSError, ValueError, TypeError:
-            _storage_settings = Storage()
+        _storage_settings = Storage()
     return _storage_settings
 
 
@@ -384,27 +378,6 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
     Configuration.
     """
 
-    @pydantic.model_validator(mode='before')
-    @classmethod
-    def merge_env_with_config(
-        cls, data: dict[str, typing.Any]
-    ) -> dict[str, typing.Any]:
-        """Merge environment variables with config file data."""
-        settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
-            'clickhouse': settings.Clickhouse,
-            'postgres': settings.Postgres,
-            'server': ServerConfig,
-            'auth': Auth,
-            'email': Email,
-            'storage': Storage,
-        }
-        for field, settings_cls in settings_fields.items():
-            if field in data and data[field] is not None:
-                if isinstance(data[field], settings_cls):
-                    continue
-                data[field] = settings_cls(**data[field])
-        return data
-
     server: ServerConfig = pydantic.Field(default_factory=ServerConfig)
     auth: Auth = pydantic.Field(default_factory=Auth)  # pyright: ignore[reportIncompatibleVariableOverride]
     email: Email = pydantic.Field(default_factory=Email)
@@ -417,15 +390,11 @@ Configuration = APIConfiguration
 
 
 def load_config() -> APIConfiguration:
-    """Load configuration from config.toml files.
+    """Load configuration from config.toml files with environment overrides.
 
-    Uses the shared ``load_config`` file-discovery logic but validates
-    the raw TOML data directly against ``APIConfiguration`` so that
-    API-specific sections (``[server]``, ``[email]``, ``[storage]``)
-    are included.
+    Includes the API-specific sections (``[server]``, ``[email]``,
+    ``[storage]``). An environment variable overrides the same key in a
+    config file.
 
     """
-    data = settings.load_config_data()
-    return APIConfiguration.model_validate(  # type: ignore[no-any-return]
-        data
-    )
+    return APIConfiguration()

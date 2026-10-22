@@ -1,4 +1,6 @@
 import os
+import pathlib
+import tempfile
 import typing
 import unittest
 import unittest.mock
@@ -77,6 +79,32 @@ class CreateAppTestCase(unittest.TestCase):
 
 class ApiPrefixTestCase(unittest.TestCase):
     """Test cases for prefix derivation from IMBI_API_URL."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        settings.clear_caches()
+        self.addCleanup(settings.clear_caches)
+
+    def test_toml_url_prefixes_routes_and_oauth_urls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / 'config.toml').write_text(
+                '[server]\nurl = "https://imbi.example.com/api"\n'
+            )
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                with unittest.mock.patch.dict(os.environ, {}, clear=True):
+                    application = app.create_app()
+                    callback = settings.oauth_callback_url('github')
+            finally:
+                os.chdir(original_cwd)
+        paths = {route.path for route in application.routes}
+        self.assertIn('/api/status', paths)
+        self.assertNotIn('/status', paths)
+        self.assertEqual(
+            callback,
+            'https://imbi.example.com/api/auth/oauth/github/callback',
+        )
 
     def test_prefix_applies_to_routes_but_not_docs(self) -> None:
         with unittest.mock.patch.dict(

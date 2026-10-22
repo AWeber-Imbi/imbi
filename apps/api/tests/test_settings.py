@@ -1,5 +1,7 @@
+import os
 import typing
 import unittest
+import unittest.mock
 
 import pydantic
 
@@ -110,6 +112,15 @@ class EmailSettingsTestCase(unittest.TestCase):
         finally:
             os.environ.pop('ENVIRONMENT', None)
             os.environ.pop('MAILPIT_SMTP_PORT', None)
+
+    def test_mailpit_detection_ignores_environment_case(self) -> None:
+        """``ENVIRONMENT=Development`` counts as development."""
+        with unittest.mock.patch.dict(
+            os.environ,
+            {'ENVIRONMENT': 'Development', 'MAILPIT_SMTP_PORT': '1025'},
+        ):
+            email = settings.Email(smtp_host='localhost', smtp_port=587)
+        self.assertEqual(email.smtp_port, 1025)
 
     def test_no_mailpit_detection_non_localhost(self) -> None:
         """Test that Mailpit detection only applies to localhost."""
@@ -260,14 +271,7 @@ access_token_expire_seconds = 7200
     def test_configuration_toml_values_used(self) -> None:
         """Test that config.toml values are loaded correctly.
 
-        Note: Environment variables DO override TOML values in
-        pydantic-settings, but only if they're set BEFORE the
-        BaseSettings class is instantiated. When we pass TOML data
-        as constructor kwargs (as done in the model_validator),
-        those kwargs take precedence per pydantic-settings design.
-
-        For production use, set environment variables before starting
-        the app and they will properly override config.toml values.
+        An environment variable overrides the same key in the file.
         """
         import os
         import pathlib
@@ -287,12 +291,36 @@ host = "127.0.0.1"
                 )
 
                 os.chdir(tmpdir)
+                with unittest.mock.patch.dict(
+                    os.environ, {'IMBI_API_PORT': '9100'}
+                ):
+                    config = settings.load_config()
+
+                # TOML values should be loaded, the env var wins
+                self.assertEqual(config.server.environment, 'testing')
+                self.assertEqual(config.server.port, 9100)
+                self.assertEqual(config.server.host, '127.0.0.1')
+        finally:
+            os.chdir(original_cwd)
+
+    def test_load_config_keeps_shared_sections(self) -> None:
+        """The API configuration reads the shared TOML sections too."""
+        import os
+        import pathlib
+        import tempfile
+
+        original_cwd = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                (pathlib.Path(tmpdir) / 'config.toml').write_text(
+                    '[releases]\nversion_format = "commitish"\n'
+                    '[ssl]\ncert_dir = "/certs"\n'
+                )
+                os.chdir(tmpdir)
                 config = settings.load_config()
 
-                # TOML values should be loaded
-                self.assertEqual(config.server.environment, 'testing')
-                self.assertEqual(config.server.port, 9000)
-                self.assertEqual(config.server.host, '127.0.0.1')
+                self.assertEqual(config.releases.version_format, 'commitish')
+                self.assertEqual(str(config.ssl.cert_dir), '/certs')
         finally:
             os.chdir(original_cwd)
 
