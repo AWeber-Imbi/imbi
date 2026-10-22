@@ -27,8 +27,9 @@ const BUILTIN_FORMATS: BuiltinFormat[] = [
       'MAJOR.MINOR.PATCH with optional pre-release and build metadata.',
     example: '2.11.5',
     label: 'Semantic versioning',
+    // Accepts a leading `v` like SEMVER_TAG_PATTERN in imbi.common.versioning.
     pattern:
-      '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+      '^v?(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
   },
   {
     description:
@@ -58,6 +59,10 @@ const BUILTIN_BY_PATTERN = new Map(BUILTIN_FORMATS.map((f) => [f.pattern, f]))
 // project types saved before the change. They render as that built-in row
 // (toggled on) and are persisted with the current pattern on the next save.
 const LEGACY_BUILTIN_PATTERNS = new Map<string, string>([
+  [
+    '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+    'Semantic versioning',
+  ],
   ['^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$', 'Calendar versioning'],
 ])
 
@@ -108,6 +113,18 @@ export function fullMatch(pattern: string, value: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Whether `formats` holds the earlier Semantic versioning pattern. Its
+ * current pattern accepts every tag the earlier one did, so storing it
+ * is safe. This is not true for Calendar versioning: the current pattern
+ * rejects tags such as `2026.09`.
+ */
+export function hasLegacySemverPattern(formats: TagFormat[]): boolean {
+  return formats.some(
+    (f) => LEGACY_BUILTIN_PATTERNS.get(f.pattern) === 'Semantic versioning',
+  )
 }
 
 /**

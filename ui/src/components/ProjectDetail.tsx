@@ -16,7 +16,6 @@ import {
   ChevronDown,
   Copy,
   Stethoscope as DoctorIcon,
-  Filter,
   RefreshCw,
   Rocket,
   Settings2 as SettingsIcon,
@@ -1418,15 +1417,8 @@ export function ProjectDetail({
                 className="flex min-h-0 flex-col"
                 style={{ maxHeight: `${activityMaxHeightPx}px` }}
               >
-                <CardHeader
-                  className="flex flex-row items-center justify-between"
-                  ref={activityHeaderRef}
-                >
+                <CardHeader ref={activityHeaderRef}>
                   <CardTitle>Recent activity</CardTitle>
-                  <button className="text-secondary hover:bg-secondary hover:text-primary inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors">
-                    <Filter className="size-3" />
-                    Filter
-                  </button>
                 </CardHeader>
                 <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
                   <div ref={activityInnerRef}>

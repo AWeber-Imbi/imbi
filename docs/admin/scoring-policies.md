@@ -80,8 +80,7 @@ definition.
 
 ## Policy types
 
-The form offers six types. A seventh type, **Deployment Status**, is
-available only through the API.
+The form offers seven types.
 
 | Type | `category` | Scores the project by |
 |---|---|---|
@@ -176,7 +175,12 @@ With **Score when true** 0 and **Score when false** 100.
 
 ### Deployment Status
 
-This type has no form. Create it with `POST /scoring/policies/`:
+Select the **Environment**. Under **Status Scores**, enter a score for
+each deployment status: **Success**, **In progress**, **Pending**,
+**Failed**, **Rolled back**, and **Not deployed**. A blank status is not
+put in the map.
+
+The API body has the same fields:
 
 ```json
 {

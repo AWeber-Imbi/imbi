@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildRows,
+  hasLegacySemverPattern,
   isTagAllowed,
   tagFormatHint,
   toFormats,
@@ -65,5 +66,48 @@ describe('buildRows', () => {
     expect(toFormats(rows)).toEqual([
       { label: 'Calendar versioning', pattern: CALVER },
     ])
+  })
+})
+
+describe('Semantic versioning built-in', () => {
+  it('accepts a leading v like the backend', () => {
+    const row = buildRows([]).find((r) => r.label === 'Semantic versioning')!
+    const formats = [{ label: row.label, pattern: row.pattern }]
+    expect(isTagAllowed('v1.2.3', formats)).toBe(true)
+    expect(isTagAllowed('1.2.3', formats)).toBe(true)
+    expect(isTagAllowed('V1.2.3', formats)).toBe(false)
+  })
+
+  it('renders the previous pattern as the built-in row', () => {
+    const rows = buildRows([
+      {
+        label: 'Semantic versioning',
+        pattern:
+          '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+      },
+    ])
+    expect(rows.filter((r) => !r.builtin)).toHaveLength(0)
+    expect(toFormats(rows)[0].pattern.startsWith('^v?')).toBe(true)
+  })
+
+  it('detects a stored previous pattern', () => {
+    const legacy = {
+      label: 'Semantic versioning',
+      pattern:
+        '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+    }
+    expect(hasLegacySemverPattern([legacy])).toBe(true)
+    expect(hasLegacySemverPattern(toFormats(buildRows([legacy])))).toBe(false)
+  })
+
+  it('does not flag the previous calendar pattern', () => {
+    expect(
+      hasLegacySemverPattern([
+        {
+          label: 'Calendar versioning',
+          pattern: '^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$',
+        },
+      ]),
+    ).toBe(false)
   })
 })

@@ -53,6 +53,7 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   analysis_result: 'Analysis Result',
   attribute: 'Attribute',
   condition: 'Condition',
+  deployment_status: 'Deployment Status',
   link_presence: 'Link Presence',
   presence: 'Presence',
 }
@@ -389,6 +390,13 @@ function categorySpecificExport(
         false_score: policy.false_score,
         true_score: policy.true_score,
       }
+    case 'deployment_status':
+      return {
+        environment_slug: policy.environment_slug,
+        ...(policy.status_score_map
+          ? { status_score_map: policy.status_score_map }
+          : {}),
+      }
     case 'link_presence':
       return presenceExport({
         missing_score: policy.missing_score,
@@ -407,6 +415,7 @@ function categorySpecificExport(
 function policySubjectKey(policy: ScoringPolicy): string {
   if (policy.category === 'link_presence') return policy.link_slug
   if (policy.category === 'analysis_result') return policy.result_slug
+  if (policy.category === 'deployment_status') return policy.environment_slug
   if (policy.category === 'condition') return ''
   return policy.attribute_name
 }

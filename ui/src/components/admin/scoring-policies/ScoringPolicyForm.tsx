@@ -3,7 +3,11 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Plus, Trash2 } from 'lucide-react'
 
-import { listLinkDefinitions, listProjectTypes } from '@/api/endpoints'
+import {
+  listEnvironments,
+  listLinkDefinitions,
+  listProjectTypes,
+} from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
 import {
   ConditionBuilder,
@@ -49,9 +53,22 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   analysis_result: 'Analysis Result',
   attribute: 'Attribute',
   condition: 'Condition',
+  deployment_status: 'Deployment Status',
   link_presence: 'Link Presence',
   presence: 'Presence',
 }
+
+// The statuses a deployment_status policy maps, with the server's
+// defaults. A blank score is left out of the map, so that status takes
+// the "Not deployed" score.
+const DEPLOYMENT_STATUSES: { default: string; key: string; label: string }[] = [
+  { default: '100', key: 'success', label: 'Success' },
+  { default: '100', key: 'in_progress', label: 'In progress' },
+  { default: '100', key: 'pending', label: 'Pending' },
+  { default: '0', key: 'failed', label: 'Failed' },
+  { default: '', key: 'rolled_back', label: 'Rolled back' },
+  { default: '100', key: 'missing', label: 'Not deployed' },
+]
 
 const CATEGORY_DESCRIPTIONS: Record<ScoringPolicyCategory, string> = {
   age: 'Score by how recently a datetime attribute changed, using the same threshold DSL as blueprint age maps (e.g. >30d, <=7d). Recomputed daily.',
@@ -61,6 +78,8 @@ const CATEGORY_DESCRIPTIONS: Record<ScoringPolicyCategory, string> = {
     'Map a specific attribute value or numeric range to a score (e.g. test-coverage tiers).',
   condition:
     'Combine attribute and relationship predicates with boolean logic, then map the result to a score (e.g. penalize projects that depend on a deprecated service).',
+  deployment_status:
+    "Score by the status of the project's latest deployment in one environment (e.g. penalize a failed production deploy).",
   link_presence:
     'Penalize projects that do not have a link of a specific type (e.g. missing source-code link).',
   presence:
@@ -168,6 +187,24 @@ export function ScoringPolicyForm({
       ? String(policy.status_score_map?.fail ?? 0)
       : '0',
   )
+  const [environmentSlug, setEnvironmentSlug] = useState(
+    policy?.category === 'deployment_status' ? policy.environment_slug : '',
+  )
+  const [deploymentScores, setDeploymentScores] = useState<
+    Record<string, string>
+  >(() =>
+    Object.fromEntries(
+      DEPLOYMENT_STATUSES.map((st) => {
+        if (
+          policy?.category !== 'deployment_status' ||
+          !policy.status_score_map
+        )
+          return [st.key, st.default]
+        const v = policy.status_score_map[st.key]
+        return [st.key, v == null ? '' : String(v)]
+      }),
+    ),
+  )
   const [condition, setCondition] = useState<Condition>(() =>
     policy?.category === 'condition'
       ? normalizeCondition(policy.condition)
@@ -203,6 +240,13 @@ export function ScoringPolicyForm({
     staleTime: 5 * 60 * 1000,
   })
 
+  const { data: environments = [] } = useQuery({
+    enabled: !!orgSlug && category === 'deployment_status',
+    queryFn: ({ signal }) => listEnvironments(orgSlug!, signal),
+    queryKey: queryKeys.environments(orgSlug ?? ''),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const sortedLinkDefinitions = useMemo(
     () => [...linkDefinitions].sort((a, b) => a.name.localeCompare(b.name)),
     [linkDefinitions],
@@ -221,7 +265,13 @@ export function ScoringPolicyForm({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {
       ...validateIdentity({ name, slug }),
-      ...validateSubject({ attributeName, category, linkSlug, resultSlug }),
+      ...validateSubject({
+        attributeName,
+        category,
+        environmentSlug,
+        linkSlug,
+        resultSlug,
+      }),
       ...validateWeight(weight),
       ...(category === 'condition'
         ? validateConditionFields({ condition, falseScore, trueScore })
@@ -232,6 +282,7 @@ export function ScoringPolicyForm({
             analysisWarnScore,
             attributeMapRows,
             category,
+            deploymentScores,
             missingScore,
             presentScore,
           })),
@@ -293,6 +344,19 @@ export function ScoringPolicyForm({
           pass: parseInt(analysisPassScore, 10),
           warn: parseInt(analysisWarnScore, 10),
         },
+      })
+      return
+    }
+    if (category === 'deployment_status') {
+      onSave({
+        ...base,
+        category: 'deployment_status',
+        environment_slug: environmentSlug,
+        status_score_map: Object.fromEntries(
+          Object.entries(deploymentScores)
+            .filter(([, v]) => v.trim() !== '')
+            .map(([k, v]) => [k, Number(v)]),
+        ),
       })
       return
     }
@@ -364,6 +428,7 @@ export function ScoringPolicyForm({
                   'link_presence',
                   'age',
                   'analysis_result',
+                  'deployment_status',
                   'condition',
                 ] as ScoringPolicyCategory[]
               ).map((c) => (
@@ -496,6 +561,38 @@ export function ScoringPolicyForm({
                   <code>present_score</code>
                 </p>
                 {fieldError('link_slug')}
+              </div>
+            ) : category === 'deployment_status' ? (
+              <div>
+                <Label
+                  className="text-secondary mb-1.5 block text-sm"
+                  htmlFor="sp-environment"
+                >
+                  Environment <RequiredAsterisk />
+                </Label>
+                <Select
+                  disabled={isLoading}
+                  onValueChange={setEnvironmentSlug}
+                  value={environmentSlug}
+                >
+                  <SelectTrigger
+                    className={errors.environment_slug ? 'border-danger' : ''}
+                    id="sp-environment"
+                  >
+                    <SelectValue placeholder="Pick an environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((env) => (
+                      <SelectItem key={env.slug} value={env.slug}>
+                        {env.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-tertiary mt-1 text-xs">
+                  The environment whose latest deployment status is scored
+                </p>
+                {fieldError('environment_slug')}
               </div>
             ) : category === 'analysis_result' ? (
               <div>
@@ -760,6 +857,47 @@ export function ScoringPolicyForm({
                   {fieldError('analysis_fail_score')}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {category === 'deployment_status' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Scores</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-tertiary text-xs">
+                Map the latest deployment status to a 0–100 score. A blank
+                status takes the Not deployed score.
+              </p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {DEPLOYMENT_STATUSES.map((st) => (
+                  <div key={st.key}>
+                    <Label
+                      className="text-secondary mb-1.5 block text-sm"
+                      htmlFor={`sp-deploy-${st.key}`}
+                    >
+                      {st.label}
+                    </Label>
+                    <Input
+                      disabled={isLoading}
+                      id={`sp-deploy-${st.key}`}
+                      max={100}
+                      min={0}
+                      onChange={(e) =>
+                        setDeploymentScores((prev) => ({
+                          ...prev,
+                          [st.key]: e.target.value,
+                        }))
+                      }
+                      type="number"
+                      value={deploymentScores[st.key]}
+                    />
+                  </div>
+                ))}
+              </div>
+              {fieldError('deployment_scores')}
             </CardContent>
           </Card>
         )}
@@ -1129,9 +1267,26 @@ function validateCategoryFields(args: {
   analysisWarnScore: string
   attributeMapRows: MapRow[]
   category: ScoringPolicyCategory
+  deploymentScores: Record<string, string>
   missingScore: string
   presentScore: string
 }): Record<string, string> {
+  if (args.category === 'deployment_status') {
+    const scores = Object.values(args.deploymentScores).filter(
+      (v) => v.trim() !== '',
+    )
+    if (scores.length === 0) {
+      return { deployment_scores: 'Enter at least one score' }
+    }
+    // Check the value that handleSave stores, so "1e2" is not saved as 1.
+    const bad = scores.some((v) => {
+      const n = Number(v)
+      return !Number.isInteger(n) || n < 0 || n > 100
+    })
+    return bad
+      ? { deployment_scores: 'Scores must be whole numbers 0–100' }
+      : {}
+  }
   if (args.category === 'age') {
     const err = validateAgeMap(args.ageMapRows)
     return err ? { age_map: err } : {}
@@ -1198,9 +1353,15 @@ function validatePresenceScores(
 function validateSubject(args: {
   attributeName: string
   category: ScoringPolicyCategory
+  environmentSlug: string
   linkSlug: string
   resultSlug: string
 }): Record<string, string> {
+  if (args.category === 'deployment_status') {
+    return args.environmentSlug
+      ? {}
+      : { environment_slug: 'Environment is required' }
+  }
   if (args.category === 'link_presence') {
     return args.linkSlug.trim() ? {} : { link_slug: 'Link type is required' }
   }
