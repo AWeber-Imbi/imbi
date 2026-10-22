@@ -7,6 +7,7 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.harness import auth as harness_auth
@@ -259,6 +260,9 @@ organizations_router.include_router(
     secret_audit_router,
     prefix='/{org_slug}/secret-audit-events',
 )
+# The deploy, commit-sync and PR-sync routes act with the caller's role
+# in the path organization only, on a project of that organization.
+_PROJECT_MEMBER = [fastapi.Depends(org_auth.member_project_org_id)]
 organizations_router.include_router(
     project_configuration_router,
     prefix='/{org_slug}/projects/{project_id}/configuration',
@@ -278,6 +282,7 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_deployments_router,
     prefix='/{org_slug}/projects/{project_id}/deployments',
+    dependencies=_PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_analysis_router,
@@ -286,10 +291,12 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_commit_sync_router,
     prefix='/{org_slug}/projects/{project_id}/commits',
+    dependencies=_PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_pr_sync_router,
     prefix='/{org_slug}/projects/{project_id}/pull-requests',
+    dependencies=_PROJECT_MEMBER,
 )
 organizations_router.include_router(
     pull_requests_project_router,

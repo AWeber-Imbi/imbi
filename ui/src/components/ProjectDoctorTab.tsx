@@ -70,6 +70,10 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
     isAdmin || (user?.permissions ?? []).includes('scoring_policy:rescore')
   const canResyncDeployments =
     isAdmin || (user?.permissions ?? []).includes('project:deployment:write')
+  const canSyncCommits =
+    isAdmin || (user?.permissions ?? []).includes('project:commits:write')
+  const canSyncPRs =
+    isAdmin || (user?.permissions ?? []).includes('project:pull-requests:write')
 
   // A build-and-release project has no environments to deploy into, so the
   // same resync reads as "Sync Releases" there. ``releasable`` /
@@ -148,13 +152,13 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
     }
   })
 
-  // Shares the deployment:write gate: the backend requires a GitHub
-  // deployment plugin (eligibility) plus a connected commit-sync plugin.
-  const commitSync = useCommitSync(orgSlug, project.id, canResyncDeployments)
+  // POST /commits/sync requires commits:write. The backend also requires a
+  // GitHub deployment plugin (eligibility) plus a connected commit-sync plugin.
+  const commitSync = useCommitSync(orgSlug, project.id, canSyncCommits)
 
-  // Same deployment:write gate: requires the GitHub deployment plugin
-  // plus a connected github-pr-sync plugin for the service credential.
-  const prSync = usePRSync(orgSlug, project.id, canResyncDeployments)
+  // POST /pull-requests/sync requires pull-requests:write, the GitHub
+  // deployment plugin, and a connected github-pr-sync plugin.
+  const prSync = usePRSync(orgSlug, project.id, canSyncPRs)
 
   const setReport = (report: AnalysisReport) =>
     queryClient.setQueryData(['projectAnalysis', orgSlug, project.id], report)
@@ -196,7 +200,11 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
 
   return (
     <div className="space-y-6">
-      {(canAnalyze || canRescore || canResyncDeployments) && (
+      {(canAnalyze ||
+        canRescore ||
+        canResyncDeployments ||
+        canSyncCommits ||
+        canSyncPRs) && (
         <Card>
           <CardHeader>
             <CardTitle>Utility Functions</CardTitle>
@@ -232,7 +240,7 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 {resync.isSyncing ? 'Syncing...' : syncLabel}
               </Button>
             )}
-            {canResyncDeployments && (
+            {canSyncCommits && (
               <Button
                 disabled={commitSync.isSyncing}
                 onClick={() => commitSync.sync()}
@@ -242,7 +250,7 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 {commitSync.isSyncing ? 'Syncing...' : 'Sync Commits & Tags'}
               </Button>
             )}
-            {canResyncDeployments && (
+            {canSyncPRs && (
               <Button
                 disabled={prSync.isSyncing}
                 onClick={() => prSync.sync()}

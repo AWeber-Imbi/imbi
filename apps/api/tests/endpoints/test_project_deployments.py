@@ -14,7 +14,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from imbi.api import models
-from imbi.api.auth import password, permissions
+from imbi.api.auth import organizations, password, permissions
 from imbi.api.endpoints import _helpers, project_deployments
 from imbi.api.endpoints.project_deployments import (
     DraftReleaseNotes,
@@ -348,6 +348,10 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # Org scoping has its own real-graph tests (test_organizations).
+        self.test_app.dependency_overrides[
+            organizations.member_project_org_id
+        ] = lambda: 'org-id'
 
         self.mock_anthropic = mock.MagicMock(spec=AnthropicClient)
         self.mock_anthropic.complete_json = mock.AsyncMock(

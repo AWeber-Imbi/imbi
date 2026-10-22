@@ -137,3 +137,44 @@ async def check_member(
 
 #: The id of the organization in the path, for a caller that is a member.
 MemberOrgId = typing.Annotated[str, fastapi.Depends(member_org_id)]
+
+_PROJECT_IN_ORG_QUERY: typing.LiteralString = """
+MATCH (p:Project {{id: {project_id}}})
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+RETURN p.id AS id
+LIMIT 1
+"""
+
+
+async def member_project_org_id(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> str:
+    """:func:`member_org_id` for routes under
+    ``/organizations/{org_slug}/projects/{project_id}``.
+
+    The project must also belong to the organization. Otherwise a
+    member of one organization could use their role there on the
+    project of another organization.
+
+    Raises:
+        403: The caller is not a member of the organization.
+        404: No such organization, or the project is not in it.
+
+    """
+    org_id = await check_member(org_slug, db, auth)
+    if not await db.execute(
+        _PROJECT_IN_ORG_QUERY,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
+    ):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found in {org_slug!r}',
+        )
+    return org_id

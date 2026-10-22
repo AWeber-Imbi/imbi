@@ -228,6 +228,33 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
                     & roles[slug]
                 )
 
+    def test_project_delivery_permission_grants(self) -> None:
+        """Developers deploy and sync; every reader sees delivery state.
+
+        Without these grants a developer gets 403 from the Deployments
+        tab, the Operations Log, deploy/promote, and the Doctor tab's
+        Sync PRs and Sync Commits & Tags buttons.
+        """
+        reads = {
+            'project:commits:read',
+            'project:deployment:read',
+            'project:pull-requests:read',
+        }
+        roles = {r[0]: set(r[4]) for r in seed.DEFAULT_ROLES}
+        self.assertLessEqual(
+            reads
+            | {
+                'project:commits:write',
+                'project:deployment:write',
+                'project:pull-requests:write',
+                'operations_log:read',
+            },
+            roles['developer'],
+        )
+        for slug in ('default', 'readonly'):
+            with self.subTest(role=slug):
+                self.assertLessEqual(reads, roles[slug])
+
     def test_read_only_roles_can_read_the_schedule(self) -> None:
         """Every read-only role grants ``scheduled_task:read``.
 
