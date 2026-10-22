@@ -159,8 +159,34 @@ mark one assignment as the default. If no assignment is the default, a
 request for that capability fails with `400`.
 
 Each assignment can also hold per-environment payloads (`env_payloads`).
-The GitHub deployment capability sends them as workflow inputs. The UI does
-not edit them. Use the API:
+The GitHub deployment capability sends them as workflow inputs. The
+payloads are one JSON object. Each key is an environment slug, and each
+value is a JSON object:
+
+```json
+{
+  "production": { "region": "us-east-1" },
+  "staging": { "region": "us-west-2" }
+}
+```
+
+To edit the payloads:
+
+- **Project type assignment.** On the integration page, expand the
+  capability. Under **Environment payloads**, edit the field of the project
+  type. Imbi saves the value when the field loses focus. A capability that
+  applies to all project types has no assignment, so it has no payloads.
+- **Project override.** On the project settings tab, in the
+  **Integrations** card, expand the override. Edit **Environment
+  payloads**, then click **Save Changes**.
+
+A project override payload merges into the project type payload for the
+same environment. The override value wins for each key.
+
+The UI does not save a value that is not valid. It shows an error below
+the field.
+
+You can also use the API:
 `PUT /organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments`.
 This `PUT` replaces all assignments of the capability, so send every
 assignment that you want to keep. When you change the project types on the

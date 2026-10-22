@@ -188,28 +188,16 @@ export function IntegrationDetail({
   // The PUT replaces every assignment of the kind, so rows that stay must
   // send their current values back. Only newly added rows get defaults.
   const assignmentMutation = useMutation({
-    mutationFn: ({ kind, slugs }: { kind: string; slugs: string[] }) => {
-      const current = new Map(
-        (assignmentsByKind[kind] ?? []).map((a) => [a.project_type_slug, a]),
-      )
-      return replaceCapabilityAssignments(
-        orgSlug!,
-        slug,
-        kind as CapabilityKind,
-        {
-          assignments: slugs.map(
-            (project_type_slug) =>
-              current.get(project_type_slug) ?? {
-                default: false,
-                env_payloads: {},
-                identity_integration_slug: null,
-                options: {},
-                project_type_slug,
-              },
-          ),
-        },
-      )
-    },
+    mutationFn: ({
+      assignments,
+      kind,
+    }: {
+      assignments: CapabilityAssignment[]
+      kind: string
+    }) =>
+      replaceCapabilityAssignments(orgSlug!, slug, kind as CapabilityKind, {
+        assignments,
+      }),
     onError: (err) => toast.error(`Save failed: ${extractApiErrorDetail(err)}`),
     // Awaited so the mutation stays pending until the refetch lands; the
     // next edit must build its replacement from the refreshed list.
@@ -434,6 +422,12 @@ export function IntegrationDetail({
                           description={cap.description}
                           editable={editable}
                           enabled={enabled}
+                          envPayloadsByType={Object.fromEntries(
+                            (assignmentsByKind[cap.kind] ?? []).map((a) => [
+                              a.project_type_slug,
+                              a.env_payloads,
+                            ]),
+                          )}
                           key={cap.kind}
                           kind={cap.kind}
                           label={cap.label}
@@ -444,8 +438,23 @@ export function IntegrationDetail({
                           }
                           onAssignmentChange={(slugs) =>
                             assignmentMutation.mutate({
+                              assignments: withTypes(
+                                assignmentsByKind[cap.kind] ?? [],
+                                slugs,
+                              ),
                               kind: cap.kind,
-                              slugs,
+                            })
+                          }
+                          onEnvPayloadsChange={(typeSlug, envPayloads) =>
+                            assignmentMutation.mutate({
+                              assignments: (
+                                assignmentsByKind[cap.kind] ?? []
+                              ).map((a) =>
+                                a.project_type_slug === typeSlug
+                                  ? { ...a, env_payloads: envPayloads }
+                                  : a,
+                              ),
+                              kind: cap.kind,
                             })
                           }
                           onOptionChange={(optName, value) =>
@@ -815,5 +824,24 @@ function OptionRow({
         </InlineDisplay>
       )}
     </div>
+  )
+}
+
+// The assignments for `slugs`: a type that stays keeps its current values,
+// and a new type gets defaults.
+function withTypes(
+  current: CapabilityAssignment[],
+  slugs: string[],
+): CapabilityAssignment[] {
+  const byType = new Map(current.map((a) => [a.project_type_slug, a]))
+  return slugs.map(
+    (project_type_slug) =>
+      byType.get(project_type_slug) ?? {
+        default: false,
+        env_payloads: {},
+        identity_integration_slug: null,
+        options: {},
+        project_type_slug,
+      },
   )
 }

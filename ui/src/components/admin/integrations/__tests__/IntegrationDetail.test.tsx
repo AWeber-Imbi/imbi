@@ -137,7 +137,7 @@ describe('IntegrationDetail assignments', () => {
     )
 
     // The assigned type renders once the current assignments are loaded.
-    await screen.findByText('API')
+    await screen.findAllByText('API')
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Consumer' }))
 
@@ -160,5 +160,56 @@ describe('IntegrationDetail assignments', () => {
         },
       ),
     )
+  })
+
+  it('saves edited environment payloads for one project type', async () => {
+    render(
+      <IntegrationDetail onBack={vi.fn()} seed={integration} slug="github" />,
+    )
+
+    const editor = await screen.findByRole('textbox', {
+      name: 'API environment payloads',
+    })
+    expect(editor).toHaveValue(JSON.stringify(existing.env_payloads, null, 2))
+    fireEvent.change(editor, {
+      target: { value: '{"staging": {"region": "us-west-2"}}' },
+    })
+    fireEvent.blur(editor)
+
+    await waitFor(() =>
+      expect(replaceCapabilityAssignments).toHaveBeenCalledWith(
+        'acme',
+        'github',
+        'deployment',
+        {
+          assignments: [
+            {
+              ...existing,
+              env_payloads: { staging: { region: 'us-west-2' } },
+            },
+          ],
+        },
+      ),
+    )
+  })
+
+  it('does not save invalid environment payloads', async () => {
+    render(
+      <IntegrationDetail onBack={vi.fn()} seed={integration} slug="github" />,
+    )
+
+    const editor = await screen.findByRole('textbox', {
+      name: 'API environment payloads',
+    })
+    fireEvent.change(editor, { target: { value: '{"staging": 1}' } })
+    fireEvent.blur(editor)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The payload for "staging" must be a JSON object.',
+    )
+    expect(editor).toHaveAccessibleDescription(
+      'The payload for "staging" must be a JSON object.',
+    )
+    expect(replaceCapabilityAssignments).not.toHaveBeenCalled()
   })
 })

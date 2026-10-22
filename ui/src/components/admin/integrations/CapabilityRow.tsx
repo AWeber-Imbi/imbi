@@ -15,6 +15,10 @@ import {
   X,
 } from 'lucide-react'
 
+import {
+  type EnvPayloads,
+  EnvPayloadsEditor,
+} from '@/components/plugin-options/EnvPayloadsEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -44,10 +48,16 @@ export interface CapabilityRowProps {
   description?: null | string
   editable?: boolean
   enabled: boolean
+  /**
+   * Per-environment payloads of each assigned project type, by type slug.
+   * The editor shows only when `onEnvPayloadsChange` is passed.
+   */
+  envPayloadsByType?: Record<string, EnvPayloads>
   kind: string
   label: string
   note?: null | string
   onAssignmentChange: (slugs: string[]) => void
+  onEnvPayloadsChange?: (typeSlug: string, next: EnvPayloads) => void
   onOptionChange: (name: string, value: unknown) => void
   onToggle: (enabled: boolean) => void
   options: PluginOption[]
@@ -85,10 +95,12 @@ export function CapabilityRow({
   description,
   editable = true,
   enabled,
+  envPayloadsByType = {},
   kind,
   label,
   note,
   onAssignmentChange,
+  onEnvPayloadsChange,
   onOptionChange,
   onToggle,
   options,
@@ -293,6 +305,40 @@ export function CapabilityRow({
               )}
             </div>
           )}
+
+          {projectScoped &&
+            onEnvPayloadsChange &&
+            !assignMode &&
+            assignedTypeSlugs.length > 0 && (
+              <div>
+                <div className="text-tertiary mb-2 text-xs font-semibold tracking-wide uppercase">
+                  Environment payloads
+                </div>
+                <div className="flex max-w-130 flex-col gap-3">
+                  {projectTypes
+                    .filter((t) => assignedTypeSlugs.includes(t.slug))
+                    .map((t) => (
+                      <div key={t.slug}>
+                        <div className="text-secondary mb-1 text-xs">
+                          {t.name}
+                        </div>
+                        <EnvPayloadsEditor
+                          disabled={!editable || assignmentDisabled}
+                          id={`env-payloads-${kind}-${t.slug}`}
+                          label={`${t.name} environment payloads`}
+                          onChange={(next) => onEnvPayloadsChange(t.slug, next)}
+                          value={envPayloadsByType[t.slug] ?? {}}
+                        />
+                      </div>
+                    ))}
+                </div>
+                <div className="text-tertiary mt-1.5 text-xs">
+                  A JSON object keyed by environment slug. Each value is sent
+                  with that environment's requests, for example as workflow
+                  inputs.
+                </div>
+              </div>
+            )}
 
           {callbackUrl && (
             <div>
