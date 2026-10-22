@@ -297,6 +297,11 @@ async def _setup_async() -> None:
     """Async implementation of setup command."""
     typer.echo('=== Imbi Setup ===\n')
 
+    # Create the extensions and graph first: the pool registers the
+    # pgvector type on every connection, so it cannot open on an empty
+    # database.
+    await _setup_postgres_async()
+
     # Initialize Graph connection
     db = graph.Graph()
     try:
