@@ -6,11 +6,14 @@ from unittest import mock
 
 import fastapi
 import pydantic
+from fastapi import testclient
 
+from apps.api.tests import support
 from imbi.api import settings
 from imbi.api.domain import models
 from imbi.api.endpoints import auth
 from imbi.api.middleware import rate_limit
+from imbi.common import graph
 
 
 def _patch_auth(**overrides: object) -> mock._patch[mock.MagicMock]:
@@ -126,3 +129,30 @@ class RefreshGrantRateLimitTestCase(unittest.IsolatedAsyncioTestCase):
                 await auth._refresh_token_grant(request, mock.Mock(), None)
             self.assertEqual(blocked.exception.status_code, 429)
             self.assertIn('2 per 1 hour', blocked.exception.detail)
+
+
+class SharedRefreshBucketTestCase(support.SharedAppTestCase):
+    def setUp(self) -> None:
+        rate_limit.limiter.reset()
+        self.addCleanup(rate_limit.limiter.reset)
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            mock.AsyncMock(spec=graph.Graph)
+        )
+        self.client = testclient.TestClient(self.test_app)
+
+    def test_token_grant_and_refresh_route_share_a_bucket(self) -> None:
+        for prefix in ('', 'imbi'):
+            with (
+                self.subTest(key_prefix=prefix),
+                mock.patch.object(rate_limit.limiter, '_key_prefix', prefix),
+                _patch_auth(rate_limit_token_refresh='1/minute'),
+            ):
+                rate_limit.limiter.reset()
+                # The grant spends the only hit, then fails on the
+                # missing token.
+                grant = self.client.post(
+                    '/auth/token', data={'grant_type': 'refresh_token'}
+                )
+                self.assertEqual(grant.status_code, 400)
+                refresh = self.client.post('/auth/token/refresh')
+                self.assertEqual(refresh.status_code, 429)

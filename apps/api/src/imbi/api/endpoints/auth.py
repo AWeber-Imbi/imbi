@@ -319,15 +319,19 @@ async def _refresh_token_grant(
     # Count this grant in the same bucket as /auth/token/refresh, so the
     # /auth/token route cannot bypass IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH.
     # The setting can hold several limits (e.g. "10/minute;100/hour").
-    # Like slowapi, stop at the first limit that is exceeded.
+    # Build the storage key the same way as slowapi's __evaluate_limits
+    # (optional key prefix, client key, scope), and like slowapi, stop at
+    # the first limit that is exceeded.
+    limiter = rate_limit.limiter
+    key = [rate_limit.get_rate_limit_key(request), _REFRESH_LIMIT_SCOPE]
+    # slowapi has no public accessor for the key prefix.
+    prefix = limiter._key_prefix  # pyright: ignore[reportPrivateUsage]
+    if prefix:
+        key.insert(0, prefix)
     for refresh_limit in limits.parse_many(
         auth_settings.rate_limit_token_refresh
     ):
-        if rate_limit.limiter.enabled and not rate_limit.limiter.limiter.hit(
-            refresh_limit,
-            rate_limit.get_rate_limit_key(request),
-            _REFRESH_LIMIT_SCOPE,
-        ):
+        if limiter.enabled and not limiter.limiter.hit(refresh_limit, *key):
             raise fastapi.HTTPException(
                 status_code=429,
                 detail=f'Rate limit exceeded: {refresh_limit}',
