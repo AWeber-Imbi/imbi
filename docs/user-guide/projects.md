@@ -118,7 +118,8 @@ Imbi opens the new project. Imbi then tells the lifecycle plugins about it.
 For example, the GitHub plugin can make the repository.
 
 The dialog also shows environment chips. In this release, Imbi does not
-save the environments that you select there. Add the environments on the
+save the environments that you select there
+([#477](https://github.com/AWeber-Imbi/imbi/issues/477)). Add the environments on the
 **Overview** tab after you create the project. See
 [Environments](#environments).
 
