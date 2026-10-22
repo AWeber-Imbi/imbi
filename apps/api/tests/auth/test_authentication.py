@@ -9,7 +9,8 @@ import jwt
 
 from apps.api.tests import support
 from imbi.api import models, settings
-from imbi.api.auth import password
+from imbi.api.auth import local_auth, password
+from imbi.api.domain import models as domain_models
 from imbi.api.middleware import rate_limit
 from imbi.common import graph
 from imbi.common.auth import core
@@ -155,6 +156,16 @@ class LoginEndpointTestCase(support.SharedAppTestCase):
         )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()
+        # Local auth on: keep db.match mocks serving only the user
+        patcher = mock.patch.object(
+            local_auth,
+            'get_config',
+            mock.AsyncMock(
+                return_value=domain_models.LocalAuthConfig(enabled=True)
+            ),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.test_user = models.User(
             email='test@example.com',
