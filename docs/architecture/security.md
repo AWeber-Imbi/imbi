@@ -179,7 +179,7 @@ The `AuthContext` holds:
 |---|---|
 | `user` or `service_account` | The principal |
 | `auth_method` | `jwt`, `api_key`, `client_credentials`, or `agent_api` |
-| `permissions` | The permission names of the principal's roles, limited by the scopes of an API key |
+| `permissions` | The permission names of the principal's roles, limited by the scopes of an API key or a client-credential token |
 | `organization_id` | The organization of an agent API token. Empty for other credentials |
 | `session_id` | The `jti` of a JWT, or the id of an API key |
 
@@ -188,8 +188,10 @@ The `AuthContext` holds:
 users only, so a service account never passes in this way. Some routes
 also accept a `CAN_ACCESS` edge from the user to one resource.
 
-imbi-api keeps a successful API key check in memory for 60 seconds. A
-revoked key can thus work for up to 60 more seconds on each API process.
+Each process keeps a successful API key check in memory for 60 seconds.
+Each request still reads the key from the graph, so a revoked, rotated,
+deleted, or expired key stops at once. A change to the roles of the owner
+applies within 60 seconds.
 
 ### Organization scope
 
@@ -318,6 +320,3 @@ authorization headers with `[redacted]` before it stores a delivery. See
   organization routes, the API uses only the role in that organization.
   The UI can thus show an action that returns 403.
   [#458](https://github.com/AWeber-Imbi/imbi/issues/458)
-- Client-credential tokens are not limited by their requested scopes.
-  API key scopes do apply.
-  [#484](https://github.com/AWeber-Imbi/imbi/issues/484)

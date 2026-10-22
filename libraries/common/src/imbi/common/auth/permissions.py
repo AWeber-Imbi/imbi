@@ -162,14 +162,16 @@ class AuthContext(pydantic.BaseModel):
 
 # M15: bounded per-process cache for successful API-key auth so a
 # hot path (CI bot hammering the API with the same key) doesn't pay
-# the full Argon2 verify + graph round-trip on every request. The
-# cache value is a fully-formed AuthContext; the key is the SHA-256
-# of the raw API key string so we don't keep the plaintext key in
-# memory. TTL is short so revocations / scope changes propagate
-# within a minute.
+# the Argon2 verify and the permission queries on every request. The
+# cache value is the stored ``key_hash`` and a fully-formed
+# AuthContext; the key is the SHA-256 of the raw API key string so we
+# don't keep the plaintext key in memory. Each request still reads the
+# APIKey node, so a revoked, rotated, deleted, or expired key fails at
+# once in every process. Role and scope changes take effect within the
+# TTL.
 _API_KEY_CACHE_TTL_SECONDS = 60
 _API_KEY_CACHE_MAX_ENTRIES = 1024
-_api_key_cache: cache.LRUCache[str, AuthContext] = cache.LRUCache(
+_api_key_cache: cache.LRUCache[str, tuple[str, AuthContext]] = cache.LRUCache(
     _API_KEY_CACHE_MAX_ENTRIES, ttl=_API_KEY_CACHE_TTL_SECONDS
 )
 
@@ -178,11 +180,13 @@ def _api_key_cache_key(key: str) -> str:
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
 
-def _api_key_cache_lookup(key: str) -> AuthContext | None:
-    """Return a cached AuthContext if present and unexpired."""
-    ctx = _api_key_cache.get(_api_key_cache_key(key))
-    if ctx is None:
+def _api_key_cache_lookup(key: str, key_hash: str) -> AuthContext | None:
+    """Return a cached AuthContext if present, unexpired, and stored
+    for the same ``key_hash`` (a rotation changes it)."""
+    entry = _api_key_cache.get(_api_key_cache_key(key))
+    if entry is None or entry[0] != key_hash:
         return None
+    ctx = entry[1]
     # A copy, not the cached instance. `AuthContext` is not frozen, and
     # `imbi.api.auth.organizations.check_member` narrows `permissions` to one
     # organization, so handing out the shared object would change what every
@@ -190,21 +194,21 @@ def _api_key_cache_lookup(key: str) -> AuthContext | None:
     return ctx.model_copy(deep=True)
 
 
-def _api_key_cache_store(key: str, ctx: AuthContext) -> None:
+def _api_key_cache_store(key: str, key_hash: str, ctx: AuthContext) -> None:
     """Store a copy of an AuthContext in the bounded LRU cache.
 
     A copy, because the caller returns ``ctx`` to the request, which can
     change it (see :func:`_api_key_cache_lookup`).
     """
-    _api_key_cache.set(_api_key_cache_key(key), ctx.model_copy(deep=True))
+    _api_key_cache.set(
+        _api_key_cache_key(key), (key_hash, ctx.model_copy(deep=True))
+    )
 
 
 def clear_api_key_cache() -> None:
     """Drop every cached API-key AuthContext.
 
-    Tests use this to keep cases independent; callers that rotate /
-    revoke a key in-process can also use it for instant invalidation
-    instead of waiting on the TTL.
+    Tests use this to keep cases independent.
     """
     _api_key_cache.clear()
 
@@ -460,6 +464,12 @@ async def authenticate_jwt(
         perms = await load_principal_permissions(
             db, 'ServiceAccount', 'slug', subject
         )
+        # The same rule as an API key: a token without scopes has every
+        # permission of the account's roles, and a token with scopes has
+        # only the ones that are in both.
+        scopes = str(claims.get('scope') or '').split()
+        if scopes:
+            perms &= set(scopes)
         return AuthContext(
             service_account=sa,
             session_id=jti,
@@ -573,16 +583,6 @@ async def authenticate_api_key(
     key_id = f'ik_{parts[1]}'
     key_secret = parts[2]
 
-    # M15: fast path — a hot key (e.g. a CI bot looping requests)
-    # would otherwise re-run Argon2 + 2 graph round-trips per call.
-    # The cache short-circuits the whole thing for up to
-    # ``_API_KEY_CACHE_TTL_SECONDS``; revocations propagate at the
-    # next miss. ``_stamp_api_key_last_used`` is still invoked on a
-    # miss, so ``last_used`` updates at most once per TTL window.
-    cached = _api_key_cache_lookup(key)
-    if cached is not None:
-        return cached
-
     # Fetch API key and owner (User or ServiceAccount)
     query = (
         'MATCH (k:APIKey {{key_id: {key_id}}}) '
@@ -633,10 +633,31 @@ async def authenticate_api_key(
                 detail='API key expired',
             )
 
+    key_hash = api_key_data.get('key_hash')
+
+    # M15: fast path -- a hot key (e.g. a CI bot looping requests)
+    # would otherwise re-run Argon2 and the permission queries per
+    # call. It comes after the revoked and expiry checks above, so
+    # those take effect at once. ``_stamp_api_key_last_used`` runs
+    # only on a miss, so ``last_used`` updates at most once per TTL.
+    # The owner row is already loaded, so check it before a cache hit:
+    # deactivating the owner then takes effect at once as well.
+    owner = sa_data or user_data
+    if not owner.get('is_active', True):
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Service account is inactive'
+            if sa_data
+            else 'User account is inactive',
+        )
+
+    cached = _api_key_cache_lookup(key, key_hash) if key_hash else None
+    if cached is not None:
+        return cached
+
     # Verify key secret (hashed). A row without `key_hash` is unverifiable,
     # which is a failed authentication and not a server fault -- subscripting
     # it would raise `KeyError` and answer a bad credential with a 500.
-    key_hash = api_key_data.get('key_hash')
     if not key_hash or not await asyncio.to_thread(
         password.verify_password, key_secret, key_hash
     ):
@@ -670,7 +691,7 @@ async def authenticate_api_key(
             auth_method='api_key',
             permissions=filtered,
         )
-        _api_key_cache_store(key, ctx)
+        _api_key_cache_store(key, key_hash, ctx)
         return ctx
 
     user = models.User(**user_data)
@@ -695,7 +716,7 @@ async def authenticate_api_key(
         permissions=filtered,
         identities=identities,
     )
-    _api_key_cache_store(key, ctx)
+    _api_key_cache_store(key, key_hash, ctx)
     return ctx
 
 

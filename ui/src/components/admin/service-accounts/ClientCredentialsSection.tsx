@@ -344,7 +344,7 @@ export function ClientCredentialsSection({
               <Input
                 id="credential-scopes"
                 onChange={(e) => setCredentialScopes(e.target.value)}
-                placeholder="e.g., read:projects, write:projects"
+                placeholder="e.g., project:read, project:write"
                 value={credentialScopes}
               />
             </div>

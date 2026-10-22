@@ -515,6 +515,13 @@ async def token(
         granted_scopes = cred_scopes
     else:
         granted_scopes = requested_scopes
+    # A token with no scope claim gets all of the service account's
+    # permissions, so an empty grant must not issue a token.
+    if requested_scopes and not granted_scopes:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='invalid_scope',
+        )
 
     # Create tokens
     auth_settings = settings.get_auth_settings()
@@ -1310,6 +1317,10 @@ async def _rotate_refresh_token(
         principal_type = 'service_account'
         principal_id = sa.slug
         extra_claims = {'auth_method': 'client_credentials'}
+        # Keep the scopes of the first token. Without them, the rotated
+        # token gets every permission of the account's roles.
+        if payload.get('scope'):
+            extra_claims['scope'] = payload['scope']
     else:
         user_results = await db.match(models.User, {'email': subject})
         user = user_results[0] if user_results else None

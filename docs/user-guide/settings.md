@@ -154,9 +154,7 @@ Each row shows when you made the key and when a request last used it.
 1. On the row of the key, click **Revoke**.
 2. Click **Revoke key** to confirm.
 
-A revoked key no longer shows in the list. Each API process keeps a
-validated key in memory for up to 60 seconds. Thus a revoked key can
-still work for up to 60 seconds.
+A revoked key no longer shows in the list. It stops working at once.
 
 For keys that are not personal, use a service account. See
 [Service accounts](../admin/service-accounts.md).

@@ -22,9 +22,15 @@ A missing or bad token gives `401`.
 For an API key, the permissions are the permissions of the key owner,
 limited to the key's scopes. An empty scope list means no limit. The
 module caches a successful API-key result for 60 seconds, for at most
-1024 keys. A revoked key can therefore work for up to 60 seconds in a
-process. Call `clear_api_key_cache()` to remove the cached results at
-once.
+1024 keys. A cache hit skips the secret check and the permission queries,
+but it still reads the key from the graph. Thus a revoked, rotated,
+deleted, or expired key fails at once. A change to the owner's roles
+applies within 60 seconds. Call `clear_api_key_cache()` to remove the
+cached results at once.
+
+A client-credentials JWT (`auth_method` `client_credentials`) follows the
+same rule: when the token has a `scope` claim, the permissions are
+limited to those scopes.
 
 A service refuses agent API tokens until it calls
 `accept_agent_api_tokens()`. Only `imbi-api` calls it. An agent API
