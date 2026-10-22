@@ -4,8 +4,8 @@
 Sign in with Google (Google Workspace / consumer Google accounts) via the
 OAuth 2.0 authorization-code + PKCE flow. Endpoints are fixed (Google is a
 stable, well-known provider), so unlike the generic OIDC plugin there is no
-discovery round-trip. A Workspace ``hosted_domain`` can be enforced by
-Google itself via the ``hd`` authorization parameter.
+discovery round-trip. A Workspace ``hosted_domain`` is sent as the ``hd``
+authorization hint and enforced on the ``hd`` claim of the returned profile.
 """
 
 from __future__ import annotations
@@ -103,7 +103,6 @@ class GoogleIdentity(IdentityCapability):
         redirect_uri: str,
         code_verifier: str | None = None,
     ) -> tuple[IdentityProfile, IdentityCredentials]:
-        _ = ctx
         data: dict[str, str] = {
             'grant_type': 'authorization_code',
             'code': code,
@@ -125,6 +124,18 @@ class GoogleIdentity(IdentityCapability):
         token = typing.cast('dict[str, typing.Any]', token_resp.json())
 
         profile = await self._userinfo(token['access_token'])
+        # The ``hd`` authorization parameter is only a UI hint that the
+        # user can remove. Google sets the ``hd`` claim only for Workspace
+        # accounts, so check the claim, not the email suffix.
+        hosted_domain = str(ctx.integration_options.get('hosted_domain') or '')
+        hosted_domain = hosted_domain.strip().lower()
+        if hosted_domain:
+            claimed = str(profile.raw_claims.get('hd') or '').lower()
+            if claimed != hosted_domain:
+                raise ValueError(
+                    f'Google account is not in the {hosted_domain} '
+                    'Workspace domain'
+                )
         return profile, self._credentials(token)
 
     async def refresh(
@@ -228,7 +239,8 @@ class GooglePlugin(Plugin):
                 label='Workspace domain',
                 description=(
                     'Restrict sign-in to a Google Workspace domain '
-                    '(sent as the `hd` parameter, e.g. example.com). '
+                    '(e.g. example.com). Accounts whose `hd` claim does '
+                    'not match are rejected. '
                     'Leave blank to allow any Google account.'
                 ),
                 type='string',
