@@ -54,6 +54,30 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
             )
         client.xack.assert_awaited_once()
 
+    async def test_clears_debounce_before_recompute(self) -> None:
+        # A change saved while the worker recomputes must queue a new
+        # job, so the worker releases the debounce key before it reads
+        # the project state.
+        order: list[str] = []
+        client = mock.AsyncMock()
+        client.delete = mock.AsyncMock(
+            side_effect=lambda *_a: order.append('delete')
+        )
+
+        async def _process(*_args: object) -> None:
+            order.append('process')
+
+        with mock.patch.object(score_queue, '_process_message', _process):
+            await score_queue._handle_entries(
+                client,
+                [(b'1-0', {b'project_id': b'p1'})],
+                mock.AsyncMock(),
+            )
+        client.delete.assert_awaited_once_with(
+            f'{score_queue.DEBOUNCE_PREFIX}:p1'
+        )
+        self.assertEqual(order, ['delete', 'process'])
+
     async def test_no_xack_on_exception(self) -> None:
         client = mock.AsyncMock()
         client.xack = mock.AsyncMock()

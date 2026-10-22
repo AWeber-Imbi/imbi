@@ -1,8 +1,14 @@
 """Score-recompute queue (Valkey Streams).
 
 Producers must call :func:`enqueue_recompute` *after* the originating
-DB commit completes; the 5s debounce key relies on workers reading
+DB commit completes; the debounce key relies on workers reading
 post-commit state at recompute time.
+
+The debounce key marks a pending job: while it is set, more changes do
+not add a job, because the pending job will read them. The worker
+deletes the key before it reads the project, so a change saved after
+that point adds a new job. The 5s TTL only limits how long a lost key
+can block new jobs.
 """
 
 from __future__ import annotations
@@ -403,6 +409,11 @@ async def _handle_entries(
         if check_dlq and await _maybe_dead_letter(client, msg_id, fields):
             continue
         try:
+            # Release the debounce key before the project state is
+            # read, so a change saved during the recompute queues a
+            # new job instead of being dropped.
+            if project_id := fields.get('project_id'):
+                await client.delete(f'{DEBOUNCE_PREFIX}:{project_id}')
             await _process_message(db, fields)
         except Exception:
             LOGGER.exception('recompute failed for %s', fields)
