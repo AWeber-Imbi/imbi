@@ -145,8 +145,7 @@ Permissions follow a `resource:action` pattern. The table shows each
 permission that `imbi-api setup` seeds, and the built-in roles that have
 it.
 
-<!-- BEGIN GENERATED: permission table. Do not edit by hand.
-     Regenerate: uv run python scripts/docs_permissions_table.py -->
+<!-- BEGIN GENERATED: scripts/docs_permissions_table.py -->
 
 | Permission | Description | `admin` | `developer` | `default` | `readonly` | `imbi-scheduler` | `imbi-gateway` | `imbi-workflows` |
 |---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -298,7 +297,7 @@ it.
 | `scheduler:impersonate` | Schedule tasks that run as another user | yes |  |  |  |  |  |  |
 | `integration:act-as-service` | Use an Integration's own credential instead of the principal's identity | yes |  |  |  |  |  |  |
 
-<!-- END GENERATED: permission table -->
+<!-- END GENERATED -->
 
 See [Agents](agents.md), [Agent tasks](agent-tasks.md),
 [Workflows](workflows.md), [Prompts](prompts.md), and

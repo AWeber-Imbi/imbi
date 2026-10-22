@@ -20,6 +20,7 @@ Each webhook belongs to one organization.
 ## Permissions
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_subset.py webhook: admin:events:read -->
+
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `webhook:create` | Create webhooks | `admin` |
@@ -27,6 +28,7 @@ Each webhook belongs to one organization.
 | `webhook:update` | Update webhooks | `admin`, `developer` |
 | `webhook:delete` | Delete webhooks | `admin` |
 | `admin:events:read` | List events across every organization (audit / support) | `admin` |
+
 <!-- END GENERATED -->
 
 The **Delivery history** tab needs `admin:events:read`.

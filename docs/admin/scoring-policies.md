@@ -17,6 +17,7 @@ types.
 ## Permissions
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_subset.py scoring_policy: -->
+
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `scoring_policy:read` | View scoring policies | `admin` |
@@ -24,6 +25,7 @@ types.
 | `scoring_policy:delete` | Delete scoring policies | `admin` |
 | `scoring_policy:rescore` | Trigger rescore for a single project | `admin`, `developer`, `default` |
 | `scoring_policy:rescore_all` | Trigger bulk project rescore | `admin` |
+
 <!-- END GENERATED -->
 
 ## How Imbi scores a project

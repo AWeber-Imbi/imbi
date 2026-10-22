@@ -14,12 +14,14 @@ These settings are global. They apply to every organization.
 ## Permissions
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_subset.py mcp_server: -->
+
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `mcp_server:create` | Create MCP servers | `admin` |
 | `mcp_server:read` | View MCP servers | `admin` |
 | `mcp_server:update` | Update MCP servers | `admin` |
 | `mcp_server:delete` | Delete MCP servers | `admin` |
+
 <!-- END GENERATED -->
 
 `mcp_server:update` also lets you test a server. Only a platform

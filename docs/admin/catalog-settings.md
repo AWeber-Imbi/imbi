@@ -20,6 +20,7 @@ types. The forms show those fields below the standard fields.
 ## Permissions
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_subset.py environment: project_type: link_definition: document_template: organization:update -->
+
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `organization:update` | Update organizations | `admin`, `developer` |
@@ -39,6 +40,7 @@ types. The forms show those fields below the standard fields.
 | `document_template:read` | View document templates | `admin`, `developer`, `default`, `readonly`, `imbi-scheduler` |
 | `document_template:write` | Update document templates | `admin` |
 | `document_template:delete` | Delete document templates | `admin` |
+
 <!-- END GENERATED -->
 
 **Default Settings** saves to the organization, so it needs

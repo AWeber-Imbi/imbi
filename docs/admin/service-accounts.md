@@ -22,12 +22,14 @@ Accounts**. The **Admin** item shows only for platform administrators.
 ## Permissions
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_subset.py service_account: -->
+
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `service_account:create` | Create service accounts | `admin` |
 | `service_account:read` | View service accounts | `admin` |
 | `service_account:update` | Update service accounts | `admin` |
 | `service_account:delete` | Delete service accounts | `admin` |
+
 <!-- END GENERATED -->
 
 `service_account:update` also covers the memberships, the API keys, and

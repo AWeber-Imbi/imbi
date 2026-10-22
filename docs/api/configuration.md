@@ -139,6 +139,7 @@ which are comma-separated. A default of "none" means that the setting is
 unset.
 
 <!-- BEGIN GENERATED: scripts/docs_env_table.py -->
+
 ### Shared (imbi-common)
 
 | Variable | Type | Default | Description |
@@ -381,6 +382,7 @@ unset.
 | `SERVE_SOURCE_MAPS` | str | none | `true` serves the UI `*.map` files. Otherwise Caddy answers 404. |
 | `VITE_API_URL` | str | none | API URL that Caddy writes into `index.html` at request time. The UI does not start without it. |
 | `VITE_SENTRY_DSN` | str | none | Sentry DSN of the UI, written into `index.html` |
+
 <!-- END GENERATED -->
 
 ## Notes on some settings

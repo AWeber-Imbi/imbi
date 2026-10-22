@@ -47,6 +47,7 @@ stream by the feature that makes the rows. The sink writes every stream
 to its table. See [Iggy](iggy.md) for `TOPICS` and the publish API.
 
 <!-- BEGIN GENERATED: scripts/docs_clickhouse_tables.py -->
+
 | Name | Kind | Engine | Order key | Iggy topics |
 |---|---|---|---|---|
 | `events` | table | `ReplacingMergeTree` | `(project_id, id)` | `comments`, `documents`, `gateway`, `lifecycle`, `projects` |
@@ -71,6 +72,7 @@ to its table. See [Iggy](iggy.md) for `TOPICS` and the publish API.
 | `workflow_run_events` | table | `ReplacingMergeTree` | `(organization_id, run_id, seq)` | `workflows` |
 | `workflow_runs` | table | `ReplacingMergeTree` | `(organization_id, workflow_id, run_id)` | `workflows` |
 | `secret_audit_events` | table | `ReplacingMergeTree` | `(organization_id, at, event_id)` | `secrets` |
+
 <!-- END GENERATED -->
 
 `maintenance_log` is the durable history of what a global maintenance

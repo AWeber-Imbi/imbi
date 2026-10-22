@@ -168,6 +168,20 @@ user and get approval before tagging.** The notes are the one part of this a
 human should sign off on, and an annotated tag is awkward to correct after it
 is pushed.
 
+## Step 3b — update the Upgrading page
+
+`docs/deployment/upgrading.md` has one section per release that needs manual
+steps, newest first. If the approved notes name any operator step — a
+`setup-*` command, an iggy-connect restart, a new or changed env var, a
+permission seed, a CMS edit, a maintenance operation — add a `## <TAG>`
+section with those steps, in the shape of the sections below it. Also update
+the "Use X or later for a new install" line when this release fixes a
+fresh-install problem.
+
+Commit it on `main` as `Add <TAG> to the upgrading page` and push it before
+you tag, so the tag includes it. If the release has no manual steps, skip
+this step.
+
 ## Step 4 — create the signed, annotated tag
 
 ```sh

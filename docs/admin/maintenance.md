@@ -14,11 +14,13 @@ is the first page that the Admin menu opens.
 ## Permissions
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_subset.py admin:maintenance: admin:dashboard:read -->
+
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `admin:maintenance:read` | View global maintenance operations | `admin` |
 | `admin:maintenance:manage` | Run and cancel global maintenance operations | `admin` |
 | `admin:dashboard:read` | View the admin system-health dashboard | `admin` |
+
 <!-- END GENERATED -->
 
 **Graph Query** has no permission. Only a platform administrator
@@ -37,6 +39,7 @@ The page has two tabs: **Operations** and **Activity**.
 ### Operations
 
 <!-- BEGIN GENERATED: scripts/docs_maintenance_operations.py -->
+
 | Operation | Slug | What it does |
 |---|---|---|
 | **Run Analysis** | `run-analysis` | Run the Project Doctor analysis and persist a fresh report for every project. |
@@ -54,6 +57,7 @@ The page has two tabs: **Operations** and **Activity**.
 | **Sync Commits & Tags** | `commit-sync` | Backfill full commit and tag history for every project with a commit-sync integration; projects without one are skipped. |
 | **Sync Pull Requests** | `pr-sync` | Backfill full pull-request history for every project with a PR-sync integration; projects without one are skipped. |
 | **Reindex Search** | `search-reindex` | Rebuild the vector search index for every searchable node -- documents, comments, releases, projects, and the rest -- from its current content. Run this after a bulk import or a change to the embedding model; ordinary saves index themselves. |
+
 <!-- END GENERATED -->
 
 The descriptions come from the code. The description of **Close Out
