@@ -27,6 +27,7 @@ describe('splitFrontmatter', () => {
       '---\njust prose\n---\nbody',
       '---\na: [\n---\nbody',
       '---\na: &a [x, x]\nb: [*a, *a]\n---\nbody',
+      '---\na: &a [x, x]\nb: {"k":*a, "j":*a}\n---\nbody',
     ]) {
       expect(splitFrontmatter(md)).toEqual({ body: md, meta: null })
     }
