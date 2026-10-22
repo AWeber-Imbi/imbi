@@ -237,6 +237,13 @@ Imbi also adds blockers:
 - In **Release history**, click **Resolve** on one blocker, or **Resolve
   all**.
 
+**Unblock** and **Resolve all** both call
+`DELETE /releases/{tag}/block`, which resolves every open blocker of the
+release. Each blocker keeps its record, with you as the person who
+resolved it. The button means "let this release ship", and a release
+with one open blocker still cannot ship. To clear only one blocker, use
+**Resolve** in **Release history**.
+
 If you cannot unblock, the card tells you to ask someone with deploy access
 on the project.
 

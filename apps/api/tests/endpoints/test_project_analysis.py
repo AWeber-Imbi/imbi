@@ -248,6 +248,29 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual('pass', body['overall_status'])
         self.assertEqual([], body['results'])
 
+    def test_run_enqueues_a_score_recompute(self) -> None:
+        # An analysis_result policy scores the project on the new report,
+        # so the score must not wait for another trigger (#488).
+        with (
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[],
+            ),
+            mock.patch(
+                f'{_MODULE}.score_queue.enqueue_recompute',
+                new_callable=mock.AsyncMock,
+            ) as enqueue,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/run'
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        enqueue.assert_awaited_once()
+        self.assertEqual(
+            ('proj-1', 'analysis_report'), enqueue.await_args.args[1:3]
+        )
+
     def test_run_hands_plugins_the_project_ui_url(self) -> None:
         # The doctor context carries the same canonical UI link the
         # lifecycle dispatcher builds, so a doctor can verify what the

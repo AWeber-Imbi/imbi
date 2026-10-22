@@ -7,7 +7,7 @@ before posting its first deployment status emits no webhook at all, so
 the deployment stayed ``pending`` forever -- 738 of them in the
 production snapshot, growing by 30-110 a month.
 
-This is the scheduled writer that closes them.  For every ``Deployment``
+This is the writer that closes them.  For every ``Deployment``
 still ``pending``/``in_progress`` past :data:`STALE_AFTER`, it asks the
 project's deployment plugin what the run actually did and records the
 answer.  A run that cannot be resolved for :data:`EXPIRE_AFTER` is
@@ -21,9 +21,10 @@ matched at webhook time) is attached to its Release here, once the
 Release exists.
 
 Runs as the ``deployment-sweep`` maintenance operation, so it is
-scheduler-driven (an ``ApiTarget`` POST from imbi-scheduler), operator-
-triggerable from the Maintenance page, and recorded like every other
-global run.
+operator-triggerable from the Maintenance page and recorded like every
+other global run.  Nothing schedules it: an imbi-scheduler task runs as
+the scheduler's own account, and its role lacks
+``admin:maintenance:manage``.
 """
 
 from __future__ import annotations

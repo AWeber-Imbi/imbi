@@ -61,6 +61,7 @@ ChangeReason = typing.Literal[
     'scheduled_recompute',
     'deployment_status_change',
     'dependency_change',
+    'analysis_report',
 ]
 
 

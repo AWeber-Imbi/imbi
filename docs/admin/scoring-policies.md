@@ -142,8 +142,8 @@ result with this slug. Under **Status Scores**, enter the score for
 project has no result with the slug, the score is 0. See
 [Project Doctor](../user-guide/doctor.md).
 
-A new Doctor report does not start a recompute. The score changes at the
-next recompute of the project.
+A new Doctor report queues a recompute of the project, so the score
+follows the report.
 
 ### Condition
 
@@ -210,6 +210,7 @@ Imbi queues a recompute of a project when:
 - a project is created, or an attribute, a link, or a dependency of the
   project changes;
 - a deployment status of the project changes;
+- a Doctor analysis saves a new report for the project;
 - a blueprint changes (for the projects that the blueprint applies to);
 - a policy is created, changed, or deleted (for the projects that the
   policy applies to);
