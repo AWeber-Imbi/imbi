@@ -534,19 +534,24 @@ async def patch_current_user(
 
     """
     user = auth.require_user
+    error = fastapi.HTTPException(
+        status_code=400,
+        detail='Only /display_name can change, to a non-empty string',
+    )
+    # Check each operation, not only the result: an add then a remove
+    # of another path leaves a result that looks valid.
+    if any(
+        path not in (None, '/display_name')
+        for op in operations
+        for path in (op.path, op.from_)
+    ):
+        raise error
     patched = json_patch.apply_patch(
         {'display_name': user.display_name}, operations
     )
     display_name = patched.get('display_name')
-    if (
-        set(patched) != {'display_name'}
-        or not isinstance(display_name, str)
-        or not display_name.strip()
-    ):
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='Only /display_name can change, to a non-empty string',
-        )
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise error
     await db.execute(
         'MATCH (u:User {{email: {email}}}) SET u.display_name = {name}',
         {'email': user.email, 'name': display_name.strip()},

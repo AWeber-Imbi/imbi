@@ -437,6 +437,20 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.patch('/users/me', json=[op])
             self.assertEqual(response.status_code, 400, op)
+        # Each operation is checked, not only the result.
+        for ops in (
+            [
+                {'op': 'add', 'path': '/is_admin', 'value': True},
+                {'op': 'remove', 'path': '/is_admin'},
+                {'op': 'replace', 'path': '/display_name', 'value': 'Ann'},
+            ],
+            [
+                {'op': 'add', 'path': '/is_admin', 'value': 'Ann'},
+                {'op': 'move', 'from': '/is_admin', 'path': '/display_name'},
+            ],
+        ):
+            response = self.client.patch('/users/me', json=ops)
+            self.assertEqual(response.status_code, 400, ops)
         self.mock_db.execute.assert_not_awaited()
 
     def test_get_user_not_found(self) -> None:
