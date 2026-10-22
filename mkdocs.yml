@@ -54,6 +54,12 @@ nav:
       - Agents: admin/agents.md
       - Agent Tasks: admin/agent-tasks.md
       - Workflows: admin/workflows.md
+      - Service Accounts: admin/service-accounts.md
+      - Catalog Settings: admin/catalog-settings.md
+      - Scoring Policies: admin/scoring-policies.md
+      - Webhooks: admin/webhooks.md
+      - Assistant and MCP Servers: admin/assistant-and-mcp-servers.md
+      - Maintenance, Graph Query, and Overview: admin/maintenance.md
   - Deployment:
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
