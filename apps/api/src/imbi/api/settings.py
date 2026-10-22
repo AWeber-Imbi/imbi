@@ -11,6 +11,7 @@ import os
 import typing
 import urllib.parse
 
+import limits
 import pydantic
 import pydantic_settings
 
@@ -121,6 +122,16 @@ class Auth(settings.Auth):  # type: ignore[misc]
     rate_limit_login: str = '5/minute'
     rate_limit_token_refresh: str = '10/minute'
     rate_limit_oauth_init: str = '3/minute'
+
+    @pydantic.field_validator(
+        'rate_limit_login', 'rate_limit_token_refresh', 'rate_limit_oauth_init'
+    )
+    @classmethod
+    def _validate_rate_limit(cls, value: str) -> str:
+        # slowapi logs a bad limit string and then applies no limit, so
+        # refuse to start instead of serving an unthrottled auth endpoint.
+        limits.parse_many(value)
+        return value
 
     # OAuth Behavior
     # Auto-link an incoming OAuth identity to an existing user when the

@@ -32,6 +32,7 @@ dependencies = [
   "imbi-plugin-github==2.39.1",
   "jinja2",
   "jsonpatch>=1.33",
+  "limits>=5,<6",
   "mcp>=1.26.0",
   "nanoid>=2.0.0",
   "orjson>=3.11.6",

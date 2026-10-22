@@ -4,6 +4,7 @@ are read at request time."""
 import unittest
 from unittest import mock
 
+import fastapi
 import pydantic
 
 from imbi.api import settings
@@ -80,3 +81,33 @@ class RateLimitSettingsTestCase(unittest.TestCase):
             self.assertEqual(self._limits('login'), ['1 per 1 second'])
             self.assertEqual(self._limits('refresh_token'), ['2 per 1 hour'])
             self.assertEqual(self._limits('oauth_login'), ['7 per 1 day'])
+
+    def test_invalid_limit_is_rejected(self) -> None:
+        for field in (
+            'rate_limit_login',
+            'rate_limit_token_refresh',
+            'rate_limit_oauth_init',
+        ):
+            with (
+                self.subTest(field=field),
+                self.assertRaises(pydantic.ValidationError),
+            ):
+                settings.Auth(**{field: '5/minutes-ish'})
+
+
+class RefreshGrantRateLimitTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        rate_limit.limiter.reset()
+        self.addCleanup(rate_limit.limiter.reset)
+
+    async def test_refresh_grant_uses_refresh_limit(self) -> None:
+        request = fastapi.Request(
+            {'type': 'http', 'client': ('203.0.113.9', 1), 'headers': []}
+        )
+        with _patch_auth(rate_limit_token_refresh='1/minute'):
+            with self.assertRaises(fastapi.HTTPException) as first:
+                await auth._refresh_token_grant(request, mock.Mock(), None)
+            self.assertEqual(first.exception.status_code, 400)
+            with self.assertRaises(fastapi.HTTPException) as second:
+                await auth._refresh_token_grant(request, mock.Mock(), None)
+            self.assertEqual(second.exception.status_code, 429)

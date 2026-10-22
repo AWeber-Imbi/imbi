@@ -9,6 +9,7 @@ from urllib import parse as urlparse
 
 import fastapi
 import jwt
+import limits
 import psycopg
 import pydantic
 from valkey import asyncio as valkey_module
@@ -41,6 +42,10 @@ LOGGER = logging.getLogger(__name__)
 # the existence of a user (vs. service-account, OAuth-only, or unknown
 # email) could be inferred from the response time.
 _DUMMY_PASSWORD_HASH = password_auth.hash_password(secrets.token_hex(32))
+
+# Rate-limit bucket shared by /auth/token/refresh and the refresh_token
+# grant of /auth/token.
+_REFRESH_LIMIT_SCOPE = 'token-refresh'
 
 
 def _redact_email(email: str) -> str:
@@ -300,16 +305,32 @@ async def _authorization_code_grant(
     )
 
 
+def _refresh_limit() -> str:
+    return settings.get_auth_settings().rate_limit_token_refresh
+
+
 async def _refresh_token_grant(
+    request: fastapi.Request,
     db: graph.Graph,
     refresh_token_value: str | None,
 ) -> models.OAuth2TokenResponse:
     """Rotate a refresh token presented via the OAuth token endpoint."""
+    auth_settings = settings.get_auth_settings()
+    # Count this grant in the same bucket as /auth/token/refresh, so the
+    # /auth/token route cannot bypass IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH.
+    refresh_limit = limits.parse(auth_settings.rate_limit_token_refresh)
+    if rate_limit.limiter.enabled and not rate_limit.limiter.limiter.hit(
+        refresh_limit,
+        rate_limit.get_rate_limit_key(request),
+        _REFRESH_LIMIT_SCOPE,
+    ):
+        raise fastapi.HTTPException(
+            status_code=429, detail=f'Rate limit exceeded: {refresh_limit}'
+        )
     if not refresh_token_value:
         raise fastapi.HTTPException(
             status_code=400, detail='Missing refresh_token'
         )
-    auth_settings = settings.get_auth_settings()
     access_token, new_refresh_token = await _rotate_refresh_token(
         db, refresh_token_value, auth_settings
     )
@@ -443,7 +464,7 @@ async def token(
             code_verifier=code_verifier,
         )
     if grant_type == 'refresh_token':
-        return await _refresh_token_grant(db, refresh_token)
+        return await _refresh_token_grant(request, db, refresh_token)
     if grant_type != 'client_credentials':
         raise fastapi.HTTPException(
             status_code=400,
@@ -1145,8 +1166,8 @@ async def _rotate_refresh_token(
 
 
 @auth_router.post('/token/refresh', response_model=auth_models.TokenResponse)
-@rate_limit.limiter.limit(  # type: ignore[untyped-decorator]
-    lambda: settings.get_auth_settings().rate_limit_token_refresh
+@rate_limit.limiter.shared_limit(  # type: ignore[untyped-decorator]
+    _refresh_limit, scope=_REFRESH_LIMIT_SCOPE
 )
 async def refresh_token(
     request: fastapi.Request,
