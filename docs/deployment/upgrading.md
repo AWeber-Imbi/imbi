@@ -145,13 +145,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    **Semantic versioning** off and on again, then save it. See
    [Catalog settings](../admin/catalog-settings.md).
 10. If you use a `config.toml` file, examine it against your environment
-    variables. An environment variable now wins over the same key in
-    `config.toml`. Before, a `[server]` or `[storage]` key in the file won.
+    variables and `.env` entries. An environment variable or `.env` entry
+    now wins over the same key in `config.toml`. Before, a `[server]` or
+    `[storage]` key in the file won.
     Before you upgrade, correct or remove each `[server]` and `[storage]`
     value that is not valid for its setting. Before, Imbi ignored the file
     when such a value failed validation. Now the service does not start,
-    or storage fails. An environment variable for the same key replaces
-    the file value, so the file value is then not checked.
+    or storage fails. An environment variable or `.env` entry for the same
+    key replaces the file value, so the file value is then not checked.
     Also, every service now reads the `[auth]`, `[clickhouse]`,
     `[embeddings]`, `[plugins]`, `[postgres]`, `[releases]`, `[ssl]`, and
     `[valkey]` sections, and imbi-api reads `[email]`. Before, the services
