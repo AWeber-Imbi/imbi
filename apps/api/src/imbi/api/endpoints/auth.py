@@ -672,7 +672,7 @@ def _consent_page(
     body = _CONSENT_PAGE.substitute(
         client_name=html.escape(client.client_name or 'an unnamed client'),
         redirect_host=html.escape(
-            urlparse.urlsplit(pending['redirect_uri']).netloc
+            oauth_clients.display_host(pending['redirect_uri'])
         ),
         principal=html.escape(pending['principal_id']),
         consent_token=html.escape(consent_token),
@@ -711,7 +711,11 @@ async def authorize(
         raise fastapi.HTTPException(
             status_code=400, detail='Unknown client_id'
         )
-    if redirect_uri not in client.redirect_uris:
+    # Clients registered before userinfo was refused can still hold such
+    # a URI, so check it again here.
+    if redirect_uri not in client.redirect_uris or (
+        not oauth_clients.is_valid_redirect_uri(redirect_uri)
+    ):
         raise fastapi.HTTPException(
             status_code=400,
             detail='redirect_uri not registered for this client',

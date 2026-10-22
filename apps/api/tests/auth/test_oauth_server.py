@@ -167,6 +167,28 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.assertEqual(resp.status_code, 400)
         self.mock_db.create.assert_not_called()
 
+    def test_register_rejects_userinfo_redirect(self) -> None:
+        resp = self.client.post(
+            '/auth/register',
+            json={
+                'redirect_uris': ['https://trusted.example@evil.example/cb']
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.mock_db.create.assert_not_called()
+
+    def test_display_host_ignores_userinfo_and_default_port(self) -> None:
+        from imbi.api.auth import oauth_clients
+
+        self.assertEqual(
+            oauth_clients.display_host('https://a.example@b.example:443/cb'),
+            'b.example',
+        )
+        self.assertEqual(
+            oauth_clients.display_host('http://127.0.0.1:8123/cb'),
+            '127.0.0.1:8123',
+        )
+
     def test_register_rejects_unsupported_grant_types(self) -> None:
         resp = self.client.post(
             '/auth/register',
