@@ -27,8 +27,9 @@ const BUILTIN_FORMATS: BuiltinFormat[] = [
       'MAJOR.MINOR.PATCH with optional pre-release and build metadata.',
     example: '2.11.5',
     label: 'Semantic versioning',
+    // Accepts a leading `v` like SEMVER_TAG_PATTERN in imbi.common.versioning.
     pattern:
-      '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+      '^v?(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
   },
   {
     description:
@@ -58,6 +59,10 @@ const BUILTIN_BY_PATTERN = new Map(BUILTIN_FORMATS.map((f) => [f.pattern, f]))
 // project types saved before the change. They render as that built-in row
 // (toggled on) and are persisted with the current pattern on the next save.
 const LEGACY_BUILTIN_PATTERNS = new Map<string, string>([
+  [
+    '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+    'Semantic versioning',
+  ],
   ['^\\d{4}\\.\\d{1,2}(?:\\.\\d{1,2})?$', 'Calendar versioning'],
 ])
 

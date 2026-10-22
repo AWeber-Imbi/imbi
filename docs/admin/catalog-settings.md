@@ -183,13 +183,16 @@ The built-in formats are:
 
 | Format | Example | Pattern |
 |---|---|---|
-| Semantic versioning | `2.11.5` | `MAJOR.MINOR.PATCH` with optional pre-release and build metadata. It does not accept a leading `v` |
+| Semantic versioning | `2.11.5` | `MAJOR.MINOR.PATCH` with optional pre-release and build metadata. A leading `v` is optional, so `v2.11.5` is also accepted |
 | Calendar versioning | `2026.09.17-0` | Year, month, and day, with an optional suffix |
 | Git short SHA | `7d4f2a3b` | 7 to 40 lowercase hexadecimal characters |
 | Any format | `nightly-build` | Any text that is not empty |
 
-To accept tags such as `v1.2.3`, add a custom format, for example
-`^v\d+\.\d+\.\d+$`.
+A format list saved before this release keeps the old semantic
+versioning pattern, which rejects a leading `v`. The list shows it as
+the built-in row. To store the new pattern, turn **Semantic versioning**
+off and click **Save changes**, then turn it on and click **Save
+changes** again.
 
 Use **Test a version string** to see which enabled formats accept a
 version.

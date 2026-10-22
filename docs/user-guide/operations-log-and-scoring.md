@@ -237,7 +237,10 @@ first: the time, the reason, the change, and, for an attribute change, the
 old and the new value. Imbi records a history row only when the score
 changes.
 
-The **All reasons** and **Export CSV** buttons do nothing in this release.
+Use the **All reasons** list to show the events of one reason only. The
+chart marks follow the same filter. **Export CSV** downloads the events
+that show, with the columns `timestamp`, `reason`, `previous_score`, and
+`score`.
 
 The **Reports** page has two reports about scores: **Score History** (the
 average score of each team over time) and **Monthly Improvement**.

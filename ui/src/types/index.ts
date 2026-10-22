@@ -633,6 +633,7 @@ export type ScoringPolicy =
   | AnalysisResultScoringPolicy
   | AttributeScoringPolicy
   | ConditionScoringPolicy
+  | DeploymentStatusScoringPolicy
   | LinkPresenceScoringPolicy
   | PresenceScoringPolicy
 
@@ -641,6 +642,7 @@ export type ScoringPolicyCategory =
   | 'analysis_result'
   | 'attribute'
   | 'condition'
+  | 'deployment_status'
   | 'link_presence'
   | 'presence'
 
@@ -649,6 +651,7 @@ export type ScoringPolicyCreate =
   | AnalysisResultScoringPolicyCreate
   | AttributeScoringPolicyCreate
   | ConditionScoringPolicyCreate
+  | DeploymentStatusScoringPolicyCreate
   | LinkPresenceScoringPolicyCreate
   | PresenceScoringPolicyCreate
 
@@ -1010,6 +1013,18 @@ export type DeploymentStatus =
   | 'pending'
   | 'rolled_back'
   | 'success'
+
+export interface DeploymentStatusScoringPolicy extends ScoringPolicyBase {
+  category: 'deployment_status'
+  environment_slug: string
+  status_score_map?: null | Record<string, number>
+}
+
+export interface DeploymentStatusScoringPolicyCreate extends ScoringPolicyCreateBase {
+  category: 'deployment_status'
+  environment_slug: string
+  status_score_map?: Record<string, number>
+}
 
 export interface DeploymentTriggerRequest {
   /**

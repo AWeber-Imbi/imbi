@@ -12,14 +12,12 @@ import {
   Shield,
   Trash2,
   Users,
-  UsersRound,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
   getAdminSettings,
   getRole,
-  getRoleGroups,
   getRoleServiceAccounts,
   getRoleUsers,
   grantPermission,
@@ -56,7 +54,7 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDate } from '@/lib/formatDate'
 import type { Permission, RoleUser, ServiceAccount } from '@/types'
 
-type DetailTab = 'groups' | 'permissions' | 'service-accounts' | 'users'
+type DetailTab = 'permissions' | 'service-accounts' | 'users'
 
 interface RoleDetailProps {
   onBack: () => void
@@ -110,17 +108,6 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
     enabled: activeTab === 'service-accounts',
     queryFn: ({ signal }) => getRoleServiceAccounts(slug, signal),
     queryKey: ['roleServiceAccounts', slug],
-  })
-
-  // Fetch groups with this role
-  const {
-    data: roleGroups,
-    error: groupsError,
-    isLoading: groupsLoading,
-  } = useQuery({
-    enabled: activeTab === 'groups',
-    queryFn: ({ signal }) => getRoleGroups(slug, signal),
-    queryKey: ['roleGroups', slug],
   })
 
   // Grant permission mutation
@@ -207,7 +194,6 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
     { icon: Shield, id: 'permissions', label: 'Permissions' },
     { icon: Users, id: 'users', label: 'Users' },
     { icon: Bot, id: 'service-accounts', label: 'Service Accounts' },
-    { icon: UsersRound, id: 'groups', label: 'Groups' },
   ]
 
   return (
@@ -637,92 +623,6 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
         </div>
       )}
 
-      {/* Groups Tab */}
-      {activeTab === 'groups' && (
-        <div className="space-y-4">
-          {/* Info banner */}
-          <div className="border-tertiary bg-card dark:border-border dark:bg-card flex items-start gap-3 rounded-lg border p-4">
-            <Info className="text-info mt-0.5 size-5 shrink-0" />
-            <div className="text-info text-sm">
-              Role assignments to teams are managed via Team Management. All
-              members of a team inherit the team's roles.
-            </div>
-          </div>
-
-          {/* Group list */}
-          {groupsLoading ? (
-            <RoleRowsSkeleton />
-          ) : groupsError ? (
-            <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
-              <AlertCircle className="size-5 shrink-0" />
-              <div>
-                <div className="font-medium">Failed to load groups</div>
-                <div className="mt-1 text-sm">
-                  {groupsError instanceof Error
-                    ? groupsError.message
-                    : 'An error occurred'}
-                </div>
-              </div>
-            </div>
-          ) : !roleGroups || roleGroups.length === 0 ? (
-            <div className="text-tertiary py-8 text-center">
-              <UsersRound className="mx-auto mb-2 size-8 opacity-50" />
-              <div>No groups assigned this role</div>
-              <div className="mt-1 text-sm">
-                Assign this role to teams via Team Management
-              </div>
-            </div>
-          ) : (
-            <Card className="overflow-hidden">
-              <CardContent className="p-0">
-                <div className="border-border bg-secondary text-tertiary grid grid-cols-[1fr_1fr] gap-4 border-b px-4 py-2.5 text-xs font-medium tracking-wider uppercase">
-                  <div>Group</div>
-                  <div>Description</div>
-                </div>
-                <div className="divide-tertiary divide-y">
-                  {roleGroups.map(
-                    (group: {
-                      description?: null | string
-                      name: string
-                      slug: string
-                    }) => (
-                      <div
-                        className="grid grid-cols-[1fr_1fr] items-center gap-4 px-4 py-3"
-                        key={group.slug}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="bg-secondary rounded p-1.5">
-                            <UsersRound className="text-secondary size-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <div
-                              className={
-                                'text-primary truncate text-sm font-medium'
-                              }
-                            >
-                              {group.name}
-                            </div>
-                            <div
-                              className={
-                                'text-tertiary truncate font-mono text-xs'
-                              }
-                            >
-                              {group.slug}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-tertiary truncate text-sm">
-                          {group.description || 'No description'}
-                        </div>
-                      </div>
-                    ),
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
       <ConfirmDialog
         confirmLabel="Remove"
         description={

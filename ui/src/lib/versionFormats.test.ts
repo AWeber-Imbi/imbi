@@ -67,3 +67,25 @@ describe('buildRows', () => {
     ])
   })
 })
+
+describe('Semantic versioning built-in', () => {
+  it('accepts a leading v like the backend', () => {
+    const row = buildRows([]).find((r) => r.label === 'Semantic versioning')!
+    const formats = [{ label: row.label, pattern: row.pattern }]
+    expect(isTagAllowed('v1.2.3', formats)).toBe(true)
+    expect(isTagAllowed('1.2.3', formats)).toBe(true)
+    expect(isTagAllowed('V1.2.3', formats)).toBe(false)
+  })
+
+  it('renders the previous pattern as the built-in row', () => {
+    const rows = buildRows([
+      {
+        label: 'Semantic versioning',
+        pattern:
+          '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-.]+))?(?:\\+([0-9A-Za-z-.]+))?$',
+      },
+    ])
+    expect(rows.filter((r) => !r.builtin)).toHaveLength(0)
+    expect(toFormats(rows)[0].pattern.startsWith('^v?')).toBe(true)
+  })
+})

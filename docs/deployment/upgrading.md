@@ -138,6 +138,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    still runs the other statements first. An upgrade script must check
    this status, for example with `set -e`, and stop the upgrade when it
    is not 0.
+9. Optional: the **Semantic versioning** format now accepts a leading `v`
+   (`v1.2.3`). An organization or a project type that turned it on before
+   this release keeps the old pattern. To store the new pattern, turn
+   **Semantic versioning** off and save, then turn it on and save. See
+   [Catalog settings](../admin/catalog-settings.md).
 
 ## 2.39.1
 

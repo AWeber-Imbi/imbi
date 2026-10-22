@@ -18,6 +18,7 @@ import type {
   AttributeScoringPolicyCreate,
   Condition,
   ConditionScoringPolicyCreate,
+  DeploymentStatusScoringPolicyCreate,
   LinkPresenceScoringPolicyCreate,
   PresenceScoringPolicyCreate,
   ScoringPolicyCategory,
@@ -62,6 +63,7 @@ const VALID_CATEGORIES: ScoringPolicyCategory[] = [
   'link_presence',
   'age',
   'analysis_result',
+  'deployment_status',
   'condition',
 ]
 
@@ -70,6 +72,7 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   analysis_result: 'Analysis Result',
   attribute: 'Attribute',
   condition: 'Condition',
+  deployment_status: 'Deployment Status',
   link_presence: 'Link Presence',
   presence: 'Presence',
 }
@@ -373,7 +376,9 @@ export function ImportScoringPolicyDialog({
                       ? 'Link slug: '
                       : parsedPreview.category === 'analysis_result'
                         ? 'Result slug: '
-                        : 'Attribute: '}
+                        : parsedPreview.category === 'deployment_status'
+                          ? 'Environment: '
+                          : 'Attribute: '}
                   </span>
                   <code className="bg-card text-primary rounded px-1 py-0.5 text-xs">
                     {policySubjectKey(parsedPreview)}
@@ -469,6 +474,7 @@ function optionalScore(
 function policySubjectKey(policy: ScoringPolicyCreate): string {
   if (policy.category === 'link_presence') return policy.link_slug
   if (policy.category === 'analysis_result') return policy.result_slug
+  if (policy.category === 'deployment_status') return policy.environment_slug
   if (policy.category === 'condition') return ''
   return policy.attribute_name
 }
@@ -761,6 +767,26 @@ function validateConditionPolicy(
   }
 }
 
+function validateDeploymentStatusPolicy(
+  obj: Record<string, unknown>,
+  base: PolicyBase,
+): PolicyResult<DeploymentStatusScoringPolicyCreate> {
+  const envCheck = requireString(obj, 'environment_slug')
+  if (!envCheck.ok) return { error: envCheck.error, valid: false }
+  const map = readScoreMap(obj.status_score_map, 'status_score_map')
+  if (!map.ok) return { error: map.error, valid: false }
+  return {
+    policy: {
+      ...base,
+      category: 'deployment_status',
+      environment_slug: envCheck.value,
+      // An omitted map takes the server's default.
+      ...(map.value ? { status_score_map: map.value } : {}),
+    },
+    valid: true,
+  }
+}
+
 function validateLinkPresencePolicy(
   obj: Record<string, unknown>,
   base: PolicyBase,
@@ -792,6 +818,7 @@ const CATEGORY_VALIDATORS: Record<
   analysis_result: validateAnalysisResultPolicy,
   attribute: validateAttributePolicy,
   condition: validateConditionPolicy,
+  deployment_status: validateDeploymentStatusPolicy,
   link_presence: validateLinkPresencePolicy,
   presence: validatePresencePolicy,
 }

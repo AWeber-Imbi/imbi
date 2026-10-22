@@ -1028,18 +1028,6 @@ export const getRoleServiceAccounts = async (
   return Array.isArray(response) ? response : []
 }
 
-export const getRoleGroups = async (
-  slug: string,
-  signal?: AbortSignal,
-): Promise<{ name: string; slug: string }[]> => {
-  const response = await apiClient.get<{ name: string; slug: string }[]>(
-    `/roles/${encodeURIComponent(slug)}/groups`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
 // Admin - Scoring Policies
 export const listScoringPolicies = async (
   signal?: AbortSignal,

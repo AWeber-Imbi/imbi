@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight,
   Download,
-  Filter,
   LayoutTemplate,
   LucideProps,
   PencilLine,
@@ -21,7 +20,15 @@ import {
   ScoreChangeReason,
   ScoreHistoryPoint,
 } from '@/api/endpoints'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Sk } from '@/components/ui/skeleton'
+import { downloadCsv } from '@/lib/csv'
 import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { computeScoreYAxis } from '@/lib/score-chart'
@@ -116,6 +123,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
   const [granularity, setGranularity] = useState<Granularity>('day')
   const [hoveredChart, setHoveredChart] = useState<null | number>(null)
   const [hoveredEvent, setHoveredEvent] = useState<null | number>(null)
+  const [reasonFilter, setReasonFilter] = useState(ALL_REASONS)
 
   const rangeParams = useMemo(() => getRangeParams(range), [range])
 
@@ -180,12 +188,25 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
     }
     return pts
   }, [chartData])
-  const rawEvents = useMemo(
+  const allRawEvents = useMemo(
     () =>
       ((granularity === 'raw' ? chartData?.points : rawData?.points) ?? [])
         .filter((p) => p.change_reason != null)
         .reverse(),
     [chartData, granularity, rawData],
+  )
+  const reasonOptions = useMemo(
+    () => [...new Set(allRawEvents.map((e) => reasonKey(e.change_reason!)))],
+    [allRawEvents],
+  )
+  const rawEvents = useMemo(
+    () =>
+      reasonFilter === ALL_REASONS
+        ? allRawEvents
+        : allRawEvents.filter(
+            (e) => reasonKey(e.change_reason!) === reasonFilter,
+          ),
+    [allRawEvents, reasonFilter],
   )
 
   // chart index → change_reason
@@ -196,7 +217,12 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
     const m = new Map<number, ScoreChangeReason>()
     if (granularity === 'raw') {
       chartPoints.forEach((p, i) => {
-        if (p.change_reason != null) m.set(i, p.change_reason)
+        if (
+          p.change_reason != null &&
+          (reasonFilter === ALL_REASONS ||
+            reasonKey(p.change_reason) === reasonFilter)
+        )
+          m.set(i, p.change_reason)
       })
     } else {
       rawEvents.forEach((e) => {
@@ -209,7 +235,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
       })
     }
     return m
-  }, [chartPoints, granularity, rawEvents])
+  }, [chartPoints, granularity, rawEvents, reasonFilter])
 
   // For annotation hover sync: map raw event index → nearest chart point index by timestamp
   const syncedChartHover = useMemo(() => {
@@ -342,11 +368,39 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="text-secondary hover:bg-secondary hover:text-primary inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-xs transition-colors">
-              <Filter size={12} />
-              All reasons
-            </button>
-            <button className="border-tertiary text-primary hover:bg-secondary inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs transition-colors">
+            <Select onValueChange={setReasonFilter} value={reasonFilter}>
+              <SelectTrigger
+                aria-label="Filter by reason"
+                className="h-7 w-auto min-w-32 gap-2 py-1 text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_REASONS}>All reasons</SelectItem>
+                {reasonOptions.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {reasonLabel(key)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              className="border-tertiary text-primary hover:bg-secondary inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs transition-colors disabled:opacity-50"
+              disabled={rawEvents.length === 0}
+              onClick={() =>
+                downloadCsv(
+                  `score-history-${projectId}.csv`,
+                  ['timestamp', 'reason', 'previous_score', 'score'],
+                  rawEvents.map((e) => [
+                    e.timestamp,
+                    e.change_reason,
+                    e.previous_score,
+                    e.score,
+                  ]),
+                )
+              }
+              type="button"
+            >
               <Download size={12} />
               Export CSV
             </button>
@@ -614,6 +668,24 @@ function nearestProjectChange(
   }
   return best
 }
+
+/**
+ * The filter bucket for a change reason. A user email is an attribute
+ * edit, as ReasonChip shows it; any other reason is its own bucket.
+ */
+function reasonKey(reason: string): string {
+  if (reason in REASON_META) return reason
+  return reason.includes('@') ? 'attribute_change' : reason
+}
+
+function reasonLabel(key: string): string {
+  return (
+    REASON_META[key as ScoreChangeReason]?.label ??
+    key.charAt(0).toUpperCase() + key.slice(1)
+  )
+}
+
+const ALL_REASONS = '__all__'
 
 // Ensure bare ISO strings (no tz offset) are treated as UTC
 // Reasons that represent bulk/policy operations — correlating these with a
