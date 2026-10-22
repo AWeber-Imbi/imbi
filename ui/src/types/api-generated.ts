@@ -2037,9 +2037,9 @@ export interface paths {
          * Report Mcp Server Status
          * @description Record a runtime health observation for an MCP server.
          *
-         *     Posted by the assistant when a live tool call against this server
-         *     succeeds or fails, so the admin list reflects real usage health
-         *     without a manual test. Updates ``status``, ``last_error``, and
+         *     For external callers (for example a monitor) that observe the
+         *     server's health outside a manual test. No Imbi service calls this
+         *     endpoint. Updates ``status``, ``last_error``, and
          *     ``last_tested_at``; leaves configuration untouched.
          *
          *     Parameters:
@@ -14637,7 +14637,7 @@ export interface components {
         };
         /**
          * MCPServerStatusReport
-         * @description Runtime status report, posted by the assistant on tool failure.
+         * @description Runtime status report from an external caller, such as a monitor.
          */
         MCPServerStatusReport: {
             /**

@@ -25,7 +25,7 @@ query-shaping settings are scoped to the Logs capability.
 
 | Name | Label | Default | Description |
 |---|---|---|---|
-| `base_query` | Base Query Template | — | Elasticsearch `query_string` applied as a must clause. Supports `${project_slug}`, `${org_slug}`, `${environment}`, `${project_id}`. |
+| `base_query` | Base Query Template | — | Elasticsearch `query_string` applied as a must clause. Supports `${project_slug}`, `${org_slug}`, `${team_slug}`, `${environment}`, `${project_id}`, `${project_type_slug}`. |
 | `timestamp_field` | Timestamp Field | `@timestamp` | Source field containing the log timestamp. |
 | `message_field` | Message Field | `message` | Source field containing the log message. |
 | `level_field` | Level Field | `level` | Source field containing the log severity level. |
@@ -56,7 +56,7 @@ Use `${variable}` placeholders to scope log searches to a project automatically:
 kubernetes.namespace_name:${project_slug} AND env:${environment}
 ```
 
-Variables substituted at search time: `project_slug`, `org_slug`, `environment`, `project_id`. Unknown variables are rejected at configuration time.
+Variables substituted at search time: `project_slug`, `org_slug`, `team_slug`, `environment`, `project_id`, `project_type_slug` (the first project type). Unknown variables are not checked at configuration time; the search fails when it expands them.
 
 ## Filter Operators
 

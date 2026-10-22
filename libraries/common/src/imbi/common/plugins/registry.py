@@ -4,10 +4,10 @@ Plugins are discovered three ways, unioned and deduped:
 
 1. **First-party scan** — every subpackage of ``imbi.plugins`` is
    imported and its module-level ``PLUGIN`` attribute (a
-   :class:`~imbi.common.plugins.base.Plugin` subclass) is read. Plugin
-   code always ships with the ``imbi`` distribution; a plugin whose
-   optional dependencies are not installed (see the ``imbi[plugin-*]``
-   extras) is recorded as *skipped*, not as an error. Individual
+   :class:`~imbi.common.plugins.base.Plugin` subclass) is read. Each
+   first-party plugin ships as its own ``imbi-plugin-*`` distribution
+   (the ``imbi`` meta-package installs all of them); a plugin that
+   fails to import is recorded as *skipped*, not as an error. Individual
    first-party plugins can be turned off with the
    ``IMBI_PLUGINS_DISABLED`` setting (a list of plugin slugs).
 2. **Convention scan** — every installed top-level module named

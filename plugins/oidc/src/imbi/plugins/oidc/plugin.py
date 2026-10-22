@@ -81,7 +81,6 @@ class OIDCIdentity(IdentityCapability):
             or discovery['token_endpoint'],
             'userinfo_endpoint': options.get('userinfo_endpoint')
             or discovery['userinfo_endpoint'],
-            'jwks_uri': options.get('jwks_uri') or discovery.get('jwks_uri'),
             'revocation_endpoint': options.get('revocation_endpoint')
             or discovery.get('revocation_endpoint'),
         }
@@ -301,7 +300,6 @@ class OIDCPlugin(Plugin):
                 label='Userinfo endpoint',
                 type='string',
             ),
-            PluginOption(name='jwks_uri', label='JWKS URI', type='string'),
             PluginOption(
                 name='revocation_endpoint',
                 label='Revocation endpoint',

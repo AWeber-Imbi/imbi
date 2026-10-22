@@ -189,7 +189,7 @@ class MCPServerTestResult(pydantic.BaseModel):
 
 
 class MCPServerStatusReport(pydantic.BaseModel):
-    """Runtime status report, posted by the assistant on tool failure."""
+    """Runtime status report from an external caller, such as a monitor."""
 
     status: typing.Literal['healthy', 'degraded', 'unreachable']
     error: str | None = None
@@ -594,9 +594,9 @@ async def report_mcp_server_status(
 ) -> MCPServerResponse:
     """Record a runtime health observation for an MCP server.
 
-    Posted by the assistant when a live tool call against this server
-    succeeds or fails, so the admin list reflects real usage health
-    without a manual test. Updates ``status``, ``last_error``, and
+    For external callers (for example a monitor) that observe the
+    server's health outside a manual test. No Imbi service calls this
+    endpoint. Updates ``status``, ``last_error``, and
     ``last_tested_at``; leaves configuration untouched.
 
     Parameters:

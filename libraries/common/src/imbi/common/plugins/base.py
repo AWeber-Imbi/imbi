@@ -2056,6 +2056,8 @@ class CommitSyncCapability(CapabilityHandler):
         than total history.
 
         Re-running is safe (``ReplacingMergeTree``).
+
+        Reserved: no host code calls this method yet.
         """
         del ctx, credentials, since
         raise NotImplementedError

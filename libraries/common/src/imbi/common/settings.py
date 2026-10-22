@@ -249,10 +249,10 @@ class Plugins(pydantic_settings.BaseSettings):
     unions it with the first-party and convention scans.
 
     ``imbi_plugins_disabled`` (env ``IMBI_PLUGINS_DISABLED``) is a list of
-    plugin slugs to skip at load time. First-party plugins ship with the
-    ``imbi`` distribution and auto-load whenever their optional
-    dependencies are installed; this setting turns individual plugins off
-    without uninstalling anything.
+    plugin slugs to skip at load time. First-party plugins ship as
+    ``imbi-plugin-*`` distributions and auto-load whenever they are
+    installed; this setting turns individual plugins off without
+    uninstalling anything.
     """
 
     model_config = base_settings_config(env_prefix='')

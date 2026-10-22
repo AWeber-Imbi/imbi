@@ -124,7 +124,6 @@ class AWSPlugin(plugins.Plugin):
                 project_scoped=False,
                 requires_identity=False,
                 hints={
-                    'login_capable': True,
                     'default_scopes': DEFAULT_SCOPES,
                     'widget_text': _IDENTITY_WIDGET_TEXT,
                     'cacheable': False,
@@ -163,7 +162,8 @@ class AWSPlugin(plugins.Plugin):
                         description=(
                             'Comma-separated list of log group selectors. '
                             'Supports ${project_slug}, ${org_slug}, '
-                            '${environment}, ${project_id}. Each entry can '
+                            '${team_slug}, ${environment}, ${project_id}, '
+                            '${project_type_slug}. Each entry can '
                             'be: a literal name; a glob (`*` / `?` / '
                             '`[...]`); `regex:<pattern>` for an explicit '
                             'regex; or `prefix:<name>` for SOURCE-mode '

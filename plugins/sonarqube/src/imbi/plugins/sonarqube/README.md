@@ -70,7 +70,7 @@ A typical webhook rule:
 
 ```
 Handler: sonarqube#update_project_from_webhook
-Filter:  /branch/is_main==true
+Filter:  payload.branch.isMain == true
 Config:  [
            {"metric": "coverage", "path": "/test_coverage"},
            {"metric": "ncloc",    "path": "/lines_of_code"}

@@ -68,6 +68,12 @@ class ManifestTestCase(unittest.TestCase):
         names = {c.name for c in OIDCPlugin.manifest.credentials}
         self.assertEqual(names, {'client_id', 'client_secret'})
 
+    def test_no_jwks_uri_option(self) -> None:
+        # The profile comes from userinfo, never from an ID token, so
+        # there is nothing for a JWKS to verify.
+        names = {o.name for o in OIDCPlugin.manifest.options}
+        self.assertNotIn('jwks_uri', names)
+
 
 class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
