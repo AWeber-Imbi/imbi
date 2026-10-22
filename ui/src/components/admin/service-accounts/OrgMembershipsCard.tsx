@@ -206,13 +206,13 @@ export function OrgMembershipsCard({
                           roleSlug,
                         })
                       }
-                      value={membership.role}
+                      value={membership.role ?? ''}
                     >
                       <SelectTrigger
                         aria-label={`Role for ${membership.organization_name}`}
                         className="h-7 w-auto text-xs"
                       >
-                        <SelectValue />
+                        <SelectValue placeholder="No role" />
                       </SelectTrigger>
                       <SelectContent>
                         {availableRoles.map((role) => (

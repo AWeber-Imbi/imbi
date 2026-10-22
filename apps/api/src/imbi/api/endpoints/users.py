@@ -513,6 +513,51 @@ async def get_current_user_profile(
     )
 
 
+@users_router.patch('/me', status_code=204)
+async def patch_current_user(
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
+    ],
+) -> None:
+    """Change the authenticated user's own display name via JSON Patch.
+
+    Only ``/display_name`` can change here. The other fields need
+    ``PATCH /users/{email}`` and the ``user:update`` permission.
+    Requires a human user; service-account tokens receive HTTP 403.
+
+    Raises:
+        fastapi.HTTPException: HTTP 400 if the patch touches another
+            path or leaves the display name empty.
+
+    """
+    user = auth.require_user
+    error = fastapi.HTTPException(
+        status_code=400,
+        detail='Only /display_name can change, to a non-empty string',
+    )
+    # Check each operation, not only the result: an add then a remove
+    # of another path leaves a result that looks valid.
+    if any(
+        path not in (None, '/display_name')
+        for op in operations
+        for path in (op.path, op.from_)
+    ):
+        raise error
+    patched = json_patch.apply_patch(
+        {'display_name': user.display_name}, operations
+    )
+    display_name = patched.get('display_name')
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise error
+    await db.execute(
+        'MATCH (u:User {{email: {email}}}) SET u.display_name = {name}',
+        {'email': user.email, 'name': display_name.strip()},
+    )
+
+
 @users_router.get('/{email}', response_model=models.UserResponse)
 async def get_user(
     email: str,

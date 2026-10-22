@@ -170,13 +170,14 @@ async def get_service_account(
             detail=f'Service account {slug!r} not found',
         )
 
-    # Load organization memberships
+    # Load organization memberships.  A membership with no role grants
+    # nothing, so it is returned as null, not as readonly.
     org_query: typing.LiteralString = """
     MATCH (s:ServiceAccount {{slug: {slug}}})
           -[m:MEMBER_OF]->(o:Organization)
     RETURN o.name AS org_name,
            o.slug AS org_slug,
-           COALESCE(m.role, 'readonly') AS role
+           m.role AS role
     ORDER BY o.name
     """
     records = await db.execute(

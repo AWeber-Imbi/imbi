@@ -190,6 +190,23 @@ class ServiceAccountsEndpointsTestCase(support.SharedAppTestCase):
             'deployer',
         )
 
+    def test_get_service_account_membership_without_role(self) -> None:
+        """A membership with no role is null, not readonly."""
+        self.mock_db.match.return_value = [self.sa_data]
+        self.mock_db.execute.return_value = [
+            {'org_name': 'Acme Corp', 'org_slug': 'acme-corp', 'role': None},
+        ]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get('/service-accounts/test-bot')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['organizations'][0]['role'])
+        self.assertNotIn('COALESCE', self.mock_db.execute.await_args.args[0])
+
     def test_get_service_account_not_found(self) -> None:
         """Test getting nonexistent SA returns 404."""
         self.mock_db.match.return_value = []

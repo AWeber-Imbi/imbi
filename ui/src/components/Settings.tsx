@@ -2,27 +2,20 @@ import { useEffect } from 'react'
 
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { Bell, Key, Plug, Shield, User } from 'lucide-react'
+import { Key, Plug, Shield, User } from 'lucide-react'
 
 import { SettingsAccount } from './settings/SettingsAccount'
 import { SettingsApiKeys } from './settings/SettingsApiKeys'
 import { SettingsConnections } from './settings/SettingsConnections'
-import { SettingsNotifications } from './settings/SettingsNotifications'
 import { SettingsSecurity } from './settings/SettingsSecurity'
 import { Card } from './ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 
-type SettingsTab =
-  | 'account'
-  | 'api-keys'
-  | 'connections'
-  | 'notifications'
-  | 'security'
+type SettingsTab = 'account' | 'api-keys' | 'connections' | 'security'
 
 const tabs: { icon: typeof User; id: SettingsTab; label: string }[] = [
   { icon: User, id: 'account', label: 'Account' },
   { icon: Plug, id: 'connections', label: 'Connections' },
-  { icon: Bell, id: 'notifications', label: 'Notifications' },
   { icon: Key, id: 'api-keys', label: 'API Keys' },
   { icon: Shield, id: 'security', label: 'Security' },
 ]
@@ -89,9 +82,6 @@ export function Settings() {
           </TabsContent>
           <TabsContent value="connections">
             <SettingsConnections />
-          </TabsContent>
-          <TabsContent value="notifications">
-            <SettingsNotifications />
           </TabsContent>
           <TabsContent value="api-keys">
             <SettingsApiKeys />
