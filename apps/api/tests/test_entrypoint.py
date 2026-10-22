@@ -46,6 +46,13 @@ class SetupTestCase(unittest.TestCase):
                 return_value=self.mock_graph,
             )
         )
+        self.mock_graph_init = self.enterContext(
+            mock.patch.object(
+                entrypoint.graph,
+                'initialize',
+                new_callable=mock.AsyncMock,
+            )
+        )
 
         # ClickHouse lifecycle
         self.mock_ch_init = self.enterContext(
@@ -230,6 +237,32 @@ class SetupTestCase(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn('Organization already exists: aweber', result.output)
         self.assertIn('already exist', result.output)
+
+    def test_setup_initializes_graph_before_connecting(self) -> None:
+        """The pool needs the vector extension, so it must exist first."""
+        calls = mock.Mock()
+        calls.attach_mock(self.mock_graph_init, 'initialize')
+        calls.attach_mock(self.mock_graph.open, 'open')
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(
+            [name for name, *_ in calls.mock_calls], ['initialize', 'open']
+        )
+
+    def test_setup_graph_initialize_failure(self) -> None:
+        self.mock_graph_init.side_effect = ConnectionError('refused')
+
+        result = self.runner.invoke(entrypoint.main, ['setup'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn(
+            'Failed to set up PostgreSQL graph schema', result.output
+        )
+        self.mock_graph.open.assert_not_awaited()
 
     def test_setup_graph_connection_failure(self) -> None:
         """Test setup when PostgreSQL/Graph connection fails."""

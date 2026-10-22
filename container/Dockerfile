@@ -38,20 +38,15 @@ ENV PATH="/root/.cargo/bin:$PATH"
 # warnings.
 ENV RUSTFLAGS="--cap-lints=warn"
 
-# Build a wheel for every workspace member plus the imbi meta-package
+# Install the imbi meta-package and every workspace member it depends on
+# into a venv, at the versions in uv.lock. The meta-package does not
+# depend on imbi-harness, which has its own image (apps/harness/Dockerfile).
 COPY pyproject.toml uv.lock README.md LICENSE /tmp/build/
 COPY libraries/ /tmp/build/libraries/
 COPY apps/ /tmp/build/apps/
 COPY plugins/ /tmp/build/plugins/
-# imbi-harness has its own image (apps/harness/Dockerfile), and its
-# Agent SDK wheel holds the Claude Code CLI binary.
-RUN uv build /tmp/build --all-packages --wheel --out-dir /tmp/wheels/ \
- && rm /tmp/wheels/imbi_harness-*.whl
-
-# Install every wheel into a venv
-ENV UV_LINK_MODE=copy UV_PROJECT_DIRECTORY=/app VIRTUAL_ENV=/app
-RUN uv venv --python $(which python3) $UV_PROJECT_DIRECTORY \
- && uv pip install --prerelease=allow /tmp/wheels/*.whl \
+ENV UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/app UV_PYTHON_DOWNLOADS=never
+RUN uv sync --frozen --no-dev --no-editable \
  && chmod -R a+rX /app
 
 # ---------------------------------------------------------------------------
