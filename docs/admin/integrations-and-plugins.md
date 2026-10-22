@@ -235,6 +235,9 @@ have all of these:
    the project.
 2. `integration:act-as-service`.
 3. Membership in the organization that owns the project.
+4. **Allow Autonomous Deployments** turned on for the target environment
+   (see [Catalog Settings](catalog-settings.md)). This applies when no
+   person started the deployment.
 
 Imbi refuses a service account that does not have
 `integration:act-as-service` with `403` and the error

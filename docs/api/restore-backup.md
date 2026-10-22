@@ -50,12 +50,6 @@ SET search_path = ag_catalog, "$user", public;
 pg_restore -d imbi --no-owner --role=imbi imbi.dump
 ```
 
-Or for plain SQL:
-
-```bash
-psql -d imbi -f imbi.sql
-```
-
 The restore can log errors for objects in the `ag_catalog` schema that
 `CREATE EXTENSION age` already made. You can ignore only these errors.
 `pg_restore` continues after an error and prints the number of errors
