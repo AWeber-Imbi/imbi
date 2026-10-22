@@ -35,7 +35,41 @@ def base_settings_config(
     )
 
 
-class Auth(pydantic_settings.BaseSettings):
+class ConfigFileSettings(pydantic_settings.BaseSettings):
+    """Settings that also read one section of ``config.toml``.
+
+    ``config_section`` names the section. The sources, from the highest
+    priority to the lowest, are: constructor arguments, environment
+    variables, the ``.env`` file, the ``config.toml`` section, and the
+    field defaults. Thus an environment variable always overrides the
+    same key in ``config.toml``.
+
+    """
+
+    config_section: typing.ClassVar[str]
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[pydantic_settings.BaseSettings],
+        init_settings: pydantic_settings.PydanticBaseSettingsSource,
+        env_settings: pydantic_settings.PydanticBaseSettingsSource,
+        dotenv_settings: pydantic_settings.PydanticBaseSettingsSource,
+        file_secret_settings: pydantic_settings.PydanticBaseSettingsSource,
+    ) -> tuple[pydantic_settings.PydanticBaseSettingsSource, ...]:
+        config_file = pydantic_settings.InitSettingsSource(
+            settings_cls, load_config_data().get(cls.config_section, {})
+        )
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            config_file,
+            file_secret_settings,
+        )
+
+
+class Auth(ConfigFileSettings):
     """Authentication settings shared across Imbi services.
 
     Contains only JWT and encryption configuration needed by any
@@ -44,6 +78,7 @@ class Auth(pydantic_settings.BaseSettings):
     """
 
     model_config = base_settings_config(env_prefix='IMBI_AUTH_')
+    config_section = 'auth'
 
     # JWT Configuration
     jwt_secret: str = pydantic.Field(
@@ -159,8 +194,9 @@ class ConfigSecrets(pydantic_settings.BaseSettings):
         return self
 
 
-class Clickhouse(pydantic_settings.BaseSettings):
+class Clickhouse(ConfigFileSettings):
     model_config = base_settings_config(env_prefix='CLICKHOUSE_')
+    config_section = 'clickhouse'
 
     url: pydantic.ClickHouseDsn = pydantic.ClickHouseDsn(
         'clickhouse+http://localhost:8123'
@@ -184,12 +220,13 @@ class EmbeddingModelConfig(pydantic.BaseModel):
     dimensions: int
 
 
-class Embeddings(pydantic_settings.BaseSettings):
+class Embeddings(ConfigFileSettings):
     """Embedding generation settings."""
 
     model_config = base_settings_config(
         env_prefix='EMBEDDINGS_',
     )
+    config_section = 'embeddings'
 
     enabled: bool = True
     default_model: str = 'text'
@@ -239,7 +276,7 @@ class Iggy(pydantic_settings.BaseSettings):
     max_connect_attempts: int = 10
 
 
-class Plugins(pydantic_settings.BaseSettings):
+class Plugins(ConfigFileSettings):
     """Plugin discovery settings.
 
     ``imbi_plugins`` (env ``IMBI_PLUGINS``) is an explicit list of dotted
@@ -256,6 +293,7 @@ class Plugins(pydantic_settings.BaseSettings):
     """
 
     model_config = base_settings_config(env_prefix='')
+    config_section = 'plugins'
 
     imbi_plugins: typing.Annotated[list[str], pydantic_settings.NoDecode] = []
     imbi_plugins_disabled: typing.Annotated[
@@ -272,10 +310,11 @@ class Plugins(pydantic_settings.BaseSettings):
         return value
 
 
-class Postgres(pydantic_settings.BaseSettings):
+class Postgres(ConfigFileSettings):
     """PostgreSQL connection settings."""
 
     model_config = base_settings_config(env_prefix='POSTGRES_')
+    config_section = 'postgres'
     url: pydantic.PostgresDsn = pydantic.Field(
         default=pydantic.PostgresDsn(
             'postgresql://postgres:secret@localhost:5432/imbi'
@@ -286,7 +325,7 @@ class Postgres(pydantic_settings.BaseSettings):
     max_pool_size: int = 10
 
 
-class Releases(pydantic_settings.BaseSettings):
+class Releases(ConfigFileSettings):
     """Release settings.
 
     Controls the active ``version_format`` used when validating
@@ -298,14 +337,16 @@ class Releases(pydantic_settings.BaseSettings):
     """
 
     model_config = base_settings_config(env_prefix='IMBI_RELEASES_')
+    config_section = 'releases'
 
     version_format: VersionFormat = 'semver'
 
 
-class SSL(pydantic_settings.BaseSettings):
+class SSL(ConfigFileSettings):
     """SSL configuration settings."""
 
     model_config = base_settings_config(env_prefix='SSL_')
+    config_section = 'ssl'
 
     cert_dir: pathlib.Path | None = pydantic.Field(
         default=None,
@@ -347,10 +388,11 @@ class ValkeyDSN(pydantic.AnyUrl):
     )
 
 
-class Valkey(pydantic_settings.BaseSettings):
+class Valkey(ConfigFileSettings):
     """Valkey connection settings."""
 
     model_config = base_settings_config(env_prefix='VALKEY_')
+    config_section = 'valkey'
     url: ValkeyDSN = pydantic.Field(
         default=ValkeyDSN('valkey://localhost:6379/0')
     )
@@ -359,13 +401,14 @@ class Valkey(pydantic_settings.BaseSettings):
 class Configuration(pydantic.BaseModel):
     """Root configuration combining all shared settings sections.
 
-    Supports loading from config.toml files with environment variable
-    overrides. Config files are checked in this priority order:
+    Each section reads its own ``config.toml`` section through
+    :class:`ConfigFileSettings`. Config files are checked in this
+    priority order:
     1. ./config.toml (project root)
     2. ~/.config/imbi/config.toml (user config)
     3. /etc/imbi/config.toml (system config)
 
-    Environment variables always take precedence over config file values.
+    An environment variable overrides the same key in a config file.
 
     Example config.toml:
         [postgres]
@@ -375,42 +418,6 @@ class Configuration(pydantic.BaseModel):
         jwt_secret = "your-secret-here"
         access_token_expire_seconds = 7200
     """
-
-    @pydantic.model_validator(mode='before')
-    @classmethod
-    def merge_env_with_config(
-        cls, data: dict[str, typing.Any]
-    ) -> dict[str, typing.Any]:
-        """Merge environment variables with config file data.
-
-        For each BaseSettings submodel, instantiate it with the config file
-        data as kwargs. This allows BaseSettings to use environment variables
-        as defaults for any fields not provided in the config file.
-
-        Args:
-            data: Raw config data from TOML file
-
-        Returns:
-            Config data with BaseSettings instances properly constructed
-
-        """
-        settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
-            'auth': Auth,
-            'clickhouse': Clickhouse,
-            'embeddings': Embeddings,
-            'plugins': Plugins,
-            'postgres': Postgres,
-            'releases': Releases,
-            'ssl': SSL,
-            'valkey': Valkey,
-        }
-        for field, settings_cls in settings_fields.items():
-            if field in data and data[field] is not None:
-                # Skip if already an instance (e.g., from direct construction)
-                if isinstance(data[field], settings_cls):
-                    continue
-                data[field] = settings_cls(**data[field])
-        return data
 
     auth: Auth = pydantic.Field(default_factory=Auth)
     clickhouse: Clickhouse = pydantic.Field(
@@ -442,8 +449,8 @@ def load_config_data() -> dict[str, typing.Any]:
     2. ~/.config/imbi/config.toml (user config)
     3. /etc/imbi/config.toml (system config)
 
-    Returns the merged dictionary without validation so that callers
-    can validate against their own Configuration subclass.
+    Returns the merged dictionary without validation.
+    :class:`ConfigFileSettings` reads its section from it.
 
     Returns:
         Merged configuration dictionary
@@ -459,7 +466,7 @@ def load_config_data() -> dict[str, typing.Any]:
 
     for config_path in config_paths:
         if config_path.exists():
-            LOGGER.info('Loading configuration from %s', config_path)
+            LOGGER.debug('Loading configuration from %s', config_path)
             try:
                 with config_path.open('rb') as f:
                     file_data = tomllib.load(f)
@@ -487,13 +494,13 @@ def load_config() -> Configuration:
     2. ~/.config/imbi/config.toml (user config)
     3. /etc/imbi/config.toml (system config)
 
-    Environment variables always override config file values.
+    An environment variable overrides the same key in a config file.
 
     Returns:
         Configuration object with merged settings
 
     """
-    return Configuration.model_validate(load_config_data())
+    return Configuration()
 
 
 # Module-level singleton for Auth settings to ensure stable JWT secret

@@ -78,7 +78,7 @@ def create_app() -> fastapi.FastAPI:
         },
     )
 
-    server_config = settings.ServerConfig()
+    server_config = settings.get_server_config()
     # Quiet both the unprefixed and ``/api``-prefixed status route
     # because the served path depends on IMBI_API_URL at startup;
     # listing both keeps the middleware deployment-agnostic.

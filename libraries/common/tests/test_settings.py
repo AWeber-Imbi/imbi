@@ -348,6 +348,46 @@ access_token_expire_seconds = 7200
             os.chdir(original_cwd)
 
 
+class ConfigFilePrecedenceTestCase(unittest.TestCase):
+    """An environment variable overrides the same key in config.toml."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        (pathlib.Path(tmpdir.name) / 'config.toml').write_text(
+            '[postgres]\ngraph_name = "from-toml"\n'
+        )
+        original_cwd = os.getcwd()
+        os.chdir(tmpdir.name)
+        self.addCleanup(os.chdir, original_cwd)
+
+    def _graph_name(self, env: dict[str, str]) -> str:
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            return settings.Postgres(_env_file=None).graph_name
+
+    def test_toml_only(self) -> None:
+        self.assertEqual(self._graph_name({}), 'from-toml')
+
+    def test_env_only(self) -> None:
+        (pathlib.Path.cwd() / 'config.toml').unlink()
+        self.assertEqual(
+            self._graph_name({'POSTGRES_GRAPH_NAME': 'from-env'}), 'from-env'
+        )
+
+    def test_env_overrides_toml(self) -> None:
+        self.assertEqual(
+            self._graph_name({'POSTGRES_GRAPH_NAME': 'from-env'}), 'from-env'
+        )
+
+    def test_load_config_env_overrides_toml(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ, {'POSTGRES_GRAPH_NAME': 'from-env'}
+        ):
+            config = settings.load_config()
+        self.assertEqual(config.postgres.graph_name, 'from-env')
+
+
 class SSLSettingsTestCase(unittest.TestCase):
     """Test cases for SSL settings."""
 

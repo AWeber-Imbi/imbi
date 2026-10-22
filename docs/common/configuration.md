@@ -32,7 +32,8 @@ Two more classes are outside `imbi.common.settings`:
 ## Reading settings
 
 Make an instance of a class. It reads the environment, then the `.env` file
-in the working directory, then the defaults:
+in the working directory, then its `config.toml` section (when the class has
+a `Configuration` field), then the defaults:
 
 ```python
 from imbi.common import settings
@@ -51,7 +52,8 @@ config_secrets = settings.get_config_settings()
 
 The library code (the graph client, the ClickHouse client, the Iggy client,
 the Valkey client, the plugin registry) makes its own instances in this way.
-So those clients read the environment only.
+So those clients also read `config.toml`, except the Iggy client, because
+`Iggy` has no `Configuration` field.
 
 ### `load_config()` and `config.toml`
 
@@ -62,14 +64,15 @@ So those clients read the environment only.
 2. `~/.config/imbi/config.toml`
 3. `/etc/imbi/config.toml`
 
-A key in an earlier file wins over the same key in a later file. For each
-section in the file, `load_config()` makes the settings class with the keys
-of the section. **A key in the file wins over the environment variable.** The
-environment supplies only the keys that the file does not set.
+A key in an earlier file wins over the same key in a later file. Each
+settings class with a `Configuration` field reads its own section through
+the `ConfigFileSettings` base class, so a direct `settings.Postgres()` and
+`load_config().postgres` give the same values. **An environment variable
+wins over the same key in the file.** The file supplies only the keys that
+the environment does not set.
 
-The next example has an effect only for code that calls `load_config()`
-and reads `postgres` or `clickhouse` from the result. The built-in clients
-do not read `config.toml`, so it does not change them:
+The next example changes the graph client and the ClickHouse client, unless
+`POSTGRES_URL`, `POSTGRES_MAX_POOL_SIZE`, or `CLICKHOUSE_URL` is set:
 
 ```toml
 [postgres]
@@ -84,8 +87,8 @@ url = "clickhouse+http://default:secret@clickhouse-prod:8123/imbi"
 Use `IGGY_URL`.
 
 !!! note
-    Only imbi-api calls `load_config()`, through its own `APIConfiguration`
-    subclass, and only for its `[server]` and `[storage]` sections. See
+    imbi-api adds the `[server]`, `[email]`, and `[storage]` sections
+    through its own `APIConfiguration` subclass. See
     [`config.toml`](../api/configuration.md#configtoml).
 
 ## Production keys

@@ -144,6 +144,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    **Save changes** on **Default Settings**. For a project type, turn
    **Semantic versioning** off and on again, then save it. See
    [Catalog settings](../admin/catalog-settings.md).
+10. If you use a `config.toml` file, examine it against your environment
+    variables. An environment variable now wins over the same key in
+    `config.toml`. Before, a `[server]` or `[storage]` key in the file won.
+    Also, every service now reads the `[auth]`, `[clickhouse]`,
+    `[embeddings]`, `[plugins]`, `[postgres]`, `[releases]`, `[ssl]`, and
+    `[valkey]` sections, and imbi-api reads `[email]`. Before, the services
+    ignored them. Remove the keys that you do not want to apply. See
+    [`config.toml`](../api/configuration.md#configtoml).
 
 ## 2.39.1
 
