@@ -1,564 +1,519 @@
 # Configuration
 
-Imbi uses [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) to load configuration from three sources, merged in priority order:
-
-1. **Environment variables** — always win
-2. **`config.toml` files** — discovered in this order, first match wins per key:
-    1. `./config.toml` (project root)
-    2. `~/.config/imbi/config.toml` (user)
-    3. `/etc/imbi/config.toml` (system)
-3. **Built-in defaults** — sensible defaults for development
-
-A `.env` file in the working directory is also read for environment variables (pydantic-settings default).
-
-## Quick Start
-
-### Development Setup
-
-`moon run root:services` boots all services and writes a fresh `.env.test` with the dynamically-allocated host ports (Postgres, ClickHouse, Valkey, LocalStack, Mailpit, Jaeger) and freshly-generated JWT and Fernet secrets if none are present. Load it into the server with `uv run --env-file .env.test`.
-
-```bash
-moon run root:setup                          # uv sync + pre-commit hooks
-moon run root:services                       # boot the backing services
-uv run --env-file .env.test imbi-api serve --dev  # auto-reload server
-```
-
-### Production Setup
-
-Put structural configuration in `/etc/imbi/config.toml` and inject secrets via environment variables:
-
-```bash
-sudo install -d /etc/imbi
-sudo $EDITOR /etc/imbi/config.toml
-
-export POSTGRES_URL='postgresql://imbi:...@db.example.com:5432/imbi'
-export IMBI_AUTH_JWT_SECRET="$(secrets-manager get jwt-secret)"
-export IMBI_AUTH_ENCRYPTION_KEY="$(secrets-manager get encryption-key)"
-```
-
-Generate the JWT secret and Fernet encryption key with:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-!!! warning "Stable secrets in production"
-    If `IMBI_AUTH_JWT_SECRET` or `IMBI_AUTH_ENCRYPTION_KEY` is unset, the application auto-generates a value at startup and logs a warning. This is fine for ephemeral dev runs, but in production it will invalidate every issued token and break every encrypted credential on every restart — always provide both explicitly.
-
-## Application Settings
-
-### Server (`IMBI_API_*`)
-
-Configured by [`ServerConfig`](https://github.com/AWeber-Imbi/imbi-api/blob/main/src/imbi.api/settings.py). The `[server]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENVIRONMENT` | `development` | Deployment environment (`development`, `staging`, `production`). Unprefixed — picks up whatever the platform (Vercel, ECS, GHA, etc.) already exports. Currently drives Mailpit dev auto-config. |
-| `IMBI_API_HOST` | `localhost` | Server bind address |
-| `IMBI_API_PORT` | `8000` | Server bind port. Strings of the form `tcp://ip:port` (injected by Kubernetes service discovery) are parsed and the port extracted, so the `<SERVICE>_PORT=tcp://…` pattern does not collide with this field. |
-| `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins. Credentials and the `Authorization` header are allowed for cross-origin requests from these origins. Also the allow-list of trusted hosts for per-request OAuth URL derivation in multi-host deployments (see "OAuth2 Authorization Server"). |
-| `IMBI_API_FORWARDED_ALLOW_IPS` | `''` | Comma-separated list (or `*`) of trusted proxy IPs whose `X-Forwarded-*` headers are honored. Required when running behind a reverse proxy so rate limiting keys on the real client IP. Empty disables the middleware. |
-| `IMBI_API_URL` | `''` | Public URL where the API is reachable from a browser, including any path prefix it is mounted under (e.g. `https://imbi.example.com/api`). Drives FastAPI route mounting, hypermedia links, and OAuth redirect URIs. Falls back to `http://{host}:{port}` (no prefix) for dev loopback. `/docs` and `/openapi.json` are always served at the root regardless of prefix. |
-
-### PostgreSQL + Apache AGE (`POSTGRES_*`)
-
-PostgreSQL with the Apache AGE extension stores all graph and relational domain data (organizations, teams, projects, users, permissions, blueprints, etc.). The `[postgres]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `POSTGRES_URL` | `postgresql://postgres:secret@localhost:5432/imbi` | PostgreSQL DSN |
-| `POSTGRES_GRAPH_NAME` | `imbi` | Apache AGE graph name |
-| `POSTGRES_MIN_POOL_SIZE` | `2` | Minimum connection pool size |
-| `POSTGRES_MAX_POOL_SIZE` | `10` | Maximum connection pool size |
-
-### ClickHouse (`CLICKHOUSE_*`)
-
-ClickHouse stores analytics, operations logs, audit logs, email send logs, and API-key usage metrics. The `[clickhouse]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CLICKHOUSE_URL` | `clickhouse+http://localhost:8123` | ClickHouse DSN. Credentials in the URL are honored. |
-| `CLICKHOUSE_CONNECT_TIMEOUT` | `10.0` | Connection timeout in seconds |
-| `CLICKHOUSE_MAX_CONNECT_ATTEMPTS` | `10` | Maximum connection attempts on startup |
-
-### Valkey (`VALKEY_*`)
-
-Valkey (Redis-compatible) is used for ephemeral caching. The `[valkey]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VALKEY_URL` | `valkey://localhost:6379/0` | Valkey DSN (defaults: host `localhost`, port `6379`, db `0`) |
-
-### Object Storage (`S3_*`)
-
-S3-compatible storage holds icons, avatars, and document uploads. The `[storage]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `S3_ENDPOINT_URL` | *(none — real AWS S3)* | Set to a LocalStack or MinIO endpoint to override |
-| `S3_ACCESS_KEY` | *(none)* | Access key ID. Omit to use the default AWS credential chain (instance role, profile, etc.). |
-| `S3_SECRET_KEY` | *(none)* | Secret access key |
-| `S3_BUCKET` | `imbi-uploads` | Bucket name |
-| `S3_REGION` | `us-east-1` | AWS region |
-| `S3_CREATE_BUCKET_ON_INIT` | `true` | Auto-create the bucket on startup if it does not exist |
-| `S3_MAX_FILE_SIZE` | `52428800` | Upload size limit in bytes (50 MiB default) |
-| `S3_ALLOWED_CONTENT_TYPES` | image/jpeg, image/png, image/gif, image/webp, image/svg+xml, application/pdf | JSON array of MIME types accepted for upload |
-| `S3_THUMBNAIL_MAX_SIZE` | `256` | Max thumbnail dimension in pixels (aspect ratio preserved) |
-| `S3_THUMBNAIL_QUALITY` | `85` | WEBP quality for generated thumbnails (0–100) |
-
-### Email (`IMBI_EMAIL_*`)
-
-SMTP-based transactional email (password reset, welcome, email verification, security alerts). The `[email]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_EMAIL_ENABLED` | `true` | Master switch — disable to no-op all sends |
-| `IMBI_EMAIL_DRY_RUN` | `false` | Build and log messages without sending |
-| `IMBI_EMAIL_SMTP_HOST` | `localhost` | SMTP server host |
-| `IMBI_EMAIL_SMTP_PORT` | `587` | SMTP server port |
-| `IMBI_EMAIL_SMTP_USE_TLS` | `true` | Use STARTTLS |
-| `IMBI_EMAIL_SMTP_USE_SSL` | `false` | Use implicit TLS (SMTPS, typically port 465) |
-| `IMBI_EMAIL_SMTP_USERNAME` | *(none)* | SMTP auth username |
-| `IMBI_EMAIL_SMTP_PASSWORD` | *(none)* | SMTP auth password |
-| `IMBI_EMAIL_SMTP_TIMEOUT` | `30` | SMTP socket timeout in seconds |
-| `IMBI_EMAIL_FROM_EMAIL` | `noreply@imbi.example.com` | From address |
-| `IMBI_EMAIL_FROM_NAME` | `Imbi` | From display name |
-| `IMBI_EMAIL_REPLY_TO` | *(none)* | Optional Reply-To address |
-| `IMBI_EMAIL_MAX_RETRIES` | `3` | Send retry attempts |
-| `IMBI_EMAIL_INITIAL_RETRY_DELAY` | `1.0` | First retry delay in seconds |
-| `IMBI_EMAIL_MAX_RETRY_DELAY` | `60.0` | Maximum backoff delay in seconds |
-| `IMBI_EMAIL_RETRY_BACKOFF_FACTOR` | `2.0` | Exponential backoff multiplier |
-
-!!! note "Mailpit auto-config"
-    When `ENVIRONMENT=development` (or unset) and `IMBI_EMAIL_SMTP_HOST=localhost` with the default port `587`, the settings model checks for `MAILPIT_SMTP_PORT` (written by `moon run root:services`) and substitutes it, disabling TLS unless `IMBI_EMAIL_SMTP_USE_TLS` is set explicitly. This makes development "just work" against Mailpit without manual SMTP wiring.
-
-## Authentication & Authorization (`IMBI_AUTH_*`)
-
-The `[auth]` section in `config.toml` maps to these. Shared JWT/encryption settings come from `imbi.common`; the API service adds password policy, sessions, API keys, MFA, rate limits, and OAuth behavior.
-
-For sign-in methods, login providers, and how these settings behave, see [Authentication](../admin/authentication.md).
-
-### JWT and Encryption
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_JWT_SECRET` | *(auto-generated)* | Secret used to sign JWT access and refresh tokens. **Set explicitly in production** — otherwise every restart invalidates all tokens. |
-| `IMBI_AUTH_JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
-| `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS` | `3600` | Access token lifetime (1 hour) |
-| `IMBI_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS` | `2592000` | Refresh token lifetime (30 days). Refresh tokens rotate on every use. |
-| `IMBI_AUTH_ENCRYPTION_KEY` | *(auto-generated)* | Base64-encoded Fernet key used to encrypt OAuth provider tokens and OAuth client secrets at rest. **Set explicitly in production** — otherwise every restart breaks all encrypted secrets. |
-
-### Password Policy
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | `12` | Minimum password length. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | `true` | Require an uppercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | `true` | Require a lowercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | `true` | Require a digit. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | `true` | Require a special character. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-
-### API Keys
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | `365` | Maximum lifetime allowed when creating an API key, client credential, or service-account API key |
-
-### MFA (TOTP)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_MFA_ISSUER_NAME` | `Imbi` | Issuer name shown in authenticator apps |
-| `IMBI_AUTH_MFA_TOTP_PERIOD` | `30` | TOTP time step in seconds |
-| `IMBI_AUTH_MFA_TOTP_DIGITS` | `6` | TOTP code length |
-
-### Rate Limiting
-
-Values use the [slowapi](https://slowapi.readthedocs.io/) `<n>/<period>` format (e.g. `5/minute`, `100/hour`).
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_RATE_LIMIT_LOGIN` | `5/minute` | Password login attempts. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | `10/minute` | Refresh-token exchanges. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | `3/minute` | OAuth authorization-flow initiations. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-| `IMBI_AUTH_RATE_LIMIT_API_KEY` | `100/minute` | API-key-authenticated requests. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
-
-### OAuth Behavior
-
-OAuth **provider credentials** (Google, GitHub, generic OIDC client IDs and secrets) are no longer environment variables — they are managed at runtime through the admin API and stored encrypted in the graph using `IMBI_AUTH_ENCRYPTION_KEY`. The settings below control behavior across all configured providers.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` | `true` | Auto-link an incoming OAuth identity to an existing local user when emails match. Safe for verified-email IdPs (Google, most OIDC). Disable when you require an admin to manually approve linking. |
-| `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` | `true` | Auto-create a user record on first successful OAuth login. Disable to require pre-provisioned accounts. |
-
-### OAuth2 Authorization Server (MCP login)
-
-Imbi acts as an OAuth 2.0 Authorization Server so MCP clients (and other
-OAuth clients) can log a user in via the browser and obtain an Imbi access
-token, instead of pasting a static API key. The flow is authorization-code
-with PKCE (`S256` required); clients self-register via :rfc:`7591` Dynamic
-Client Registration. Discovery is published at
-`/.well-known/oauth-authorization-server` (served at the host root); the
-endpoints are `/auth/authorize`, `/auth/token`, and `/auth/register` under
-the API prefix. `/authorize` reuses the existing Imbi login (including any
-configured upstream IdP), so MCP login inherits MFA and provider rules.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_AUTH_DCR_ENABLED` | `true` | Allow OAuth clients to self-register at `/auth/register` (RFC 7591). Disable to require clients to be provisioned out of band. |
-
-#### Multi-host deployments (separate public login host)
-
-A deployment may be reachable on more than one host — e.g. an internal
-host that serves the SPA and a separate internet-facing host that fronts
-the MCP OAuth login for a remote client (Claude Desktop and other remote
-connectors reach the server from the vendor's cloud, not the user's
-machine, so the MCP and OAuth endpoints must be publicly reachable).
-
-The issuer and endpoints in the discovery document, the post-login
-`return_to`/login redirect, and the upstream-IdP callback URL are all
-derived **per request** from the host the caller actually reached, rather
-than from the single `IMBI_API_URL`. To prevent a spoofed `Host` header
-from redirecting freshly minted tokens off-origin, a request host is only
-honored when it is a **trusted origin**: the origin of `IMBI_API_URL` plus
-every entry in `IMBI_API_CORS_ALLOWED_ORIGINS`. Untrusted hosts fall back
-to `IMBI_API_URL`. This also requires `IMBI_API_FORWARDED_ALLOW_IPS` to be
-set so the request scheme/host are trusted from the proxy.
-
-To enable a separate public login host:
-
-1. Add the public origin to `IMBI_API_CORS_ALLOWED_ORIGINS`
-   (e.g. `https://imbi-public.example.com`). `IMBI_API_URL` stays pointed
-   at the internal host, so internal SPA traffic is unaffected.
-2. Route `/mcp`, `/.well-known/oauth-*`, and `/api/auth/*` to the service
-   on that public host. If the public host should support browser-based
-   login (not just MCP), also serve the SPA's login UI assets — the SPA
-   entry document (`index.html`) served at `/` and `/login`, plus its
-   static assets (`*.js`, `*.css`, images) — so the login page renders on
-   that host.
-3. If login uses an upstream IdP (Google/GitHub/OIDC), register the public
-   host's callback — `https://<public-host>/api/auth/oauth/<slug>/callback`
-   — with that provider in addition to the internal one, since the
-   callback now names whichever host the user logged in from.
-
-!!! note "Known limitation"
-    Standard OAuth provider logins (Google/GitHub/OIDC) and MCP OAuth
-    client flows are fully per-host aware. The identity-plugin *connect*
-    flow (linking an additional identity from the account settings UI) is
-    not yet derived per host and continues to use `IMBI_API_URL`, so its
-    callback must remain registered against the `IMBI_API_URL` origin.
-
-## Agents, Workflows, and Secrets
-
-### Workflow Engine (`IMBI_WORKFLOWS_*`)
-
-Only imbi-workflows reads the `IMBI_WORKFLOWS_*` variables. Other services also read the two URL variables. Postgres and the graph use the shared `POSTGRES_*` settings.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_INTERNAL_API_URL` | `http://localhost:8000` | In-cluster origin of imbi-api. Unprefixed, shared with the other services. |
-| `IMBI_API_URL` | `''` | imbi-api's public URL. imbi-workflows adds its path to `IMBI_INTERNAL_API_URL` as the route prefix. |
-| `IMBI_WORKFLOWS_SA_CLIENT_ID` | *(none)* | Client id of the `imbi-workflows` service account. Deploy and rollback steps fail without it. |
-| `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | *(none)* | Its client secret |
-| `IMBI_WORKFLOWS_WORKERS` | `10` | Runs worked on at the same time |
-| `IMBI_WORKFLOWS_POLL_INTERVAL` | `10.0` | Maximum seconds between polls. A lost `NOTIFY` costs latency, not a run. |
-| `IMBI_WORKFLOWS_LEASE_SECONDS` | `300` | How long a claim on a run lasts. One step call must end in this time. Must be more than `30`. |
-| `IMBI_WORKFLOWS_DEPLOY_POLL_SECONDS` | `15` | Seconds between deployment polls |
-| `IMBI_WORKFLOWS_AGENT_POLL_SECONDS` | `30` | Seconds between agent task polls |
-| `IMBI_WORKFLOWS_SCHEDULER_URL` | `http://localhost:8005/api` | imbi-scheduler's task API, with its route prefix. The trigger reconciler writes the scheduler task of each schedule trigger here. |
-| `IMBI_WORKFLOWS_RECONCILE_INTERVAL` | `300.0` | Seconds between passes of the trigger reconciler. imbi-api also wakes it after each activation and pause. |
-
-### Prompt Rendering (`IMBI_PROMPT_*`)
-
-imbi-api, imbi-assistant, imbi-slackbot, and imbi-workflows render prompt templates in a pool of worker processes, so that a template cannot stop the service. Each service process reads these variables.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_PROMPT_WORKERS` | `2` | Worker processes per service process |
-| `IMBI_PROMPT_WORKER_MAX_RENDERS` | `500` | Renders before a worker is replaced |
-| `IMBI_PROMPT_WORKER_MEMORY_MB` | `256` | Address space in MiB that a worker can add after it starts. Linux only. |
-| `IMBI_PROMPT_RENDER_INPROCESS` | `false` | `true` renders in the service process. For debugging only: it removes the isolation. |
-
-### System Prompts
-
-imbi-assistant and imbi-slackbot read their system prompt from the prompt CMS. If the CMS cannot supply the prompt, they use the packaged prompt. Run `imbi-api setup-prompts` to seed the defaults.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_ASSISTANT_PROMPT_REF` | `imbi-assistant/system@stable` | Prompt CMS reference for imbi-assistant |
-| `IMBI_SLACKBOT_PROMPT_REF` | `imbi-slackbot/system@stable` | Prompt CMS reference for imbi-slackbot |
-
-`IMBI_ASSISTANT_SYSTEM_PROMPT` and `IMBI_SLACKBOT_SYSTEM_PROMPT` replace both the CMS prompt and the packaged prompt. They use Jinja syntax, for example `{{ display_name }}`.
-
-### Secrets Broker (`IMBI_SECRETS_*`)
-
-Read by imbi-api. Tenant configuration cannot set these values. See [Secrets](../admin/secrets.md).
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | *(none)* | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use. `github.com` and `<tenant>.ghe.com` are always allowed. Imbi ignores a value that is not a host or that is not a public address, and logs a warning. |
-| `IMBI_SECRETS_AWS_ENDPOINT_URL` | *(none — real AWS)* | AWS endpoint override for LocalStack in tests and development |
-
-### Internal Service URLs (`IMBI_INTERNAL_*`)
-
-imbi-api probes these URLs for the status dashboard. An empty value marks the service as not deployed, and the dashboard does not probe it.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_INTERNAL_ASSISTANT_URL` | `''` | Internal base URL of imbi-assistant |
-| `IMBI_INTERNAL_GATEWAY_URL` | `''` | Internal base URL of imbi-gateway |
-| `IMBI_INTERNAL_MCP_URL` | `''` | Internal base URL of imbi-mcp |
-| `IMBI_INTERNAL_SCHEDULER_URL` | `''` | Internal base URL of imbi-scheduler |
-| `IMBI_INTERNAL_SLACKBOT_URL` | `''` | Internal base URL of imbi-slackbot |
-| `IMBI_INTERNAL_WORKFLOWS_URL` | `''` | Internal base URL of imbi-workflows |
-
-## Other Settings
-
-### Releases (`IMBI_RELEASES_*`)
-
-The `[releases]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_RELEASES_VERSION_FORMAT` | `semver` | Version-string format enforced on `Release.version`. Other values supported by `imbi.common.versioning.VersionFormat`. |
-
-### Embeddings (`EMBEDDINGS_*`)
-
-Controls embedding generation for vector search. The `[embeddings]` section in `config.toml` maps to these.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `EMBEDDINGS_ENABLED` | `true` | Master enable/disable for embedding generation |
-| `EMBEDDINGS_DEFAULT_MODEL` | `text` | Key into `EMBEDDINGS_MODELS` used by default |
-| `EMBEDDINGS_MODELS` | `{text: {fastembed_id: BAAI/bge-small-en-v1.5, dimensions: 384}}` | JSON map of model key → `{fastembed_id, dimensions}` |
-
-### Reload Watch Paths
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMBI_RELOAD_DIRS` | *(none)* | OS-pathsep-separated list of directories uvicorn should watch when `--dev` is set. Useful when running with an editable `imbi-common` checkout, e.g. `IMBI_RELOAD_DIRS=../imbi-common/src`. |
-
-### Standard OpenTelemetry and uvicorn
-
-The Compose stack and `moon run root:services` populate the standard `OTEL_*` and `UVICORN_*` environment variables. They are read by the OpenTelemetry SDK and uvicorn directly — Imbi does not redefine them. The `.env.test` written by `moon run root:services` sets sensible development defaults pointing at the bundled Jaeger container:
-
-| Variable | Set by `moon run root:services` to |
-|----------|------------------------|
-| `OTEL_SERVICE_NAME` | `imbi-api` |
-| `OTEL_TRACES_EXPORTER` | `otlp` |
-| `OTEL_LOGS_EXPORTER` | `none` |
-| `OTEL_METRICS_EXPORTER` | `none` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `<host>:<jaeger-otlp-port>` |
-| `OTEL_EXPORTER_OTLP_TRACES_INSECURE` | `true` |
-| `OTEL_RESOURCE_ATTRIBUTES` | `service.name=imbi-api,service.environment=development` |
-
-In production, point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector.
-
-## Docker Compose Services
-
-The development stack defined in `compose.yaml` runs the following with ports mapped to *ephemeral host ports* (resolved by `moon run root:services` and written into `.env.test`):
-
-| Service | Container Port | Purpose |
-|---------|----------------|---------|
-| `postgres` (`ghcr.io/aweber-imbi/postgres:latest`) | 5432 | PostgreSQL + Apache AGE + pg_cron + pgvector |
-| `clickhouse` | 8123 (HTTP), 9000 (native) | Analytics |
-| `valkey` | 6379 | Cache |
-| `localstack` | 4566 | S3-compatible storage |
-| `mailpit` | 1025 (SMTP), 8025 (web UI) | SMTP capture |
-| `jaeger` | 4317 (OTLP), 16686 (UI) | Tracing |
-
-Use `docker compose port <service> <container-port>` to look up the assigned host port, or read it from the generated `.env`.
-
-## Configuration File Format
-
-### `config.toml` Example
+Every Imbi service reads its configuration from environment variables. This
+page is the full reference. For the minimum set that starts each service,
+see [Configuration](../getting-started/configuration.md) in Getting Started.
+
+## Sources and precedence
+
+The settings classes use
+[pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/).
+Each service reads values from these sources:
+
+1. **Environment variables.**
+2. **A `.env` file** in the working directory. An environment variable wins
+   over the same name in `.env`.
+3. **Built-in defaults.** The tables below show them.
+
+The settings classes accept variable names in upper or lower case. Some
+variables are read directly from the process environment, for example
+`ENVIRONMENT`, `SENTRY_DSN`, and `IMBI_PROMPT_*`. Those must be in upper case,
+and the `.env` file does not set them.
+
+### `config.toml`
+
+Only imbi-api reads a `config.toml` file, and only for two sections:
+
+| Section | Settings | Read by |
+|---|---|---|
+| `[server]` | The `IMBI_API_*` fields, `url`, `ui_url` | The OAuth and MCP discovery URLs, the auth cookie flags and path, the UI deep links |
+| `[storage]` | The `S3_*` fields | The upload store |
+
+imbi-api looks for the file in these places, in this order. A key in an
+earlier file wins over the same key in a later file:
+
+1. `./config.toml`
+2. `~/.config/imbi/config.toml`
+3. `/etc/imbi/config.toml`
+
+!!! warning "A key in `config.toml` wins over the environment variable"
+    In the `[server]` and `[storage]` sections, a key that is set in
+    `config.toml` overrides the environment variable of the same setting.
+    The environment variable supplies only the keys that the file does not
+    set. All other sections, and all other services, ignore `config.toml`.
+
+!!! warning "Set `[server]` values as environment variables"
+    imbi-api reads the CORS origins, the forwarded IPs, and the route prefix
+    (the path of `IMBI_API_URL`) from the environment only, when the
+    application starts. If `config.toml` sets `url` and the environment does
+    not set `IMBI_API_URL`, the routes mount with no prefix but the OAuth
+    URLs use the prefix of the file. Use environment variables for all
+    `[server]` values.
+
+Example:
 
 ```toml
-[server]
-environment = "production"
-host = "0.0.0.0"
-port = 8080
-cors_allowed_origins = ["https://imbi.example.com"]
-forwarded_allow_ips = "10.0.0.0/8"
-url = "https://imbi.example.com/api"
-
-[postgres]
-url = "postgresql://imbi:secret@db-prod:5432/imbi"
-graph_name = "imbi"
-min_pool_size = 5
-max_pool_size = 50
-
-[clickhouse]
-url = "clickhouse+http://clickhouse-prod:8123/imbi"
-
-[valkey]
-url = "valkey://valkey-prod:6379/0"
-
-[auth]
-# JWT secret and encryption key should come from environment variables:
-#   IMBI_AUTH_JWT_SECRET, IMBI_AUTH_ENCRYPTION_KEY
-jwt_algorithm = "HS256"
-access_token_expire_seconds = 3600
-refresh_token_expire_seconds = 2592000
-password_min_length = 14
-max_concurrent_sessions = 5
-oauth_auto_link_by_email = true
-oauth_auto_create_users = false
-
-[email]
-enabled = true
-smtp_host = "smtp.example.com"
-smtp_port = 587
-smtp_use_tls = true
-from_email = "noreply@example.com"
-from_name = "Imbi Platform"
-
 [storage]
 bucket = "imbi-uploads-prod"
 region = "us-east-1"
 create_bucket_on_init = false
-
-[releases]
-version_format = "semver"
 ```
 
-### `.env` Example (development)
+## `ENVIRONMENT` and production
+
+`ENVIRONMENT` has no prefix. Every service reads it. The default is
+`development`. Set it to `production` in production.
+
+| `ENVIRONMENT` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `IMBI_CONFIG_ENCRYPTION_KEY` | Mailpit auto-configuration |
+|---|---|---|
+| `development` (or unset) | Generated per process when not set, with a warning | On |
+| Any other value | Required. The service does not start without them | Off |
+
+A generated key is different in each process and after each restart. Then:
+
+- every issued token becomes invalid,
+- a value encrypted by one process cannot be decrypted by another process
+  or after a restart (OAuth tokens, AI provider keys, MCP server
+  credentials).
+
+Generate the three values once and store them in your secret store:
 
 ```bash
-# Application
-ENVIRONMENT=development
-IMBI_API_HOST=localhost
-IMBI_API_PORT=8000
-IMBI_API_URL=http://localhost:8000
-IMBI_API_CORS_ALLOWED_ORIGINS='["http://localhost:5173"]'
-
-# Stores
-POSTGRES_URL=postgresql://postgres:secret@localhost:5432/imbi
-CLICKHOUSE_URL=clickhouse+http://default:password@localhost:8123/imbi
-VALKEY_URL=valkey://localhost:6379/0
-
-# Auth secrets (production: pull from a secrets manager)
-IMBI_AUTH_JWT_SECRET=...generate-with-secrets.token_urlsafe(32)...
-IMBI_AUTH_ENCRYPTION_KEY=...generate-with-Fernet.generate_key()...
-
-# Object storage (LocalStack in dev)
-S3_ENDPOINT_URL=http://localhost:4566
-S3_ACCESS_KEY=test
-S3_SECRET_KEY=test
-S3_BUCKET=imbi-uploads
-S3_REGION=us-east-1
-
-# Email (Mailpit auto-configures if these are left at defaults)
-IMBI_EMAIL_ENABLED=true
-IMBI_EMAIL_FROM_EMAIL=noreply@imbi.example
-IMBI_EMAIL_FROM_NAME=Imbi Development
-
-# Tracing
-OTEL_SERVICE_NAME=imbi-api
-OTEL_TRACES_EXPORTER=otlp
-OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
-OTEL_EXPORTER_OTLP_TRACES_INSECURE=true
+python -c "import secrets; print(secrets.token_urlsafe(32))"                              # IMBI_AUTH_JWT_SECRET
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" # IMBI_AUTH_ENCRYPTION_KEY
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" # IMBI_CONFIG_ENCRYPTION_KEY
 ```
 
-## Production Considerations
+Use a different key for `IMBI_AUTH_ENCRYPTION_KEY` and
+`IMBI_CONFIG_ENCRYPTION_KEY`, so that you can rotate them separately.
 
-### Security
+!!! note "`IMBI_API_ENVIRONMENT` is a different variable"
+    imbi-api also reads `IMBI_API_ENVIRONMENT` (`[server] environment`).
+    It controls only the `Secure` flag of the auth cookies: the flag is set
+    when the value is not `development`. Set `IMBI_API_ENVIRONMENT=production`
+    too when the UI is served over HTTPS.
 
-1. **JWT and encryption keys**: Always set `IMBI_AUTH_JWT_SECRET` and `IMBI_AUTH_ENCRYPTION_KEY` explicitly. Auto-generated values change every restart and silently invalidate all tokens and encrypted secrets.
-2. **CORS**: Limit `IMBI_API_CORS_ALLOWED_ORIGINS` to the exact origins that need API access. Credentials and the `Authorization` header are allowed for these origins.
-3. **Reverse proxy**: Set `IMBI_API_FORWARDED_ALLOW_IPS` to the trusted proxy CIDR(s) — otherwise rate limiting keys on the proxy IP.
-4. **TLS**: Terminate HTTPS at the proxy.
-5. **Database credentials**: Use strong passwords and rotate regularly; pass via env vars only.
-6. **Secrets management**: Store sensitive values in AWS Secrets Manager, HashiCorp Vault, or your platform's secret store.
+!!! warning "`IMBI_ENVIRONMENT` is not read"
+    No code reads `IMBI_ENVIRONMENT`. `compose.yaml` sets it, so that stack
+    runs in development mode
+    ([#459](https://github.com/AWeber-Imbi/imbi/issues/459)). Use
+    `ENVIRONMENT`.
 
-### Performance
+!!! warning "The Helm chart does not set `ENVIRONMENT`"
+    The `helm/imbi` chart sets neither `ENVIRONMENT` nor
+    `IMBI_CONFIG_ENCRYPTION_KEY`, so a chart install runs in development mode
+    ([#459](https://github.com/AWeber-Imbi/imbi/issues/459)).
 
-1. **Postgres pool size**: Tune `POSTGRES_MAX_POOL_SIZE` (and `_MIN_`) for your concurrency and DB capacity.
-2. **ClickHouse retention**: Configure TTL on analytics tables to match your data-retention policy.
-3. **Access token expiry**: `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS=900` (15 min) is a common production choice; refresh-token rotation makes shorter lifetimes practical.
+### Production checklist
 
-### Monitoring
+1. Set `ENVIRONMENT=production` and `IMBI_API_ENVIRONMENT=production`.
+2. Set `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, and
+   `IMBI_CONFIG_ENCRYPTION_KEY` from your secret store. Use the same values
+   in every service and every replica.
+3. Set `IMBI_API_URL` to the public API URL with its path, for example
+   `https://imbi.example.com/api`, and `IMBI_UI_URL` to the public UI URL.
+4. Behind a proxy, set `IMBI_API_FORWARDED_ALLOW_IPS` to the proxy addresses.
+   Otherwise rate limits and OAuth URLs use the proxy address.
+5. Set `IMBI_API_CORS_ALLOWED_ORIGINS` to the exact origins that call the API.
+6. Set `VALKEY_URL`. If imbi-api cannot reach Valkey, the background
+   workers that need it do not start, and imbi-api logs a warning.
 
-1. **OpenTelemetry**: Point `OTEL_EXPORTER_OTLP_ENDPOINT` at your production collector (Jaeger, Honeycomb, Datadog, etc.).
-2. **Health checks**: Use `/status` for load-balancer health probes.
+## Environment variables
 
-## Advanced
-
-### Loading Configuration Programmatically
-
-```python
-from imbi.api import settings
-
-config = settings.load_config()
-
-print(config.server.environment, config.server.host, config.server.port)
-print(config.postgres.url)
-print(config.auth.jwt_algorithm)
-print(config.email.smtp_host)
-print(config.storage.bucket)
-
-# Or instantiate a single section directly (env vars and .env apply):
-postgres_settings = settings.Postgres()
-server_config = settings.ServerConfig()
-```
-
-### Environment-Specific Configuration
+The tables come from `scripts/docs_env_table.py`. Run it after you add or
+change a setting, and paste its output here:
 
 ```bash
-# Development — .env.test written by `moon run root:services`
+uv run python scripts/docs_env_table.py
+```
+
+The **Shared** table lists the settings in `imbi-common`. Each service reads
+the shared settings that it uses: for example, every service that opens
+PostgreSQL reads `POSTGRES_*`. The other tables list the settings that only
+that service reads. Some variables, for example `IMBI_INTERNAL_API_URL`, show
+in more than one table because more than one service reads them.
+
+In the type column, `list[str]` values are a JSON array, except
+`IMBI_PLUGINS`, `IMBI_PLUGINS_DISABLED`, and `IMBI_IGGY_CONNECTORS_API_KEYS`,
+which are comma-separated. A default of "none" means that the setting is
+unset.
+
+<!-- BEGIN GENERATED: scripts/docs_env_table.py -->
+### Shared (imbi-common)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_AUTH_JWT_SECRET` | str | generated | Secret that signs access and refresh tokens. Required when `ENVIRONMENT` is not `development`. |
+| `IMBI_AUTH_JWT_ALGORITHM` | str | `HS256` | JWT signing algorithm |
+| `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS` | int | `3600` | Access token lifetime |
+| `IMBI_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS` | int | `2592000` | Refresh token lifetime. Refresh tokens rotate on each use. |
+| `IMBI_AUTH_LAST_USED_THROTTLE_SECONDS` | int | `60` | Minimum seconds between two writes of the `last_used` time of an API key. `0` writes on each request. |
+| `IMBI_AUTH_ENCRYPTION_KEY` | str | none | Fernet key that encrypts OAuth tokens and client secrets. Required when `ENVIRONMENT` is not `development`; generated per process in development. |
+| `IMBI_CONFIG_ENCRYPTION_KEY` | str | none | Fernet key that encrypts configuration secrets, for example AI provider keys and MCP server credentials. Required when `ENVIRONMENT` is not `development`; generated per process in development. |
+| `POSTGRES_URL` | PostgresDsn | `postgresql://postgres:secret@localhost:5432/imbi` | PostgreSQL DSN |
+| `POSTGRES_GRAPH_NAME` | str | `imbi` | Apache AGE graph name |
+| `POSTGRES_MIN_POOL_SIZE` | int | `2` | Minimum connection pool size |
+| `POSTGRES_MAX_POOL_SIZE` | int | `10` | Maximum connection pool size |
+| `CLICKHOUSE_URL` | ClickHouseDsn | `clickhouse+http://localhost:8123` | ClickHouse DSN. Credentials in the URL are used. |
+| `CLICKHOUSE_CONNECT_TIMEOUT` | float | `10.0` | Connection timeout in seconds |
+| `CLICKHOUSE_MAX_CONNECT_ATTEMPTS` | int | `10` | Connection attempts at startup |
+| `CLICKHOUSE_CLUSTER_NAME` | str | none | Cluster name. When set, `setup-clickhouse` creates the schema `ON CLUSTER <name>` with `Replicated` table engines. Leave unset for one node. |
+| `IGGY_URL` | IggyDSN | `iggy+tcp://iggy:iggy@localhost:8090` | Apache Iggy connection string. The scheme selects the transport: `iggy`, `iggy+tcp`, `iggy+quic`, `iggy+http`, `iggy+ws`. |
+| `IGGY_CONNECT_TIMEOUT` | float | `10.0` | Connection timeout in seconds |
+| `IGGY_MAX_CONNECT_ATTEMPTS` | int | `10` | Connection attempts at startup |
+| `VALKEY_URL` | ValkeyDSN | `valkey://localhost:6379/0` | Valkey DSN |
+| `IMBI_PLUGINS` | list[str] | `[]` | Comma-separated `package.module:Attr` paths of plugins that do not use the `imbi_plugin_*` package name |
+| `IMBI_PLUGINS_DISABLED` | list[str] | `[]` | Comma-separated plugin slugs not to load |
+| `IMBI_RELEASES_VERSION_FORMAT` | `semver` or `commitish` | `semver` | Version format that `Release.version` must match |
+| `EMBEDDINGS_ENABLED` | bool | `true` | Generate embeddings for vector search |
+| `EMBEDDINGS_DEFAULT_MODEL` | str | `text` | Key in `EMBEDDINGS_MODELS` to use |
+| `EMBEDDINGS_MODELS` | dict[str, EmbeddingModelConfig] | `{"text": {"fastembed_id": "BAAI/bge-small-en-v1.5", "dimensions": 384}}` | JSON map of model key to `{fastembed_id, dimensions}` |
+| `SSL_CERT_DIR` | Path | none | Directory of CA certificates that every TLS context loads, in addition to the defaults |
+| `ANTHROPIC_API_KEY` | SecretStr | none | Anthropic API key |
+| `IMBI_ANTHROPIC_DEFAULT_MODEL` | str | `claude-haiku-4-5-20251001` | Model for structured completions, for example release-note drafts |
+| `IMBI_ANTHROPIC_TIMEOUT` | float | `30.0` | Request timeout in seconds |
+| `IMBI_ANTHROPIC_MAX_RETRIES` | int | `2` | Retries for each request |
+| `IMBI_CLIENT_API_BASE_URL` | HttpUrl | `http://imbi-api:8000/` | Imbi API URL for the `imbi.common.api` client |
+| `IMBI_CLIENT_API_TOKEN` | SecretStr | required | Bearer token for the `imbi.common.api` client |
+| `IMBI_CLIENT_USER_AGENT` | str | none | `User-Agent` for the `imbi.common.api` client. Unset: `imbi-common/<version>`. |
+| `IMBI_PROMPT_RENDER_INPROCESS` | str | `''` | `true` renders in the service process. For debugging only: it removes the isolation. |
+| `IMBI_PROMPT_WORKERS` | int | `2` | Prompt render worker processes per service process |
+| `IMBI_PROMPT_WORKER_MAX_RENDERS` | int | `500` | Renders before a worker is replaced |
+| `IMBI_PROMPT_WORKER_MEMORY_MB` | int | `256` | Address space in MiB that a worker can add after it starts. Linux only. |
+| `SENTRY_TRACES_SAMPLE_RATE` | float | `0.0` | Trace sample rate, `0.0` to `1.0`. `/status` requests are never sampled. |
+| `SENTRY_DSN` | str | none | Sentry DSN. Unset: Sentry is off. |
+| `SERVICE` | str | `unknown` | Server name sent to Sentry |
+| `IMBI_RELOAD_DIRS` | str | `''` | Extra directories to watch with `serve --dev`, separated by the OS path separator |
+| `ENVIRONMENT` | str | `development` | Anything other than `development` makes the auth and config encryption keys required and turns off the Mailpit auto-configuration. The status pages show it. |
+
+### imbi-api
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_API_ENVIRONMENT` | str | `development` | Anything other than `development` sets the `Secure` flag on the auth cookies |
+| `IMBI_API_HOST` | str | `localhost` | Host of the fallback public URL when `IMBI_API_URL` is unset. It does not set the bind address: use `serve --host`. |
+| `IMBI_API_PORT` | int | `8000` | Port of the fallback public URL. A `tcp://ip:port` value from Kubernetes service discovery is read as its port. |
+| `IMBI_API_CORS_ALLOWED_ORIGINS` | list[str] | `[]` | JSON array of allowed CORS origins. Also the trusted hosts for per-request OAuth URLs. |
+| `IMBI_API_FORWARDED_ALLOW_IPS` | str | `''` | Comma-separated proxy IPs (or `*`) whose `X-Forwarded-*` headers are trusted. Empty: off. |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
+| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | int | `12` | Minimum password length. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | bool | `true` | Require an uppercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | bool | `true` | Require a lowercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | bool | `true` | Require a digit. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | bool | `true` | Require a special character. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | int | `365` | Maximum lifetime of an API key or client credential |
+| `IMBI_AUTH_MFA_ISSUER_NAME` | str | `Imbi` | Issuer name in authenticator apps |
+| `IMBI_AUTH_MFA_TOTP_PERIOD` | int | `30` | TOTP time step in seconds |
+| `IMBI_AUTH_MFA_TOTP_DIGITS` | int | `6` | TOTP code length |
+| `IMBI_AUTH_RATE_LIMIT_LOGIN` | str | `5/minute` | Password login rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | str | `10/minute` | Token refresh rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | str | `3/minute` | OAuth flow start rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_API_KEY` | str | `100/minute` | API key request rate. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` | bool | `true` | Link an SSO sign-in to the user with the same email |
+| `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` | bool | `true` | Create a user at the first SSO sign-in |
+| `IMBI_AUTH_DCR_ENABLED` | bool | `true` | Let OAuth clients register at `/auth/register` (RFC 7591) |
+| `IMBI_EMAIL_ENABLED` | bool | `true` | Send email. `false` stops all email. |
+| `IMBI_EMAIL_DRY_RUN` | bool | `false` | Log messages, do not send them |
+| `IMBI_EMAIL_SMTP_HOST` | str | `localhost` | SMTP host |
+| `IMBI_EMAIL_SMTP_PORT` | int | `587` | SMTP port |
+| `IMBI_EMAIL_SMTP_USE_TLS` | bool | `true` | Use STARTTLS |
+| `IMBI_EMAIL_SMTP_USE_SSL` | bool | `false` | Use implicit TLS (usually port 465) |
+| `IMBI_EMAIL_SMTP_USERNAME` | str | none | SMTP user name |
+| `IMBI_EMAIL_SMTP_PASSWORD` | str | none | SMTP password |
+| `IMBI_EMAIL_SMTP_TIMEOUT` | int | `30` | SMTP timeout in seconds |
+| `IMBI_EMAIL_FROM_EMAIL` | EmailStr | `noreply@imbi.example.com` | Sender address |
+| `IMBI_EMAIL_FROM_NAME` | str | `Imbi` | Sender name |
+| `IMBI_EMAIL_REPLY_TO` | EmailStr | none | `Reply-To` address |
+| `IMBI_EMAIL_MAX_RETRIES` | int | `3` | Send attempts after the first |
+| `IMBI_EMAIL_INITIAL_RETRY_DELAY` | float | `1.0` | First retry delay in seconds |
+| `IMBI_EMAIL_MAX_RETRY_DELAY` | float | `60.0` | Maximum retry delay in seconds |
+| `IMBI_EMAIL_RETRY_BACKOFF_FACTOR` | float | `2.0` | Retry delay multiplier |
+| `S3_ENDPOINT_URL` | str | none | S3-compatible endpoint. Unset: AWS S3. |
+| `S3_ACCESS_KEY` | str | none | Access key ID. Unset: the default AWS credential chain. |
+| `S3_SECRET_KEY` | str | none | Secret access key |
+| `S3_BUCKET` | str | `imbi-uploads` | Bucket name |
+| `S3_REGION` | str | `us-east-1` | AWS region |
+| `S3_CREATE_BUCKET_ON_INIT` | bool | `true` | Create the bucket at startup if it does not exist |
+| `S3_MAX_FILE_SIZE` | int | `52428800` | Upload size limit in bytes |
+| `S3_ALLOWED_CONTENT_TYPES` | list[str] | `["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml", "application/pdf"]` | JSON array of MIME types accepted for upload |
+| `S3_THUMBNAIL_MAX_SIZE` | int | `256` | Largest thumbnail side in pixels |
+| `S3_THUMBNAIL_QUALITY` | int | `85` | WEBP quality of thumbnails, 0 to 100 |
+| `IMBI_IGGY_CONNECTORS_API_KEYS` | list[str] | `[]` | Comma-separated bearer keys of the iggy-connect runtime. Empty: the connector config endpoint answers 503. |
+| `IMBI_INTERNAL_ASSISTANT_URL` | str | `''` | Internal URL of imbi-assistant, for the status dashboard. Empty: not probed. |
+| `IMBI_INTERNAL_GATEWAY_URL` | str | `''` | Internal URL of imbi-gateway, for the status dashboard |
+| `IMBI_INTERNAL_MCP_URL` | str | `''` | Internal URL of imbi-mcp, for the status dashboard |
+| `IMBI_INTERNAL_SCHEDULER_URL` | str | `''` | Internal URL of imbi-scheduler, for the status dashboard |
+| `IMBI_INTERNAL_SLACKBOT_URL` | str | `''` | Internal URL of imbi-slackbot, for the status dashboard |
+| `IMBI_INTERNAL_WORKFLOWS_URL` | str | `''` | Internal URL of imbi-workflows, for the status dashboard |
+| `IMBI_GATEWAY_API_TOKEN` | str | none | `imbi-api setup` and `setup-service-accounts` store this value as the API key of the `imbi-gateway` service account. Unset, they generate one and print it. |
+| `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | `setup` stores this pair as the client credential of the `imbi-scheduler` service account. Unset, it generates a pair and prints it. |
+| `IMBI_SCHEDULER_SA_CLIENT_SECRET` | str | none | See `IMBI_SCHEDULER_SA_CLIENT_ID`. |
+| `IMBI_WORKFLOWS_SA_CLIENT_ID` | str | none | The same, for the `imbi-workflows` service account. |
+| `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | str | none | See `IMBI_WORKFLOWS_SA_CLIENT_ID`. |
+| `IMBI_OAUTH_ALLOW_INSECURE_URLS` | str | `''` | `true` allows `http://localhost` OAuth provider URLs. Development only. |
+| `IMBI_PLUGIN_CACHE_TTL` | int | `60` | Seconds that Valkey keeps the configuration key list of a project |
+| `IMBI_PLUGIN_TIMEOUT_SECONDS` | int | `10` | Timeout of one plugin call in seconds |
+| `IMBI_PLUGINS_INDEX_URL` | str | `https://pypi.org/simple` | Package index for plugin installs |
+| `IMBI_PLUGINS_INSTALL_TIMEOUT` | int | `120` | Timeout of one plugin install in seconds |
+| `IMBI_PLUGINS_INSTALL_ENABLED` | bool | `true` | `false` turns off plugin install at runtime |
+| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
+| `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
+| `MAILPIT_SMTP_PORT` | str | none | In development, with the default SMTP host and port, use this port and no TLS (Mailpit) |
+
+### imbi-assistant
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_ASSISTANT_ENABLED` | bool | `false` | Turn the assistant on. `ANTHROPIC_API_KEY` turns it on too. |
+| `IMBI_ASSISTANT_MODEL` | str | `claude-sonnet-4-6` | Claude model |
+| `IMBI_ASSISTANT_MAX_TOKENS` | int | `16384` | Maximum response tokens |
+| `IMBI_ASSISTANT_MAX_CONVERSATION_TURNS` | int | `100` | Maximum turns in one conversation |
+| `IMBI_ASSISTANT_MAX_TOOL_ROUNDS` | int | `10` | Maximum tool rounds for one message |
+| `IMBI_ASSISTANT_MAX_TOOL_RESULT_CHARS` | int | `120000` | Longer tool results are cut |
+| `IMBI_ASSISTANT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
+| `IMBI_ASSISTANT_PROMPT_REF` | str | `imbi-assistant/system@stable` | Prompt CMS reference of the system prompt |
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_ASSISTANT_URL` | str | `''` | Public assistant URL. Its path is the route prefix. |
+| `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
+| `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
+
+### imbi-gateway
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | HttpUrl | `http://localhost:8000/` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `IMBI_GATEWAY_API_TOKEN` | str | required | API key of the `imbi-gateway` service account. Required. |
+
+### imbi-mcp
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api (`--api-url`) |
+| `IMBI_MCP_PUBLIC_URL` | str | none | Public base URL of the host in front of imbi-mcp, without the `/mcp` path (`--public-url`). OAuth is on only when this and `IMBI_MCP_AUTH_SERVER_URL` are both set. |
+| `IMBI_MCP_AUTH_SERVER_URL` | str | none | Imbi OAuth issuer URL, for example `https://imbi.example.com` (`--auth-server-url`) |
+
+### imbi-scheduler
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_SCHEDULER_SCHEMA` | str | `scheduler` | Postgres schema of the task tables |
+| `IMBI_SCHEDULER_API_PREFIX` | str | `/api` | Route prefix of the task and run routes |
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `IMBI_SCHEDULER_GATEWAY_URL` | str | `http://localhost:8003` | imbi-gateway URL for gateway targets |
+| `IMBI_SCHEDULER_SA_SLUG` | str | `imbi-scheduler` | Slug of the scheduler service account |
+| `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | Client ID of the scheduler service account |
+| `IMBI_SCHEDULER_SA_CLIENT_SECRET` | SecretStr | none | Its client secret |
+| `IMBI_SCHEDULER_MAX_CONCURRENT_RUNS` | int | `20` | Active runs per process |
+| `IMBI_SCHEDULER_CONSECUTIVE_SKIPS_LIMIT` | int | `5` | Skipped runs in a row before a task is disabled |
+| `IMBI_SCHEDULER_CONSECUTIVE_NO_EFFECT_LIMIT` | int | `5` | No-effect runs in a row before a warning |
+| `IMBI_SCHEDULER_POLL_INTERVAL` | int | `30` | Maximum seconds between polls |
+
+### imbi-slackbot
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_SLACKBOT_ENABLED` | bool | `false` | Turn the bot on. `ANTHROPIC_API_KEY` and both Slack tokens turn it on too. |
+| `IMBI_SLACKBOT_MODEL` | str | `claude-sonnet-4-6` | Claude model |
+| `IMBI_SLACKBOT_MAX_TOKENS` | int | `16384` | Maximum response tokens |
+| `IMBI_SLACKBOT_MAX_TOOL_ROUNDS` | int | `10` | Maximum tool rounds for one message |
+| `IMBI_SLACKBOT_MAX_TOOL_RESULT_CHARS` | int | `200000` | Longer tool results are replaced with an error |
+| `IMBI_SLACKBOT_MAX_THREAD_MESSAGES` | int | `30` | Thread messages sent to Claude as context |
+| `IMBI_SLACKBOT_PROGRESS_UPDATES` | bool | `true` | Post and update a status message while a request runs |
+| `IMBI_SLACKBOT_STATUS_EMOJI` | str | `hourglass_flowing_sand` | Reaction emoji while a request runs |
+| `IMBI_SLACKBOT_IDENTITY_CACHE_TTL` | int | `900` | Seconds to cache a Slack user to Imbi user match |
+| `IMBI_SLACKBOT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
+| `IMBI_SLACKBOT_PROMPT_REF` | str | `imbi-slackbot/system@stable` | Prompt CMS reference of the system prompt |
+| `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`) |
+| `SLACK_APP_TOKEN` | str | `''` | Slack app-level token for Socket Mode (`xapp-`) |
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
+| `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
+
+### imbi-workflows
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `IMBI_WORKFLOWS_SA_CLIENT_ID` | str | none | Client ID of the `imbi-workflows` service account. Deploy and rollback steps fail without it. |
+| `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | SecretStr | none | Its client secret |
+| `IMBI_WORKFLOWS_WORKERS` | int | `10` | Runs worked on at the same time |
+| `IMBI_WORKFLOWS_POLL_INTERVAL` | float | `10.0` | Upper bound in seconds on the sleep between polls. A lost NOTIFY costs latency, not a run. |
+| `IMBI_WORKFLOWS_LEASE_SECONDS` | int | `300` | How long a claim lasts. One step call must end inside it. |
+| `IMBI_WORKFLOWS_DEPLOY_POLL_SECONDS` | int | `15` | Seconds between deployment polls |
+| `IMBI_WORKFLOWS_AGENT_POLL_SECONDS` | int | `30` | Seconds between agent task polls |
+| `IMBI_WORKFLOWS_SCHEDULER_URL` | str | `http://localhost:8005/api` | imbi-scheduler's task API, with its route prefix |
+| `IMBI_WORKFLOWS_RECONCILE_INTERVAL` | float | `300.0` | Seconds between passes of the trigger reconciler. imbi-api also wakes it after each activation and pause. |
+
+### imbi-harness (agent runner pods)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_API_URL` | str | none | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `POD_NAME` | str | none | Pod name, from the Kubernetes downward API |
+| `POD_NAMESPACE` | str | none | Pod namespace, from the Kubernetes downward API |
+| `IMBI_HARNESS_END_OF_CHAIN` | str | `''` | `delete_pod` or `exit` at the end of a chain |
+| `IMBI_HARNESS_POOL` | str | `general` | Runner pool name |
+| `HOSTNAME` | str | `runner` | Runner instance name |
+| `IMBI_HARNESS_IDLE_EXIT_SECONDS` | str | none | Exit after this many idle seconds. Empty or `0`: never. |
+| `IMBI_HARNESS_MODEL` | str | none | Model override for the runner |
+| `IMBI_HARNESS_MCP_URL` | str | none | imbi-mcp URL that agents use |
+| `IMBI_HARNESS_EXTRA_CA` | str | none | PEM file of extra CA certificates |
+
+### Container (entrypoint, Caddy, UI)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `IMBI_SERVICE` | str | `all` | Service the image runs: `all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`, `ui`, `workflows` |
+| `SENTRY_AUTH_TOKEN` | str | none | With `SENTRY_ORG` and `SENTRY_PROJECT`, the `all` and `ui` modes upload the UI source maps to Sentry at start |
+| `SENTRY_ORG` | str | none | Sentry organization for the upload |
+| `SENTRY_PROJECT` | str | none | Sentry project for the upload |
+| `SENTRY_RELEASE` | str | none | Sentry release for the upload |
+| `SENTRY_URL` | str | none | Sentry server URL for the upload |
+| `IMBI_API_UPSTREAM` | str | `127.0.0.1:8000` | Caddy upstream of imbi-api (`ui` mode) |
+| `IMBI_ASSISTANT_UPSTREAM` | str | `127.0.0.1:8002` | Caddy upstream of imbi-assistant |
+| `IMBI_GATEWAY_UPSTREAM` | str | `127.0.0.1:8003` | Caddy upstream of imbi-gateway |
+| `IMBI_SCHEDULER_UPSTREAM` | str | `127.0.0.1:8005` | Caddy upstream of imbi-scheduler |
+| `IMBI_MCP_UPSTREAM` | str | `127.0.0.1:8001` | Caddy upstream of imbi-mcp |
+| `SERVE_SOURCE_MAPS` | str | none | `true` serves the UI `*.map` files. Otherwise Caddy answers 404. |
+| `VITE_API_URL` | str | none | API URL that Caddy writes into `index.html` at request time. The UI does not start without it. |
+| `VITE_SENTRY_DSN` | str | none | Sentry DSN of the UI, written into `index.html` |
+<!-- END GENERATED -->
+
+## Notes on some settings
+
+### Public and internal URLs
+
+`IMBI_API_URL` is the URL that a browser uses, with the path that the API is
+mounted under. imbi-api mounts its routes under that path. When it is unset,
+imbi-api uses `http://<IMBI_API_HOST>:<IMBI_API_PORT>` with no path. The
+`/docs` and `/openapi.json` pages are always at the root.
+
+The other services call imbi-api at `IMBI_INTERNAL_API_URL`, an in-cluster
+origin with no path. imbi-gateway, imbi-scheduler, and imbi-workflows add the
+path of `IMBI_API_URL` to it. So set `IMBI_API_URL` in those services too.
+
+The health check of imbi-api follows the path: with
+`IMBI_API_URL=https://imbi.example.com/api` it is `/api/status`.
+
+### Mailpit auto-configuration
+
+When `ENVIRONMENT` is `development` (or unset), `IMBI_EMAIL_SMTP_HOST` is
+`localhost`, and `IMBI_EMAIL_SMTP_PORT` is `587`, imbi-api uses the port in
+`MAILPIT_SMTP_PORT`. It also turns off STARTTLS, unless
+`IMBI_EMAIL_SMTP_USE_TLS` is set. `moon run root:services` writes
+`MAILPIT_SMTP_PORT` to `.env.test`.
+
+### Sign-in providers
+
+Sign-in providers (Google, GitHub, OIDC, AWS) and local login are not
+environment variables. You configure them in the database. See
+[Authentication](../admin/authentication.md). The OAuth callback URL is
+`<IMBI_API_URL>/auth/oauth/<provider-slug>/callback`.
+
+### OAuth 2.0 authorization server (MCP login)
+
+imbi-api is an OAuth 2.0 authorization server, so that MCP clients can sign
+a user in with the browser. The flow is the authorization code flow with
+PKCE (`S256`). Clients register themselves with RFC 7591 dynamic client
+registration, unless `IMBI_AUTH_DCR_ENABLED=false`. The discovery document
+is at `/.well-known/oauth-authorization-server`, at the host root. The
+endpoints are `/auth/authorize`, `/auth/token`, and `/auth/register`, under
+the API path. `/auth/authorize` uses the usual Imbi sign-in, so MFA and the
+provider rules apply.
+
+imbi-mcp turns on OAuth only when `IMBI_MCP_PUBLIC_URL` and
+`IMBI_MCP_AUTH_SERVER_URL` are both set.
+
+#### More than one public host
+
+A deployment can have more than one host. For example, an internal host
+serves the UI, and a public host serves the MCP OAuth sign-in for remote
+clients. Remote MCP clients connect from the cloud of the vendor, so the MCP
+and OAuth endpoints must be public.
+
+imbi-api makes the discovery URLs, the sign-in redirects, and the IdP
+callback URL from the host of each request. It uses the request host only
+when it is a trusted origin: the origin of `IMBI_API_URL`, or an entry in
+`IMBI_API_CORS_ALLOWED_ORIGINS`. For other hosts, it uses `IMBI_API_URL`.
+`IMBI_API_FORWARDED_ALLOW_IPS` must be set, so that imbi-api trusts the
+scheme and host from the proxy.
+
+To add a public sign-in host:
+
+1. Add the public origin to `IMBI_API_CORS_ALLOWED_ORIGINS`, for example
+   `https://imbi-public.example.com`. Keep `IMBI_API_URL` on the internal
+   host.
+2. Route `/mcp`, `/.well-known/oauth-*`, and `/api/auth/*` on the public
+   host to Imbi. For browser sign-in on that host, also serve the UI
+   (`index.html` at `/` and `/login`, and its static files).
+3. If sign-in uses an IdP, register the callback of the public host with
+   the IdP: `https://<public-host>/api/auth/oauth/<slug>/callback`.
+
+!!! note "Known limit"
+    The flow that connects an extra identity from the account settings page
+    does not use the request host. It always uses `IMBI_API_URL`, so its
+    callback must be registered on that origin.
+
+### System prompts
+
+imbi-assistant and imbi-slackbot read their system prompt from the prompt CMS
+at `IMBI_ASSISTANT_PROMPT_REF` and `IMBI_SLACKBOT_PROMPT_REF`. If the CMS does
+not supply the prompt, they use the packaged prompt. `imbi-api setup-prompts`
+seeds the defaults. `IMBI_ASSISTANT_SYSTEM_PROMPT` and
+`IMBI_SLACKBOT_SYSTEM_PROMPT` replace both. See [Prompts](../admin/prompts.md).
+
+### Prompt rendering
+
+imbi-api, imbi-assistant, imbi-slackbot, and imbi-workflows render prompt
+templates in worker processes, so that a template cannot stop the service.
+`IMBI_PROMPT_*` sets the pool of each service process.
+
+### Other per-service references
+
+- imbi-scheduler: [Scheduler configuration](../scheduler/configuration.md).
+- imbi-workflows: [Workflows](../admin/workflows.md).
+- Secrets broker (`IMBI_SECRETS_*`): [Secrets](../admin/secrets.md).
+- Plugins (`IMBI_PLUGINS*`): [Plugins](../common/plugins/index.md).
+- Agent runner pods (`IMBI_HARNESS_*`): [Agent runners](../deployment/agent-runners.md).
+
+### Tracing (`OTEL_*`)
+
+The images install the OpenTelemetry distro, but no service starts the
+OpenTelemetry SDK, and the container entrypoint does not run the services
+under `opentelemetry-instrument`. So the standard `OTEL_*` variables have no
+effect in the published image. To send traces, run the service command under
+`opentelemetry-instrument` and set the `OTEL_*` variables.
+
+## Development stack
+
+`moon run root:services` starts the backing services in `compose.ci.yaml`
+on random host ports. Then it writes the ports, and a JWT secret and an
+encryption key, to `.env.test`. Load that file when you run a service:
+
+```bash
+moon run root:setup
+moon run root:services
 uv run --env-file .env.test imbi-api serve --dev
-
-# Staging — point at a staging config file
-cp /path/to/staging/config.toml ./config.toml
-uv run imbi-api serve
-
-# Production — system config + injected secrets
-# Config at /etc/imbi/config.toml
-export IMBI_AUTH_JWT_SECRET="$(load-from-secrets-manager)"
-export IMBI_AUTH_ENCRYPTION_KEY="$(load-from-secrets-manager)"
-export POSTGRES_URL="$(load-from-secrets-manager)"
-uv run imbi-api serve
 ```
 
-### Configuration Best Practices
+| Service | Container ports | Purpose |
+|---|---|---|
+| `postgres` | 5432 | PostgreSQL with Apache AGE, pg_cron, and pgvector |
+| `clickhouse` | 8123 | Analytics, operations log, audit |
+| `valkey` | 6379 | Cache |
+| `iggy` | 3000, 8090, 8092 | Apache Iggy message streams (8090 is TCP) |
+| `iggy-config-server` | 8080 | Serves the sink configuration to `iggy-connect`, in place of imbi-api |
+| `iggy-connect` | 8081 | Iggy connectors runtime with the ClickHouse sink. In the `connect` profile: `moon run root:services` starts it after it creates the topics |
+| `ministack` | 4566 | S3-compatible storage |
+| `mailpit` | 1025 (SMTP), 8025 (web UI) | SMTP capture |
+| `jaeger` | 4317 (OTLP), 16686 (UI) | Tracing |
 
-1. **Secrets via environment variables**: Never check in passwords, JWT secrets, or Fernet keys.
-2. **`config.toml` for structure**: Put non-sensitive settings in version-controlled config files.
-3. **Example configs**: Commit `config.example.toml`, never the real `config.toml`.
-4. **Deployment automation**: Render configs via Ansible/Terraform/Helm.
+To find a host port, run
+`docker compose -f compose.ci.yaml port <service> <container-port>`, or read
+`.env.test`.
 
-## Troubleshooting
-
-### PostgreSQL / AGE Connection Issues
-
-```bash
-docker compose exec postgres psql -U postgres -d imbi -c '\dx'
-docker compose logs postgres
-```
-
-Verify the AGE and pgvector extensions are loaded.
-
-### ClickHouse Connection Issues
-
-```bash
-HOST_PORT=$(docker compose port clickhouse 8123 | cut -d: -f2)
-curl http://localhost:${HOST_PORT}/ping
-docker compose logs clickhouse
-```
-
-### Authentication Issues
-
-```bash
-# Confirm secrets are present (do not echo the values in shared output)
-env | grep -E '^(IMBI_AUTH_JWT_SECRET|IMBI_AUTH_ENCRYPTION_KEY)=' | wc -l
-# Should print 2 in production.
-
-uv run --env-file .env.test imbi-api serve --dev   # watch for JWT-related warnings on startup
-```
-
-## See Also
-
-- [Architecture Decision Records](adr.md) — Key architectural decisions
-- [GitHub Repository](https://github.com/AWeber-Imbi/imbi-api) — Source code and issues
+`IMBI_RELOAD_DIRS` adds directories that `serve --dev` watches for changes.
