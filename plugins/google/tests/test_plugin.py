@@ -174,6 +174,46 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(credentials.expires_at, now)
         self.assertIn('openid', credentials.scopes)
 
+    async def _exchange(self, options: dict[str, object]) -> str:
+        profile, _ = await GoogleIdentity().exchange_code(
+            _ctx(options),
+            {'client_id': 'cid', 'client_secret': 'sec'},
+            'auth-code',
+            'https://app.example.com/cb',
+            'verifier',
+        )
+        return profile.subject
+
+    @respx.mock
+    async def test_hosted_domain_match_accepted(self) -> None:
+        _mock_token()
+        _mock_userinfo(hd='Example.com')
+        subject = await self._exchange({'hosted_domain': 'example.com'})
+        self.assertEqual(subject, 'g-1')
+
+    @respx.mock
+    async def test_hosted_domain_missing_claim_rejected(self) -> None:
+        # Personal Gmail accounts have no hd claim.
+        _mock_token()
+        _mock_userinfo(email='u@gmail.com')
+        with self.assertRaises(ValueError):
+            await self._exchange({'hosted_domain': 'example.com'})
+
+    @respx.mock
+    async def test_hosted_domain_other_domain_rejected(self) -> None:
+        # The email suffix is not trusted; only the hd claim counts.
+        _mock_token()
+        _mock_userinfo(hd='evil.com')
+        with self.assertRaises(ValueError):
+            await self._exchange({'hosted_domain': 'example.com'})
+
+    @respx.mock
+    async def test_no_hosted_domain_accepts_any_account(self) -> None:
+        _mock_token()
+        _mock_userinfo(email='u@gmail.com')
+        subject = await self._exchange({'hosted_domain': ''})
+        self.assertEqual(subject, 'g-1')
+
     @respx.mock
     async def test_refresh_keeps_refresh_token(self) -> None:
         # Google omits refresh_token on refresh; the old one is retained.
