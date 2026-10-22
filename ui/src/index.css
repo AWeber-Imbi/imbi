@@ -460,6 +460,24 @@
     font-weight: 600;
     border-top: 0;
   }
+  /* Leading YAML frontmatter, rendered as a key/value table. */
+  .document-markdown .frontmatter {
+    margin: 0.5em 0 1em;
+    padding-left: 0.75em;
+    border-left: 2px solid var(--ds-border-tertiary);
+  }
+  .document-markdown .frontmatter table {
+    margin: 0;
+  }
+  .document-markdown .frontmatter tr:first-child > * {
+    border-top: 0;
+  }
+  .document-markdown .frontmatter th {
+    width: 30%;
+    border-right: 0.5px solid var(--ds-border-tertiary);
+    color: var(--ds-text-tertiary);
+    font-weight: 600;
+  }
   .document-markdown input[type='checkbox'] {
     margin-right: 0.5em;
   }

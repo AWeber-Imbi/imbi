@@ -22,6 +22,7 @@ import remarkGfm from 'remark-gfm'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { FrontmatterTable } from '@/components/ui/frontmatter-table'
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -29,6 +30,7 @@ import {
 import { IconTooltip } from '@/components/ui/tooltip'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useDocumentReadTracking } from '@/hooks/useDocumentReadTracking'
+import { splitFrontmatter } from '@/lib/frontmatter'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import type { CommentAnchor, CommentThread } from '@/types/comments'
@@ -239,6 +241,10 @@ export function DocumentsPinboardReader({
     [allDocuments],
   )
   const counts = useMemo(() => tagCounts(allDocuments), [allDocuments])
+  const content = useMemo(
+    () => splitFrontmatter(document.content),
+    [document.content],
+  )
   const highlightedSlugs = useMemo(
     () => new Set(document.tags.map((t) => t.slug)),
     [document.tags],
@@ -254,10 +260,7 @@ export function DocumentsPinboardReader({
       .slice(0, 4)
   }, [allDocuments, document])
 
-  const headings = useMemo(
-    () => extractHeadings(document.content),
-    [document.content],
-  )
+  const headings = useMemo(() => extractHeadings(content.body), [content.body])
   const readTime = useMemo(
     () => formatReadTime(estimatedReadSeconds(document.content)),
     [document.content],
@@ -462,6 +465,7 @@ export function DocumentsPinboardReader({
             </div>
 
             <div className="document-markdown mt-6" ref={articleRef}>
+              {content.meta && <FrontmatterTable meta={content.meta} />}
               <Markdown
                 components={{
                   h2: ({ children, ...props }) => (
@@ -485,7 +489,7 @@ export function DocumentsPinboardReader({
                 }}
                 remarkPlugins={[remarkGfm]}
               >
-                {document.content}
+                {content.body}
               </Markdown>
             </div>
 

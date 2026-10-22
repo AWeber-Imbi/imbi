@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { FrontmatterTable } from '@/components/ui/frontmatter-table'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
   SegmentedControl,
@@ -31,6 +32,7 @@ import {
 } from '@/components/ui/segmented-control'
 import { Sk, SkText } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { splitFrontmatter } from '@/lib/frontmatter'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentVersionInfo } from '@/types'
@@ -105,6 +107,7 @@ export function DocumentVersionHistory({
     ),
   })
   const snapshot = snapshotQuery.data
+  const snapshotContent = splitFrontmatter(snapshot?.content ?? '')
 
   const currentVersion = document.version ?? 1
   const isCurrent = selectedVersion === currentVersion
@@ -239,8 +242,11 @@ export function DocumentVersionHistory({
                     {snapshot.title}
                   </h2>
                   <div className="document-markdown">
+                    {snapshotContent.meta && (
+                      <FrontmatterTable meta={snapshotContent.meta} />
+                    )}
                     <Markdown remarkPlugins={[remarkGfm]}>
-                      {snapshot.content}
+                      {snapshotContent.body}
                     </Markdown>
                   </div>
                 </>
