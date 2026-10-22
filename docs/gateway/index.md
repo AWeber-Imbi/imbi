@@ -139,8 +139,10 @@ different users, it leaves the delivery unattributed.
 ## Handlers
 
 A rule's **Handler** has the form `<plugin slug>#<action name>`, for
-example `gateway-actions#create_release`. The plugin slug and the action
-name use lowercase letters, digits, and hyphens or underscores.
+example `gateway-actions#create_release`. Each part starts with a
+lowercase letter. After that, the plugin slug uses lowercase letters,
+digits, and hyphens, and the action name uses lowercase letters, digits,
+and underscores.
 
 imbi-api checks the handler when you save the rule. It refuses a handler
 in another form, and a plugin or action that is not in its plugin
