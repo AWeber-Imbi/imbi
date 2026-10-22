@@ -134,8 +134,11 @@ nav:
       - Pull Request Sync: common/plugins/pr-sync.md
       - Tools: common/plugins/tools.md
   - Services:
+      - Assistant: assistant/index.md
       - Gateway:
+          - Overview: gateway/index.md
           - Webhook Filter Expressions: gateway/webhook-filter-expressions.md
+      - MCP Server: mcp/index.md
       - Scheduler:
           - Overview: scheduler/index.md
           - Configuration: scheduler/configuration.md
@@ -145,7 +148,9 @@ nav:
               - 0002 No Credential Store in v1: scheduler/adr/0002-no-credential-store-in-v1.md
               - 0003 No Local Token-Minting Bridge: scheduler/adr/0003-no-local-token-minting-bridge.md
       - Slackbot:
+          - Overview: slackbot/index.md
           - Slack App Manifest: slackbot/slack-app-manifest.md
+      - Workflows Engine: workflows/index.md
 
 plugins:
   - search

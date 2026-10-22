@@ -108,6 +108,23 @@ Calls `imbi-api` as the task's identity.
 `path` must be relative — an absolute URL is refused. A non-2xx response is a
 `failed` run.
 
+`path` has these limits:
+
+- It must start with `/`.
+- It cannot contain `%` or a backslash.
+- It cannot contain a `.` or `..` segment.
+
+The scheduler checks them when you create the task (`422`). It checks them
+again on the rendered path when the task fires. A rendered path that breaks
+them is a `failed` run, and no request is made.
+
+`organization` scopes the request. Set it on the target or on the task; the
+target value wins. It must be a bare organization slug, for example `acme`.
+When it is set and `path` does not start with `/organizations/<slug>/`, the
+scheduler adds that prefix. So `"path": "/agent-tasks/"` with
+`"organization": "acme"` calls `/organizations/acme/agent-tasks/`. A path
+that names a different organization also gets the prefix.
+
 Every request has headers that the task cannot change:
 `X-Imbi-Scheduled-Task` (the task id), `X-Imbi-Scheduled-Task-Accountable`
 (who last patched or resumed the task, else who made it; a patch that only
