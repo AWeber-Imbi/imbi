@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { Textarea } from '@/components/ui/textarea'
 
@@ -22,6 +22,7 @@ export function EnvPayloadsEditor({
   onChange,
   value,
 }: EnvPayloadsEditorProps) {
+  const errorId = useId()
   const formatted = formatEnvPayloads(value)
   const [text, setText] = useState(formatted)
   const [error, setError] = useState<null | string>(null)
@@ -44,6 +45,7 @@ export function EnvPayloadsEditor({
   return (
     <div className="space-y-1">
       <Textarea
+        aria-describedby={error ? errorId : undefined}
         aria-invalid={!!error}
         aria-label={label}
         className="min-h-24 font-mono text-xs"
@@ -54,7 +56,11 @@ export function EnvPayloadsEditor({
         placeholder={'{\n  "production": { "region": "us-east-1" }\n}'}
         value={text}
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && (
+        <p className="text-xs text-red-600" id={errorId} role="alert">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

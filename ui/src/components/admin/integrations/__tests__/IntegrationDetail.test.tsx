@@ -204,11 +204,12 @@ describe('IntegrationDetail assignments', () => {
     fireEvent.change(editor, { target: { value: '{"staging": 1}' } })
     fireEvent.blur(editor)
 
-    expect(
-      await screen.findByText(
-        'The payload for "staging" must be a JSON object.',
-      ),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The payload for "staging" must be a JSON object.',
+    )
+    expect(editor).toHaveAccessibleDescription(
+      'The payload for "staging" must be a JSON object.',
+    )
     expect(replaceCapabilityAssignments).not.toHaveBeenCalled()
   })
 })
