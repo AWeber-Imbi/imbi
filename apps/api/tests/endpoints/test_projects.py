@@ -392,6 +392,56 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             response.json()['detail'],
         )
 
+    # -- New project schema --------------------------------------------
+
+    def test_new_project_schema_filters_and_reports_required(self) -> None:
+        """The pre-create schema matches the given type and envs."""
+
+        def blueprint(
+            slug: str, filter_: dict[str, list[str]] | None
+        ) -> models.Blueprint:
+            return models.Blueprint(
+                name=slug,
+                slug=slug,
+                type='Project',
+                filter=filter_,
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'tier': {'type': 'string'},
+                            'owner': {'type': 'string', 'default': 'ops'},
+                        },
+                        'required': ['tier', 'owner'],
+                    }
+                ),
+            )
+
+        self.mock_db.match.side_effect = [
+            [
+                blueprint('api-fields', {'project_type': ['api-service']}),
+                blueprint('prod-fields', {'environment': ['production']}),
+                blueprint('lib-fields', {'project_type': ['library']}),
+            ],
+            [],
+        ]
+
+        response = self.client.get(
+            '/organizations/engineering/projects/schema',
+            params={
+                'project_type': 'api-service',
+                'environment': 'production',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        sections = response.json()['sections']
+        self.assertEqual(
+            [s['slug'] for s in sections], ['api-fields', 'prod-fields']
+        )
+        self.assertEqual(sections[0]['required'], ['tier', 'owner'])
+        self.mock_db.execute.assert_not_called()
+
     # -- List ----------------------------------------------------------
 
     def test_list_success(self) -> None:

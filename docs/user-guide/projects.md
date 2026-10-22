@@ -112,6 +112,7 @@ The list never shows archived projects.
     | **Slug** | Required. Imbi makes it from the name until you change it: lowercase, with `-` in place of spaces |
     | **Description** | The purpose of the project |
     | **Environments** | Optional. Click each environment that the project runs in |
+    | Blueprint fields | Required. The required fields that have no default, from the `Project` blueprints that match the project type and environments. They show after you select a project type |
 
 4. Click **Save**.
 

@@ -1,8 +1,14 @@
 import { useState } from 'react'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createProject } from '@/api/endpoints'
+import {
+  createProject,
+  type DynamicFieldSchema,
+  type DynamicSchema,
+  getNewProjectSchema,
+  type ProjectSchemaResponse,
+} from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Combobox } from '@/components/ui/combobox'
@@ -13,6 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DynamicFormFields,
+  validateDynamicFields,
+} from '@/components/ui/dynamic-fields'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
@@ -49,6 +59,12 @@ export function NewProjectDialog({
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [selectedEnvSlugs, setSelectedEnvSlugs] = useState<string[]>([])
+  const [blueprintData, setBlueprintData] = useState<Record<string, unknown>>(
+    {},
+  )
+  const [blueprintErrors, setBlueprintErrors] = useState<
+    Record<string, string>
+  >({})
 
   const { data: teams = [], isLoading: teamsLoading } = useTeams(orgSlug, {
     enabled: isOpen,
@@ -61,6 +77,14 @@ export function NewProjectDialog({
     useEnvironments(orgSlug, {
       enabled: isOpen,
     })
+
+  const { data: projectSchema } = useQuery({
+    enabled: isOpen && !!orgSlug && !!projectTypeSlug,
+    queryFn: ({ signal }) =>
+      getNewProjectSchema(orgSlug, [projectTypeSlug], selectedEnvSlugs, signal),
+    queryKey: ['newProjectSchema', orgSlug, projectTypeSlug, selectedEnvSlugs],
+  })
+  const requiredSchema = requiredBlueprintFields(projectSchema)
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => createProject(orgSlug, data),
@@ -88,7 +112,16 @@ export function NewProjectDialog({
 
   const handleSave = () => {
     if (!orgSlug || !canProceed || createMutation.isPending) return
+    const blueprintValues = Object.fromEntries(
+      Object.entries(blueprintData).filter(
+        ([key]) => key in requiredSchema.properties,
+      ),
+    )
+    const errors = validateDynamicFields(requiredSchema, blueprintValues)
+    setBlueprintErrors(errors)
+    if (Object.keys(errors).length > 0) return
     const projectData: ProjectCreate = {
+      ...blueprintValues,
       description: description.trim() || null,
       environments:
         selectedEnvSlugs.length > 0
@@ -109,6 +142,8 @@ export function NewProjectDialog({
     setSlug('')
     setDescription('')
     setSelectedEnvSlugs([])
+    setBlueprintData({})
+    setBlueprintErrors({})
     onClose()
   }
 
@@ -254,6 +289,16 @@ export function NewProjectDialog({
                 </p>
               </div>
             )}
+
+            {/* Required blueprint fields with no default */}
+            <DynamicFormFields
+              data={blueprintData}
+              errors={blueprintErrors}
+              onChange={(key, value) =>
+                setBlueprintData((prev) => ({ ...prev, [key]: value }))
+              }
+              schema={requiredSchema}
+            />
           </div>
         </div>
 
@@ -297,4 +342,33 @@ function ChipsSkeleton() {
 
 function FieldSkeleton() {
   return <Sk h={38} r={6} w="100%" />
+}
+
+// The create endpoint fails when a matching Project blueprint has a
+// required field with no default, so collect only those fields here. A
+// later blueprint overrides an earlier one for the same field, as the API
+// does when it builds the model.
+function requiredBlueprintFields(
+  schema: ProjectSchemaResponse | undefined,
+): DynamicSchema {
+  const properties: Record<string, DynamicFieldSchema> = {}
+  for (const section of schema?.sections ?? []) {
+    if (section.scope === 'environment') continue
+    for (const [key, prop] of Object.entries(section.properties)) {
+      if (!section.required?.includes(key) || prop.default != null) {
+        delete properties[key]
+        continue
+      }
+      properties[key] = {
+        description: prop.description ?? undefined,
+        enum: prop.enum ?? undefined,
+        format: prop.format ?? undefined,
+        maximum: prop.maximum ?? undefined,
+        minimum: prop.minimum ?? undefined,
+        title: prop.title ?? undefined,
+        type: prop.type ?? undefined,
+      }
+    }
+  }
+  return { properties, required: Object.keys(properties) }
 }

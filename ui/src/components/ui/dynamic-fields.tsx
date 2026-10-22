@@ -90,7 +90,10 @@ export function DynamicFormFields({
         if (field.enum) {
           return (
             <div key={key}>
-              <Label className="text-secondary mb-1.5 block text-sm">
+              <Label
+                className="text-secondary mb-1.5 block text-sm"
+                htmlFor={`dynamic-${key}`}
+              >
                 {label}
                 {isRequired && <span className="text-red-500"> *</span>}
               </Label>
@@ -101,7 +104,10 @@ export function DynamicFormFields({
                 }
                 value={value || (!isRequired ? UNSET_VALUE : '')}
               >
-                <SelectTrigger className={fieldError ? 'border-red-500' : ''}>
+                <SelectTrigger
+                  className={fieldError ? 'border-red-500' : ''}
+                  id={`dynamic-${key}`}
+                >
                   <SelectValue
                     placeholder={`Select ${label.toLowerCase()}...`}
                   />
@@ -158,13 +164,17 @@ export function DynamicFormFields({
 
         return (
           <div key={key}>
-            <Label className="text-secondary mb-1.5 block text-sm">
+            <Label
+              className="text-secondary mb-1.5 block text-sm"
+              htmlFor={`dynamic-${key}`}
+            >
               {label}
               {isRequired && <span className="text-red-500"> *</span>}
             </Label>
             <Input
               className={` ${fieldError ? 'border-red-500' : ''}`}
               disabled={isLoading}
+              id={`dynamic-${key}`}
               max={field.maximum}
               maxLength={field.maxLength}
               min={field.minimum}

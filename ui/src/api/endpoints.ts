@@ -440,6 +440,7 @@ export interface ProjectSchemaSection {
   description?: null | string
   name: string
   properties: Record<string, ProjectSchemaSectionProperty>
+  required?: string[]
   // `environment` for relationship (DEPLOYED_IN) blueprints whose properties
   // describe per-environment edge attributes; `project` (default) for node
   // blueprints describing project-level attributes.
@@ -485,6 +486,20 @@ export const getProjectSchema = (
   apiClient.get<ProjectSchemaResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/schema`,
     undefined,
+    signal,
+  )
+
+// Schema for a project that does not exist yet, matched on the given
+// project types and environments (used by the New Project dialog).
+export const getNewProjectSchema = (
+  orgSlug: string,
+  projectTypeSlugs: string[],
+  environmentSlugs: string[],
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ProjectSchemaResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/schema`,
+    { environment: environmentSlugs, project_type: projectTypeSlugs },
     signal,
   )
 
