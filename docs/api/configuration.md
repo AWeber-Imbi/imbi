@@ -137,6 +137,8 @@ SMTP-based transactional email (password reset, welcome, email verification, sec
 
 The `[auth]` section in `config.toml` maps to these. Shared JWT/encryption settings come from `imbi.common`; the API service adds password policy, sessions, API keys, MFA, rate limits, and OAuth behavior.
 
+For sign-in methods, login providers, and how these settings behave, see [Authentication](../admin/authentication.md).
+
 ### JWT and Encryption
 
 | Variable | Default | Description |
@@ -151,18 +153,16 @@ The `[auth]` section in `config.toml` maps to these. Shared JWT/encryption setti
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | `12` | Minimum password length |
-| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | `true` | Require an uppercase letter |
-| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | `true` | Require a lowercase letter |
-| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | `true` | Require a digit |
-| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | `true` | Require a special character |
+| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | `12` | Minimum password length. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | `true` | Require an uppercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | `true` | Require a lowercase letter. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | `true` | Require a digit. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | `true` | Require a special character. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
 
-### Sessions and API Keys
+### API Keys
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_AUTH_SESSION_TIMEOUT_SECONDS` | `86400` | Session timeout (24 hours) |
-| `IMBI_AUTH_MAX_CONCURRENT_SESSIONS` | `5` | Max concurrent sessions per user; oldest is evicted past the limit |
 | `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | `365` | Maximum lifetime allowed when creating an API key |
 
 ### MFA (TOTP)
@@ -179,10 +179,10 @@ Values use the [slowapi](https://slowapi.readthedocs.io/) `<n>/<period>` format 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_AUTH_RATE_LIMIT_LOGIN` | `5/minute` | Password login attempts |
-| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | `10/minute` | Refresh-token exchanges |
-| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | `3/minute` | OAuth authorization-flow initiations |
-| `IMBI_AUTH_RATE_LIMIT_API_KEY` | `100/minute` | API-key-authenticated requests |
+| `IMBI_AUTH_RATE_LIMIT_LOGIN` | `5/minute` | Password login attempts. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | `10/minute` | Refresh-token exchanges. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | `3/minute` | OAuth authorization-flow initiations. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
+| `IMBI_AUTH_RATE_LIMIT_API_KEY` | `100/minute` | API-key-authenticated requests. Defined but not read yet ([#463](https://github.com/AWeber-Imbi/imbi/issues/463)). |
 
 ### OAuth Behavior
 
