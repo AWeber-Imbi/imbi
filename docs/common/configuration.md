@@ -1,204 +1,129 @@
 # Configuration Reference
 
-imbi-common uses Pydantic Settings for type-safe configuration management.
+`imbi.common.settings` holds the settings classes that every Imbi service
+shares. Each class is a pydantic-settings `BaseSettings` class with an
+environment prefix. For each variable, its type, and its default, see the
+[configuration reference](../api/configuration.md#environment-variables).
+The field name is the variable name without the prefix, in lower case. For
+example, `POSTGRES_MAX_POOL_SIZE` is `Postgres.max_pool_size`.
 
-## Configuration Sources
+## Settings classes
 
-Configuration is loaded in priority order:
+| Class | Environment prefix | `Configuration` field | Notes |
+|---|---|---|---|
+| `Auth` | `IMBI_AUTH_` | `auth` | JWT and token encryption. imbi-api extends it with password, MFA, and OAuth settings |
+| `ConfigSecrets` | `IMBI_CONFIG_` | none | The Fernet key for configuration secrets |
+| `Postgres` | `POSTGRES_` | `postgres` | |
+| `Clickhouse` | `CLICKHOUSE_` | `clickhouse` | |
+| `Iggy` | `IGGY_` | none | |
+| `Valkey` | `VALKEY_` | `valkey` | |
+| `Plugins` | none | `plugins` | `IMBI_PLUGINS`, `IMBI_PLUGINS_DISABLED` |
+| `Releases` | `IMBI_RELEASES_` | `releases` | |
+| `Embeddings` | `EMBEDDINGS_` | `embeddings` | |
+| `SSL` | `SSL_` | `ssl` | `SSL_CERT_DIR` |
 
-1. **Environment variables** (highest priority)
-2. **./config.toml** (project directory)
-3. **~/.config/imbi/config.toml** (user directory)
-4. **/etc/imbi/config.toml** (system directory)
-5. **Built-in defaults** (lowest priority)
+Two more classes are outside `imbi.common.settings`:
 
-## Loading Configuration
+| Class | Environment prefix | Notes |
+|---|---|---|
+| `imbi.common.llm.AnthropicSettings` | `IMBI_ANTHROPIC_` | Also reads `ANTHROPIC_API_KEY` |
+| `imbi.common.api.settings.Settings` | `IMBI_CLIENT_` | The `imbi.common.api` client |
+
+## Reading settings
+
+Make an instance of a class. It reads the environment, then the `.env` file
+in the working directory, then the defaults:
 
 ```python
 from imbi.common import settings
 
-# Load full configuration
-config = settings.load_config()
-
-# Access individual settings sections
-postgres_config = settings.Postgres()
-clickhouse_config = settings.Clickhouse()
-auth_config = settings.Auth()
+postgres = settings.Postgres()
+print(postgres.url, postgres.max_pool_size)
 ```
 
-## PostgreSQL Settings
+For `Auth` and `ConfigSecrets`, use the getters. They keep one instance per
+process, so a generated development key stays the same in that process:
 
-Environment prefix: `POSTGRES_`
+```python
+auth = settings.get_auth_settings()
+config_secrets = settings.get_config_settings()
+```
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `url` | PostgresDsn | `postgresql://postgres:secret@localhost:5432/imbi` | PostgreSQL connection URL |
-| `graph_name` | str | `imbi` | Apache AGE graph name |
-| `min_pool_size` | int | 2 | Minimum connection pool size |
-| `max_pool_size` | int | 10 | Maximum connection pool size |
+The library code (the graph client, the ClickHouse client, the Iggy client,
+the Valkey client, the plugin registry) makes its own instances in this way.
+So those clients read the environment only.
 
-### Example
+### `load_config()` and `config.toml`
 
-**TOML:**
+`settings.load_config()` returns a `Configuration` object. It reads
+`config.toml` from these places, in this order:
+
+1. `./config.toml`
+2. `~/.config/imbi/config.toml`
+3. `/etc/imbi/config.toml`
+
+A key in an earlier file wins over the same key in a later file. For each
+section in the file, `load_config()` makes the settings class with the keys
+of the section. **A key in the file wins over the environment variable.** The
+environment supplies only the keys that the file does not set.
+
 ```toml
 [postgres]
 url = "postgresql://imbi_app:secret@db-prod:5432/imbi"
-graph_name = "imbi"
-max_pool_size = 20
-```
-
-**Environment:**
-```bash
-export POSTGRES_URL="postgresql://imbi_app:secret@db-prod:5432/imbi"
-export POSTGRES_GRAPH_NAME="imbi"
-```
-
-## ClickHouse Settings
-
-Environment prefix: `CLICKHOUSE_`
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `url` | HttpUrl | `http://localhost:8123` | ClickHouse HTTP interface URL |
-| `connect_timeout` | float | 10.0 | Connection timeout (seconds) |
-| `max_connect_attempts` | int | 10 | Maximum connection retry attempts |
-
-### Example
-
-**TOML:**
-```toml
-[clickhouse]
-url = "http://clickhouse-prod:8123"
-```
-
-**Environment:**
-```bash
-export CLICKHOUSE_URL="http://clickhouse-prod:8123"
-```
-
-## Iggy Settings
-
-Environment prefix: `IGGY_`
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `url` | IggyDSN | `iggy+tcp://iggy:iggy@localhost:8090` | Apache Iggy connection string |
-| `connect_timeout` | float | 10.0 | Connection timeout (seconds) |
-| `max_connect_attempts` | int | 10 | Maximum connection retry attempts |
-
-The scheme selects the transport: `iggy` and `iggy+tcp` both use TCP,
-`iggy+quic`, `iggy+http` and `iggy+ws` use the others. The connection
-string carries no path.
-
-### Example
-
-**TOML:**
-```toml
-[iggy]
-url = "iggy+tcp://iggy:iggy@iggy-prod:8090"
-```
-
-**Environment:**
-```bash
-export IGGY_URL="iggy+tcp://iggy:iggy@iggy-prod:8090"
-```
-
-## Server Configuration
-
-Environment prefix: `IMBI_`
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `environment` | str | `development` | Environment name |
-| `host` | str | `localhost` | Bind address |
-| `port` | int | 8000 | Listen port |
-
-### Example
-
-**TOML:**
-```toml
-[server]
-environment = "production"
-host = "0.0.0.0"
-port = 8080
-```
-
-## Auth Settings
-
-Environment prefix: `IMBI_AUTH_`
-
-### JWT Configuration
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `jwt_secret` | str | auto-generated | JWT signing secret |
-| `jwt_algorithm` | str | `HS256` | JWT algorithm |
-| `access_token_expire_seconds` | int | 3600 | Access token TTL (1 hour) |
-| `refresh_token_expire_seconds` | int | 2592000 | Refresh token TTL (30 days) |
-
-### Encryption
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `encryption_key` | str | auto-generated | Fernet encryption key |
-
-!!! warning
-    Auto-generated keys change on each restart. Always set `IMBI_AUTH_JWT_SECRET`
-    and `IMBI_AUTH_ENCRYPTION_KEY` explicitly in production for stable keys
-    across restarts.
-
-### Example Auth Configuration
-
-**TOML:**
-```toml
-[auth]
-jwt_secret = "your-secret-key-change-in-production"
-access_token_expire_seconds = 7200
-encryption_key = "your-fernet-key-here"
-```
-
-**Environment:**
-```bash
-export IMBI_AUTH_JWT_SECRET="your-secret-key-here"
-export IMBI_AUTH_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-```
-
-## Complete Example
-
-**config.toml:**
-```toml
-[postgres]
-url = "postgresql://imbi_app:secret@db-prod:5432/imbi"
-graph_name = "imbi"
 max_pool_size = 20
 
 [clickhouse]
-url = "clickhouse+http://clickhouse-prod:8123"
-
-[auth]
-jwt_secret = "change-this-in-production"
-access_token_expire_seconds = 7200
-encryption_key = "your-fernet-key-here"
+url = "clickhouse+http://default:secret@clickhouse-prod:8123/imbi"
 ```
+
+`Configuration` has no `iggy` field, so an `[iggy]` section has no effect.
+Use `IGGY_URL`.
+
+!!! note
+    Only imbi-api calls `load_config()`, through its own `APIConfiguration`
+    subclass, and only for its `[server]` and `[storage]` sections. See
+    [`config.toml`](../api/configuration.md#configtoml).
+
+## Production keys
+
+`Auth` and `ConfigSecrets` read the unprefixed `ENVIRONMENT` variable. When
+it is not `development` (the default), they raise a validation error unless
+these are set:
+
+- `IMBI_AUTH_JWT_SECRET`
+- `IMBI_AUTH_ENCRYPTION_KEY`
+- `IMBI_CONFIG_ENCRYPTION_KEY`
+
+In development, they generate a missing key and log a warning. A generated
+key is different in each process. Generate a Fernet key with:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+## Values with a special format
+
+| Setting | Format |
+|---|---|
+| `CLICKHOUSE_URL` | `clickhouse+http://user:password@host:8123/database`. The default is `clickhouse+http://localhost:8123` |
+| `CLICKHOUSE_CLUSTER_NAME` | When set, `setup_schema()` creates the `schemata.toml` schema `ON CLUSTER <name>`, with `Replicated` table engines. The servers must define the `default_replica_path` and `default_replica_name` macros. Leave unset for one node |
+| `IGGY_URL` | `iggy+tcp://user:password@host:8090`. The scheme selects the transport: `iggy` and `iggy+tcp` are TCP; `iggy+quic`, `iggy+http`, and `iggy+ws` are the others. No path |
+| `VALKEY_URL` | `valkey://host:6379/0` |
+| `IMBI_PLUGINS`, `IMBI_PLUGINS_DISABLED` | Comma-separated in the environment; a list in `config.toml` |
+| `EMBEDDINGS_MODELS` | JSON map of a model key to `{"fastembed_id": ..., "dimensions": ...}` |
+| `SSL_CERT_DIR` | A directory of CA certificates. `serve` calls `SSL().configure()`, so each new TLS context loads them |
 
 ## Validation
 
-Settings are validated on load. Invalid configurations raise `pydantic.ValidationError`:
+A class raises `pydantic.ValidationError` when a value is not valid:
 
 ```python
-from imbi.common import settings
 import pydantic
 
+from imbi.common import settings
+
 try:
-    config = settings.Postgres(url="invalid-url")
-except pydantic.ValidationError as e:
-    print(f"Invalid configuration: {e}")
+    settings.Postgres(url='invalid-url')
+except pydantic.ValidationError as err:
+    print(f'Invalid configuration: {err}')
 ```
-
-## Best Practices
-
-1. **Never commit secrets** - Use environment variables or secure config files
-2. **Generate strong keys** - Use `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-3. **Use TOML for defaults** - Store non-sensitive defaults in config.toml
-4. **Override with env vars** - Use environment variables for sensitive values and deployment-specific config
-5. **Validate early** - Load config at startup to catch errors before runtime
