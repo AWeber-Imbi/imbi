@@ -149,6 +149,36 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
                 )
         get_cap.assert_not_called()
 
+    async def test_inactive_integration_does_not_refresh(self) -> None:
+        """A near-expiry token is not refreshed for an inactive integration."""
+        connection = mock.MagicMock()
+        connection.status = 'active'
+        with (
+            mock.patch.object(
+                resolution.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=connection),
+            ),
+            mock.patch.object(
+                resolution,
+                'load_integration',
+                new=mock.AsyncMock(
+                    return_value={'plugin': 'aws', 'status': 'inactive'}
+                ),
+            ),
+            mock.patch.object(
+                resolution, '_should_refresh', return_value=True
+            ),
+            mock.patch.object(
+                resolution, '_refresh_and_reload', new=mock.AsyncMock()
+            ) as refresh,
+        ):
+            with self.assertRaises(identity_errors.IdentityRequiredError):
+                await resolution.hydrate_identity(
+                    self.db, self.ctx, 'integration-1'
+                )
+        refresh.assert_not_called()
+
     async def test_capability_not_found_raises_identity_required(
         self,
     ) -> None:
