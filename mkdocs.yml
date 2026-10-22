@@ -133,7 +133,6 @@ nav:
       - Tools: common/plugins/tools.md
   - Services:
       - Gateway:
-          - Lifespan Pattern: gateway/lifespan-pattern.md
           - Webhook Filter Expressions: gateway/webhook-filter-expressions.md
       - Scheduler:
           - Overview: scheduler/index.md
@@ -156,6 +155,7 @@ plugins:
             - apps/api/src
             - apps/assistant/src
             - apps/gateway/src
+            - apps/harness/src
             - apps/mcp/src
             - apps/scheduler/src
             - apps/slackbot/src
