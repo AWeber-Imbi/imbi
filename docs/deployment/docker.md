@@ -75,11 +75,58 @@ Caddy serves imbi-scheduler under `/scheduler`, stripping that prefix before
 the request reaches it — so `/scheduler/api/tasks` hits `/api/tasks` on the
 service and `/scheduler/status` reaches its unprefixed health endpoint.
 
+### Routes
+
+Caddy sends each path on port 8080 to a service:
+
+| Path | Service | Notes |
+|---|---|---|
+| `/api/*` | imbi-api | Caddy keeps the `/api` prefix |
+| `/status` | imbi-api | Used only when `IMBI_API_URL` has no path |
+| `/docs`, `/openapi.json`, `/uploads/*` | imbi-api | |
+| `/.well-known/oauth-authorization-server*` | imbi-api | Also under `/mcp/.well-known/...` |
+| `/assistant/*` | imbi-assistant | |
+| `/gateway/*` | imbi-gateway | Caddy removes the `/gateway` prefix |
+| `/scheduler/*` | imbi-scheduler | Caddy removes the `/scheduler` prefix |
+| `/mcp`, `/mcp/*` | imbi-mcp | |
+| `/.well-known/oauth-protected-resource*` | imbi-mcp | |
+| `/gateway/metrics*`, `/scheduler/metrics*` | none | Caddy answers 404, so the metrics are not public |
+| `*.map` | UI files | Caddy answers 404 unless `SERVE_SOURCE_MAPS` is `true` |
+| Other paths | UI files | Unknown paths get `index.html` |
+
+Caddy does not route to imbi-slackbot or imbi-workflows. The Caddy admin
+API listens on `localhost:2019` in the container only, although the image
+exposes port 2019.
+
 ## Individual Services
 
 For production deployments where you want to scale services independently,
 set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
 `scheduler`, `slackbot`, `workflows`, or `ui`:
+
+The entrypoint refuses to start a service when a variable that it needs is
+not set:
+
+| `IMBI_SERVICE` | Required variables |
+|---|---|
+| `all` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `CLICKHOUSE_URL`, `IGGY_URL`, `POSTGRES_URL` |
+| `api` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `CLICKHOUSE_URL`, `IGGY_URL` |
+| `assistant` | `IMBI_AUTH_JWT_SECRET` |
+| `gateway` | `POSTGRES_URL` |
+| `mcp`, `ui` | none |
+| `scheduler` | `IMBI_AUTH_JWT_SECRET`, `POSTGRES_URL`, `CLICKHOUSE_URL`, `IGGY_URL`, `IMBI_SCHEDULER_SA_CLIENT_ID`, `IMBI_SCHEDULER_SA_CLIENT_SECRET`, `IMBI_API_URL`, `IMBI_INTERNAL_API_URL` |
+| `workflows` | `IMBI_AUTH_JWT_SECRET`, `IMBI_AUTH_ENCRYPTION_KEY`, `POSTGRES_URL`, `IMBI_WORKFLOWS_SA_CLIENT_ID`, `IMBI_WORKFLOWS_SA_CLIENT_SECRET`, `IMBI_API_URL`, `IMBI_INTERNAL_API_URL` |
+| `slackbot` | `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `POSTGRES_URL` |
+
+This check is not complete. For example, imbi-api in `api` mode starts
+without `POSTGRES_URL`, and then connects to PostgreSQL on `localhost`. Set
+the connection URLs on every service.
+
+The gateway calls imbi-api with `IMBI_GATEWAY_API_TOKEN`. Without it, the
+gateway receives webhooks, but each action it takes gets a 401. In `all`
+mode, the container makes this token and the scheduler and workflows
+credentials when they are not set. For each of the two client credential
+pairs, set both variables or neither.
 
 ```bash
 # Run only the API
@@ -229,9 +276,6 @@ docker run -it --network <network> \
   ghcr.io/aweber-imbi/imbi:latest setup
 ```
 
-From 2.39.1, setup creates the PostgreSQL schema itself. With 2.39.0, run
-`imbi-api setup-postgres` first on a new database.
-
 ## Custom Caddyfile
 
 To customize the reverse proxy configuration, mount your own Caddyfile:
@@ -254,3 +298,27 @@ docker run -p 8080:8080 \
   ...
   ghcr.io/aweber-imbi/imbi:latest
 ```
+
+## Images
+
+The release workflow publishes the image to GitHub Container Registry
+(`ghcr.io/aweber-imbi/imbi`) and to Docker Hub (`aweber/imbi`). Each release
+has a `<version>` tag. `latest` is the highest release. Use a version tag in
+production.
+
+This repository does not build the Iggy image
+(`ghcr.io/aweber-imbi/iggy`) or the PostgreSQL image
+(`ghcr.io/aweber-imbi/postgres`) that the examples use.
+
+## Sentry
+
+Set `SENTRY_DSN` to send errors to Sentry, and `VITE_SENTRY_DSN` for the
+UI. To upload the UI source maps when the container starts, set
+`SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` in `all` or `ui`
+mode. See [Operations: Sentry](operations.md#sentry).
+
+## Upgrading
+
+Change the image tag, then do the steps in [Upgrading](upgrading.md). With
+Docker Compose, run the setup commands with
+`docker compose exec imbi imbi-api <command>`.

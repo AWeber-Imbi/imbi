@@ -36,9 +36,15 @@ The chart cannot set these variables. Issue
 - **`VITE_API_URL`.** The UI reads the API URL from this variable. Without
   it, the UI does not load in `all` and `ui` mode.
 - **Other variables.** The chart has no `extraEnv` or `extraEnvFrom` value.
-  It cannot set, for example, `IMBI_UI_URL`, CORS, MCP OAuth, Sentry, SMTP
+  It cannot set, for example, `IMBI_UI_URL`, the `IMBI_INTERNAL_*_URL`
+  values of the **System health** card, CORS, MCP OAuth, Sentry, SMTP
   authentication, or the Slack tokens. Thus `service.mode: slackbot` cannot
   start.
+- **`ANTHROPIC_API_KEY` from `existingSecret`.** The chart sets
+  `ANTHROPIC_API_KEY` only when `assistant.enabled` is true and
+  `assistant.anthropicApiKey` has a value. With `existingSecret` and no
+  `assistant.anthropicApiKey`, the chart does not read the
+  `anthropic-api-key` key.
 
 ## Installing the Chart
 
@@ -110,6 +116,13 @@ image:
   pullPolicy: IfNotPresent
 ```
 
+Set `image.tag` to a release version in production. The default is
+`latest`. The chart `appVersion` is not the Imbi version, so the
+`app.kubernetes.io/version` label does not show the version that runs.
+
+`replicaCount` sets the number of pods in `all` mode. `resources` sets the
+requests and limits of the Imbi container.
+
 ### Service Scaling
 
 Run all services in a single pod (default) or scale individually:
@@ -157,12 +170,20 @@ mode. The Service sends the traffic to the container port of the mode. Use
 port 8080 for every in-cluster URL in this page. The Service name follows
 the same rule as the Deployment name.
 
+Set `service.internalApiUrl` to the imbi-api Service in every mode other
+than `all` and `api`. The chart refuses to render in `gateway`,
+`scheduler`, and `workflows` mode when `internalApiUrl` is the loopback
+default. In `scheduler` and `workflows` mode, it also refuses to render
+when `service.publicApiUrl` is empty.
+
 ### Scheduler
 
-The scheduler runs every task as its own service account, so give it a
-credential. The account is not seeded: create a service account in the UI,
-grant it the `scheduled_task:*` permissions plus whatever its tasks need, and
-issue it a client credential.
+The scheduler runs every task as its own service account, `imbi-scheduler`.
+`imbi-api setup` (or `imbi-api setup-service-accounts`) seeds the account and
+its client credential with the values below. Invent the values. When you
+leave them empty, setup makes a pair and prints it one time. Set both values
+or neither. In `all` mode, the container seeds a credential at startup when
+both values are empty.
 
 ```yaml
 scheduler:
@@ -186,13 +207,38 @@ service:
 
 The chart refuses to render in `scheduler` mode if `internalApiUrl` is left at
 the loopback default — there it resolves to the scheduler's own pod, which
-reports healthy while every `api`-target firing fails. More than one replica is
+reports healthy while every `api`-target firing fails. It also refuses to
+render when `publicApiUrl` is empty. More than one replica is
 safe: due firings are claimed with `FOR UPDATE SKIP LOCKED`, so replicas take
 disjoint claims. See
 [Scheduler configuration](../scheduler/configuration.md).
 
 Using `existingSecret`, the scheduler reads the optional
 `scheduler-sa-client-id` and `scheduler-sa-client-secret` keys from it.
+
+### Existing secret
+
+Set `existingSecret` to the name of a Secret that you manage. The chart then
+does not make its own Secret, and reads these keys:
+
+| Key | Variable | When the chart reads it |
+|---|---|---|
+| `jwt-secret` | `IMBI_AUTH_JWT_SECRET` | Always |
+| `encryption-key` | `IMBI_AUTH_ENCRYPTION_KEY` | Always |
+| `clickhouse-url` | `CLICKHOUSE_URL` | Always |
+| `iggy-url` | `IGGY_URL` | Always |
+| `postgres-url` | `POSTGRES_URL` | Always |
+| `iggy-connectors-api-key` | `IMBI_IGGY_CONNECTORS_API_KEYS`, `IGGY_CONNECTORS_API_KEY` | Optional for imbi-api. Required by the connectors runtime |
+| `iggy-password` | `IGGY_CONNECTORS_IGGY_PASSWORD` | When `iggyConnect.enabled` |
+| `anthropic-api-key` | `ANTHROPIC_API_KEY` | When `assistant.enabled` and `assistant.anthropicApiKey` are set |
+| `scheduler-sa-client-id`, `scheduler-sa-client-secret` | `IMBI_SCHEDULER_SA_CLIENT_*` | Optional |
+| `workflows-sa-client-id`, `workflows-sa-client-secret` | `IMBI_WORKFLOWS_SA_CLIENT_*` | Optional |
+| `gateway-sa-token` | `IMBI_GATEWAY_API_TOKEN` | Optional |
+| `s3-access-key`, `s3-secret-key` | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | When `storage.accessKey` and `storage.secretKey` are set |
+
+The Secret must have the keys that the chart reads. A missing key that is
+not optional stops the pod. In `scheduler` and `workflows` mode, the
+container does not start without its two service account keys.
 
 ### Workflows
 
@@ -273,8 +319,10 @@ spec:
     initdb:
       database: imbi
       owner: imbi
-      postInitSQL:
+      postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS age
+        - CREATE EXTENSION IF NOT EXISTS pg_cron
+        - CREATE EXTENSION IF NOT EXISTS vector
   storage:
     size: 20Gi
 ```
@@ -282,6 +330,12 @@ spec:
 CloudNativePG exposes the primary at `<cluster-name>-rw` (here `imbi-pg-rw`)
 and stores the generated `imbi` user's password in the `imbi-pg-app` secret.
 Use those to build `externalPostgresql.url`.
+
+imbi-api runs `CREATE EXTENSION IF NOT EXISTS` for `age`, `pg_cron`, and
+`vector` at startup. The `imbi` owner is not a superuser, so create the
+extensions in the application database during bootstrap.
+`postInitApplicationSQL` runs in the application database. `postInitSQL`
+runs in the `postgres` database.
 
 !!! note
     CloudNativePG's operand-image requirements are minimal — standard
@@ -311,6 +365,9 @@ mode:
 externalIggy:
   url: iggy+tcp://iggy:iggy@imbi-iggy:8090
 ```
+
+Keep the Iggy data directory on a persistent volume, and change the root
+credentials. See [Operations: Apache Iggy](operations.md#apache-iggy).
 
 ### The connectors runtime
 
@@ -362,9 +419,7 @@ is left to restart into them.
 ### Metrics
 
 imbi-api, imbi-gateway and imbi-scheduler serve Prometheus metrics at
-`/metrics` on their own port (8000, 8003 and 8005). The path is on the app
-root, not under the API prefix, and has no authentication: Prometheus scrapes
-it by pod IP. The bundled Caddy does not route it. The chart adds the
+`/metrics` on their own port (8000, 8003 and 8005). The chart adds the
 `prometheus.io/scrape`, `prometheus.io/port` and `prometheus.io/path` pod
 annotations in `api`, `gateway` and `scheduler` mode. In `all` mode the three
 services share one pod, and the annotations name imbi-api on port 8000 only,
@@ -372,35 +427,8 @@ so the gateway and scheduler counters are not scraped. The connectors runtime
 pod is annotated for its own metrics on port 8081. The `workflows` mode pod
 has no metrics annotations.
 
-| Metric | Type | Labels | Exported by |
-| --- | --- | --- | --- |
-| `imbi_iggy_published_total` | counter | `stream`, `topic` | api, gateway, scheduler |
-| `imbi_iggy_publish_errors_total` | counter | `stream`, `topic` | api, gateway, scheduler |
-| `imbi_iggy_topic_status_up` | gauge | none | api |
-| `imbi_iggy_topic_current_offset` | gauge | `stream`, `topic` | api |
-| `imbi_iggy_topic_messages` | gauge | `stream`, `topic` | api |
-| `imbi_iggy_consumer_group_members` | gauge | `stream`, `topic` | api |
-| `imbi_iggy_consumer_group_members_owning` | gauge | `stream`, `topic` | api |
-| `imbi_harness_pool_queued` | gauge | `pool` | api |
-| `imbi_harness_runners` | gauge | `pool`, `state` | api |
-| `imbi_harness_chains` | gauge | `state` | api |
-| `imbi_harness_metrics_up` | gauge | none | api |
-
-- The two counters count messages, one per row, in the process that
-  published them. Every topic in `imbi.common.iggy.TOPICS` starts at 0.
-- The gauges come from the same read as the admin Iggy dashboard. Each
-  imbi-api pod refreshes them every 30 seconds and reports the same global
-  values, so aggregate them with `max()`.
-- `imbi_iggy_topic_status_up` is 0 when the last refresh failed or took more
-  than 10 seconds. The other gauges then keep the values of the last good
-  refresh.
-- A consumer group with more members than owning members has a member that
-  reads nothing (apache/iggy#4273), and its topic does not drain.
-- The `imbi_harness_*` gauges describe the agent runner pools. Each
-  imbi-api pod refreshes them every 15 seconds and reports the same global
-  values, so aggregate them with `max()`. `imbi_harness_metrics_up` is 0
-  when the last refresh failed. See
-  [Agent Runners: Metrics](agent-runners.md#metrics).
+For the list of metrics and the recommended alerts, see
+[Operations: Metrics](operations.md#metrics).
 
 ### Ingress
 
@@ -421,31 +449,14 @@ ingress:
 
 ## Upgrading
 
-1. Upgrade the release:
+1. Set `image.tag` to the new version, and upgrade the release:
 
     ```bash
     helm upgrade imbi helm/imbi -f values.yaml --namespace imbi
     ```
 
-2. Do the steps that the release notes name, in this order. Run each command
-   in the pod, as in step 3 of [Installing the Chart](#installing-the-chart):
-
-    ```bash
-    kubectl -n imbi exec deploy/imbi -- imbi-api setup-permissions
-    kubectl -n imbi exec deploy/imbi -- imbi-api setup-service-accounts
-    kubectl -n imbi exec deploy/imbi -- imbi-api setup-clickhouse
-    kubectl -n imbi exec deploy/imbi -- imbi-api setup-prompts
-    ```
-
-3. When the release adds an Iggy stream, restart the connectors runtime
-   after `setup-clickhouse`:
-
-    ```bash
-    kubectl -n imbi rollout restart deployment/imbi-connect
-    ```
-
-See [Applying Upgrades](../getting-started/setup.md#applying-upgrades) for
-what each command does.
+2. Do the steps in [Upgrading](upgrading.md). Run each command in the pod,
+   as in step 3 of [Installing the Chart](#installing-the-chart).
 
 ## Uninstalling
 
