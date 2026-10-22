@@ -126,7 +126,7 @@ export function UserForm({
   >(
     (user?.organizations ?? []).map((m) => ({
       organization_slug: m.organization_slug,
-      role: m.role,
+      role: m.role ?? '',
     })),
   )
 

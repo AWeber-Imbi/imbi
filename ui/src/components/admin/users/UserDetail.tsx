@@ -368,7 +368,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                           roleSlug,
                         })
                       }
-                      value={membership.role}
+                      value={membership.role ?? ''}
                     >
                       <SelectTrigger
                         aria-label={`Role for ${membership.organization_slug}`}

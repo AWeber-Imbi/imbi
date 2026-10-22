@@ -3,33 +3,29 @@
 The **Settings** page holds the settings of your own account. To open it,
 click your avatar at the right of the top bar, then click **Settings**.
 
-The page has five tabs. Each tab has its own URL:
+The page has four tabs. Each tab has its own URL:
 
 | Tab | URL | What it does |
 |---|---|---|
-| Account | `/settings/account` | Shows your display name and email address |
+| Account | `/settings/account` | Shows your email address, and changes your display name |
 | Connections | `/settings/connections` | Connects your account to identity providers |
-| Notifications | `/settings/notifications` | Not in operation in this release |
 | API Keys | `/settings/api-keys` | Makes and revokes your personal API keys |
 | Security | `/settings/security` | Not in operation in this release |
 
 An unknown tab in the URL opens **Account**.
 
-!!! warning "Three tabs are placeholders"
-    The **Account**, **Notifications**, and **Security** tabs show controls
-    that do not save anything. The API has no endpoint for them. A change
-    stays in the browser until you leave the page. Use **Connections** and
-    **API Keys** only.
+!!! warning "The Security tab is a placeholder"
+    The **Security** tab shows controls that do not save anything. The API
+    has no endpoint for them.
 
 ## Account
 
 The **Account** tab shows your **Display name** and **Email address**.
 
+- Click your display name to change it. Press Enter or click outside the
+  field to save. The name cannot be empty. The API is
+  `PATCH /users/me` with a JSON Patch on `/display_name`.
 - You cannot change your email address here.
-- You can type a new display name, but Imbi does not save it. To change
-  your display name, ask an administrator. See
-  [Users, teams, and organizations](../admin/users-teams-organizations.md).
-- The **Email notifications** switch under **Preferences** does nothing.
 
 ## Connections
 
@@ -160,13 +156,6 @@ still work for up to 60 seconds.
 
 For keys that are not personal, use a service account. See
 [Service accounts](../admin/service-accounts.md).
-
-## Notifications
-
-The **Notifications** tab shows switches for deployment, health, and
-operations log notifications, and the **Save preferences** and **Reset to
-defaults** buttons. None of them do anything in this release. Imbi does
-not send these notifications.
 
 ## Security
 

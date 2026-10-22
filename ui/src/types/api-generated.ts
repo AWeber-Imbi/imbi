@@ -15344,7 +15344,7 @@ export interface components {
             /** Organization Slug */
             organization_slug: string;
             /** Role */
-            role: string;
+            role: string | null;
         };
         /** Organization */
         Organization: {

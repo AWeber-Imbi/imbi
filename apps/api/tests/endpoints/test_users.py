@@ -412,6 +412,33 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_patch_current_user_display_name(self) -> None:
+        """PATCH /users/me sets the caller's own display name."""
+        response = self.client.patch(
+            '/users/me',
+            json=[
+                {'op': 'replace', 'path': '/display_name', 'value': ' Ann '}
+            ],
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.mock_db.execute.assert_awaited_once()
+        self.assertEqual(
+            self.mock_db.execute.await_args.args[1],
+            {'email': 'admin@example.com', 'name': 'Ann'},
+        )
+
+    def test_patch_current_user_rejects_other_paths(self) -> None:
+        """PATCH /users/me cannot change any field but display_name."""
+        for op in (
+            {'op': 'add', 'path': '/is_admin', 'value': True},
+            {'op': 'replace', 'path': '/display_name', 'value': '  '},
+            {'op': 'remove', 'path': '/display_name'},
+        ):
+            response = self.client.patch('/users/me', json=[op])
+            self.assertEqual(response.status_code, 400, op)
+        self.mock_db.execute.assert_not_awaited()
+
     def test_get_user_not_found(self) -> None:
         """Test retrieving non-existent user."""
         self.mock_db.match.return_value = []

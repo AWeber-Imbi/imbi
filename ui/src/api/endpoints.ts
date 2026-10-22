@@ -236,6 +236,12 @@ export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 export const getCurrentUser = (signal?: AbortSignal) =>
   apiClient.get<UserResponse>('/users/me', undefined, signal)
 
+// PATCH /users/me changes only the caller's own display name.
+export const updateCurrentUserDisplayName = (displayName: string) =>
+  apiClient.patch<void>('/users/me', [
+    { op: 'replace', path: '/display_name', value: displayName },
+  ])
+
 export const getProjects = async (
   orgSlug: string,
   signal?: AbortSignal,

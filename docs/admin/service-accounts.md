@@ -174,8 +174,8 @@ The agent acts as this account when it calls the Imbi API. See
 A membership with no role gives no permissions. To let an agent use the
 Imbi API tools, give its service account a role in the organization of
 the agent (see [Organization memberships](#organization-memberships)).
-The **Organization Memberships** card shows a membership with no role as
-`readonly`, but that membership gives no permissions.
+The **Organization Memberships** card shows such a membership as
+**No role**, and the API returns its `role` as `null`.
 
 Keep the agent's service account in one organization only. If it is a
 member of more than one organization, Imbi gives the agent no API token

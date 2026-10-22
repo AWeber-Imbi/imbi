@@ -207,7 +207,7 @@ class OrgMembership(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='ignore')
     organization_name: str
     organization_slug: str
-    role: str
+    role: str | None
 
 
 class TeamMembership(pydantic.BaseModel):
