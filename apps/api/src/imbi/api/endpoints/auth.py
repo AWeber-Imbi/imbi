@@ -2,8 +2,10 @@
 
 import asyncio
 import datetime
+import html
 import logging
 import secrets
+import string
 import typing
 from urllib import parse as urlparse
 
@@ -568,6 +570,116 @@ def _login_redirect_url(request: fastapi.Request, return_to: str) -> str:
     return f'{base}/login?{urlparse.urlencode({"return_to": return_to})}'
 
 
+def _redirect_to_client(
+    redirect_uri: str, params: dict[str, str], state: str | None
+) -> fastapi.responses.RedirectResponse:
+    """Redirect to a validated client redirect URI with *params*."""
+    if state:
+        params = {**params, 'state': state}
+    sep = '&' if '?' in redirect_uri else '?'
+    return fastapi.responses.RedirectResponse(
+        url=f'{redirect_uri}{sep}{urlparse.urlencode(params)}',
+        status_code=302,
+    )
+
+
+async def _issue_code_redirect(
+    valkey_client: valkey_module.Valkey,
+    pending: authorization_codes.ConsentPayload,
+) -> fastapi.responses.RedirectResponse:
+    """Issue an authorization code and send it to the client."""
+    code = await authorization_codes.issue_code(
+        valkey_client,
+        client_id=pending['client_id'],
+        redirect_uri=pending['redirect_uri'],
+        code_challenge=pending['code_challenge'],
+        principal_id=pending['principal_id'],
+        scope=pending['scope'],
+    )
+    LOGGER.info(
+        'Issued authorization code for client %s to %s',
+        pending['client_id'],
+        _redact_email(pending['principal_id']),
+    )
+    return _redirect_to_client(
+        pending['redirect_uri'], {'code': code}, pending['state']
+    )
+
+
+_CONSENT_PAGE = string.Template("""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authorize application - Imbi</title>
+<style>
+:root{color-scheme:light dark;--bg:#fafafa;--fg:#1a1a1a;--muted:#6b6b6b;
+--border:#d4d4d4;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#141414;--fg:#ececec;
+--muted:#a0a0a0;--border:#3a3a3a;--card:#1c1c1c}}
+body{margin:0;min-height:100vh;display:flex;align-items:center;
+justify-content:center;background:var(--bg);color:var(--fg);
+font:14px/1.5 system-ui,sans-serif}
+main{width:100%;max-width:420px;margin:16px;padding:24px;
+background:var(--card);border:0.5px solid var(--border);border-radius:8px}
+h1{font-size:16px;margin:0 0 16px;overflow-wrap:anywhere}
+.label{color:var(--muted);font-size:12px;text-transform:uppercase}
+.host{font:600 18px/1.3 ui-monospace,monospace;overflow-wrap:anywhere;
+margin:4px 0 16px}
+.warn{border:0.5px solid #d97706;color:#b45309;padding:8px 12px;
+border-radius:6px;background:rgba(245,158,11,.08)}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+button{font:inherit;padding:6px 14px;border-radius:6px;cursor:pointer;
+border:0.5px solid var(--border);background:transparent;color:var(--fg)}
+button.approve{background:#f59e0b;border-color:#d97706;color:#1a1a1a}
+</style></head><body><main>
+<h1>Authorize $client_name?</h1>
+<div class="label">Sign-in result goes to</div>
+<div class="host">$redirect_host</div>
+<p class="warn"><strong>Not verified.</strong> This application registered
+itself, so Imbi cannot confirm its name. Approve only if you started this
+sign-in and you trust $redirect_host.</p>
+<p>If you approve, this application can use Imbi as
+<strong>$principal</strong>, with all of your access.</p>
+<form method="post" action="authorize">
+<input type="hidden" name="consent_token" value="$consent_token">
+<div class="actions">
+<button type="submit" name="decision" value="deny">Deny</button>
+<button type="submit" name="decision" value="approve"
+ class="approve">Approve</button>
+</div></form></main></body></html>
+""")
+
+# The consent page must not be framed (clickjacking) or cached, and it
+# needs no script. ``form-action`` is left unset because browsers apply
+# it to the redirect that follows the form POST, which goes to the
+# client's own host.
+_CONSENT_PAGE_HEADERS = {
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': (
+        "default-src 'none'; style-src 'unsafe-inline'; "
+        "frame-ancestors 'none'; base-uri 'none'"
+    ),
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'DENY',
+}
+
+
+def _consent_page(
+    client: models.OAuthClient,
+    pending: authorization_codes.ConsentPayload,
+    consent_token: str,
+) -> fastapi.responses.HTMLResponse:
+    """Render the page that asks the user to approve *client*."""
+    body = _CONSENT_PAGE.substitute(
+        client_name=html.escape(client.client_name or 'an unnamed client'),
+        redirect_host=html.escape(
+            urlparse.urlsplit(pending['redirect_uri']).netloc
+        ),
+        principal=html.escape(pending['principal_id']),
+        consent_token=html.escape(consent_token),
+    )
+    return fastapi.responses.HTMLResponse(body, headers=_CONSENT_PAGE_HEADERS)
+
+
 @auth_router.get('/authorize')
 @rate_limit.limiter.limit('20/minute')  # type: ignore[untyped-decorator]
 async def authorize(
@@ -581,14 +693,16 @@ async def authorize(
     code_challenge_method: str = fastapi.Query(default=''),
     scope: str | None = fastapi.Query(default=None),
     state: str | None = fastapi.Query(default=None),
-) -> fastapi.responses.RedirectResponse:
+) -> fastapi.responses.Response:
     """OAuth2 authorization endpoint (authorization_code + PKCE).
 
-    Validates the client and redirect URI, requires an authenticated
-    Imbi user (bouncing through the SPA login if absent), then issues a
-    single-use authorization code bound to the PKCE challenge and the
-    user. The Imbi login may itself delegate to an upstream IdP — that
-    is transparent here; only the resulting Imbi session matters.
+    Validates the client and redirect URI and requires an authenticated
+    Imbi user (bouncing through the SPA login if absent). Unless the user
+    already approved this client and redirect URI, it then shows a
+    consent page; the code is issued only after the user approves (see
+    :func:`authorize_consent`). The Imbi login may itself delegate to an
+    upstream IdP — that is transparent here; only the resulting Imbi
+    session matters.
     """
     client = (
         await oauth_clients.get_client(db, client_id) if client_id else None
@@ -605,20 +719,14 @@ async def authorize(
 
     # redirect_uri is trusted from here, so protocol errors are reported
     # back to it (RFC 6749 §4.1.2.1) rather than surfaced to the user.
-    def _redirect_error(error: str) -> fastapi.responses.RedirectResponse:
-        params = {'error': error}
-        if state:
-            params['state'] = state
-        sep = '&' if '?' in redirect_uri else '?'
-        return fastapi.responses.RedirectResponse(
-            url=f'{redirect_uri}{sep}{urlparse.urlencode(params)}',
-            status_code=302,
-        )
-
     if response_type != 'code':
-        return _redirect_error('unsupported_response_type')
+        return _redirect_to_client(
+            redirect_uri, {'error': 'unsupported_response_type'}, state
+        )
     if code_challenge_method != 'S256' or not code_challenge:
-        return _redirect_error('invalid_request')
+        return _redirect_to_client(
+            redirect_uri, {'error': 'invalid_request'}, state
+        )
 
     principal = _authorize_request_principal(request)
     if principal is None:
@@ -633,27 +741,66 @@ async def authorize(
         raise fastapi.HTTPException(
             status_code=503, detail='Authorization code store unavailable'
         )
-    code = await authorization_codes.issue_code(
-        valkey_client,
-        client_id=client_id,
-        redirect_uri=redirect_uri,
-        code_challenge=code_challenge,
-        principal_id=principal,
-        scope=scope,
+    pending: authorization_codes.ConsentPayload = {
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'code_challenge': code_challenge,
+        'principal_id': principal,
+        'scope': scope,
+        'state': state,
+    }
+    if await authorization_codes.has_consent(valkey_client, pending):
+        return await _issue_code_redirect(valkey_client, pending)
+    consent_token = await authorization_codes.issue_consent_token(
+        valkey_client, pending
     )
-    LOGGER.info(
-        'Issued authorization code for client %s to %s',
-        client_id,
-        _redact_email(principal),
+    return _consent_page(client, pending, consent_token)
+
+
+@auth_router.post('/authorize')
+@rate_limit.limiter.limit('20/minute')  # type: ignore[untyped-decorator]
+async def authorize_consent(
+    request: fastapi.Request,
+    valkey_client: OptionalValkeyClient,
+    consent_token: typing.Annotated[str, fastapi.Form()] = '',
+    decision: typing.Annotated[str, fastapi.Form()] = '',
+) -> fastapi.responses.RedirectResponse:
+    """Apply the user's Approve or Deny answer from the consent page.
+
+    The consent token is single use, expires quickly, and is bound to the
+    user who saw the page and to the exact authorization request. The
+    access cookie is ``SameSite=Strict``, so a cross-site POST has no
+    user and fails here even with a token.
+    """
+    if valkey_client is None:
+        raise fastapi.HTTPException(
+            status_code=503, detail='Authorization code store unavailable'
+        )
+    pending = await authorization_codes.consume_consent_token(
+        valkey_client, consent_token
     )
-    params = {'code': code}
-    if state:
-        params['state'] = state
-    sep = '&' if '?' in redirect_uri else '?'
-    return fastapi.responses.RedirectResponse(
-        url=f'{redirect_uri}{sep}{urlparse.urlencode(params)}',
-        status_code=302,
-    )
+    principal = _authorize_request_principal(request)
+    if (
+        pending is None
+        or principal is None
+        or principal != pending['principal_id']
+    ):
+        raise fastapi.HTTPException(
+            status_code=400, detail='Invalid or expired consent request'
+        )
+    if decision != 'approve':
+        LOGGER.info(
+            'User %s denied OAuth client %s',
+            _redact_email(principal),
+            pending['client_id'],
+        )
+        return _redirect_to_client(
+            pending['redirect_uri'],
+            {'error': 'access_denied'},
+            pending['state'],
+        )
+    await authorization_codes.remember_consent(valkey_client, pending)
+    return await _issue_code_redirect(valkey_client, pending)
 
 
 def _reject_registration(
