@@ -198,7 +198,8 @@ rules:
 
 1. **Organization routes.** These routes are under
    `/organizations/{org_slug}/`: agents, agent tasks, agent usage, the
-   agent platform, workflows, workflow runs, and secrets. They check that
+   agent platform, workflows, workflow runs, secrets, and the deployment,
+   commit-sync, and pull-request-sync routes of a project. They check that
    the principal is a member of the organization (`403
    organization_forbidden` if not). There is no administrator bypass for
    membership. Then they use only the role in that organization.

@@ -23,9 +23,13 @@ to connect it. Open **Settings > Connections** to connect. See
 | `project:deployment:write` | Deploy, promote, cut releases, draft release notes with AI, and add or resolve blockers |
 | `project:commits:write` | Run a commit sync |
 
-The seeded roles give these permissions only to `admin`. An administrator
-can add them to other roles. See
-[Roles and permissions](../admin/roles-and-permissions.md).
+The seeded `admin` and `developer` roles have all three permissions. The
+`default` and `readonly` roles have `project:deployment:read`.
+
+These routes use only your role in the organization of the project. A
+platform administrator who is not a member of that organization gets
+`403`. See
+[Roles and permissions](../admin/roles-and-permissions.md#permissions-across-organizations).
 
 Only an administrator can delete a blocker. Other people resolve it.
 

@@ -89,6 +89,10 @@ The organization routes are these routes under
 | Agent platform | `agent-platform-config`, `agent-marketplaces` |
 | Workflows | `workflows`, `workflow-step-types`, `workflow-runs` |
 | Secrets | `secret-providers`, `secret-bindings`, `secret-grants`, `secret-resolutions`, `secret-audit-events` |
+| Project deployments and syncs | `projects/{project_id}/deployments`, `projects/{project_id}/commits/sync`, `projects/{project_id}/commits/sync-status`, `projects/{project_id}/pull-requests/sync`, `projects/{project_id}/pull-requests/sync-status` |
+
+The project deployment and sync routes also return `404` when the
+project is not in the organization of the path.
 
 These requests also use only the role in one organization:
 

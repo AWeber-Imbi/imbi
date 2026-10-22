@@ -64,9 +64,8 @@ for example after you add a project:
 Imbi runs the sync in the background with the service credential of the
 integration. The button shows **Syncing...** while the sync runs.
 
-The button shows when you have `project:deployment:write`. The API also
-needs `project:pull-requests:write`. Of the seeded roles, only `admin`
-has both. See [Doctor](doctor.md).
+The button shows when you have `project:pull-requests:write`. The
+seeded `admin` and `developer` roles have it. See [Doctor](doctor.md).
 
 ### Pull requests on the dashboard
 
@@ -136,7 +135,7 @@ read its meaning:
 
 To load the full commit and tag history of a project, open the **Doctor**
 tab and click **Sync Commits & Tags**. The button needs
-`project:deployment:write`. The API also needs `project:commits:write`.
+`project:commits:write`.
 
 ## Project dependencies
 

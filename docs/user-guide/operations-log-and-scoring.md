@@ -19,14 +19,12 @@ Imbi stores the log in the ClickHouse `operations_log` table.
 
 | Permission | Lets you | Seeded roles that have it |
 |---|---|---|
-| `operations_log:read` | See the log | `admin`, `default`, `readonly` |
+| `operations_log:read` | See the log | `admin`, `developer`, `default`, `readonly` |
 | `operations_log:create` | Add an entry | `admin` |
 | `operations_log:update` | Change an entry (API only) | `admin` |
 | `operations_log:delete` | Delete an entry (API only) | `admin` |
 
-The `developer` role has no `operations_log` permission. A user who has
-only the `developer` role cannot see the log. See
-[Roles and permissions](../admin/roles-and-permissions.md).
+See [Roles and permissions](../admin/roles-and-permissions.md).
 
 ### Entry types
 

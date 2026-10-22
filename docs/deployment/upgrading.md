@@ -72,6 +72,22 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Next release
+
+1. Run `imbi-api setup-permissions`. It gives the `developer` role
+   `project:deployment:read`, `project:deployment:write`,
+   `project:commits:read`, `project:commits:write`,
+   `project:pull-requests:read`, `project:pull-requests:write`, and
+   `operations_log:read`. It gives the `default` and `readonly` roles
+   `project:deployment:read`, `project:commits:read`, and
+   `project:pull-requests:read`.
+2. Make sure that each platform administrator who manages deployments is a
+   member of each organization of those projects. The deployment,
+   commit-sync, and pull-request-sync routes now use only the role in the
+   organization of the path. A platform administrator who is not a member
+   gets `403 organization_forbidden`. See
+   [Roles and Permissions](../admin/roles-and-permissions.md#permissions-across-organizations).
+
 ## 2.39.1
 
 No manual steps. These changes can affect you:

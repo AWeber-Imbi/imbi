@@ -61,7 +61,7 @@ When Imbi cannot read the verdict store, it also shows drift.
 If a webhook delivery was lost, a commit stays with no verdict and shows
 drift. To repair it, open the **Doctor** tab (the stethoscope icon) and
 click **Sync Commits & Tags**. The button shows when you have
-`project:deployment:write`. The sync itself needs `project:commits:write`.
+`project:commits:write`.
 The sync icon on the **Releases** and **Deployments** tabs runs the same
 commit sync.
 

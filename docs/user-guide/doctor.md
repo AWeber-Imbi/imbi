@@ -99,8 +99,8 @@ use.
 | **Analyze** | Runs the analysis | `project:write` |
 | **Recompute Score** | Queues a new score for the project. See [Scoring](operations-log-and-scoring.md#scoring) | `scoring_policy:rescore` |
 | **Sync Deployments** (or **Sync Releases**) | Reads the recent deployments (or releases) from the deployment plugin again | `project:deployment:write` |
-| **Sync Commits & Tags** | Reads commits, tags, and drift notes again. See [Drift](drift.md) | `project:deployment:write` to see the button. The sync needs `project:commits:write` |
-| **Sync PRs** | Reads pull requests again | `project:deployment:write` to see the button |
+| **Sync Commits & Tags** | Reads commits, tags, and drift notes again. See [Drift](drift.md) | `project:commits:write` |
+| **Sync PRs** | Reads pull requests again | `project:pull-requests:write` |
 | **Fix all** | Applies every fix in the report. Shows only when a finding has a fix | `project:write` |
 
 The button reads **Sync Releases** for a project whose project types are
@@ -109,13 +109,15 @@ releasable and none is deployable.
 | Role | What you can do on the Doctor tab |
 |---|---|
 | `admin` | Everything |
-| `developer` | Analyze, fix, and recompute the score |
+| `developer` | Everything |
 | `default` | See the results and recompute the score |
 | `readonly` | See the results |
 
-The seeded roles give `project:deployment:write` and
-`project:commits:write` only to `admin`. An administrator can add them to
-other roles. See [Roles and permissions](../admin/roles-and-permissions.md).
+The seeded roles give `project:deployment:write`, `project:commits:write`,
+and `project:pull-requests:write` to `admin` and `developer`. The three
+sync buttons use only your role in the organization of the project. A
+platform administrator who is not a member of that organization gets
+`403`. See [Roles and permissions](../admin/roles-and-permissions.md).
 
 ## What the Doctor checks
 

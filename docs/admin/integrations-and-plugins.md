@@ -231,7 +231,8 @@ capability, a service account can use the credential of the integration
 have all of these:
 
 1. The permission of the endpoint, for example
-   `project:deployment:write`.
+   `project:deployment:write`, in its role in the organization that owns
+   the project.
 2. `integration:act-as-service`.
 3. Membership in the organization that owns the project.
 
