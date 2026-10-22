@@ -114,7 +114,8 @@ The UI uses the same rules. `GET /users/me` returns the union in
 `permissions` and the permissions of each membership in
 `organizations[].permissions`. On the pages of the organization routes,
 the UI shows a button only when your role in that organization gives the
-permission. In the example, the user does not see **Pause** and
+permission. A platform administrator who is a member of that organization
+sees every button there, whatever the role. In the example, the user does not see **Pause** and
 **Cancel** on the tasks of organization B.
 
 ## Special rules

@@ -64,6 +64,13 @@ describe('useHasPermission', () => {
     expect(has('agent:delete', 'gamma')).toBe(false)
   })
 
+  it('denies a membership without permissions from an older API', () => {
+    const user = twoOrgUser()
+    delete (user.organizations[1] as { permissions?: string[] }).permissions
+    auth.user = user
+    expect(has('agent:read', 'beta')).toBe(false)
+  })
+
   it('denies everything without a user', () => {
     auth.user = null
     expect(has('agent:read')).toBe(false)

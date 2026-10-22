@@ -25,7 +25,8 @@ export function hasPermission(
     (m) => m.organization_slug === orgSlug,
   )
   if (!membership) return false
-  return !!user.is_admin || membership.permissions.includes(permission)
+  // An API older than this UI omits `permissions` from each membership.
+  return !!user.is_admin || (membership.permissions ?? []).includes(permission)
 }
 
 /** {@link hasPermission} for the current user. */
