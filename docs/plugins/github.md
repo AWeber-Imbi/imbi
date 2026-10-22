@@ -50,6 +50,10 @@ It can do these things:
 | `artifact_workflow` | Release workflow | (empty) | The workflow file name, for example `release.yml`, or its numeric ID. Imbi dispatches it to build the release artifact before a deployment. The workflow must have `on: workflow_dispatch` and must exist on the default branch. Leave it empty if you build artifacts outside Imbi |
 | `artifact_version_input` | Version input name | `version` | The `workflow_dispatch` input that gets the release version. GitHub accepts 10 inputs at most for each dispatch |
 
+To send more workflow inputs for each environment, set the environment
+payloads of the assignment. See
+[Assignments](../admin/integrations-and-plugins.md#assignments).
+
 ### Lifecycle capability options
 
 | Option | Label | Default | Meaning |
@@ -233,8 +237,6 @@ it uses the GitHub App or the token.
 - One integration serves one GitHub host. Make a second integration for a
   second host.
 - The `lifecycle` capability cannot use GitHub App credentials.
-- Per-environment workflow inputs (`env_payloads`) have no UI. See
-  [Assignments](../admin/integrations-and-plugins.md#assignments).
 - Unarchive does not move a repository back to its first organization.
   Imbi does not record that organization.
 - The ref list of a repository is limited to 1000 branches and tags.

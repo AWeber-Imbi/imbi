@@ -12,6 +12,10 @@ import {
   replaceProjectIntegrations,
 } from '@/api/endpoints'
 import {
+  type EnvPayloads,
+  EnvPayloadsEditor,
+} from '@/components/plugin-options/EnvPayloadsEditor'
+import {
   OverrideCountChevron,
   RemoveRowButton,
 } from '@/components/plugin-options/ExpandableRowControls'
@@ -74,6 +78,7 @@ interface ProjectIntegrationRowProps {
   isExpanded: boolean
   onRemove: (idx: number) => void
   onToggle: (idx: number) => void
+  onUpdateEnvPayloads: (idx: number, next: EnvPayloads) => void
   onUpdateOption: (idx: number, name: string, next: unknown) => void
   pluginSlug: null | string
 }
@@ -134,6 +139,12 @@ export function ProjectPluginsSection({
   const updateOption = (idx: number, name: string, next: unknown) => {
     setDrafts((prev) =>
       prev.map((d, i) => applyOptionEdit(d, i, idx, name, next)),
+    )
+  }
+
+  const updateEnvPayloads = (idx: number, next: EnvPayloads) => {
+    setDrafts((prev) =>
+      prev.map((d, i) => (i === idx ? { ...d, env_payloads: next } : d)),
     )
   }
 
@@ -259,6 +270,7 @@ export function ProjectPluginsSection({
                       key={idx}
                       onRemove={handleRemove}
                       onToggle={toggleExpanded}
+                      onUpdateEnvPayloads={updateEnvPayloads}
                       onUpdateOption={updateOption}
                       pluginSlug={
                         integrationsBySlug.get(draft.integration_slug)
@@ -457,6 +469,7 @@ function ProjectIntegrationRow({
   isExpanded,
   onRemove,
   onToggle,
+  onUpdateEnvPayloads,
   onUpdateOption,
   pluginSlug,
 }: ProjectIntegrationRowProps) {
@@ -503,6 +516,24 @@ function ProjectIntegrationRow({
               onChange={onUpdateOption}
               pluginSlug={pluginSlug}
             />
+            <div className="space-y-1 px-6 pb-4">
+              <Label
+                className="text-xs"
+                htmlFor={`env-payloads-${draft.integration_slug}-${draft.capability}`}
+              >
+                Environment payloads
+              </Label>
+              <EnvPayloadsEditor
+                id={`env-payloads-${draft.integration_slug}-${draft.capability}`}
+                label="Environment payloads"
+                onChange={(next) => onUpdateEnvPayloads(idx, next)}
+                value={draft.env_payloads}
+              />
+              <p className="text-secondary text-xs">
+                A JSON object keyed by environment slug. Its keys override the
+                same keys of the project type payload for that environment.
+              </p>
+            </div>
           </TableCell>
         </TableRow>
       )}
