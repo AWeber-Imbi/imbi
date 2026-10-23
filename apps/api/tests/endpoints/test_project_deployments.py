@@ -764,6 +764,63 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # last_tag bumped major: 6.3.0 → 7.0.0
         self.assertEqual(data['version'], 'v7.0.0')
 
+    def test_draft_release_notes_rebumps_a_version_off_its_bump(
+        self,
+    ) -> None:
+        """A valid version that is not the bump is re-derived from it."""
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='major',
+                    version='v1.3.0',  # valid semver, but a minor bump
+                    reasoning='abc1234 removes an endpoint',
+                    notes_markdown='## Breaking',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.2.3',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['version'], 'v2.0.0')
+
+    def test_draft_release_notes_labels_a_0x_breaking_bump_minor(
+        self,
+    ) -> None:
+        """Below 1.0.0 a model's major bump is reported as minor."""
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='major',
+                    version='v0.5.0',
+                    reasoning='abc1234 removes an endpoint',
+                    notes_markdown='## Breaking',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v0.4.2',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['bump'], 'minor')
+        self.assertEqual(response.json()['version'], 'v0.5.0')
+
     def test_draft_release_notes_keeps_a_calver_version(self) -> None:
         """A version that fits the tag policy is not re-bumped to semver."""
         self.mocks['_resolve_tag_formats'].return_value = [
@@ -2581,6 +2638,33 @@ class FallbackNotesTestCase(unittest.TestCase):
 
         commits = [Commit(sha='a', short_sha='a', message='feat!: drop')]
         self.assertEqual(_classify_bump(commits), 'major')
+        self.assertEqual(_classify_bump(commits, 'v1.4.2'), 'major')
+
+    def test_classify_bump_breaking_below_one_is_minor(self) -> None:
+        """The label matches the 0.x tag: breaking on 0.x is minor."""
+        from imbi.api.endpoints.project_deployments import _classify_bump
+
+        commits = [Commit(sha='a', short_sha='a', message='feat!: drop')]
+        self.assertEqual(_classify_bump(commits, 'v0.4.2'), 'minor')
+        self.assertEqual(_classify_bump(commits, '0.4.2'), 'minor')
+
+    def test_version_matches_bump(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _version_matches_bump,
+        )
+
+        self.assertTrue(_version_matches_bump('v1.2.3', 'v2.0.0', 'major'))
+        self.assertFalse(_version_matches_bump('v1.2.3', 'v1.3.0', 'major'))
+        # The prefix is the tag policy's business, not the bump's.
+        self.assertTrue(_version_matches_bump('v1.2.3', '1.3.0', 'minor'))
+        self.assertFalse(_version_matches_bump('v1.2.3', '1.3.1', 'minor'))
+        # A version only a custom policy accepts is not a semver bump.
+        self.assertTrue(_version_matches_bump('v1.2.3', 'REL-42', 'minor'))
+        # Nothing to check against: no tag, or a calendar version.
+        self.assertTrue(_version_matches_bump(None, 'v0.1.0', 'major'))
+        self.assertTrue(
+            _version_matches_bump('2026.10.22', '2026.10.23', 'major')
+        )
 
     def test_classify_bump_feature(self) -> None:
         from imbi.api.endpoints.project_deployments import _classify_bump
@@ -5052,6 +5136,12 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
         # A policy no known scheme satisfies: nothing to suggest.
         self.assertEqual('', suggest('v1.2.3', 'patch', [r'^REL-\d+$']))
+        # A bare-tag policy after a ``v`` tag keeps the bump, never 0.1.0.
+        bare = [r'^\d+\.\d+\.\d+$']
+        self.assertEqual('1.3.0', suggest('v1.2.3', 'minor', bare))
+        self.assertEqual(
+            'v1.3.0', suggest('1.2.3', 'minor', [r'^v\d+\.\d+\.\d+$'])
+        )
 
     def test_release_drift_no_tag_suggests_a_date_under_calver(self) -> None:
         self.mocks['_resolve_tag_formats'].return_value = [
