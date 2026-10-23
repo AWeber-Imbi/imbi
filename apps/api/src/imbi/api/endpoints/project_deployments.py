@@ -3258,6 +3258,24 @@ async def _handle_deploy(
         if body.ref_label and _SEMVER_REF_RE.match(body.ref_label)
         else None
     )
+
+    async def _append(
+        release_id: str,
+    ) -> tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None:
+        appended = await append_deployment_event(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            release_id=release_id,
+            env_slug=body.environment,
+            status='in_progress',
+            note=note,
+            external_run_id=str(run.run_id) if run.run_id else None,
+            external_run_url=run.run_url,
+            credential=ctx.credential_note,
+        )
+        return None if isinstance(appended, str) else appended
+
     # Look up the release that was deployed. Try (committish, tag) first
     # so a SHA that ships under a tag matches the tagged Release node;
     # fall back to (committish, None) so a raw-SHA deploy still finds
@@ -3273,26 +3291,43 @@ async def _handle_deploy(
         )
         if release_id is None:
             continue
-        appended = await append_deployment_event(
-            db,
-            org_slug=org_slug,
-            project_id=project_id,
-            release_id=release_id,
-            env_slug=body.environment,
-            status='in_progress',
-            note=note,
-            external_run_id=str(run.run_id) if run.run_id else None,
-            external_run_url=run.run_url,
-            credential=ctx.credential_note,
-        )
-        if not isinstance(appended, str):
-            result = appended
+        result = await _append(release_id)
+        if result is not None:
             matched_tag = try_tag
             break
     if result is None:
+        # No Release names this deploy yet -- typically a raw commit
+        # shipped to the first environment.  Create it the way resync
+        # would on observing the same deployment, so the rollout is
+        # recorded now rather than only if a webhook later reports it.
+        try:
+            matched_tag = candidate_tag or await _existing_tag_for_committish(
+                db, project_id=project_id, committish=committish_short
+            )
+        except ValueError:
+            LOGGER.warning(
+                'Deploy triggered for project=%s committish=%s but several'
+                ' tagged Releases carry that commit; not recorded',
+                project_id,
+                committish_short,
+            )
+        else:
+            result = await _append(
+                await _upsert_release_node(
+                    db,
+                    project_id=project_id,
+                    tag=matched_tag,
+                    committish=committish_short,
+                    title=matched_tag or body.ref_label or committish_short,
+                    notes_markdown='',
+                    release_url=None,
+                    created_by=auth.principal_name,
+                )
+            )
+    if result is None:
         LOGGER.warning(
-            'Deploy triggered for project=%s committish=%s tag=%s but no'
-            ' matching Release node was found; audit row suppressed',
+            'Deploy triggered for project=%s committish=%s tag=%s but it'
+            ' could not be recorded; audit row suppressed',
             project_id,
             committish_short,
             candidate_tag,

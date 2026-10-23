@@ -1,10 +1,12 @@
 """Tests for the project deployment plugin endpoints."""
 
 import asyncio
+import contextlib
 import datetime
 import json
 import typing
 import unittest
+import uuid
 from unittest import mock
 
 import fastapi
@@ -15,7 +17,7 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.api.auth import organizations, password, permissions
-from imbi.api.endpoints import _helpers, project_deployments
+from imbi.api.endpoints import _helpers, project_deployments, releases
 from imbi.api.endpoints.project_deployments import (
     DraftReleaseNotes,
     _EnvFlags,
@@ -1644,22 +1646,75 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(row['version'], 'v6.4.0')
         self.assertEqual(row['plugin_slug'], 'github-deployment')
 
-    def test_deploy_suppresses_audit_when_no_release_matches(self) -> None:
-        # L24: when ``_release_id_for`` returns no match, the workflow
-        # was still dispatched but we cannot tie it to a Release node,
-        # so the audit row is suppressed to keep operations_log clean.
+    def _deploy_without_a_release(
+        self, ref_label: str, existing_tag: typing.Any = None
+    ) -> typing.Any:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value=None)
+        )
+        self._start(
+            mock.patch(
+                f'{_MODULE}._existing_tag_for_committish',
+                side_effect=[existing_tag],
+            )
+        )
+        self.upsert_release = self._start(
+            mock.patch(
+                f'{_MODULE}._upsert_release_node',
+                return_value='new-release-id',
+            )
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
                 json={
                     'action': 'deploy',
                     'environment': 'testing',
-                    'committish': 'abc1234',
-                    'ref_label': 'main',
+                    'committish': 'abc1234def5678',
+                    'ref_label': ref_label,
                 },
             )
         self.assertEqual(response.status_code, 202)
+        return response
+
+    def test_deploy_without_a_release_records_an_untagged_one(self) -> None:
+        response = self._deploy_without_a_release('main')
+        self.assertTrue(response.json()['recorded'])
+        kwargs = self.upsert_release.await_args.kwargs
+        self.assertIsNone(kwargs['tag'])
+        self.assertEqual('abc1234', kwargs['committish'])
+        self.assertEqual('admin@example.com', kwargs['created_by'])
+        call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual('new-release-id', call.kwargs['release_id'])
+        self.assertEqual('in_progress', call.kwargs['status'])
+        self.assertEqual('42', call.kwargs['external_run_id'])
+        row = self._published_audit_row()
+        self.assertEqual('abc1234', row['version'])
+        self.assertEqual('testing', row['environment_slug'])
+
+    def test_deploy_of_an_unrecorded_tag_records_it(self) -> None:
+        response = self._deploy_without_a_release('v6.4.0')
+        self.assertTrue(response.json()['recorded'])
+        self.assertEqual(
+            'v6.4.0', self.upsert_release.await_args.kwargs['tag']
+        )
+        self.assertEqual('v6.4.0', self._published_audit_row()['version'])
+
+    def test_raw_commit_deploy_reuses_the_tag_on_its_commit(self) -> None:
+        response = self._deploy_without_a_release('main', '1.2.3')
+        self.assertTrue(response.json()['recorded'])
+        self.assertEqual('1.2.3', self.upsert_release.await_args.kwargs['tag'])
+
+    def test_deploy_of_a_commit_with_several_tags_is_not_recorded(
+        self,
+    ) -> None:
+        response = self._deploy_without_a_release(
+            'main', ValueError('several tags')
+        )
         self.assertFalse(response.json()['recorded'])
+        self.upsert_release.assert_not_called()
+        self.mocks['append_deployment_event'].assert_not_called()
         self.mocks['publish_rows'].assert_not_called()
 
 
@@ -7208,3 +7263,175 @@ class DerivedRankTestCase(unittest.TestCase):
             project_deployments._derived_rank(self._entry('1')),
             project_deployments._derived_rank(self._entry(None)),
         )
+
+
+class DirectDeployRecordingTestCase(unittest.IsolatedAsyncioTestCase):
+    """A direct deploy of an unreleased commit, against the live graph.
+
+    The writes only matter if the readers find them: the deploy has to
+    land where current-releases looks, and where the ``deployment_status``
+    webhook for the same run lands, so a mocked graph cannot show it.
+    """
+
+    async def asyncSetUp(self) -> None:
+        suffix = uuid.uuid4().hex[:10]
+        self.org = f'direct-deploy-org-{suffix}'
+        self.team = f'direct-deploy-team-{suffix}'
+        self.project = f'direct-deploy-project-{suffix}'
+        self.env = f'direct-deploy-env-{suffix}'
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            """
+            CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})
+            CREATE (t:Team {{id: {team}, slug: {team}, name: {team}}})
+            CREATE (p:Project {{id: {project}, slug: {project},
+                                name: {project}}})
+            CREATE (e:Environment {{id: {env}, slug: {env}, name: {env},
+                                    sort_order: 1}})
+            CREATE (t)-[:BELONGS_TO]->(o)
+            CREATE (p)-[:OWNED_BY]->(t)
+            CREATE (e)-[:BELONGS_TO]->(o)
+            CREATE (p)-[:DEPLOYED_IN]->(e)
+            RETURN p.id AS id
+            """,
+            {
+                'org': self.org,
+                'team': self.team,
+                'project': self.project,
+                'env': self.env,
+            },
+            ['id'],
+        )
+        self.auth = permissions.AuthContext(
+            user=models.User(
+                email='deployer@example.com',
+                display_name='Deployer',
+                is_active=True,
+                is_admin=True,
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            session_id='s',
+            auth_method='jwt',
+            permissions={'project:read', 'project:deployment:write'},
+        )
+
+    async def _cleanup(self) -> None:
+        for query in (
+            'MATCH (:Project {{id: {project}}})-[:HAS_RELEASE]->(r:Release)'
+            ' DETACH DELETE r RETURN 1 AS ok',
+            'MATCH (:Project {{id: {project}}})<-[:BELONGS_TO]-(d:Deployment)'
+            ' DETACH DELETE d RETURN 1 AS ok',
+        ):
+            await self.graph.execute(query, {'project': self.project}, ['ok'])
+        await self.graph.execute(
+            'MATCH (n) WHERE n.id IN {ids} DETACH DELETE n RETURN 1 AS ok',
+            {'ids': [self.org, self.team, self.project, self.env]},
+            ['ok'],
+        )
+        await self.graph.close()
+
+    async def _deploy(self) -> typing.Any:
+        ctx = mock.Mock(
+            environment_config={},
+            actor_user_id=None,
+            project_slug=self.project,
+            credential_note=None,
+        )
+        patches = {
+            '_load_env_flags': _EnvFlags(
+                found=True, can_deploy=True, can_promote=True
+            ),
+            '_resolve_and_context': (_make_resolved(), ctx, {}),
+            '_assert_ci_not_failing': 'unknown',
+            'call_with_identity_retry': DeploymentRun(
+                run_id='4242', run_url=None, status='queued'
+            ),
+            'persist_link_writeback': None,
+        }
+        with contextlib.ExitStack() as stack:
+            for name, value in patches.items():
+                stack.enter_context(
+                    mock.patch(
+                        f'{_MODULE}.{name}',
+                        mock.AsyncMock(return_value=value),
+                    )
+                )
+            return await project_deployments._handle_deploy(
+                self.graph,
+                self.org,
+                self.project,
+                self.auth,
+                project_deployments.DeployActionRequest(
+                    action='deploy',
+                    environment=self.env,
+                    committish='abc1234def5678',
+                    ref_label='main',
+                ),
+                background=fastapi.BackgroundTasks(),
+                source=None,
+            )
+
+    async def _current(self) -> typing.Any:
+        with (
+            mock.patch(
+                f'{_MODULE}._resolve_and_context',
+                mock.AsyncMock(side_effect=fastapi.HTTPException(404)),
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.lookup_ops_log_performed_by',
+                mock.AsyncMock(return_value={}),
+            ),
+        ):
+            rows = await releases.list_current_releases(
+                self.org, self.project, self.graph, self.auth
+            )
+        self.assertEqual(1, len(rows))
+        return rows[0]
+
+    async def test_deploy_without_a_release_is_in_flight(self) -> None:
+        response = await self._deploy()
+        self.assertTrue(response.recorded)
+        current = await self._current()
+        self.assertIsNone(current.release)
+        assert current.latest_deployment is not None
+        self.assertEqual('in_progress', current.latest_deployment.status)
+        self.assertEqual('abc1234', current.latest_deployment.committish)
+
+    async def test_webhook_for_the_run_lands_on_the_same_deployment(
+        self,
+    ) -> None:
+        await self._deploy()
+        # The gateway resolves the webhook's release by committish.
+        found = await releases.list_releases(
+            self.org, self.project, self.graph, self.auth, committish='abc1234'
+        )
+        self.assertEqual(1, len(found))
+        with mock.patch(
+            'imbi.api.endpoints.releases.complete_opslog_entry',
+            mock.AsyncMock(return_value=True),
+        ):
+            await releases.record_deployment(
+                self.org,
+                self.project,
+                found[0].id,
+                self.env,
+                releases.DeploymentEventInput(
+                    status='success', external_run_id='4242'
+                ),
+                self.graph,
+                None,
+                self.auth,
+            )
+        deployed = await common_deployments.deployments_by_project(
+            self.graph, [self.project]
+        )
+        self.assertEqual(1, len(deployed))
+        self.assertEqual('success', deployed[0].event.status)
+        current = await self._current()
+        assert current.release is not None
+        self.assertEqual(found[0].id, current.release.id)
+        self.assertEqual('success', current.current_status)
+        self.assertIsNone(current.latest_deployment)
