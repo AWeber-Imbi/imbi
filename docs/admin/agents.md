@@ -210,6 +210,7 @@ An empty field means no limit.
 | Max concurrent tasks | The number of tasks of this agent that can run at the same time |
 | Task timeout | For example `30m` or `2h`. A number with no unit is minutes. A task that runs longer closes with `exceeded_ceiling` |
 | Required runner labels | Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
+| Egress destinations | The internal hosts that the pod of the agent's chains may reach, in addition to the global ones. See [Egress allowlists](../deployment/agent-runners.md#egress-allowlists) |
 | Human response SLA | 4 hours, 8 business hours, 24 hours, 3 days, or No SLA. Imbi stores it. In this release, nothing uses it |
 
 ### Narrowing fields

@@ -1364,7 +1364,7 @@ class PrivateMcpServerTests(unittest.TestCase):
         ]
         self.assertIn(
             'The MCP server private is not available to this task: '
-            'address_not_global.',
+            'address_not_allowed.',
             bodies,
         )
         # No tool call ran: nothing to act on.

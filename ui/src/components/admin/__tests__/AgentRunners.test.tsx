@@ -8,7 +8,15 @@ import type { HarnessPool } from '@/types'
 import { AgentRunners } from '../AgentRunners'
 
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/api/endpoints', () => ({ listHarnessPools: vi.fn() }))
+vi.mock('@/api/endpoints', () => ({
+  getEgressSyncStatus: vi.fn(),
+  listHarnessPools: vi.fn(),
+}))
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { is_admin: true } }),
+}))
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
@@ -28,6 +36,14 @@ function pool(): HarnessPool {
       {
         chain: {
           attempt: 2,
+          egress: [
+            {
+              cidrs: ['10.20.0.0/16'],
+              generation: 3,
+              ports: [{ port: 5432, protocol: 'TCP' }],
+              slug: 'pg-main',
+            },
+          ],
           fence_error: 'fencers failed: release',
           organization_slug: 'acme',
           root_task_id: 'c-1',
@@ -74,6 +90,10 @@ function pool(): HarnessPool {
 describe('AgentRunners', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(endpoints.getEgressSyncStatus).mockResolvedValue({
+      synced_at: NOW,
+      synced_by: 'pool-general',
+    })
   })
 
   it('lists the pools and runners of the organization', async () => {
@@ -91,6 +111,8 @@ describe('AgentRunners', () => {
     )
     expect(screen.getByText('stuck')).toBeInTheDocument()
     expect(screen.getByText('attempt 2')).toBeInTheDocument()
+    expect(screen.getByText('pg-main g3')).toBeInTheDocument()
+    expect(await screen.findByText(/Last egress sync/)).toBeInTheDocument()
     // A busy runner with a chain of another organization.
     expect(screen.getAllByText('Another organization')).toHaveLength(1)
   })

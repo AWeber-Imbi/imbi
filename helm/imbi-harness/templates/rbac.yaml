@@ -1,6 +1,8 @@
 # The runner's projected token can only delete pods in this namespace: each
 # pod deletes itself at the end of its chain (plan section 4.2 step 5). A
-# Job pod exits instead, so the scaledJob mode has no Role.
+# Job pod exits instead, so the scaledJob mode does not delete. With egress
+# enforcement, it can also patch pods: an admission policy (admission.yaml)
+# lets it change only the egress labels of its own pod.
 # Runners are alone in the namespace (accepted risk, plan section 11).
 apiVersion: v1
 kind: ServiceAccount
@@ -9,7 +11,14 @@ metadata:
   labels:
     {{- include "imbi-harness.labels" . | nindent 4 }}
 automountServiceAccountToken: false
+{{- $verbs := list }}
 {{- if ne (include "imbi-harness.mode" .) "scaledJob" }}
+{{- $verbs = append $verbs "delete" }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+{{- $verbs = append $verbs "patch" }}
+{{- end }}
+{{- if $verbs }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -20,7 +29,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["delete"]
+    verbs: {{ toJson $verbs }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

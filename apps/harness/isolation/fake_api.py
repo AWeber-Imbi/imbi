@@ -4,8 +4,8 @@ It serves four things on one port:
 
 - The imbi-api routes that the runner and the executor call: the pool
   token, register, heartbeat, claim, finish, secret resolutions,
-  materializations, and release. They follow the shapes and the refusal
-  rules of ``imbi.api.endpoints.harness`` and
+  materializations, release, and the egress-sync state. They follow the
+  shapes and the refusal rules of ``imbi.api.endpoints.harness`` and
   ``imbi.api.secret_broker.broker`` (context, expiry, single use, nonce,
   runner), with ``fake`` secrets: a dynamic GitHub token, a GitHub App
   binding for the setup purposes, and the static model key. A lease
@@ -95,6 +95,18 @@ MODEL_REQUESTS: list[Row] = []
 PARTITION = threading.Event()
 GIT: dict[str, str] = {}
 MCP_CALLS: list[Row] = []
+#: The egress destinations for ``imbi-harness egress-sync``, and the
+#: last ``applied`` list that it reported.
+EGRESS: list[Row] = [
+    {
+        'slug': 'kind-test',
+        'generation': 1,
+        'cidrs': ['10.244.0.0/16'],
+        'ports': [{'port': 8080, 'protocol': 'TCP'}],
+        'deleted': False,
+    }
+]
+EGRESS_APPLIED: list[Row] = []
 MCP_TOOLS = [
     {
         'name': name,
@@ -654,6 +666,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self._json(200, MCP_CALLS)
                 if url.path == '/test/model-key':
                     return self._json(200, {'key': MODEL_KEY})
+                if url.path == '/test/egress-applied':
+                    return self._json(200, EGRESS_APPLIED)
+                if url.path == '/harness/egress-sync':
+                    if _bearer(self.headers) != POOL_ACCESS_TOKEN:
+                        return self._json(
+                            401, {'detail': {'error': 'not_authenticated'}}
+                        )
+                    return self._json(200, {'destinations': EGRESS})
             if url.path.startswith('/git/'):
                 return self._git()
             parts = url.path.strip('/').split('/')
@@ -694,6 +714,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if resolution is None or resolution['revoked']:
             raise Fail(401, 'bad_credentials')
         return self._json(200, {'ok': True})
+
+    def do_PUT(self) -> None:
+        if self.path != '/harness/egress-sync':
+            return self._json(404, {'detail': 'not found'})
+        if _bearer(self.headers) != POOL_ACCESS_TOKEN:
+            return self._json(401, {'detail': {'error': 'not_authenticated'}})
+        body = self._body()
+        with LOCK:
+            EGRESS_APPLIED[:] = body.get('applied') or []
+        self.send_response(204)
+        self.end_headers()
+        return None
 
     def do_POST(self) -> None:
         url = urllib.parse.urlsplit(self.path)

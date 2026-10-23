@@ -839,7 +839,9 @@ async def _check_platform(
         422: A secret reference does not parse, a new GitHub App
             binding is not an enabled ``github_app`` binding of the
             org, the settings widen the organization's agent
-            platform configuration, or a plugin cannot be pinned.
+            platform configuration, a plugin cannot be pinned, or a
+            new egress destination is unknown, global, or not for
+            the org.
 
     """
     try:
@@ -864,6 +866,7 @@ async def _check_platform(
             raise _unprocessable(
                 f'Secret binding {binding!r} or its provider is disabled'
             )
+    await _check_egress(store, org_id, settings, current)
     _version, config = await platform.load(store, org_id)
     problems = platform.widenings(config, settings)
     if problems:
@@ -881,6 +884,41 @@ async def _check_platform(
     except ValueError as err:
         raise _unprocessable(str(err)) from err
     return settings.model_copy(update={'plugins': plugins})
+
+
+async def _check_egress(
+    store: harness.HarnessStore,
+    org_id: str,
+    settings: models.AgentSettings,
+    current: models.AgentSettings | None,
+) -> None:
+    """Check the egress destinations that ``settings`` adds.
+
+    A destination that the agent has already keeps passing, so a
+    later change to it does not block an unrelated save.
+
+    Raises:
+        422: A new destination is not live, is global (every chain
+            has it), or is not for the organization.
+
+    """
+    added = set(settings.egress_destinations) - set(
+        current.egress_destinations if current else []
+    )
+    if not added:
+        return
+    rows = {row['slug']: row for row in await store.egress_destinations()}
+    problems: list[str] = []
+    for slug in sorted(added):
+        row = rows.get(slug)
+        if row is None:
+            problems.append(f'{slug!r} not found')
+        elif row['is_global']:
+            problems.append(f'{slug!r} is global')
+        elif row['organization_ids'] and org_id not in row['organization_ids']:
+            problems.append(f'{slug!r} is not for this organization')
+    if problems:
+        raise _unprocessable('Egress destinations: ' + '; '.join(problems))
 
 
 def _version_conflict_detail(n: int) -> str:

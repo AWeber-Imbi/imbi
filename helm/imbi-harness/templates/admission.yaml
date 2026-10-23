@@ -1,0 +1,170 @@
+{{- /*
+Admission policies of the egress allowlists (egress allowlist PRD 5.6,
+5.7). Both fail closed and deny.
+*/ -}}
+{{- $np := .Values.networkPolicy }}
+{{- if $np.enabled }}
+{{- $runner := printf "imbi-harness-%s-%s-pod-labels" .Release.Namespace (include "imbi-harness.pool" .) }}
+# The runner can change only the egress labels of its own pod: the pod of
+# its token, the same spec and annotations, and no other label.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $runner }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: runner
+      expression: >-
+        request.userInfo.username ==
+        'system:serviceaccount:{{ .Release.Namespace }}:{{ include "imbi-harness.pool" . }}'
+  variables:
+    - name: newLabels
+      expression: >-
+        has(object.metadata.labels) ? object.metadata.labels : {}
+    - name: oldLabels
+      expression: >-
+        has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}
+    - name: prefix
+      expression: "'egress.imbi.aweber.com/'"
+  validations:
+    - expression: >-
+        'authentication.kubernetes.io/pod-name' in request.userInfo.extra &&
+        object.metadata.name in
+        request.userInfo.extra['authentication.kubernetes.io/pod-name'] &&
+        'authentication.kubernetes.io/pod-uid' in request.userInfo.extra &&
+        object.metadata.uid in
+        request.userInfo.extra['authentication.kubernetes.io/pod-uid']
+      message: The runner can change only its own pod.
+    - expression: >-
+        object.spec == oldObject.spec &&
+        (has(object.metadata.annotations) ? object.metadata.annotations : {}) ==
+        (has(oldObject.metadata.annotations) ? oldObject.metadata.annotations : {})
+      message: The runner cannot change the pod spec or annotations.
+    - expression: >-
+        variables.newLabels.all(k, k.startsWith(variables.prefix) ||
+        (k in variables.oldLabels &&
+        variables.oldLabels[k] == variables.newLabels[k])) &&
+        variables.oldLabels.all(k, k.startsWith(variables.prefix) ||
+        k in variables.newLabels)
+      message: The runner can change only egress.imbi.aweber.com/ labels.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $runner }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  policyName: {{ $runner }}
+  validationActions: ["Deny"]
+{{- if $np.manageGlobal }}
+{{- $ranges := list }}
+{{- range $np.internalRanges }}
+{{- $ranges = append $ranges (printf "'%s'" .) }}
+{{- end }}
+---
+# The sync can write only Admin 200 Accept policies of internal CIDRs for
+# runner pods, and change or delete only its own policies.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: imbi-harness-egress-sync
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.k8s.aws"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["clusternetworkpolicies"]
+  matchConditions:
+    - name: egress-sync
+      expression: >-
+        request.userInfo.username ==
+        'system:serviceaccount:{{ .Release.Namespace }}:imbi-harness-egress-sync'
+  variables:
+    - name: managedBy
+      expression: "'app.kubernetes.io/managed-by'"
+    - name: pods
+      expression: "object.spec.subject.pods"
+  validations:
+    - expression: >-
+        (request.operation == 'DELETE' ? oldObject : object).metadata.name
+        .matches('^imbi-harness-dest-[a-z0-9-]+-g[0-9]+$')
+      message: The name must be imbi-harness-dest-<slug>-g<generation>.
+    - expression: >-
+        (request.operation == 'DELETE' ||
+        (has(object.metadata.labels) &&
+        variables.managedBy in object.metadata.labels &&
+        object.metadata.labels[variables.managedBy] ==
+        'imbi-harness-egress-sync')) &&
+        (request.operation == 'CREATE' ||
+        (has(oldObject.metadata.labels) &&
+        variables.managedBy in oldObject.metadata.labels &&
+        oldObject.metadata.labels[variables.managedBy] ==
+        'imbi-harness-egress-sync'))
+      message: The policy must have the managed-by label of the sync.
+    - expression: >-
+        request.operation == 'DELETE' ||
+        (object.spec.tier == 'Admin' && object.spec.priority == 200 &&
+        (!has(object.spec.ingress) || size(object.spec.ingress) == 0) &&
+        has(object.spec.egress) && size(object.spec.egress) > 0)
+      message: Tier Admin, priority 200, egress only.
+    - expression: >-
+        request.operation == 'DELETE' ||
+        object.spec.egress.all(r, r.action == 'Accept' &&
+        r.to.all(p, has(p.networks)))
+      message: Every rule must be Accept to networks peers.
+    - expression: >-
+        request.operation == 'DELETE' ||
+        (!has(object.spec.subject.namespaces) &&
+        has(object.spec.subject.pods) &&
+        !has(variables.pods.namespaceSelector.matchExpressions) &&
+        variables.pods.namespaceSelector.matchLabels ==
+        {'kubernetes.io/metadata.name': '{{ .Release.Namespace }}'} &&
+        !has(variables.pods.podSelector.matchExpressions) &&
+        has(variables.pods.podSelector.matchLabels) &&
+        size(variables.pods.podSelector.matchLabels) == 2 &&
+        'app.kubernetes.io/name' in variables.pods.podSelector.matchLabels &&
+        variables.pods.podSelector.matchLabels['app.kubernetes.io/name'] ==
+        'imbi-harness' &&
+        variables.pods.podSelector.matchLabels.exists(k,
+        k.startsWith('egress.imbi.aweber.com/')))
+      message: >-
+        The subject must be the runner pods of {{ .Release.Namespace }} with
+        one egress label.
+    - expression: >-
+        request.operation == 'DELETE' ||
+        object.spec.egress.all(r, r.to.all(p, p.networks.all(n,
+        isCIDR(n) && cidr(n).ip().family() == 4 &&
+        [{{ join ", " $ranges }}].exists(i, cidr(i).containsCIDR(n)) &&
+        !cidr('127.0.0.0/8').containsIP(cidr(n).masked().ip()) &&
+        !cidr(n).containsIP('127.0.0.0') &&
+        !cidr('169.254.0.0/16').containsIP(cidr(n).masked().ip()) &&
+        !cidr(n).containsIP('169.254.0.0'))))
+      message: >-
+        Every CIDR must be IPv4, inside the internal ranges, and not
+        loopback or link-local.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: imbi-harness-egress-sync
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  policyName: imbi-harness-egress-sync
+  validationActions: ["Deny"]
+{{- end }}
+{{- end }}

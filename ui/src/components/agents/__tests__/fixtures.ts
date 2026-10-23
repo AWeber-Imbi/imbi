@@ -20,6 +20,7 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
     settings: {
       approval_tools: [],
       denied_tools: [],
+      egress_destinations: [],
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
       plugins: [],

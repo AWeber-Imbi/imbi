@@ -95,3 +95,61 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Egress allowlists (egress allowlist PRD). Amazon VPC CNI with network
+# policy enforcement on is a prerequisite: see README.md. With enabled, the
+# runner tests at start that its pod is enforced, labels its pod with the
+# egress destinations of its chain, and lets its MCP clients use them.
+networkPolicy:
+  enabled: false
+  # Exactly one release in the namespace sets this. It renders the policies
+  # that apply to every runner pod of the namespace (required targets and
+  # Baseline), the egress-sync Deployment, and its admission policy.
+  manageGlobal: false
+  # host:port of an internal address that a runner pod must not reach, for
+  # the startup self-test, e.g. the Postgres Service ClusterIP. REQUIRED
+  # when enabled.
+  canary: ""
+  # Destinations must be inside these. Baseline denies them and
+  # 169.254.0.0/16 (IMDS).
+  internalRanges:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 100.64.0.0/10
+  # The targets that the harness needs (manageGlobal only). A pod selector
+  # must equal the Service's spec.selector, and the Service port must equal
+  # the container port. The render fails when one that is needed is empty.
+  required:
+    kubeDns:
+      namespace: kube-system
+      podSelector:
+        k8s-app: kube-dns
+    imbiApi:
+      namespace: ""  # e.g. pse
+      podSelector: {}  # e.g. {app.kubernetes.io/component: api, app.kubernetes.io/part-of: imbi}
+      port: 8000
+    # Needed when imbi.mcpUrl is set.
+    imbiMcp:
+      namespace: ""
+      podSelector: {}
+      port: 8001
+    # An in-cluster LiteLLM model upstream, by Service ClusterIP: its Service
+    # port differs from the container port, so a pod selector cannot match.
+    # Update it when the Service is made again. Empty: no LiteLLM target.
+    litellm:
+      cidr: ""  # e.g. 172.20.167.13/32
+      port: 80
+    # The Kubernetes API Service ClusterIP (kubernetes.default.svc).
+    kubeApi:
+      cidr: ""  # e.g. 172.20.0.1/32
+      port: 443
+  # The egress-sync Deployment (manageGlobal only).
+  sync:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi

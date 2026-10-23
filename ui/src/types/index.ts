@@ -270,6 +270,17 @@ export interface ConditionScoringPolicyCreate extends ScoringPolicyCreateBase {
   true_score: number
 }
 
+// A platform-scoped egress destination of the harness runners.
+export type EgressDestination = Schemas['EgressDestinationResponse']
+
+export type EgressDestinationChange = Schemas['EgressDestinationChange']
+
+export type EgressDestinationCreate = Schemas['EgressDestinationCreate']
+
+export type EgressDestinationUpdate = Schemas['EgressDestinationUpdate']
+
+export type EgressSyncStatus = Schemas['EgressSyncStatus']
+
 // `Environment` tracks the blueprint-composed response shape (with
 // relationships and any operator-defined fields). `url` is a UI-only
 // passthrough surfaced in ProjectEnvironmentsCard, not part of the schema.

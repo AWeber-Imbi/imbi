@@ -27,3 +27,14 @@ imbi.aweber.com/pool: {{ include "imbi-harness.pool" . }}
 {{- define "imbi-harness.secretName" -}}
 {{- default (printf "%s-pool" (include "imbi-harness.pool" .)) .Values.poolCredential.existingSecret }}
 {{- end }}
+
+{{/* Every runner pod of the namespace: the subject of the egress policies. */}}
+{{- define "imbi-harness.runnerPods" -}}
+pods:
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ .Release.Namespace }}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: imbi-harness
+{{- end }}

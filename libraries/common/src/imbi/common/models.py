@@ -932,6 +932,15 @@ RunnerLabel = typing.Annotated[
 ]
 
 
+#: The slug of an egress destination: a DNS label, because it is part
+#: of a pod label key and a ClusterNetworkPolicy name.
+EgressDestinationSlug = typing.Annotated[
+    str,
+    pydantic.StringConstraints(
+        pattern=r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$', max_length=63
+    ),
+]
+
 #: Agent SDK permission modes, from the strictest to the least strict.
 AGENT_PERMISSION_MODES: tuple[str, ...] = (
     'plan',
@@ -999,6 +1008,10 @@ class AgentSettings(pydantic.BaseModel):
     #: The labels that a runner needs to run the tasks of the agent
     #: (ADR 0022). Empty means any runner.
     required_labels: list[RunnerLabel] = []
+    #: The egress destinations (slugs) that the pod of the agent's
+    #: chains may reach, in addition to the global ones. Only the root
+    #: agent of a chain sets them.
+    egress_destinations: list[EgressDestinationSlug] = []
     # The fields below narrow the organization's agent platform
     # configuration (ADR 0022). An agent can only narrow it.
     #: Plugins in addition to the organization's default plugins.
@@ -1019,7 +1032,11 @@ class AgentSettings(pydantic.BaseModel):
     approval_tools: list[str] = []
 
     @pydantic.field_validator(
-        'required_labels', 'secrets', 'denied_tools', 'approval_tools'
+        'required_labels',
+        'egress_destinations',
+        'secrets',
+        'denied_tools',
+        'approval_tools',
     )
     @classmethod
     def _sort_labels(cls, value: list[str]) -> list[str]:

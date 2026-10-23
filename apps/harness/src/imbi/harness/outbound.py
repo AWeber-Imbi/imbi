@@ -8,10 +8,13 @@ configuration; the model cannot choose one. Each connection:
 - goes only to the configured origin. A request to another origin is
   refused, so a credential goes to its origin only (the clients also
   follow no redirects);
-- connects only to a global address. The runner resolves the host,
-  refuses it when any address is not global (private, loopback,
-  link-local, and so on), and connects to the addresses that it
-  checked, in order, so a second DNS answer cannot change them.
+- connects only to an allowed address: a global address, or an
+  address in a CIDR of an egress destination of the chain that has the
+  port on TCP (the same list as the pod's network policy). Loopback,
+  link-local (IMDS), multicast, and unspecified addresses are never
+  allowed. The runner resolves the host, refuses it when any address
+  is not allowed, and connects to the addresses that it checked, in
+  order, so a second DNS answer cannot change them.
 """
 
 import asyncio
@@ -24,6 +27,10 @@ import httpx
 
 if typing.TYPE_CHECKING:
     from collections import abc
+
+#: The egress destinations of the chain, from the claim: each has
+#: ``cidrs`` and ``ports`` (``{port, protocol}``).
+type Egress = abc.Sequence[abc.Mapping[str, typing.Any]]
 
 
 class Refused(httpx.TransportError):
@@ -53,20 +60,37 @@ def check_url(url: str) -> httpx.URL:
     return parsed
 
 
-def _global(address: str) -> bool:
+def _allowed(address: str, port: int, egress: Egress) -> bool:
     try:
-        return ipaddress.ip_address(address.partition('%')[0]).is_global
+        ip = ipaddress.ip_address(address.partition('%')[0])
     except ValueError:
         return False
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast:
+        return False
+    if ip.is_unspecified:
+        return False
+    if ip.is_global:
+        return True
+    return any(
+        any(
+            int(p['port']) == port and p['protocol'] == 'TCP'
+            for p in destination['ports']
+        )
+        and any(
+            ip in ipaddress.ip_network(cidr, strict=False)
+            for cidr in destination['cidrs']
+        )
+        for destination in egress
+    )
 
 
-async def resolve(host: str, port: int) -> list[str]:
+async def resolve(host: str, port: int, egress: Egress = ()) -> list[str]:
     """The addresses of ``host``, in the system's order of preference,
-    when all of them are global.
+    when all of them are allowed.
 
     Raises:
-        Refused: ``address_not_global`` when any address of the host is
-            not global, or ``host_not_found``.
+        Refused: ``address_not_allowed`` when any address of the host is
+            not allowed, or ``host_not_found``.
 
     """
     try:
@@ -74,8 +98,8 @@ async def resolve(host: str, port: int) -> list[str]:
     except ValueError:
         pass
     else:
-        if not _global(host):
-            raise Refused('address_not_global')
+        if not _allowed(host, port, egress):
+            raise Refused('address_not_allowed')
         return [host]
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(
@@ -86,17 +110,18 @@ async def resolve(host: str, port: int) -> list[str]:
     addresses = list(dict.fromkeys(str(info[4][0]) for info in infos))
     if not addresses:
         raise Refused('host_not_found')
-    if not all(_global(address) for address in addresses):
-        raise Refused('address_not_global')
+    if not all(_allowed(address, port, egress) for address in addresses):
+        raise Refused('address_not_allowed')
     return addresses
 
 
 class Transport(httpx.AsyncBaseTransport):
-    """HTTPS to one origin, connected to a checked global address."""
+    """HTTPS to one origin, connected to a checked allowed address."""
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, egress: Egress = ()) -> None:
         origin = check_url(url)
         self.origin = (origin.scheme, origin.host, origin.port or 443)
+        self.egress = egress
         self.inner = httpx.AsyncHTTPTransport()
 
     async def handle_async_request(
@@ -105,7 +130,7 @@ class Transport(httpx.AsyncBaseTransport):
         url = request.url
         if (url.scheme, url.host, url.port or 443) != self.origin:
             raise Refused('cross_origin_request')
-        addresses = await resolve(url.host, self.origin[2])
+        addresses = await resolve(url.host, self.origin[2], self.egress)
         # The Host header keeps the name; TLS checks the certificate
         # against the name too (SNI).
         request.extensions = {**request.extensions, 'sni_hostname': url.host}
@@ -144,7 +169,7 @@ class ClientCredentials(httpx.Auth):
     #: A 401 sends the request again with a new token.
     requires_request_body = True
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         token_url: str,
         client_id: str,
@@ -152,8 +177,10 @@ class ClientCredentials(httpx.Auth):
         scope: str | None = None,
         *,
         on_token: abc.Callable[[str], None] = lambda _token: None,
+        egress: Egress = (),
     ) -> None:
         check_url(token_url)
+        self.egress = egress
         self.token_url = token_url
         self.client_id = client_id
         self.client_secret = client_secret
@@ -173,7 +200,7 @@ class ClientCredentials(httpx.Auth):
         if self.scope:
             data['scope'] = self.scope
         async with httpx.AsyncClient(
-            transport=Transport(self.token_url),
+            transport=Transport(self.token_url, self.egress),
             follow_redirects=False,
             timeout=30,
         ) as client:

@@ -1,0 +1,115 @@
+{{- /*
+The egress policies that apply to every runner pod of the namespace
+(egress allowlist PRD 5.2): the required targets (Admin 100) and the
+Baseline (Deny internal ranges, then Accept all). The egress-sync process
+writes the Admin 200 policy of each destination generation. Only the
+release with networkPolicy.manageGlobal renders these.
+*/ -}}
+{{- $np := .Values.networkPolicy }}
+{{- if and $np.enabled $np.manageGlobal }}
+{{- $r := $np.required }}
+{{- if not (and $r.kubeDns.namespace $r.kubeDns.podSelector) }}
+{{- fail "networkPolicy.required.kubeDns needs namespace and podSelector" }}
+{{- end }}
+{{- if not (and $r.imbiApi.namespace $r.imbiApi.podSelector $r.imbiApi.port) }}
+{{- fail "networkPolicy.required.imbiApi needs namespace, podSelector, and port" }}
+{{- end }}
+{{- if and .Values.imbi.mcpUrl (not (and $r.imbiMcp.namespace $r.imbiMcp.podSelector $r.imbiMcp.port)) }}
+{{- fail "networkPolicy.required.imbiMcp needs namespace, podSelector, and port when imbi.mcpUrl is set" }}
+{{- end }}
+{{- if not $r.kubeApi.cidr }}
+{{- fail "networkPolicy.required.kubeApi.cidr is required (the kubernetes Service ClusterIP, e.g. 172.20.0.1/32)" }}
+{{- end }}
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: imbi-harness-required
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  tier: Admin
+  priority: 100
+  subject:
+    {{- include "imbi-harness.runnerPods" . | nindent 4 }}
+  egress:
+    - name: kube-dns
+      action: Accept
+      to:
+        - pods:
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: {{ $r.kubeDns.namespace | quote }}
+            podSelector:
+              matchLabels:
+                {{- toYaml $r.kubeDns.podSelector | nindent 16 }}
+      ports:
+        - portNumber: {port: 53, protocol: TCP}
+        - portNumber: {port: 53, protocol: UDP}
+    {{- range $name, $target := dict "imbi-api" $r.imbiApi "imbi-mcp" $r.imbiMcp }}
+    {{- if and $target.namespace $target.podSelector }}
+    - name: {{ $name }}
+      action: Accept
+      to:
+        - pods:
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: {{ $target.namespace | quote }}
+            podSelector:
+              matchLabels:
+                {{- toYaml $target.podSelector | nindent 16 }}
+      ports:
+        - portNumber: {port: {{ int $target.port }}, protocol: TCP}
+    {{- end }}
+    {{- end }}
+    {{- range $name, $target := dict "litellm" $r.litellm "kube-api" $r.kubeApi }}
+    {{- if $target.cidr }}
+    # A Service ClusterIP: the policy matches it before DNAT.
+    - name: {{ $name }}
+      action: Accept
+      to:
+        - networks: [{{ $target.cidr | quote }}]
+      ports:
+        - portNumber: {port: {{ int $target.port }}, protocol: TCP}
+    {{- end }}
+    {{- end }}
+---
+# A NetworkPolicy in this namespace overrides Baseline (see README.md).
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: imbi-harness-baseline-deny
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  tier: Baseline
+  priority: 10
+  subject:
+    {{- include "imbi-harness.runnerPods" . | nindent 4 }}
+  egress:
+    - name: internal
+      action: Deny
+      to:
+        - networks:
+            {{- range $np.internalRanges }}
+            - {{ . | quote }}
+            {{- end }}
+            - "169.254.0.0/16"
+---
+# Public egress stays open.
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: imbi-harness-baseline-accept
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  tier: Baseline
+  priority: 20
+  subject:
+    {{- include "imbi-harness.runnerPods" . | nindent 4 }}
+  egress:
+    - name: public
+      action: Accept
+      to:
+        - networks: ["0.0.0.0/0"]
+{{- end }}

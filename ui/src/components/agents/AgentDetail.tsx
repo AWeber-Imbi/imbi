@@ -93,6 +93,11 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       value: settings.required_labels?.join(', ') || 'Any runner',
     },
     {
+      mono: true,
+      name: 'Egress destinations',
+      value: settings.egress_destinations?.join(', ') || 'None',
+    },
+    {
       name: 'Human response SLA',
       value: slaLabel(settings.response_sla) ?? 'Not set',
     },

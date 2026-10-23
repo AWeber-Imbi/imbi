@@ -84,6 +84,9 @@ columns = ["state", "lease_expires_at"]
 #   stuck    a fencer failed; the sweep tries again each round
 #   queued   back in the queue; the next claim pins it again
 #   done     every task is closed
+#
+# `egress` is the egress allowlist that the root claim gave the pod of
+# the chain (slug, generation, cidrs, ports). Child claims get it too.
 [[tables]]
 name = "chains"
 
@@ -97,6 +100,7 @@ claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 fenced_at = "TIMESTAMP WITH TIME ZONE"
 fencers_ok_at = "TIMESTAMP WITH TIME ZONE"
 fence_error = "TEXT"
+egress = "JSONB NOT NULL DEFAULT '[]'"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
@@ -183,3 +187,66 @@ columns = ["id"]
 name = "marketplaces_organization_slug_key"
 columns = ["organization_id", "slug"]
 unique = true
+
+# An internal network destination that runner pods may reach (the
+# egress allowlist). `generation` goes up on each change to `cidrs` or
+# `ports`; the egress sync writes one ClusterNetworkPolicy for each
+# generation and sets `applied_generation` when it exists. A claim
+# gives a destination only when the two are equal. `organization_ids`
+# limits the agents that may get it; empty means all. An `is_global`
+# destination goes to every chain. A deleted row stays with
+# `deleted_at`, so a new destination with the same slug continues the
+# generations and never reuses the label of an old pod.
+[[tables]]
+name = "egress_destinations"
+
+[tables.columns]
+slug = "TEXT NOT NULL"
+name = "TEXT NOT NULL"
+description = "TEXT"
+cidrs = "TEXT[] NOT NULL"
+ports = "JSONB NOT NULL"
+is_global = "BOOLEAN NOT NULL DEFAULT FALSE"
+organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+generation = "INTEGER NOT NULL DEFAULT 1"
+applied_generation = "INTEGER"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+deleted_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["slug"]
+
+# The audit trail of the egress destinations: one row per change, with
+# the row before and after.
+[[tables]]
+name = "egress_destination_changes"
+
+[tables.columns]
+id = "UUID NOT NULL"
+slug = "TEXT NOT NULL"
+action = "TEXT NOT NULL"
+actor = "TEXT NOT NULL"
+before = "JSONB"
+after = "JSONB"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "egress_destination_changes_slug_idx"
+columns = ["slug", "created_at"]
+
+# The last report of the egress sync. One row.
+[[tables]]
+name = "egress_sync"
+constraints = ["CONSTRAINT egress_sync_one_row CHECK (id)"]
+
+[tables.columns]
+id = "BOOLEAN NOT NULL DEFAULT TRUE"
+synced_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+synced_by = "TEXT NOT NULL"
+
+[tables.primary_key]
+columns = ["id"]

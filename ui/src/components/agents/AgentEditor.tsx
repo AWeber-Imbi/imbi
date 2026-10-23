@@ -298,6 +298,7 @@ function AgentEditorForm({
         <SettingsTab
           errors={errors}
           onChange={(settings) => update({ settings })}
+          orgSlug={orgSlug}
           value={draft.settings}
         />
       )}

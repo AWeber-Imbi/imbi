@@ -1,3 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
+
+import { listEgressDestinations } from '@/api/endpoints'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -6,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { queryKeys } from '@/lib/queryKeys'
 
 import { type SettingsDraft, SLA_OPTIONS } from './agentDraft'
 import { Field } from './OverviewTab'
@@ -13,11 +18,17 @@ import { Field } from './OverviewTab'
 interface SettingsTabProps {
   errors: Record<string, string>
   onChange: (settings: SettingsDraft) => void
+  orgSlug: string
   value: SettingsDraft
 }
 
 /** Operational limits. An empty field means no limit. */
-export function SettingsTab({ errors, onChange, value }: SettingsTabProps) {
+export function SettingsTab({
+  errors,
+  onChange,
+  orgSlug,
+  value,
+}: SettingsTabProps) {
   const set = (patch: Partial<SettingsDraft>) =>
     onChange({ ...value, ...patch })
   return (
@@ -114,6 +125,70 @@ export function SettingsTab({ errors, onChange, value }: SettingsTabProps) {
           </Select>
         </Field>
       </div>
+      <EgressField
+        onChange={(egressDestinations) => set({ egressDestinations })}
+        orgSlug={orgSlug}
+        value={value.egressDestinations}
+      />
     </div>
+  )
+}
+
+/**
+ * The egress destinations that the agent's runner pods may reach, in
+ * addition to the global ones. A selected slug that the organization
+ * can no longer use stays listed so that it can be removed.
+ */
+function EgressField({
+  onChange,
+  orgSlug,
+  value,
+}: {
+  onChange: (slugs: string[]) => void
+  orgSlug: string
+  value: string[]
+}) {
+  const destinations = useQuery({
+    queryFn: ({ signal }) => listEgressDestinations(orgSlug, signal),
+    queryKey: queryKeys.egressDestinations(orgSlug),
+  })
+  const known = destinations.data ?? []
+  const options = [
+    ...known.map((d) => ({ name: d.name, slug: d.slug })),
+    ...value
+      .filter((slug) => !known.some((d) => d.slug === slug))
+      .map((slug) => ({ name: 'Not available', slug })),
+  ]
+  return (
+    <Field
+      error={
+        destinations.error ? 'Failed to load egress destinations' : undefined
+      }
+      help="Internal networks that the runner pods of this agent may reach. Global destinations apply to every agent."
+      label="Egress destinations"
+    >
+      {options.length === 0 ? (
+        <p className="text-tertiary text-sm">
+          {destinations.isLoading ? 'Loading…' : 'No destinations available.'}
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          {options.map((o) => (
+            <label className="flex items-center gap-2 text-sm" key={o.slug}>
+              <Checkbox
+                checked={value.includes(o.slug)}
+                onCheckedChange={(on) =>
+                  onChange(
+                    on ? [...value, o.slug] : value.filter((s) => s !== o.slug),
+                  )
+                }
+              />
+              {o.name}
+              <span className="text-tertiary font-mono text-xs">{o.slug}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </Field>
   )
 }

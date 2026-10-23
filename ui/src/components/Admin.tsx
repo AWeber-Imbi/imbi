@@ -27,6 +27,7 @@ import {
   Target,
   Users,
   UsersRound,
+  Waypoints,
   Webhook,
   Wrench,
 } from 'lucide-react'
@@ -42,6 +43,7 @@ import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
+import { EgressDestinationManagement } from './admin/EgressDestinationManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { GraphQueryManagement } from './admin/GraphQueryManagement'
 import { IntegrationsManagement } from './admin/integrations/IntegrationsManagement'
@@ -66,6 +68,7 @@ type AdminSection =
   | 'blueprints'
   | 'default-settings'
   | 'document-templates'
+  | 'egress-destinations'
   | 'environments'
   | 'graph-query'
   | 'integrations'
@@ -94,6 +97,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'assistant',
   'blueprints',
   'default-settings',
+  'egress-destinations',
   'environments',
   'graph-query',
   'integrations',
@@ -258,6 +262,14 @@ export function Admin() {
       icon: KeyRound,
       id: 'oauth',
       label: 'Auth Providers',
+      scope: 'system',
+    },
+    {
+      description:
+        'Internal networks that agent runner pods may reach, and their sync state',
+      icon: Waypoints,
+      id: 'egress-destinations',
+      label: 'Egress Destinations',
       scope: 'system',
     },
     {
@@ -476,6 +488,9 @@ export function Admin() {
             {currentSection === 'prompts' && <PromptLibrary />}
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
+            {currentSection === 'egress-destinations' && (
+              <EgressDestinationManagement />
+            )}
             {currentSection === 'graph-query' && <GraphQueryManagement />}
             {currentSection === 'maintenance' && <MaintenanceManagement />}
             {currentSection === 'plugins' && <PluginsManagement />}
