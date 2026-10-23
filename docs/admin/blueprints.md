@@ -35,9 +35,10 @@ A "Microservice" blueprint might define:
 | Framework | Text | No | - |
 | SLA Tier | Select | Yes | Tier 1, Tier 2, Tier 3 |
 
-When a user creates a new project with this blueprint, they see these
-fields alongside the standard project fields (name, description,
-team, etc.).
+When a user creates a project that this blueprint applies to, the
+**Create New Project** dialog asks for Language and SLA Tier, below the
+standard project fields. The user sets Framework after they create the
+project.
 
 ## Using Blueprints
 
@@ -52,9 +53,11 @@ the environments of the project. A `Project` blueprint with an environment
 filter applies when the project is in at least one of the filter's
 environments.
 
-When you create or edit a project, fill in the fields that the matching
-blueprints add. You must complete the required fields before you can save
-the project.
+When you create a project, the dialog shows the required fields that have
+no default. Imbi sets the default for a required field that has one. You
+must complete the fields in the dialog before you can save the project.
+When you edit a project, you can set all the fields that the matching
+blueprints add.
 
 ## Updating Blueprints
 

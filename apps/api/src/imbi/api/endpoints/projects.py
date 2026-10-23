@@ -2582,12 +2582,128 @@ class BlueprintSection(pydantic.BaseModel):
     #: edge attributes rendered in the Environments card).
     scope: typing.Literal['project', 'environment'] = 'project'
     properties: dict[str, BlueprintSectionProperty]
+    #: Property names the blueprint marks as required.
+    required: list[str] = []
 
 
 class ProjectSchemaResponse(pydantic.BaseModel):
     """Fully resolved, blueprint-grouped schema for a project."""
 
     sections: list[BlueprintSection]
+
+
+async def _schema_for(
+    db: graph.Pool,
+    type_slugs: set[str],
+    env_slugs: set[str],
+) -> ProjectSchemaResponse:
+    """Build the blueprint schema for a set of type and environment slugs."""
+
+    def _build_section(
+        bp: models.Blueprint,
+        scope: typing.Literal['project', 'environment'],
+    ) -> BlueprintSection | None:
+        """Build a schema section from a blueprint, or ``None`` to skip.
+
+        A blueprint is skipped when its filter doesn't intersect the
+        project's own types/envs, or when it declares no properties. A
+        blueprint with no filter matches everything; a ``project_type``
+        filter matches if any of the project's types appear in it (same
+        for ``environment``).
+        """
+        f = bp.filter
+        if f is not None:
+            if f.project_type and not type_slugs.intersection(f.project_type):
+                return None
+            if f.environment and not env_slugs.intersection(f.environment):
+                return None
+        schema = bp.json_schema
+        if not schema.properties:
+            return None
+        props: dict[str, BlueprintSectionProperty] = {}
+        for prop_name, prop_schema in schema.properties.items():
+            extra = prop_schema.model_extra or {}
+            x_ui = dict(extra.get('x-ui') or {})
+            if x_ui.get('editable') is None:
+                x_ui['editable'] = True
+            raw_x_display = extra.get('x-display')
+            props[prop_name] = BlueprintSectionProperty(
+                type=getattr(prop_schema, 'type', None),
+                format=getattr(prop_schema, 'format', None),
+                title=getattr(prop_schema, 'title', None),
+                description=getattr(prop_schema, 'description', None),
+                enum=getattr(prop_schema, 'enum', None),
+                default=getattr(prop_schema, 'default', None),
+                minimum=getattr(prop_schema, 'minimum', None),
+                maximum=getattr(prop_schema, 'maximum', None),
+                **{'x-ui': x_ui, 'x-display': dict(raw_x_display or {})},
+            )
+        return BlueprintSection(
+            name=bp.name,
+            slug=bp.slug or '',
+            description=bp.description,
+            scope=scope,
+            properties=props,
+            required=list(schema.required or []),
+        )
+
+    # Node blueprints (project-level attributes) ...
+    node_blueprints = await db.match(
+        models.Blueprint,
+        {'type': 'Project', 'enabled': True},
+        order_by='priority',
+    )
+    # ... and relationship blueprints on the
+    # ``Project -[:DEPLOYED_IN]-> Environment`` edge (per-environment edge
+    # attributes), which carry the same JSON-Schema + ``x-ui`` metadata so
+    # the UI renders them with the shared attribute-display logic.
+    rel_blueprints = await db.match(
+        models.Blueprint,
+        {'kind': 'relationship', 'enabled': True},
+        order_by='priority',
+    )
+
+    sections: list[BlueprintSection] = []
+    for bp in node_blueprints:
+        section = _build_section(bp, 'project')
+        if section is not None:
+            sections.append(section)
+    for bp in rel_blueprints:
+        if (
+            bp.source != 'Project'
+            or bp.target != 'Environment'
+            or bp.edge != 'DEPLOYED_IN'
+        ):
+            continue
+        section = _build_section(bp, 'environment')
+        if section is not None:
+            sections.append(section)
+
+    return ProjectSchemaResponse(sections=sections)
+
+
+@projects_router.get('/schema')
+async def get_new_project_schema(
+    org_slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+    project_type: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    environment: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+) -> ProjectSchemaResponse:
+    """Return the blueprint schema for a project that does not exist yet.
+
+    The New Project form uses this to show the blueprint fields that
+    apply to the selected project type and environments, so it can
+    collect required values before it creates the project.
+    """
+    return await _schema_for(
+        db, set(project_type or []), set(environment or [])
+    )
 
 
 @projects_router.get('/{project_id}/schema')
@@ -2641,87 +2757,7 @@ async def get_project_schema(
     env_slugs: set[str] = set(
         graph.parse_agtype(records[0]['env_slugs']) or []
     )
-
-    def _build_section(
-        bp: models.Blueprint,
-        scope: typing.Literal['project', 'environment'],
-    ) -> BlueprintSection | None:
-        """Build a schema section from a blueprint, or ``None`` to skip.
-
-        A blueprint is skipped when its filter doesn't intersect the
-        project's own types/envs, or when it declares no properties. A
-        blueprint with no filter matches everything; a ``project_type``
-        filter matches if any of the project's types appear in it (same
-        for ``environment``).
-        """
-        f = bp.filter
-        if f is not None:
-            if f.project_type and not type_slugs.intersection(f.project_type):
-                return None
-            if f.environment and not env_slugs.intersection(f.environment):
-                return None
-        schema = bp.json_schema
-        if not schema.properties:
-            return None
-        props: dict[str, BlueprintSectionProperty] = {}
-        for prop_name, prop_schema in schema.properties.items():
-            extra = prop_schema.model_extra or {}
-            x_ui = dict(extra.get('x-ui') or {})
-            if x_ui.get('editable') is None:
-                x_ui['editable'] = True
-            raw_x_display = extra.get('x-display')
-            props[prop_name] = BlueprintSectionProperty(
-                type=getattr(prop_schema, 'type', None),
-                format=getattr(prop_schema, 'format', None),
-                title=getattr(prop_schema, 'title', None),
-                description=getattr(prop_schema, 'description', None),
-                enum=getattr(prop_schema, 'enum', None),
-                default=getattr(prop_schema, 'default', None),
-                minimum=getattr(prop_schema, 'minimum', None),
-                maximum=getattr(prop_schema, 'maximum', None),
-                **{'x-ui': x_ui, 'x-display': dict(raw_x_display or {})},
-            )
-        return BlueprintSection(
-            name=bp.name,
-            slug=bp.slug or '',
-            description=bp.description,
-            scope=scope,
-            properties=props,
-        )
-
-    # Node blueprints (project-level attributes) ...
-    node_blueprints = await db.match(
-        models.Blueprint,
-        {'type': 'Project', 'enabled': True},
-        order_by='priority',
-    )
-    # ... and relationship blueprints on the
-    # ``Project -[:DEPLOYED_IN]-> Environment`` edge (per-environment edge
-    # attributes), which carry the same JSON-Schema + ``x-ui`` metadata so
-    # the UI renders them with the shared attribute-display logic.
-    rel_blueprints = await db.match(
-        models.Blueprint,
-        {'kind': 'relationship', 'enabled': True},
-        order_by='priority',
-    )
-
-    sections: list[BlueprintSection] = []
-    for bp in node_blueprints:
-        section = _build_section(bp, 'project')
-        if section is not None:
-            sections.append(section)
-    for bp in rel_blueprints:
-        if (
-            bp.source != 'Project'
-            or bp.target != 'Environment'
-            or bp.edge != 'DEPLOYED_IN'
-        ):
-            continue
-        section = _build_section(bp, 'environment')
-        if section is not None:
-            sections.append(section)
-
-    return ProjectSchemaResponse(sections=sections)
+    return await _schema_for(db, type_slugs, env_slugs)
 
 
 class EnvironmentEdgeUpdate(pydantic.BaseModel):
