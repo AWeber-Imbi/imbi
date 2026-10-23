@@ -141,6 +141,20 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
         actionable: list[tuple[str, datetime.datetime]] | None,
         times: dict[tuple[str, str], datetime.datetime] | None = None,
     ) -> dict[str, dict[str, bool]]:
+        return (await self._evaluate(actionable, times)).ranges
+
+    async def _oldest(
+        self,
+        actionable: list[tuple[str, datetime.datetime]] | None,
+        times: dict[tuple[str, str], datetime.datetime] | None = None,
+    ) -> dict[str, dict[str, datetime.datetime]]:
+        return (await self._evaluate(actionable, times)).oldest
+
+    async def _evaluate(
+        self,
+        actionable: list[tuple[str, datetime.datetime]] | None,
+        times: dict[tuple[str, str], datetime.datetime] | None,
+    ) -> projects.EnvironmentDrift:
         resolved = (
             {('p1', 'base'): _at(10), ('p1', 'head'): _at(20)}
             if times is None
@@ -231,6 +245,47 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
         # store must not read as proof of cleanliness.
         self.assertEqual({'p1': {'base..head': True}}, await self._run(None))
 
+    async def test_oldest_is_the_earliest_commit_in_the_range(self) -> None:
+        self.assertEqual(
+            {'p1': {'base..head': _at(12)}},
+            await self._oldest(
+                [('mid', _at(15)), ('early', _at(12)), ('head', _at(20))]
+            ),
+        )
+
+    async def test_oldest_skips_commits_outside_the_range(self) -> None:
+        # Commits CI answered ``false`` never come back from the
+        # verdict read, and commits before the base are already
+        # promoted: neither can be the oldest.
+        self.assertEqual(
+            {'p1': {'base..head': _at(18)}},
+            await self._oldest(
+                [('base', _at(10)), ('old', _at(5)), ('mid', _at(18))]
+            ),
+        )
+
+    async def test_oldest_counts_a_commit_tied_with_the_base(self) -> None:
+        self.assertEqual(
+            {'p1': {'base..head': _at(10)}},
+            await self._oldest([('base', _at(10)), ('twin', _at(10))]),
+        )
+
+    async def test_a_clean_range_has_no_oldest(self) -> None:
+        self.assertEqual({}, await self._oldest([]))
+
+    async def test_a_failed_verdict_fetch_has_no_oldest(self) -> None:
+        # The range still needs action, but no commit says since when.
+        self.assertEqual({}, await self._oldest(None))
+
+    async def test_unorderable_endpoints_have_no_oldest(self) -> None:
+        self.assertEqual(
+            {},
+            await self._oldest(
+                [('mid', _at(15))],
+                times={('p1', 'base'): _at(20), ('p1', 'head'): _at(10)},
+            ),
+        )
+
     async def test_the_window_spans_every_orderable_range(self) -> None:
         project = {
             'id': 'p1',
@@ -257,7 +312,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             result = await projects._evaluate_environment_drift(
                 [{'id': 'p1', 'environments': [], 'current_releases': {}}]
             )
-        self.assertEqual({}, result)
+        self.assertEqual(projects.EnvironmentDrift({}, {}), result)
         times.assert_not_awaited()
         actionable.assert_not_awaited()
 

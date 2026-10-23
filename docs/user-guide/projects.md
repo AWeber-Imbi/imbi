@@ -57,7 +57,7 @@ to share the list as you see it.
 |---|---|
 | **Project** | The name, the team, and the type. Click to sort by name |
 | **PRs** | Open pull requests. See [PR badges](#pr-badges). Click to sort |
-| **Drift** | One `Δ` badge for each kind of drift |
+| **Drift** | One `Δ` badge for each kind of drift. Click to sort by the oldest waiting change |
 | **Current Deployments & Releases** | For a deployable project: the version in each environment. For a release-only project: **Latest Commit** and **Current Release** |
 | **Score** | The project score, or **—** when it has no score. Click to sort |
 
@@ -84,6 +84,15 @@ See [Pull requests and dependencies](pull-requests-and-dependencies.md).
   to the **Deployments** tab, with the target environment selected.
 - `Δ C → R`: the project has commits after its latest release. Click it to
   go to the tab where you cut a release.
+
+Each badge also shows how long its oldest waiting change has waited, for
+example `Δ T → S 12d`. That is the oldest commit in the range that still
+needs action. Commits that CI marked as not needing a deploy or a release
+do not count. Hover over the age to see the date. A badge with no age has
+no commit date, for example because Imbi could not read the commits.
+
+Sort by **Drift** to list the projects with the oldest waiting change first.
+Projects with no age come last in both directions.
 
 See [Drift](drift.md) for the rules.
 

@@ -45,7 +45,9 @@ import {
   type DriftProject,
   projectReleaseDrifted,
   rangeNeedsAction,
+  rangeOldest,
 } from '@/lib/deployment-drift'
+import { absTime, parseServerTs, relTime } from '@/lib/formatDate'
 import type { DeploymentStatus, LatestDeployment } from '@/types'
 
 import { NewProjectDialog } from './NewProjectDialog'
@@ -64,6 +66,11 @@ import { ScoreBadge } from './ui/score-badge'
 import { Sk } from './ui/skeleton'
 
 // The dropdown filters, each backed by its own URL search param.
+type DriftCellProject = DriftProject & {
+  id: string
+  project_types?: null | object[]
+}
+
 type FacetKey = 'drifts' | 'scores' | 'teams' | 'types'
 
 interface FilterHeaderProps {
@@ -95,7 +102,7 @@ interface SortHeaderProps {
   sorted: boolean
 }
 
-type SortKey = 'name' | 'prs' | 'score' | 'team' | 'type'
+type SortKey = 'drift' | 'name' | 'prs' | 'score' | 'team' | 'type'
 
 // Footprint skeleton for the projects results area — mirrors the grid cards
 // or the table rows depending on the active view, so the layout reads as
@@ -425,10 +432,25 @@ export function ProjectsView() {
     const collator = new Intl.Collator('en', { sensitivity: 'base' })
     const key = (s: null | string | undefined) => (s ?? '').trim()
 
+    // Projects with no dated drift sort last in either direction.
+    const waiting =
+      sortKey === 'drift'
+        ? new Map(all.map((p) => [p.id, oldestPendingTime(p)]))
+        : null
+
     // fallow-ignore-next-line complexity
     return [...all].sort((a, b) => {
       let cmp = 0
-      if (sortKey === 'name') cmp = collator.compare(key(a.name), key(b.name))
+      if (waiting) {
+        const ta = waiting.get(a.id) ?? null
+        const tb = waiting.get(b.id) ?? null
+        if (ta === null || tb === null) {
+          if (ta === tb) return 0
+          return ta === null ? 1 : -1
+        }
+        cmp = ta - tb
+      } else if (sortKey === 'name')
+        cmp = collator.compare(key(a.name), key(b.name))
       else if (sortKey === 'team')
         cmp = collator.compare(key(a.team.name), key(b.team.name))
       else if (sortKey === 'type') {
@@ -740,16 +762,31 @@ export function ProjectsView() {
             >
               PRs
             </SortHeader>
-            <div className="w-40 shrink-0 px-2.5 py-3 text-center whitespace-nowrap">
-              <div className="flex items-center justify-center gap-1 text-center">
+            <div
+              className="hover:text-primary w-40 shrink-0 cursor-pointer px-2.5 py-3 text-center whitespace-nowrap select-none"
+              onClick={() => setSort('drift')}
+              title="Sort by the oldest change waiting to move on"
+            >
+              <span className="inline-flex items-center gap-1">
                 Drift
-                <FilterPopover
-                  activeFilters={driftSet}
-                  label="drift"
-                  onToggle={(s) => toggleFilter('drifts', s)}
-                  options={driftFilterOptions}
-                />
-              </div>
+                {sortKey === 'drift' ? (
+                  sortDir === 'asc' ? (
+                    <ChevronUp className="size-3.5 shrink-0" />
+                  ) : (
+                    <ChevronDown className="size-3.5 shrink-0" />
+                  )
+                ) : (
+                  <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
+                )}
+                <span onClick={(e) => e.stopPropagation()}>
+                  <FilterPopover
+                    activeFilters={driftSet}
+                    label="drift"
+                    onToggle={(s) => toggleFilter('drifts', s)}
+                    options={driftFilterOptions}
+                  />
+                </span>
+              </span>
             </div>
             <div className="min-w-0 flex-1 px-6 py-3 text-center whitespace-nowrap">
               Current Deployments &amp; Releases
@@ -901,16 +938,31 @@ function DeploymentCards({
   )
 }
 
+// The badges a project shows. Same predicate the count and the filter
+// use, so a badge never appears for a project the "Drifted" tally does
+// not include.
+function driftBadges(project: DriftCellProject): {
+  deployDrifted: DriftPair[]
+  releaseDrifted: boolean
+} {
+  const deployDrifted: DriftPair[] = isProjectDeployable(project)
+    ? computeDriftPairs(
+        project.environments ?? [],
+        project.current_releases ?? {},
+      ).filter((p) => p.drifted && rangeNeedsAction(project.drift_ranges, p))
+    : []
+  const releaseDrifted =
+    isProjectReleasable(project) && projectReleaseDrifted(project)
+  return { deployDrifted, releaseDrifted }
+}
+
 // fallow-ignore-next-line complexity
 function DriftCell({
   inline,
   project,
 }: {
   inline?: boolean
-  project: DriftProject & {
-    id: string
-    project_types?: null | object[]
-  }
+  project: DriftCellProject
 }) {
   const { isDarkMode } = useTheme()
   // z-10 lifts the badges above the row/card overlay Link so their own
@@ -923,17 +975,7 @@ function DriftCell({
     : 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs'
   const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
 
-  // Same predicate the count and the filter use, so a badge never
-  // appears for a project the "Drifted" tally does not include.
-  const deployDrifted: DriftPair[] = isProjectDeployable(project)
-    ? computeDriftPairs(
-        project.environments ?? [],
-        project.current_releases ?? {},
-      ).filter((p) => p.drifted && rangeNeedsAction(project.drift_ranges, p))
-    : []
-
-  const releaseDrifted =
-    isProjectReleasable(project) && projectReleaseDrifted(project)
+  const { deployDrifted, releaseDrifted } = driftBadges(project)
 
   if (deployDrifted.length === 0 && !releaseDrifted) return null
 
@@ -943,9 +985,14 @@ function DriftCell({
         const derived = p.toLabelColor
           ? deriveChipColors(p.toLabelColor, isDarkMode)
           : null
+        const since = rangeOldest(project.drift_range_oldest, p)
         return (
           <Link
-            aria-label={`Deploy ${p.from} to ${p.to}`}
+            aria-label={
+              since
+                ? `Deploy ${p.from} to ${p.to}, waiting since ${absTime(since)}`
+                : `Deploy ${p.from} to ${p.to}`
+            }
             className={
               derived
                 ? `${badgeBaseCls} border`
@@ -967,12 +1014,17 @@ function DriftCell({
             <span>{abbreviateEnvName(p.from)}</span>
             <span>→</span>
             <span>{abbreviateEnvName(p.to)}</span>
+            <WaitingAge since={since} />
           </Link>
         )
       })}
       {releaseDrifted && (
         <Link
-          aria-label="Cut a release"
+          aria-label={
+            project.release_summary?.oldest_actionable_at
+              ? `Cut a release, waiting since ${absTime(project.release_summary.oldest_actionable_at)}`
+              : 'Cut a release'
+          }
           className={`${badgeBaseCls} ${fallbackCls}`}
           to={`/projects/${project.id}/deployments`}
         >
@@ -980,6 +1032,7 @@ function DriftCell({
           <span>C</span>
           <span>→</span>
           <span>R</span>
+          <WaitingAge since={project.release_summary?.oldest_actionable_at} />
         </Link>
       )}
     </div>
@@ -1181,6 +1234,22 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   return next
 }
 
+// When the oldest change waiting behind any of the project's badges
+// landed, in ms. Null when no badge has a date.
+function oldestPendingTime(project: DriftCellProject): null | number {
+  const { deployDrifted, releaseDrifted } = driftBadges(project)
+  const dates = deployDrifted.map((p) =>
+    rangeOldest(project.drift_range_oldest, p),
+  )
+  if (releaseDrifted)
+    dates.push(project.release_summary?.oldest_actionable_at ?? null)
+  const times = dates
+    .filter((d): d is string => !!d)
+    .map((d) => parseServerTs(d).getTime())
+    .filter(Number.isFinite)
+  return times.length > 0 ? Math.min(...times) : null
+}
+
 function ReleaseCards({
   release_summary,
 }: {
@@ -1282,6 +1351,16 @@ function ReleaseStamp({
         <span className="invisible">—</span>
       )}
     </p>
+  )
+}
+
+// The age of the oldest waiting change, as a badge suffix.
+function WaitingAge({ since }: { since: null | string | undefined }) {
+  if (!since) return null
+  return (
+    <span className="ml-1 opacity-75" title={`Waiting since ${absTime(since)}`}>
+      {relTime(since)}
+    </span>
   )
 }
 

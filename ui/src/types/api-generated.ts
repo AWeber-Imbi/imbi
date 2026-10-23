@@ -16718,6 +16718,10 @@ export interface components {
             drift_ranges?: {
                 [key: string]: boolean;
             };
+            /** Drift Range Oldest */
+            drift_range_oldest?: {
+                [key: string]: string;
+            };
         };
         /**
          * ProjectListProjectTypeRef
@@ -18261,6 +18265,11 @@ export interface components {
              * @default 0
              */
             drift_answered: number;
+            /**
+             * Oldest Actionable At
+             * @default null
+             */
+            oldest_actionable_at: string | null;
         };
         /**
          * RelocationTarget
