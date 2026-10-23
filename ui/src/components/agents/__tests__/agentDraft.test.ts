@@ -34,6 +34,7 @@ describe('agentDraft', () => {
   it('round-trips the settings', () => {
     const draft = draftFromAgent(agent(), null)
     expect(draft.settings).toEqual({
+      egressDestinations: [],
       githubAppBinding: '',
       kept: { approval_tools: [], denied_tools: [] },
       maxConcurrentTasks: '3',
@@ -48,6 +49,7 @@ describe('agentDraft', () => {
     const empty = {
       approval_tools: [],
       denied_tools: [],
+      egress_destinations: [],
       github_app_binding: null,
       plugins: [],
       secrets: [],

@@ -18,6 +18,11 @@
   (``/harness/executor/...``). The organization, agent, project, task,
   and runner come from the token, the chain, and the task, never from
   the request body.
+- **Egress** (``/harness/egress-destinations``, ``/harness/egress-sync``):
+  the internal hosts that runner pods may reach. Platform
+  administrators manage them; the egress sync reads them and reports
+  the generations whose ClusterNetworkPolicy exists. A claim gives the
+  pod of a chain the global destinations and those of its root agent.
 """
 
 import asyncio
@@ -42,6 +47,7 @@ from imbi.api.endpoints import agents as agents_api
 from imbi.api.endpoints import auth as auth_endpoints
 from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import auth as harness_auth
+from imbi.api.harness import egress as harness_egress
 from imbi.api.harness import platform, tokens
 from imbi.api.harness import store as harness_store
 from imbi.api.middleware import rate_limit
@@ -119,6 +125,8 @@ class RunnerChain(pydantic.BaseModel):
     state: harness_store.ChainState
     #: Why the fencers failed, for a ``stuck`` chain.
     fence_error: str | None = None
+    #: The egress destinations that the pod of the chain has.
+    egress: list[harness_egress.Grant] = []
 
 
 class RunnerResponse(pydantic.BaseModel):
@@ -307,6 +315,11 @@ class Claim(pydantic.BaseModel):
     #: account is a member of another organization too, so its roles
     #: there would apply (the organization comes only from the token).
     api_token_error: str | None = None
+    #: The egress destinations that the pod of the chain may reach:
+    #: the global ones and the root agent's, each at a generation whose
+    #: policy exists. The runner labels its pod with them. Every claim
+    #: of a chain gets the list of its root claim.
+    egress: list[harness_egress.Grant] = []
 
 
 class RunnerFinished(pydantic.BaseModel):
@@ -834,7 +847,9 @@ async def _deliver(
     """
     task, chain = claimed
     try:
-        return await _claim(db, store, secrets, runner, task, chain)
+        return await _claim(
+            db, store, secrets, runner, task, chain, pinned=pinned
+        )
     except _NoServiceAccount:
         await tasks.set_outcome(
             task['organization_id'],
@@ -857,8 +872,11 @@ async def _claim(
     runner: dict[str, typing.Any],
     task: dict[str, typing.Any],
     chain: dict[str, typing.Any],
+    *,
+    pinned: bool,
 ) -> Claim:
-    """Return the claim response of a task: its bundle and agent token."""
+    """Return the claim response of a task: its bundle, agent token,
+    and egress allowlist."""
     accounts = await db.match(
         models.ServiceAccount, {'id': task['service_account_id']}
     )
@@ -898,7 +916,67 @@ async def _claim(
         api_token=api_token,
         api_token_expires_at=api_expires,
         api_token_error=api_token_error,
+        egress=(
+            await _root_egress(db, store, task, chain)
+            if pinned
+            else [
+                harness_egress.Grant.model_validate(g) for g in chain['egress']
+            ]
+        ),
     )
+
+
+async def _egress_slugs(
+    db: graph.Graph, agent_id: str, version: int
+) -> list[str]:
+    """The egress destinations of a pinned agent version."""
+    records = await db.execute(
+        _VERSION_QUERY, {'id': agent_id, 'n': version}, ['snapshot']
+    )
+    raw: typing.Any = (
+        graph.parse_agtype(records[0]['snapshot']) if records else None
+    )
+    snapshot: dict[str, typing.Any] = (
+        json.loads(raw) if isinstance(raw, str) else raw or {}
+    )
+    return _settings(snapshot.get('settings')).egress_destinations
+
+
+async def _root_egress(
+    db: graph.Graph,
+    store: harness.HarnessStore,
+    task: dict[str, typing.Any],
+    chain: dict[str, typing.Any],
+) -> list[harness_egress.Grant]:
+    """The egress allowlist of a chain that a runner pinned: the global
+    destinations and those of the root task's pinned agent version.
+
+    A destination whose current generation has no policy yet, or that
+    is not for the organization, is left out (fail closed), with an
+    ``egress.destination_pending`` event on the task. The chain keeps
+    the list for the claims of its child tasks.
+    """
+    root = task
+    if task['id'] != chain['root_task_id']:
+        root = await store.task_agent(chain['root_task_id']) or task
+    slugs = await _egress_slugs(db, root['agent_id'], root['agent_version'])
+    grants, pending = harness_egress.grants(
+        await store.egress_destinations(), slugs, task['organization_id']
+    )
+    await store.set_chain_egress(chain, grants)
+    if pending:
+        await store.task_events(
+            task,
+            [
+                (EGRESS_PENDING_EVENT, p.model_dump(mode='json'))
+                for p in pending
+            ],
+        )
+    return grants
+
+
+#: The task event of a destination that a claim left out.
+EGRESS_PENDING_EVENT = 'egress.destination_pending'
 
 
 _MEMBERSHIPS_QUERY: typing.LiteralString = """
@@ -963,6 +1041,7 @@ def _pool_response(
                 attempt=runner['attempt'],
                 state=runner['chain_state'],
                 fence_error=runner['fence_error'],
+                egress=runner['chain_egress'] or [],
             )
         items.append(RunnerResponse.model_validate({**runner, 'chain': chain}))
     org_ids = [str(org_id) for org_id in pool['organization_ids']]
@@ -1646,7 +1725,9 @@ async def create_harness_child_task(
         404: No such task.
         409: The parent is closed, the child agent is disabled, or the
             runner of the chain does not have a label that the child
-            agent needs (``runner_label_missing``).
+            agent needs (``runner_label_missing``), or the pod of the
+            chain does not have an egress destination that the child
+            agent has (``egress_destination_missing``).
         422: No such agent, or a budget over its task budget.
 
     """
@@ -1702,6 +1783,14 @@ async def create_harness_child_task(
         raise _conflict(
             'runner_label_missing',
             f'The runner of the chain does not have the labels '
+            f'{", ".join(missing)} that agent {data.agent_slug!r} needs',
+        )
+    held = {g['slug'] for g in await runners.chain_egress(chain_id) or []}
+    missing = sorted(set(settings.egress_destinations) - held)
+    if missing:
+        raise _conflict(
+            'egress_destination_missing',
+            f'The pod of the chain does not have the egress destinations '
             f'{", ".join(missing)} that agent {data.agent_slug!r} needs',
         )
     budget = tasks_api.task_budget(settings, data.budget)
@@ -1943,4 +2032,508 @@ async def release_harness_secret_resolution(
         resolution_id=row['id'],
         state=row['state'],
         revocation_state=row['revocation_state'],
+    )
+
+
+# --- Egress destinations (harness egress PRD) -------------------------
+
+_EGRESS_AGENTS_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(o:Organization)
+RETURN a.slug AS slug, o.slug AS organization, a.settings AS settings
+"""
+
+
+class _DestinationFields(pydantic.BaseModel):
+    @pydantic.field_validator('cidrs', check_fields=False)
+    @classmethod
+    def _check_cidrs(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else harness_egress.check_cidrs(value)
+
+    @pydantic.field_validator('ports', check_fields=False)
+    @classmethod
+    def _check_ports(
+        cls, value: list[harness_egress.EgressPort] | None
+    ) -> list[harness_egress.EgressPort] | None:
+        return None if value is None else harness_egress.check_ports(value)
+
+
+class EgressDestinationCreate(_DestinationFields):
+    slug: models.EgressDestinationSlug
+    name: str = pydantic.Field(min_length=1, max_length=200)
+    description: str | None = None
+    cidrs: list[str] = pydantic.Field(
+        min_length=1,
+        description=(
+            f'1 to {harness_egress.MAX_CIDRS} IPv4 CIDRs inside the '
+            'internal ranges.'
+        ),
+    )
+    ports: list[harness_egress.EgressPort] = pydantic.Field(min_length=1)
+    global_: bool = pydantic.Field(
+        default=False,
+        alias='global',
+        description='Every chain gets the destination.',
+    )
+    organizations: list[str] = pydantic.Field(
+        default=[],
+        description=(
+            'Organization slugs whose agents may get it. Empty means all. '
+            'Not used when global.'
+        ),
+    )
+
+
+class EgressDestinationUpdate(_DestinationFields):
+    name: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=200
+    )
+    description: str | None = None
+    cidrs: list[str] | None = None
+    ports: list[harness_egress.EgressPort] | None = None
+    global_: bool | None = pydantic.Field(default=None, alias='global')
+    organizations: list[str] | None = None
+
+
+class EgressAgent(pydantic.BaseModel):
+    organization_slug: str
+    slug: str
+
+
+class EgressDestinationResponse(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(populate_by_name=True)
+
+    slug: str
+    name: str
+    description: str | None = None
+    cidrs: list[str]
+    ports: list[harness_egress.EgressPort]
+    global_: bool = pydantic.Field(alias='global')
+    organizations: list[str]
+    #: Goes up on each change to ``cidrs`` or ``ports``.
+    generation: int
+    #: The generation whose policy the sync made. Claims give the
+    #: destination only when it equals ``generation``.
+    applied_generation: int | None = None
+    pending: bool
+    #: The agents that have the destination. Shown only to platform
+    #: administrators.
+    agents: list[EgressAgent] = []
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class EgressDestinationChange(pydantic.BaseModel):
+    action: str
+    actor: str
+    before: dict[str, typing.Any] | None = None
+    after: dict[str, typing.Any] | None = None
+    created_at: datetime.datetime
+
+
+class EgressSyncStatus(pydantic.BaseModel):
+    #: ``None`` when the sync never reported.
+    synced_at: datetime.datetime | None = None
+    synced_by: str | None = None
+
+
+class EgressSyncDestination(pydantic.BaseModel):
+    slug: str
+    generation: int
+    cidrs: list[str]
+    ports: list[harness_egress.EgressPort]
+    deleted: bool
+
+
+class EgressSyncState(pydantic.BaseModel):
+    destinations: list[EgressSyncDestination]
+
+
+class EgressApplied(pydantic.BaseModel):
+    slug: models.EgressDestinationSlug
+    generation: int = pydantic.Field(ge=1)
+
+
+class EgressSyncReport(pydantic.BaseModel):
+    #: Each live destination whose current generation has a policy.
+    applied: list[EgressApplied] = pydantic.Field(default=[], max_length=1000)
+
+
+async def _agents_by_destination(
+    db: graph.Graph,
+) -> dict[str, list[EgressAgent]]:
+    """The agents that have each destination, by slug."""
+    found: dict[str, list[EgressAgent]] = {}
+    for record in await db.execute(
+        _EGRESS_AGENTS_QUERY, {}, ['slug', 'organization', 'settings']
+    ):
+        settings = _settings(graph.parse_agtype(record['settings']))
+        for slug in settings.egress_destinations:
+            found.setdefault(slug, []).append(
+                EgressAgent(
+                    organization_slug=str(
+                        graph.parse_agtype(record['organization'])
+                    ),
+                    slug=str(graph.parse_agtype(record['slug'])),
+                )
+            )
+    return found
+
+
+def _response(
+    row: dict[str, typing.Any],
+    org_slugs: dict[str, str],
+    agents: list[EgressAgent],
+) -> EgressDestinationResponse:
+    return EgressDestinationResponse.model_validate(
+        {
+            **row,
+            'global': row['is_global'],
+            'organizations': sorted(
+                org_slugs.get(str(org_id), str(org_id))
+                for org_id in row['organization_ids']
+            ),
+            'pending': row['applied_generation'] != row['generation'],
+            'agents': agents,
+        }
+    )
+
+
+async def _responses(
+    db: graph.Graph,
+    rows: list[dict[str, typing.Any]],
+    *,
+    with_agents: bool,
+) -> list[EgressDestinationResponse]:
+    org_slugs = await _org_slugs(
+        db, sorted({o for row in rows for o in row['organization_ids']})
+    )
+    agents = await _agents_by_destination(db) if with_agents else {}
+    return [
+        _response(row, org_slugs, agents.get(row['slug'], [])) for row in rows
+    ]
+
+
+def _not_found(slug: str) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=404, detail=f'Egress destination {slug!r} not found'
+    )
+
+
+def _port_limit(err: harness.EgressPortLimit) -> fastapi.HTTPException:
+    return _unprocessable(
+        f'More than {harness_egress.MAX_PORTS_PER_CIDR} port/protocol '
+        f'pairs on CIDR {err} across all egress destinations'
+    )
+
+
+async def _require_pool_account(
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+    store: harness.Store,
+) -> permissions.AuthContext:
+    """Return the caller when it is the service account of a pool.
+
+    Raises:
+        403: ``egress_sync_forbidden``.
+
+    """
+    account = auth.service_account
+    pools = await store.pools()
+    if account is None or not any(
+        pool['service_account_id'] == account.id for pool in pools
+    ):
+        raise autonomous.forbidden(
+            'egress_sync_forbidden',
+            f'Principal {auth.principal_name!r} is not the service account '
+            'of a runner pool.',
+        )
+    return auth
+
+
+_Admin = typing.Annotated[
+    permissions.AuthContext,
+    fastapi.Depends(_require_platform_admin),
+]
+_PoolAccount = typing.Annotated[
+    permissions.AuthContext, fastapi.Depends(_require_pool_account)
+]
+
+
+@harness_router.get(
+    '/egress-destinations', response_model=list[EgressDestinationResponse]
+)
+async def list_egress_destinations(
+    db: graph.Pool,
+    store: harness.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+    organization: typing.Annotated[
+        str | None,
+        fastapi.Query(
+            description=(
+                'The slug of an organization: only the destinations that '
+                'its agents may get (not global).'
+            )
+        ),
+    ] = None,
+) -> list[EgressDestinationResponse]:
+    """List the live egress destinations.
+
+    A platform administrator sees every destination and the agents
+    that have it. Every other caller needs ``agent:read`` and
+    ``organization``, must be a member of it, and sees only the
+    destinations that its agents may get.
+
+    Raises:
+        403: No ``agent:read``, or not a member.
+        422: ``organization`` is missing.
+
+    """
+    if not auth.is_admin and organization is None:
+        raise _unprocessable('organization is required')
+    rows = await store.egress_destinations()
+    if organization is not None:
+        if auth.is_admin:
+            org_ids = await _org_ids(db, [organization])
+            org_id = org_ids[0]
+        else:
+            # check_member narrows auth.permissions to the organization.
+            org_id = await organizations.check_member(organization, db, auth)
+            if 'agent:read' not in auth.permissions:
+                raise fastapi.HTTPException(
+                    status_code=403,
+                    detail='Permission denied: agent:read required',
+                )
+        rows = [
+            row
+            for row in rows
+            if not row['is_global']
+            and (
+                not row['organization_ids']
+                or org_id in row['organization_ids']
+            )
+        ]
+    return await _responses(db, rows, with_agents=auth.is_admin)
+
+
+@harness_router.post(
+    '/egress-destinations',
+    status_code=201,
+    response_model=EgressDestinationResponse,
+)
+async def create_egress_destination(
+    data: EgressDestinationCreate,
+    db: graph.Pool,
+    store: harness.Store,
+    auth: _Admin,
+) -> EgressDestinationResponse:
+    """Create an egress destination. Claims give it after the egress
+    sync makes its policy.
+
+    Raises:
+        403: Not a platform administrator.
+        409: ``egress_destination_exists``.
+        422: A CIDR or port is not valid, a CIDR gets more than 24
+            port pairs, or an unknown organization.
+
+    """
+    values = {
+        'slug': data.slug,
+        'name': data.name,
+        'description': data.description,
+        'cidrs': data.cidrs,
+        'ports': [p.model_dump() for p in data.ports],
+        'is_global': data.global_,
+        'organization_ids': (
+            [] if data.global_ else await _org_ids(db, data.organizations)
+        ),
+    }
+    try:
+        row = await store.create_egress_destination(
+            values, auth.principal_name
+        )
+    except harness.EgressDestinationExists as err:
+        raise _conflict(
+            'egress_destination_exists',
+            f'Egress destination {data.slug!r} exists',
+        ) from err
+    except harness.EgressPortLimit as err:
+        raise _port_limit(err) from err
+    return (await _responses(db, [row], with_agents=True))[0]
+
+
+@harness_router.get(
+    '/egress-destinations/{slug}', response_model=EgressDestinationResponse
+)
+async def get_egress_destination(
+    slug: str, db: graph.Pool, store: harness.Store, _auth: _Admin
+) -> EgressDestinationResponse:
+    """Return an egress destination and the agents that have it.
+
+    Raises:
+        403: Not a platform administrator.
+        404: No such live destination.
+
+    """
+    row = await store.egress_destination(slug)
+    if row is None:
+        raise _not_found(slug)
+    return (await _responses(db, [row], with_agents=True))[0]
+
+
+@harness_router.patch(
+    '/egress-destinations/{slug}', response_model=EgressDestinationResponse
+)
+async def update_egress_destination(
+    slug: str,
+    data: EgressDestinationUpdate,
+    db: graph.Pool,
+    store: harness.Store,
+    auth: _Admin,
+) -> EgressDestinationResponse:
+    """Change an egress destination.
+
+    A change to ``cidrs`` or ``ports`` starts a new generation: new
+    chains do not get the destination until the sync applies it.
+    Running chains keep the generation that they have.
+
+    Raises:
+        403: Not a platform administrator.
+        404: No such live destination.
+        422: A CIDR or port is not valid, a CIDR gets more than 24
+            port pairs, or an unknown organization.
+
+    """
+    changes: dict[str, typing.Any] = {}
+    fields = data.model_fields_set
+    if data.name is not None:
+        changes['name'] = data.name
+    if 'description' in fields:
+        changes['description'] = data.description
+    if data.cidrs is not None:
+        changes['cidrs'] = data.cidrs
+    if data.ports is not None:
+        changes['ports'] = [p.model_dump() for p in data.ports]
+    if data.global_ is not None:
+        changes['is_global'] = data.global_
+    if data.organizations is not None:
+        changes['organization_ids'] = await _org_ids(db, data.organizations)
+    if changes.get('is_global'):
+        changes['organization_ids'] = []
+        agents = (await _agents_by_destination(db)).get(slug)
+        if agents:
+            # An agent may not name a global destination; the agent
+            # editor could not save it again.
+            raise _conflict(
+                'egress_destination_in_use',
+                f'Egress destination {slug!r} is used by agents: '
+                + ', '.join(f'{a.organization_slug}/{a.slug}' for a in agents),
+            )
+    try:
+        row = await store.update_egress_destination(
+            slug, changes, auth.principal_name
+        )
+    except harness.EgressPortLimit as err:
+        raise _port_limit(err) from err
+    if row is None:
+        raise _not_found(slug)
+    return (await _responses(db, [row], with_agents=True))[0]
+
+
+@harness_router.delete('/egress-destinations/{slug}', status_code=204)
+async def delete_egress_destination(
+    slug: str, db: graph.Pool, store: harness.Store, auth: _Admin
+) -> None:
+    """Delete an egress destination. New chains stop getting it at
+    once. Running chains keep it until they end; to stop them, delete
+    their runner pods.
+
+    Raises:
+        403: Not a platform administrator.
+        404: No such live destination.
+        409: ``egress_destination_in_use``: agents have it.
+
+    """
+    agents = (await _agents_by_destination(db)).get(slug)
+    if agents:
+        raise _conflict(
+            'egress_destination_in_use',
+            f'Egress destination {slug!r} is used by agents: '
+            + ', '.join(f'{a.organization_slug}/{a.slug}' for a in agents),
+        )
+    if not await store.delete_egress_destination(slug, auth.principal_name):
+        raise _not_found(slug)
+
+
+@harness_router.get(
+    '/egress-destinations/{slug}/changes',
+    response_model=list[EgressDestinationChange],
+)
+async def list_egress_destination_changes(
+    slug: str,
+    store: harness.Store,
+    _auth: _Admin,
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=500)] = 100,
+) -> list[dict[str, typing.Any]]:
+    """The audit trail of an egress destination, the newest first.
+
+    Raises:
+        403: Not a platform administrator.
+
+    """
+    return await store.egress_changes(slug, limit)
+
+
+@harness_router.get('/egress-sync/status', response_model=EgressSyncStatus)
+async def egress_sync_status(
+    store: harness.Store, _auth: _Admin
+) -> EgressSyncStatus:
+    """The time of the last report of the egress sync.
+
+    Raises:
+        403: Not a platform administrator.
+
+    """
+    row = await store.egress_sync_status()
+    return EgressSyncStatus.model_validate(row or {})
+
+
+@harness_router.get('/egress-sync', response_model=EgressSyncState)
+async def read_egress_sync_state(
+    store: harness.Store, _auth: _PoolAccount
+) -> EgressSyncState:
+    """Every egress destination with its current generation, the
+    deleted ones too, for ``imbi-harness egress-sync``.
+
+    Raises:
+        403: ``egress_sync_forbidden``: not the service account of a
+            runner pool.
+
+    """
+    return EgressSyncState(
+        destinations=[
+            EgressSyncDestination.model_validate(
+                {**row, 'deleted': row['deleted_at'] is not None}
+            )
+            for row in await store.egress_destinations(deleted=True)
+        ]
+    )
+
+
+@harness_router.put('/egress-sync', status_code=204)
+async def report_egress_sync(
+    data: EgressSyncReport, store: harness.Store, auth: _PoolAccount
+) -> None:
+    """Report a round of the egress sync: the generations whose
+    ClusterNetworkPolicy exists. A stale generation changes nothing.
+
+    Raises:
+        403: ``egress_sync_forbidden``: not the service account of a
+            runner pool.
+
+    """
+    await store.report_egress_sync(
+        {a.slug: a.generation for a in data.applied}, auth.principal_name
     )

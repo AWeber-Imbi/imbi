@@ -36,12 +36,19 @@ dump() {
   done
   echo "--- fake API log" >&2
   k logs deploy/harness-fake-api --tail=100 >&2 || true
+  echo "--- egress-sync log" >&2
+  k logs deploy/imbi-harness-egress-sync --tail=100 >&2 || true
 }
 
 if ! "$KIND" get clusters | grep -qx "$CLUSTER"; then
   "$KIND" create cluster --name "$CLUSTER" --config "$HERE/kind.yaml" \
     --wait 120s
 fi
+# kind has no VPC CNI: only the API type of ClusterNetworkPolicy, for the
+# egress admission policies and egress-sync (test_egress.py).
+kubectl --context "$CONTEXT" apply -f "$HERE/clusternetworkpolicy-crd.yaml"
+kubectl --context "$CONTEXT" wait --for=condition=Established \
+  crd/clusternetworkpolicies.networking.k8s.aws --timeout=60s
 
 docker build -f "$ROOT/apps/harness/Dockerfile" --target isolation \
   -t "$IMAGE" "$ROOT"
@@ -65,19 +72,44 @@ FAKE_API_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
   "$PYTHON" -m unittest discover -s "$HERE" -p test_lifecycle.py -v
 
 # The pool suite: the test pod goes, and a one-pod pool from the Helm
-# chart takes its place (pod self-deletion and the failure paths).
+# chart takes its place (pod self-deletion and the failure paths). The
+# release also renders the egress objects (test_egress.py). It has
+# cluster-scoped objects: delete them after the run.
 k delete pod harness --wait
+POOL=$(mktemp)
 helm template general "$ROOT/helm/imbi-harness" --namespace "$NAMESPACE" \
   --set image.repository=imbi-harness --set image.tag=isolation \
   --set image.pullPolicy=Never \
   --set imbi.apiUrl=http://harness-fake-api:8080 \
   --set imbi.mcpUrl=http://harness-fake-api:8080/mcp \
   --set poolCredential.existingSecret=harness-pool \
-  | k apply -f -
+  --set networkPolicy.enabled=true \
+  --set networkPolicy.manageGlobal=true \
+  --set networkPolicy.canary=harness-fake-api:9 \
+  --set networkPolicy.required.imbiApi.namespace="$NAMESPACE" \
+  --set networkPolicy.required.imbiApi.podSelector.app=harness-fake-api \
+  --set networkPolicy.required.imbiApi.port=8080 \
+  --set networkPolicy.required.imbiMcp.namespace="$NAMESPACE" \
+  --set networkPolicy.required.imbiMcp.podSelector.app=harness-fake-api \
+  --set networkPolicy.required.imbiMcp.port=8080 \
+  --set networkPolicy.required.kubeApi.cidr=10.96.0.1/32 \
+  > "$POOL"
+k apply -f "$POOL"
+# Nothing enforces the policies in kind, and the CI host's IMDS answers:
+# the startup self-test cannot pass. The runner runs without enforcement;
+# the Role, token, and admission policies stay.
+k set env deploy/general -c runner IMBI_HARNESS_EGRESS_ENFORCED=false
 k rollout status deploy/general --timeout=180s
+k rollout status deploy/imbi-harness-egress-sync --timeout=120s
+FAKE_API_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
+  "$PYTHON" -m unittest discover -s "$HERE" -p test_egress.py -v
 FAKE_API_URL=http://localhost:30080 KUBE_CONTEXT=$CONTEXT \
   "$PYTHON" -m unittest discover -s "$HERE" -p test_pool.py -v
 
 if [ "${KEEP:-0}" != 1 ]; then
+  k delete -f "$POOL" --ignore-not-found --wait=false
+  kubectl --context "$CONTEXT" delete clusternetworkpolicies \
+    -l app.kubernetes.io/managed-by=imbi-harness-egress-sync
   kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" --wait=false
 fi
+rm -f "$POOL"

@@ -407,6 +407,26 @@ class EndOfPodTestCase(unittest.IsolatedAsyncioTestCase):
             settings = runner.Settings.from_environment()
         self.assertEqual(settings.end_of_chain, 'delete_pod')
         self.assertIsNone(settings.idle_exit_seconds)
+        self.assertFalse(settings.egress_enforced)
+        env['IMBI_HARNESS_EGRESS_ENFORCED'] = 'true'
+        with (
+            mock.patch.dict(runner.os.environ, env, clear=True),
+            self.assertRaisesRegex(SystemExit, 'IMBI_HARNESS_EGRESS_CANARY'),
+        ):
+            runner.Settings.from_environment()
+        env['IMBI_HARNESS_EGRESS_CANARY'] = '172.20.5.5:5432'
+        with mock.patch.dict(runner.os.environ, env, clear=True):
+            settings = runner.Settings.from_environment()
+        self.assertTrue(settings.egress_enforced)
+        self.assertEqual(settings.egress_canary, ('172.20.5.5', 5432))
+        env['IMBI_HARNESS_EGRESS_CANARY'] = '172.20.5.5'
+        with (
+            mock.patch.dict(runner.os.environ, env, clear=True),
+            self.assertRaisesRegex(SystemExit, 'host:port'),
+        ):
+            runner.Settings.from_environment()
+        del env['IMBI_HARNESS_EGRESS_CANARY']
+        del env['IMBI_HARNESS_EGRESS_ENFORCED']
         env |= {
             'IMBI_HARNESS_END_OF_CHAIN': 'exit',
             'IMBI_HARNESS_IDLE_EXIT_SECONDS': '120',
@@ -526,3 +546,118 @@ class ApiTokenRenewalTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             subject.redactor.text('eyJnew.eyJtoken.signature01'), '[REDACTED]'
         )
+
+
+class EgressTestCase(unittest.IsolatedAsyncioTestCase):
+    """PRD 5.3 and 5.7."""
+
+    claim: typing.ClassVar[dict[str, typing.Any]] = {
+        'egress': [
+            {
+                'slug': 'db',
+                'generation': 2,
+                'cidrs': ['10.1.0.0/16'],
+                'ports': [{'port': 5432, 'protocol': 'TCP'}],
+            }
+        ]
+    }
+
+    async def test_labels_the_pod_when_enforced(self) -> None:
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        with mock.patch.object(
+            runner.kube, 'label_own_pod', mock.AsyncMock(return_value=True)
+        ) as label:
+            await subject.label_pod(self.claim)
+        label.assert_awaited_once_with({'egress.imbi.aweber.com/db': 'g2'})
+        self.assertEqual(subject.egress, self.claim['egress'])
+
+    async def test_failed_label_is_logged(self) -> None:
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        with (
+            mock.patch.object(
+                runner.kube,
+                'label_own_pod',
+                mock.AsyncMock(return_value=False),
+            ),
+            self.assertLogs('imbi.harness.runner', 'ERROR'),
+        ):
+            await subject.label_pod(self.claim)
+
+    async def test_off_gives_no_destinations(self) -> None:
+        subject = make_runner()
+        with mock.patch.object(
+            runner.kube, 'label_own_pod', mock.AsyncMock()
+        ) as label:
+            await subject.label_pod(self.claim)
+        label.assert_not_awaited()
+        self.assertEqual(subject.egress, [])
+
+    async def test_self_test_before_the_first_claim(self) -> None:
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        subject.cycle = mock.AsyncMock()  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(
+                runner.kube,
+                'own_pod_labels',
+                mock.AsyncMock(return_value={'app': 'imbi-harness'}),
+            ),
+            mock.patch.object(
+                runner.egress,
+                'self_test',
+                mock.AsyncMock(side_effect=SystemExit('not enforced')),
+            ) as self_test,
+            self.assertRaises(SystemExit),
+        ):
+            await subject.serve()
+        self_test.assert_awaited_once_with(('10.0.0.9', 5432))
+        subject.cycle.assert_not_awaited()
+
+    async def test_stale_labels_end_the_pod(self) -> None:
+        """A restarted runner container in a pod that ran a chain
+        claims nothing; the pod deletes itself."""
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        subject.cycle = mock.AsyncMock()  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(
+                runner.kube,
+                'own_pod_labels',
+                mock.AsyncMock(
+                    return_value={'egress.imbi.aweber.com/db': 'g2'}
+                ),
+            ),
+            mock.patch.object(
+                runner.kube, 'delete_own_pod', mock.AsyncMock()
+            ) as delete,
+            mock.patch.object(runner.egress, 'self_test', mock.AsyncMock()),
+            self.assertLogs('imbi.harness.runner', 'ERROR'),
+        ):
+            await subject.serve()
+        delete.assert_awaited_once_with()
+        subject.cycle.assert_not_awaited()
+
+    async def test_unreadable_labels_fail_closed(self) -> None:
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        subject.cycle = mock.AsyncMock()  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(
+                runner.kube,
+                'own_pod_labels',
+                mock.AsyncMock(return_value=None),
+            ),
+            self.assertRaises(SystemExit),
+        ):
+            await subject.serve()
+        subject.cycle.assert_not_awaited()

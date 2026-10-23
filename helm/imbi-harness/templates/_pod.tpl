@@ -41,6 +41,7 @@ capabilities:
 
 {{- define "imbi-harness.podSpec" -}}
 {{- $job := eq (include "imbi-harness.mode" .) "scaledJob" -}}
+{{- $egress := .Values.networkPolicy.enabled -}}
 serviceAccountName: {{ include "imbi-harness.pool" . }}
 automountServiceAccountToken: false
 enableServiceLinks: false
@@ -85,14 +86,22 @@ containers:
         value: exit
       - name: IMBI_HARNESS_IDLE_EXIT_SECONDS
         value: {{ .Values.scaledJob.idleExitSeconds | quote }}
-      {{- else }}
-      # The runner deletes its own pod at the end of its chain.
+      {{- end }}
+      {{- if or (not $job) $egress }}
+      # The runner deletes its own pod at the end of its chain, and labels
+      # it with the egress destinations of the chain.
       - name: POD_NAME
         valueFrom:
           fieldRef: {fieldPath: metadata.name}
       - name: POD_NAMESPACE
         valueFrom:
           fieldRef: {fieldPath: metadata.namespace}
+      {{- end }}
+      {{- if $egress }}
+      - name: IMBI_HARNESS_EGRESS_ENFORCED
+        value: "true"
+      - name: IMBI_HARNESS_EGRESS_CANARY
+        value: {{ required "networkPolicy.canary is required when networkPolicy.enabled" .Values.networkPolicy.canary | quote }}
       {{- end }}
     securityContext:
       {{- include "imbi-harness.securityContext" . | nindent 6 }}
@@ -106,7 +115,7 @@ containers:
       {{- if .Values.extraCaCerts.configMap }}
       - {name: extra-ca, mountPath: /etc/imbi-harness/ca, readOnly: true}
       {{- end }}
-      {{- if not $job }}
+      {{- if or (not $job) $egress }}
       - name: service-account-token
         mountPath: /var/run/secrets/kubernetes.io/serviceaccount
         readOnly: true
@@ -134,8 +143,8 @@ volumes:
     secret:
       secretName: {{ include "imbi-harness.secretName" . }}
       defaultMode: 0400
-  {{- if not $job }}
-  # Only to delete its own pod; a Job pod exits instead.
+  {{- if or (not $job) $egress }}
+  # Only to delete its own pod (a Job pod exits instead) and to label it.
   - name: service-account-token
     projected:
       defaultMode: 0400

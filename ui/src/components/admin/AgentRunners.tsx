@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Server } from 'lucide-react'
 
-import { listHarnessPools } from '@/api/endpoints'
+import { getEgressSyncStatus, listHarnessPools } from '@/api/endpoints'
 import { agentsPath } from '@/components/agents/agentsNav'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAuth } from '@/hooks/useAuth'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
 import type { HarnessPool, HarnessRunner } from '@/types'
@@ -16,7 +17,15 @@ import type { HarnessPool, HarnessRunner } from '@/types'
 /** How often the runner list refreshes. */
 const POLL_MS = 15_000
 
-const COLUMNS = ['Runner', 'Labels', 'State', 'Chain', 'Heartbeat', 'Version']
+const COLUMNS = [
+  'Runner',
+  'Labels',
+  'State',
+  'Chain',
+  'Egress',
+  'Heartbeat',
+  'Version',
+]
 
 const STATE_VARIANT: Record<HarnessRunner['state'], BadgeProps['variant']> = {
   busy: 'info',
@@ -38,6 +47,14 @@ export function AgentRunners() {
     queryKey: queryKeys.harnessPools(orgSlug ?? ''),
     refetchInterval: POLL_MS,
   })
+  // The sync status is for platform administrators only.
+  const isAdmin = useAuth().user?.is_admin === true
+  const sync = useQuery({
+    enabled: isAdmin,
+    queryFn: ({ signal }) => getEgressSyncStatus(signal),
+    queryKey: queryKeys.egressSyncStatus(),
+    refetchInterval: POLL_MS,
+  })
 
   if (!orgSlug) {
     return (
@@ -50,6 +67,14 @@ export function AgentRunners() {
   // A failed refresh keeps the last data on the page, with a warning.
   return (
     <div className="flex flex-col gap-4">
+      {sync.data && (
+        <p className="text-tertiary text-xs">
+          Last egress sync:{' '}
+          {sync.data.synced_at
+            ? formatRelativeDate(sync.data.synced_at)
+            : 'never'}
+        </p>
+      )}
       {pools.error && (
         <ErrorBanner
           error={pools.error}
@@ -180,6 +205,24 @@ function RunnerRow({ runner }: { runner: HarnessRunner }) {
               </Badge>
             )}
           </span>
+        )}
+      </td>
+      <td className="px-4 py-2">
+        {chain?.egress.length ? (
+          <span className="flex flex-wrap gap-1">
+            {chain.egress.map((grant) => (
+              <Badge
+                className="font-mono"
+                key={grant.slug}
+                title={grant.cidrs.join(', ')}
+                variant="outline"
+              >
+                {grant.slug} g{grant.generation}
+              </Badge>
+            ))}
+          </span>
+        ) : (
+          <span className="text-tertiary text-xs">—</span>
         )}
       </td>
       <td className="text-secondary px-4 py-2 text-xs whitespace-nowrap">

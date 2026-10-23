@@ -23,7 +23,7 @@ from psycopg.types import json as pg_json
 
 from imbi.api.agent_tasks import log
 from imbi.api.agent_tasks import store as task_store
-from imbi.api.harness import tokens
+from imbi.api.harness import egress, tokens
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -144,6 +144,7 @@ SELECT r.id, r.pool, r.instance, p.labels, r.state, r.chain_id,
        r.image_version, r.registered_at, r.last_heartbeat,
        r.lease_expires_at, c.attempt, c.state AS chain_state,
        c.organization_id AS chain_organization_id, c.fence_error,
+       c.egress AS chain_egress,
        t.short_id AS chain_short_id
   FROM harness.runners AS r
   JOIN harness.pools AS p ON p.name = r.pool
@@ -195,6 +196,18 @@ class RunnerBusy(ValueError):
 
 class MarketplaceExists(ValueError):
     """The organization has a marketplace with this slug."""
+
+
+class EgressDestinationExists(ValueError):
+    """A live egress destination has this slug."""
+
+
+class EgressPortLimit(ValueError):
+    """The change puts too many port/protocol pairs on a CIDR."""
+
+
+#: Serializes egress destination writes, for the port pair limit.
+_EGRESS_LOCK = 'harness.egress'
 
 
 class HarnessStore:
@@ -748,6 +761,229 @@ class HarnessStore:
             (organization_id, reference),
         )
 
+    # --- Egress destinations -------------------------------------------
+
+    async def egress_destinations(self, *, deleted: bool = False) -> list[Row]:
+        """Return the live egress destinations by slug; with
+        ``deleted``, the deleted ones too."""
+        return await self._fetch_all(
+            'SELECT * FROM harness.egress_destinations'
+            ' WHERE %s OR deleted_at IS NULL ORDER BY slug',
+            (deleted,),
+        )
+
+    async def egress_destination(self, slug: str) -> Row | None:
+        """Return the live egress destination ``slug``."""
+        return await self._fetch_one(
+            'SELECT * FROM harness.egress_destinations'
+            ' WHERE slug = %s AND deleted_at IS NULL',
+            (slug,),
+        )
+
+    async def create_egress_destination(self, values: Row, actor: str) -> Row:
+        """Insert an egress destination.
+
+        A deleted destination with the slug comes back with the next
+        generation, so no pod label of the old one is reused.
+
+        Raises:
+            EgressDestinationExists: A live destination has the slug.
+            EgressPortLimit: A CIDR gets too many port pairs.
+
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            await _lock_egress(conn)
+            old = await _fetch_one(
+                conn,
+                'SELECT * FROM harness.egress_destinations'
+                ' WHERE slug = %s FOR UPDATE',
+                (values['slug'],),
+            )
+            if old is not None and old['deleted_at'] is None:
+                raise EgressDestinationExists(values['slug'])
+            await _check_port_pairs(conn, values)
+            params = _egress_params(values)
+            row = await _fetch_one(
+                conn,
+                'INSERT INTO harness.egress_destinations (slug, name,'
+                ' description, cidrs, ports, is_global, organization_ids)'
+                ' VALUES (%(slug)s, %(name)s, %(description)s, %(cidrs)s,'
+                ' %(ports)s, %(is_global)s, %(organization_ids)s)'
+                ' ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name,'
+                ' description = EXCLUDED.description,'
+                ' cidrs = EXCLUDED.cidrs, ports = EXCLUDED.ports,'
+                ' is_global = EXCLUDED.is_global,'
+                ' organization_ids = EXCLUDED.organization_ids,'
+                ' generation = egress_destinations.generation + 1,'
+                ' applied_generation = NULL, deleted_at = NULL,'
+                ' created_at = NOW(), updated_at = NOW()'
+                ' RETURNING *',
+                params,
+            )
+            if row is None:  # pragma: no cover - RETURNING yields a row
+                raise RuntimeError('egress destination insert returned no row')
+            await _egress_change(conn, 'created', actor, None, row)
+        return row
+
+    async def update_egress_destination(
+        self, slug: str, changes: Row, actor: str
+    ) -> Row | None:
+        """Change a live egress destination; ``None`` when not found.
+
+        A change to ``cidrs`` or ``ports`` starts the next generation:
+        claims leave the destination out until the sync applies it.
+
+        Raises:
+            EgressPortLimit: A CIDR gets too many port pairs.
+
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            await _lock_egress(conn)
+            old = await _fetch_one(
+                conn,
+                'SELECT * FROM harness.egress_destinations'
+                ' WHERE slug = %s AND deleted_at IS NULL FOR UPDATE',
+                (slug,),
+            )
+            if old is None:
+                return None
+            merged = {**old, **changes}
+            changed = {
+                column: value
+                for column, value in _egress_params(merged).items()
+                if column in changes and old[column] != merged[column]
+            }
+            if not changed:
+                return old
+            network = 'cidrs' in changed or 'ports' in changed
+            if network:
+                await _check_port_pairs(conn, merged)
+            statement = sql.SQL(
+                'UPDATE harness.egress_destinations SET {sets},'
+                ' generation = generation + {bump}, updated_at = NOW()'
+                ' WHERE slug = %s RETURNING *'
+            ).format(
+                sets=sql.SQL(', ').join(
+                    sql.SQL('{} = %s').format(sql.Identifier(column))
+                    for column in changed
+                ),
+                bump=sql.Literal(1 if network else 0),
+            )
+            row = await _fetch_one(conn, statement, (*changed.values(), slug))
+            await _egress_change(conn, 'updated', actor, old, row)
+        return row
+
+    async def delete_egress_destination(self, slug: str, actor: str) -> bool:
+        """Delete a live egress destination: claims stop giving it at
+        once. The sync removes its policies when no pod holds them."""
+        async with self._pool.connection() as conn, conn.transaction():
+            await _lock_egress(conn)
+            old = await _fetch_one(
+                conn,
+                'SELECT * FROM harness.egress_destinations'
+                ' WHERE slug = %s AND deleted_at IS NULL FOR UPDATE',
+                (slug,),
+            )
+            if old is None:
+                return False
+            row = await _fetch_one(
+                conn,
+                'UPDATE harness.egress_destinations SET deleted_at = NOW(),'
+                ' updated_at = NOW() WHERE slug = %s RETURNING *',
+                (slug,),
+            )
+            await _egress_change(conn, 'deleted', actor, old, row)
+        return True
+
+    async def egress_changes(self, slug: str, limit: int = 100) -> list[Row]:
+        """Return the audit trail of a destination, the newest first."""
+        return await self._fetch_all(
+            'SELECT * FROM harness.egress_destination_changes'
+            ' WHERE slug = %s ORDER BY created_at DESC, id LIMIT %s',
+            (slug, limit),
+        )
+
+    async def report_egress_sync(
+        self, applied: dict[str, int], synced_by: str
+    ) -> None:
+        """Record a round of the egress sync: the generations whose
+        policy exists, and the time. A stale generation changes
+        nothing."""
+        async with self._pool.connection() as conn, conn.transaction():
+            await conn.execute(
+                'UPDATE harness.egress_destinations AS d'
+                ' SET applied_generation = a.generation::int'
+                ' FROM jsonb_each_text(%s) AS a(slug, generation)'
+                ' WHERE d.slug = a.slug'
+                ' AND d.generation = a.generation::int'
+                ' AND d.deleted_at IS NULL'
+                ' AND d.applied_generation IS DISTINCT FROM d.generation',
+                (pg_json.Jsonb(applied),),
+            )
+            await conn.execute(
+                'INSERT INTO harness.egress_sync (id, synced_at, synced_by)'
+                ' VALUES (TRUE, NOW(), %s) ON CONFLICT (id) DO UPDATE SET'
+                ' synced_at = NOW(), synced_by = EXCLUDED.synced_by',
+                (synced_by,),
+            )
+
+    async def egress_sync_status(self) -> Row | None:
+        """Return the last report of the egress sync."""
+        return await self._fetch_one(
+            'SELECT synced_at, synced_by FROM harness.egress_sync', ()
+        )
+
+    async def set_chain_egress(
+        self, chain: Row, grants: list[egress.Grant]
+    ) -> None:
+        """Keep the egress allowlist that a root claim gave the pod."""
+        await self._execute(
+            'UPDATE harness.chains SET egress = %s'
+            ' WHERE root_task_id = %s AND attempt = %s',
+            (
+                pg_json.Jsonb([g.model_dump(mode='json') for g in grants]),
+                chain['root_task_id'],
+                chain['attempt'],
+            ),
+        )
+
+    async def chain_egress(self, chain_id: uuid.UUID) -> list[Row] | None:
+        """Return the egress allowlist of a running chain."""
+        chain = await self.chain(chain_id)
+        if chain is None or chain['state'] != 'running':
+            return None
+        found: list[Row] = chain['egress']
+        return found
+
+    async def task_agent(self, task_id: uuid.UUID) -> Row | None:
+        """Return the agent and pinned agent version of a task."""
+        return await self._fetch_one(
+            'SELECT agent_id, agent_version FROM agent_runtime.tasks'
+            ' WHERE id = %s',
+            (task_id,),
+        )
+
+    async def task_events(
+        self, task: Row, events: list[tuple[str, Row]]
+    ) -> None:
+        """Write events on a task and publish them."""
+        written: list[Row] = []
+        async with self._pool.connection() as conn, conn.transaction():
+            for event_type, payload in events:
+                result = await task_store.append_event(
+                    conn,
+                    task['organization_id'],
+                    task['id'],
+                    event_type,
+                    payload,
+                    _SYSTEM,
+                )
+                if result is not None:
+                    task = result[0]
+                    written.append(result[1])
+        if written:
+            await log.publish(task, written)
+
     # --- Lease sweep ---------------------------------------------------
 
     async def expire_leases(self) -> list[Row]:
@@ -881,6 +1117,10 @@ class HarnessStore:
             raise RunnerBusy(str(runner_id))
         return row
 
+    async def _execute(self, query: _Query, params: typing.Any) -> None:
+        async with self._pool.connection() as conn:
+            await conn.execute(query, params)
+
     async def _fetch_one(
         self, query: _Query, params: typing.Any
     ) -> Row | None:
@@ -900,6 +1140,61 @@ async def _record_claim(
         ' VALUES (%s, %s, %s, %s)',
         (task['id'], chain['attempt'], chain['root_task_id'], runner_id),
     )
+
+
+async def _lock_egress(conn: Conn) -> None:
+    await conn.execute(
+        'SELECT pg_advisory_xact_lock(hashtext(%s))', (_EGRESS_LOCK,)
+    )
+
+
+def _egress_params(values: Row) -> Row:
+    """The column values of an egress destination for a write."""
+    return {
+        **values,
+        'ports': pg_json.Jsonb(values['ports']),
+    }
+
+
+async def _check_port_pairs(conn: Conn, values: Row) -> None:
+    """Raise :class:`EgressPortLimit` when the destination ``values``
+    and the other live ones put too many port pairs on a CIDR."""
+    others = await _fetch_all(
+        conn,
+        'SELECT cidrs, ports FROM harness.egress_destinations'
+        ' WHERE deleted_at IS NULL AND slug <> %s',
+        (values['slug'],),
+    )
+    over = egress.port_pairs_over_limit([*others, values])
+    if over:
+        raise EgressPortLimit(', '.join(over))
+
+
+async def _egress_change(
+    conn: Conn, action: str, actor: str, before: Row | None, after: Row | None
+) -> None:
+    await conn.execute(
+        'INSERT INTO harness.egress_destination_changes'
+        ' (id, slug, action, actor, before, after)'
+        ' VALUES (%s, %s, %s, %s, %s, %s)',
+        (
+            uuid.uuid4(),
+            (after or before or {})['slug'],
+            action,
+            actor,
+            None if before is None else pg_json.Jsonb(_jsonable(before)),
+            None if after is None else pg_json.Jsonb(_jsonable(after)),
+        ),
+    )
+
+
+def _jsonable(row: Row) -> Row:
+    return {
+        key: value.isoformat()
+        if isinstance(value, datetime.datetime)
+        else value
+        for key, value in row.items()
+    }
 
 
 async def _chain_open(conn: Conn, chain_id: uuid.UUID) -> bool:

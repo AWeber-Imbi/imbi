@@ -141,6 +141,19 @@ class Api:
     async def finish(self, runner_id: str, token: str) -> None:
         await self.post(f'/harness/runners/{runner_id}/finish', token)
 
+    async def egress_destinations(self, token: str) -> list[Body]:
+        """Every egress destination, deleted ones too (pool token)."""
+        response = await self.request('GET', '/harness/egress-sync', token)
+        return typing.cast(
+            'list[Body]', items(_body(response), 'destinations')
+        )
+
+    async def report_applied(self, token: str, applied: list[Body]) -> None:
+        """The ``{slug, generation}`` of each policy that exists."""
+        await self.request(
+            'PUT', '/harness/egress-sync', token, json={'applied': applied}
+        )
+
     async def create_resolution(self, agent_token: str, body: Body) -> Body:
         response = await self.post(
             '/harness/secret-resolutions', agent_token, json=body

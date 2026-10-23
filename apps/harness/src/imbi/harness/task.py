@@ -35,6 +35,7 @@ from claude_agent_sdk._internal.transport import subprocess_cli
 
 from imbi.harness import (
     api,
+    egress,
     events,
     ipc,
     outbound,
@@ -480,6 +481,7 @@ class TaskRun:
         build: bool = True,
         children: abc.Callable[[str], abc.Awaitable[Body]] | None = None,
         mcp_url: str | None = None,
+        egress: list[Body] | None = None,
     ) -> None:
         self.claim = claim
         self.task: Body = claim['task']
@@ -518,6 +520,9 @@ class TaskRun:
         #: renews it.
         self.api_token = str(claim.get('api_token') or '')
         self.mcp_url = mcp_url
+        #: The egress destinations of the pod (PRD 5.8): the outbound
+        #: checks allow their addresses and ports.
+        self.egress: list[Body] = egress or []
         self.relay: relay.Relay | None = None
         #: The third-party relays, by CLI server name (plan P7).
         self.external: dict[str, relay.Relay] = {}
@@ -590,6 +595,7 @@ class TaskRun:
 
     async def _work(self) -> sdk.ResultMessage | None:
         if self.build:
+            await self.probe_egress()
             await self.build_workspace()
         self.cwd = self._cwd()
         self.layout.make_task(str(self.task['id']))
@@ -1059,7 +1065,9 @@ class TaskRun:
                     server=name,
                     key=slug,
                     ignored=server.get('ignored_tools') or (),
-                    transport=outbound.Transport(str(server['url'])),
+                    transport=outbound.Transport(
+                        str(server['url']), self.egress
+                    ),
                     stopped=lambda: self.stopped,
                 )
                 tools = await candidate.start()
@@ -1114,7 +1122,19 @@ class TaskRun:
             material,
             server.get('oauth_scope'),
             on_token=self.redactor.add,
+            egress=self.egress,
         )
+
+    async def probe_egress(self) -> None:
+        """A warning for each TCP destination that does not connect
+        (PRD 5.7). A readiness hint only: the chain continues."""
+        if failed := await egress.probe(self.egress):
+            LOGGER.warning('Egress destinations not ready: %s', failed)
+            self.recorder.notice(
+                'The egress destinations '
+                + ', '.join(failed)
+                + ' did not connect. Their network policy can need more time.'
+            )
 
     def relays(self) -> list[relay.Relay]:
         return [*([self.relay] if self.relay else []), *self.external.values()]

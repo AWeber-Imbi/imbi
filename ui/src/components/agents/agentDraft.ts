@@ -68,6 +68,8 @@ export interface PromptDraft {
 export type ResponseSla = NonNullable<AgentSettings['response_sla']>
 
 export interface SettingsDraft {
+  /** The slugs of the egress destinations that the agent's pods reach. */
+  egressDestinations: string[]
   /** The `secret://` reference of the agent's GitHub App binding. */
   githubAppBinding: string
   kept: KeptSettings
@@ -169,6 +171,7 @@ export function draftFromAgent(
     name: agent.name,
     prompt: promptDraftFromVersion(prompt),
     settings: {
+      egressDestinations: settings.egress_destinations ?? [],
       githubAppBinding: settings.github_app_binding ?? '',
       kept: {
         approval_tools: settings.approval_tools,
@@ -225,6 +228,7 @@ export function emptyDraft(): AgentDraft {
     name: '',
     prompt: promptDraftFromVersion(null),
     settings: {
+      egressDestinations: [],
       githubAppBinding: '',
       kept: {},
       maxConcurrentTasks: '',
@@ -426,6 +430,7 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
     ...draft.kept,
     approval_tools: draft.kept.approval_tools ?? [],
     denied_tools: draft.kept.denied_tools ?? [],
+    egress_destinations: [...draft.egressDestinations].sort(),
     github_app_binding: draft.githubAppBinding.trim() || null,
     max_concurrent_tasks: draft.maxConcurrentTasks.trim()
       ? Number(draft.maxConcurrentTasks)

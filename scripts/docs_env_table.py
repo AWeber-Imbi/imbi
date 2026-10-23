@@ -418,6 +418,13 @@ DESCRIPTIONS: dict[str, str] = {
     'chain',
     'IMBI_HARNESS_IDLE_EXIT_SECONDS': 'Exit after this many idle seconds. '
     'Empty or `0`: never.',
+    'IMBI_HARNESS_EGRESS_ENFORCED': '`true` labels the pod with the egress '
+    'destinations of each chain and runs the startup self-test',
+    'IMBI_HARNESS_EGRESS_CANARY': '`host:port` that the startup self-test '
+    'must not reach. Required when egress is enforced.',
+    'IMBI_HARNESS_CLIENT_ID': 'Client ID of the runner service account '
+    '(egress sync)',
+    'IMBI_HARNESS_CLIENT_SECRET': 'Its client secret',
     'HOSTNAME': 'Runner instance name',
     'POD_NAME': 'Pod name, from the Kubernetes downward API',
     'POD_NAMESPACE': 'Pod namespace, from the Kubernetes downward API',

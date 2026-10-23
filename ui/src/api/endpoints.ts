@@ -111,6 +111,11 @@ import type {
   DocumentVersionListResponse,
   DraftReleaseNotesRequest,
   DraftReleaseNotesResponse,
+  EgressDestination,
+  EgressDestinationChange,
+  EgressDestinationCreate,
+  EgressDestinationUpdate,
+  EgressSyncStatus,
   Environment,
   EnvironmentCreate,
   GraphQueryResult,
@@ -3759,6 +3764,53 @@ export const listHarnessPools = (orgSlug: string, signal?: AbortSignal) =>
   apiClient.get<HarnessPool[]>(
     '/harness/pools',
     { organization: orgSlug },
+    signal,
+  )
+
+// Egress destinations of the harness runners. Without `orgSlug` the caller
+// must be a platform administrator; with it, only the destinations that
+// the agents of that organization may get.
+export const listEgressDestinations = (
+  orgSlug?: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<EgressDestination[]>(
+    '/harness/egress-destinations',
+    orgSlug ? { organization: orgSlug } : undefined,
+    signal,
+  )
+
+export const createEgressDestination = (body: EgressDestinationCreate) =>
+  apiClient.post<EgressDestination>('/harness/egress-destinations', body)
+
+export const updateEgressDestination = (
+  slug: string,
+  body: EgressDestinationUpdate,
+) =>
+  apiClient.patch<EgressDestination>(
+    `/harness/egress-destinations/${encodeURIComponent(slug)}`,
+    body,
+  )
+
+export const deleteEgressDestination = (slug: string) =>
+  apiClient.delete<void>(
+    `/harness/egress-destinations/${encodeURIComponent(slug)}`,
+  )
+
+export const listEgressDestinationChanges = (
+  slug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<EgressDestinationChange[]>(
+    `/harness/egress-destinations/${encodeURIComponent(slug)}/changes`,
+    undefined,
+    signal,
+  )
+
+export const getEgressSyncStatus = (signal?: AbortSignal) =>
+  apiClient.get<EgressSyncStatus>(
+    '/harness/egress-sync/status',
+    undefined,
     signal,
   )
 

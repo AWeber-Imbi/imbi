@@ -773,15 +773,26 @@ export interface paths {
          * Authorize
          * @description OAuth2 authorization endpoint (authorization_code + PKCE).
          *
-         *     Validates the client and redirect URI, requires an authenticated
-         *     Imbi user (bouncing through the SPA login if absent), then issues a
-         *     single-use authorization code bound to the PKCE challenge and the
-         *     user. The Imbi login may itself delegate to an upstream IdP — that
-         *     is transparent here; only the resulting Imbi session matters.
+         *     Validates the client and redirect URI and requires an authenticated
+         *     Imbi user (bouncing through the SPA login if absent). Unless the user
+         *     already approved this client and redirect URI, it then shows a
+         *     consent page; the code is issued only after the user approves (see
+         *     :func:`authorize_consent`). The Imbi login may itself delegate to an
+         *     upstream IdP — that is transparent here; only the resulting Imbi
+         *     session matters.
          */
         get: operations["authorize_api_auth_authorize_get"];
         put?: never;
-        post?: never;
+        /**
+         * Authorize Consent
+         * @description Apply the user's Approve or Deny answer from the consent page.
+         *
+         *     The consent token is single use, expires quickly, and is bound to the
+         *     user who saw the page and to the exact authorization request. The
+         *     access cookie is ``SameSite=Strict``, so a cross-site POST has no
+         *     user and fails here even with a token.
+         */
+        post: operations["authorize_consent_api_auth_authorize_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1371,6 +1382,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/pools/{name}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Harness Pool Queue
+         * @description The work waiting for a new runner of the pool, for an autoscaler.
+         *
+         *     KEDA's ``metrics-api`` scaler polls this. It has no OAuth client
+         *     credentials flow, so the caller sends the pool credential (its
+         *     ``client_id`` and ``client_secret``) as HTTP Basic credentials.
+         *     The count follows the claim rules: the pool's labels and
+         *     organizations, and each agent's free places. ``imbi_harness_pool_queued``
+         *     on ``/metrics`` has the same number.
+         *
+         *     Raises:
+         *         401: No pool credential, or a wrong one.
+         *         403: No such pool, or the credential is not the pool's: one
+         *             answer for both, so the route does not list pool names.
+         */
+        get: operations["harness_pool_queue_api_harness_pools__name__queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/harness/pools/{name}": {
         parameters: {
             query?: never;
@@ -1598,7 +1641,9 @@ export interface paths {
          *         404: No such task.
          *         409: The parent is closed, the child agent is disabled, or the
          *             runner of the chain does not have a label that the child
-         *             agent needs (``runner_label_missing``).
+         *             agent needs (``runner_label_missing``), or the pod of the
+         *             chain does not have an egress destination that the child
+         *             agent has (``egress_destination_missing``).
          *         422: No such agent, or a budget over its task budget.
          */
         post: operations["create_harness_child_task_api_harness_tasks__short_id__children_post"];
@@ -1719,6 +1764,175 @@ export interface paths {
          *         404: No such resolution of this runner.
          */
         post: operations["release_harness_secret_resolution_api_harness_executor_secret_resolutions__resolution_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/egress-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Egress Destinations
+         * @description List the live egress destinations.
+         *
+         *     A platform administrator sees every destination and the agents
+         *     that have it. Every other caller needs ``agent:read`` and
+         *     ``organization``, must be a member of it, and sees only the
+         *     destinations that its agents may get.
+         *
+         *     Raises:
+         *         403: No ``agent:read``, or not a member.
+         *         422: ``organization`` is missing.
+         */
+        get: operations["list_egress_destinations_api_harness_egress_destinations_get"];
+        put?: never;
+        /**
+         * Create Egress Destination
+         * @description Create an egress destination. Claims give it after the egress
+         *     sync makes its policy.
+         *
+         *     Raises:
+         *         403: Not a platform administrator.
+         *         409: ``egress_destination_exists``.
+         *         422: A CIDR or port is not valid, a CIDR gets more than 24
+         *             port pairs, or an unknown organization.
+         */
+        post: operations["create_egress_destination_api_harness_egress_destinations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/egress-destinations/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Egress Destination
+         * @description Return an egress destination and the agents that have it.
+         *
+         *     Raises:
+         *         403: Not a platform administrator.
+         *         404: No such live destination.
+         */
+        get: operations["get_egress_destination_api_harness_egress_destinations__slug__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Egress Destination
+         * @description Delete an egress destination. New chains stop getting it at
+         *     once. Running chains keep it until they end; to stop them, delete
+         *     their runner pods.
+         *
+         *     Raises:
+         *         403: Not a platform administrator.
+         *         404: No such live destination.
+         *         409: ``egress_destination_in_use``: agents have it.
+         */
+        delete: operations["delete_egress_destination_api_harness_egress_destinations__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Egress Destination
+         * @description Change an egress destination.
+         *
+         *     A change to ``cidrs`` or ``ports`` starts a new generation: new
+         *     chains do not get the destination until the sync applies it.
+         *     Running chains keep the generation that they have.
+         *
+         *     Raises:
+         *         403: Not a platform administrator.
+         *         404: No such live destination.
+         *         422: A CIDR or port is not valid, a CIDR gets more than 24
+         *             port pairs, or an unknown organization.
+         */
+        patch: operations["update_egress_destination_api_harness_egress_destinations__slug__patch"];
+        trace?: never;
+    };
+    "/api/harness/egress-destinations/{slug}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Egress Destination Changes
+         * @description The audit trail of an egress destination, the newest first.
+         *
+         *     Raises:
+         *         403: Not a platform administrator.
+         */
+        get: operations["list_egress_destination_changes_api_harness_egress_destinations__slug__changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/egress-sync/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Egress Sync Status
+         * @description The time of the last report of the egress sync.
+         *
+         *     Raises:
+         *         403: Not a platform administrator.
+         */
+        get: operations["egress_sync_status_api_harness_egress_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/egress-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Egress Sync State
+         * @description Every egress destination with its current generation, the
+         *     deleted ones too, for ``imbi-harness egress-sync``.
+         *
+         *     Raises:
+         *         403: ``egress_sync_forbidden``: not the service account of a
+         *             runner pool.
+         */
+        get: operations["read_egress_sync_state_api_harness_egress_sync_get"];
+        /**
+         * Report Egress Sync
+         * @description Report a round of the egress sync: the generations whose
+         *     ClusterNetworkPolicy exists. A stale generation changes nothing.
+         *
+         *     Raises:
+         *         403: ``egress_sync_forbidden``: not the service account of a
+         *             runner pool.
+         */
+        put: operations["report_egress_sync_api_harness_egress_sync_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3053,6 +3267,9 @@ export interface paths {
          *     DEPLOYED_IN edge properties, and the hypermedia
          *     ``relationships`` block. Cuts the response from megabytes to
          *     kilobytes for large orgs.
+         *
+         *     ``limit`` pages the result in ``(name, id)`` order. Follow the
+         *     ``next`` link of the ``Link`` header to get the next page.
          */
         get: operations["list_projects_api_organizations__org_slug__projects__get"];
         put?: never;
@@ -3061,6 +3278,30 @@ export interface paths {
          * @description Create a new project in an organization.
          */
         post: operations["create_project_api_organizations__org_slug__projects__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get New Project Schema
+         * @description Return the blueprint schema for a project that does not exist yet.
+         *
+         *     The New Project form uses this to show the blueprint fields that
+         *     apply to the selected project type and environments, so it can
+         *     collect required values before it creates the project.
+         */
+        get: operations["get_new_project_schema_api_organizations__org_slug__projects_schema_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4725,15 +4966,15 @@ export interface paths {
          *
          *     When the snapshot has ``prompt_ref`` and ``prompt_version``, the
          *     label that the reference names (the default label when it names
-         *     none) moves to that prompt version in the same transaction. This
-         *     needs ``prompt:promote``, as a label move in the prompt CMS does.
-         *     A reference that names a version number moves no label. A label
+         *     none) moves to that prompt version in the same transaction. The
+         *     ``agent:write`` that this route needs is enough for that (see
+         *     :func:`prompts.can_promote`). A reference that names a version
+         *     number moves no label. A label
          *     moves only on the agent's own prompt: a prompt in the ``agents``
          *     namespace that the ``prompt_ref`` of the agent names now, with a
          *     slug that starts with ``<org_slug>.``.
          *
          *     Raises:
-         *         403: The label must move and the caller cannot promote.
          *         404: No such agent or version.
          *         409: The snapshot slug is taken by another agent, the label
          *             must move on a prompt that is not the agent's own
@@ -8032,8 +8273,8 @@ export interface paths {
          * Create Prompt
          * @description Create a prompt with its first version.
          *
-         *     When the caller may promote (``prompt:promote``, or an admin), the
-         *     default label points at version 1. Otherwise the prompt is created
+         *     When the caller may promote (see :func:`can_promote`), the default
+         *     label points at version 1. Otherwise the prompt is created
          *     with no labels: pointing a label at a version changes what consumers
          *     run, and only ``promote`` may do that. Until a promote holder sets a
          *     label, a reference to the prompt does not resolve, and a consumer
@@ -8201,9 +8442,11 @@ export interface paths {
          * Set Prompt Label
          * @description Point a label at a version, creating the label if needed.
          *
-         *     This changes what every consumer of ``namespace/slug@label`` gets.
+         *     This changes what every consumer of ``namespace/slug@label`` gets,
+         *     so it needs :func:`can_promote`.
          *
          *     Raises:
+         *         403: The caller cannot promote this prompt.
          *         404: No such prompt or version.
          *         409: The prompt changed while this request ran.
          *         422: The label is made only of digits.
@@ -9212,7 +9455,19 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Current User
+         * @description Change the authenticated user's own display name via JSON Patch.
+         *
+         *     Only ``/display_name`` can change here. The other fields need
+         *     ``PATCH /users/{email}`` and the ``user:update`` permission.
+         *     Requires a human user; service-account tokens receive HTTP 403.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 400 if the patch touches another
+         *             path or leaves the display name empty.
+         */
+        patch: operations["patch_current_user_api_users_me_patch"];
         trace?: never;
     };
     "/api/users/{email}": {
@@ -9298,6 +9553,37 @@ export interface paths {
          */
         post: operations["change_password_api_users__email__password_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{email}/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset User Mfa
+         * @description Remove a user's MFA so a locked-out user can sign in again.
+         *
+         *     Deletes the TOTP secret and backup codes. The user signs in with
+         *     the password only and can enroll again from Settings > Security.
+         *     Gated by ``user:update``, the permission that also lets an admin
+         *     reset another user's password.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 400 for the caller's own account
+         *             (use ``DELETE /mfa/disable``, which needs the password or a
+         *             code), HTTP 403 if a non-admin targets an admin, or HTTP 404
+         *             if user not found.
+         */
+        delete: operations["reset_user_mfa_api_users__email__mfa_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10186,6 +10472,11 @@ export interface components {
              */
             required_labels: string[];
             /**
+             * Egress Destinations
+             * @default []
+             */
+            egress_destinations: string[];
+            /**
              * Plugins
              * @default []
              */
@@ -10231,6 +10522,11 @@ export interface components {
              * @default []
              */
             required_labels: string[];
+            /**
+             * Egress Destinations
+             * @default []
+             */
+            egress_destinations: string[];
             /**
              * Plugins
              * @default []
@@ -11324,6 +11620,11 @@ export interface components {
             properties: {
                 [key: string]: components["schemas"]["BlueprintSectionProperty"];
             };
+            /**
+             * Required
+             * @default []
+             */
+            required: string[];
         };
         /**
          * BlueprintSectionProperty
@@ -11354,6 +11655,19 @@ export interface components {
             "x-display"?: {
                 [key: string]: unknown;
             };
+        };
+        /** Body_authorize_consent_api_auth_authorize_post */
+        Body_authorize_consent_api_auth_authorize_post: {
+            /**
+             * Consent Token
+             * @default
+             */
+            consent_token: string;
+            /**
+             * Decision
+             * @default
+             */
+            decision: string;
         };
         /** Body_create_upload_api_uploads__post */
         Body_create_upload_api_uploads__post: {
@@ -11635,6 +11949,11 @@ export interface components {
             api_token_expires_at?: string | null;
             /** Api Token Error */
             api_token_error?: string | null;
+            /**
+             * Egress
+             * @default []
+             */
+            egress: components["schemas"]["Grant"][];
         };
         /**
          * ClientCredentialCreate
@@ -12387,7 +12706,7 @@ export interface components {
             /** Organization Slug */
             organization_slug: string;
             /** Role */
-            role: string;
+            role: string | null;
             /**
              * Permissions
              * @default []
@@ -13255,6 +13574,165 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** EgressAgent */
+        EgressAgent: {
+            /** Organization Slug */
+            organization_slug: string;
+            /** Slug */
+            slug: string;
+        };
+        /** EgressApplied */
+        EgressApplied: {
+            /** Slug */
+            slug: string;
+            /** Generation */
+            generation: number;
+        };
+        /** EgressDestinationChange */
+        EgressDestinationChange: {
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            } | null;
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** EgressDestinationCreate */
+        EgressDestinationCreate: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Cidrs
+             * @description 1 to 25 IPv4 CIDRs inside the internal ranges.
+             */
+            cidrs: string[];
+            /** Ports */
+            ports: components["schemas"]["EgressPort"][];
+            /**
+             * Global
+             * @description Every chain gets the destination.
+             * @default false
+             */
+            global: boolean;
+            /**
+             * Organizations
+             * @description Organization slugs whose agents may get it. Empty means all. Not used when global.
+             * @default []
+             */
+            organizations: string[];
+        };
+        /** EgressDestinationResponse */
+        EgressDestinationResponse: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Cidrs */
+            cidrs: string[];
+            /** Ports */
+            ports: components["schemas"]["EgressPort"][];
+            /** Global */
+            global: boolean;
+            /** Organizations */
+            organizations: string[];
+            /** Generation */
+            generation: number;
+            /** Applied Generation */
+            applied_generation?: number | null;
+            /** Pending */
+            pending: boolean;
+            /**
+             * Agents
+             * @default []
+             */
+            agents: components["schemas"]["EgressAgent"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** EgressDestinationUpdate */
+        EgressDestinationUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Cidrs */
+            cidrs?: string[] | null;
+            /** Ports */
+            ports?: components["schemas"]["EgressPort"][] | null;
+            /** Global */
+            global?: boolean | null;
+            /** Organizations */
+            organizations?: string[] | null;
+        };
+        /** EgressPort */
+        EgressPort: {
+            /** Port */
+            port: number;
+            /**
+             * Protocol
+             * @default TCP
+             * @enum {string}
+             */
+            protocol: "TCP" | "UDP";
+        };
+        /** EgressSyncDestination */
+        EgressSyncDestination: {
+            /** Slug */
+            slug: string;
+            /** Generation */
+            generation: number;
+            /** Cidrs */
+            cidrs: string[];
+            /** Ports */
+            ports: components["schemas"]["EgressPort"][];
+            /** Deleted */
+            deleted: boolean;
+        };
+        /** EgressSyncReport */
+        EgressSyncReport: {
+            /**
+             * Applied
+             * @default []
+             */
+            applied: components["schemas"]["EgressApplied"][];
+        };
+        /** EgressSyncState */
+        EgressSyncState: {
+            /** Destinations */
+            destinations: components["schemas"]["EgressSyncDestination"][];
+        };
+        /** EgressSyncStatus */
+        EgressSyncStatus: {
+            /** Synced At */
+            synced_at?: string | null;
+            /** Synced By */
+            synced_by?: string | null;
+        };
         /** EmailResult */
         EmailResult: {
             /** Recipients */
@@ -13493,6 +13971,20 @@ export interface components {
             previous_score?: number | null;
             /** Change Reason */
             change_reason?: string | null;
+        };
+        /**
+         * Grant
+         * @description A destination generation that a chain's pod gets.
+         */
+        Grant: {
+            /** Slug */
+            slug: string;
+            /** Generation */
+            generation: number;
+            /** Cidrs */
+            cidrs: string[];
+            /** Ports */
+            ports: components["schemas"]["EgressPort"][];
         };
         /** Graph */
         Graph: {
@@ -14829,6 +15321,11 @@ export interface components {
              * @description Number of unused backup codes
              */
             backup_codes_remaining: number;
+            /**
+             * Has Password
+             * @description Whether the user has a password; DELETE /mfa/disable asks for the password if true, else for an MFA code
+             */
+            has_password: boolean;
         };
         /**
          * MFAVerifyRequest
@@ -15844,6 +16341,13 @@ export interface components {
              * @default false
              */
             exclusive: boolean;
+        };
+        /** PoolQueue */
+        PoolQueue: {
+            /** Pool */
+            pool: string;
+            /** Queued */
+            queued: number;
         };
         /** PoolResponse */
         PoolResponse: {
@@ -18311,6 +18815,11 @@ export interface components {
             state: "running" | "fencing" | "stuck" | "queued" | "done";
             /** Fence Error */
             fence_error?: string | null;
+            /**
+             * Egress
+             * @default []
+             */
+            egress: components["schemas"]["Grant"][];
         };
         /** RunnerFinished */
         RunnerFinished: {
@@ -19363,6 +19872,11 @@ export interface components {
              */
             ttl_seconds: number;
             delivery: components["schemas"]["SecretDelivery"];
+            /**
+             * Repository
+             * @description The owner/name repository that a marketplace_fetch token is for. It must be in the repositories of the binding.
+             */
+            repository?: string | null;
         };
         /** SecretResolutionCreated */
         SecretResolutionCreated: {
@@ -21088,18 +21602,6 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
-            /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
-             */
-            deprecated: boolean;
-            /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
-             */
-            deprecation_reason: string | null;
         };
         /** ProjectResponse */
         ProjectBlueprintResponse: {
@@ -21161,18 +21663,6 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
-            /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
-             */
-            deprecated: boolean;
-            /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
-             */
-            deprecation_reason: string | null;
         };
         /** ProjectType */
         ProjectTypeBlueprintRequest: {
@@ -21398,20 +21888,6 @@ export interface components {
              */
             allow_autonomous: boolean;
             organization: components["schemas"]["Organization"];
-        };
-        /** ProjectDeployedInEnvironmentEdge */
-        Project_Environment_DEPLOYED_INEdgeProperties: {
-            /**
-             * Acceptance Test Status
-             * @default null
-             */
-            acceptance_test_status: ("pass" | "fail") | null;
-            /**
-             * Url
-             * @description The deployment URL for this project in this environment
-             * @default null
-             */
-            url: string | null;
         };
     };
     responses: never;
@@ -22435,6 +22911,39 @@ export interface operations {
             };
         };
     };
+    authorize_consent_api_auth_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_authorize_consent_api_auth_authorize_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     register_oauth_client_api_auth_register_post: {
         parameters: {
             query?: never;
@@ -23203,6 +23712,37 @@ export interface operations {
             };
         };
     };
+    harness_pool_queue_api_harness_pools__name__queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolQueue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_harness_pool_api_harness_pools__name__delete: {
         parameters: {
             query?: never;
@@ -23645,6 +24185,270 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SecretResolutionReleased"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_egress_destinations_api_harness_egress_destinations_get: {
+        parameters: {
+            query?: {
+                /** @description The slug of an organization: only the destinations that its agents may get (not global). */
+                organization?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressDestinationResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_egress_destination_api_harness_egress_destinations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EgressDestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressDestinationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_egress_destination_api_harness_egress_destinations__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressDestinationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_egress_destination_api_harness_egress_destinations__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_egress_destination_api_harness_egress_destinations__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EgressDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressDestinationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_egress_destination_changes_api_harness_egress_destinations__slug__changes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressDestinationChange"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    egress_sync_status_api_harness_egress_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressSyncStatus"];
+                };
+            };
+        };
+    };
+    read_egress_sync_state_api_harness_egress_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressSyncState"];
+                };
+            };
+        };
+    };
+    report_egress_sync_api_harness_egress_sync_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EgressSyncReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25603,10 +26407,16 @@ export interface operations {
                 project_type?: string | null;
                 include_archived?: boolean;
                 slim?: boolean;
+                /** @description Page size. When set, the response holds at most this many projects and a ``Link`` header with a ``next`` URL when more remain. Omit to return every project. */
+                limit?: number | null;
+                /** @description Opaque cursor from the ``next`` link of the previous page. Requires ``limit``. */
+                cursor?: string | null;
                 /** @description Restrict results to projects that have an EXISTS_IN relationship to the integration with this slug in the organization. Combine with ``identifier`` to match a specific external identifier on that integration. */
                 integration_slug?: string | null;
                 /** @description Restrict results to projects whose EXISTS_IN edge to ``integration_slug`` carries this external identifier (exact match). Requires ``integration_slug``. */
                 identifier?: string | null;
+                /** @description Restrict results to the project with this id, so a project page reads the same list-only fields (e.g. ``drift_ranges``) as the projects list. */
+                project_id?: string | null;
                 /** @description Filter projects by blueprint attribute, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude projects where the attribute is unset. Valid fields and enum values per project type come from the project-type listing with ``include_schema=true``. Example: framework:ne:http-service-lib */
                 filter?: string[] | null;
             };
@@ -25660,6 +26470,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_new_project_schema_api_organizations__org_slug__projects_schema_get: {
+        parameters: {
+            query?: {
+                project_type?: string[] | null;
+                environment?: string[] | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSchemaResponse"];
                 };
             };
             /** @description Validation Error */
@@ -36373,6 +37217,37 @@ export interface operations {
             };
         };
     };
+    patch_current_user_api_users_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_user_api_users__email__get: {
         parameters: {
             query?: never;
@@ -36482,6 +37357,35 @@ export interface operations {
                 "application/json": components["schemas"]["PasswordChangeRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_user_mfa_api_users__email__mfa_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {

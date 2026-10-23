@@ -362,6 +362,95 @@ Use an exclusive pool for special work, for example a pool with the label
 `browser`. General tasks then do not fill its places. In `scaledJob` mode,
 an exclusive pool also does not start a Job for every general task.
 
+## Egress allowlists
+
+By default a runner pod can connect to any address, including internal
+hosts and the EC2 instance metadata service. The agent's `Bash` tool runs
+in that pod. Turn on egress allowlists to block the internal ranges for
+runner pods, except for the destinations that you allow.
+
+Enforcement uses the Amazon VPC CNI `ClusterNetworkPolicy`. Imbi is the
+source of truth: platform administrators manage the destinations in the
+UI, and the `egress-sync` process writes one policy for each destination
+generation. Public egress does not change.
+
+### Prerequisites
+
+- EKS with the Amazon VPC CNI network policy agent turned on
+  (`enableNetworkPolicy: "true"` on the addon). Before you turn it on,
+  check every existing `NetworkPolicy` in the cluster: it starts to apply.
+- The chart values in [Egress chart values](#egress-chart-values).
+- A destination is a list of IPv4 CIDRs and ports. Host names are not
+  supported. A host whose addresses change, for example an internal load
+  balancer, must be listed by its subnet CIDR.
+
+### Destinations
+
+Open **Admin > Global Admin > Egress Destinations** (platform administrators only).
+
+| Field | What it does |
+|---|---|
+| Slug | Part of a pod label key and a policy name. Lower case letters, digits, and `-`, at most 63 characters |
+| CIDRs | 1 to 25 IPv4 CIDRs inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or `100.64.0.0/10`. No loopback or link-local |
+| Ports | Port and protocol (TCP or UDP). One CIDR can have at most 24 port/protocol pairs across all destinations |
+| Global | Every chain gets the destination |
+| Organizations | The organizations whose agents may get it. Empty means all. Not used for a global destination |
+
+Assign a destination that is not global to an agent in the agent editor,
+in **Egress destinations**. Anyone who can edit the agent can assign the
+destinations of the agent's organization.
+
+Each change to the CIDRs or ports makes a new **generation**. The page
+shows a destination as **pending** until `egress-sync` makes the policy of
+its current generation. A claim gives only applied generations, so a new
+or narrowed destination never gives more access than its policy. A
+running chain keeps the generation that it got at its claim.
+
+The pod of a chain has the global destinations and the destinations of the
+chain's root agent. A child task whose agent has a destination that the
+pod does not have is refused with `egress_destination_missing`.
+
+A destination that agents still have cannot be deleted. Remove it from the
+agents first.
+
+### Emergency revocation
+
+1. Delete the destination. New claims stop getting it at once.
+2. Delete the runner pods that have it. This ends their open connections:
+
+    ```sh
+    kubectl delete pods -n <namespace> -l egress.imbi.aweber.com/<slug>
+    ```
+
+### Trust model
+
+The model is not trusted: it controls `Bash` in the pod. The runner and
+executor processes are trusted. The runner labels its own pod with the
+destinations of its claim, and an admission policy lets it change only
+those labels on its own pod. A compromised runner process could label its
+pod with any destination generation that exists.
+
+The chart's Baseline policy denies the internal ranges. A `NetworkPolicy`
+in the runner namespace takes priority over it, so only cluster
+administrators must be able to create one there.
+
+### Egress chart values
+
+| Value | What it does |
+|---|---|
+| `networkPolicy.enabled` | Turns on egress allowlists for the release. Default `false` |
+| `networkPolicy.manageGlobal` | Renders the cluster-wide objects: the required and Baseline policies, the `imbi-harness-egress-sync` Deployment, and its RBAC and admission policy. Set it in one release per cluster: egress allowlists work in one runner namespace per cluster |
+| `networkPolicy.canary` | `host:port` of an internal address that runner pods must not reach. Required. At start, the runner checks that connections to this address and IMDS both time out before it claims work. A refused connection counts as reached. If they do not time out within 60 seconds, or the host does not resolve, the runner exits |
+| `networkPolicy.internalRanges` | The ranges that Baseline denies (with link-local) |
+| `networkPolicy.required.imbiApi`, `.imbiMcp` | Namespace, pod selector (the Service's `spec.selector`), and port. `imbiMcp` is required when `imbi.mcpUrl` is set |
+| `networkPolicy.required.kubeApi` | The Kubernetes API Service ClusterIP as a `/32`, and port 443 |
+| `networkPolicy.required.litellm` | Optional. An in-cluster model upstream by Service ClusterIP `/32` and Service port |
+| `networkPolicy.required.kubeDns` | Defaults to `kube-system`, `k8s-app: kube-dns` |
+
+The render fails when a required value is missing. See the
+[chart README](https://github.com/AWeber-Imbi/imbi/tree/main/helm/imbi-harness#egress-allowlists)
+for the tiers and rollback.
+
 ## The Agent Runners page
 
 Open **Admin > <organization> Admin > Agent Runners**. The page lists the pools that serve the
@@ -387,6 +476,9 @@ A chain that is not `running` shows its state:
 | `stuck` | A fencer failed. Hover over the badge for the error. The next sweep tries again |
 
 An `exclusive` badge marks an exclusive pool.
+
+A busy runner shows the egress destinations of its chain, with their
+generations.
 
 ## Metrics
 
@@ -438,6 +530,12 @@ Find the error code first:
 | `executor_unavailable` | The runner cannot reach the executor socket | Check the `executor` container log |
 | `harness_error` | An unexpected error in the runner | Check the `runner` container log |
 
+A task event `egress.destination_pending` means that the claim left out a
+destination: `not_applied` (the sync has not made the policy of its
+current generation; check that `egress-sync` runs), `organization_not_allowed`
+(the destination is not for the task's organization), or `unknown` (the
+destination was deleted). The task runs without it.
+
 A task with the outcome `unhandled_no_actor` and the reason
 `service_account_missing` has an agent with no service account. Imbi does
 not run it.
@@ -460,6 +558,9 @@ not run it.
 | `401 stale_attempt` | The agent token is for a chain attempt that is not current. Imbi fenced the chain and gave it to a new attempt | Normally no action. The runner stops. If it occurs often, check that the runners can reach imbi-api reliably |
 | `409 pool_in_use` | A delete of a pool with runners that are not offline | Uninstall the release or scale it to 0, then delete the pool |
 | `409 runner_label_missing` | A child task needs labels that the runner does not have | Run the child agent in a pool with its labels, or change the agent's required labels |
+| `409 egress_destination_missing` | A child task's agent has an egress destination that the pod of the chain does not have | Give the root agent the destination too, or remove it from the child agent |
+| `409 egress_destination_in_use` | A delete of a destination that agents have, or a change of it to global | Remove the destination from the agents first |
+| `403 egress_sync_forbidden` | The egress sync's credential is not the service account of a runner pool | Use the pool credential |
 | `403 agent_api_forbidden` | An agent called an Imbi route that agent tokens cannot use, or another organization | The route is refused by design. See [Agents](../admin/agents.md) |
 
 ### Other problems
@@ -470,9 +571,10 @@ not run it.
   must be Baseline, not Restricted.
 - **A chain stays `stuck`.** A fencer failed. The badge on the Agent Runners
   page shows the error. Imbi tries again on each sweep.
-- **A third-party MCP server is refused with `address_not_global`.** Its
-  host name resolves to a private or cluster address. The runner connects
-  only to global addresses.
+- **A third-party MCP server is refused with `address_not_allowed`.** Its
+  host name resolves to a private or cluster address that is not in an
+  egress destination of the chain, with the port and TCP. Without egress
+  allowlists, the runner connects only to global addresses.
 - **KEDA starts no Jobs.** Call the queue endpoint with the pool credential.
   Check that `scaledJob.apiUrl` resolves from the `keda` namespace.
 

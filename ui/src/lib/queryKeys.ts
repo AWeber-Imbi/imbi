@@ -63,6 +63,14 @@ export const queryKeys = {
     ['documentVersion', orgSlug, documentId, version] as const,
   documentVersions: (orgSlug: string, documentId: string) =>
     ['documentVersions', orgSlug, documentId] as const,
+  // `orgSlug` '' is the platform administrator list of every destination.
+  egressDestinationChanges: (slug: string) =>
+    ['egressDestinationChanges', slug] as const,
+  egressDestinationChangesAll: () => ['egressDestinationChanges'] as const,
+  egressDestinations: (orgSlug: string) =>
+    ['egressDestinations', orgSlug] as const,
+  egressDestinationsAll: () => ['egressDestinations'] as const,
+  egressSyncStatus: () => ['egressSyncStatus'] as const,
   environments: (orgSlug: string) => ['environments', orgSlug] as const,
   harnessPools: (orgSlug: string) => ['harnessPools', orgSlug] as const,
   identityPlugins: (orgSlug: string) => ['identity-plugins', orgSlug] as const,

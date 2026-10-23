@@ -1796,6 +1796,19 @@ class ExternalRelayTestCase(TaskTestCase):
         auth.on_token('access-token-1')
         self.assertEqual(self.redactor.text('access-token-1'), '[REDACTED]')
 
+    async def test_egress_probe_failure_is_a_notice(self) -> None:
+        subject = self.with_servers()
+        with mock.patch.object(
+            task.egress, 'probe', mock.AsyncMock(return_value=['db'])
+        ):
+            await subject.probe_egress()
+        self.assertEqual(len(self.notices(subject)), 1)
+        with mock.patch.object(
+            task.egress, 'probe', mock.AsyncMock(return_value=[])
+        ):
+            await subject.probe_egress()
+        self.assertEqual(self.notices(subject), [])
+
     async def test_servers_this_task_cannot_use(self) -> None:
         self.client.create_resolution.side_effect = api.Refused(
             403, 'secret_access_denied'

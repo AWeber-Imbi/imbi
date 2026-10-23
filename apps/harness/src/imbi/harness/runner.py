@@ -30,7 +30,16 @@ import uuid
 
 import httpx
 
-from imbi.harness import api, ipc, kube, privilege, redact, task, version
+from imbi.harness import (
+    api,
+    egress,
+    ipc,
+    kube,
+    privilege,
+    redact,
+    task,
+    version,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +74,12 @@ class Settings:
     #: Job that started for work another runner took does not wait
     #: forever. ``None``: wait.
     idle_exit_seconds: int | None = None
+    #: The pod is under the egress network policies (PRD 5.3, 5.7):
+    #: test them at start and label the pod with the chain's
+    #: destinations. Off: the chain gets no destinations.
+    egress_enforced: bool = False
+    #: An internal ``(host, port)`` that the pod must not reach.
+    egress_canary: tuple[str, int] | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -76,6 +91,8 @@ class Settings:
             mcp_url=os.environ.get('IMBI_HARNESS_MCP_URL') or None,
             end_of_chain=_end_of_chain(),
             idle_exit_seconds=_seconds('IMBI_HARNESS_IDLE_EXIT_SECONDS'),
+            egress_enforced=_egress_enforced(),
+            egress_canary=_canary(),
         )
 
 
@@ -89,6 +106,31 @@ def _end_of_chain() -> typing.Literal['delete_pod', 'exit']:
     raise SystemExit(
         f'IMBI_HARNESS_END_OF_CHAIN must be delete_pod or exit: {value!r}'
     )
+
+
+def _egress_enforced() -> bool:
+    """``IMBI_HARNESS_EGRESS_ENFORCED``; with it, a canary is required."""
+    value = os.environ.get('IMBI_HARNESS_EGRESS_ENFORCED', '').strip()
+    if value not in ('', 'true', 'false'):
+        raise SystemExit(
+            f'IMBI_HARNESS_EGRESS_ENFORCED must be true or false: {value!r}'
+        )
+    if value == 'true' and _canary() is None:
+        raise SystemExit('IMBI_HARNESS_EGRESS_CANARY is required')
+    return value == 'true'
+
+
+def _canary() -> tuple[str, int] | None:
+    """``IMBI_HARNESS_EGRESS_CANARY`` as ``host:port``."""
+    value = os.environ.get('IMBI_HARNESS_EGRESS_CANARY', '').strip()
+    if not value:
+        return None
+    host, _, port = value.rpartition(':')
+    if not host or not port.isdigit():
+        raise SystemExit(
+            f'IMBI_HARNESS_EGRESS_CANARY must be host:port: {value!r}'
+        )
+    return host, int(port)
 
 
 def _seconds(name: str) -> int | None:
@@ -140,9 +182,16 @@ class Runner:
         self.claiming = asyncio.Lock()
         #: No chain came in ``idle_exit_seconds``.
         self.idle_expired = False
+        #: The egress destinations of the chain (from the root claim).
+        self.egress: list[Body] = []
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
+        if self.settings.egress_enforced and not await self.fresh_pod():
+            return
+        if self.settings.egress_canary and self.settings.egress_enforced:
+            # Before the first claim: no chain on an unenforced pod.
+            await egress.self_test(self.settings.egress_canary)
         while not pathlib.Path(ipc.SOCKET_PATH).exists():  # noqa: ASYNC110
             await asyncio.sleep(0.5)
         while True:
@@ -222,6 +271,7 @@ class Runner:
                     await self.api.finish(self.runner_id, self.runner_token)
                     return
             self.claimed = True
+            await self.label_pod(claim)
             layout = task.Layout(WORK / str(claim['chain_id']))
             try:
                 layout.make()
@@ -231,6 +281,45 @@ class Runner:
             await self.api.finish(self.runner_id, self.runner_token)
         finally:
             heartbeat.cancel()
+
+    async def fresh_pod(self) -> bool:
+        """Whether the pod has no egress labels of an earlier chain.
+
+        A runner container that crashed restarts in the same pod, and
+        the labels of its old chain stay on the pod. A new chain must
+        not get that access, so the runner claims nothing: in a
+        Deployment it deletes the pod, and the ReplicaSet starts a
+        clean one.
+
+        Raises:
+            SystemExit: The labels cannot be read (fail closed).
+
+        """
+        labels = await kube.own_pod_labels()
+        if labels is None:
+            raise SystemExit('Cannot read the egress labels of the pod')
+        held = sorted(k for k in labels if k.startswith(egress.LABEL_PREFIX))
+        if not held:
+            return True
+        LOGGER.error(
+            'The pod has egress labels of an earlier chain: %s',
+            ', '.join(held),
+        )
+        if self.settings.end_of_chain == 'delete_pod':
+            await kube.delete_own_pod()
+        return False
+
+    async def label_pod(self, claim: Body) -> None:
+        """Label the pod with the egress destinations of the chain
+        before any task starts (PRD 5.7). A child claim has the same
+        list. When the label fails, the pod has less access."""
+        if not self.settings.egress_enforced:
+            return
+        self.egress = typing.cast('list[Body]', api.items(claim, 'egress'))
+        if self.egress and not await kube.label_own_pod(
+            egress.labels(self.egress)
+        ):
+            LOGGER.error('The pod has no egress labels')
 
     def remove_old_workspaces(self) -> None:
         """Remove the workspace of a chain that a crash left behind."""
@@ -348,6 +437,7 @@ class Runner:
             build=build,
             children=self.run_child,
             mcp_url=self.settings.mcp_url,
+            egress=self.egress,
         )
         self.task_runs.append(task_run)
         run = asyncio.create_task(task_run.run())

@@ -66,7 +66,7 @@ class ResolveTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertRaises(outbound.Refused) as ctx,
             ):
                 await self.resolve(*addresses)
-            self.assertEqual(ctx.exception.reason, 'address_not_global')
+            self.assertEqual(ctx.exception.reason, 'address_not_allowed')
 
     async def test_literal_addresses(self) -> None:
         self.assertEqual(await outbound.resolve('1.1.1.1', 443), ['1.1.1.1'])
@@ -83,6 +83,75 @@ class ResolveTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await outbound.resolve('nowhere.example', 443)
         self.assertEqual(ctx.exception.reason, 'host_not_found')
+
+
+DB = {
+    'slug': 'db',
+    'generation': 1,
+    'cidrs': ['10.1.0.0/16'],
+    'ports': [{'port': 443, 'protocol': 'TCP'}],
+}
+DNS = {
+    'slug': 'dns',
+    'generation': 1,
+    'cidrs': ['10.2.0.0/16'],
+    'ports': [{'port': 443, 'protocol': 'UDP'}],
+}
+IMDS = {
+    'slug': 'imds',
+    'generation': 1,
+    'cidrs': ['169.254.0.0/16', '127.0.0.0/8'],
+    'ports': [{'port': 443, 'protocol': 'TCP'}],
+}
+
+
+class EgressTestCase(unittest.IsolatedAsyncioTestCase):
+    """The chain's egress destinations (PRD 5.8)."""
+
+    async def resolve(
+        self, *addresses: str, egress: outbound.Egress, port: int = 443
+    ) -> list[str]:
+        with mock.patch(
+            'asyncio.BaseEventLoop.getaddrinfo',
+            mock.AsyncMock(return_value=_infos(*addresses)),
+        ):
+            return await outbound.resolve('mcp.internal', port, egress)
+
+    async def test_allowed_cidr_and_tcp_port(self) -> None:
+        self.assertEqual(
+            await self.resolve('10.1.2.3', egress=[DB]), ['10.1.2.3']
+        )
+        self.assertEqual(
+            await outbound.resolve('10.1.2.3', 443, [DB]), ['10.1.2.3']
+        )
+
+    async def test_refused(self) -> None:
+        for addresses, egress, port in (
+            # The CIDR, but another port.
+            (('10.1.2.3',), [DB], 8443),
+            # A UDP-only destination on 443.
+            (('10.2.0.1',), [DNS], 443),
+            # A private address on no list.
+            (('10.9.0.1',), [DB], 443),
+            # IMDS and loopback, also when listed.
+            (('169.254.169.254',), [IMDS], 443),
+            (('127.0.0.1',), [IMDS], 443),
+            # No destinations.
+            (('10.1.2.3',), [], 443),
+            # One allowed and one unlisted address.
+            (('10.1.2.3', '10.9.0.1'), [DB], 443),
+        ):
+            with (
+                self.subTest(addresses=addresses, port=port),
+                self.assertRaises(outbound.Refused) as ctx,
+            ):
+                await self.resolve(*addresses, egress=egress, port=port)
+            self.assertEqual(ctx.exception.reason, 'address_not_allowed')
+
+    async def test_global_address_needs_no_destination(self) -> None:
+        self.assertEqual(
+            await self.resolve('93.184.215.14', egress=[]), ['93.184.215.14']
+        )
 
 
 class TransportTestCase(unittest.IsolatedAsyncioTestCase):
@@ -145,11 +214,15 @@ class ClientCredentialsTestCase(unittest.IsolatedAsyncioTestCase):
                 json={'access_token': next(self.tokens), 'expires_in': 600},
             )
 
-        patcher = mock.patch.object(
-            outbound,
-            'Transport',
-            lambda url: httpx.MockTransport(token_endpoint),
-        )
+        self.transports: list[tuple[str, outbound.Egress]] = []
+
+        def transport(
+            url: str, egress: outbound.Egress = ()
+        ) -> httpx.MockTransport:
+            self.transports.append((url, egress))
+            return httpx.MockTransport(token_endpoint)
+
+        patcher = mock.patch.object(outbound, 'Transport', transport)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.seen: list[str] = []
@@ -159,6 +232,7 @@ class ClientCredentialsTestCase(unittest.IsolatedAsyncioTestCase):
             'secret-1',
             'read',
             on_token=self.seen.append,
+            egress=[DB],
         )
 
     async def test_token_is_got_once_and_renewed_on_401(self) -> None:
@@ -186,7 +260,57 @@ class ClientCredentialsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn(b'grant_type=client_credentials', self.forms[0])
         self.assertIn(b'client_secret=secret-1', self.forms[0])
         self.assertIn(b'scope=read', self.forms[0])
+        # The token URL has the chain's destinations too.
+        self.assertEqual(
+            self.transports[0], ('https://login.example.com/token', [DB])
+        )
 
     def test_token_url_is_checked(self) -> None:
         with self.assertRaises(outbound.Refused):
             outbound.ClientCredentials('http://login.example.com', 'c', 's')
+
+
+class TwoDestinationsTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_mcp_and_token_url_on_two_destinations(self) -> None:
+        """The MCP origin and the OAuth token URL are on two internal
+        destinations of the chain: both connect."""
+        auth_net = {**DB, 'slug': 'auth', 'cidrs': ['10.3.0.0/16']}
+        egress = [DB, auth_net]
+        sent: list[str] = []
+
+        async def inner(request: httpx.Request) -> httpx.Response:
+            sent.append(str(request.url.host))
+            if request.url.path == '/token':
+                return httpx.Response(200, json={'access_token': 'tok'})
+            return httpx.Response(200, json={})
+
+        hosts = {'mcp.internal': '10.1.0.5', 'login.internal': '10.3.0.5'}
+
+        getaddrinfo = mock.AsyncMock(
+            side_effect=lambda host, _port, **_: _infos(hosts[host])
+        )
+        real = outbound.Transport
+
+        def transport(
+            url: str, egress: outbound.Egress = ()
+        ) -> outbound.Transport:
+            made = real(url, egress)
+            made.inner = mock.Mock(
+                handle_async_request=inner, aclose=mock.AsyncMock()
+            )
+            return made
+
+        with (
+            mock.patch('asyncio.BaseEventLoop.getaddrinfo', getaddrinfo),
+            mock.patch.object(outbound, 'Transport', transport),
+        ):
+            auth = outbound.ClientCredentials(
+                'https://login.internal/token', 'c', 's', egress=egress
+            )
+            async with httpx.AsyncClient(
+                auth=auth,
+                transport=transport('https://mcp.internal/mcp', egress),
+            ) as client:
+                response = await client.post('https://mcp.internal/mcp')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(sent, ['10.3.0.5', '10.1.0.5'])

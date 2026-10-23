@@ -65,3 +65,40 @@ class DeleteOwnPodTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_not_in_a_pool(self) -> None:
         with mock.patch.dict(os.environ, {'POD_NAME': ''}):
             self.assertFalse(await kube.delete_own_pod())
+
+    async def test_labels_with_a_merge_patch(self) -> None:
+        route = self.mock.patch(POD).respond(200, json={})
+        self.assertTrue(
+            await kube.label_own_pod({'egress.imbi.aweber.com/db': 'g2'})
+        )
+        request = route.calls.last.request
+        self.assertEqual(
+            request.headers['Content-Type'], 'application/merge-patch+json'
+        )
+        self.assertEqual(request.headers['Authorization'], 'Bearer sa-token')
+        self.assertEqual(
+            request.content,
+            b'{"metadata": {"labels": {"egress.imbi.aweber.com/db": "g2"}}}',
+        )
+
+    async def test_label_refused(self) -> None:
+        self.mock.patch(POD).respond(403)
+        with self.assertLogs('imbi.harness.kube', 'ERROR'):
+            self.assertFalse(await kube.label_own_pod({'a': 'b'}))
+
+    async def test_reads_labels_with_an_empty_merge_patch(self) -> None:
+        route = self.mock.patch(POD).respond(
+            200,
+            json={'metadata': {'labels': {'egress.imbi.aweber.com/db': 'g2'}}},
+        )
+        self.assertEqual(
+            await kube.own_pod_labels(), {'egress.imbi.aweber.com/db': 'g2'}
+        )
+        self.assertEqual(
+            route.calls.last.request.content, b'{"metadata": {"labels": {}}}'
+        )
+
+    async def test_unreadable_labels(self) -> None:
+        self.mock.patch(POD).respond(200, json=[])
+        with self.assertLogs('imbi.harness.kube', 'ERROR'):
+            self.assertIsNone(await kube.own_pod_labels())
