@@ -3015,6 +3015,62 @@ class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
         # Still a summary, ranked without commit context.
         self.assertEqual(result['p1'].latest_tag, '1.0.0')
 
+    async def _with_counts(
+        self, count_row: dict[str, typing.Any]
+    ) -> typing.Any:
+        from imbi.api.endpoints import projects
+
+        head_rows = [
+            {
+                'project_id': 'p1',
+                'sha': 'd' * 40,
+                'short_sha': 'd' * 7,
+                'author_name': 'Alice',
+                'author_user': 'alice',
+                'authored_at': datetime.datetime(2026, 9, 1),  # noqa: DTZ001
+            }
+        ]
+        with mock.patch(
+            'imbi.api.endpoints.projects.clickhouse.query',
+            mock.AsyncMock(
+                side_effect=[self._tags(), head_rows, [], [count_row]]
+            ),
+        ):
+            result = await projects._fetch_release_summaries(['p1'])
+        return result['p1']
+
+    async def test_oldest_actionable_commit_is_reported(self) -> None:
+        summary = await self._with_counts(
+            {
+                'project_id': 'p1',
+                'c': 3,
+                'drifted': 1,
+                'answered': 2,
+                'actionable': 2,
+                'oldest_actionable_at': datetime.datetime(2026, 8, 25),  # noqa: DTZ001
+            }
+        )
+        self.assertTrue(summary.drift_detected)
+        self.assertEqual(
+            summary.oldest_actionable_at,
+            datetime.datetime(2026, 8, 25, tzinfo=datetime.UTC),
+        )
+
+    async def test_no_actionable_commit_has_no_oldest(self) -> None:
+        # minIf over no matching rows gives the epoch, not NULL.
+        summary = await self._with_counts(
+            {
+                'project_id': 'p1',
+                'c': 2,
+                'drifted': 0,
+                'answered': 2,
+                'actionable': 0,
+                'oldest_actionable_at': datetime.datetime(1970, 1, 1),  # noqa: DTZ001
+            }
+        )
+        self.assertFalse(summary.drift_detected)
+        self.assertIsNone(summary.oldest_actionable_at)
+
 
 class ParamBatchTestCase(unittest.TestCase):
     """The authored-times parameters must stay under the form-field cap.

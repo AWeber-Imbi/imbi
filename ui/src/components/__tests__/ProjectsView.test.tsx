@@ -339,3 +339,83 @@ describe('ProjectsView latest deployment', () => {
     expect(screen.queryByText('failed')).not.toBeInTheDocument()
   })
 })
+
+// Each drift badge shows how long its oldest waiting change has been
+// waiting, and the Drift header sorts by it.
+describe('ProjectsView waiting age', () => {
+  const daysAgo = (n: number) =>
+    new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString()
+
+  function waiting(
+    id: string,
+    name: string,
+    oldest: null | string,
+  ): ProjectListItem {
+    return {
+      ...PROJECTS[3],
+      drift_range_oldest: oldest ? { 'bbb..aaa': oldest } : {},
+      id,
+      name,
+      release_summary: releaseSummary({
+        commits_since_tag: 1,
+        drift_detected: true,
+        head_sha: 'ccc',
+      }),
+    }
+  }
+
+  it('shows the age of the oldest change on each badge', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      {
+        ...waiting('p20', 'Fox', daysAgo(3)),
+        release_summary: releaseSummary({
+          commits_since_tag: 1,
+          drift_detected: true,
+          head_sha: 'ccc',
+          oldest_actionable_at: daysAgo(5),
+        }),
+      },
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Fox')).toBeInTheDocument())
+    const deploy = screen.getByRole('link', {
+      name: /Deploy Staging to Production, waiting since/,
+    })
+    expect(within(deploy).getByText('3d')).toBeInTheDocument()
+    const release = screen.getByRole('link', {
+      name: /Cut a release, waiting since/,
+    })
+    expect(within(release).getByText('5d')).toBeInTheDocument()
+  })
+
+  it('shows no age when the server has no date', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      waiting('p21', 'Golf', null),
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Golf')).toBeInTheDocument())
+    expect(
+      screen.getByRole('link', { name: 'Deploy Staging to Production' }),
+    ).toBeInTheDocument()
+  })
+
+  it('sorts the oldest waiting change first, undated last', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      waiting('p22', 'Hotel', null),
+      waiting('p23', 'India', daysAgo(2)),
+      waiting('p24', 'Juliet', daysAgo(9)),
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument())
+    const user = userEvent.setup()
+    const names = () =>
+      screen.getAllByText(/^(Hotel|India|Juliet)$/).map((el) => el.textContent)
+
+    await user.click(screen.getByTitle(/Sort by the oldest change/))
+    expect(names()).toEqual(['Juliet', 'India', 'Hotel'])
+
+    // Reversed, the undated project still sorts last.
+    await user.click(screen.getByTitle(/Sort by the oldest change/))
+    expect(names()).toEqual(['India', 'Juliet', 'Hotel'])
+  })
+})
