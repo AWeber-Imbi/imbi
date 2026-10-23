@@ -1,6 +1,7 @@
 """The egress self-test, readiness probe, and policy sync (PRD 5.3,
 5.6, 5.7)."""
 
+import socket
 import typing
 import unittest
 from unittest import mock
@@ -153,17 +154,17 @@ class SelfTestTestCase(unittest.IsolatedAsyncioTestCase):
             self.addCleanup(patcher.stop)
 
     async def test_passes_when_both_fail(self) -> None:
-        connects = mock.AsyncMock(side_effect=[True, False, False, False])
-        with mock.patch.object(egress, 'connects', connects):
+        answers = mock.AsyncMock(side_effect=[True, False, False, False])
+        with mock.patch.object(egress, 'answers', answers):
             await egress.self_test(('10.0.0.9', 5432))
-        connects.assert_any_await('169.254.169.254', 80)
-        connects.assert_any_await('10.0.0.9', 5432)
+        answers.assert_any_await('169.254.169.254', 80)
+        answers.assert_any_await('10.0.0.9', 5432)
 
     async def test_exits_when_not_enforced(self) -> None:
         clock = iter(range(0, 1000, 20))
         with (
             mock.patch.object(
-                egress, 'connects', mock.AsyncMock(return_value=True)
+                egress, 'answers', mock.AsyncMock(return_value=True)
             ),
             mock.patch.object(
                 egress.time, 'monotonic', side_effect=lambda: next(clock)
@@ -171,6 +172,33 @@ class SelfTestTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertRaisesRegex(SystemExit, 'not enforced'),
         ):
             await egress.self_test(('10.0.0.9', 5432))
+
+    async def test_answers(self) -> None:
+        for error, expected in (
+            (ConnectionRefusedError(), True),
+            (TimeoutError(), False),
+            (OSError(113, 'No route to host'), False),
+        ):
+            with (
+                self.subTest(error=error),
+                mock.patch.object(
+                    egress.asyncio,
+                    'open_connection',
+                    mock.AsyncMock(side_effect=error),
+                ),
+            ):
+                self.assertIs(await egress.answers('10.0.0.9', 1), expected)
+
+    async def test_answers_exits_when_not_resolved(self) -> None:
+        with (
+            mock.patch.object(
+                egress.asyncio,
+                'open_connection',
+                mock.AsyncMock(side_effect=socket.gaierror('no')),
+            ),
+            self.assertRaisesRegex(SystemExit, 'does not resolve'),
+        ):
+            await egress.answers('canary.invalid', 1)
 
 
 class ProbeTestCase(unittest.IsolatedAsyncioTestCase):

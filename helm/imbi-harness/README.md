@@ -67,12 +67,16 @@ when a required target that the release needs is empty.
 
 ### One owner for manageGlobal
 
-Exactly one release in the namespace sets `networkPolicy.manageGlobal: true`.
+Exactly one release in the cluster sets `networkPolicy.manageGlobal: true`.
 That release renders the required and Baseline policies, the egress-sync
 Deployment and its RBAC, and the egress-sync admission policy. These apply to
 every pool in the namespace. Every release sets `networkPolicy.enabled` and
-`networkPolicy.canary`. Two releases with `manageGlobal` fight over the same
-cluster objects.
+`networkPolicy.canary`.
+
+The cluster objects have fixed names, and the egress sync manages the
+destination policies of the whole cluster for the pods of its own namespace.
+Thus egress allowlists work in one runner namespace per cluster. Helm refuses
+a second `manageGlobal` release in a different namespace.
 
 ### Trust model
 

@@ -102,9 +102,11 @@ affinity: {}
 # egress destinations of its chain, and lets its MCP clients use them.
 networkPolicy:
   enabled: false
-  # Exactly one release in the namespace sets this. It renders the policies
-  # that apply to every runner pod of the namespace (required targets and
-  # Baseline), the egress-sync Deployment, and its admission policy.
+  # Exactly one release in the cluster sets this: its objects have fixed,
+  # cluster-wide names, so egress allowlists work in one runner namespace
+  # per cluster. It renders the policies that apply to every runner pod of
+  # the namespace (required targets and Baseline), the egress-sync
+  # Deployment, and its admission policy.
   manageGlobal: false
   # host:port of an internal address that a runner pod must not reach, for
   # the startup self-test, e.g. the Postgres Service ClusterIP. REQUIRED

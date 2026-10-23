@@ -439,8 +439,8 @@ administrators must be able to create one there.
 | Value | What it does |
 |---|---|
 | `networkPolicy.enabled` | Turns on egress allowlists for the release. Default `false` |
-| `networkPolicy.manageGlobal` | Renders the cluster-wide objects: the required and Baseline policies, the `imbi-harness-egress-sync` Deployment, and its RBAC and admission policy. Set it in one release only |
-| `networkPolicy.canary` | `host:port` of an internal address that runner pods must not reach. Required. At start, the runner checks that this address and IMDS both fail before it claims work. If they do not fail within 60 seconds, the runner exits |
+| `networkPolicy.manageGlobal` | Renders the cluster-wide objects: the required and Baseline policies, the `imbi-harness-egress-sync` Deployment, and its RBAC and admission policy. Set it in one release per cluster: egress allowlists work in one runner namespace per cluster |
+| `networkPolicy.canary` | `host:port` of an internal address that runner pods must not reach. Required. At start, the runner checks that connections to this address and IMDS both time out before it claims work. A refused connection counts as reached. If they do not time out within 60 seconds, or the host does not resolve, the runner exits |
 | `networkPolicy.internalRanges` | The ranges that Baseline denies (with link-local) |
 | `networkPolicy.required.imbiApi`, `.imbiMcp` | Namespace, pod selector (the Service's `spec.selector`), and port. `imbiMcp` is required when `imbi.mcpUrl` is set |
 | `networkPolicy.required.kubeApi` | The Kubernetes API Service ClusterIP as a `/32`, and port 443 |

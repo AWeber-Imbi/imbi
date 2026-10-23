@@ -21,6 +21,7 @@ import logging
 import os
 import pathlib
 import re
+import socket
 import ssl
 import time
 import typing
@@ -77,6 +78,28 @@ async def connects(host: str, port: int) -> bool:
     return True
 
 
+async def answers(host: str, port: int) -> bool:
+    """Whether ``host:port`` accepts or refuses a TCP connection. A
+    network policy drops packets, so only a timeout (or no route)
+    shows that the pod is blocked.
+
+    Raises:
+        SystemExit: ``host`` does not resolve.
+
+    """
+    try:
+        async with asyncio.timeout(CONNECT_SECONDS):
+            _reader, writer = await asyncio.open_connection(host, port)
+    except ConnectionRefusedError:
+        return True
+    except socket.gaierror as err:
+        raise SystemExit(f'{host} does not resolve: {err}') from err
+    except OSError:  # TimeoutError too
+        return False
+    writer.close()
+    return True
+
+
 async def self_test(canary: tuple[str, int], seconds: float = 60) -> None:
     """Return when IMDS and the internal canary do not connect (PRD
     5.3). A new pod has open egress until the network policy agent
@@ -92,14 +115,14 @@ async def self_test(canary: tuple[str, int], seconds: float = 60) -> None:
         opened = [
             f'{host}:{port}'
             for host, port in (IMDS, canary)
-            if await connects(host, port)
+            if await answers(host, port)
         ]
         if not opened:
             LOGGER.info('Egress self-test passed')
             return
         if time.monotonic() >= deadline:
             raise SystemExit(
-                'Egress is not enforced: ' + ', '.join(opened) + ' connected'
+                'Egress is not enforced: ' + ', '.join(opened) + ' answered'
             )
         LOGGER.warning('Egress not enforced yet: %s', ', '.join(opened))
         await asyncio.sleep(2)
