@@ -253,7 +253,6 @@ class SyncRoundTestCase(unittest.IsolatedAsyncioTestCase):
             'http://imbi.test', ('id', 'secret'), 'imbi-runners'
         )
         sync.api = mock.AsyncMock()
-        sync.unheld = {'imbi-harness-dest-old-g1'}
         sync.api.pool_token.return_value = 'pool-token'
         sync.api.egress_destinations.return_value = [
             destination('db', 2),
@@ -282,12 +281,17 @@ class SyncRoundTestCase(unittest.IsolatedAsyncioTestCase):
                 f'{POLICIES}/imbi-harness-dest-old-g1'
             ).respond(200, json={})
             await sync.round()
+            # First unheld round keeps the policy: a claim can precede
+            # the pod label.
+            self.assertFalse(delete.called)
+            self.assertEqual(sync.unheld, {'imbi-harness-dest-old-g1'})
+            await sync.round()
         self.assertEqual(
             create.calls.last.request.headers['Authorization'],
             'Bearer sa-token',
         )
-        self.assertTrue(delete.called)
-        sync.api.report_applied.assert_awaited_once_with(
+        self.assertEqual(delete.call_count, 1)
+        sync.api.report_applied.assert_awaited_with(
             'pool-token',
             [
                 {'slug': 'web', 'generation': 1},
