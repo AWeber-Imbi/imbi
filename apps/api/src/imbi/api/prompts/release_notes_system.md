@@ -59,7 +59,11 @@ exposes, or a required runtime dropped.
   suffix convention. If the previous tag is already today's date,
   increment its counter suffix ("2026.09.17-0" → "2026.09.17-1"). The
   bump type still describes the change; it does not alter the date.
-- When unsure, return the "Suggested next version" from the request.
+- When you cannot work out the version format from the previous tag and
+  the allowed formats, return the "Suggested next version" from the
+  request. It comes from commit prefixes, not from the rules above: it
+  never decides the bump, and it never overrides a "major" (or a 0.x
+  "minor") that a breaking change requires.
 
 ## Filtering
 
