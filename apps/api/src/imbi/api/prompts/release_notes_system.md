@@ -11,9 +11,41 @@ the project allows, output a single JSON object with no surrounding text:
 
 ## Version Bump Rules
 
-- "minor" if ANY commit adds new capabilities, endpoints, behaviors, or options
+- "major" if ANY commit is a breaking change (see below)
+- "minor" if no commit is breaking and ANY commit adds new capabilities,
+  endpoints, behaviors, or options
 - "patch" if ALL commits are fixes, refactors, docs, or chores
-- Never select "major" — that requires explicit caller input
+
+A breaking change is one that breaks a consumer who upgrades without
+changing anything on their side:
+
+- Removing or renaming an endpoint, field, function, command, flag,
+  event, or configuration key
+- Changing a default, a response or payload shape, or a behavior
+  consumers rely on, in a way their existing usage no longer works with
+- Dropping support for a runtime, platform, or API version
+- Any commit its author marked breaking: a "!" before the colon in a
+  conventional-commit subject ("feat!:", "fix(api)!:") or a
+  "BREAKING CHANGE:" footer in its body
+
+Consumers are whoever depends on the project: a library's public API, a
+service's HTTP, event, or queue contract, a CLI's flags and output. A
+website or UI with no programmatic consumers rarely has breaking changes.
+
+When you select "major", name each breaking commit by its short SHA in
+`reasoning`. If you cannot name one, do not select "major". When a commit
+is plausibly breaking but you are unsure, select "major" and say why: a
+person reviews the draft before releasing, and a break that ships
+unannounced costs far more than a major they downgrade.
+
+Below 1.0.0 (a previous tag of 0.x.y), semantic versioning carries a
+breaking change in the minor version: select "minor", and still name the
+breaking commits in `reasoning`.
+
+A dependency change on its own is not breaking. It is breaking only when
+it changes what consumers must install or run: for example a library
+raising the major version of a required dependency its public API
+exposes, or a required runtime dropped.
 
 ## Version Rules
 
@@ -58,6 +90,9 @@ behaves — ingress rules, allowlists, resource limits, feature flags,
 scaling, decommissioned infrastructure — are consumer-facing, not
 internal: include them.
 
+A breaking change is never internal: always include it, whatever the
+commit message calls it.
+
 Never emit an empty `notes_markdown`: the body is what ships on the
 release, and a blank one leaves the release undocumented. If every commit
 in the range would be excluded, select "patch" and emit one `### Changed`
@@ -79,19 +114,37 @@ Link related work inline:
 - Skip these false positives: CVE-\d+, BLUE-\d+, GREEN-\d+, GREY-\d+,
   PURPLE-\d+, RED-\d+, YELLOW-\d+
 
-If dependency files (package.json, requirements*.txt, pyproject.toml,
-Pipfile) show version changes in the diff, add one bullet under Changed:
-  "Updated internal dependencies: foo from 1.0.0 to 2.0.0, ..."
+The request may include a "Dependency changes" list, taken from the
+software bills of materials of the previous release and of the head
+commit. Each line is one component: "+" added, "-" removed, "~" changed
+(old → new). Each side lists the versions, then the dependency groups in
+brackets when it has any; a side without brackets is a required
+dependency. Required dependencies are listed first. When the list is
+present, add one bullet under Changed that names every change with a
+required (ungrouped) side, old or new:
+  "Updated dependencies: foo from 1.0.0 to 2.0.0, added bar 1.2.0, ..."
+A move from a group to required is an added required dependency; a move
+from required to a group is a removed required dependency. Leave out
+changes that are grouped on both sides unless a commit calls them out. "Dependency changes (from SBOMs): none" means the
+dependencies did not change: add no dependency bullet. When the line is
+absent, the changes are unknown: describe dependency changes only as the
+commit messages state them, and do not invent versions.
+
+Breaking changes go first, under their own heading, and are not
+repeated in the other sections.
 
 ```markdown
 ## What's Changed
+
+### Breaking Changes
+- Description of what consumers must change (#12)
 
 ### Added
 - Description ([TICKET-123](https://aweber.atlassian.net/browse/TICKET-123)) (#12)
 
 ### Changed
 - Description (#12)
-- Updated internal dependencies: foo from 1.0.0 to 2.0.0
+- Updated dependencies: foo from 1.0.0 to 2.0.0
 
 ### Deprecated
 - Description ([TICKET-123](https://aweber.atlassian.net/browse/TICKET-123))
