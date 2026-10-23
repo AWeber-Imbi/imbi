@@ -7333,7 +7333,9 @@ class DirectDeployRecordingTestCase(unittest.IsolatedAsyncioTestCase):
         )
         await self.graph.close()
 
-    async def _deploy(self) -> typing.Any:
+    async def _deploy(
+        self, environment: str | None = None, ref_label: str = 'main'
+    ) -> typing.Any:
         ctx = mock.Mock(
             environment_config={},
             actor_user_id=None,
@@ -7366,9 +7368,9 @@ class DirectDeployRecordingTestCase(unittest.IsolatedAsyncioTestCase):
                 self.auth,
                 project_deployments.DeployActionRequest(
                     action='deploy',
-                    environment=self.env,
+                    environment=environment or self.env,
                     committish='abc1234def5678',
-                    ref_label='main',
+                    ref_label=ref_label,
                 ),
                 background=fastapi.BackgroundTasks(),
                 source=None,
@@ -7399,6 +7401,37 @@ class DirectDeployRecordingTestCase(unittest.IsolatedAsyncioTestCase):
         assert current.latest_deployment is not None
         self.assertEqual('in_progress', current.latest_deployment.status)
         self.assertEqual('abc1234', current.latest_deployment.committish)
+
+    async def test_found_release_is_not_duplicated_when_append_fails(
+        self,
+    ) -> None:
+        """An environment deleted mid-deploy must not fork the Release.
+
+        The env-flag gate normally 404s a missing environment before
+        anything is dispatched, so the gate is patched to model the
+        environment vanishing during the remote call.
+        """
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project}}})
+            CREATE (p)-[:HAS_RELEASE]->(:Release {{
+                id: {release}, committish: 'abc1234', title: 'main',
+                links: '[]', created_by: 'deployer@example.com',
+                created_at: '2026-10-01T00:00:00+00:00',
+                updated_at: '2026-10-01T00:00:00+00:00'}})
+            RETURN p.id AS id
+            """,
+            {'project': self.project, 'release': f'{self.project}-rel'},
+            ['id'],
+        )
+        response = await self._deploy(
+            environment=f'{self.env}-gone', ref_label='1.2.3'
+        )
+        self.assertFalse(response.recorded)
+        found = await releases.list_releases(
+            self.org, self.project, self.graph, self.auth
+        )
+        self.assertEqual([f'{self.project}-rel'], [r.id for r in found])
 
     async def test_webhook_for_the_run_lands_on_the_same_deployment(
         self,

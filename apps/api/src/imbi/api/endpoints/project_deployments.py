@@ -3282,6 +3282,7 @@ async def _handle_deploy(
     # an untagged Release if one exists.
     result: tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None = None
     matched_tag: str | None = None
+    release_found = False
     for try_tag in [candidate_tag, None] if candidate_tag else [None]:
         release_id = await _release_id_for(
             db,
@@ -3291,11 +3292,12 @@ async def _handle_deploy(
         )
         if release_id is None:
             continue
+        release_found = True
         result = await _append(release_id)
         if result is not None:
             matched_tag = try_tag
             break
-    if result is None:
+    if not release_found:
         # No Release names this deploy yet -- typically a raw commit
         # shipped to the first environment.  Create it the way resync
         # would on observing the same deployment, so the rollout is
