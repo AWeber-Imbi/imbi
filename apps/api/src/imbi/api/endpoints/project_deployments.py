@@ -5416,7 +5416,10 @@ def _tag_timestamp(
 def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
     """Bump a semver-shaped tag, keeping its ``v``-or-bare prefix.
 
-    Falls back to ``v0.1.0`` when missing or not semver-shaped.
+    Falls back to ``v0.1.0`` when missing or not semver-shaped.  Below
+    1.0.0 a breaking change bumps the minor, as semantic versioning
+    says, so ``major`` on a ``0.x.y`` tag gives ``0.(x+1).0``: going to
+    1.0.0 is a deliberate choice, never a suggestion.
     """
     raw = last_tag or 'v0.0.0'
     match = _SEMVER_RE.match(raw)
@@ -5424,9 +5427,9 @@ def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
         return 'v0.1.0'
     prefix = 'v' if raw.startswith('v') else ''
     major, minor, patch = (int(part) for part in match.groups())
-    if bump == 'major':
+    if bump == 'major' and major > 0:
         return f'{prefix}{major + 1}.0.0'
-    if bump == 'minor':
+    if bump in ('major', 'minor'):
         return f'{prefix}{major}.{minor + 1}.0'
     return f'{prefix}{major}.{minor}.{patch + 1}'
 

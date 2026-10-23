@@ -5000,6 +5000,15 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             '1.2.4', project_deployments._bump_semver('1.2.3', 'patch')
         )
 
+    def test_bump_semver_major_below_one_bumps_the_minor(self) -> None:
+        """A breaking change on 0.x is a minor bump, never 1.0.0."""
+        self.assertEqual(
+            'v0.5.0', project_deployments._bump_semver('v0.4.2', 'major')
+        )
+        self.assertEqual(
+            '2.0.0', project_deployments._bump_semver('1.4.2', 'major')
+        )
+
     def test_suggest_version_semver_policy_on_a_semver_shaped_date(
         self,
     ) -> None:
