@@ -2450,3 +2450,70 @@ class ComponentGovernanceFieldsTestCase(unittest.TestCase):
             created_by='alice@example.com',
         )
         self.assertEqual(advisory.cve_id, 'CVE-2025-1234')
+
+
+class DeliveryModeTestCase(unittest.TestCase):
+    """``Project.delivery_mode`` and :func:`models.resolve_delivery`."""
+
+    def _project(self, **overrides: typing.Any) -> models.Project:
+        org = models.Organization(name='Org', slug='org')
+        return models.Project(
+            name='Svc',
+            slug='svc',
+            team=models.Team(name='Team', slug='team', organization=org),
+            **overrides,
+        )
+
+    def test_delivery_mode_defaults_to_project_type(self) -> None:
+        self.assertEqual(self._project().delivery_mode, 'project-type')
+
+    def test_delivery_mode_round_trips(self) -> None:
+        self.assertEqual(
+            self._project(delivery_mode='disabled').delivery_mode, 'disabled'
+        )
+
+    def test_delivery_mode_rejects_unknown_values(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._project(delivery_mode='sometimes')
+
+    def test_project_type_mode_passes_the_type_flags_through(self) -> None:
+        for deployable, releasable in (
+            (True, False),
+            (False, True),
+            (False, False),
+            (True, True),
+        ):
+            with self.subTest(deployable=deployable, releasable=releasable):
+                self.assertEqual(
+                    models.resolve_delivery(
+                        'project-type',
+                        deployable=deployable,
+                        releasable=releasable,
+                    ),
+                    models.Delivery(deployable, releasable),
+                )
+
+    def test_missing_or_unknown_mode_reads_as_project_type(self) -> None:
+        for mode in (None, 'sometimes'):
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    models.resolve_delivery(
+                        mode, deployable=True, releasable=False
+                    ),
+                    models.Delivery(deployable=True, releasable=False),
+                )
+
+    def test_explicit_mode_replaces_the_type_flags(self) -> None:
+        resolve = models.resolve_delivery
+        self.assertEqual(
+            resolve('releasable', deployable=True, releasable=False),
+            models.Delivery(deployable=False, releasable=True),
+        )
+        self.assertEqual(
+            resolve('deployable', deployable=False, releasable=True),
+            models.Delivery(deployable=True, releasable=False),
+        )
+        self.assertEqual(
+            resolve('disabled', deployable=True, releasable=True),
+            models.Delivery(deployable=False, releasable=False),
+        )

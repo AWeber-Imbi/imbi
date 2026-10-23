@@ -2758,6 +2758,7 @@ async def _trigger_deployment(
     source: str | None,
     valkey_client: typing.Any,
 ) -> DeploymentTriggerResponse:
+    await _require_delivery_enabled(db, project_id)
     if body.action == 'promote':
         return await _handle_promote(
             db,
@@ -3024,6 +3025,7 @@ async def resync_project_deployments(
     button using the plugin manifest flag.  Returns ``enqueued=False``
     when the job was debounced or Valkey is unavailable.
     """
+    await _require_delivery_enabled(db, project_id)
     resolved = await resolve_capability(db, project_id, 'deployment', source)
     _require_deployment_sync_support(resolved)
     requested_by = auth.principal_name
@@ -4583,26 +4585,79 @@ def _watcher_auth() -> permissions.AuthContext:
     )
 
 
-async def _project_is_deployable(db: graph.Graph, project_id: str) -> bool:
-    """True when any of the project's types is ``deployable``.
+async def _project_delivery(
+    db: graph.Graph, project_id: str
+) -> common_models.Delivery:
+    """Resolve how *project_id* is delivered: deploy, release, or neither.
 
-    A project can carry more than one ``ProjectType``, so this aggregates
+    The project's own ``delivery_mode`` wins; ``project-type`` (and a
+    node written before the property existed) defers to the types.  A
+    project can carry more than one ``ProjectType``, so this aggregates
     rather than reading one: ``deployable`` XOR ``releasable`` holds per
-    type, not per project.  A project with no type at all answers
-    ``False`` -- there is nothing to deploy into.
+    type, not per project.  A project with no type at all, or one that
+    does not exist, answers neither -- there is nothing to ship.
     """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
     OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
-    RETURN collect(COALESCE(pt.deployable, false)) AS flags
+    RETURN p.delivery_mode AS mode,
+           collect(COALESCE(pt.deployable, false)) AS flags,
+           collect(COALESCE(pt.releasable, false)) AS releasable
     """
-    rows = await db.execute(query, {'project_id': project_id}, ['flags'])
+    rows = await db.execute(
+        query, {'project_id': project_id}, ['mode', 'flags', 'releasable']
+    )
+    if not rows:
+        return common_models.Delivery(deployable=False, releasable=False)
+    row = rows[0]
+
+    def _any(column: str) -> bool:
+        flags = typing.cast(
+            'list[object]', graph.parse_agtype(row.get(column)) or []
+        )
+        return any(bool(flag) for flag in flags)
+
+    mode = graph.parse_agtype(row.get('mode'))
+    return common_models.resolve_delivery(
+        mode if isinstance(mode, str) else None,
+        deployable=_any('flags'),
+        releasable=_any('releasable'),
+    )
+
+
+async def _project_is_deployable(db: graph.Graph, project_id: str) -> bool:
+    """True when the project resolves to ``deployable``."""
+    return (await _project_delivery(db, project_id)).deployable
+
+
+async def _require_delivery_enabled(db: graph.Graph, project_id: str) -> None:
+    """Refuse to ship a project whose ``delivery_mode`` is ``disabled``.
+
+    Raises a 409: the project exists and the caller may act on it, but
+    its releases are governed outside Imbi, so deploying, promoting,
+    cutting a release, drafting notes, or resyncing it is off.
+    """
+    if await _delivery_mode_is_disabled(db, project_id):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                'Release and deployment processing is disabled for this '
+                'project (delivery_mode is "disabled").'
+            ),
+        )
+
+
+async def _delivery_mode_is_disabled(db: graph.Graph, project_id: str) -> bool:
+    """True when the project node's ``delivery_mode`` is ``disabled``."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    RETURN p.delivery_mode AS mode
+    """
+    rows = await db.execute(query, {'project_id': project_id}, ['mode'])
     if not rows:
         return False
-    flags = typing.cast(
-        'list[object]', graph.parse_agtype(rows[0].get('flags')) or []
-    )
-    return any(bool(flag) for flag in flags)
+    mode = graph.parse_agtype(rows[0].get('mode'))
+    return isinstance(mode, str) and mode == 'disabled'
 
 
 async def poll_artifact_run(
@@ -5850,6 +5905,7 @@ async def draft_release_notes(
     grouping with ``degraded=true`` when Claude is unavailable, the
     response can't be parsed, or schema validation fails.
     """
+    await _require_delivery_enabled(db, project_id)
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
@@ -6811,6 +6867,7 @@ async def cut_release(
     minus the deploy step), upsert the matching ``Release`` node, and
     record an audit row.
     """
+    await _require_delivery_enabled(db, project_id)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
     if not versioning.matches_tag_formats(body.tag, patterns):

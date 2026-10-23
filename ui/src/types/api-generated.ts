@@ -16570,6 +16570,12 @@ export interface components {
             identifiers: {
                 [key: string]: number | string;
             };
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
         } & {
             [key: string]: unknown;
         };
@@ -16685,6 +16691,12 @@ export interface components {
              * @default []
              */
             environments: components["schemas"]["ProjectListEnvironmentRef"][];
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
             /**
              * Open Pr Count
              * @default 0
@@ -16978,6 +16990,12 @@ export interface components {
             identifiers: {
                 [key: string]: number | string;
             };
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
             /**
              * Services
              * @default []

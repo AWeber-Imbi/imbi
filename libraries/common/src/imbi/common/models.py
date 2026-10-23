@@ -418,6 +418,51 @@ class Environment(Node):
     organization: BelongsToOrganization
 
 
+#: How a project is delivered. ``project-type`` (the default) defers to
+#: the ``deployable`` / ``releasable`` flags of the project's types; the
+#: other three override them per project. ``disabled`` turns release and
+#: deployment processing off entirely -- for a project whose releases are
+#: governed outside Imbi -- so neither tab shows and the API refuses to
+#: deploy, promote, or cut a release for it.
+DeliveryMode = typing.Literal[
+    'project-type', 'deployable', 'releasable', 'disabled'
+]
+
+
+class Delivery(typing.NamedTuple):
+    """The resolved delivery flags of one project.
+
+    Both false covers an explicit ``disabled`` and a project whose types
+    carry neither flag. Both true is only reachable through
+    ``project-type`` on a project that carries one type of each kind;
+    callers that need a single answer treat that as deployable, as the
+    Deployments / Releases tab choice always has.
+    """
+
+    deployable: bool
+    releasable: bool
+
+
+def resolve_delivery(
+    mode: DeliveryMode | str | None, *, deployable: bool, releasable: bool
+) -> Delivery:
+    """Resolve a project's delivery flags from its mode and type flags.
+
+    ``deployable`` / ``releasable`` aggregate the project's types: true
+    when *any* type carries the flag. ``project-type`` passes them
+    through unchanged; the other modes replace them. A missing or
+    unknown ``mode`` (a node written before the property existed) reads
+    as ``project-type``.
+    """
+    if mode == 'disabled':
+        return Delivery(deployable=False, releasable=False)
+    if mode == 'deployable':
+        return Delivery(deployable=True, releasable=False)
+    if mode == 'releasable':
+        return Delivery(deployable=False, releasable=True)
+    return Delivery(deployable=deployable, releasable=releasable)
+
+
 class ProjectType(Node):
     # ``deployable`` projects deploy into environments (Deployments tab);
     # ``releasable`` projects publish an artifact via tag + release with no
@@ -1213,6 +1258,9 @@ class Project(Node):
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
     score: float | None = None
+    # Per-project override of the types' ``deployable`` / ``releasable``
+    # flags; see :data:`DeliveryMode` and :func:`resolve_delivery`.
+    delivery_mode: DeliveryMode = 'project-type'
     # Populated by the API on response build; never read from the graph.
     relationships: ProjectRelationships | None = None
 
