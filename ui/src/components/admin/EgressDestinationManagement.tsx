@@ -49,7 +49,10 @@ export function EgressDestinationManagement() {
     createFn: (body) => createEgressDestination(body),
     deleteErrorLabel: 'egress destination',
     deleteFn: (slug) => deleteEgressDestination(slug),
-    extraInvalidateKeys: [['egressDestinationChanges']],
+    extraInvalidateKeys: [
+      queryKeys.egressDestinationChangesAll(),
+      queryKeys.egressDestinationsAll(),
+    ],
     listFn: (signal) => listEgressDestinations(undefined, signal),
     onMutationSuccess: goToList,
     queryKey: queryKeys.egressDestinations(''),

@@ -153,11 +153,16 @@ function EgressField({
     queryKey: queryKeys.egressDestinations(orgSlug),
   })
   const known = destinations.data ?? []
+  // Only a loaded list shows that a selected slug is not available.
+  const unknownName = (slug: string) => {
+    if (destinations.isSuccess) return 'Not available'
+    return destinations.isLoading ? 'Loading…' : slug
+  }
   const options = [
     ...known.map((d) => ({ name: d.name, slug: d.slug })),
     ...value
       .filter((slug) => !known.some((d) => d.slug === slug))
-      .map((slug) => ({ name: 'Not available', slug })),
+      .map((slug) => ({ name: unknownName(slug), slug })),
   ]
   return (
     <Field
