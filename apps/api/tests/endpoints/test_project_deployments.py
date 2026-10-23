@@ -4595,14 +4595,36 @@ class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
-    """``deployable`` is per project *type*, and a project can have several."""
+    """``deployable`` is per project *type*, and a project can have several.
 
-    async def _ask(self, flags: typing.Any) -> bool:
+    The project's own ``delivery_mode`` overrides the type flags.
+    """
+
+    @staticmethod
+    def _db(
+        flags: typing.Any,
+        *,
+        releasable: typing.Any = None,
+        mode: str | None = None,
+    ) -> mock.AsyncMock:
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(
-            return_value=[{'flags': json.dumps(flags)}]
+            return_value=[
+                {
+                    'mode': json.dumps(mode),
+                    'flags': json.dumps(flags),
+                    'releasable': json.dumps(
+                        releasable if releasable is not None else []
+                    ),
+                }
+            ]
         )
-        return await project_deployments._project_is_deployable(db, 'p1')
+        return db
+
+    async def _ask(self, flags: typing.Any) -> bool:
+        return await project_deployments._project_is_deployable(
+            self._db(flags), 'p1'
+        )
 
     async def test_true_when_any_type_is_deployable(self) -> None:
         self.assertTrue(await self._ask([False, True]))
@@ -4619,6 +4641,116 @@ class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(
             await project_deployments._project_is_deployable(db, 'nope')
         )
+        self.assertEqual(
+            await project_deployments._project_delivery(db, 'nope'),
+            (False, False),
+        )
+
+    async def test_releasable_type_resolves_to_releasable(self) -> None:
+        self.assertEqual(
+            await project_deployments._project_delivery(
+                self._db([False], releasable=[True]), 'p1'
+            ),
+            (False, True),
+        )
+
+    async def test_deployable_mode_overrides_releasable_types(self) -> None:
+        self.assertTrue(
+            await project_deployments._project_is_deployable(
+                self._db([False], releasable=[True], mode='deployable'),
+                'p1',
+            )
+        )
+
+    async def test_releasable_mode_overrides_deployable_types(self) -> None:
+        self.assertEqual(
+            await project_deployments._project_delivery(
+                self._db([True], mode='releasable'), 'p1'
+            ),
+            (False, True),
+        )
+
+    async def test_disabled_mode_resolves_to_neither(self) -> None:
+        self.assertEqual(
+            await project_deployments._project_delivery(
+                self._db([True], releasable=[True], mode='disabled'), 'p1'
+            ),
+            (False, False),
+        )
+
+
+class DeliveryDisabledTestCase(ProjectDeploymentsTestCase):
+    """A project whose ``delivery_mode`` is ``disabled`` cannot ship.
+
+    Every Imbi-initiated release / deployment entry point answers 409
+    before touching the deployment plugin.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+
+    def _disable(self) -> None:
+        # Not in ``setUp``: this class inherits every test on the base,
+        # and those must keep seeing a project that can ship.
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'mode': json.dumps('disabled')}]
+        )
+
+    def _assert_refused(self, response: httpx.Response) -> None:
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('disabled', response.json()['detail'])
+        self.mocks['resolve_capability'].assert_not_called()
+
+    def test_deploy_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'deploy',
+                    'environment': 'staging',
+                    'committish': 'abc1234',
+                },
+            )
+        self._assert_refused(response)
+
+    def test_promote_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': 'abc1234',
+                    'tag': '1.0.0',
+                },
+            )
+        self._assert_refused(response)
+
+    def test_cut_release_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': 'abc1234', 'tag': '1.0.0'},
+            )
+        self._assert_refused(response)
+
+    def test_resync_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(f'{self._BASE}/resync')
+        self._assert_refused(response)
+
+    def test_draft_release_notes_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/draft-release-notes',
+                json={'base_sha': 'abc1234', 'head_sha': 'def5678'},
+            )
+        self._assert_refused(response)
 
 
 def _relocating_resolved() -> ResolvedCapability:

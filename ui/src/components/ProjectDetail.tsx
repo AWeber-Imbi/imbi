@@ -102,6 +102,7 @@ import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
+import { resolveDelivery } from '@/lib/delivery'
 import {
   computeDriftPairs,
   rangeNeedsAction,
@@ -574,19 +575,16 @@ export function ProjectDetail({
   const deploymentIdentityPluginId =
     deploymentPlugin?.identity_plugin_id ?? null
 
-  // Build-and-release-only projects: a deployment plugin is assigned, a
-  // project type is marked ``releasable`` (library / image — published via
-  // tag + GitHub release with no deploy step), and no type is marked
-  // ``deployable``, so the "Releases" tab shows. The two flags are mutually
-  // exclusive per type, not per project: a project that carries both kinds
-  // of type is deployable, which matches the API (``_project_is_deployable``)
-  // and the Doctor tab.
-  const isDeployable = (project.project_types ?? []).some(
-    (pt) => (pt as { deployable?: boolean }).deployable === true,
-  )
-  const isReleasable = (project.project_types ?? []).some(
-    (pt) => (pt as { releasable?: boolean }).releasable === true,
-  )
+  // Build-and-release-only projects: a deployment plugin is assigned, the
+  // project is ``releasable`` (library / image — published via tag + GitHub
+  // release with no deploy step) and not ``deployable``, so the "Releases"
+  // tab shows. The flags come from the project types unless the project's
+  // ``delivery_mode`` setting overrides them; ``disabled`` clears both,
+  // which hides both panes. A project that carries both kinds of type is
+  // deployable, which matches the API (``_project_is_deployable``) and the
+  // Doctor tab.
+  const { deployable: isDeployable, releasable: isReleasable } =
+    resolveDelivery(project)
   const isReleaseOnly = !!deploymentPlugin && isReleasable && !isDeployable
 
   // Per-user identity connections — used to gate deploy/promote on the

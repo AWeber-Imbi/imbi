@@ -1,3 +1,5 @@
+import type { DeliveryMode } from '@/lib/delivery'
+
 import type { components } from './api-generated'
 import type { ProjectServiceEdge } from './integrations'
 
@@ -435,6 +437,9 @@ export interface Project {
   closed_pr_count?: number
   created_at?: null | string
   current_releases?: Record<string, ReleaseInfo>
+  // Per-project override of the project types' deployable / releasable
+  // flags; see `resolveDelivery` in `@/lib/delivery`.
+  delivery_mode?: DeliveryMode
   description?: null | string
   environments?: Environment[]
   icon?: null | string

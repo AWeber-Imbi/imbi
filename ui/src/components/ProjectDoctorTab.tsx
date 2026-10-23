@@ -37,6 +37,7 @@ import { hasPermission } from '@/hooks/useHasPermission'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { usePRSync } from '@/hooks/usePRSync'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { resolveDelivery } from '@/lib/delivery'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import type { Project } from '@/types'
 
@@ -80,17 +81,10 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   const canSyncPRs = hasPermission(user, 'project:pull-requests:write', orgSlug)
 
   // A build-and-release project has no environments to deploy into, so the
-  // same resync reads as "Sync Releases" there. ``releasable`` /
-  // ``deployable`` live on the project type but aren't in the generated
-  // Project type yet, hence the casts (same as ProjectDetail).
-  const projectTypes = project.project_types ?? []
-  const isReleaseOnly =
-    projectTypes.some(
-      (pt) => (pt as { releasable?: boolean }).releasable === true,
-    ) &&
-    !projectTypes.some(
-      (pt) => (pt as { deployable?: boolean }).deployable === true,
-    )
+  // same resync reads as "Sync Releases" there (same resolution as
+  // ProjectDetail).
+  const delivery = resolveDelivery(project)
+  const isReleaseOnly = delivery.releasable && !delivery.deployable
   const syncLabel = isReleaseOnly ? 'Sync Releases' : 'Sync Deployments'
 
   const { scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)

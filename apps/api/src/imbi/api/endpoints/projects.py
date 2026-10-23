@@ -95,6 +95,7 @@ class ProjectCreate(pydantic.BaseModel):
     )
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
+    delivery_mode: models.DeliveryMode = 'project-type'
 
     @pydantic.field_validator('project_type_slugs')
     @classmethod
@@ -138,6 +139,7 @@ class ProjectUpdate(pydantic.BaseModel):
     )
     links: dict[str, pydantic.AnyUrl] | None = None
     identifiers: dict[str, int | str] | None = None
+    delivery_mode: models.DeliveryMode | None = None
 
 
 # ProjectRelationships now lives in imbi.common.models so the OpenAPI
@@ -264,6 +266,7 @@ class ProjectListItem(pydantic.BaseModel):
     team: ProjectListTeamRef
     project_types: list[ProjectListProjectTypeRef] = []
     environments: list[ProjectListEnvironmentRef] = []
+    delivery_mode: models.DeliveryMode = 'project-type'
     open_pr_count: int = 0
     closed_pr_count: int = 0
     viewer_open_pr_count: int = 0
@@ -307,6 +310,7 @@ class ProjectResponse(pydantic.BaseModel):
     environments: list[EnvironmentRef] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
+    delivery_mode: models.DeliveryMode = 'project-type'
     # The project's EXISTS_IN connections, one entry per
     # ``(:Project)-[:EXISTS_IN]->(:Integration)`` edge.  Read-only
     # structured surface (identifier + canonical API URL + the dashboard
@@ -1361,6 +1365,18 @@ async def _fetch_authored_times(
     return authored_by_project
 
 
+def _delivery_of(project_data: dict[str, typing.Any]) -> models.Delivery:
+    """Resolve a listed project's delivery flags from its graph record."""
+    project_types = typing.cast(
+        list[dict[str, typing.Any]], project_data.get('project_types') or []
+    )
+    return models.resolve_delivery(
+        project_data.get('delivery_mode'),
+        deployable=any(pt.get('deployable') for pt in project_types),
+        releasable=any(pt.get('releasable') for pt in project_types),
+    )
+
+
 async def _fetch_release_summaries(
     project_ids: list[str],
 ) -> dict[str, ReleaseSummary]:
@@ -1765,6 +1781,7 @@ _SLIM_RETURN_FRAGMENT: typing.LiteralString = """
                       END) AS envs
     RETURN p{{.id, .name, .slug, .description, .score,
               archived: coalesce(p.archived, false),
+              delivery_mode: coalesce(p.delivery_mode, 'project-type'),
               team: t{{.name, .slug}},
               project_types: pts,
               environments: envs}} AS project
@@ -1819,6 +1836,7 @@ async def create_project(
             description=data.description,
             icon=data.icon,
             links=data.links,
+            delivery_mode=data.delivery_mode,
             **{
                 k: v
                 for k, v in typing.cast(
@@ -2409,14 +2427,7 @@ async def list_projects(
     releasable_ids = [
         str(p.get('id', ''))
         for p in project_data_list
-        if p.get('id')
-        and any(
-            pt.get('releasable')
-            for pt in typing.cast(
-                list[dict[str, typing.Any]],
-                p.get('project_types') or [],
-            )
-        )
+        if p.get('id') and _delivery_of(p).releasable
     ]
     viewer = auth.identity_for('github-enterprise-cloud')
     pr_counts, releases, release_summaries = await asyncio.gather(
@@ -3347,6 +3358,11 @@ async def _execute_project_update(
             if data.identifiers is not None
             else existing_identifiers
         ),
+        'delivery_mode': (
+            data.delivery_mode
+            or existing_p.get('delivery_mode')
+            or 'project-type'
+        ),
     }
 
     # Merge blueprint extra fields: start from existing unknown keys,
@@ -3620,6 +3636,7 @@ async def patch_project(
         'environments': current_environments,
         'links': parsed_links,
         'identifiers': parsed_identifiers,
+        'delivery_mode': project_data.get('delivery_mode') or 'project-type',
         **extras,
     }
 
