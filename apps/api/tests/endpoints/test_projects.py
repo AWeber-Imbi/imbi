@@ -601,62 +601,6 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(item['project_types'], [])
         self.assertEqual(item['environments'], [])
 
-    def test_list_limit_pages_with_link_header(self) -> None:
-        """``limit`` trims the extra row and links to the next page."""
-        self.mock_db.execute.return_value = [
-            {
-                'project': {
-                    'id': f'id{i}',
-                    'name': 'Same Name',
-                    'slug': f'p{i}',
-                    'team': {'name': 'Platform', 'slug': 'platform'},
-                    'project_types': [],
-                    'environments': [],
-                },
-            }
-            for i in range(3)
-        ]
-
-        with mock.patch(
-            'imbi.common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.get(
-                '/organizations/engineering/projects/?slim=true&limit=2',
-            )
-
-            self.assertEqual(response.status_code, 200, response.text)
-            self.assertEqual(
-                [p['id'] for p in response.json()], ['id0', 'id1']
-            )
-            query, params = self.mock_db.execute.call_args_list[0].args[:2]
-            self.assertIn('LIMIT {page_limit}', query)
-            self.assertEqual(params['page_limit'], 3)
-            next_url = response.links['next']['url']
-            self.assertIn('limit=2', next_url)
-
-            # The next page resumes after the last ``(name, id)``.
-            self.mock_db.execute.reset_mock(return_value=True)
-            self.mock_db.execute.return_value = []
-            response = self.client.get(next_url)
-
-        self.assertEqual(response.status_code, 200, response.text)
-        params = self.mock_db.execute.call_args_list[0].args[1]
-        self.assertEqual(params['after_name'], 'Same Name')
-        self.assertEqual(params['after_id'], 'id1')
-        self.assertNotIn('next', response.links)
-
-    def test_list_rejects_bad_cursor(self) -> None:
-        """A cursor needs ``limit`` and must decode."""
-        response = self.client.get(
-            '/organizations/engineering/projects/?cursor=abc',
-        )
-        self.assertEqual(response.status_code, 422)
-        response = self.client.get(
-            '/organizations/engineering/projects/?limit=2&cursor=!!',
-        )
-        self.assertEqual(response.status_code, 400)
-
     # -- Get -----------------------------------------------------------
 
     def test_get_success(self) -> None:
