@@ -949,6 +949,27 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertIn('Dependency changes (from SBOMs):', prompt)
         self.assertIn('~ pkg:pypi/httpx 0.27.0 → 0.28.1', prompt)
 
+    def test_draft_release_notes_survives_sbom_lookup_failure(self) -> None:
+        """A failed SBOM lookup drafts without dependency changes."""
+        release_id_for = mock.AsyncMock(side_effect=RuntimeError('boom'))
+        with (
+            mock.patch(f'{_MODULE}._release_id_for', new=release_id_for),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        call = self.mock_anthropic.complete_json.call_args
+        prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
+        self.assertNotIn('Dependency changes', prompt)
+
     def test_draft_release_notes_omits_sbom_changes_without_head_sbom(
         self,
     ) -> None:
@@ -2431,6 +2452,11 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
             {'purl_name': 'pkg:pypi/gone', 'version': '2.0.0'},
             {'purl_name': 'pkg:npm/react-is', 'version': '17.0.2'},
             {'purl_name': 'pkg:npm/react-is', 'version': '18.2.0'},
+            {
+                'purl_name': 'pkg:pypi/promoted',
+                'version': '1.0.0',
+                'groups': ['dev'],
+            },
         ]
         head = [
             {'purl_name': 'pkg:pypi/same', 'version': '1.0.0'},
@@ -2440,15 +2466,25 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
                 'version': '0.1.0',
                 'groups': ['dev'],
             },
+            {
+                'purl_name': 'pkg:npm/a-tool',
+                'version': '3.0.0',
+                'groups': ['dev'],
+            },
             {'purl_name': 'pkg:npm/react-is', 'version': '18.2.0'},
+            {'purl_name': 'pkg:pypi/promoted', 'version': '1.0.0'},
         ]
         self.assertEqual(
             _component_changes(base, head),
             [
+                # Required changes first, so the prompt cap keeps them.
                 '~ pkg:npm/react-is 17.0.2, 18.2.0 → 18.2.0',
                 '~ pkg:pypi/bumped 1.0.0 → 2.0.0',
                 '- pkg:pypi/gone 2.0.0',
-                '+ pkg:pypi/new [dev] 0.1.0',
+                # Same version, moved from dev to required.
+                '~ pkg:pypi/promoted 1.0.0 [dev] → 1.0.0',
+                '+ pkg:npm/a-tool 3.0.0 [dev]',
+                '+ pkg:pypi/new 0.1.0 [dev]',
             ],
         )
 

@@ -5548,36 +5548,42 @@ def _component_changes(
     """The components that differ between two releases' SBOMs.
 
     One line per changed ``purl_name``: ``+`` added, ``-`` removed, ``~``
-    version changed.  A component can ship more than one version in one
-    release (``react-is@17`` and ``@18``), so versions compare as sets.
-    Groups (dev, test, ...) are appended in brackets so the model can
-    tell required dependencies from the rest.
+    versions or groups changed.  A component can ship more than one
+    version in one release (``react-is@17`` and ``@18``), so versions
+    compare as sets.  Each side carries its own release's groups (dev,
+    test, ...) in brackets, so a move from ``dev`` to required shows.
+    Required (ungrouped) changes come first, so the prompt cap drops
+    grouped ones before them.
     """
-    versions: tuple[dict[str, set[str]], dict[str, set[str]]] = ({}, {})
-    groups: dict[str, set[str]] = {}
+    usage: tuple[dict[str, tuple[set[str], set[str]]], ...] = ({}, {})
     for index, rows in enumerate((base_rows, head_rows)):
         for row in rows:
-            name = str(row['purl_name'])
-            versions[index].setdefault(name, set()).add(str(row['version']))
-            groups.setdefault(name, set()).update(row.get('groups') or ())
-    base, head = versions
-    lines: list[str] = []
-    for name in sorted(base.keys() | head.keys()):
+            versions, groups = usage[index].setdefault(
+                str(row['purl_name']), (set(), set())
+            )
+            versions.add(str(row['version']))
+            groups.update(row.get('groups') or ())
+    base, head = usage
+
+    def side(entry: tuple[set[str], set[str]]) -> str:
+        versions, groups = entry
+        text = ', '.join(sorted(versions))
+        return f'{text} [{", ".join(sorted(groups))}]' if groups else text
+
+    changes: list[tuple[bool, str, str]] = []
+    for name in base.keys() | head.keys():
         old, new = base.get(name), head.get(name)
         if old == new:
             continue
-        label = name
-        if groups[name]:
-            label += f' [{", ".join(sorted(groups[name]))}]'
-        was = ', '.join(sorted(old or ()))
-        now = ', '.join(sorted(new or ()))
-        if not old:
-            lines.append(f'+ {label} {now}')
-        elif not new:
-            lines.append(f'- {label} {was}')
-        else:
-            lines.append(f'~ {label} {was} → {now}')
-    return lines
+        if old is not None and new is not None:
+            changes.append(
+                (bool(new[1]), name, f'~ {name} {side(old)} → {side(new)}')
+            )
+        elif new is not None:
+            changes.append((bool(new[1]), name, f'+ {name} {side(new)}'))
+        elif old is not None:
+            changes.append((bool(old[1]), name, f'- {name} {side(old)}'))
+    return [line for _, _, line in sorted(changes)]
 
 
 async def _dependency_changes(
@@ -5592,25 +5598,30 @@ async def _dependency_changes(
     branch build posted against the untagged release for that commit
     (``ingest_sbom`` with a SHA-derived ``version_expression``).
     ``None`` when either side has no SBOM, which the prompt reports as
-    unknown rather than as "no changes".
+    unknown rather than as "no changes".  A failed lookup is also
+    ``None``: the draft goes ahead without dependency data.
     """
     if not last_tag:
         return None
-    base_id = await _release_id_for(
-        db, project_id=project_id, committish='', tag=last_tag
-    )
-    head_id = await _release_id_for(
-        db,
-        project_id=project_id,
-        committish=versioning.short_committish(head_sha),
-        tag=None,
-    )
-    if not base_id or not head_id:
+    try:
+        base_id = await _release_id_for(
+            db, project_id=project_id, committish='', tag=last_tag
+        )
+        head_id = await _release_id_for(
+            db,
+            project_id=project_id,
+            committish=versioning.short_committish(head_sha),
+            tag=None,
+        )
+        if not base_id or not head_id:
+            return None
+        base_rows, head_rows = await asyncio.gather(
+            component_facts.release_components(base_id),
+            component_facts.release_components(head_id),
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('SBOM dependency lookup failed', exc_info=True)
         return None
-    base_rows, head_rows = await asyncio.gather(
-        component_facts.release_components(base_id),
-        component_facts.release_components(head_id),
-    )
     if not base_rows or not head_rows:
         return None
     return _component_changes(base_rows, head_rows)

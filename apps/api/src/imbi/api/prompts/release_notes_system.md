@@ -116,10 +116,13 @@ Link related work inline:
 
 The request may include a "Dependency changes" list, taken from the
 software bills of materials of the previous release and of the head
-commit. Each line is one component: "+" added, "-" removed, "~" version
-changed (old → new), with its dependency groups in brackets when it has
-any. When the list is present, add one bullet under Changed that names
-the changes to required (ungrouped) dependencies:
+commit. Each line is one component: "+" added, "-" removed, "~" changed
+(old → new). Each side lists the versions, then the dependency groups in
+brackets when it has any; a side without brackets is a required
+dependency. Required dependencies are listed first. When the list is
+present, add one bullet under Changed that names the changes to required
+(ungrouped) dependencies, including one that moved from a group to
+required:
   "Updated dependencies: foo from 1.0.0 to 2.0.0, added bar 1.2.0, ..."
 Leave out dev, test, and other grouped dependencies unless a commit
 calls them out. "Dependency changes (from SBOMs): none" means the
