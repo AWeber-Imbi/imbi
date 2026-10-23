@@ -187,6 +187,8 @@ class Runner:
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
+        if self.settings.egress_enforced and not await self.fresh_pod():
+            return
         if self.settings.egress_canary and self.settings.egress_enforced:
             # Before the first claim: no chain on an unenforced pod.
             await egress.self_test(self.settings.egress_canary)
@@ -279,6 +281,33 @@ class Runner:
             await self.api.finish(self.runner_id, self.runner_token)
         finally:
             heartbeat.cancel()
+
+    async def fresh_pod(self) -> bool:
+        """Whether the pod has no egress labels of an earlier chain.
+
+        A runner container that crashed restarts in the same pod, and
+        the labels of its old chain stay on the pod. A new chain must
+        not get that access, so the runner claims nothing: in a
+        Deployment it deletes the pod, and the ReplicaSet starts a
+        clean one.
+
+        Raises:
+            SystemExit: The labels cannot be read (fail closed).
+
+        """
+        labels = await kube.own_pod_labels()
+        if labels is None:
+            raise SystemExit('Cannot read the egress labels of the pod')
+        held = sorted(k for k in labels if k.startswith(egress.LABEL_PREFIX))
+        if not held:
+            return True
+        LOGGER.error(
+            'The pod has egress labels of an earlier chain: %s',
+            ', '.join(held),
+        )
+        if self.settings.end_of_chain == 'delete_pod':
+            await kube.delete_own_pod()
+        return False
 
     async def label_pod(self, claim: Body) -> None:
         """Label the pod with the egress destinations of the chain

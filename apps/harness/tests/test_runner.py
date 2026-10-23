@@ -604,6 +604,11 @@ class EgressTestCase(unittest.IsolatedAsyncioTestCase):
         subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
         with (
             mock.patch.object(
+                runner.kube,
+                'own_pod_labels',
+                mock.AsyncMock(return_value={'app': 'imbi-harness'}),
+            ),
+            mock.patch.object(
                 runner.egress,
                 'self_test',
                 mock.AsyncMock(side_effect=SystemExit('not enforced')),
@@ -612,4 +617,47 @@ class EgressTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await subject.serve()
         self_test.assert_awaited_once_with(('10.0.0.9', 5432))
+        subject.cycle.assert_not_awaited()
+
+    async def test_stale_labels_end_the_pod(self) -> None:
+        """A restarted runner container in a pod that ran a chain
+        claims nothing; the pod deletes itself."""
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        subject.cycle = mock.AsyncMock()  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(
+                runner.kube,
+                'own_pod_labels',
+                mock.AsyncMock(
+                    return_value={'egress.imbi.aweber.com/db': 'g2'}
+                ),
+            ),
+            mock.patch.object(
+                runner.kube, 'delete_own_pod', mock.AsyncMock()
+            ) as delete,
+            mock.patch.object(runner.egress, 'self_test', mock.AsyncMock()),
+            self.assertLogs('imbi.harness.runner', 'ERROR'),
+        ):
+            await subject.serve()
+        delete.assert_awaited_once_with()
+        subject.cycle.assert_not_awaited()
+
+    async def test_unreadable_labels_fail_closed(self) -> None:
+        subject = make_runner(
+            egress_enforced=True, egress_canary=('10.0.0.9', 5432)
+        )
+        subject.cycle = mock.AsyncMock()  # type: ignore[method-assign]
+        subject.remove_old_workspaces = mock.Mock()  # type: ignore[method-assign]
+        with (
+            mock.patch.object(
+                runner.kube,
+                'own_pod_labels',
+                mock.AsyncMock(return_value=None),
+            ),
+            self.assertRaises(SystemExit),
+        ):
+            await subject.serve()
         subject.cycle.assert_not_awaited()

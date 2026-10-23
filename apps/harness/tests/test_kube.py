@@ -85,3 +85,20 @@ class DeleteOwnPodTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock.patch(POD).respond(403)
         with self.assertLogs('imbi.harness.kube', 'ERROR'):
             self.assertFalse(await kube.label_own_pod({'a': 'b'}))
+
+    async def test_reads_labels_with_an_empty_merge_patch(self) -> None:
+        route = self.mock.patch(POD).respond(
+            200,
+            json={'metadata': {'labels': {'egress.imbi.aweber.com/db': 'g2'}}},
+        )
+        self.assertEqual(
+            await kube.own_pod_labels(), {'egress.imbi.aweber.com/db': 'g2'}
+        )
+        self.assertEqual(
+            route.calls.last.request.content, b'{"metadata": {"labels": {}}}'
+        )
+
+    async def test_unreadable_labels(self) -> None:
+        self.mock.patch(POD).respond(200, json=[])
+        with self.assertLogs('imbi.harness.kube', 'ERROR'):
+            self.assertIsNone(await kube.own_pod_labels())
