@@ -6,10 +6,8 @@ import { useQuery } from '@tanstack/react-query'
 
 import { listCurrentReleases, listRecentCommits } from '@/api/endpoints'
 import { getReleaseHistory } from '@/api/releases'
-import type {
-  DeploymentRunStarted,
-  ReleaseBuildStarted,
-} from '@/components/deploy/DeploymentModal'
+import type { DeploymentRunStarted } from '@/components/deploy/DeploymentRunWatcher'
+import type { ReleaseBuildStarted } from '@/components/deploy/ReleaseBuildWatcher'
 import { Sk, SkText } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'

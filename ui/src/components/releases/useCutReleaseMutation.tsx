@@ -3,9 +3,9 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import { cutRelease } from '@/api/releases'
-import type { ReleaseBuildStarted } from '@/components/deploy/DeploymentModal'
 import { dispatchFailureDetail } from '@/components/deploy/DispatchFailureNotice'
 import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
+import type { ReleaseBuildStarted } from '@/components/deploy/ReleaseBuildWatcher'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { CutReleaseRequest } from '@/types'
 

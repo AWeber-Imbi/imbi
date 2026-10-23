@@ -68,9 +68,6 @@ These primitives don't exist in `src/components/ui/`. Add them first; several Ph
 ### 1.2 `alert.tsx` (H)
 - Info/warning banners reinvented in:
   - `src/components/admin/AuthProvidersManagement.tsx:217,250`
-  - `src/components/deploy/DeployTab.tsx:262,572`
-  - `src/components/deploy/PromoteTab.tsx:263-269`
-  - `src/components/deploy/DeploymentModal.tsx:147`
 - **Fix:** add `Alert` with `variant="info" | "warning" | "danger" | "success"`; migrate.
 
 ### 1.3 `useClipboard()` hook (H)
@@ -229,7 +226,6 @@ Each item here is invisible to users but eliminates re-render storms.
 - Clear cases:
   - `src/components/ProjectDetail.tsx:1263` (meta-info panel)
   - `src/components/settings/SettingsApiKeys.tsx:104`
-  - `src/components/deploy/DeployTab.tsx:262,572` info paragraphs
 
 ---
 

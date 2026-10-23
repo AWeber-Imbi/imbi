@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { getPromoteStatus, type PromoteStatus } from '@/api/endpoints'
 import { sanitizeHttpUrl } from '@/lib/utils'
 
-import type { ReleaseBuildStarted } from './DeploymentModal'
+import type { ReleaseBuildStarted } from './ReleaseBuildWatcher'
 
 /** Statuses that mean a promote is still running and worth watching. */
 const IN_FLIGHT: ReadonlySet<PromoteStatus['status']> = new Set([

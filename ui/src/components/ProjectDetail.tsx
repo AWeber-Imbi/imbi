@@ -45,14 +45,14 @@ import {
 import { getReleaseDrift } from '@/api/releases'
 import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
-import { useDeployRunBanners } from '@/components/deploy/deployInFlight'
 import {
   type DeploymentRunStarted,
+  DeploymentRunWatcher,
+} from '@/components/deploy/DeploymentRunWatcher'
+import {
   type ReleaseBuildStarted,
-  ReleaseModal,
-} from '@/components/deploy/DeploymentModal'
-import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
-import { ReleaseBuildWatcher } from '@/components/deploy/ReleaseBuildWatcher'
+  ReleaseBuildWatcher,
+} from '@/components/deploy/ReleaseBuildWatcher'
 import { useAdoptInFlightPromote } from '@/components/deploy/useAdoptInFlightPromote'
 import { DeploymentsTab } from '@/components/deployments/DeploymentsTab'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
@@ -107,7 +107,6 @@ import {
   rangeNeedsAction,
   releaseRangeClean,
 } from '@/lib/deployment-drift'
-import { upstreamBySlug } from '@/lib/environment-chains'
 import { formatDateTime } from '@/lib/formatDate'
 import { projectRepoUrl } from '@/lib/github-refs'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
@@ -150,8 +149,13 @@ const VALID_TAB_SET: Set<string> = new Set(VALID_TABS)
 
 // Release-only and deployable projects share the ``deployments`` slug; the
 // project type decides whether it shows the Releases or Deployments pane.
-// ``releases`` was the release-only slug before that, so old links redirect.
-const TAB_ALIASES: Record<string, TabType> = { releases: 'deployments' }
+// ``releases`` was the release-only slug before that, and ``deploy/<env>``
+// and ``promote/<env>`` opened a since-removed modal, so old links redirect.
+const TAB_ALIASES: Record<string, TabType> = {
+  deploy: 'deployments',
+  promote: 'deployments',
+  releases: 'deployments',
+}
 
 // fallow-ignore-next-line complexity
 export function ProjectDetail({
@@ -281,15 +285,7 @@ export function ProjectDetail({
     return out
   }, [currentReleases])
 
-  // Redirect to clean URL when the tab slug or sub-id is invalid.
-  // ``deploy`` and ``promote`` are not page tabs — they are URL-driven
-  // modal triggers (``/projects/<id>/deploy/<env>``) — so they bypass
-  // the page-tab redirect, but they must carry a *known* env in
-  // ``subId`` to be meaningful, ``promote`` requires a previous env in
-  // the pipeline, *and* ``promote`` requires the upstream env to have a
-  // deployed version (otherwise ``fromCommittish`` would be undefined
-  // and the promote flow can't succeed).
-  // fallow-ignore-next-line complexity
+  // Redirect to clean URL when the tab slug is invalid.
   useEffect(() => {
     if (initialTab && initialTab in TAB_ALIASES) {
       navigate(
@@ -301,59 +297,10 @@ export function ProjectDetail({
       )
       return
     }
-    const isModalTab = initialTab === 'deploy' || initialTab === 'promote'
-    if (initialTab && !VALID_TAB_SET.has(initialTab) && !isModalTab) {
+    if (initialTab && !VALID_TAB_SET.has(initialTab)) {
       navigate(`/projects/${project.id}`, { replace: true })
-      return
     }
-    if (isModalTab) {
-      if (!initialSubId) {
-        navigate(`/projects/${project.id}`, { replace: true })
-        return
-      }
-      // Wait for environments to load before validating; an empty list
-      // here just means the project hasn't finished resolving.
-      if (sortedEnvironments.length === 0) return
-      const idx = sortedEnvironments.findIndex((e) => e.slug === initialSubId)
-      if (idx < 0) {
-        navigate(`/projects/${project.id}`, { replace: true })
-        return
-      }
-      if (initialTab === 'promote') {
-        const targetEnv = sortedEnvironments[idx]
-        // Upstream within the target's own pipeline — a pipeline's
-        // entry env (none) has nothing to promote from (#285).
-        const upstream =
-          upstreamBySlug(sortedEnvironments).get(initialSubId) ?? null
-        if (!upstream || !(targetEnv?.can_promote ?? false)) {
-          navigate(`/projects/${project.id}`, { replace: true })
-          return
-        }
-        const fromSlug = upstream.slug
-        const fromCommittish = fromSlug
-          ? deploymentStatus[fromSlug]?.committish
-          : undefined
-        // Wait for the releases query (drives ``deploymentStatus``) to
-        // settle before deciding the upstream is empty. Use the
-        // query's pending flag, not array length — a project with
-        // genuinely zero releases would otherwise stay stuck here
-        // without redirecting.
-        if (releasesPending) return
-        if (!fromCommittish) {
-          navigate(`/projects/${project.id}`, { replace: true })
-        }
-      }
-    }
-  }, [
-    deploymentStatus,
-    initialSubId,
-    initialTab,
-    navigate,
-    project.id,
-    releasesPending,
-    search,
-    sortedEnvironments,
-  ])
+  }, [initialTab, navigate, project.id, search])
 
   const { data: linkDefs = [], isPending: linkDefsPending } = useQuery({
     enabled: !!orgSlug,
@@ -427,41 +374,18 @@ export function ProjectDetail({
   // even when the 30d baseline equals the current live score.
   const sessionBaseScore = useRef<null | number>(project.score ?? null)
 
-  // Modal state is derived from the URL: ``/projects/<id>/deploy/<env>``
-  // and ``/projects/<id>/promote/<env>``. Closing a modal navigates
-  // back to ``/projects/<id>`` so the URL is the single source of truth
-  // and a deploy/promote view is deep-linkable.
-  const isDeployModal = initialTab === 'deploy' && !!initialSubId
-  const isPromoteModal = initialTab === 'promote' && !!initialSubId
-  const closeModal = useCallback(
-    () => navigate(`/projects/${project.id}`, { replace: true }),
-    [navigate, project.id],
-  )
   // Active deployment runs (one watcher per entry).  Pushed by the
-  // DeployTab/PromoteTab onRunStarted callback; the watcher itself
+  // Deployments tab's onRunStarted callback; the watcher itself
   // calls back to remove its entry once the run reaches a terminal
   // state.  Refreshes the release-train view too so the freshly
   // recorded ``DeploymentEvent.status`` flips out of ``in_progress``.
   const [activeRuns, setActiveRuns] = useState<DeploymentRunStarted[]>([])
   const queryClient = useQueryClient()
-  // Direct deploys carry no toast id: their progress shows in the
-  // in-flight banner instead, fed by the run watchers' onStatus. Scoped
-  // to the project being viewed — this component survives cross-project
-  // navigation, and project A's deploy must not banner on project B.
-  const {
-    banners: deployRunBanners,
-    onStatus: onDeployRunStatus,
-    start: startDeployBanner,
-  } = useDeployRunBanners(project.id)
-  const handleRunStarted = useCallback(
-    (run: DeploymentRunStarted) => {
-      if (run.toastId === undefined) startDeployBanner(run)
-      setActiveRuns((prev) =>
-        prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
-      )
-    },
-    [startDeployBanner],
-  )
+  const handleRunStarted = useCallback((run: DeploymentRunStarted) => {
+    setActiveRuns((prev) =>
+      prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
+    )
+  }, [])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -566,10 +490,10 @@ export function ProjectDetail({
   // re-enabled seconds after a cut -- over the same drift and the same
   // suggested tag -- and a second click cut the tag twice.
   //
-  // Passed down rather than published through context: the two forms that
-  // read it are one hop away (ReleasesTab and ReleaseModal both already
-  // take their props from here), and the deployments cards take it folded
-  // into the `canTrigger` they already have.
+  // Passed down rather than published through context: the release form
+  // that reads it is one hop away (ReleasesTab already takes its props
+  // from here), and the deployments cards take it folded into the
+  // `canTrigger` they already have.
   const releaseInFlight = useReleaseInFlightState({
     enabled: !!orgSlug && !!project.id,
     envName: envNameForSlug,
@@ -1238,18 +1162,6 @@ export function ProjectDetail({
           </div>
         )}
 
-        {deployRunBanners.map(({ runId, state }) => (
-          <div className="mb-6" key={runId}>
-            <ReleaseInFlightBanner
-              kind="deploy"
-              onRedeploy={() => handleTabChange('deployments')}
-              onUnblock={unblock}
-              state={state}
-              unblockPending={unblockPending}
-            />
-          </div>
-        ))}
-
         <TabsContent className="space-y-6" value="overview">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
             {/* Left column: Details */}
@@ -1573,54 +1485,6 @@ export function ProjectDetail({
           <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
-      {
-        // fallow-ignore-next-line complexity
-        (() => {
-          if (!isDeployModal && !isPromoteModal) return null
-          if (!initialSubId) return null
-          const targetIdx = sortedEnvironments.findIndex(
-            (e) => e.slug === initialSubId,
-          )
-          if (targetIdx < 0) return null
-          const targetEnv = sortedEnvironments[targetIdx]
-          const canDeploy = targetEnv?.can_deploy ?? true
-          const canPromote = targetEnv?.can_promote ?? false
-          // Promote needs an upstream env with a deployed version. When the
-          // user lands on /promote/<env> we already short-circuit in the
-          // redirect effect above if that's missing — but the modal can
-          // still open for /deploy/<env> on an env that *also* supports
-          // promote, so we resolve the source here when possible and just
-          // omit the Promote tab when prerequisites are unmet.
-          const fromSlug =
-            upstreamBySlug(sortedEnvironments).get(initialSubId)?.slug
-          const fromCommittish = fromSlug
-            ? deploymentStatus[fromSlug]?.committish
-            : undefined
-          const promoteAvailable = canPromote && !!fromSlug && !!fromCommittish
-          if (!canDeploy && !promoteAvailable) return null
-          return (
-            <ReleaseModal
-              canDeploy={canDeploy}
-              canPromote={promoteAvailable}
-              environments={sortedEnvironments}
-              fromCommittish={fromCommittish}
-              fromEnvironment={fromSlug}
-              initialAction={isPromoteModal ? 'promote' : 'deploy'}
-              initialEnvSlug={initialSubId}
-              onBuildStarted={handleBuildStarted}
-              onOpenChange={(open) => {
-                if (!open) closeModal()
-              }}
-              onRunStarted={handleRunStarted}
-              open={isDeployModal || isPromoteModal}
-              orgSlug={orgSlug}
-              projectId={project.id}
-              projectName={project.name}
-              releaseInFlight={releaseInFlight}
-            />
-          )
-        })()
-      }
       {activeRuns.map((run) => (
         // Bind each watcher to the org/project that triggered the run
         // so polling stays correct if the user navigates to another
@@ -1631,7 +1495,6 @@ export function ProjectDetail({
           envName={run.envName}
           initialStatus={run.initialStatus}
           key={run.runId}
-          onStatus={run.toastId === undefined ? onDeployRunStatus : undefined}
           onTerminal={handleRunTerminal}
           orgSlug={run.originOrgSlug}
           projectId={run.originProjectId}

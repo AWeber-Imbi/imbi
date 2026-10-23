@@ -7,6 +7,7 @@ import {
   IntegrationSyncStatus,
   type Readiness,
 } from '@/components/deploy/IntegrationSyncStatus'
+import type { ReleaseBuildStarted } from '@/components/deploy/ReleaseBuildWatcher'
 import { useDeploymentSync } from '@/components/deployments/useDeploymentSync'
 import { Sk, SkText, Swap } from '@/components/ui/skeleton'
 import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
@@ -21,9 +22,7 @@ import { ReleaseReadyCard } from './ReleaseReadyCard'
 
 interface ReleasesTabProps {
   connectLabel: string
-  onBuildStarted?: (
-    build: import('@/components/deploy/DeploymentModal').ReleaseBuildStarted,
-  ) => void
+  onBuildStarted?: (build: ReleaseBuildStarted) => void
   orgSlug: string
   project: Pick<Project, 'id' | 'links' | 'name'>
   readiness: Readiness

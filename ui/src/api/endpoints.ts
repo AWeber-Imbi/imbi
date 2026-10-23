@@ -85,10 +85,8 @@ import type {
   CurrentReleaseEnvironment,
   DashboardMetrics,
   DashboardStatus,
-  DeploymentCommit,
   DeploymentCompareResult,
   DeploymentPromoteRequest,
-  DeploymentRef,
   DeploymentRun,
   DeploymentTriggerRequest,
   DeploymentTriggerResponse,
@@ -2611,48 +2609,6 @@ export const listReleaseDependencies = (
 // Deployments
 const deploymentsBase = (orgSlug: string, projectId: string): string =>
   `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/deployments`
-
-export const listDeploymentRefs = async (
-  orgSlug: string,
-  projectId: string,
-  params: {
-    kind?: 'all' | 'branch' | 'default' | 'tag'
-    q?: string
-    source?: string
-  } = {},
-  signal?: AbortSignal,
-): Promise<DeploymentRef[]> => {
-  const search = new URLSearchParams()
-  if (params.kind) search.set('kind', params.kind)
-  if (params.q) search.set('q', params.q)
-  if (params.source) search.set('source', params.source)
-  const query = search.toString()
-  const response = await apiClient.get<DeploymentRef[]>(
-    `${deploymentsBase(orgSlug, projectId)}/refs${query ? `?${query}` : ''}`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
-export const listRefCommits = async (
-  orgSlug: string,
-  projectId: string,
-  ref: string,
-  params: { limit?: number; source?: string } = {},
-  signal?: AbortSignal,
-): Promise<DeploymentCommit[]> => {
-  const search = new URLSearchParams()
-  if (params.limit != null) search.set('limit', String(params.limit))
-  if (params.source) search.set('source', params.source)
-  const query = search.toString()
-  const response = await apiClient.get<DeploymentCommit[]>(
-    `${deploymentsBase(orgSlug, projectId)}/refs/${encodeURIComponent(ref)}/commits${query ? `?${query}` : ''}`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
 
 // Synced commit history from ClickHouse (newest first) — the Deployments
 // tab reads this instead of the live source host so it reflects imbi's
