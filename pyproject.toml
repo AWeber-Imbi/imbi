@@ -745,6 +745,8 @@ exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
 apache-iggy = false
+# CA bundle updates are security fixes: take them without the 7-day wait.
+certifi = false
 clickhouse-connect = false
 
 [tool.uv.workspace]

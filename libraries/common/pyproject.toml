@@ -19,6 +19,9 @@ classifiers = [
 ]
 dependencies = [
   "argon2-cffi>=23.1",
+  # httpx verifies TLS against certifi's bundle. 2026.10.23 drops the
+  # eMudhra roots after the 2026-10-19 intermediate key compromise.
+  "certifi>=2026.10.23",
   "cryptography>=42.0.4",
   "httpx>=0.28.1,<1",
   "jinja2~=3.1",
