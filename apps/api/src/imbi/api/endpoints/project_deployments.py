@@ -5464,7 +5464,10 @@ def _suggest_version(
     ):
         candidates.append(versioning.next_calver_tag(last_tag, today))
     if last_tag and versioning.is_semver_tag(last_tag):
-        candidates.append(_bump_semver(last_tag, bump))
+        bumped = _bump_semver(last_tag, bump)
+        # The other prefix too, before the first-release defaults: a
+        # policy for bare tags after a ``v`` tag must not fall to 0.1.0.
+        candidates.extend([bumped, bumped.removeprefix('v'), f'v{bumped}'])
     candidates.extend(
         ['v0.1.0', '0.1.0', versioning.next_calver_tag(None, today)]
     )
@@ -5499,7 +5502,8 @@ def _version_matches_bump(
 
     Only a semver previous tag is checked: a calendar version's bump
     does not change the date, and with no previous tag there is nothing
-    to bump from.
+    to bump from.  The ``v`` prefix is not compared: the tag policy
+    decides it, and ``_version_allowed`` checks that.
     """
     if (
         not last_tag
@@ -5507,7 +5511,9 @@ def _version_matches_bump(
         or not versioning.is_semver_tag(last_tag)
     ):
         return True
-    return version == _bump_semver(last_tag, bump)
+    return version.removeprefix('v') == _bump_semver(
+        last_tag, bump
+    ).removeprefix('v')
 
 
 def _is_pre_one(tag: str | None) -> bool:
@@ -5850,6 +5856,9 @@ async def draft_release_notes(
         cache_system_prompt=True,
     )
     notes = completion.data
+    # Below 1.0.0 a breaking change is a minor bump; label it as one.
+    if notes.bump == 'major' and _is_pre_one(body.last_tag):
+        notes = notes.model_copy(update={'bump': 'minor'})
     # Re-derive the version when Claude's does not fit the tag policy, or
     # is not the previous semver tag bumped by Claude's own bump.
     if not _version_allowed(

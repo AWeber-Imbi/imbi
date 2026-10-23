@@ -792,6 +792,35 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['version'], 'v2.0.0')
 
+    def test_draft_release_notes_labels_a_0x_breaking_bump_minor(
+        self,
+    ) -> None:
+        """Below 1.0.0 a model's major bump is reported as minor."""
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='major',
+                    version='v0.5.0',
+                    reasoning='abc1234 removes an endpoint',
+                    notes_markdown='## Breaking',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v0.4.2',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['bump'], 'minor')
+        self.assertEqual(response.json()['version'], 'v0.5.0')
+
     def test_draft_release_notes_keeps_a_calver_version(self) -> None:
         """A version that fits the tag policy is not re-bumped to semver."""
         self.mocks['_resolve_tag_formats'].return_value = [
@@ -2626,8 +2655,9 @@ class FallbackNotesTestCase(unittest.TestCase):
 
         self.assertTrue(_version_matches_bump('v1.2.3', 'v2.0.0', 'major'))
         self.assertFalse(_version_matches_bump('v1.2.3', 'v1.3.0', 'major'))
-        # The prefix is part of the match: the prompt keeps the tag's.
-        self.assertFalse(_version_matches_bump('v1.2.3', '1.3.0', 'minor'))
+        # The prefix is the tag policy's business, not the bump's.
+        self.assertTrue(_version_matches_bump('v1.2.3', '1.3.0', 'minor'))
+        self.assertFalse(_version_matches_bump('v1.2.3', '1.3.1', 'minor'))
         # Nothing to check against: no tag, or a calendar version.
         self.assertTrue(_version_matches_bump(None, 'v0.1.0', 'major'))
         self.assertTrue(
@@ -5104,6 +5134,12 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
         # A policy no known scheme satisfies: nothing to suggest.
         self.assertEqual('', suggest('v1.2.3', 'patch', [r'^REL-\d+$']))
+        # A bare-tag policy after a ``v`` tag keeps the bump, never 0.1.0.
+        bare = [r'^\d+\.\d+\.\d+$']
+        self.assertEqual('1.3.0', suggest('v1.2.3', 'minor', bare))
+        self.assertEqual(
+            'v1.3.0', suggest('1.2.3', 'minor', [r'^v\d+\.\d+\.\d+$'])
+        )
 
     def test_release_drift_no_tag_suggests_a_date_under_calver(self) -> None:
         self.mocks['_resolve_tag_formats'].return_value = [
