@@ -2291,21 +2291,21 @@ async def list_egress_destinations(
         422: ``organization`` is missing.
 
     """
-    if not auth.is_admin:
-        if 'agent:read' not in auth.permissions:
-            raise fastapi.HTTPException(
-                status_code=403,
-                detail='Permission denied: agent:read required',
-            )
-        if organization is None:
-            raise _unprocessable('organization is required')
+    if not auth.is_admin and organization is None:
+        raise _unprocessable('organization is required')
     rows = await store.egress_destinations()
     if organization is not None:
         if auth.is_admin:
             org_ids = await _org_ids(db, [organization])
             org_id = org_ids[0]
         else:
+            # check_member narrows auth.permissions to the organization.
             org_id = await organizations.check_member(organization, db, auth)
+            if 'agent:read' not in auth.permissions:
+                raise fastapi.HTTPException(
+                    status_code=403,
+                    detail='Permission denied: agent:read required',
+                )
         rows = [
             row
             for row in rows
