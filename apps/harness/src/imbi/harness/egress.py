@@ -177,18 +177,24 @@ class Plan:
     delete: list[str]
     #: ``{slug, generation}`` of each live destination with a policy.
     applied: list[Body]
+    #: The names of the superseded policies that no pod holds.
+    unheld: list[str] = dataclasses.field(default_factory=list)
 
 
 def plan(
     destinations: abc.Iterable[Body],
     policies: abc.Iterable[Body],
     held: abc.Set[tuple[str, str]],
+    unheld_before: abc.Set[str] = frozenset(),
 ) -> Plan:
     """What one sync round does (PRD 5.6).
 
     ``policies`` are the cluster's policies; only those with the
     managed-by label are changed. ``held`` is each ``(label, value)``
     that a running pod has: its policy stays until the pod ends.
+    ``unheld_before`` is ``Plan.unheld`` of the previous round. A
+    policy is deleted only when it is unheld in two rounds in a row,
+    because a runner gets its claim before it labels its pod.
     """
     managed = {
         str(p['metadata']['name'])
@@ -209,7 +215,9 @@ def plan(
     for name in sorted(managed - wanted.keys()):
         match = POLICY_NAME.match(name)
         if match and (label(match['slug']), f'g{match["gen"]}') not in held:
-            result.delete.append(name)
+            result.unheld.append(name)
+            if name in unheld_before:
+                result.delete.append(name)
     return result
 
 
@@ -295,6 +303,7 @@ class Sync:
         self.api = api.Api(api_url)
         self.credential = credential
         self.namespace = namespace
+        self.unheld: set[str] = set()
 
     async def serve(self) -> None:
         while True:
@@ -318,7 +327,8 @@ class Sync:
                 f'/api/v1/namespaces/{self.namespace}/pods',
                 'app.kubernetes.io/name=imbi-harness',
             )
-            todo = plan(destinations, policies, held_labels(pods))
+            todo = plan(destinations, policies, held_labels(pods), self.unheld)
+            self.unheld = set(todo.unheld)
             for destination in todo.create:
                 body = policy(destination, self.namespace)
                 response = await client.post(POLICIES, json=body)

@@ -57,9 +57,27 @@ class PlanTestCase(unittest.TestCase):
         held = {('egress.imbi.aweber.com/db', 'g1')}
         result = egress.plan([destination()], policies, held)
         self.assertEqual(result.delete, [])
-        # Then the pod ends.
+        # Then the pod ends: one round of grace, then delete.
         result = egress.plan([destination()], policies, set())
+        self.assertEqual(result.delete, [])
+        self.assertEqual(result.unheld, ['imbi-harness-dest-db-g1'])
+        result = egress.plan(
+            [destination()], policies, set(), set(result.unheld)
+        )
         self.assertEqual(result.delete, ['imbi-harness-dest-db-g1'])
+
+    def test_label_after_first_unheld_round_keeps_policy(self) -> None:
+        policies = [
+            managed('imbi-harness-dest-db-g1'),
+            managed('imbi-harness-dest-db-g2'),
+        ]
+        # The runner claimed g1 but has not labelled its pod yet.
+        first = egress.plan([destination()], policies, set())
+        held = {('egress.imbi.aweber.com/db', 'g1')}
+        result = egress.plan(
+            [destination()], policies, held, set(first.unheld)
+        )
+        self.assertEqual((result.delete, result.unheld), ([], []))
 
     def test_deleted_destination(self) -> None:
         policies = [managed('imbi-harness-dest-db-g2')]
@@ -68,7 +86,9 @@ class PlanTestCase(unittest.TestCase):
             deleted, policies, {('egress.imbi.aweber.com/db', 'g2')}
         )
         self.assertEqual((result.create, result.delete), ([], []))
-        result = egress.plan(deleted, policies, set())
+        result = egress.plan(
+            deleted, policies, set(), {'imbi-harness-dest-db-g2'}
+        )
         self.assertEqual(result.delete, ['imbi-harness-dest-db-g2'])
         self.assertEqual(result.applied, [])
 
@@ -233,6 +253,7 @@ class SyncRoundTestCase(unittest.IsolatedAsyncioTestCase):
             'http://imbi.test', ('id', 'secret'), 'imbi-runners'
         )
         sync.api = mock.AsyncMock()
+        sync.unheld = {'imbi-harness-dest-old-g1'}
         sync.api.pool_token.return_value = 'pool-token'
         sync.api.egress_destinations.return_value = [
             destination('db', 2),
