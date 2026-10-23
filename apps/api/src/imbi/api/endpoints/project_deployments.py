@@ -5492,14 +5492,44 @@ def _version_allowed(
     )
 
 
-def _classify_bump(commits: list[Commit]) -> SemverBump:
-    """Crude heuristic used as the fallback when Claude isn't available."""
+def _version_matches_bump(
+    last_tag: str | None, version: str, bump: SemverBump
+) -> bool:
+    """Whether ``version`` is ``last_tag`` bumped by ``bump``.
+
+    Only a semver previous tag is checked: a calendar version's bump
+    does not change the date, and with no previous tag there is nothing
+    to bump from.
+    """
+    if (
+        not last_tag
+        or versioning.is_calver_tag(last_tag)
+        or not versioning.is_semver_tag(last_tag)
+    ):
+        return True
+    return version == _bump_semver(last_tag, bump)
+
+
+def _is_pre_one(tag: str | None) -> bool:
+    """Whether ``tag`` is a semver ``0.x.y`` tag."""
+    match = _SEMVER_RE.match(tag or '')
+    return match is not None and int(match.group(1)) == 0
+
+
+def _classify_bump(
+    commits: list[Commit], last_tag: str | None = None
+) -> SemverBump:
+    """Crude heuristic used as the fallback when Claude isn't available.
+
+    Below 1.0.0 a breaking change is a ``minor`` bump, as the
+    release-notes prompt and semantic versioning say.
+    """
     breaking = ('breaking', '!:', 'breaking change')
     features = ('feat:', 'feature:')
     for commit in commits:
         msg = commit.message.lower()
         if any(token in msg for token in breaking):
-            return 'major'
+            return 'minor' if _is_pre_one(last_tag) else 'major'
     for commit in commits:
         msg = commit.message.lower()
         if any(msg.startswith(token) for token in features):
@@ -5791,7 +5821,7 @@ async def draft_release_notes(
         commits = await _commits_through(project_id, body.head_sha)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
-    fallback_bump = _classify_bump(commits)
+    fallback_bump = _classify_bump(commits, body.last_tag)
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
         version=_suggest_version(body.last_tag, fallback_bump, patterns),
@@ -5820,8 +5850,11 @@ async def draft_release_notes(
         cache_system_prompt=True,
     )
     notes = completion.data
-    # Re-derive the version when Claude's does not fit the tag policy.
-    if not _version_allowed(notes.version, patterns):
+    # Re-derive the version when Claude's does not fit the tag policy, or
+    # is not the previous semver tag bumped by Claude's own bump.
+    if not _version_allowed(
+        notes.version, patterns
+    ) or not _version_matches_bump(body.last_tag, notes.version, notes.bump):
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
@@ -6433,7 +6466,7 @@ async def get_release_drift(
         Commit(sha=c.sha, short_sha=c.short_sha, message=c.message)
         for c in commits
     ]
-    bump = _classify_bump(classify_input)
+    bump = _classify_bump(classify_input, latest_tag)
     return ReleaseDriftResponse(
         latest_tag=latest_tag,
         latest_tag_sha=latest_tag_sha,
