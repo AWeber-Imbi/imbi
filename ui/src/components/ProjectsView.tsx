@@ -10,7 +10,7 @@ import {
 
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight,
   ChevronDown,
@@ -31,7 +31,7 @@ import {
 } from 'lucide-react'
 import { matchSorter } from 'match-sorter'
 
-import { getProjectsSlimPage, type ProjectListItem } from '@/api/endpoints'
+import { getProjectsSlim, type ProjectListItem } from '@/api/endpoints'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -165,8 +165,6 @@ function ProjectsSkeleton({
 }
 
 const VIEW_MODE_STORAGE_KEY = 'imbi.projects.view-mode'
-const PAGE_SIZE = 50
-type ProjectsSlimPage = Awaited<ReturnType<typeof getProjectsSlimPage>>
 
 // Trails the user by ~one settle so the URL ``?q=`` write (and the
 // downstream filter+render pass) doesn't fire on every keystroke.
@@ -275,32 +273,16 @@ export function ProjectsView() {
 
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false)
 
-  // The first page paints quickly; the rest stream in behind it so
-  // the facets and counts fill in without a click.
   const {
     data: projects,
-    fetchNextPage,
-    hasNextPage,
     isFetching,
-    isFetchNextPageError,
     isLoading,
     refetch,
-  } = useInfiniteQuery({
+  } = useQuery({
     enabled: !!orgSlug,
-    getNextPageParam: (lastPage: ProjectsSlimPage) => lastPage.nextCursor,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) =>
-      getProjectsSlimPage(orgSlug, PAGE_SIZE, pageParam, signal),
-    queryKey: ['projects', orgSlug, 'slim', 'paged'],
-    select: (data) => data.pages.flatMap((page) => page.projects),
+    queryFn: ({ signal }) => getProjectsSlim(orgSlug, signal),
+    queryKey: ['projects', orgSlug, 'slim'],
   })
-
-  // isFetching also covers a background refetch, which fetchNextPage
-  // would cancel. After a page error, stop: a retry is a user action.
-  useEffect(() => {
-    if (hasNextPage && !isFetching && !isFetchNextPageError)
-      void fetchNextPage()
-  }, [hasNextPage, isFetching, isFetchNextPageError, fetchNextPage])
 
   const teamOptions = useMemo(
     () =>

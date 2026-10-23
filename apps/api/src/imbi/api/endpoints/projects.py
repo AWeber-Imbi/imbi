@@ -29,11 +29,6 @@ from imbi.api.endpoints._json_fields import (
     deserialize_json_fields,
     serialize_json_fields,
 )
-from imbi.api.endpoints._pagination import (
-    build_link_header,
-    decode_keyset,
-    encode_keyset,
-)
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
@@ -2213,52 +2208,10 @@ def _build_attribute_filter(
     return 'WHERE ' + ' AND '.join(clauses), params
 
 
-def _build_page_filter(
-    limit: int | None, cursor: str | None
-) -> tuple[typing.LiteralString, dict[str, typing.Any]]:
-    """Build the keyset page clause over ``(name, id)``.
-
-    The page is cut before the return fragment, so the per-project
-    OPTIONAL MATCHes and the enrichment only run for the projects on
-    this page. The clause reads one extra row to tell if a next page
-    exists.
-    """
-    if limit is None:
-        if cursor is not None:
-            raise fastapi.HTTPException(
-                status_code=422, detail='cursor requires limit'
-            )
-        return '', {}
-    params: dict[str, typing.Any] = {'page_limit': limit + 1}
-    after_clause: typing.LiteralString = ''
-    if cursor is not None:
-        after = decode_keyset(cursor)
-        if after is None:
-            raise fastapi.HTTPException(
-                status_code=400, detail='Invalid cursor'
-            )
-        params['after_name'], params['after_id'] = after
-        after_clause = (
-            '    WITH p, o\n'
-            '    WHERE p.name > {after_name}\n'
-            '       OR (p.name = {after_name} AND p.id > {after_id})\n'
-        )
-    # AGE rejects ORDER BY on a ``WITH DISTINCT``, so the sort gets
-    # its own ``WITH``.
-    return (
-        '\n    WITH DISTINCT p, o\n'
-        + after_clause
-        + '    WITH p, o\n'
-        + '    ORDER BY p.name, p.id\n'
-        + '    LIMIT {page_limit}\n'
-    ), params
-
-
 @projects_router.get('/', name='list_projects')
 async def list_projects(
     org_slug: str,
     request: fastapi.Request,
-    response: fastapi.Response,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -2269,27 +2222,6 @@ async def list_projects(
     project_type: str | None = None,
     include_archived: bool = False,
     slim: bool = False,
-    limit: typing.Annotated[
-        int | None,
-        fastapi.Query(
-            ge=1,
-            le=500,
-            description=(
-                'Page size. When set, the response holds at most this '
-                'many projects and a ``Link`` header with a ``next`` '
-                'URL when more remain. Omit to return every project.'
-            ),
-        ),
-    ] = None,
-    cursor: typing.Annotated[
-        str | None,
-        fastapi.Query(
-            description=(
-                'Opaque cursor from the ``next`` link of the previous '
-                'page. Requires ``limit``.'
-            ),
-        ),
-    ] = None,
     integration_slug: typing.Annotated[
         str | None,
         fastapi.Query(
@@ -2364,11 +2296,7 @@ async def list_projects(
     DEPLOYED_IN edge properties, and the hypermedia
     ``relationships`` block. Cuts the response from megabytes to
     kilobytes for large orgs.
-
-    ``limit`` pages the result in ``(name, id)`` order. Follow the
-    ``next`` link of the ``Link`` header to get the next page.
     """
-    page_filter, page_params = _build_page_filter(limit, cursor)
     if identifier is not None and integration_slug is None:
         raise fastapi.HTTPException(
             status_code=422,
@@ -2433,10 +2361,9 @@ async def list_projects(
         + service_filter
         + type_filter
         + attr_filter
-        + page_filter
         + return_fragment
         + """
-    ORDER BY p.name, p.id
+    ORDER BY p.name
     """
     )
     columns: list[str] = (
@@ -2450,18 +2377,10 @@ async def list_projects(
             'integration_slug': integration_slug,
             'identifier': identifier,
             'project_id': project_id,
-            **page_params,
             **attr_params,
         },
         columns,
     )
-    if limit is not None:
-        next_cursor: str | None = None
-        if len(records) > limit:
-            records = records[:limit]
-            last = graph.parse_agtype(records[-1]['project'])
-            next_cursor = encode_keyset(str(last['name']), str(last['id']))
-        response.headers['Link'] = build_link_header(request, next_cursor)
     project_data_list: list[dict[str, typing.Any]] = []
     for record in records:
         project_data = graph.parse_agtype(record['project'])
