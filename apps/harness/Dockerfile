@@ -5,7 +5,9 @@ ARG PYTHON_VERSION=3.14
 
 FROM python:${PYTHON_VERSION}-slim AS builder
 
-RUN pip install --no-cache-dir uv
+# pip 26.2.2 and uv 0.13.5 drop the eMudhra root from their bundled CA
+# stores (key compromise, 2026-10-19); uv downloads every dependency.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2' 'uv>=0.13.5'
 WORKDIR /src
 # uv needs every workspace member to read the lock file.
 COPY pyproject.toml uv.lock README.md LICENSE ./
@@ -21,6 +23,19 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates gh git tini \
  && rm -rf /var/lib/apt/lists/*
+
+# The base image's pip ships in the image (and the model can run it): use
+# one whose CA bundle does not trust the eMudhra root.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2'
+
+# git and gh use the Debian store. Debian 13 still trusts the two eMudhra
+# roots that Mozilla removed after the 2026-10-19 key compromise, so
+# deselect them, as certifi and uv do. A no-op once Debian ships the
+# removal; the check fails the build if either root is still trusted.
+RUN sed -i -E 's#^(mozilla/emSign_(Root_CA_-_C1|ECC_Root_CA_-_C3)\.crt)$#!\1#' \
+      /etc/ca-certificates.conf \
+ && update-ca-certificates --fresh \
+ && ! ls /etc/ssl/certs | grep -E 'emSign_(Root_CA_-_C1|ECC_Root_CA_-_C3)'
 
 # Only runner and executor are in harness-ipc, the group of the
 # executor socket.

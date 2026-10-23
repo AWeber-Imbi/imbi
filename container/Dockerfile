@@ -23,7 +23,9 @@ FROM python:${PYTHON_VERSION}-slim AS python-builder
 
 WORKDIR /tmp/build
 
-RUN pip install uv \
+# pip 26.2.2 and uv 0.13.5 drop the eMudhra root from their bundled CA
+# stores (key compromise, 2026-10-19); uv downloads every dependency.
+RUN pip install --upgrade 'pip>=26.2.2' 'uv>=0.13.5' \
  && apt update \
  && apt install -y --no-install-recommends git curl \
  && apt install -y gcc
@@ -66,8 +68,22 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 
 # Install runtime dependencies
 RUN apt update \
- && apt install -y --no-install-recommends tini libcap2-bin \
+ && apt install -y --no-install-recommends ca-certificates tini libcap2-bin \
  && rm -rf /var/lib/apt/lists/*
+
+# The base image's pip ships in the image: use one whose CA bundle does
+# not trust the eMudhra root.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2'
+
+# ssl.create_default_context() (SMTP, settings CA paths) uses the Debian
+# store. Debian 13 still trusts the two eMudhra roots that Mozilla removed
+# after the 2026-10-19 key compromise, so deselect them, as certifi and uv
+# do. A no-op once Debian ships the removal; the check fails the build if
+# either root is still trusted.
+RUN sed -i -E 's#^(mozilla/emSign_(Root_CA_-_C1|ECC_Root_CA_-_C3)\.crt)$#!\1#' \
+      /etc/ca-certificates.conf \
+ && update-ca-certificates --fresh \
+ && ! ls /etc/ssl/certs | grep -E 'emSign_(Root_CA_-_C1|ECC_Root_CA_-_C3)'
 
 # Create imbi user
 RUN useradd -r -g users -d /app imbi
