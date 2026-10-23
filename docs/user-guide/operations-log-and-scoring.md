@@ -203,8 +203,11 @@ Imbi calculates the score again when:
 - every day at 06:00 UTC, for all projects,
 - someone asks for it.
 
-Imbi waits about 5 seconds after a change, so that many changes give one
-calculation.
+After a change, more changes to that project do not add a calculation
+for up to 5 seconds, or until the calculation starts if that is sooner.
+Thus many changes give one calculation. A change that you save after the
+calculation starts adds a new one, so the score always includes your
+last change.
 
 To ask for a new score for one project, open the **Doctor** tab and click
 **Recompute Score**. You need `scoring_policy:rescore`. The `developer` and

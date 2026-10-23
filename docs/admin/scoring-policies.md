@@ -221,8 +221,14 @@ Imbi queues a recompute of a project when:
 - the daily recompute runs. Once each day, at 06:00 UTC or later, Imbi
   queues every project.
 
-Imbi waits 5 seconds before it queues the same project again, so a burst
-of changes gives one recompute.
+When Imbi queues a recompute for a project, it does not queue that
+project again for up to 5 seconds, or until the recompute starts if that
+is sooner. Thus a burst of changes gives one recompute. If the recompute
+waits in the queue for more than 5 seconds, a new change can queue a
+second recompute. The worker reads the project when the recompute
+starts. A change that is saved after that queues a new recompute, so
+the last change in a burst is always scored. Only one recompute of a
+project runs at a time.
 
 To recompute by hand:
 
