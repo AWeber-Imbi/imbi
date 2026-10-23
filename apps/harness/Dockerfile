@@ -28,6 +28,15 @@ RUN apt-get update \
 # one whose CA bundle does not trust the eMudhra root.
 RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2'
 
+# git and gh use the Debian store. Debian 13 still trusts the two eMudhra
+# roots that Mozilla removed after the 2026-10-19 key compromise, so
+# deselect them, as certifi and uv do. A no-op once Debian ships the
+# removal; the check fails the build if either root is still trusted.
+RUN sed -i -E 's#^(mozilla/emSign_(Root_CA_-_C1|ECC_Root_CA_-_C3)\.crt)$#!\1#' \
+      /etc/ca-certificates.conf \
+ && update-ca-certificates --fresh \
+ && ! ls /etc/ssl/certs | grep -E 'emSign_(Root_CA_-_C1|ECC_Root_CA_-_C3)'
+
 # Only runner and executor are in harness-ipc, the group of the
 # executor socket.
 RUN groupadd -g 10010 harness-ipc \

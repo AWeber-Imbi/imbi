@@ -262,6 +262,9 @@ jobs:
   build-dist:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'AWeber-Imbi/imbi'
     runs-on: ubuntu-latest
+    # Reads tag data with GITHUB_TOKEN; writes nothing.
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
