@@ -357,9 +357,13 @@ unset.
 | Variable | Type | Default | Description |
 |---|---|---|---|
 | `IMBI_API_URL` | str | none | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
-| `POD_NAME` | str | none | Pod name, from the Kubernetes downward API |
 | `POD_NAMESPACE` | str | none | Pod namespace, from the Kubernetes downward API |
+| `IMBI_HARNESS_CLIENT_ID` | str | none | Client ID of the runner service account (egress sync) |
+| `IMBI_HARNESS_CLIENT_SECRET` | str | none | Its client secret |
+| `POD_NAME` | str | none | Pod name, from the Kubernetes downward API |
 | `IMBI_HARNESS_END_OF_CHAIN` | str | `''` | `delete_pod` or `exit` at the end of a chain |
+| `IMBI_HARNESS_EGRESS_ENFORCED` | str | `''` | `true` labels the pod with the egress destinations of each chain and runs the startup self-test |
+| `IMBI_HARNESS_EGRESS_CANARY` | str | `''` | `host:port` that the startup self-test must not reach. Required when egress is enforced. |
 | `IMBI_HARNESS_POOL` | str | `general` | Runner pool name |
 | `HOSTNAME` | str | `runner` | Runner instance name |
 | `IMBI_HARNESS_IDLE_EXIT_SECONDS` | str | none | Exit after this many idle seconds. Empty or `0`: never. |
