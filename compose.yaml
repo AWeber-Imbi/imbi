@@ -86,7 +86,7 @@ services:
       retries: 10
 
   iggy:
-    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.8-0
     ports:
       - 3000
       - 8090
@@ -95,7 +95,11 @@ services:
       IGGY_ROOT_PASSWORD: iggy
       IGGY_HTTP_ENABLED: true
       IGGY_HTTP_ADDRESS: 0.0.0.0:3000
-      IGGY_SYSTEM_SHARDING_PIN_CORES: "false"
+      # One shard: with all cores, edge.8 binds each shard's memory to a
+      # NUMA node, which fails under Docker Desktop.
+      IGGY_SHARDING_CPU_ALLOCATION: 1
+      IGGY_SHARDING_PIN_CORES: "false"
+      IGGY_NODE_ADVERTISED_ADDRESS: iggy
       IGGY_TCP_ENABLED: true
       IGGY_TCP_ADDRESS: 0.0.0.0:8090
     cap_add:
@@ -120,7 +124,7 @@ services:
   # container port rather than through Caddy, so the /api prefix here is
   # the one IMBI_API_URL above sets.
   iggy-connect:
-    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.8-0
     ports:
       - 8081
     environment:

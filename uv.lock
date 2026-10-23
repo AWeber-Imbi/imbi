@@ -227,9 +227,9 @@ wheels = [
 
 [[package]]
 name = "apache-iggy"
-version = "0.9.0.dev6"
+version = "0.9.1.dev1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a7/91/1b07a976ff2c07952b6658214cd0055958e503009655a4e392c8a57786de/apache_iggy-0.9.0.dev6.tar.gz", hash = "sha256:0ae4bb8cada5df4c4f4bee282014f52dcbdad1ec6feec5832b1ea1bae9aa913b", size = 630483, upload-time = "2026-08-31T16:15:00.846Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/11/f50726f0b95b847105801673d333941fc17055a2c5c0b7277cd8db4c808b/apache_iggy-0.9.1.dev1.tar.gz", hash = "sha256:8e4157033b00babd9d978ea4912c9821352c68212dc9250babaae6461a01f336", size = 793128, upload-time = "2026-10-02T19:12:04.519Z" }
 
 [[package]]
 name = "argon2-cffi"
@@ -1516,7 +1516,7 @@ server = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.40" },
-    { name = "apache-iggy", marker = "extra == 'databases'", specifier = ">=0.9.0.dev6" },
+    { name = "apache-iggy", marker = "extra == 'databases'", specifier = ">=0.9.1.dev1" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "clickhouse-connect", extras = ["async"], marker = "extra == 'databases'", specifier = "==1.0.0" },
     { name = "cryptography", specifier = ">=42.0.4" },
