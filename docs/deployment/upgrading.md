@@ -4,7 +4,7 @@ This page tells you what to do when you upgrade Imbi. The first part is the
 procedure for every upgrade. The second part has one section for each
 release that needs manual steps, newest release first.
 
-Use 2.39.1 or later for a new install.
+Use 2.40.0 or later for a new install.
 
 ## Upgrade procedure
 
@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Next release
+## 2.40.0
 
 1. Run `imbi-api setup-permissions`. It gives the `developer` role
    `project:deployment:read`, `project:deployment:write`,
@@ -158,6 +158,20 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
     `[valkey]` sections, and imbi-api reads `[email]`. Before, the services
     ignored them. Remove the keys that you do not want to apply. See
     [`config.toml`](../api/configuration.md#configtoml).
+11. AWS is no longer a login provider. An AWS login provider does not show
+    on the login page after the upgrade. Before you upgrade, make sure that
+    no user signs in only through AWS. Users still connect AWS at
+    **Settings > Connections**.
+12. Find the webhook rules whose handler is in the old dotted form. The
+    gateway skips these rules, and a PATCH of their webhook gets 400 until
+    you correct or remove each one:
+
+    ```cypher
+    MATCH (r:WebhookRule) WHERE NOT r.handler CONTAINS '#'
+    RETURN r.handler, count(*)
+    ```
+
+    Change each handler to the `<plugin>#<action>` form, or delete the rule.
 
 ## 2.39.1
 
