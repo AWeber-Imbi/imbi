@@ -910,6 +910,68 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['commits_considered'], 0)
 
+    def test_draft_release_notes_includes_sbom_changes(self) -> None:
+        """The SBOMs of the last tag and the head commit are diffed."""
+        release_id_for = mock.AsyncMock(side_effect=['rel-base', 'rel-head'])
+        components = mock.AsyncMock(
+            side_effect=[
+                [{'purl_name': 'pkg:pypi/httpx', 'version': '0.27.0'}],
+                [{'purl_name': 'pkg:pypi/httpx', 'version': '0.28.1'}],
+            ]
+        )
+        with (
+            mock.patch(f'{_MODULE}._release_id_for', new=release_id_for),
+            mock.patch(
+                f'{_MODULE}.component_facts.release_components',
+                new=components,
+            ),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'ABCDEF0123456789',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        base_call, head_call = release_id_for.await_args_list
+        self.assertEqual(base_call.kwargs['tag'], 'v1.0.0')
+        self.assertEqual(head_call.kwargs['committish'], 'abcdef0')
+        self.assertIsNone(head_call.kwargs['tag'])
+        components.assert_has_awaits(
+            [mock.call('rel-base'), mock.call('rel-head')]
+        )
+        call = self.mock_anthropic.complete_json.call_args
+        prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
+        self.assertIn('Dependency changes (from SBOMs):', prompt)
+        self.assertIn('~ pkg:pypi/httpx 0.27.0 → 0.28.1', prompt)
+
+    def test_draft_release_notes_omits_sbom_changes_without_head_sbom(
+        self,
+    ) -> None:
+        """No SBOM for the head commit: the prompt says nothing."""
+        release_id_for = mock.AsyncMock(side_effect=['rel-base', None])
+        with (
+            mock.patch(f'{_MODULE}._release_id_for', new=release_id_for),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        call = self.mock_anthropic.complete_json.call_args
+        prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
+        self.assertNotIn('Dependency changes', prompt)
+
     def test_get_tag_formats_returns_the_resolved_policy(self) -> None:
         self.mocks['_resolve_tag_formats'].return_value = [
             SEMVER_TAG_FORMAT,
@@ -2359,6 +2421,57 @@ class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
 
 class ReleaseNotesPromptTestCase(unittest.TestCase):
     """Direct tests for ``_build_release_notes_prompt``."""
+
+    def test_component_changes_lists_only_differences(self) -> None:
+        from imbi.api.endpoints.project_deployments import _component_changes
+
+        base = [
+            {'purl_name': 'pkg:pypi/same', 'version': '1.0.0'},
+            {'purl_name': 'pkg:pypi/bumped', 'version': '1.0.0'},
+            {'purl_name': 'pkg:pypi/gone', 'version': '2.0.0'},
+            {'purl_name': 'pkg:npm/react-is', 'version': '17.0.2'},
+            {'purl_name': 'pkg:npm/react-is', 'version': '18.2.0'},
+        ]
+        head = [
+            {'purl_name': 'pkg:pypi/same', 'version': '1.0.0'},
+            {'purl_name': 'pkg:pypi/bumped', 'version': '2.0.0'},
+            {
+                'purl_name': 'pkg:pypi/new',
+                'version': '0.1.0',
+                'groups': ['dev'],
+            },
+            {'purl_name': 'pkg:npm/react-is', 'version': '18.2.0'},
+        ]
+        self.assertEqual(
+            _component_changes(base, head),
+            [
+                '~ pkg:npm/react-is 17.0.2, 18.2.0 → 18.2.0',
+                '~ pkg:pypi/bumped 1.0.0 → 2.0.0',
+                '- pkg:pypi/gone 2.0.0',
+                '+ pkg:pypi/new [dev] 0.1.0',
+            ],
+        )
+
+    def test_prompt_dependency_changes(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _PROMPT_DEPENDENCY_CAP,
+            _build_release_notes_prompt,
+        )
+
+        def build(changes: list[str] | None) -> str:
+            return _build_release_notes_prompt(
+                'proj', 'v1.0.0', 'a', 'b', [], dependency_changes=changes
+            )
+
+        self.assertNotIn('Dependency changes', build(None))
+        self.assertIn('Dependency changes (from SBOMs): none', build([]))
+        many = [f'+ pkg:pypi/p{i} 1.0.0' for i in range(205)]
+        prompt = build(many)
+        self.assertIn(
+            f'(+{205 - _PROMPT_DEPENDENCY_CAP} more omitted)', prompt
+        )
+        self.assertIn(many[_PROMPT_DEPENDENCY_CAP - 1], prompt)
+        self.assertNotIn(many[_PROMPT_DEPENDENCY_CAP], prompt)
 
     def test_prompt_includes_commit_bodies(self) -> None:
         from imbi.api.endpoints.project_deployments import (

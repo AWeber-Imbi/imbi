@@ -25,6 +25,7 @@ import httpx
 import nanoid
 import pydantic
 
+from imbi.api import component_facts
 from imbi.api.auth import autonomous, permissions, principals
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.commit_sync import service as commit_sync_service
@@ -5385,6 +5386,7 @@ async def complete_promote_build(
 
 _PROMPT_COMMIT_CAP = 150
 _PROMPT_BODY_CAP = 2000
+_PROMPT_DEPENDENCY_CAP = 200
 _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
 
 
@@ -5539,6 +5541,81 @@ def _truncate_commit_body(body: str) -> str:
     return body[:keep].rstrip() + _BODY_TRUNCATION_MARKER
 
 
+def _component_changes(
+    base_rows: collections.abc.Sequence[dict[str, typing.Any]],
+    head_rows: collections.abc.Sequence[dict[str, typing.Any]],
+) -> list[str]:
+    """The components that differ between two releases' SBOMs.
+
+    One line per changed ``purl_name``: ``+`` added, ``-`` removed, ``~``
+    version changed.  A component can ship more than one version in one
+    release (``react-is@17`` and ``@18``), so versions compare as sets.
+    Groups (dev, test, ...) are appended in brackets so the model can
+    tell required dependencies from the rest.
+    """
+    versions: tuple[dict[str, set[str]], dict[str, set[str]]] = ({}, {})
+    groups: dict[str, set[str]] = {}
+    for index, rows in enumerate((base_rows, head_rows)):
+        for row in rows:
+            name = str(row['purl_name'])
+            versions[index].setdefault(name, set()).add(str(row['version']))
+            groups.setdefault(name, set()).update(row.get('groups') or ())
+    base, head = versions
+    lines: list[str] = []
+    for name in sorted(base.keys() | head.keys()):
+        old, new = base.get(name), head.get(name)
+        if old == new:
+            continue
+        label = name
+        if groups[name]:
+            label += f' [{", ".join(sorted(groups[name]))}]'
+        was = ', '.join(sorted(old or ()))
+        now = ', '.join(sorted(new or ()))
+        if not old:
+            lines.append(f'+ {label} {now}')
+        elif not new:
+            lines.append(f'- {label} {was}')
+        else:
+            lines.append(f'~ {label} {was} → {now}')
+    return lines
+
+
+async def _dependency_changes(
+    db: graph.Graph,
+    project_id: str,
+    last_tag: str | None,
+    head_sha: str,
+) -> list[str] | None:
+    """The SBOM component changes from ``last_tag`` to ``head_sha``.
+
+    The head commit has no tagged release yet, so its SBOM is the one a
+    branch build posted against the untagged release for that commit
+    (``ingest_sbom`` with a SHA-derived ``version_expression``).
+    ``None`` when either side has no SBOM, which the prompt reports as
+    unknown rather than as "no changes".
+    """
+    if not last_tag:
+        return None
+    base_id = await _release_id_for(
+        db, project_id=project_id, committish='', tag=last_tag
+    )
+    head_id = await _release_id_for(
+        db,
+        project_id=project_id,
+        committish=versioning.short_committish(head_sha),
+        tag=None,
+    )
+    if not base_id or not head_id:
+        return None
+    base_rows, head_rows = await asyncio.gather(
+        component_facts.release_components(base_id),
+        component_facts.release_components(head_id),
+    )
+    if not base_rows or not head_rows:
+        return None
+    return _component_changes(base_rows, head_rows)
+
+
 def _build_release_notes_prompt(
     project_name: str,
     last_tag: str | None,
@@ -5547,6 +5624,7 @@ def _build_release_notes_prompt(
     commits: list[Commit],
     tag_formats: collections.abc.Sequence[common_models.TagFormat] = (),
     suggested_version: str | None = None,
+    dependency_changes: collections.abc.Sequence[str] | None = None,
 ) -> str:
     capped = commits[:_PROMPT_COMMIT_CAP]
     omitted = len(commits) - len(capped)
@@ -5578,6 +5656,19 @@ def _build_release_notes_prompt(
                     _truncate_commit_body(commit.body), '    '
                 ).rstrip()
             )
+    if dependency_changes is not None:
+        body_lines.append('')
+        if dependency_changes:
+            shown = dependency_changes[:_PROMPT_DEPENDENCY_CAP]
+            hidden = len(dependency_changes) - len(shown)
+            body_lines.append(
+                'Dependency changes (from SBOMs)'
+                + (f' (+{hidden} more omitted)' if hidden else '')
+                + ':'
+            )
+            body_lines.extend(shown)
+        else:
+            body_lines.append('Dependency changes (from SBOMs): none')
     body_lines.append('')
     body_lines.append('Return the JSON object described in the system prompt.')
     return '\n'.join(body_lines)
@@ -5705,6 +5796,9 @@ async def draft_release_notes(
             commits,
             tag_formats,
             fallback.version,
+            await _dependency_changes(
+                db, project_id, body.last_tag, body.head_sha
+            ),
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
