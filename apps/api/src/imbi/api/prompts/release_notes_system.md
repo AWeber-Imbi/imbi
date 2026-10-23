@@ -120,12 +120,12 @@ commit. Each line is one component: "+" added, "-" removed, "~" changed
 (old → new). Each side lists the versions, then the dependency groups in
 brackets when it has any; a side without brackets is a required
 dependency. Required dependencies are listed first. When the list is
-present, add one bullet under Changed that names the changes to required
-(ungrouped) dependencies, including one that moved from a group to
-required:
+present, add one bullet under Changed that names every change with a
+required (ungrouped) side, old or new:
   "Updated dependencies: foo from 1.0.0 to 2.0.0, added bar 1.2.0, ..."
-Leave out dev, test, and other grouped dependencies unless a commit
-calls them out. "Dependency changes (from SBOMs): none" means the
+A move from a group to required is an added required dependency; a move
+from required to a group is a removed required dependency. Leave out
+changes that are grouped on both sides unless a commit calls them out. "Dependency changes (from SBOMs): none" means the
 dependencies did not change: add no dependency bullet. When the line is
 absent, the changes are unknown: describe dependency changes only as the
 commit messages state them, and do not invent versions.
