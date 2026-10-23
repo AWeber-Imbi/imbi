@@ -22,14 +22,12 @@ import {
 /**
  * What kind of operation the banner narrates. A promote walks
  * Building → Deploying → Released; a release-only cut (library / image)
- * has no rollout, so it is Building → Released; a direct deploy has no
- * build phase, so its train is just Deploying → Deployed.
+ * has no rollout, so it is Building → Released.
  */
-export type InFlightKind = 'deploy' | 'promote' | 'release'
+export type InFlightKind = 'promote' | 'release'
 
 /** The train the banner walks while the operation runs. */
 const PHASES: Record<InFlightKind, readonly string[]> = {
-  deploy: ['Deploying', 'Deployed'],
   promote: ['Building', 'Deploying', 'Released'],
   release: ['Building', 'Released'],
 }
@@ -38,7 +36,6 @@ const PHASE_INDEX: Record<
   InFlightKind,
   Partial<Record<ReleaseInFlightPhase, number>>
 > = {
-  deploy: { deploying: 0, success: 1 },
   promote: { building: 0, deploying: 1, success: 2 },
   release: { building: 0, success: 1 },
 }
@@ -74,7 +71,7 @@ export function ReleaseInFlightBanner({
   const { envName, error, phase, runUrl, tag } = state
   if (phase === 'idle') return null
 
-  const label = tag ?? (kind === 'deploy' ? 'this deployment' : 'this release')
+  const label = tag ?? 'this release'
   if (phase === 'adopting') {
     return (
       <BannerShell tone="muted">
@@ -92,12 +89,12 @@ export function ReleaseInFlightBanner({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="text-sm font-semibold">
-            {headline(kind, phase, label, envName)}
+            {headline(phase, label, envName)}
           </span>
           <Elapsed since={state.startedAt} until={state.endedAt} />
         </div>
         <span className="text-xs leading-relaxed opacity-90">
-          {error ?? DETAIL[kind][phase]}
+          {error ?? DETAIL[phase]}
         </span>
         {PHASE_INDEX[kind][phase] === undefined ? null : (
           <PhaseTrain
@@ -139,7 +136,7 @@ export function ReleaseInFlightBanner({
             target="_blank"
           >
             <ExternalLink className="size-3.5" />
-            {kind === 'deploy' ? 'View run' : 'View build'}
+            View build
           </a>
         ) : null}
         {TERMINAL.has(phase) ? (
@@ -175,7 +172,7 @@ const TONE_CLASS: Record<Tone, string> = {
   success: 'border-success bg-success text-success',
 }
 
-const RELEASE_DETAIL: Record<ReleaseInFlightPhase, string> = {
+const DETAIL: Record<ReleaseInFlightPhase, string> = {
   adopting: '',
   build_failed:
     'The tag is blocked. Fix the build and release a new version, or ' +
@@ -190,22 +187,6 @@ const RELEASE_DETAIL: Record<ReleaseInFlightPhase, string> = {
     'again. The tag was not blocked, so it can still be deployed.',
   idle: '',
   success: 'Release complete. The drift below reflects the new baseline.',
-}
-
-const DETAIL: Record<InFlightKind, Record<ReleaseInFlightPhase, string>> = {
-  deploy: {
-    adopting: '',
-    build_failed: '',
-    building: '',
-    deploy_failed:
-      'Check the workflow run, fix the cause, and redeploy the version.',
-    deploying: 'Imbi is rolling the deployment out.',
-    failed: 'Status polling failed; check the workflow run directly.',
-    idle: '',
-    success: 'Deployment complete.',
-  },
-  promote: RELEASE_DETAIL,
-  release: RELEASE_DETAIL,
 }
 
 function BannerShell({
@@ -267,7 +248,6 @@ function Elapsed({
 }
 
 function headline(
-  kind: InFlightKind,
   phase: ReleaseInFlightPhase,
   label: string,
   envName: null | string,
@@ -283,13 +263,9 @@ function headline(
     case 'deploying':
       return `Deploying ${label}${target}…`
     case 'failed':
-      return kind === 'deploy'
-        ? `Lost track of deploying ${label}${target}`
-        : `Lost track of the release for ${label}`
+      return `Lost track of the release for ${label}`
     default:
-      return kind === 'deploy'
-        ? `Deployed ${label}${target}`
-        : `Released ${label}${target}`
+      return `Released ${label}${target}`
   }
 }
 

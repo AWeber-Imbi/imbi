@@ -10,6 +10,7 @@ import {
   useCommitCheckStatus,
 } from '@/components/deploy/CiFailureNotice'
 import { DispatchFailureNotice } from '@/components/deploy/DispatchFailureNotice'
+import type { ReleaseBuildStarted } from '@/components/deploy/ReleaseBuildWatcher'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,9 +41,7 @@ interface ReleaseReadyCardProps {
    */
   driftDetected?: boolean
   /** Forwarded when the cut dispatched a build rather than tagging. */
-  onBuildStarted?: (
-    build: import('@/components/deploy/DeploymentModal').ReleaseBuildStarted,
-  ) => void
+  onBuildStarted?: (build: ReleaseBuildStarted) => void
   onCut: () => void
   orgSlug: string
   projectId: string
@@ -389,7 +388,7 @@ function DraftingNotes() {
   )
 }
 
-// The current/new tag input pair mirrors the deploy PromoteTab's; kept as a
+// The current/new tag input pair mirrors PendingPromoteCard's; kept as a
 // small local component rather than shared to avoid coupling the two flows.
 // fallow-ignore-next-line duplication
 function TagFields({ latestTag, onChange, tag, tagValid }: TagFieldsProps) {

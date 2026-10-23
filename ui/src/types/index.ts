@@ -990,21 +990,7 @@ export interface DeploymentPromoteRequest {
   to_environment: string
 }
 
-export interface DeploymentRef {
-  ahead?: null | number
-  behind?: null | number
-  is_default: boolean
-  kind: DeploymentRefKind
-  name: string
-  pr_number?: null | number
-  pr_state?: 'closed' | 'merged' | 'open' | null
-  pr_title?: null | string
-  sha: string
-}
-
 // Deployment plugin shapes (mirrors imbi_common.plugins.base).
-export type DeploymentRefKind = 'branch' | 'default' | 'tag'
-
 export interface DeploymentRun {
   completed_at?: null | string
   run_id: string

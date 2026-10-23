@@ -1,17 +1,14 @@
-// Dispatch mutations for the Deployments tab. Mirrors the toast + run
-// watcher wiring of the deploy/promote modal hooks, decoupled from the
-// modal lifecycle so inline cards can dispatch directly.
+// Dispatch mutations for the Deployments tab's inline cards, wired to the
+// toast + run watchers.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import { promoteDeployment, triggerDeployment } from '@/api/endpoints'
-import type {
-  DeploymentRunStarted,
-  ReleaseBuildStarted,
-} from '@/components/deploy/DeploymentModal'
+import type { DeploymentRunStarted } from '@/components/deploy/DeploymentRunWatcher'
 import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
+import type { ReleaseBuildStarted } from '@/components/deploy/ReleaseBuildWatcher'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 export interface DeploymentActions {

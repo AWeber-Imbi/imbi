@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 
 import { sanitizeHttpUrl } from '@/lib/utils'
 
-import type { ReleaseBuildStarted } from './DeploymentModal'
+import type { ReleaseBuildStarted } from './ReleaseBuildWatcher'
 
 /**
  * The dispatch-path fields shared by `DeploymentTriggerResponse` (a

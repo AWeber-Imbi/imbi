@@ -88,9 +88,6 @@ Classification legend:
 | `components/ProjectDoctorTab.tsx` | text-loading / empty until report arrives | ⚠️ |
 | `components/ProjectActivityLog.tsx` | spinner (LoaderCircle + "Loading activity…") | |
 | `components/IntegrationsCard.tsx` | none | ⚠️ |
-| `deploy/DeployTab.tsx` | skeleton-generic + `aria-busy` (best in app) | needs footprint + sweep + reveal |
-| `deploy/lists.tsx` (BranchList/CommitList/TagList) | skeleton-generic + `aria-busy` + aria-labels | single wide block per row vs multi-column real rows |
-| `deploy/PromoteTab.tsx` | text-loading ("Loading commits…") | |
 | `deployments/EnvironmentNav.tsx` | spinner (Loader2 size-13) | |
 
 ### Admin area
@@ -218,9 +215,6 @@ for the least code.
 - [ ] `ProjectDoctorTab`, `ProjectActivityLog`: replace spinner/text with row skeletons.
 - [ ] `IntegrationsCard`, `ProjectPluginsSection`: small row skeletons; fix silent/blank
       loading.
-- [ ] `DeployTab` + `deploy/lists.tsx`: upgrade existing skeletons to sweep + multi-column
-      footprint (sha block + message line + author + badge); keep their `aria-busy`
-      (now via `Swap`). `PromoteTab`: replace "Loading commits…" with commit-row skeletons.
 - [ ] `EnvironmentNav` (deployments): replace the size-13 Loader2 with rail skeleton.
 
 ### Phase 4 — Remaining surfaces

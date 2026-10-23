@@ -14,22 +14,41 @@ import { getPromoteStatus, type PromoteStatus } from '@/api/endpoints'
 import { sanitizeHttpUrl } from '@/lib/utils'
 
 /**
+ * A dispatched release build being followed by `ReleaseBuildWatcher`.
+ *
+ * The build-phase counterpart to `DeploymentRunStarted`. It carries no
+ * run id because there is no Deployment yet — and won't be one the
+ * browser ever sees, since the promote watcher creates it server-side.
+ * The watcher polls `/deployments/promote-status` keyed on the project
+ * instead.
+ */
+export interface ReleaseBuildStarted {
+  /** Target env, or `null` for a release-only cut. */
+  envName: null | string
+  /** Org slug the promote was triggered from. */
+  originOrgSlug: string
+  /** Project id the promote was triggered from. */
+  originProjectId: string
+  /** Workflow run URL, when the remote reported one. */
+  runUrl?: null | string
+  tag: string
+  toastId: number | string
+}
+
+/**
  * `toast`, minus the talking, for a run the page already banners.
  *
  * Swapped in for the real thing so silence cannot skip the settling:
  * every branch below still stops the poll and tells the parent, it just
- * says nothing while doing it. `DeploymentRunWatcher` shares it for its
- * banner-only (toast-less) runs.
+ * says nothing while doing it.
  */
-export const SILENT: Pick<
-  typeof toast,
-  'error' | 'loading' | 'message' | 'success'
-> = {
-  error: () => '',
-  loading: () => '',
-  message: () => '',
-  success: () => '',
-}
+const SILENT: Pick<typeof toast, 'error' | 'loading' | 'message' | 'success'> =
+  {
+    error: () => '',
+    loading: () => '',
+    message: () => '',
+    success: () => '',
+  }
 
 /** States the watcher stops polling on. */
 const TERMINAL_STATES: ReadonlySet<PromoteStatus['status']> = new Set([
