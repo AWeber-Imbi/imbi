@@ -4,7 +4,7 @@ This page tells you what to do when you upgrade Imbi. The first part is the
 procedure for every upgrade. The second part has one section for each
 release that needs manual steps, newest release first.
 
-Use 2.40.0 or later for a new install.
+Use 2.41.0 or later for a new install.
 
 ## Upgrade procedure
 
@@ -73,6 +73,24 @@ To restart iggy-connect:
 
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
+
+## 2.41.0
+
+Upgrade from 2.40.0 as soon as you can. In 2.40.0, each Imbi service stored
+only its first Iggy message after it started. Iggy discarded the others
+without an error, so ClickHouse got no new webhook events, pull requests,
+tags, commits, SBOM components, or operations log rows.
+
+1. Deploy the 2.41.0 image to every Imbi service.
+2. Check that Iggy stores new messages. Compare the gateway's
+   `imbi_iggy_published_total{stream="events",topic="gateway"}` with the
+   offset from `iggy message poll --last events gateway 0` for two minutes.
+   Both must increase by the same number.
+3. Run **Sync PRs** and **Sync Commits & Tags** again for each project, to
+   restore the rows that 2.40.0 lost. Webhook events and SBOM uploads from
+   that period cannot be restored.
+
+Do not install 2.40.0 on a new system.
 
 ## 2.40.0
 
