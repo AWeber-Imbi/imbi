@@ -207,12 +207,14 @@ imbi-api serves the WebSocket at `/realtime` under its route prefix.
 - **Subscribe authorization** runs the topic's registry entry.
 - **Permission changes** take effect on open sockets. A write that
   changes what a user can read (an organization membership, a role
-  assignment, or a role's permissions) publishes an internal
-  `permissions` event on `user:<id>`, or on `org:<org>` for a role
-  change. Each pod subscribes to `user:<id>` for every user with an open
-  socket. A pod that receives the event runs authorization again for the
-  affected sockets and drops each subscription that fails, with an
-  `error` message.
+  assignment, or a role's permissions) publishes a `permissions` event
+  naming the user, or the organization for a role change. The event goes
+  on one internal channel, `imbi:rt:permissions`, which every pod always
+  subscribes to and which browsers cannot subscribe to. Permission
+  changes are rare, so every pod receiving all of them costs little. A
+  pod runs authorization again for each of its sockets that belongs to
+  the named user, or to a member of the named organization, and drops
+  each subscription that fails, with an `error` message.
 - **Token expiry** closes the socket with code `4401` when the access
   token's `exp` passes. The browser refreshes the token through the
   normal flow and reconnects. Closing at expiry also caps how long a
