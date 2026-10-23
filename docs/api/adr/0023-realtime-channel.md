@@ -132,7 +132,7 @@ then checks the permission. A new topic type needs one registry entry.
 
 ### Messages
 
-There are four message kinds. All are JSON.
+All messages are JSON.
 
 ```jsonc
 // browser to server
@@ -141,12 +141,15 @@ There are four message kinds. All are JSON.
 {"type": "presence", "topic": "agent:acme:triage", "state": {"editing": "system_prompt"}}
 
 // server to browser
+{"type": "subscribed", "topic": "project:acme:abc123"}
 {"type": "invalidate", "topic": "project:acme:abc123", "resource": "deployments", "actor": "alexc@aweber.com"}
 {"type": "presence", "topic": "agent:acme:triage", "members": [{"user": "...", "state": {"editing": "system_prompt"}}]}
 {"type": "notify", "topic": "user:42", "level": "success", "title": "Deployed abc1234 to testing", "url": "/projects/abc123/deployments"}
 {"type": "error", "topic": "project:acme:abc123", "code": "forbidden"}
 ```
 
+- **`subscribed`** confirms that a subscription is active. See
+  [Delivery](#delivery).
 - **`invalidate`** says that a resource on a topic changed, and who
   changed it. It carries identifiers only, never the changed data. The
   browser refetches through REST, which checks permissions again. Most
@@ -161,15 +164,18 @@ There are four message kinds. All are JSON.
   socket stays open.
 
 Because `invalidate` events carry only identifiers, a mistake in topic
-authorization exposes that a resource changed, not its content.
+authorization exposes that a resource changed and who changed it, not
+its content.
 
 ### Publishing: `imbi.common.realtime`
 
 `imbi.common.realtime.publish(topic, event)` publishes a Pydantic model
 to the Valkey pub/sub channel `imbi:rt:<topic>`.
 
-- A publish never fails the caller. An error is logged and counted, the
-  same way document presence handles a Valkey outage.
+- A publish never fails the caller. A failed publish is retried once,
+  then logged and counted, the same way document presence handles a
+  Valkey outage. [Delivery](#delivery) covers what the browser does
+  about it.
 - Write paths call `publish` directly, after the write commits. Writes
   that already publish an audit or domain row to Iggy (`operations_log`,
   `events`) publish the realtime event at the same place.
@@ -199,6 +205,14 @@ imbi-api serves the WebSocket at `/realtime` under its route prefix.
   cross-site handshakes. The `Origin` check is a second guard against
   cross-site WebSocket hijacking.
 - **Subscribe authorization** runs the topic's registry entry.
+- **Permission changes** take effect on open sockets. A write that
+  changes what a user can read (an organization membership, a role
+  assignment, or a role's permissions) publishes an internal
+  `permissions` event on `user:<id>`, or on `org:<org>` for a role
+  change. Each pod subscribes to `user:<id>` for every user with an open
+  socket. A pod that receives the event runs authorization again for the
+  affected sockets and drops each subscription that fails, with an
+  `error` message.
 - **Token expiry** closes the socket with code `4401` when the access
   token's `exp` passes. The browser refreshes the token through the
   normal flow and reconnects. Closing at expiry also caps how long a
@@ -229,6 +243,27 @@ publishers have no total order. The design accepts both:
 
 A missed `notify` is lost. It only repeats information that the pages
 show anyway.
+
+Three rules close the gaps where an event could be missed without the
+browser knowing:
+
+- **Data counts as current only after the subscription is active.** The
+  server sends `subscribed` after its Valkey subscription for the topic
+  is active. When the ack arrives, the invalidation bridge refetches the
+  topic's queries that started before it. This applies to the first
+  subscribe and to every reconnect, so a write between a REST read and
+  the subscription is never missed. The cost is a second load of those
+  queries. The implementation can avoid it by holding a topic's queries
+  until the ack while the socket is open.
+- **A lost subscriber connection starts the fallback.** When a pod's
+  Valkey subscriber connection drops, the pod closes its sockets with
+  code `1013` (try again later) and refuses new ones until the
+  subscriber reconnects. Browsers use the 30-second fallback until they
+  reconnect.
+- **A publish that fails after its retry is lost.** The writer cannot
+  tell which browsers missed it. The page stays stale until the next
+  event on the topic, a reload, or the tab becoming visible again: the
+  browser refetches its subscribed topics when a hidden tab is shown.
 
 ### Multiple pods
 
@@ -370,9 +405,11 @@ steps 1 and 2, plus the reductions.
 
 GET `.../deployments/runs/{run_id}` is also an MCP and agent tool. Its
 removal goes in the release notes. Once the watch job records each
-status change, agents read deploy status from the deployment endpoints.
-The harness passes tool names as a permission allow-list, so an agent
-whose saved tools name the removed tool keeps working.
+status change, agents read deploy status from the deployment endpoints,
+which are also tools. An agent stores its tools by name, so an agent
+whose saved tools name the removed tool would lose deploy status. The
+pull request that removes it also writes a new version of each such
+agent, with the current-releases tool in place of the removed one.
 
 These endpoints stay, because a page load reads them and every
 `invalidate` refetches them: GET `.../deployments/promote-status`, and
@@ -405,10 +442,14 @@ the `sync-status` endpoints for deployments, commits, and pull requests.
 - Each write that matters to the UI needs an explicit `publish` call.
   The contract test covers HTTP routes. A missed call elsewhere means a
   stale page, not wrong data.
-- A permission removed from a user takes effect for subscriptions at the
-  next reconnect, at most one token lifetime later. Every refetch still
-  checks permissions, so no data leaks in that window.
-- MCP clients and agents lose the run-status tool.
+- A permission removed from a user takes effect on open subscriptions
+  when the `permissions` event arrives. If that event is lost, it takes
+  effect at the next reconnect, at most one token lifetime later. Until
+  then the socket still receives the actors in `invalidate` events and
+  the presence state for topics the user can no longer read. Refetches
+  check permissions, so no resource data is exposed.
+- MCP clients and agents lose the run-status tool. Saved agents that use
+  it get a new version with its replacement.
 - The WebSocket endpoint is not in the OpenAPI schema. The protocol is
   documented here and in the client types.
 
