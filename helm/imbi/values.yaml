@@ -206,8 +206,10 @@ externalClickhouse:
 externalIggy:
   url: ""  # REQUIRED, e.g. iggy+tcp://iggy:iggy@imbi-iggy:8090
 
-# Valkey connection (external). imbi-api's background workers need it: unset,
-# they do not start and imbi-api logs a warning. Rendered as VALKEY_URL.
+# Valkey connection (external, required). imbi-api's background workers,
+# document presence, and the realtime channel (ADR 0023) use it. Unset,
+# imbi-api falls back to valkey://localhost:6379/0, which nothing in the pod
+# serves, so every Valkey command fails. Rendered as VALKEY_URL.
 externalValkey:
   url: ""  # e.g. valkey://imbi-valkey:6379/0
 
