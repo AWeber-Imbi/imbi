@@ -5,7 +5,9 @@ ARG PYTHON_VERSION=3.14
 
 FROM python:${PYTHON_VERSION}-slim AS builder
 
-RUN pip install --no-cache-dir uv
+# pip 26.2.2 and uv 0.13.5 drop the eMudhra root from their bundled CA
+# stores (key compromise, 2026-10-19); uv downloads every dependency.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2' 'uv>=0.13.5'
 WORKDIR /src
 # uv needs every workspace member to read the lock file.
 COPY pyproject.toml uv.lock README.md LICENSE ./
@@ -21,6 +23,10 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates gh git tini \
  && rm -rf /var/lib/apt/lists/*
+
+# The base image's pip ships in the image (and the model can run it): use
+# one whose CA bundle does not trust the eMudhra root.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2'
 
 # Only runner and executor are in harness-ipc, the group of the
 # executor socket.
