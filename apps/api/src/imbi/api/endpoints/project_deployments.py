@@ -5502,13 +5502,17 @@ def _version_matches_bump(
 
     Only a semver previous tag is checked: a calendar version's bump
     does not change the date, and with no previous tag there is nothing
-    to bump from.  The ``v`` prefix is not compared: the tag policy
-    decides it, and ``_version_allowed`` checks that.
+    to bump from.  Only a semver draft version is checked too: a version
+    a custom tag policy accepts (``REL-42``) is the policy's business.
+    The ``v`` prefix is not compared: the tag policy decides it, and
+    ``_version_allowed`` checks that.
     """
     if (
         not last_tag
         or versioning.is_calver_tag(last_tag)
         or not versioning.is_semver_tag(last_tag)
+        or versioning.is_calver_tag(version)
+        or not versioning.is_semver_tag(version)
     ):
         return True
     return version.removeprefix('v') == _bump_semver(

@@ -2658,6 +2658,8 @@ class FallbackNotesTestCase(unittest.TestCase):
         # The prefix is the tag policy's business, not the bump's.
         self.assertTrue(_version_matches_bump('v1.2.3', '1.3.0', 'minor'))
         self.assertFalse(_version_matches_bump('v1.2.3', '1.3.1', 'minor'))
+        # A version only a custom policy accepts is not a semver bump.
+        self.assertTrue(_version_matches_bump('v1.2.3', 'REL-42', 'minor'))
         # Nothing to check against: no tag, or a calendar version.
         self.assertTrue(_version_matches_bump(None, 'v0.1.0', 'major'))
         self.assertTrue(
