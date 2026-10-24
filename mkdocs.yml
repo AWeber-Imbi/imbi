@@ -186,6 +186,7 @@ nav:
               - 0020 Agent Task Contract: api/adr/0020-agent-task-contract.md
               - 0021 Workflow Contract: api/adr/0021-workflow-contract.md
               - 0022 Agent Harness and Secrets Broker: api/adr/0022-agent-harness-and-secrets-broker.md
+              - 0023 Realtime Channel: api/adr/0023-realtime-channel.md
           - Library:
               - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
               - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md
