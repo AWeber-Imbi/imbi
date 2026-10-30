@@ -298,6 +298,9 @@ export interface ProjectListItem {
     }
   >
   description: null | string
+  // `"<base>..<head>"` -> when the oldest commit that needs action in
+  // that range landed.
+  drift_range_oldest?: Record<string, string>
   // `"<base>..<head>"` -> whether CI flagged any commit in that range.
   // Keyed by the two committishes of one promotion step; a step with no
   // entry was never evaluated.
@@ -333,6 +336,7 @@ export interface ProjectListItem {
     latest_tag_at: null | string
     latest_tag_author: null | string
     latest_tag_sha: null | string
+    oldest_actionable_at?: null | string
   }
   score: null | number
   slug: string

@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [
   { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
   { name = "Dave Shawley", email = "daves@aweber.com" },
-  { name = "Alex Campbell", email = "alexc@aweber.com" }
+  { name = "Alex Campbell", email = "alexc@aweber.com" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -168,7 +168,7 @@ exclude = [
   ".venv",
   "ui",
   "typings",
-  "docs"
+  "docs",
 ]
 
 [[tool.pyright.executionEnvironments]]
@@ -668,7 +668,7 @@ max-complexity = 15
   "RSE",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 "apps/api/**" = [
   "A",
@@ -684,7 +684,7 @@ max-complexity = 15
   "RSE",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 "plugins/**" = [
   "A",
@@ -701,7 +701,7 @@ max-complexity = 15
   "RSE",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 "apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "apps/gateway/**" = ["TC", "UP"]
@@ -734,7 +734,7 @@ max-complexity = 15
   "S",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 
 [tool.uv]

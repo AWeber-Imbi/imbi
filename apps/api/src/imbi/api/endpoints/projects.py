@@ -214,6 +214,10 @@ class ReleaseSummary(pydantic.BaseModel):
     #: much of the range's ``drift_detected`` rests on verdicts rather
     #: than on the fail-closed default.
     drift_answered: int = 0
+    #: When the oldest unreleased commit that needs action landed:
+    #: the same commits ``drift_detected`` counts, so a commit CI
+    #: answered ``false`` is skipped.  ``None`` when none needs action.
+    oldest_actionable_at: datetime.datetime | None = None
 
 
 class ProjectListTeamRef(pydantic.BaseModel):
@@ -286,6 +290,13 @@ class ProjectListItem(pydantic.BaseModel):
     #: every pair it draws.  A pair with no entry was never evaluated,
     #: which the client must fail closed on and show.
     drift_ranges: dict[str, bool] = pydantic.Field(default_factory=dict)
+    #: ``"<base>..<head>"`` -> when the oldest commit that needs action
+    #: in that range landed.  Only ranges that ``drift_ranges`` marks
+    #: ``true`` from their commits have an entry: a range that needs
+    #: action only because it could not be evaluated has no date.
+    drift_range_oldest: dict[str, datetime.datetime] = pydantic.Field(
+        default_factory=dict
+    )
 
 
 class ProjectResponse(pydantic.BaseModel):
@@ -1089,9 +1100,21 @@ def _range_key(base: str, head: str) -> str:
     return f'{base}..{head}'
 
 
+class EnvironmentDrift(typing.NamedTuple):
+    """The per-project results of :func:`_evaluate_environment_drift`.
+
+    Both map project id -> range key -> value.  ``ranges`` is whether
+    the range needs action; ``oldest`` is when its oldest commit that
+    needs action landed.
+    """
+
+    ranges: dict[str, dict[str, bool]]
+    oldest: dict[str, dict[str, datetime.datetime]]
+
+
 async def _evaluate_environment_drift(
     project_data_list: list[dict[str, typing.Any]],
-) -> dict[str, dict[str, bool]]:
+) -> EnvironmentDrift:
     """Apply the rule to every project's promotion steps.
 
     Two sequential reads: the endpoint commit times first, then the
@@ -1113,6 +1136,10 @@ async def _evaluate_environment_drift(
     range must not read as clean.  The same precision means a distinct
     commit can share the *base* commit's timestamp, so the lower bound
     is inclusive and only the base commit itself is excluded, by sha.
+
+    The oldest date comes from the same in-range commits, so it needs no
+    third read.  A range that needs action only because its endpoints
+    are unorderable or the verdict read failed gets no date.
     """
     ranges_by_pid: dict[str, list[tuple[str, str]]] = {}
     for project_data in project_data_list:
@@ -1123,7 +1150,7 @@ async def _evaluate_environment_drift(
         if found:
             ranges_by_pid[pid] = found
     if not ranges_by_pid:
-        return {}
+        return EnvironmentDrift({}, {})
     pids = list(ranges_by_pid)
     shas = sorted(
         {
@@ -1150,6 +1177,7 @@ async def _evaluate_environment_drift(
             )
     actionable = await _fetch_actionable_commit_times(windows)
     out: dict[str, dict[str, bool]] = {}
+    oldest: dict[str, dict[str, datetime.datetime]] = {}
     for pid, pairs in ranges_by_pid.items():
         marks = actionable.get(pid, []) if actionable is not None else None
         for base, head in pairs:
@@ -1158,16 +1186,18 @@ async def _evaluate_environment_drift(
             if lo is None or hi is None:
                 continue
             key = _range_key(base, head)
-            if hi <= lo:
+            if hi <= lo or marks is None:
                 out.setdefault(pid, {})[key] = True
-            elif marks is None:
-                out.setdefault(pid, {})[key] = True
-            else:
-                out.setdefault(pid, {})[key] = any(
-                    (lo < at <= hi) or (at == lo and sha != base)
-                    for sha, at in marks
-                )
-    return out
+                continue
+            in_range = [
+                at
+                for sha, at in marks
+                if (lo < at <= hi) or (at == lo and sha != base)
+            ]
+            out.setdefault(pid, {})[key] = bool(in_range)
+            if in_range:
+                oldest.setdefault(pid, {})[key] = min(in_range)
+    return EnvironmentDrift(out, oldest)
 
 
 def _release_range_cutoffs(
@@ -1446,6 +1476,7 @@ async def _fetch_release_summaries(
     ]
     counts_since_tag: dict[str, int] = {}
     drift_by_pid: dict[str, tuple[bool, int]] = {}
+    oldest_by_pid: dict[str, datetime.datetime] = {}
     if tagged_pids:
         try:
             pid_cutoff = _release_range_cutoffs(
@@ -1469,7 +1500,12 @@ async def _fetch_release_summaries(
                     ' count() AS c,'
                     ' countIf(d.answered = 1 AND d.drift_detected)'
                     ' AS drifted,'
-                    ' countIf(d.answered = 1) AS answered'
+                    ' countIf(d.answered = 1) AS answered,'
+                    ' countIf(d.answered = 0 OR d.drift_detected)'
+                    ' AS actionable,'
+                    ' minIf(COALESCE(c.committed_at, c.authored_at),'
+                    ' d.answered = 0 OR d.drift_detected)'
+                    ' AS oldest_actionable_at'
                     ' FROM commits AS c FINAL'
                     ' LEFT JOIN (SELECT project_id, sha, drift_detected,'
                     ' toUInt8(1) AS answered FROM commit_drift FINAL'
@@ -1509,6 +1545,21 @@ async def _fetch_release_summaries(
                     )
                     for row in count_rows
                     if row.get('project_id') is not None
+                }
+                # ``minIf`` over no matching rows gives the type's zero
+                # (the epoch), not NULL, so read it only when a commit
+                # needs action.
+                oldest_by_pid = {
+                    str(row['project_id']): at
+                    for row in count_rows
+                    if row.get('project_id') is not None
+                    and int(row.get('actionable') or 0) > 0
+                    and (
+                        at := clickhouse.as_utc_or_none(
+                            row.get('oldest_actionable_at')
+                        )
+                    )
+                    is not None
                 }
         except Exception:  # noqa: BLE001
             LOGGER.warning(
@@ -1559,6 +1610,7 @@ async def _fetch_release_summaries(
             commits_since_tag=counts_since_tag.get(pid, 0),
             drift_detected=drift_by_pid.get(pid, (False, 0))[0],
             drift_answered=drift_by_pid.get(pid, (False, 0))[1],
+            oldest_actionable_at=oldest_by_pid.get(pid),
         )
     return release_result
 
@@ -2436,8 +2488,10 @@ async def list_projects(
         project_data['latest_deployments'] = releases.latest.get(pid, {})
     # Only ``ProjectListItem`` carries ``drift_ranges``, so the two
     # reads behind it are pure waste on the full-response path.
-    drift_ranges = (
-        await _evaluate_environment_drift(project_data_list) if slim else {}
+    drift = (
+        await _evaluate_environment_drift(project_data_list)
+        if slim
+        else EnvironmentDrift({}, {})
     )
 
     for project_data in project_data_list:
@@ -2449,7 +2503,8 @@ async def list_projects(
         project_data['closed_pr_count'] = closed_count
         project_data['viewer_open_pr_count'] = viewer_open
         project_data['viewer_closed_pr_count'] = viewer_closed
-        project_data['drift_ranges'] = drift_ranges.get(pid, {})
+        project_data['drift_ranges'] = drift.ranges.get(pid, {})
+        project_data['drift_range_oldest'] = drift.oldest.get(pid, {})
         summary = release_summaries.get(pid)
         if summary is not None:
             project_data['release_summary'] = summary.model_dump()

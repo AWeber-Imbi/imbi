@@ -35,6 +35,9 @@ export interface DriftProject {
     string,
     { committish?: null | string; tag?: null | string }
   >
+  /** `"<base>..<head>"` -> when the oldest commit that needs action in
+   *  that range landed. Absent when the server has no date for it. */
+  drift_range_oldest?: Record<string, string>
   /** `"<base>..<head>"` -> whether that range needs action. `false`
    *  means every commit in it carries a CI verdict of `false`; `true`
    *  means a `true` verdict or an unanswered commit. Absent means the
@@ -45,6 +48,8 @@ export interface DriftProject {
     commits_since_tag: number
     drift_detected?: boolean
     head_sha: null | string
+    /** When the oldest unreleased commit that needs action landed. */
+    oldest_actionable_at?: null | string
   }
 }
 
@@ -119,6 +124,16 @@ export function rangeNeedsAction(
 ): boolean {
   if (!pair.baseSha || !pair.headSha) return true
   return ranges?.[`${pair.baseSha}..${pair.headSha}`] !== false
+}
+
+// When the oldest commit that needs action in this promotion step
+// landed, or null when the server has no date for the range.
+export function rangeOldest(
+  oldest: Record<string, string> | undefined,
+  pair: DriftPair,
+): null | string {
+  if (!pair.baseSha || !pair.headSha) return null
+  return oldest?.[`${pair.baseSha}..${pair.headSha}`] ?? null
 }
 
 // Whether the tag..HEAD verdict proves the unreleased commits clean. A
