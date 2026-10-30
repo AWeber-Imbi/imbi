@@ -137,10 +137,9 @@ class TickTests(EngineTestCase):
         self.assertEqual(4, len(set(self.executor.fired)))
 
     async def test_records_the_run(self) -> None:
-        task = await self.tasks.create(
-            helpers.build_task(next_run_at=utc(2026, 7, 28, 6))
-        )
-        await self.engine.tick(utc(2026, 7, 28, 6, 0, 5))
+        now = datetime.datetime.now(datetime.UTC).replace(microsecond=0)
+        task = await self.tasks.create(helpers.build_task(next_run_at=now))
+        await self.engine.tick(now + datetime.timedelta(seconds=5))
         history = await runs.for_task(task.id)
         self.assertEqual(1, len(history))
         self.assertEqual('succeeded', history[0].state)
