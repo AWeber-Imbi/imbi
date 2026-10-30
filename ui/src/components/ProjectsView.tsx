@@ -97,9 +97,11 @@ type SortDir = 'asc' | 'desc'
 interface SortHeaderProps {
   children: React.ReactNode
   className?: string
+  filter?: React.ReactNode
   onSort: () => void
   sortDir: SortDir
   sorted: boolean
+  title?: string
 }
 
 type SortKey = 'drift' | 'name' | 'prs' | 'score' | 'team' | 'type'
@@ -755,67 +757,49 @@ export function ProjectsView() {
               Project
             </FilterHeader>
             <SortHeader
-              className="w-40 shrink-0 text-center whitespace-nowrap"
+              className="w-40 shrink-0 px-6 text-center whitespace-nowrap"
               onSort={() => setSort('prs')}
               sortDir={sortDir}
               sorted={sortKey === 'prs'}
             >
               PRs
             </SortHeader>
-            <div
-              className="hover:text-primary w-40 shrink-0 cursor-pointer px-2.5 py-3 text-center whitespace-nowrap select-none"
-              onClick={() => setSort('drift')}
+            <SortHeader
+              className="w-40 shrink-0 px-2.5 text-center whitespace-nowrap"
+              filter={
+                <FilterPopover
+                  activeFilters={driftSet}
+                  label="drift"
+                  onToggle={(s) => toggleFilter('drifts', s)}
+                  options={driftFilterOptions}
+                />
+              }
+              onSort={() => setSort('drift')}
+              sortDir={sortDir}
+              sorted={sortKey === 'drift'}
               title="Sort by the oldest change waiting to move on"
             >
-              <span className="inline-flex items-center gap-1">
-                Drift
-                {sortKey === 'drift' ? (
-                  sortDir === 'asc' ? (
-                    <ChevronUp className="size-3.5 shrink-0" />
-                  ) : (
-                    <ChevronDown className="size-3.5 shrink-0" />
-                  )
-                ) : (
-                  <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
-                )}
-                <span onClick={(e) => e.stopPropagation()}>
-                  <FilterPopover
-                    activeFilters={driftSet}
-                    label="drift"
-                    onToggle={(s) => toggleFilter('drifts', s)}
-                    options={driftFilterOptions}
-                  />
-                </span>
-              </span>
-            </div>
+              Drift
+            </SortHeader>
             <div className="min-w-0 flex-1 px-6 py-3 text-center whitespace-nowrap">
               Current Deployments &amp; Releases
             </div>
-            <div
-              className="hover:text-primary w-28 shrink-0 cursor-pointer px-6 py-3 text-center whitespace-nowrap select-none"
-              onClick={() => setSort('score')}
+            <SortHeader
+              className="w-28 shrink-0 px-6 text-center whitespace-nowrap"
+              filter={
+                <FilterPopover
+                  activeFilters={scoreSet}
+                  label="health score"
+                  onToggle={(s) => toggleFilter('scores', s)}
+                  options={scoreFilterOptions}
+                />
+              }
+              onSort={() => setSort('score')}
+              sortDir={sortDir}
+              sorted={sortKey === 'score'}
             >
-              <span className="inline-flex items-center gap-1">
-                Score
-                {sortKey === 'score' ? (
-                  sortDir === 'asc' ? (
-                    <ChevronUp className="size-3.5 shrink-0" />
-                  ) : (
-                    <ChevronDown className="size-3.5 shrink-0" />
-                  )
-                ) : (
-                  <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
-                )}
-                <span onClick={(e) => e.stopPropagation()}>
-                  <FilterPopover
-                    activeFilters={scoreSet}
-                    label="health score"
-                    onToggle={(s) => toggleFilter('scores', s)}
-                    options={scoreFilterOptions}
-                  />
-                </span>
-              </span>
-            </div>
+              Score
+            </SortHeader>
           </div>
           <div
             className="divide-tertiary divide-y overflow-y-auto"
@@ -1508,26 +1492,33 @@ function ScrollableDeployments({
 function SortHeader({
   children,
   className,
+  filter,
   onSort,
   sortDir,
   sorted,
+  title,
 }: SortHeaderProps) {
   return (
-    <div
-      className={`hover:text-primary cursor-pointer px-6 py-3 select-none ${className ? ` ${className}` : ''}`}
-      onClick={onSort}
-    >
+    <div className={`py-3${className ? ` ${className}` : ''}`}>
       <span className="inline-flex items-center gap-1">
-        {children}
-        {sorted ? (
-          sortDir === 'asc' ? (
-            <ChevronUp className="size-3.5 shrink-0" />
+        <button
+          className="hover:text-primary inline-flex items-center gap-1"
+          onClick={onSort}
+          title={title}
+          type="button"
+        >
+          {children}
+          {sorted ? (
+            sortDir === 'asc' ? (
+              <ChevronUp className="size-3.5 shrink-0" />
+            ) : (
+              <ChevronDown className="size-3.5 shrink-0" />
+            )
           ) : (
-            <ChevronDown className="size-3.5 shrink-0" />
-          )
-        ) : (
-          <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
-        )}
+            <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
+          )}
+        </button>
+        {filter}
       </span>
     </div>
   )

@@ -411,11 +411,14 @@ describe('ProjectsView waiting age', () => {
     const names = () =>
       screen.getAllByText(/^(Hotel|India|Juliet)$/).map((el) => el.textContent)
 
-    await user.click(screen.getByTitle(/Sort by the oldest change/))
+    const sortButton = screen.getByRole('button', { name: 'Drift' })
+    await user.click(sortButton)
     expect(names()).toEqual(['Juliet', 'India', 'Hotel'])
 
-    // Reversed, the undated project still sorts last.
-    await user.click(screen.getByTitle(/Sort by the oldest change/))
+    // Reversed, the undated project still sorts last. Sorting works
+    // from the keyboard too.
+    sortButton.focus()
+    await user.keyboard('{Enter}')
     expect(names()).toEqual(['India', 'Juliet', 'Hotel'])
   })
 })
