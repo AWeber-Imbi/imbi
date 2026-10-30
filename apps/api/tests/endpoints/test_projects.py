@@ -696,6 +696,111 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['name'], 'New Name')
         self.assertIn('relationships', data)
 
+    def _patch_delivery_mode(
+        self, value: object, updated: dict[str, typing.Any] | None = None
+    ) -> typing.Any:
+        existing = self._project_data()
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [
+                {
+                    'project': updated or existing,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
+                }
+            ],
+        ]
+        with (
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+            return self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {'op': 'replace', 'path': '/delivery_mode', 'value': value}
+                ],
+            )
+
+    def test_patch_project_delivery_mode(self) -> None:
+        """``delivery_mode`` is a patchable node property."""
+        response = self._patch_delivery_mode(
+            'disabled', self._project_data(delivery_mode='disabled')
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['delivery_mode'], 'disabled')
+        # The SET statement carries the new value to the graph.
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIn(
+            'p.`delivery_mode` = {delivery_mode}', set_statement.cypher
+        )
+        self.assertEqual(set_statement.params['delivery_mode'], 'disabled')
+
+    def test_patch_project_delivery_mode_defaults(self) -> None:
+        """A node written before the property existed reads as
+        ``project-type``."""
+        response = self._patch_delivery_mode('project-type')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['delivery_mode'], 'project-type')
+
+    def test_patch_project_delivery_mode_rejects_unknown(self) -> None:
+        response = self._patch_delivery_mode('sometimes')
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('delivery_mode', response.json()['detail'])
+
+    def test_list_slim_release_summaries_follow_delivery_mode(self) -> None:
+        """Release summaries are fetched for projects that *resolve* to
+        releasable: a releasable type unless the project overrides it,
+        and a deployable type when the project says ``releasable``."""
+
+        def _item(pid: str, mode: str, **flags: bool) -> dict:
+            return {
+                'project': {
+                    'id': pid,
+                    'name': pid,
+                    'slug': pid,
+                    'archived': False,
+                    'delivery_mode': mode,
+                    'team': {'name': 'Platform', 'slug': 'platform'},
+                    'project_types': [
+                        {'slug': 'lib', 'name': 'Library', **flags}
+                    ],
+                    'environments': [],
+                }
+            }
+
+        from imbi.api.endpoints import projects
+
+        self.mock_db.execute.return_value = [
+            _item('by-type', 'project-type', releasable=True),
+            _item('disabled', 'disabled', releasable=True),
+            _item('forced', 'releasable', deployable=True),
+            _item('deploy', 'deployable', releasable=True),
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch.object(
+                projects,
+                '_fetch_release_summaries',
+                mock.AsyncMock(return_value={}),
+            ) as summaries,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/?slim=true'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        summaries.assert_awaited_once_with(['by-type', 'forced'])
+        modes = {p['id']: p['delivery_mode'] for p in response.json()}
+        self.assertEqual(modes['disabled'], 'disabled')
+        self.assertEqual(modes['by-type'], 'project-type')
+
     def test_patch_project_enqueues_dependents(self) -> None:
         """A patched attribute re-scores the project's dependents."""
         existing = self._project_data()

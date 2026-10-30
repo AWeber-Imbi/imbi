@@ -53,9 +53,14 @@ let mockAuthUser: { is_admin: boolean; permissions: string[] } = {
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockAuthUser }),
 }))
+const mockPatch = vi.fn()
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useProjectPatch', () => ({
-  useProjectPatch: () => ({ patch: vi.fn(), scheduleScoreRefresh: vi.fn() }),
+  useProjectPatch: () => ({
+    patch: mockPatch,
+    pendingPath: null,
+    scheduleScoreRefresh: vi.fn(),
+  }),
 }))
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useDeploymentResync', () => ({
@@ -70,18 +75,54 @@ const ARCHIVED_PROJECT = {
   team: { name: 'Team', organization: { name: 'Acme', slug: 'acme' } },
 } as Project
 
-function renderTab() {
+function renderTab(project: Project = ARCHIVED_PROJECT) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ProjectSettingsTab project={ARCHIVED_PROJECT} />
+        <ProjectSettingsTab project={project} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
 }
+
+describe('ProjectSettingsTab delivery mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPatch.mockResolvedValue(undefined)
+    vi.mocked(endpoints.listLinkDefinitions).mockResolvedValue([])
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([])
+  })
+
+  it('defaults to "By project type" when the project has no setting', () => {
+    const { getByRole } = renderTab()
+    expect(getByRole('combobox', { name: 'Delivery' })).toHaveTextContent(
+      'By project type',
+    )
+  })
+
+  it('shows the saved setting and its description', () => {
+    const { getByRole, getByText } = renderTab({
+      ...ARCHIVED_PROJECT,
+      delivery_mode: 'disabled',
+    })
+    expect(getByRole('combobox', { name: 'Delivery' })).toHaveTextContent(
+      'Disabled',
+    )
+    expect(getByText(/Releases are managed outside Imbi/)).toBeInTheDocument()
+  })
+
+  it('patches /delivery_mode when another option is picked', async () => {
+    const { findByRole, getByRole } = renderTab()
+    fireEvent.click(getByRole('combobox', { name: 'Delivery' }))
+    fireEvent.click(await findByRole('option', { name: 'Disabled' }))
+    await waitFor(() => {
+      expect(mockPatch).toHaveBeenCalledWith('/delivery_mode', 'disabled')
+    })
+  })
+})
 
 describe('ProjectSettingsTab archive lifecycle results', () => {
   let toast: {

@@ -39,6 +39,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { useUrlSearchQuery } from '@/hooks/useUrlSearchQuery'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { type DeliveryProject, resolveDelivery } from '@/lib/delivery'
 import {
   computeDriftPairs,
   type DriftPair,
@@ -1183,20 +1184,12 @@ function FilterHeader({
   )
 }
 
-function isProjectDeployable(project: {
-  project_types?: null | object[]
-}): boolean {
-  return (project.project_types ?? []).some(
-    (pt) => (pt as { deployable?: boolean }).deployable === true,
-  )
+function isProjectDeployable(project: DeliveryProject): boolean {
+  return resolveDelivery(project).deployable
 }
 
-function isProjectReleasable(project: {
-  project_types?: null | object[]
-}): boolean {
-  return (project.project_types ?? []).some(
-    (pt) => (pt as { releasable?: boolean }).releasable === true,
-  )
+function isProjectReleasable(project: DeliveryProject): boolean {
+  return resolveDelivery(project).releasable
 }
 
 // fallow-ignore-next-line complexity

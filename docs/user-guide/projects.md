@@ -153,8 +153,8 @@ that the tab needs.
 | **Overview** | Always | Details, attributes, environments, health score, and recent activity |
 | **Configuration** | The project has a configuration plugin | Configuration values from the plugin |
 | **Dependencies** | Always | The packages of the project. See [Pull requests and dependencies](pull-requests-and-dependencies.md) |
-| **Deployments** | A project type is deployable, the project has a deployment plugin, and at least one environment | Environments, promotion, and history. See [Releases and deployments](releases-and-deployments.md) |
-| **Releases** | A project type is releasable, none is deployable, and the project has a deployment plugin | Releases. See [Releases and deployments](releases-and-deployments.md) |
+| **Deployments** | The project is deployable (see [Delivery](#delivery)), has a deployment plugin, and at least one environment | Environments, promotion, and history. See [Releases and deployments](releases-and-deployments.md) |
+| **Releases** | The project is releasable (see [Delivery](#delivery)) and has a deployment plugin | Releases. See [Releases and deployments](releases-and-deployments.md) |
 | **Documents (N)** | Always | Project documents. See [Documents and reports](documents-and-reports.md) |
 | **Incidents** | The project has an incidents plugin | Incidents, for example from PagerDuty |
 | **Logs** | The project has a logs plugin | Logs, for example from Logz.io |
@@ -235,6 +235,25 @@ Links that an integration owns do not show here. The integration sets them.
 4. Click **Add**.
 
 To remove an environment, click its remove button and confirm.
+
+### Delivery
+
+**Releases and deployments** in the project settings says how Imbi ships
+the project. The default, **By project type**, follows the `deployable`
+or `releasable` flag of the project types: a deployable type gives the
+project the **Deployments** tab, otherwise a releasable type gives it the
+**Releases** tab. The other options override the project types for this
+one project:
+
+| Option | What it does |
+|---|---|
+| **By project type** | Follow the flags of the project types (default) |
+| **Deployable** | Deploy into environments and promote between them, whatever the types say |
+| **Releasable** | Cut tags and releases with no deploy step, whatever the types say |
+| **Disabled** | Turn release and deployment processing off. Neither tab shows, and the API refuses to deploy, promote, resync, draft release notes, or cut a release for the project |
+
+Use **Disabled** for a project whose releases are governed outside Imbi,
+for example a plugin with its own release process.
 
 ### Archive and restore
 

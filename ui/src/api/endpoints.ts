@@ -31,6 +31,7 @@ import {
   PROJECT_TYPE_BASE_FIELDS,
   TEAM_BASE_FIELDS,
 } from '@/lib/constants'
+import type { DeliveryMode } from '@/lib/delivery'
 import type {
   AdminSettings,
   AdminUser,
@@ -297,6 +298,7 @@ export interface ProjectListItem {
       tag?: null | string
     }
   >
+  delivery_mode?: DeliveryMode
   description: null | string
   // `"<base>..<head>"` -> when the oldest commit that needs action in
   // that range landed.
