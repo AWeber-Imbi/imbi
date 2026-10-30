@@ -377,7 +377,7 @@ export const AGENT_PROMPT_VARIABLES: Record<string, PromptVariable> = {
     required: false,
     type: 'str',
   },
-  project: {
+  project_slug: {
     description: 'The project slug of the task, or empty',
     required: false,
     type: 'str',
