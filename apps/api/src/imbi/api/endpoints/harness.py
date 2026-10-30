@@ -688,7 +688,7 @@ async def _rendered_prompt(
     """Render the pinned prompt version; return it or the error.
 
     The template gets the variables that it declares among
-    ``organization``, ``agent``, ``task``, and ``project`` (slugs and
+    ``organization``, ``agent``, ``task``, and ``project_slug`` (slugs and
     the short id).
     """
     if bundle.prompt_ref is None or bundle.prompt_version is None:
@@ -705,7 +705,7 @@ async def _rendered_prompt(
             'organization': org_slug,
             'agent': bundle.agent_slug or '',
             'task': task['short_id'],
-            'project': task.get('project_slug') or '',
+            'project_slug': task.get('project_slug') or '',
         }
         rendered = await rendering.render(
             version,

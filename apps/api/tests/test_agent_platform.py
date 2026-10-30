@@ -562,6 +562,21 @@ class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prompt.system, 'You are triage in acme.')
         self.assertEqual(prompt.model, 'sonnet')
 
+    async def test_renders_the_project_slug(self) -> None:
+        self.version.system = 'On {{ project_slug }}.'
+        self.version.variable_schema = {
+            'project_slug': models.PromptVariable(type='str')
+        }
+        prompt, error = await harness_api._rendered_prompt(
+            mock.Mock(),
+            {'short_id': 'T-1', 'project_slug': 'billing'},
+            self.bundle,
+            'acme',
+        )
+        self.assertIsNone(error)
+        assert prompt is not None
+        self.assertEqual(prompt.system, 'On billing.')
+
     async def test_a_render_error_is_returned(self) -> None:
         self.version.system = '{{ missing.attr }}'
         prompt, error = await harness_api._rendered_prompt(
