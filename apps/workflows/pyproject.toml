@@ -1,6 +1,6 @@
 [project]
 name = "imbi-workflows"
-version = "2.41.0"
+version = "2.42.0"
 description = "Imbi workflow engine"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -12,7 +12,7 @@ classifiers = []
 dependencies = [
   "fastapi>=0.135.1,<0.137",
   "httpx>=0.28.1",
-  "imbi-common[databases,server]==2.41.0",
+  "imbi-common[databases,server]==2.42.0",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
   "sentry-sdk>=2.48.0",
