@@ -833,12 +833,13 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         ]
         # Same-day rebuild: the calver suggestion depends on today's date,
         # so derive the tags from it rather than hardcoding one.
-        stamp = datetime.datetime.now(datetime.UTC).date().strftime('%Y.%m.%d')
+        today = datetime.datetime.now(datetime.UTC).date()
+        stamp = f'{today.year}.{today.month}.{today.day}'
         self.mock_anthropic.complete_json = mock.AsyncMock(
             return_value=CompletionResult(
                 data=DraftReleaseNotes(
                     bump='patch',
-                    version=f'{stamp}-1',
+                    version=f'{stamp}.1',
                     reasoning='same-day rebuild',
                     notes_markdown='## Fixed',
                 ),
@@ -850,17 +851,17 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 '/organizations/myorg/projects/proj1/deployments/'
                 'draft-release-notes',
                 json={
-                    'base_sha': f'{stamp}-0',
+                    'base_sha': f'{stamp}.0',
                     'head_sha': 'bbb',
-                    'last_tag': f'{stamp}-0',
+                    'last_tag': f'{stamp}.0',
                 },
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['version'], f'{stamp}-1')
+        self.assertEqual(response.json()['version'], f'{stamp}.1')
         call = self.mock_anthropic.complete_json.call_args
         prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
         self.assertIn('Allowed tag formats: Calendar versioning', prompt)
-        self.assertIn(f'Suggested next version: {stamp}-1', prompt)
+        self.assertIn(f'Suggested next version: {stamp}.1', prompt)
 
     def test_draft_release_notes_rebumps_to_the_policy(self) -> None:
         """A semver answer under a calver-only policy becomes a date."""
@@ -894,7 +895,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         today = datetime.datetime.now(datetime.UTC).date()
         self.assertEqual(
-            response.json()['version'], today.strftime('%Y.%m.%d-0')
+            response.json()['version'],
+            f'{today.year}.{today.month}.{today.day}.0',
         )
 
     def test_draft_release_notes_first_release_reads_synced_history(
@@ -5299,22 +5301,19 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
     def test_suggest_version_honours_the_tag_policy(self) -> None:
         calver = [r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$']
         today = datetime.datetime.now(datetime.UTC).date()
+        stamp = f'{today.year}.{today.month}.{today.day}'
         suggest = project_deployments._suggest_version
         # No policy: the historical semver answers stand.
         self.assertEqual('v1.2.4', suggest('v1.2.3', 'patch', []))
         self.assertEqual('v0.1.0', suggest(None, 'minor', []))
         # A calver prior tag advances by date, even with no policy.
         self.assertEqual(
-            today.strftime('%Y.%m.%d-0'),
+            f'{stamp}.0',
             suggest('2026.01.01-3', 'minor', []),
         )
         # Calver-only policy: a semver prior tag cannot be bumped into it.
-        self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest('v1.2.3', 'patch', calver)
-        )
-        self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest(None, 'patch', calver)
-        )
+        self.assertEqual(stamp, suggest('v1.2.3', 'patch', calver))
+        self.assertEqual(stamp, suggest(None, 'patch', calver))
         # Semver-only policy with a calver prior tag: first semver default
         # (the built-in Semver format tolerates the ``v`` prefix).
         self.assertEqual(
@@ -5350,7 +5349,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200)
         today = datetime.datetime.now(datetime.UTC).date()
         self.assertEqual(
-            response.json()['suggested_tag'], today.strftime('%Y.%m.%d')
+            response.json()['suggested_tag'],
+            f'{today.year}.{today.month}.{today.day}',
         )
 
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:

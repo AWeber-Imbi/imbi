@@ -46,7 +46,7 @@ describe('tagFormatHint', () => {
         { label: 'Calendar versioning', pattern: CALVER },
         { label: 'Ticket', pattern: '^REL-\\d+$' },
       ]),
-    ).toBe('Use a Calendar versioning or Ticket tag, e.g. 2026.09.17-0')
+    ).toBe('Use a Calendar versioning or Ticket tag, e.g. 2026.9.17.0')
     expect(tagFormatHint([])).toBe('Use a semver tag, e.g. v6.5.2')
   })
 })

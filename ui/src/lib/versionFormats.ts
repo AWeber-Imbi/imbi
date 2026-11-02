@@ -34,7 +34,7 @@ const BUILTIN_FORMATS: BuiltinFormat[] = [
   {
     description:
       'Year, month, and day with an optional suffix such as a build counter.',
-    example: '2026.09.17-0',
+    example: '2026.9.17.0',
     label: 'Calendar versioning',
     // Mirrors CALVER_TAG_PATTERN in imbi.common.versioning; keep in step.
     pattern: '^\\d{4}([.-])\\d{1,2}\\1\\d{1,2}(?:[.-]\\w+)?$',

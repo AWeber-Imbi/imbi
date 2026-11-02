@@ -213,20 +213,62 @@ class CalverTestCase(unittest.TestCase):
 
     def test_first_tag_is_todays_date(self) -> None:
         self.assertEqual(
-            '2026.09.17', versioning.next_calver_tag(None, self.TODAY)
+            '2026.9.17', versioning.next_calver_tag(None, self.TODAY)
         )
         self.assertEqual(
-            '2026.09.17', versioning.next_calver_tag('v1.2.3', self.TODAY)
+            '2026.9.17', versioning.next_calver_tag('v1.2.3', self.TODAY)
         )
 
     def test_counter_suffix_follows_the_prior_tag(self) -> None:
         cases = {
-            '2026.09.16-0': '2026.09.17-0',
-            '2026.09.17-0': '2026.09.17-1',
-            '2026.09.17': '2026.09.17-1',
-            '2026.09.16': '2026.09.17',
+            '2026.9.16.0': '2026.9.17.0',
+            '2026.9.17.0': '2026.9.17.1',
+            '2026.9.17': '2026.9.17.1',
+            '2026.9.16': '2026.9.17',
             '2026-09-16': '2026-09-17',
-            '2026.09.17.rc1': '2026.09.17-1',
+            '2026.9.17.rc1': '2026.9.17.1',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, self.TODAY)
+                )
+
+    def test_dotted_tags_are_pep440_canonical(self) -> None:
+        """Suggest the spelling a wheel's normalised version carries."""
+        cases = {
+            # Month and day below 10 are not zero-padded.
+            (None, datetime.date(2026, 3, 17)): '2026.3.17',
+            (None, datetime.date(2026, 11, 2)): '2026.11.2',
+            ('2026.11.1', datetime.date(2026, 11, 2)): '2026.11.2',
+            # A same-day rebuild of a bare tag counts with ``.``, not
+            # ``-`` (``2026.10.27-1`` normalises to ``2026.10.27.post1``).
+            ('2026.10.27', datetime.date(2026, 10, 27)): '2026.10.27.1',
+            ('2026.11.2', datetime.date(2026, 11, 2)): '2026.11.2.1',
+            # A padded or hyphen-counted prior tag advances to the
+            # canonical spelling.
+            ('2026.10.27.1', datetime.date(2026, 11, 2)): '2026.11.2.0',
+            ('2026.11.02.0', datetime.date(2026, 11, 2)): '2026.11.2.1',
+            ('2026.09.16-0', self.TODAY): '2026.9.17.0',
+            ('2026.09.17-0', self.TODAY): '2026.9.17.1',
+            ('2026.09.17', self.TODAY): '2026.9.17.1',
+            ('2026.09.16', self.TODAY): '2026.9.17',
+        }
+        for (last, today), expected in cases.items():
+            with self.subTest(last=last, today=today):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, today)
+                )
+
+    def test_hyphenated_dates_keep_their_spelling(self) -> None:
+        """Not a PEP 440 version, so padding and ``-`` counters stay."""
+        cases = {
+            '2026-09-16': '2026-09-17',
+            '2026-09-17': '2026-09-17-1',
+            '2026-09-16-0': '2026-09-17-0',
+            '2026-09-17-0': '2026-09-17-1',
+            '2026-09-17.3': '2026-09-17.4',
+            '2026-09-17-rc1': '2026-09-17-1',
         }
         for last, expected in cases.items():
             with self.subTest(last=last):

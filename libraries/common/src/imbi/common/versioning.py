@@ -117,16 +117,32 @@ def next_calver_tag(
 ) -> str:
     """The calendar-versioning tag that follows ``last_tag`` on ``today``.
 
-    The date is ``today`` with zero-padded month and day, using the
-    separator of ``last_tag`` (``.`` when there is no prior calver tag).
-    The suffix mirrors the prior tag's convention: a tag that carried a
-    numeric build counter (``2026.09.16-0``) yields ``2026.09.17-0`` on a
-    new day and ``2026.09.16-1`` on the same day; a bare tag yields a bare
-    date on a new day and ``-1`` on the same day.
+    The date is ``today`` in the separator of ``last_tag`` (``.`` when
+    there is no prior calver tag).  The suffix mirrors the prior tag's
+    convention: a tag that carried a numeric build counter yields a
+    ``0`` counter on a new day and the next counter on the same day; a
+    bare tag yields a bare date on a new day and a ``1`` counter on the
+    same day.
+
+    A dotted tag is suggested in PEP 440 canonical form -- no zero
+    padding and a ``.`` before the counter (``2026.9.17``,
+    ``2026.9.17.1``) -- because a Python wheel always carries the
+    normalised version, and a release build that compares the wheel's
+    version with the tag fails on ``2026.09.17`` (``2026.9.17``) or
+    ``2026.9.17-1`` (``2026.9.17.post1``).  A prior tag in either
+    spelling still advances: ``2026.09.16-0`` yields ``2026.9.17.0``.
+
+    A hyphenated date (``2026-09-17``) is not a PEP 440 version at all,
+    so it keeps its zero-padded month and day and mirrors the prior
+    tag's counter separator, using ``-`` for a same-day rebuild of a
+    bare tag (``2026-09-17-1``).
     """
     match = _CALVER_PARTS_RE.match(last_tag or '')
     sep = match.group(2) if match else '.'
-    date = today.strftime(f'%Y{sep}%m{sep}%d')
+    if sep == '.':
+        date = f'{today.year}.{today.month}.{today.day}'
+    else:
+        date = today.strftime(f'%Y{sep}%m{sep}%d')
     if not match:
         return date
     year, _, month, day, suffix_sep, suffix = match.groups()
@@ -136,12 +152,13 @@ def next_calver_tag(
         today.day,
     )
     counted = suffix is not None and suffix.isdigit()
+    counter_sep = '.' if sep == '.' else (suffix_sep if counted else '-')
     if same_day:
         if counted:
-            return f'{date}{suffix_sep}{int(suffix) + 1}'
-        return f'{date}-1'
+            return f'{date}{counter_sep}{int(suffix) + 1}'
+        return f'{date}{counter_sep}1'
     if counted:
-        return f'{date}{suffix_sep}0'
+        return f'{date}{counter_sep}0'
     return date
 
 

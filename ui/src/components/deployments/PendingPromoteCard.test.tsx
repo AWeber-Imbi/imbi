@@ -248,7 +248,7 @@ describe('PendingPromoteCard — tag formats and first promotes', () => {
     // The semver draft does not fit the policy, so the form says so.
     await waitFor(() => {
       expect(
-        screen.getByText('Use a Calendar versioning tag, e.g. 2026.09.17-0'),
+        screen.getByText('Use a Calendar versioning tag, e.g. 2026.9.17.0'),
       ).toBeInTheDocument()
     })
     expect(promoteButton()).toBeDisabled()

@@ -180,7 +180,7 @@ The built-in formats are:
 | Format | Example | Pattern |
 |---|---|---|
 | Semantic versioning | `2.11.5` | `MAJOR.MINOR.PATCH` with optional pre-release and build metadata. A leading `v` is optional, so `v2.11.5` is also accepted |
-| Calendar versioning | `2026.09.17-0` | Year, month, and day, with an optional suffix |
+| Calendar versioning | `2026.9.17.0` | Year, month, and day, with an optional suffix |
 | Git short SHA | `7d4f2a3b` | 7 to 40 lowercase hexadecimal characters |
 | Any format | `nightly-build` | Any text that is not empty |
 

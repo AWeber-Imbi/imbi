@@ -194,7 +194,7 @@ describe('ReleaseReadyCard', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          'Use a Calendar versioning or Ticket tag, e.g. 2026.09.17-0',
+          'Use a Calendar versioning or Ticket tag, e.g. 2026.9.17.0',
         ),
       ).toBeInTheDocument()
     })

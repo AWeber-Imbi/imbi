@@ -55,10 +55,13 @@ exposes, or a required runtime dropped.
   bump type. Tags have NO "v" prefix unless the previous tag had one:
   use "3.10.0", not "v3.10.0".
 - Calendar versioning (YYYY.MM.DD, optional suffix): use the "Today" date
-  from the request, zero-padded, with the previous tag's separator and
-  suffix convention. If the previous tag is already today's date,
-  increment its counter suffix ("2026.09.17-0" → "2026.09.17-1"). The
-  bump type still describes the change; it does not alter the date.
+  from the request with the previous tag's separator and suffix
+  convention. A dot-separated date is PEP 440 canonical: no zero padding
+  and a "." before any counter ("2026.9.7.0", never "2026.09.07-0"). A
+  hyphen-separated date keeps zero padding and its "-" counter. If the
+  previous tag is already today's date, increment its counter suffix
+  ("2026.9.17.0" → "2026.9.17.1"), or add ".1" to a bare date. The bump
+  type still describes the change; it does not alter the date.
 - When you cannot work out the version format from the previous tag and
   the allowed formats, return the "Suggested next version" from the
   request. It comes from commit prefixes, not from the rules above: it
