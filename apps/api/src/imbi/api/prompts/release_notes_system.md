@@ -60,8 +60,10 @@ exposes, or a required runtime dropped.
   and a "." before any counter ("2026.9.7.0", never "2026.09.07-0"). A
   hyphen-separated date keeps zero padding and its "-" counter. If the
   previous tag is already today's date, increment its counter suffix
-  ("2026.9.17.0" → "2026.9.17.1"), or add ".1" to a bare date. The bump
-  type still describes the change; it does not alter the date.
+  ("2026.9.17.0" → "2026.9.17.1"), or add ".1" to a bare dotted date. For
+  a bare hyphenated date add "-1", and for a hyphenated date that already
+  has a numeric suffix keep its separator. The bump type still describes
+  the change; it does not alter the date.
 - When you cannot work out the version format from the previous tag and
   the allowed formats, return the "Suggested next version" from the
   request. It comes from commit prefixes, not from the rules above: it
