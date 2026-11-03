@@ -105,7 +105,10 @@ export function filterTimeline(
   const children = (entry: TimelineEntry): TimelineEntry[] =>
     filters.subagents
       ? entry.children
-          .filter((c) => filters[categoryOf(c)])
+          .filter(
+            (c) =>
+              filters[categoryOf(c)] && (!filters.errorsOnly || hasError(c)),
+          )
           .map((c) => ({ ...c, children: children(c) }))
       : []
   return entries

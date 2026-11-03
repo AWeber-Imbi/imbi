@@ -174,6 +174,22 @@ describe('filterTimeline', () => {
     ])
   })
 
+  it('drops the successful siblings of a failed subagent call', () => {
+    const nested = timeline([
+      call(1, 'Grep', { is_error: true, parent_call_id: 'c3' }, sub),
+      call(2, 'Read', { parent_call_id: 'c3' }, sub),
+      call(3, 'Task'),
+    ])
+    const shown = filterTimeline(nested, {
+      ...DEFAULT_FILTERS,
+      errorsOnly: true,
+    })
+    expect(rows(shown)).toEqual([
+      ['Task', 0],
+      ['Grep', 1],
+    ])
+  })
+
   it('drops children when subagents are off', () => {
     const shown = filterTimeline(entries, {
       ...DEFAULT_FILTERS,
