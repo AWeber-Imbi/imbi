@@ -255,7 +255,6 @@ unset.
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | str | none | See `IMBI_SCHEDULER_SA_CLIENT_ID`. |
 | `IMBI_WORKFLOWS_SA_CLIENT_ID` | str | none | The same, for the `imbi-workflows` service account. |
 | `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | str | none | See `IMBI_WORKFLOWS_SA_CLIENT_ID`. |
-| `IMBI_OAUTH_ALLOW_INSECURE_URLS` | str | `''` | `true` allows `http://localhost` OAuth provider URLs. Development only. |
 | `IMBI_PLUGIN_CACHE_TTL` | int | `60` | Seconds that Valkey keeps the configuration key list of a project |
 | `IMBI_PLUGIN_TIMEOUT_SECONDS` | int | `10` | Timeout of one plugin call in seconds |
 | `IMBI_PLUGINS_INDEX_URL` | str | `https://pypi.org/simple` | Package index for plugin installs |
