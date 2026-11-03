@@ -470,10 +470,13 @@ async def _service_account_params(
 
     The slug is the slugified agent name. Service account slugs are
     unique across all organizations, so when another service account
-    has that slug, the agent id is added to it.
+    has that slug, the agent id is added to it. The agent id is also
+    added when the name gives an empty slug.
     """
     slug = slugify.slugify(name)
-    if await db.execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id']):
+    if not slug or await db.execute(
+        _SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id']
+    ):
         slug = slugify.slugify(f'{name} {agent_id}')
     return {
         'sa_id': nanoid.generate(),
@@ -495,21 +498,30 @@ async def ensure_service_account(
     records = await db.execute(
         _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
     )
-    if not records:
+    attempts = 3
+    while not records and attempts:
+        attempts -= 1
+        params = await _service_account_params(db, agent_id, name)
+        # Read again after the slug check. When a concurrent request
+        # made the account of this agent first, its slug looks taken,
+        # and this read finds that account. Thus the agent does not
+        # get a second account.
+        records = await db.execute(
+            _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
+        )
+        if records:
+            break
         try:
+            # Empty when the agent does not exist.
             records = await db.execute(
                 _ENSURE_SERVICE_ACCOUNT_QUERY,
-                {
-                    'id': agent_id,
-                    **await _service_account_params(db, agent_id, name),
-                },
+                {'id': agent_id, **params},
                 ['id'],
             )
+            break
         except psycopg.errors.UniqueViolation:
-            # A concurrent request made it first.
-            records = await db.execute(
-                _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
-            )
+            # A concurrent request took the slug first. Try again.
+            continue
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Agent {name!r} not found'
