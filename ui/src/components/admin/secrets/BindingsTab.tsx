@@ -326,8 +326,12 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               options: bindings
                 .filter(
                   (b) =>
-                    b.credential_class === 'dynamic' &&
-                    appProviders.has(b.provider_id),
+                    (b.credential_class === 'dynamic' &&
+                      appProviders.has(b.provider_id)) ||
+                    // Keep current consumers so the admin can remove them.
+                    (
+                      row?.provider_key_usage as KeyUsage | undefined
+                    )?.consumers?.includes(b.id),
                 )
                 .map((b) => ({ label: b.reference, value: b.id })),
               show: keyClass,
@@ -352,7 +356,8 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
 function unlinkedKeys(bindings: SecretBinding[]) {
   return bindings.flatMap((app) => {
     const privateKey = app.locator.private_key
-    if (typeof privateKey !== 'string') return []
+    if (app.credential_class !== 'dynamic' || typeof privateKey !== 'string')
+      return []
     const key = bindings.find(
       (b) => b.reference === privateKey.split('#')[0] && b.provider_key_usage,
     )
