@@ -4967,6 +4967,27 @@ async def fail_promote_build(
     )
 
 
+async def _release_committish(
+    db: graph.Graph, *, release_id: str
+) -> str | None:
+    """The commit a ``Release`` node currently records, or ``None``.
+
+    What the post-build heal has to compare the tag against: the node's
+    value, not the promote's.  A re-promote of a tag whose first build
+    failed inherits the node that promote created -- the upsert never
+    overwrites a committish -- so the node can still carry the earlier
+    commit while the promote itself names the one the tag now points at.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    RETURN r.committish AS committish
+    """
+    rows = await db.execute(query, {'release_id': release_id}, ['committish'])
+    if not rows or rows[0].get('committish') is None:
+        return None
+    return versioning.short_committish(str(rows[0]['committish']))
+
+
 async def _set_release_committish(
     db: graph.Graph,
     *,
@@ -5309,7 +5330,17 @@ async def complete_promote_build(
     )
     if tagged is not None:
         actual = versioning.short_committish(tagged.sha)
-        if actual != versioning.short_committish(committish):
+        # Compare against what the node holds, not what this promote
+        # asked for.  A tag whose first build failed and was then
+        # re-promoted from another commit keeps the first promote's
+        # node (the upsert never overwrites a committish), so the stale
+        # value is on the node while the promote's own committish
+        # already agrees with the tag.  Comparing to the promote left
+        # that node pointing at the commit that never shipped.
+        recorded = await _release_committish(db, release_id=release_id)
+        if recorded is None:
+            recorded = versioning.short_committish(committish)
+        if actual != recorded:
             # Imbi created the Release node keyed on the commit it asked
             # to tag, but the release workflow bumps the version and tags
             # the bump commit, so the tag routinely points somewhere
@@ -5320,11 +5351,11 @@ async def complete_promote_build(
             # carrying the post-bump SHA.
             LOGGER.info(
                 'release-promote: tag %s on project %s points at %s, not '
-                'the promoted commit %s; updating the Release committish',
+                'the recorded commit %s; updating the Release committish',
                 tag,
                 project_id,
                 actual,
-                committish,
+                recorded,
             )
             await _set_release_committish(
                 db, release_id=release_id, committish=actual

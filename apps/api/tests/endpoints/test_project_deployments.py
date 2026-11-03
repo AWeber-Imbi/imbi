@@ -4177,6 +4177,52 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
+    @staticmethod
+    def _db_recording(committish: str) -> mock.AsyncMock:
+        """A graph whose ``Release`` node already holds *committish*."""
+
+        async def execute(query: str, *_: typing.Any) -> list[typing.Any]:
+            if 'RETURN r.committish AS committish' in query:
+                return [{'committish': committish}]
+            return []
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=execute)
+        return db
+
+    def _committish_writes(self, db: mock.AsyncMock) -> list[typing.Any]:
+        return [
+            call.args[1]
+            for call in db.execute.await_args_list
+            if 'r.committish = {committish}' in call.args[0]
+        ]
+
+    async def test_heals_the_node_a_failed_first_promote_left(self) -> None:
+        """The tag agrees with this promote but not with the node.
+
+        First promote of the tag built from one commit and failed before
+        tagging; after an unblock the tag was re-promoted from another
+        commit, which the build then tagged.  The re-promote inherits the
+        first promote's node -- the upsert never overwrites a committish
+        -- so the stale commit is on the node while the promote's own
+        committish already matches the tag.  Comparing to the promote
+        saw no drift and left the node pointing at a commit that never
+        shipped.
+        """
+        self.tagged.sha = '3c1ea7bfedcba'
+        db = self._db_recording('28ae5f2')
+        await self._complete(db)
+        writes = self._committish_writes(db)
+        self.assertEqual(1, len(writes))
+        self.assertEqual('3c1ea7b', writes[0]['committish'])
+        self.assertEqual('rel1', writes[0]['release_id'])
+
+    async def test_a_node_already_healed_writes_nothing(self) -> None:
+        """A reclaimed job re-runs completion; the node already agrees."""
+        db = self._db_recording('27f2f81')
+        await self._complete(db)
+        self.assertFalse(self._committish_writes(db))
+
 
 class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     """Recording a deployment whose release is not known yet."""
