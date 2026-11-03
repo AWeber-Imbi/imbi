@@ -310,6 +310,30 @@ class ReferenceClientTests(
         self.assertEqual(state['status'], 'blocked')
         self.assertEqual((await self.task_row())['status'], 'blocked')
 
+    async def test_run_task_rich_writes_every_conversation_event(
+        self,
+    ) -> None:
+        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await agent_task_client.run_rich_task(
+            harness, model_id=self.slug
+        )
+        self.assertEqual(state['status'], 'closed')
+        events = await self.postgres_events(self.task['id'])
+        payloads = [e['payload'] for e in events]
+        kinds = [p.get('kind') for p in payloads if 'kind' in p]
+        self.assertIn('thinking', kinds)
+        self.assertIn('warning', kinds)
+        self.assertEqual([p['part'] for p in payloads if 'part' in p], [1, 2])
+        task_call = next(p for p in payloads if p.get('tool') == 'Task')
+        nested = [
+            e
+            for e in events
+            if e['payload'].get('parent_call_id') == task_call['call_id']
+        ]
+        self.assertEqual(
+            [e['actor_kind'] for e in nested], ['subagent', 'subagent']
+        )
+
 
 class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
     """Resolutions and outcomes of project tasks go to the Operations Log."""

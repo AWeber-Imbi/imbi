@@ -143,6 +143,138 @@ class HarnessClient:
         )
 
 
+def rich_events() -> list[Body]:
+    """The events of a long agent run, as the harness writes them.
+
+    They cover what the Conversation tab draws: thinking and warning
+    turns, a failed call, a call that policy denied, a subagent with
+    its own turn and call nested under the call that started it, and a
+    result split into continuation parts. The subagent events come
+    before the call that started them, as they do from the harness,
+    which writes a call when its result arrives.
+    """
+    task_call = f'toolu_task_{uuid.uuid4().hex[:8]}'
+    big_call = f'toolu_read_{uuid.uuid4().hex[:8]}'
+    lines = [f'{n:>4}  line {n} of the file' for n in range(1, 201)]
+    return [
+        {
+            'type': 'turn',
+            'payload': {
+                'kind': 'thinking',
+                'body': 'The build broke after the dependency bump. '
+                'Read the failing log before changing anything.',
+            },
+        },
+        {
+            'type': 'tool.called',
+            'payload': {
+                'call_id': f'toolu_{uuid.uuid4().hex[:8]}',
+                'tool': 'Bash',
+                'mutating': True,
+                'arguments': {'command': 'uv run pytest -q'},
+                'result': '.F..\nFAILED tests/test_x.py::test_parse\n'
+                '1 failed, 3 passed in 0.42s',
+                'is_error': True,
+                'duration_ms': 4210,
+            },
+        },
+        {
+            'type': 'turn',
+            'payload': {
+                'kind': 'text',
+                'body': 'One test fails:\n\n'
+                '- `test_parse` rejects the extra field\n'
+                '- the others pass\n\n'
+                'I will look for every place that parses this model.',
+            },
+        },
+        {
+            'type': 'turn',
+            'actor_kind': 'subagent',
+            'payload': {
+                'kind': 'text',
+                'body': 'Searching for the parse calls.',
+                'parent_call_id': task_call,
+            },
+        },
+        {
+            'type': 'tool.called',
+            'actor_kind': 'subagent',
+            'payload': {
+                'call_id': f'toolu_{uuid.uuid4().hex[:8]}',
+                'tool': 'Grep',
+                'mutating': False,
+                'arguments': {'pattern': 'model_validate', 'path': 'src'},
+                'result': 'src/feeds.py:88\nsrc/api.py:54',
+                'is_error': False,
+                'duration_ms': 310,
+                'parent_call_id': task_call,
+            },
+        },
+        {
+            'type': 'tool.called',
+            'payload': {
+                'call_id': task_call,
+                'tool': 'Task',
+                'mutating': False,
+                'arguments': {
+                    'subagent_type': 'code-search',
+                    'description': 'Find the parse calls',
+                },
+                'result': 'Two call sites: src/feeds.py:88, src/api.py:54',
+                'is_error': False,
+                'duration_ms': 9800,
+            },
+        },
+        {
+            'type': 'tool.called',
+            'payload': {
+                'call_id': f'toolu_{uuid.uuid4().hex[:8]}',
+                'tool': 'Bash',
+                'mutating': True,
+                'arguments': {'command': 'git push --force'},
+                'result': 'Denied by policy.',
+                'is_error': True,
+                'duration_ms': 3,
+                'policy': {
+                    'decision': 'deny',
+                    'reason': 'Force pushes are blocked on PR branches',
+                },
+            },
+        },
+        {
+            'type': 'tool.called',
+            'payload': {
+                'call_id': big_call,
+                'tool': 'Read',
+                'mutating': False,
+                'arguments': {'file_path': 'src/feeds.py'},
+                'result': '\n'.join(lines[:100]) + '\n',
+                'is_error': False,
+                'duration_ms': 40,
+                'part': 1,
+                'parts': 2,
+            },
+        },
+        {
+            'type': 'tool.called',
+            'payload': {
+                'call_id': big_call,
+                'result': '\n'.join(lines[100:]),
+                'part': 2,
+                'parts': 2,
+            },
+        },
+        {
+            'type': 'turn',
+            'payload': {
+                'kind': 'warning',
+                'body': 'Coverage dropped from 91.2% to 90.8%.',
+            },
+        },
+    ]
+
+
 async def run_task(
     harness: HarnessClient,
     *,
@@ -252,6 +384,18 @@ async def run_task(
     return await harness.set_outcome('done_acted')
 
 
+async def run_rich_task(
+    harness: HarnessClient, *, model_id: str, ask: bool = False
+) -> Body:
+    """Write :func:`rich_events` in a session of its own, then work the
+    task with :func:`run_task`. With ``ask``, leave it blocked on a
+    feedback request."""
+    run = uuid.uuid4().hex[:8]
+    session = await harness.open_session(f'reference-rich-{run}')
+    await harness.append(session['session']['id'], rich_events())
+    return await run_task(harness, model_id=model_id, ask=ask)
+
+
 async def _main(args: argparse.Namespace) -> Body:
     async with httpx.AsyncClient(base_url=args.api_url) as client:
         response = await client.post(
@@ -266,11 +410,13 @@ async def _main(args: argparse.Namespace) -> Body:
         client.headers['Authorization'] = (
             f'Bearer {response.json()["access_token"]}'
         )
+        harness = HarnessClient(client, args.org, args.task)
+        if args.rich:
+            return await run_rich_task(
+                harness, model_id=args.model, ask=args.ask
+            )
         return await run_task(
-            HarnessClient(client, args.org, args.task),
-            model_id=args.model,
-            ask=args.ask,
-            wait=args.wait,
+            harness, model_id=args.model, ask=args.ask, wait=args.wait
         )
 
 
@@ -297,6 +443,12 @@ def main() -> None:
         '--wait',
         action='store_true',
         help='With --ask, wait for the answer, then finish the task',
+    )
+    parser.add_argument(
+        '--rich',
+        action='store_true',
+        help='Also write thinking, failed and denied calls, a subagent, '
+        'and a split result, to exercise the Conversation tab',
     )
     args = parser.parse_args()
     if not args.client_id or not args.client_secret:
