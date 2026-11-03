@@ -5310,10 +5310,12 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
         # Calver-only policy: a semver prior tag cannot be bumped into it.
         self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest('v1.2.3', 'patch', calver)
+            f'{today.year}.{today.month}.{today.day}',
+            suggest('v1.2.3', 'patch', calver),
         )
         self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest(None, 'patch', calver)
+            f'{today.year}.{today.month}.{today.day}',
+            suggest(None, 'patch', calver),
         )
         # Semver-only policy with a calver prior tag: first semver default
         # (the built-in Semver format tolerates the ``v`` prefix).
@@ -5350,7 +5352,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200)
         today = datetime.datetime.now(datetime.UTC).date()
         self.assertEqual(
-            response.json()['suggested_tag'], today.strftime('%Y.%m.%d')
+            response.json()['suggested_tag'],
+            f'{today.year}.{today.month}.{today.day}',
         )
 
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:
