@@ -102,23 +102,18 @@ export function filterTimeline(
   filters: TimelineFilters,
 ): TimelineEntry[] {
   const query = filters.query.trim().toLowerCase()
-  const children = (entry: TimelineEntry): TimelineEntry[] =>
-    filters.subagents
-      ? entry.children
-          .filter(
-            (c) =>
-              filters[categoryOf(c)] && (!filters.errorsOnly || hasError(c)),
-          )
-          .map((c) => ({ ...c, children: children(c) }))
-      : []
+  const keep = (entry: TimelineEntry): boolean =>
+    filters[categoryOf(entry)] && (!filters.errorsOnly || hasError(entry))
+  // Prune before searching, so a child the filters hide cannot match.
+  const prune = (entry: TimelineEntry): TimelineEntry => ({
+    ...entry,
+    children: entry.children.filter(keep).map(prune),
+  })
   return entries
-    .filter(
-      (entry) =>
-        filters[categoryOf(entry)] &&
-        (!filters.errorsOnly || hasError(entry)) &&
-        (!query || searchText(entry).includes(query)),
-    )
-    .map((entry) => ({ ...entry, children: children(entry) }))
+    .filter(keep)
+    .map(prune)
+    .filter((entry) => !query || searchText(entry).includes(query))
+    .map((entry) => (filters.subagents ? entry : { ...entry, children: [] }))
 }
 
 /** A tool call that policy denied before it ran. */

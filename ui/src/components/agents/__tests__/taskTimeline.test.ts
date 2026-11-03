@@ -190,6 +190,24 @@ describe('filterTimeline', () => {
     ])
   })
 
+  it('does not match a search on a child the errors filter hides', () => {
+    const nested = timeline([
+      call(1, 'Grep', { is_error: true, parent_call_id: 'c3' }, sub),
+      call(2, 'Read', { parent_call_id: 'c3' }, sub),
+      call(3, 'Task'),
+    ])
+    const filters = { ...DEFAULT_FILTERS, errorsOnly: true }
+    expect(rows(filterTimeline(nested, { ...filters, query: 'read' }))).toEqual(
+      [],
+    )
+    expect(rows(filterTimeline(nested, { ...filters, query: 'grep' }))).toEqual(
+      [
+        ['Task', 0],
+        ['Grep', 1],
+      ],
+    )
+  })
+
   it('drops children when subagents are off', () => {
     const shown = filterTimeline(entries, {
       ...DEFAULT_FILTERS,
