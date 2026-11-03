@@ -540,6 +540,55 @@ describe('Tasks', () => {
       expect(screen.getByText(/1 failed, 3 passed/)).toBeInTheDocument()
     })
 
+    it('renders cut arguments, notebooks, long edits, and nested plans', async () => {
+      vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+        ...BLOCKED,
+        closed_at: '2026-10-08T13:00:00Z',
+        outcome: 'cancelled_by_human',
+        status: 'closed',
+      })
+      vi.mocked(endpoints.listAgentTaskEvents).mockResolvedValue([
+        ...LOG,
+        event(4, 'tool.called', {
+          arguments: '{"file_path": "big.txt", "content": "aaa',
+          arguments_truncated: true,
+          call_id: 'write-1',
+          tool: 'Write',
+        }),
+        event(5, 'tool.called', {
+          arguments: { new_source: 'print(1)', notebook_path: 'nb.ipynb' },
+          call_id: 'nb-1',
+          tool: 'NotebookEdit',
+        }),
+        event(6, 'tool.called', {
+          arguments: {
+            content: Array.from({ length: 60 }, (_, i) => `l${i}`).join('\n'),
+            file_path: 'long.txt',
+          },
+          call_id: 'write-2',
+          tool: 'Write',
+        }),
+        event(
+          7,
+          'todos.updated',
+          { parent_call_id: 'task-9', todos: [{ done: true, title: 'Dig' }] },
+          { actor_kind: 'subagent' },
+        ),
+      ])
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('I read the task.')
+      expect(
+        screen.getAllByText(/"file_path": "big.txt"/).length,
+      ).toBeGreaterThan(0)
+      expect(screen.getAllByText('nb.ipynb').length).toBe(2)
+      expect(screen.getByText('+ print(1)')).toBeInTheDocument()
+      expect(screen.queryByText('+ l59')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Show all 60 lines' }))
+      expect(screen.getByText('+ l59')).toBeInTheDocument()
+      expect(screen.getByText('Did not finish')).toBeInTheDocument()
+      expect(screen.getByText(/1 of 1 done/)).toBeInTheDocument()
+    })
+
     it('opens an old Actions taken link on the Conversation', async () => {
       renderAt('/agents/tasks/acme/T-3/actions')
       expect(

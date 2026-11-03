@@ -279,45 +279,59 @@ function Chip({
   )
 }
 
-/** Old text above new text, for an Edit, MultiEdit, or Write. */
+/**
+ * Old text above new text, for an Edit, MultiEdit, NotebookEdit, or
+ * Write, cut at {@link OUTPUT_LINES} until the reader asks.
+ */
 function Diff({ args }: { args: Record<string, unknown> }) {
+  const [all, setAll] = useState(false)
   const edits: { new_string?: unknown; old_string?: unknown }[] = Array.isArray(
     args.edits,
   )
     ? (args.edits as { new_string?: unknown; old_string?: unknown }[])
     : [
         {
-          new_string: args.new_string ?? args.content,
+          new_string: args.new_string ?? args.content ?? args.new_source,
           old_string: args.old_string,
         },
       ]
   const lines = (v: unknown) => (typeof v === 'string' ? v.split('\n') : [])
+  const rows: { className: string; key: string; text: string }[] = []
+  edits.forEach((edit, i) => {
+    if (i > 0)
+      rows.push({ className: 'text-tertiary', key: `s${i}`, text: '⋯' })
+    lines(edit.old_string).forEach((l, j) =>
+      rows.push({
+        className: 'bg-danger text-danger',
+        key: `o${i}-${j}`,
+        text: `- ${l}`,
+      }),
+    )
+    lines(edit.new_string).forEach((l, j) =>
+      rows.push({
+        className: 'bg-success text-success',
+        key: `n${i}-${j}`,
+        text: `+ ${l}`,
+      }),
+    )
+  })
+  const cut = !all && rows.length > OUTPUT_LINES
   return (
-    <div className="border-tertiary overflow-x-auto rounded-md border">
-      <div className="bg-secondary text-secondary px-3 py-1.5 font-mono text-xs">
-        {String(args.file_path ?? '')}
+    <>
+      <div className="border-tertiary overflow-x-auto rounded-md border">
+        <div className="bg-secondary text-secondary px-3 py-1.5 font-mono text-xs">
+          {String(args.file_path ?? args.notebook_path ?? '')}
+        </div>
+        <pre className="py-1 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+          {(cut ? rows.slice(0, OUTPUT_LINES) : rows).map((row) => (
+            <span className={cn('block px-3', row.className)} key={row.key}>
+              {row.text}
+            </span>
+          ))}
+        </pre>
       </div>
-      <pre className="py-1 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-        {edits.map((edit, i) => (
-          <span key={i}>
-            {i > 0 && <span className="text-tertiary block px-3">⋯</span>}
-            {lines(edit.old_string).map((l, j) => (
-              <span className="bg-danger text-danger block px-3" key={`o${j}`}>
-                - {l}
-              </span>
-            ))}
-            {lines(edit.new_string).map((l, j) => (
-              <span
-                className="bg-success text-success block px-3"
-                key={`n${j}`}
-              >
-                + {l}
-              </span>
-            ))}
-          </span>
-        ))}
-      </pre>
-    </div>
+      {cut && <ShowAll count={rows.length} onClick={() => setAll(true)} />}
+    </>
   )
 }
 
@@ -408,6 +422,10 @@ function HumanMessage({
   )
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 /** A string as is; anything else as JSON. */
 function label(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
@@ -427,15 +445,7 @@ function Output({ dark, error, text }: OutputProps) {
           {cut ? lines.slice(0, OUTPUT_LINES).join('\n') : text}
         </span>
       </Pane>
-      {cut && (
-        <button
-          className="text-info self-start text-xs hover:underline"
-          onClick={() => setAll(true)}
-          type="button"
-        >
-          Show all {lines.length} lines
-        </button>
-      )}
+      {cut && <ShowAll count={lines.length} onClick={() => setAll(true)} />}
     </>
   )
 }
@@ -463,8 +473,21 @@ function Pane({ children, dark }: { children: ReactNode; dark?: boolean }) {
 function Prose({ children }: { children: string }) {
   return (
     <div className="document-markdown max-w-[74ch] text-sm">
-      <RichMarkdown>{children}</RichMarkdown>
+      <RichMarkdown imagesAsLinks>{children}</RichMarkdown>
     </div>
+  )
+}
+
+/** The labeled output of a call, when it has one. */
+function ResultOutput({ error, result }: { error: boolean; result: string }) {
+  if (!result) return null
+  return (
+    <>
+      <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
+        Output
+      </span>
+      <Output error={error} text={result} />
+    </>
   )
 }
 
@@ -554,6 +577,18 @@ function Segmented({
   )
 }
 
+function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      className="text-info self-start text-xs hover:underline"
+      onClick={onClick}
+      type="button"
+    >
+      Show all {count} lines
+    </button>
+  )
+}
+
 function Thinking({
   ctx,
   id,
@@ -626,7 +661,9 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
   const tool = e ? String(p.tool ?? 'tool') : 'Task'
   const family = familyOf(tool)
   const open = e != null && ctx.isOpen(entry.id)
-  const args = (p.arguments ?? {}) as Record<string, unknown>
+  // The harness cuts oversized arguments to a JSON string preview.
+  const argsText = typeof p.arguments === 'string' ? p.arguments : null
+  const args = isRecord(p.arguments) ? p.arguments : {}
   const ms = typeof p.duration_ms === 'number' ? p.duration_ms : null
   const denied = isDenied(p)
   const result = p.result == null ? '' : label(p.result)
@@ -660,7 +697,11 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
           {toolLabel(tool)}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs">
-          {e ? toolSummary(tool, args) : 'Running…'}
+          {e
+            ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
+            : ctx.task.status === 'closed'
+              ? 'Did not finish'
+              : 'Running…'}
         </span>
         {p.is_error === true && !denied && (
           <Badge variant="danger">failed</Badge>
@@ -704,6 +745,7 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
           ) : (
             <ToolReadable
               args={args}
+              argsText={argsText}
               error={p.is_error === true}
               family={family}
               result={result}
@@ -733,8 +775,10 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
                     <Prose>{String(child.event.payload.body ?? '')}</Prose>
                   </div>
                 )
-              ) : (
+              ) : !child.event || child.event.type === 'tool.called' ? (
                 <ToolCall ctx={ctx} entry={child} />
+              ) : (
+                <EntryBody ctx={ctx} entry={child} />
               )}
             </div>
           ))}
@@ -746,15 +790,24 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
 
 function ToolReadable({
   args,
+  argsText,
   error,
   family,
   result,
 }: {
   args: Record<string, unknown>
+  argsText: null | string
   error: boolean
   family: Family
   result: string
 }) {
+  if (argsText != null)
+    return (
+      <>
+        <Output text={argsText} />
+        <ResultOutput error={error} result={result} />
+      </>
+    )
   if (family === 'shell')
     return (
       <Output
@@ -774,14 +827,7 @@ function ToolReadable({
           </span>
         ))}
       </Pane>
-      {result && (
-        <>
-          <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
-            Output
-          </span>
-          <Output error={error} text={result} />
-        </>
-      )}
+      <ResultOutput error={error} result={result} />
     </>
   )
 }

@@ -61,6 +61,19 @@ describe('RichMarkdown', () => {
     expect(screen.getByText('#5')).toBeInTheDocument()
   })
 
+  it('renders images as links when asked', () => {
+    const { container } = render(
+      <RichMarkdown imagesAsLinks>
+        {'![chart](https://example.com/c.png?d=1)'}
+      </RichMarkdown>,
+    )
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByRole('link', { name: 'chart' })).toHaveAttribute(
+      'href',
+      'https://example.com/c.png?d=1',
+    )
+  })
+
   it('leaves URL fragments and reference links intact', () => {
     renderWithRepo(
       [

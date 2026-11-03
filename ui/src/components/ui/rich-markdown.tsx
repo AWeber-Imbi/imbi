@@ -10,11 +10,26 @@ import { remarkGithubRefs } from '@/lib/github-refs'
 
 interface RichMarkdownProps {
   children: string
+  /**
+   * Render images as links instead of loading them. Use it for text an
+   * agent or another untrusted author wrote: an image loads with no
+   * click, so its URL can carry data out of the page.
+   */
+  imagesAsLinks?: boolean
 }
 
 const COMPONENTS: Components = {
   a: ({ node: _node, ...props }) => (
     <a {...props} rel="noopener noreferrer" target="_blank" />
+  ),
+}
+
+const IMAGES_AS_LINKS: Components = {
+  ...COMPONENTS,
+  img: ({ alt, src }) => (
+    <a href={src} rel="noopener noreferrer" target="_blank">
+      {alt || src}
+    </a>
   ),
 }
 
@@ -24,7 +39,10 @@ const COMPONENTS: Components = {
  * issue/PR. A leading YAML frontmatter block renders as a table. Callers
  * own the surrounding ``document-markdown`` wrapper.
  */
-export function RichMarkdown({ children }: RichMarkdownProps) {
+export function RichMarkdown({
+  children,
+  imagesAsLinks = false,
+}: RichMarkdownProps) {
   const repoUrl = useProjectRepoUrl()
   const remarkPlugins = useMemo<Options['remarkPlugins']>(
     () =>
@@ -35,7 +53,10 @@ export function RichMarkdown({ children }: RichMarkdownProps) {
   return (
     <>
       {meta && <FrontmatterTable meta={meta} />}
-      <Markdown components={COMPONENTS} remarkPlugins={remarkPlugins}>
+      <Markdown
+        components={imagesAsLinks ? IMAGES_AS_LINKS : COMPONENTS}
+        remarkPlugins={remarkPlugins}
+      >
         {body}
       </Markdown>
     </>
