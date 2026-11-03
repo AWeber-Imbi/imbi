@@ -79,4 +79,23 @@ describe('BindingsTab', () => {
       }),
     )
   })
+
+  it('offers only dynamic App bindings as consumers', async () => {
+    const staticApp = {
+      ...key,
+      id: 'static-app',
+      provider_id: 'gh',
+      reference: 'secret://dev/static_app',
+    }
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      key,
+      app,
+      staticApp,
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    expect(screen.getByLabelText('secret://dev/github_app')).toBeInTheDocument()
+    expect(screen.queryByLabelText('secret://dev/static_app')).toBeNull()
+  })
 })

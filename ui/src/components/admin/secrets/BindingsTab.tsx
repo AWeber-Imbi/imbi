@@ -324,7 +324,11 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               label: 'Provider key consumers',
               name: 'consumers',
               options: bindings
-                .filter((b) => appProviders.has(b.provider_id))
+                .filter(
+                  (b) =>
+                    b.credential_class === 'dynamic' &&
+                    appProviders.has(b.provider_id),
+                )
                 .map((b) => ({ label: b.reference, value: b.id })),
               show: keyClass,
             },
