@@ -4953,6 +4953,7 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         super().setUp()
         self._deployable = False
         self._props: dict[str, typing.Any] = {}
+        self._releases: list[dict[str, typing.Any]] = []
         self.mock_db.execute = mock.AsyncMock(side_effect=self._execute)
 
     def _execute(
@@ -4963,6 +4964,8 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
             return [{'flags': json.dumps([self._deployable])}]
         if 'properties(p)' in query:
             return [{'props': json.dumps(self._props)}]
+        if 'RETURN r{{.*}} AS release' in query:
+            return [{'release': json.dumps(node)} for node in self._releases]
         return []
 
     def _tags(self, *shas: str) -> None:
@@ -5091,6 +5094,29 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         self._use_plugin('pass')
         self._tags('aaa1111aaa1111')
         self.assertEqual('unknown', self._history()[0]['ci_status'])
+
+    def test_a_deployable_projects_unsynced_release_gets_the_fallback(
+        self,
+    ) -> None:
+        """An unsynced release has no commit row for the sync to fill.
+
+        Its ``'unknown'`` is not the sync's answer -- nothing was asked --
+        so the fallback is its only source, even on a deployable project
+        whose synced releases keep what the sync recorded.
+        """
+        self._deployable = True
+        self._releases = [
+            {
+                'tag': 'v2.0.0',
+                'committish': 'bbb2222bbb2222',
+                'created_by': 'deploybee',
+                'created_at': '2026-01-02T00:00:00+00:00',
+            }
+        ]
+        self._use_plugin('fail')
+        self._tags('aaa1111aaa1111')
+        statuses = {e['tag']: e['ci_status'] for e in self._history()}
+        self.assertEqual({'v2.0.0': 'fail', 'v1.0.0': 'unknown'}, statuses)
 
     def test_the_live_fallback_is_bounded(self) -> None:
         """One request per release, on a page load -- so it is capped.

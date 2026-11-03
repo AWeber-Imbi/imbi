@@ -6832,8 +6832,7 @@ async def _apply_ci_fallback(
     auth: permissions.AuthContext,
     entries: list[ReleaseHistoryEntry],
 ) -> None:
-    """Rewrite ``'unknown'`` CI statuses in place for a non-deployable
-    project, newest release first."""
+    """Rewrite ``'unknown'`` CI statuses in place, newest release first."""
     unknown = [e for e in entries if e.ci_status == 'unknown']
     if not unknown:
         return
@@ -7017,12 +7016,17 @@ async def get_release_history(
         reverse=True,
     )
     entries = entries[:capped]
-    # Only for projects with nothing to deploy into.  A deployable project
-    # whose commit reads ``'unknown'`` really is unknown -- the sync asked
-    # and got nothing -- and paying for a live check-runs call per release
-    # on every page load would not change that.
-    if not await _project_is_deployable(db, project_id):
-        await _apply_ci_fallback(db, org_slug, project_id, auth, entries)
+    # A deployable project's synced releases keep what the sync recorded:
+    # an ``'unknown'`` there really is unknown -- the sync asked and got
+    # nothing -- and paying for a live check-runs call per release on
+    # every page load would not change that.  An unsynced release has no
+    # commit row for the sync to have filled, so the fallback is its only
+    # source, deployable or not.
+    if await _project_is_deployable(db, project_id):
+        unanswered = [e for e in entries if not e.tag_synced]
+    else:
+        unanswered = entries
+    await _apply_ci_fallback(db, org_slug, project_id, auth, unanswered)
     return entries
 
 
