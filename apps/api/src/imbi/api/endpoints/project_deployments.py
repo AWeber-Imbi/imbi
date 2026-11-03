@@ -1753,6 +1753,59 @@ async def backfill_release_notes(
     return enriched
 
 
+async def reconcile_release_committishes(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+) -> int:
+    """Point each tagged ``Release`` at the commit its synced tag names.
+
+    The ``tags`` table is what the repository says a tag resolves to;
+    the node's committish is what Imbi believed when it wrote the node.
+    The two part ways when a tag is re-promoted from a new commit after
+    its first build failed (the node keeps the first promote's commit
+    -- the upsert never overwrites one) or when a tag is moved upstream.
+    Nothing on the resync paths rewrites a committish, so a stale node
+    outlives every sync until this runs: it heals each disagreeing node
+    through :func:`_set_release_committish`, which keeps the commit it
+    moves away from as ``promoted_committish``.  Returns the number of
+    nodes healed.
+
+    Only tagged nodes with a synced row are considered; a node whose tag
+    ClickHouse has not seen has nothing to be reconciled against.
+    """
+    tag_rows = await clickhouse.query(
+        _PROJECT_TAGS_SQL, {'project_id': project_id}
+    )
+    if not tag_rows:
+        return 0
+    nodes = await _release_nodes_by_tag(db, org_slug, project_id)
+    healed = 0
+    for row in tag_rows:
+        sha = row.get('sha')
+        node = nodes.get(str(row['name']))
+        if not sha or not node or not node.get('id'):
+            continue
+        actual = versioning.short_committish(str(sha))
+        recorded = node.get('committish')
+        if recorded and versioning.short_committish(str(recorded)) == actual:
+            continue
+        LOGGER.info(
+            'commit-sync: tag %s on project %s points at %s, not the '
+            'recorded commit %s; updating the Release committish',
+            row['name'],
+            project_id,
+            actual,
+            recorded,
+        )
+        await _set_release_committish(
+            db, release_id=str(node['id']), committish=actual
+        )
+        healed += 1
+    return healed
+
+
 async def resync_for_project(
     db: graph.Graph,
     *,

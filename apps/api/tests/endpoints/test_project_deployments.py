@@ -7076,6 +7076,83 @@ class ReleaseCommittishHealTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('r.committish = {committish}', query)
 
 
+class ReleaseCommittishReconcileTestCase(unittest.IsolatedAsyncioTestCase):
+    """The full commit sync points tagged nodes at their synced sha.
+
+    A tag re-promoted from a new commit after its first build failed
+    keeps the first promote's commit on the node, and no resync rewrites
+    it; the ``tags`` table is the one place that knows where the tag
+    really points.
+    """
+
+    def setUp(self) -> None:
+        self.tag_rows: list[dict[str, typing.Any]] = []
+        self.nodes: dict[str, dict[str, typing.Any]] = {}
+        self.query = mock.AsyncMock(side_effect=lambda *_: self.tag_rows)
+        self.by_tag = mock.AsyncMock(side_effect=lambda *_: self.nodes)
+        for target, replacement in (
+            ('clickhouse.query', self.query),
+            ('_release_nodes_by_tag', self.by_tag),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', new=replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.db = mock.AsyncMock()
+        self.db.execute = mock.AsyncMock(return_value=[])
+
+    async def _reconcile(self) -> int:
+        return await project_deployments.reconcile_release_committishes(
+            self.db, org_slug='octo', project_id='p1'
+        )
+
+    def _writes(self) -> list[dict[str, typing.Any]]:
+        return [
+            call.args[1]
+            for call in self.db.execute.await_args_list
+            if 'r.committish = {committish}' in call.args[0]
+        ]
+
+    async def test_heals_a_node_whose_tag_moved(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1', 'committish': '28ae5f2'}}
+        self.assertEqual(1, await self._reconcile())
+        writes = self._writes()
+        self.assertEqual(1, len(writes))
+        self.assertEqual('rel1', writes[0]['release_id'])
+        self.assertEqual('a8507bb', writes[0]['committish'])
+
+    async def test_an_agreeing_node_is_left_alone(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1', 'committish': 'A8507BB'}}
+        self.assertEqual(0, await self._reconcile())
+        self.assertFalse(self._writes())
+
+    async def test_a_node_with_no_committish_takes_the_tag(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1'}}
+        self.assertEqual(1, await self._reconcile())
+        self.assertEqual('a8507bb', self._writes()[0]['committish'])
+
+    async def test_skips_tags_without_a_node_and_nodes_without_a_tag_row(
+        self,
+    ) -> None:
+        """Nothing to heal on either side of the join."""
+        self.tag_rows = [
+            {'name': '2.8.0', 'sha': '1111111'},
+            {'name': '2.9.0', 'sha': ''},
+        ]
+        self.nodes = {
+            '2.9.0': {'id': 'rel1', 'committish': '28ae5f2'},
+            '2.10.0': {'id': 'rel2', 'committish': '2222222'},
+        }
+        self.assertEqual(0, await self._reconcile())
+        self.assertFalse(self._writes())
+
+    async def test_no_synced_tags_reads_no_nodes(self) -> None:
+        self.assertEqual(0, await self._reconcile())
+        self.by_tag.assert_not_awaited()
+
+
 class ReleaseAuthorTestCase(unittest.TestCase):
     """Who a release-history entry is attributed to."""
 
