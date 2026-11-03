@@ -18,6 +18,7 @@ import { ApiError } from '@/api/client'
 import { controlAgentTask, reassignAgentTask } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import {
@@ -25,6 +26,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
@@ -166,7 +168,9 @@ export function TaskDetail({
             Could not load the task log: {events.error.message}
           </p>
         )}
-        {current === 'overview' && <OverviewTab events={log} task={t} />}
+        {current === 'overview' && (
+          <OverviewTab end={end} events={log} task={t} />
+        )}
         {current === 'input' && (
           <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
         )}
@@ -196,12 +200,15 @@ function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
 }
 
 function OverviewTab({
+  end,
   events,
   task,
 }: {
+  end: number
   events: AgentTaskEvent[]
   task: AgentTask
 }) {
+  const [raw, setRaw] = useState(false)
   const todos = [...events].reverse().find((e) => e.type === 'todos.updated')
     ?.payload.todos as undefined | { done?: boolean; title?: string }[]
   const rows: { name: string; value: ReactNode }[] = [
@@ -210,11 +217,31 @@ function OverviewTab({
       value: <UserIdentity email={task.owner} size="small" />,
     },
     { name: 'Started', value: new Date(task.created_at).toLocaleString() },
+  ]
+  if (task.status === 'closed') {
+    rows.push({
+      name: 'Outcome',
+      value: `${statusLabel(task)}${task.outcome_reason ? ` · ${task.outcome_reason}` : ''}`,
+    })
+  }
+  rows.push(
     {
-      name: 'Budget',
-      value: task.budget == null ? 'No budget' : formatMoney(task.budget, 6),
+      name: 'Prompt version',
+      value: task.prompt_version == null ? '—' : `v${task.prompt_version}`,
     },
-    { name: 'Cost', value: formatMoney(task.cost_total, 6) },
+    {
+      name: 'Cost / budget',
+      value: (
+        <>
+          {formatMoney(task.cost_total, 6)}
+          <span className="text-tertiary">
+            {task.budget == null
+              ? ' · no budget'
+              : ` of ${formatMoney(task.budget, 6)}`}
+          </span>
+        </>
+      ),
+    },
     {
       name: 'Tokens in / out',
       value: `${task.tokens_in.toLocaleString()} / ${task.tokens_out.toLocaleString()}`,
@@ -224,29 +251,54 @@ function OverviewTab({
       value: `${task.cache_read_tokens.toLocaleString()} / ${task.cache_write_tokens.toLocaleString()}`,
     },
     {
-      name: 'Prompt version',
-      value: task.prompt_version == null ? '—' : `v${task.prompt_version}`,
+      name: 'Duration',
+      value: formatElapsed(end - Date.parse(task.created_at)),
     },
-  ]
-  if (task.status === 'closed') {
-    rows.push({
-      name: 'Outcome',
-      value: `${statusLabel(task)}${task.outcome_reason ? ` · ${task.outcome_reason}` : ''}`,
-    })
-  }
+  )
   return (
-    <div className="flex flex-col gap-6 px-6 py-5">
-      <section>
-        <h3 className="text-overline text-tertiary mb-2 uppercase">
-          Description
-        </h3>
-        <p className="text-primary text-sm whitespace-pre-wrap">
-          {task.description}
-        </p>
-      </section>
+    <div className="flex flex-col gap-4 px-6 py-5">
+      <Card className="p-5">
+        <h3 className="text-overline text-tertiary mb-4 uppercase">Details</h3>
+        <dl className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-3 xl:grid-cols-5">
+          {rows.map((row) => (
+            <div className="flex min-w-0 flex-col gap-1" key={row.name}>
+              <dt className="text-overline text-tertiary uppercase">
+                {row.name}
+              </dt>
+              <dd className="font-mono text-sm wrap-break-word tabular-nums">
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
+      <Card className="overflow-hidden p-0">
+        <div className="border-tertiary flex items-center justify-between border-b px-5 py-3">
+          <h3 className="text-overline text-tertiary uppercase">Description</h3>
+          <Button
+            onClick={() => setRaw((r) => !r)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {raw ? 'View rendered' : 'View raw'}
+          </Button>
+        </div>
+        <div className="p-5">
+          {raw ? (
+            <pre className="text-primary font-mono text-sm wrap-break-word whitespace-pre-wrap">
+              {task.description}
+            </pre>
+          ) : (
+            <div className="document-markdown max-w-3xl text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+              <RichMarkdown>{task.description}</RichMarkdown>
+            </div>
+          )}
+        </div>
+      </Card>
       {todos && todos.length > 0 && (
-        <section>
-          <h3 className="text-overline text-tertiary mb-2 uppercase">Todos</h3>
+        <Card className="p-5">
+          <h3 className="text-overline text-tertiary mb-3 uppercase">Todos</h3>
           <ul className="flex flex-col gap-1">
             {todos.map((todo, i) => (
               <li className="flex items-center gap-2 text-sm" key={i}>
@@ -261,18 +313,8 @@ function OverviewTab({
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
-      <dl className="grid grid-cols-2 gap-x-8 gap-y-4 xl:grid-cols-3">
-        {rows.map((row) => (
-          <div className="flex flex-col gap-1" key={row.name}>
-            <dt className="text-overline text-tertiary uppercase">
-              {row.name}
-            </dt>
-            <dd className="font-mono text-sm">{row.value}</dd>
-          </div>
-        ))}
-      </dl>
     </div>
   )
 }
