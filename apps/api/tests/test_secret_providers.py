@@ -33,9 +33,10 @@ def _entry(slug: str, *classes: type) -> mock.Mock:
 
 class RegistryTestCase(unittest.TestCase):
     def setUp(self) -> None:
-        patcher = mock.patch.dict(providers.PROVIDERS)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for target in (providers.PROVIDERS, providers._LOADED):  # pyright: ignore[reportPrivateUsage]
+            patcher = mock.patch.dict(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_plugin_providers_load_on_first_use(self) -> None:
         with mock.patch.object(
@@ -67,6 +68,22 @@ class RegistryTestCase(unittest.TestCase):
             providers.all_providers()
         self.assertEqual(len(logs.output), 1)
         self.assertIn('already registered', logs.output[0])
+
+    def test_a_removed_plugin_removes_its_provider(self) -> None:
+        with mock.patch.object(
+            providers.plugin_registry,
+            'list_plugins',
+            return_value=[_entry('a', _Provider)],
+        ):
+            providers.get('test_provider')
+        with (
+            mock.patch.object(
+                providers.plugin_registry, 'list_plugins', return_value=[]
+            ),
+            self.assertRaises(providers.BrokerError),
+        ):
+            providers.get('test_provider')
+        self.assertIn('fake', providers.PROVIDERS)
 
     def test_unknown_type(self) -> None:
         with (

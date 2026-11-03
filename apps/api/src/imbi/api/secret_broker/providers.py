@@ -214,19 +214,32 @@ class _Host:
 PROVIDERS: dict[str, Provider] = {'fake': FakeProvider()}
 #: The ``(plugin slug, type)`` conflicts already logged.
 _REPORTED: set[tuple[str, str]] = set()
+#: The providers that :func:`_load` added, by type.
+_LOADED: dict[str, Provider] = {}
 
 
 def _load() -> None:
-    """Add the providers of the loaded plugins that are not here yet.
+    """Make the providers agree with the loaded plugins.
 
-    A type that is already registered keeps its provider. Each conflict
+    Remove the providers that this function added for plugins that are
+    now disabled or not installed. Add the providers of new plugins. A
+    type that is already registered keeps its provider. Each conflict
     is logged once.
     """
-    for entry in plugin_registry.list_plugins():
+    entries = plugin_registry.list_plugins()
+    declared = {
+        cls for entry in entries for cls in entry.manifest.secret_providers
+    }
+    for provider_type, provider in list(_LOADED.items()):
+        if type(provider) not in declared:
+            del _LOADED[provider_type]
+            if PROVIDERS.get(provider_type) is provider:
+                del PROVIDERS[provider_type]
+    for entry in entries:
         for cls in entry.manifest.secret_providers:
             current = PROVIDERS.get(cls.type)
             if current is None:
-                PROVIDERS[cls.type] = cls(_Host())
+                PROVIDERS[cls.type] = _LOADED[cls.type] = cls(_Host())
             elif not isinstance(current, cls):
                 key = (entry.manifest.slug, cls.type)
                 if key in _REPORTED:
@@ -251,13 +264,11 @@ def get(provider_type: str) -> Provider:
 
     Raises:
         BrokerError: ``operation_not_supported`` for an unknown type, or
-            the type of a plugin that is not installed.
+            the type of a plugin that is not installed or is disabled.
 
     """
+    _load()
     provider = PROVIDERS.get(provider_type)
-    if provider is None:
-        _load()
-        provider = PROVIDERS.get(provider_type)
     if provider is None:
         raise BrokerError('operation_not_supported', 'unknown_provider_type')
     return provider
