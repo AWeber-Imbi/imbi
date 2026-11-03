@@ -18,15 +18,21 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Switch } from '@/components/ui/switch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
+import { CopyId } from './CopyId'
 import { SecretDialog } from './SecretDialog'
-import type { SecretProvider, SecretProviderCreate } from './types'
+import type {
+  SecretProvider,
+  SecretProviderCreate,
+  SecretProviderPatch,
+} from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
 
 // fallow-ignore-next-line complexity
 export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
   const queryClient = useQueryClient()
-  const [creating, setCreating] = useState(false)
+  // 'new' for the create form, a row for the edit form.
+  const [editing, setEditing] = useState<'new' | null | SecretProvider>(null)
   const queryKey = ['secret-providers', orgSlug]
   const providersQuery = useQuery({
     queryFn: ({ signal }) => listSecretProviders(orgSlug, signal),
@@ -38,14 +44,27 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
   })
   const refresh = () => queryClient.invalidateQueries({ queryKey })
 
-  const createMutation = useMutation({
-    mutationFn: (body: SecretProviderCreate) =>
-      createSecretProvider(orgSlug, body),
+  const saveMutation = useMutation({
+    mutationFn: ({
+      body,
+      id,
+    }: {
+      body: Record<string, unknown>
+      id?: string
+    }) =>
+      id
+        ? updateSecretProvider(orgSlug, id, body as SecretProviderPatch)
+        : createSecretProvider(orgSlug, body as SecretProviderCreate),
     onSuccess: () => {
-      setCreating(false)
+      setEditing(null)
       void refresh()
     },
   })
+  const open = (target: 'new' | SecretProvider) => {
+    saveMutation.reset()
+    setEditing(target)
+  }
+  const row = editing === 'new' ? undefined : (editing ?? undefined)
   const enableMutation = useMutation({
     mutationFn: ({ enabled, id }: { enabled: boolean; id: string }) =>
       updateSecretProvider(orgSlug, id, { enabled }),
@@ -73,21 +92,32 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setCreating(true)}>New provider</Button>
+        <Button onClick={() => open('new')}>New provider</Button>
       </div>
       <AdminTable<SecretProvider>
         actions={(row) => (
-          <Button
-            disabled={testMutation.isPending}
-            onClick={() => testMutation.mutate(row.id)}
-            size="sm"
-            variant="outline"
-          >
-            Test
-          </Button>
+          <>
+            <Button onClick={() => open(row)} size="sm" variant="outline">
+              Edit
+            </Button>
+            <Button
+              disabled={testMutation.isPending}
+              onClick={() => testMutation.mutate(row.id)}
+              size="sm"
+              variant="outline"
+            >
+              Test
+            </Button>
+          </>
         )}
         columns={[
           { header: 'Name', key: 'name', render: (row) => row.name },
+          {
+            header: 'Id',
+            interactive: true,
+            key: 'id',
+            render: (row) => <CopyId id={row.id} />,
+          },
           {
             header: 'Type',
             key: 'type',
@@ -137,10 +167,10 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
         onDelete={(row) => deleteMutation.mutate(row.id)}
         rows={providersQuery.data ?? []}
       />
-      {creating && (
+      {editing && (
         <SecretDialog
           description="An adapter to an external secret system. The configuration holds no credentials: imbi-api uses its workload identity."
-          error={createMutation.error}
+          error={saveMutation.error}
           fields={[
             {
               description: 'Lower case letters, digits, - and _',
@@ -150,6 +180,7 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
               required: true,
             },
             {
+              createOnly: true,
               kind: 'select',
               label: 'Type',
               name: 'type',
@@ -168,12 +199,11 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
               name: 'config',
             },
           ]}
-          isPending={createMutation.isPending}
-          onClose={() => setCreating(false)}
-          onSubmit={(body) =>
-            createMutation.mutate(body as unknown as SecretProviderCreate)
-          }
-          title="New provider"
+          isPending={saveMutation.isPending}
+          onClose={() => setEditing(null)}
+          onSubmit={(body) => saveMutation.mutate({ body, id: row?.id })}
+          original={row}
+          title={row ? `Edit provider ${row.name}` : 'New provider'}
         />
       )}
     </div>

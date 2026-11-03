@@ -25,15 +25,21 @@ import { Textarea } from '@/components/ui/textarea'
 /**
  * One form field. `list` is comma separated text sent as a string
  * array; `json` is a JSON object; `multi` is a set of checkboxes.
+ * A field with a `group` is sent in `body[group]`; a group with only
+ * empty fields is sent as null. A `createOnly` field is not shown in
+ * an edit, because the API does not change it.
  */
 export interface FieldSpec {
+  createOnly?: boolean
   description?: string
+  group?: string
   initial?: string | string[]
   kind: 'json' | 'list' | 'multi' | 'number' | 'select' | 'text'
   label: string
   name: string
   options?: readonly { label: string; value: string }[]
   required?: boolean
+  show?: (values: Values) => boolean
 }
 
 interface SecretDialogProps {
@@ -43,10 +49,14 @@ interface SecretDialogProps {
   isPending: boolean
   onClose: () => void
   onSubmit: (values: Record<string, unknown>) => void
+  /** The row to edit. The dialog then sends only the changed fields. */
+  original?: Record<string, unknown>
   title: string
 }
 
-/** A create dialog for a provider, a binding, or a grant. */
+type Values = Record<string, string | string[]>
+
+/** A create or edit dialog for a provider, a binding, or a grant. */
 // fallow-ignore-next-line complexity
 export function SecretDialog({
   description,
@@ -55,10 +65,14 @@ export function SecretDialog({
   isPending,
   onClose,
   onSubmit,
+  original,
   title,
 }: SecretDialogProps) {
-  const [values, setValues] = useState<Record<string, string | string[]>>(() =>
-    Object.fromEntries(fields.map((f) => [f.name, initialValue(f)])),
+  const [values, setValues] = useState<Values>(() =>
+    Object.fromEntries(fields.map((f) => [f.name, initialValue(f, original)])),
+  )
+  const visible = fields.filter(
+    (f) => !(original && f.createOnly) && (f.show?.(values) ?? true),
   )
   const [parseError, setParseError] = useState<null | string>(null)
   const set = (name: string, value: string | string[]) =>
@@ -66,7 +80,9 @@ export function SecretDialog({
 
   const submit = () => {
     try {
-      onSubmit(toBody(fields, values))
+      const body = toBody(visible, values, original)
+      if (original && !Object.keys(body).length) return onClose()
+      onSubmit(body)
       setParseError(null)
     } catch (err) {
       setParseError(err instanceof Error ? err.message : String(err))
@@ -144,10 +160,7 @@ export function SecretDialog({
     )
   }
 
-  const missing = fields.some((f) => {
-    const value = values[f.name]
-    return f.required && (Array.isArray(value) ? !value.length : !value.trim())
-  })
+  const missing = visible.some((f) => f.required && isEmpty(values[f.name]))
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()} open>
@@ -164,7 +177,7 @@ export function SecretDialog({
               title={`Failed to save: ${title.toLowerCase()}`}
             />
           )}
-          {fields.map((field) => (
+          {visible.map((field) => (
             <FormField
               description={field.description}
               htmlFor={`secret-${field.name}`}
@@ -189,8 +202,26 @@ export function SecretDialog({
   )
 }
 
-const initialValue = (field: FieldSpec): string | string[] =>
-  field.initial ?? (field.kind === 'multi' ? [] : '')
+const isEmpty = (value: string | string[]) =>
+  Array.isArray(value) ? !value.length : !value.trim()
+
+// fallow-ignore-next-line complexity
+function initialValue(
+  field: FieldSpec,
+  original?: Record<string, unknown>,
+): string | string[] {
+  const source = field.group
+    ? (original?.[field.group] as null | Record<string, unknown> | undefined)
+    : original
+  const value = source?.[field.name]
+  if (value === undefined || value === null) {
+    return field.initial ?? (field.kind === 'multi' ? [] : '')
+  }
+  if (field.kind === 'multi') return value as string[]
+  if (field.kind === 'list') return (value as string[]).join(', ')
+  if (field.kind === 'json') return JSON.stringify(value, null, 2)
+  return String(value as number | string)
+}
 
 /** A JSON field must hold a plain object, e.g. a provider config. */
 function parseObject(label: string, value: string): Record<string, unknown> {
@@ -206,30 +237,62 @@ function parseObject(label: string, value: string): Record<string, unknown> {
   return parsed as Record<string, unknown>
 }
 
+/** The request body. In an edit, only the fields that changed. */
 // fallow-ignore-next-line complexity
 function toBody(
   fields: FieldSpec[],
-  values: Record<string, string | string[]>,
+  values: Values,
+  original?: Record<string, unknown>,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {}
   for (const field of fields) {
-    const value = values[field.name]
-    if (field.kind === 'multi') {
-      body[field.name] = value
-    } else if (typeof value !== 'string' || value.trim() === '') {
-      continue
-    } else if (field.kind === 'list') {
-      body[field.name] = value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-    } else if (field.kind === 'number') {
-      body[field.name] = Number(value)
-    } else if (field.kind === 'json') {
-      body[field.name] = parseObject(field.label, value)
+    const value = toValue(field, values[field.name], !!original)
+    if (value === undefined) continue
+    if (field.group) {
+      body[field.group] ??= {}
+      ;(body[field.group] as Record<string, unknown>)[field.name] = value
     } else {
-      body[field.name] = value.trim()
+      body[field.name] = value
     }
   }
-  return body
+  for (const group of new Set(fields.map((f) => f.group))) {
+    if (!group) continue
+    const members = fields.filter((f) => f.group === group)
+    if (members.every((f) => isEmpty(values[f.name]))) body[group] = null
+  }
+  if (!original) return body
+  return Object.fromEntries(
+    Object.entries(body).filter(
+      ([key, value]) =>
+        JSON.stringify(value) !== JSON.stringify(original[key] ?? null),
+    ),
+  )
+}
+
+/**
+ * The value to send for one field, or undefined to omit it. In an edit,
+ * an empty list or text is sent, so that the change clears the value.
+ */
+// fallow-ignore-next-line complexity
+function toValue(
+  field: FieldSpec,
+  value: string | string[],
+  editing: boolean,
+): unknown {
+  if (field.kind === 'multi') return value
+  if (typeof value !== 'string') return undefined
+  if (value.trim() === '') {
+    if (!editing) return undefined
+    if (field.kind === 'list') return []
+    return field.kind === 'text' ? '' : undefined
+  }
+  if (field.kind === 'list') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  if (field.kind === 'number') return Number(value)
+  if (field.kind === 'json') return parseObject(field.label, value)
+  return value.trim()
 }
