@@ -86,6 +86,11 @@ _CALVER_PARTS_RE: typing.Final[re.Pattern[str]] = re.compile(
     r'^(\d{4})([.-])(\d{1,2})\2(\d{1,2})(?:([.-])(\w+))?$'
 )
 
+# A calver modifier that ends in a number, such as ``rc1``.
+_TRAILING_NUMBER_RE: typing.Final[re.Pattern[str]] = re.compile(
+    r'^(.*\D)(\d+)$'
+)
+
 # 7 to 40 lowercase hex chars — matches a git short or full SHA.
 COMMITISH_RE: typing.Final[re.Pattern[str]] = re.compile(r'^[0-9a-f]{7,40}$')
 
@@ -111,22 +116,52 @@ def is_calver_tag(value: str) -> bool:
     return bool(CALVER_TAG_RE.match(value))
 
 
+def _shows_padding(part: str, other: str) -> bool:
+    """Whether a calver month or day component is zero-padded.
+
+    A leading zero shows padding and a single digit shows none.  Two
+    digits without a leading zero (``10``) do not show it, so the other
+    component decides: ``2026.10.01`` is padded, ``2026.10.12`` is not.
+    """
+    if len(part) == 1:
+        return False
+    return part.startswith('0') or other.startswith('0')
+
+
 def next_calver_tag(
     last_tag: str | None,
     today: datetime.date,
+    *,
+    pad: bool = False,
 ) -> str:
     """The calendar-versioning tag that follows ``last_tag`` on ``today``.
 
-    The date is ``today`` with zero-padded month and day, using the
-    separator of ``last_tag`` (``.`` when there is no prior calver tag).
+    The date is ``today`` in the separator and padding of ``last_tag``.
+    With no prior calver tag, the date is unpadded and dot-separated
+    (``2026.9.17``): calver.org names unpadded the sensible default, and
+    an unpadded date is also valid semver.  The month and day each keep
+    the padding of the prior tag (``2026.09.1`` yields ``2026.09.2``).
+    A tag such as ``2026.10.12`` does not show its padding, so it is
+    taken as unpadded.  Set ``pad`` to zero-pad the month and day
+    always, for a tag policy that requires padding.
+
     The suffix mirrors the prior tag's convention: a tag that carried a
-    numeric build counter (``2026.09.16-0``) yields ``2026.09.17-0`` on a
-    new day and ``2026.09.16-1`` on the same day; a bare tag yields a bare
-    date on a new day and ``-1`` on the same day.
+    numeric build counter (``2026.9.16-0``) yields ``2026.9.17-0`` on a
+    new day and ``2026.9.16-1`` on the same day.  On the same day, a
+    modifier that ends in a number (``rc1``) is kept and its number goes
+    up (``rc2``).  A bare tag, or a modifier without a number, yields a
+    bare date on a new day and ``-1`` on the same day.
     """
     match = _CALVER_PARTS_RE.match(last_tag or '')
     sep = match.group(2) if match else '.'
-    date = today.strftime(f'%Y{sep}%m{sep}%d')
+    pad_month = pad_day = pad
+    if match and not pad:
+        prior_month, prior_day = match.group(3), match.group(4)
+        pad_month = _shows_padding(prior_month, prior_day)
+        pad_day = _shows_padding(prior_day, prior_month)
+    month = f'{today.month:02d}' if pad_month else str(today.month)
+    day = f'{today.day:02d}' if pad_day else str(today.day)
+    date = f'{today.year}{sep}{month}{sep}{day}'
     if not match:
         return date
     year, _, month, day, suffix_sep, suffix = match.groups()
@@ -139,6 +174,10 @@ def next_calver_tag(
     if same_day:
         if counted:
             return f'{date}{suffix_sep}{int(suffix) + 1}'
+        numbered = _TRAILING_NUMBER_RE.match(suffix or '')
+        if numbered:
+            stem, number = numbered.groups()
+            return f'{date}{suffix_sep}{stem}{int(number) + 1}'
         return f'{date}-1'
     if counted:
         return f'{date}{suffix_sep}0'
@@ -236,9 +275,14 @@ def release_version_key(name: str) -> tuple[int, ...] | None:
     ``(0, 17, 0) < (0, 17, 0, 1) < (1, 0, 0)`` as intended.
     """
     match = RELEASE_VERSION_RE.match(name)
-    if not match:
-        return None
-    return tuple(int(part) for part in match.group(1).split('.'))
+    if match:
+        return tuple(int(part) for part in match.group(1).split('.'))
+    # A calver tag with ``-`` between the date parts (``2026-09-17``,
+    # Stripe's ``2026-09-30.acacia``).  As above, the suffix is ignored.
+    calver = _CALVER_PARTS_RE.match(name)
+    if calver:
+        return int(calver.group(1)), int(calver.group(3)), int(calver.group(4))
+    return None
 
 
 def release_tag_order_key(

@@ -5554,14 +5554,28 @@ def _suggest_version(
             not patterns or versioning.matches_tag_formats(last_tag, patterns)
         )
     ):
-        candidates.append(versioning.next_calver_tag(last_tag, today))
+        # The padded date too, before the semver bump: ``2026.10.31`` reads
+        # as unpadded, and a padding policy must get ``2026.11.01``, not
+        # the semver bump ``2026.10.32``.
+        candidates.extend(
+            [
+                versioning.next_calver_tag(last_tag, today),
+                versioning.next_calver_tag(last_tag, today, pad=True),
+            ]
+        )
     if last_tag and versioning.is_semver_tag(last_tag):
         bumped = _bump_semver(last_tag, bump)
         # The other prefix too, before the first-release defaults: a
         # policy for bare tags after a ``v`` tag must not fall to 0.1.0.
         candidates.extend([bumped, bumped.removeprefix('v'), f'v{bumped}'])
     candidates.extend(
-        ['v0.1.0', '0.1.0', versioning.next_calver_tag(None, today)]
+        [
+            'v0.1.0',
+            '0.1.0',
+            versioning.next_calver_tag(None, today),
+            # Zero-padded date, for a policy that requires padding.
+            today.strftime('%Y.%m.%d'),
+        ]
     )
     for candidate in candidates:
         if versioning.matches_tag_formats(candidate, patterns):

@@ -5296,6 +5296,22 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                 ),
             )
 
+    def test_suggest_version_padding_policy_after_an_ambiguous_tag(
+        self,
+    ) -> None:
+        """``2026.10.31`` reads as unpadded; a padding policy gets a date."""
+        now = datetime.datetime(2026, 11, 1, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                '2026.11.01',
+                project_deployments._suggest_version(
+                    '2026.10.31', 'patch', [r'^\d{4}\.\d{2}\.\d{2}$']
+                ),
+            )
+
     def test_suggest_version_honours_the_tag_policy(self) -> None:
         calver = [r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$']
         today = datetime.datetime.now(datetime.UTC).date()
@@ -5310,16 +5326,23 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
         # Calver-only policy: a semver prior tag cannot be bumped into it.
         self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest('v1.2.3', 'patch', calver)
+            f'{today.year}.{today.month}.{today.day}',
+            suggest('v1.2.3', 'patch', calver),
         )
         self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest(None, 'patch', calver)
+            f'{today.year}.{today.month}.{today.day}',
+            suggest(None, 'patch', calver),
         )
         # Semver-only policy with a calver prior tag: first semver default
         # (the built-in Semver format tolerates the ``v`` prefix).
         self.assertEqual(
             'v0.1.0',
             suggest('2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]),
+        )
+        # A policy that requires padding gets the padded date.
+        self.assertEqual(
+            today.strftime('%Y.%m.%d'),
+            suggest(None, 'patch', [r'^\d{4}\.\d{2}\.\d{2}$']),
         )
         # A policy no known scheme satisfies: nothing to suggest.
         self.assertEqual('', suggest('v1.2.3', 'patch', [r'^REL-\d+$']))
@@ -5350,7 +5373,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200)
         today = datetime.datetime.now(datetime.UTC).date()
         self.assertEqual(
-            response.json()['suggested_tag'], today.strftime('%Y.%m.%d')
+            response.json()['suggested_tag'],
+            f'{today.year}.{today.month}.{today.day}',
         )
 
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:

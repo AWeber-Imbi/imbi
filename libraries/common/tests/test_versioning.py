@@ -211,13 +211,58 @@ class CalverTestCase(unittest.TestCase):
         for tag in ('2026.09', '1.2.3', '2026.09-17', 'v2026.09.17'):
             self.assertFalse(versioning.is_calver_tag(tag), tag)
 
-    def test_first_tag_is_todays_date(self) -> None:
+    def test_first_tag_is_todays_unpadded_date(self) -> None:
         self.assertEqual(
-            '2026.09.17', versioning.next_calver_tag(None, self.TODAY)
+            '2026.9.17', versioning.next_calver_tag(None, self.TODAY)
         )
         self.assertEqual(
-            '2026.09.17', versioning.next_calver_tag('v1.2.3', self.TODAY)
+            '2026.9.17', versioning.next_calver_tag('v1.2.3', self.TODAY)
         )
+
+    def test_padding_follows_the_prior_tag(self) -> None:
+        later = datetime.date(2026, 11, 3)
+        cases = {
+            '2026.9.17': '2026.11.3',
+            '2026.09.17': '2026.11.03',
+            '2026.10.01': '2026.11.03',
+            # Two-digit month and day do not show the padding.
+            '2026.10.12': '2026.11.3',
+            # Month and day keep their own padding.
+            '2026.09.1': '2026.11.3',
+            '2026.9.01': '2026.11.03',
+            '2026.10.1': '2026.11.3',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, later)
+                )
+        september = datetime.date(2026, 9, 2)
+        cases = {
+            '2026.09.1': '2026.09.2',
+            '2026.9.01': '2026.9.02',
+            '2026.10.12': '2026.9.2',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, september)
+                )
+
+    def test_pad_forces_padding(self) -> None:
+        later = datetime.date(2026, 11, 1)
+        cases = {
+            None: '2026.11.01',
+            '2026.10.31': '2026.11.01',
+            '2026.10.31-0': '2026.11.01-0',
+            '2026.11.1': '2026.11.01-1',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected,
+                    versioning.next_calver_tag(last, later, pad=True),
+                )
 
     def test_counter_suffix_follows_the_prior_tag(self) -> None:
         cases = {
@@ -226,7 +271,20 @@ class CalverTestCase(unittest.TestCase):
             '2026.09.17': '2026.09.17-1',
             '2026.09.16': '2026.09.17',
             '2026-09-16': '2026-09-17',
-            '2026.09.17.rc1': '2026.09.17-1',
+            '2026.9.17-0': '2026.9.17-1',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, self.TODAY)
+                )
+
+    def test_modifier_is_kept_on_the_same_day(self) -> None:
+        cases = {
+            '2026.09.17.rc1': '2026.09.17.rc2',
+            '2026.9.17-rc1': '2026.9.17-rc2',
+            '2026.9.17-dev': '2026.9.17-1',
+            '2026.9.16-rc1': '2026.9.17',
         }
         for last, expected in cases.items():
             with self.subTest(last=last):
@@ -292,6 +350,15 @@ class ReleaseVersionKeyTestCase(unittest.TestCase):
         )
         self.assertEqual(
             versioning.release_version_key('1.2.3+build.4'), (1, 2, 3)
+        )
+
+    def test_hyphenated_calver(self) -> None:
+        self.assertEqual(
+            versioning.release_version_key('2026-09-17'), (2026, 9, 17)
+        )
+        self.assertEqual(
+            versioning.release_version_key('2026-09-30.acacia'),
+            (2026, 9, 30),
         )
 
     def test_leading_zeros_tolerated(self) -> None:
