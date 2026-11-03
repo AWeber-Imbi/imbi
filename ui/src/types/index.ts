@@ -1717,9 +1717,9 @@ export interface ReleaseHistoryEntry {
   tag: string
   /**
    * `false` when Imbi holds a Release record for the tag but the tag has
-   * not been synced from the repository: a release still being cut, one
-   * whose build failed before the tag was pushed, or a tag since deleted
-   * upstream. Its `sha` is the record's committish and it has no `tag_url`.
+   * not been synced from the repository: a release still being cut or one
+   * whose build failed before the tag was pushed. Its `sha` is the
+   * record's committish and it has no `tag_url`.
    */
   tag_synced?: boolean
   tag_url?: null | string

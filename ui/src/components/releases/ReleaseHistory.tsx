@@ -277,7 +277,7 @@ function ReleaseRow({
           {rel.tag_synced === false ? (
             <Badge
               className="inline-flex items-center gap-1"
-              title="Imbi recorded this release, but its tag has not been synced from the repository: the release may still be in flight, its build may have failed before the tag was pushed, or the tag was deleted"
+              title="Imbi recorded this release, but its tag has not been synced from the repository: the release may still be in flight or its build may have failed before the tag was pushed"
               variant="warning"
             >
               <Tag className="size-3" />

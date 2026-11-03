@@ -416,9 +416,9 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     package_url: str | None = None
     #: ``False`` when Imbi holds a ``Release`` node for the tag but the
     #: tag itself has not been synced from the repository: a release
-    #: still being cut, one whose build failed before the tag was pushed,
-    #: or a tag since deleted upstream.  Such an entry's ``sha`` is the
-    #: node's committish and it has no ``tag_url``.
+    #: still being cut or one whose build failed before the tag was
+    #: pushed.  Such an entry's ``sha`` is the node's committish and it
+    #: has no ``tag_url``.
     tag_synced: bool = True
     #: ``True`` when the release has at least one open blocker. Deploys
     #: and promotes targeting it are refused with a 409. The
@@ -6949,13 +6949,15 @@ def _unsynced_release_entry(
     """A history entry for a ``Release`` node with no synced tag row.
 
     A promote creates the node before dispatching the build, so one
-    exists for a release still being cut, for one whose build failed
-    before the tag was pushed, and for a tag deleted upstream after the
-    fact.  The ``build-failure`` blocker the promote files hangs off that
-    node and the history is where it gets resolved, so the node has to
-    be listed even though ClickHouse has nothing to say about it.  The
-    node's committish stands in for the tag's sha and its ``created_at``
-    for the publish time; CI status is left for the fallback chain.
+    exists for a release still being cut and for one whose build failed
+    before the tag was pushed.  The ``build-failure`` blocker the
+    promote files hangs off that node and the history is where it gets
+    resolved, so the node has to be listed even though ClickHouse has
+    nothing to say about it.  The node's committish stands in for the
+    tag's sha and its ``created_at`` for the publish time; CI status is
+    left for the fallback chain.  A tag deleted upstream after the fact
+    is not this case: the tag sync records no deletions, so its ``tags``
+    row -- and with it the synced entry -- outlives the tag.
     """
     sha = versioning.short_committish(str(node.get('committish') or ''))
     author, author_email = _release_author(
