@@ -432,9 +432,13 @@ MATCH (s:ServiceAccount {{slug: {slug}}})
 RETURN s.id AS id
 """
 
+# A rename during concurrent lazy creation can give an agent two
+# accounts. The order makes all later calls use the same one.
 _SERVICE_ACCOUNT_QUERY: typing.LiteralString = """
 MATCH (:Agent {{id: {id}}})-[:ACTS_AS]->(s:ServiceAccount)
 RETURN s.id AS id
+ORDER BY s.created_at, s.id
+LIMIT 1
 """
 
 _ENSURE_SERVICE_ACCOUNT_QUERY: typing.LiteralString = (
