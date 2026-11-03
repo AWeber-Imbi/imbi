@@ -471,11 +471,16 @@ async def _service_account_params(
     The slug is the slugified agent name. Service account slugs are
     unique across all organizations, so when another service account
     has that slug, the agent id is added to it. The agent id is also
-    added when the name gives an empty slug.
+    added when the name gives an empty slug, or a slug in the ``imbi-``
+    namespace of the internal service accounts. Seeding adopts an
+    existing account with an internal slug, so an agent must not have
+    one.
     """
     slug = slugify.slugify(name)
-    if not slug or await db.execute(
-        _SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id']
+    if (
+        not slug
+        or slug.startswith('imbi-')
+        or await db.execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
     ):
         slug = slugify.slugify(f'{name} {agent_id}')
     return {

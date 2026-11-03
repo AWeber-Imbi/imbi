@@ -8,6 +8,7 @@ from unittest import mock
 
 import httpx
 import psycopg.errors
+import slugify
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -262,6 +263,26 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(response.status_code, 201, response.text)
         self.assertIn('SET a.org_id = o.id', self._queries()[3])
+
+    def test_create_avoids_internal_service_account_slug(self) -> None:
+        # team, slug check, create, version, fetch: no SA slug check
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [],
+            [{'id': 'agent-1'}],
+            [{'n': 1}],
+            [self._row()],
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={'name': 'Imbi Scheduler', 'slug': 'sched', 'team': 'ops'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        create = self.mock_db.execute.await_args_list[2].args[1]
+        self.assertEqual(
+            create['sa_slug'],
+            slugify.slugify(f'imbi-scheduler-{create["id"]}'),
+        )
 
     def test_create_concurrent_slug_conflict(self) -> None:
         # The slug check passes, then the unique index stops the create.
