@@ -4225,6 +4225,47 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
         await self._complete(db)
         self.assertFalse(self._committish_writes(db))
 
+    async def test_an_already_healed_node_ships_the_tagged_commit(
+        self,
+    ) -> None:
+        """The node agrees with the tag; this promote does not.
+
+        A re-promote of a tag whose node was already healed -- by a
+        reclaimed job or by the commit-sync reconcile -- finds nothing
+        to rewrite, but the promote's own committish still names the
+        commit it was asked to ship.  The deployment audit has to carry
+        the commit the tag deployed, not that one.
+        """
+        db = self._db_recording('27f2f81')
+        audit = mock.AsyncMock()
+        handler = project_deployments._handler.return_value
+        handler.trigger_deployment = mock.AsyncMock(
+            return_value=DeploymentRun(run_id='run-1', status='queued')
+        )
+        with (
+            mock.patch(f'{_MODULE}._record_deployment_audit', audit),
+            mock.patch(
+                f'{_MODULE}._release_ci_override',
+                mock.AsyncMock(return_value=(None, False)),
+            ),
+            mock.patch(
+                f'{_MODULE}.append_deployment_event',
+                mock.AsyncMock(return_value=(mock.Mock(), 'appended')),
+            ),
+        ):
+            await project_deployments.complete_promote_build(
+                db,
+                org_slug='octo',
+                project_id='p1',
+                release_id='rel1',
+                tag='2.45.3',
+                committish='3c1ea7b',
+                to_environment='production',
+            )
+        self.assertFalse(self._committish_writes(db))
+        audit.assert_awaited_once()
+        self.assertEqual('27f2f81', audit.await_args.kwargs['committish'])
+
 
 class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     """Recording a deployment whose release is not known yet."""

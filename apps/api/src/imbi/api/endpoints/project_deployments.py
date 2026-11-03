@@ -5416,7 +5416,12 @@ async def complete_promote_build(
             await _set_release_committish(
                 db, release_id=release_id, committish=actual
             )
-            committish = actual
+        # What the tag points at is what ships, whether or not the node
+        # needed healing: a node already healed by a reclaimed job or by
+        # the commit-sync reconcile agrees with the tag while this
+        # promote's own committish may not, and the deployment audit
+        # below must name the commit the tag deployed.
+        committish = actual
 
     remote = await _get_release(handler, ctx, creds, tag)
     release_url = remote.html_url if remote else None
