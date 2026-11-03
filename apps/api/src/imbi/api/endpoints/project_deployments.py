@@ -5036,9 +5036,12 @@ async def _release_committish(
     RETURN r.committish AS committish
     """
     rows = await db.execute(query, {'release_id': release_id}, ['committish'])
-    if not rows or rows[0].get('committish') is None:
+    if not rows:
         return None
-    return versioning.short_committish(str(rows[0]['committish']))
+    value = graph.parse_agtype(rows[0].get('committish'))
+    if value is None:
+        return None
+    return versioning.short_committish(str(value))
 
 
 async def _set_release_committish(

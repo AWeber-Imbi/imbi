@@ -4183,7 +4183,9 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
 
         async def execute(query: str, *_: typing.Any) -> list[typing.Any]:
             if 'RETURN r.committish AS committish' in query:
-                return [{'committish': committish}]
+                # A scalar agtype column arrives as JSON text, quotes and
+                # all, exactly as the real graph hands it back.
+                return [{'committish': json.dumps(committish)}]
             return []
 
         db = mock.AsyncMock()
