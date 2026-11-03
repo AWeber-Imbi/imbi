@@ -42,6 +42,7 @@ from imbi.api.agent_tasks.store import (
     TaskArchived,
     TaskClosed,
     TaskNotFound,
+    TaskOpen,
     TaskStore,
     Usage,
 )
@@ -124,6 +125,7 @@ __all__ = [
     'TaskArchived',
     'TaskClosed',
     'TaskNotFound',
+    'TaskOpen',
     'TaskStore',
     'Usage',
     'create_pool',

@@ -16,6 +16,7 @@ vi.mock('@/api/endpoints', () => ({
   controlAgentTask: vi.fn(),
   countWaitingAgentTasks: vi.fn(),
   createAgentTask: vi.fn(),
+  deleteAgentTask: vi.fn(),
   getAgentTask: vi.fn(),
   getAgentToolCatalog: vi.fn(),
   getProjectsSlim: vi.fn(),
@@ -487,6 +488,31 @@ describe('Tasks', () => {
         'cancel',
       ),
     )
+  })
+
+  it('deletes a closed task after a confirm', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue(closedTask(1))
+    vi.mocked(endpoints.deleteAgentTask).mockResolvedValue(undefined)
+    renderAt('/agents/tasks/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete task' }))
+    expect(endpoints.deleteAgentTask).not.toHaveBeenCalled()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Delete task',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.deleteAgentTask).toHaveBeenCalledWith('acme', 'T-11'),
+    )
+    expect(await screen.findByText('Select a task.')).toBeInTheDocument()
+  })
+
+  it('has no Delete for an open task', async () => {
+    renderAt('/agents/tasks/acme/T-3')
+    await screen.findByRole('button', { name: 'Cancel task' })
+    expect(
+      screen.queryByRole('button', { name: 'Delete task' }),
+    ).not.toBeInTheDocument()
   })
 
   it('returns focus to Cancel when the confirm closes', async () => {

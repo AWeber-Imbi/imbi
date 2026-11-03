@@ -33,6 +33,7 @@ ALL_PERMISSIONS = frozenset(
         'agent_task:create',
         'agent_task:manage',
         'agent_task:resolve',
+        'agent_task:delete',
     }
 )
 
@@ -1087,6 +1088,53 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
 
+class DeleteTests(AgentTaskTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.make_agent()
+        self.task = (await self.create_task()).json()
+
+    async def cancel(self, short_id: str) -> None:
+        response = await self.client.post(self.url(f'{short_id}/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_open_task_is_refused(self) -> None:
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_closed_task_is_deleted_with_its_relations(self) -> None:
+        await self.create_task()
+        response = await self.client.put(self.url('T-2/requires/T-1'))
+        self.assertEqual(response.status_code, 204, response.text)
+        await self.cancel('T-1')
+        response = await self.client.delete(self.url('t-1'))
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 404, response.text)
+        response = await self.client.get(self.url('T-2/relations'))
+        self.assertEqual(response.json()['requires'], [])
+        listed = (await self.client.get(self.url())).json()
+        self.assertEqual([t['short_id'] for t in listed], ['T-2'])
+
+    async def test_open_child_is_refused(self) -> None:
+        child = (await self.create_task()).json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE agent_runtime.tasks SET origin_kind = 'task',"
+                ' origin_id = %s WHERE id = %s',
+                (self.task['id'], uuid.UUID(child['id'])),
+            )
+        await self.cancel('T-1')
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_unknown_task_is_404(self) -> None:
+        response = await self.client.delete(self.url('T-9'))
+        self.assertEqual(response.status_code, 404, response.text)
+
+
 class PermissionTests(AgentTaskTestCase):
     async def test_each_endpoint_needs_its_permission(self) -> None:
         await self.make_agent()
@@ -1112,6 +1160,7 @@ class PermissionTests(AgentTaskTestCase):
                 {'owner': self.member},
             ),
             ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
+            ('agent_task:delete', 'DELETE', 'T-1', None),
             (
                 'agent_task:resolve',
                 'POST',

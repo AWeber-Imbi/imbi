@@ -142,6 +142,10 @@ class TaskClosed(ValueError):
     """The task is closed. A closed task does not change."""
 
 
+class TaskOpen(ValueError):
+    """The task, or a task that it delegated to, is not closed."""
+
+
 class CancelPending(ValueError):
     """A cancel waits for the harness; the control cannot change."""
 
@@ -708,6 +712,54 @@ class TaskStore:
                 (task_id,),
             )
         return True
+
+    async def delete(self, organization_id: str, short_id: str) -> Row:
+        """Delete a closed task and return its row.
+
+        Its events, sessions, requests, budget ledger, and harness rows
+        go by cascade; its dependency and project rows go here. The
+        secret resolutions and the ClickHouse rows (archived events,
+        usage) stay, for the security and cost history.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskOpen: The task, or a child or chain task, is not closed.
+
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            task = await _fetch_one(
+                conn,
+                'SELECT * FROM agent_runtime.tasks'
+                ' WHERE organization_id = %s AND short_id = %s FOR UPDATE',
+                (organization_id, short_id),
+            )
+            if task is None:
+                raise TaskNotFound(short_id)
+            # The harness chain row of a root task cascades, so an open
+            # task in its chain must not lose it.
+            cursor = await conn.execute(
+                'SELECT 1 FROM agent_runtime.tasks'
+                " WHERE status <> 'closed' AND (id = %s OR chain_id = %s"
+                " OR (origin_kind = 'task' AND origin_id = %s)) LIMIT 1",
+                (task['id'], task['id'], str(task['id'])),
+            )
+            if await cursor.fetchone() is not None:
+                raise TaskOpen(short_id)
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_dependencies'
+                ' WHERE organization_id = %s'
+                ' AND (dependent_task_id = %s OR prerequisite_task_id = %s)',
+                (organization_id, task['id'], task['id']),
+            )
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_projects'
+                ' WHERE organization_id = %s AND task_id = %s',
+                (organization_id, task['id']),
+            )
+            await conn.execute(
+                'DELETE FROM agent_runtime.tasks WHERE id = %s', (task['id'],)
+            )
+        return task
 
     async def set_control(
         self,
