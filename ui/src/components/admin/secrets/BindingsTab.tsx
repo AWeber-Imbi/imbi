@@ -59,10 +59,11 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   const providerNames = new Map(
     (providersQuery.data ?? []).map((p) => [p.id, p.name]),
   )
-  const appProviders = new Set(
+  // The GitHub host of each github_app provider, by provider id.
+  const appProviders = new Map(
     (providersQuery.data ?? [])
       .filter((p) => p.type === 'github_app')
-      .map((p) => p.id),
+      .map((p) => [p.id, String(p.config.host ?? 'github.com')]),
   )
   const bindings = bindingsQuery.data ?? []
   const refresh = () => queryClient.invalidateQueries({ queryKey })
@@ -78,10 +79,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
       id
         ? updateSecretBinding(orgSlug, id, body as SecretBindingPatch)
         : createSecretBinding(orgSlug, body as SecretBindingCreate),
-    onSuccess: () => {
-      setEditing(null)
-      void refresh()
-    },
+    onSuccess: () => void refresh(),
   })
   const open = (target: 'new' | SecretBinding) => {
     saveMutation.reset()
@@ -124,7 +122,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
       <div className="flex justify-end">
         <Button onClick={() => open('new')}>New binding</Button>
       </div>
-      {unlinkedKeys(bindings).map((link) => (
+      {unlinkedKeys(bindings, appProviders).map((link) => (
         <Alert
           key={link.app.id}
           title="The key does not list this binding as a consumer"
@@ -308,6 +306,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               kind: 'text',
               label: 'Provider key host',
               name: 'host',
+              required: true,
               show: keyClass,
             },
             {
@@ -315,6 +314,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               kind: 'text',
               label: 'Provider key App id',
               name: 'app_id',
+              required: true,
               show: keyClass,
             },
             {
@@ -339,7 +339,14 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
           ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
-          onSubmit={(body) => saveMutation.mutate({ body, id: row?.id })}
+          onSubmit={(body) =>
+            // Close in a per-call callback: open() resets the mutation,
+            // so a stale save does not close a newer dialog.
+            saveMutation.mutate(
+              { body, id: row?.id },
+              { onSuccess: () => setEditing(null) },
+            )
+          }
           original={row}
           title={row ? `Edit binding ${row.reference}` : 'New binding'}
         />
@@ -350,10 +357,15 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
 
 /**
  * Each binding whose locator names a provider key (a GitHub App
- * private_key) that does not list the binding as a consumer. The
- * broker refuses the key to such a binding.
+ * private_key) for its host and App id that does not list the binding
+ * as a consumer. The broker refuses the key to such a binding. A key
+ * for a different host or App is not offered, because the broker
+ * refuses it also when the binding is a consumer.
  */
-function unlinkedKeys(bindings: SecretBinding[]) {
+function unlinkedKeys(
+  bindings: SecretBinding[],
+  appHosts: Map<string, string>,
+) {
   return bindings.flatMap((app) => {
     const privateKey = app.locator.private_key
     if (app.credential_class !== 'dynamic' || typeof privateKey !== 'string')
@@ -363,6 +375,11 @@ function unlinkedKeys(bindings: SecretBinding[]) {
     )
     const usage = key?.provider_key_usage as KeyUsage | undefined
     if (!key || !usage || usage.consumers?.includes(app.id)) return []
+    if (
+      usage.host !== appHosts.get(app.provider_id) ||
+      usage.app_id !== String(app.locator.app_id)
+    )
+      return []
     return [{ app, key, usage }]
   })
 }

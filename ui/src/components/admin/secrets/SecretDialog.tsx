@@ -26,8 +26,9 @@ import { Textarea } from '@/components/ui/textarea'
  * One form field. `list` is comma separated text sent as a string
  * array; `json` is a JSON object; `multi` is a set of checkboxes.
  * A field with a `group` is sent in `body[group]`; a group with only
- * empty fields is sent as null. A `createOnly` field is not shown in
- * an edit, because the API does not change it.
+ * empty fields is sent as null, and its `required` fields are required
+ * only when a field of the group has a value. A `createOnly` field is
+ * not shown in an edit, because the API does not change it.
  */
 export interface FieldSpec {
   createOnly?: boolean
@@ -160,7 +161,11 @@ export function SecretDialog({
     )
   }
 
-  const missing = visible.some((f) => f.required && isEmpty(values[f.name]))
+  const isRequired = (field: FieldSpec) =>
+    !!field.required &&
+    (!field.group ||
+      visible.some((f) => f.group === field.group && !isEmpty(values[f.name])))
+  const missing = visible.some((f) => isRequired(f) && isEmpty(values[f.name]))
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()} open>
@@ -183,7 +188,7 @@ export function SecretDialog({
               htmlFor={`secret-${field.name}`}
               key={field.name}
               label={field.label}
-              required={field.required}
+              required={isRequired(field)}
             >
               {renderInput(field)}
             </FormField>

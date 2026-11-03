@@ -55,10 +55,7 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
       id
         ? updateSecretProvider(orgSlug, id, body as SecretProviderPatch)
         : createSecretProvider(orgSlug, body as SecretProviderCreate),
-    onSuccess: () => {
-      setEditing(null)
-      void refresh()
-    },
+    onSuccess: () => void refresh(),
   })
   const open = (target: 'new' | SecretProvider) => {
     saveMutation.reset()
@@ -201,7 +198,14 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
           ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
-          onSubmit={(body) => saveMutation.mutate({ body, id: row?.id })}
+          onSubmit={(body) =>
+            // Close in a per-call callback: open() resets the mutation,
+            // so a stale save does not close a newer dialog.
+            saveMutation.mutate(
+              { body, id: row?.id },
+              { onSuccess: () => setEditing(null) },
+            )
+          }
           original={row}
           title={row ? `Edit provider ${row.name}` : 'New provider'}
         />

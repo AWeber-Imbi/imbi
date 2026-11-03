@@ -65,10 +65,7 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
       id
         ? updateSecretGrant(orgSlug, id, body as SecretGrantPatch)
         : createSecretGrant(orgSlug, body as SecretGrantCreate),
-    onSuccess: () => {
-      setEditing(null)
-      void refresh()
-    },
+    onSuccess: () => void refresh(),
   })
   const open = (target: 'new' | SecretGrant) => {
     saveMutation.reset()
@@ -223,7 +220,14 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
           ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
-          onSubmit={(body) => saveMutation.mutate({ body, id: row?.id })}
+          onSubmit={(body) =>
+            // Close in a per-call callback: open() resets the mutation,
+            // so a stale save does not close a newer dialog.
+            saveMutation.mutate(
+              { body, id: row?.id },
+              { onSuccess: () => setEditing(null) },
+            )
+          }
           original={row}
           title={row ? 'Edit grant' : 'New grant'}
         />

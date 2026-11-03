@@ -48,8 +48,8 @@ describe('BindingsTab', () => {
   beforeEach(() => {
     vi.mocked(listSecretBindings).mockResolvedValue([key, app] as never)
     vi.mocked(listSecretProviders).mockResolvedValue([
-      { id: 'aws', name: 'aws', type: 'aws_secrets_manager' },
-      { id: 'gh', name: 'github', type: 'github_app' },
+      { config: {}, id: 'aws', name: 'aws', type: 'aws_secrets_manager' },
+      { config: {}, id: 'gh', name: 'github', type: 'github_app' },
     ] as never)
     vi.mocked(updateSecretBinding).mockResolvedValue({} as never)
   })
@@ -66,11 +66,34 @@ describe('BindingsTab', () => {
     )
   })
 
+  it('does not offer a key for a different App id', async () => {
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      key,
+      { ...app, locator: { ...app.locator, app_id: '7' } },
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    await screen.findAllByRole('button', { name: 'Edit' })
+    expect(screen.queryByRole('button', { name: 'Add as consumer' })).toBeNull()
+  })
+
+  it('requires the key host when a consumer is set', async () => {
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      { ...key, provider_key_usage: null },
+      app,
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
   it('edits the consumers of a key binding', async () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    expect(screen.getByLabelText('Provider key host')).toHaveValue('github.com')
+    expect(screen.getByLabelText(/Provider key host/)).toHaveValue('github.com')
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() =>
