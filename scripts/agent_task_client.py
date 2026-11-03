@@ -303,6 +303,7 @@ async def run_task(
                     'tool': 'reference.echo',
                     'mutating': False,
                     'arguments': {'text': 'hello'},
+                    'result': 'hello',
                     'result_summary': 'hello',
                     'duration_ms': 12,
                 },
