@@ -5296,6 +5296,22 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                 ),
             )
 
+    def test_suggest_version_padding_policy_after_an_ambiguous_tag(
+        self,
+    ) -> None:
+        """``2026.10.31`` reads as unpadded; a padding policy gets a date."""
+        now = datetime.datetime(2026, 11, 1, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                '2026.11.01',
+                project_deployments._suggest_version(
+                    '2026.10.31', 'patch', [r'^\d{4}\.\d{2}\.\d{2}$']
+                ),
+            )
+
     def test_suggest_version_honours_the_tag_policy(self) -> None:
         calver = [r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$']
         today = datetime.datetime.now(datetime.UTC).date()

@@ -131,6 +131,8 @@ def _shows_padding(part: str, other: str) -> bool:
 def next_calver_tag(
     last_tag: str | None,
     today: datetime.date,
+    *,
+    pad: bool = False,
 ) -> str:
     """The calendar-versioning tag that follows ``last_tag`` on ``today``.
 
@@ -140,7 +142,8 @@ def next_calver_tag(
     an unpadded date is also valid semver.  The month and day each keep
     the padding of the prior tag (``2026.09.1`` yields ``2026.09.2``).
     A tag such as ``2026.10.12`` does not show its padding, so it is
-    taken as unpadded.
+    taken as unpadded.  Set ``pad`` to zero-pad the month and day
+    always, for a tag policy that requires padding.
 
     The suffix mirrors the prior tag's convention: a tag that carried a
     numeric build counter (``2026.9.16-0``) yields ``2026.9.17-0`` on a
@@ -151,8 +154,8 @@ def next_calver_tag(
     """
     match = _CALVER_PARTS_RE.match(last_tag or '')
     sep = match.group(2) if match else '.'
-    pad_month = pad_day = False
-    if match:
+    pad_month = pad_day = pad
+    if match and not pad:
         prior_month, prior_day = match.group(3), match.group(4)
         pad_month = _shows_padding(prior_month, prior_day)
         pad_day = _shows_padding(prior_day, prior_month)

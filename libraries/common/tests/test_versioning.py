@@ -249,6 +249,21 @@ class CalverTestCase(unittest.TestCase):
                     expected, versioning.next_calver_tag(last, september)
                 )
 
+    def test_pad_forces_padding(self) -> None:
+        later = datetime.date(2026, 11, 1)
+        cases = {
+            None: '2026.11.01',
+            '2026.10.31': '2026.11.01',
+            '2026.10.31-0': '2026.11.01-0',
+            '2026.11.1': '2026.11.01-1',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected,
+                    versioning.next_calver_tag(last, later, pad=True),
+                )
+
     def test_counter_suffix_follows_the_prior_tag(self) -> None:
         cases = {
             '2026.09.16-0': '2026.09.17-0',
