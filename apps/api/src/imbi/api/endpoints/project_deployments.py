@@ -7064,7 +7064,16 @@ async def get_release_history(
         ),
         reverse=True,
     )
-    entries = entries[:capped]
+    # The cap keeps the newest synced release: ``ReleasesTab`` shows it
+    # as the current release, and ``capped`` or more unsynced entries
+    # ranked ahead of it would otherwise push it out of the response.
+    newest_synced = next(
+        (i for i, e in enumerate(entries) if e.tag_synced), None
+    )
+    if newest_synced is not None and newest_synced >= capped:
+        entries = [*entries[: capped - 1], entries[newest_synced]]
+    else:
+        entries = entries[:capped]
     # A deployable project's synced releases keep what the sync recorded:
     # an ``'unknown'`` there really is unknown -- the sync asked and got
     # nothing -- and paying for a live check-runs call per release on

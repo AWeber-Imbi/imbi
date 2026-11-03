@@ -6675,6 +6675,71 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(synced['tag_url'], 'https://gh/releases/tag/2.8.6')
         self.assertFalse(synced['blocked'])
 
+    def test_release_history_limit_keeps_the_newest_synced_release(
+        self,
+    ) -> None:
+        """``limit`` cannot push the current release out of the response.
+
+        Unsynced releases rank first, so a project with ``limit`` or
+        more of them would fill the whole response and ``ReleasesTab``
+        -- which shows the newest synced release as current -- would
+        find none.  The newest synced release takes the last slot
+        instead of the lowest-ranked unsynced one.
+        """
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'd3fe0505aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/v1.0.0',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return []
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': tag,
+                            'committish': sha,
+                            'title': tag,
+                            'created_by': 'deploybee',
+                            'created_at': '2026-01-02T00:00:00+00:00',
+                        }
+                    )
+                }
+                for tag, sha in (
+                    ('v1.0.0', 'd3fe050'),
+                    ('v2.0.0', '28ae5f2'),
+                    ('v3.0.0', '9b1c4e7'),
+                )
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history?limit=2')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        # v2.0.0, the lowest-ranked unsynced release, gives up its slot.
+        self.assertEqual(['v3.0.0', 'v1.0.0'], [e['tag'] for e in data])
+        self.assertEqual([False, True], [e['tag_synced'] for e in data])
+
 
 class ReleaseBlockerTestCase(ProjectDeploymentsTestCase):
     """The blocker endpoints: add, list, update, resolve, delete."""
