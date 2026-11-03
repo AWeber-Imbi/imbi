@@ -233,11 +233,11 @@ function OverviewTab({
       name: 'Cost / budget',
       value: (
         <>
-          {formatMoney(task.cost_total)}
+          {formatMoney(task.cost_total, 6)}
           <span className="text-tertiary">
             {task.budget == null
               ? ' · no budget'
-              : ` of ${formatMoney(task.budget)}`}
+              : ` of ${formatMoney(task.budget, 6)}`}
           </span>
         </>
       ),
@@ -286,7 +286,7 @@ function OverviewTab({
         </div>
         <div className="p-5">
           {raw ? (
-            <pre className="text-primary font-mono text-sm whitespace-pre-wrap">
+            <pre className="text-primary font-mono text-sm wrap-break-word whitespace-pre-wrap">
               {task.description}
             </pre>
           ) : (
