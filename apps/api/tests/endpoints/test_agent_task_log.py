@@ -333,6 +333,14 @@ class ReferenceClientTests(
         self.assertEqual(
             [e['actor_kind'] for e in nested], ['subagent', 'subagent']
         )
+        self.assertIn(
+            'rich_events_written',
+            [
+                e['payload'].get('reason')
+                for e in events
+                if e['type'] == 'session.closed'
+            ],
+        )
 
 
 class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):

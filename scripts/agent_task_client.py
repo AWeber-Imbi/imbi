@@ -386,15 +386,21 @@ async def run_task(
 
 
 async def run_rich_task(
-    harness: HarnessClient, *, model_id: str, ask: bool = False
+    harness: HarnessClient,
+    *,
+    model_id: str,
+    ask: bool = False,
+    wait: bool = False,
 ) -> Body:
     """Write :func:`rich_events` in a session of its own, then work the
-    task with :func:`run_task`. With ``ask``, leave it blocked on a
-    feedback request."""
+    task with :func:`run_task`, passing ``ask`` and ``wait`` through."""
     run = uuid.uuid4().hex[:8]
-    session = await harness.open_session(f'reference-rich-{run}')
-    await harness.append(session['session']['id'], rich_events())
-    return await run_task(harness, model_id=model_id, ask=ask)
+    session_id = (await harness.open_session(f'reference-rich-{run}'))[
+        'session'
+    ]['id']
+    await harness.append(session_id, rich_events())
+    await harness.close_session(session_id, 'rich_events_written')
+    return await run_task(harness, model_id=model_id, ask=ask, wait=wait)
 
 
 async def _main(args: argparse.Namespace) -> Body:
@@ -414,7 +420,7 @@ async def _main(args: argparse.Namespace) -> Body:
         harness = HarnessClient(client, args.org, args.task)
         if args.rich:
             return await run_rich_task(
-                harness, model_id=args.model, ask=args.ask
+                harness, model_id=args.model, ask=args.ask, wait=args.wait
             )
         return await run_task(
             harness, model_id=args.model, ask=args.ask, wait=args.wait
