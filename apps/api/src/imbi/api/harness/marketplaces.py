@@ -373,7 +373,16 @@ async def _public_readers(
         handler = typing.cast(
             'type[base.DeploymentCapability]', capability.handler
         )
-        reader = handler.public_reader(url)
+        try:
+            reader = handler.public_reader(url)
+        except Exception as err:  # noqa: BLE001 - skip this plugin
+            LOGGER.info(
+                'Plugin %s cannot offer a public reader for %s: %s',
+                entry.manifest.slug,
+                url,
+                err,
+            )
+            continue
         if reader is not None:
             readers.append(reader)
     return readers

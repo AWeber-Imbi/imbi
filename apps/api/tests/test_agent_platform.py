@@ -388,6 +388,11 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             def public_reader(cls, url: str) -> typing.Any:
                 return reader if url == 'https://h/a/b' else None
 
+        class Broken(base.DeploymentCapability):  # type: ignore[misc]
+            @classmethod
+            def public_reader(cls, url: str) -> typing.Any:
+                raise RuntimeError('broken')
+
         def entry(slug: str, handler: type | None) -> mock.Mock:
             capability = (
                 None if handler is None else mock.Mock(handler=handler)
@@ -401,6 +406,7 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
 
         entries = [
             entry('none', None),
+            entry('broken', Broken),
             entry('enabled', Deployment),
             entry('disabled', Deployment),
         ]
