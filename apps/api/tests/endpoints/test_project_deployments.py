@@ -5323,6 +5323,11 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             'v0.1.0',
             suggest('2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]),
         )
+        # A policy that requires padding gets the padded date.
+        self.assertEqual(
+            today.strftime('%Y.%m.%d'),
+            suggest(None, 'patch', [r'^\d{4}\.\d{2}\.\d{2}$']),
+        )
         # A policy no known scheme satisfies: nothing to suggest.
         self.assertEqual('', suggest('v1.2.3', 'patch', [r'^REL-\d+$']))
         # A bare-tag policy after a ``v`` tag keeps the bump, never 0.1.0.

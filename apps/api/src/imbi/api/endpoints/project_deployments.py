@@ -5561,7 +5561,13 @@ def _suggest_version(
         # policy for bare tags after a ``v`` tag must not fall to 0.1.0.
         candidates.extend([bumped, bumped.removeprefix('v'), f'v{bumped}'])
     candidates.extend(
-        ['v0.1.0', '0.1.0', versioning.next_calver_tag(None, today)]
+        [
+            'v0.1.0',
+            '0.1.0',
+            versioning.next_calver_tag(None, today),
+            # Zero-padded date, for a policy that requires padding.
+            today.strftime('%Y.%m.%d'),
+        ]
     )
     for candidate in candidates:
         if versioning.matches_tag_formats(candidate, patterns):

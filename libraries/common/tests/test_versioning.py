@@ -227,11 +227,26 @@ class CalverTestCase(unittest.TestCase):
             '2026.10.01': '2026.11.03',
             # Two-digit month and day do not show the padding.
             '2026.10.12': '2026.11.3',
+            # Month and day keep their own padding.
+            '2026.09.1': '2026.11.3',
+            '2026.9.01': '2026.11.03',
+            '2026.10.1': '2026.11.3',
         }
         for last, expected in cases.items():
             with self.subTest(last=last):
                 self.assertEqual(
                     expected, versioning.next_calver_tag(last, later)
+                )
+        september = datetime.date(2026, 9, 2)
+        cases = {
+            '2026.09.1': '2026.09.2',
+            '2026.9.01': '2026.9.02',
+            '2026.10.12': '2026.9.2',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, september)
                 )
 
     def test_counter_suffix_follows_the_prior_tag(self) -> None:

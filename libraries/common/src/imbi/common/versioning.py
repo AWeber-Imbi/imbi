@@ -116,6 +116,18 @@ def is_calver_tag(value: str) -> bool:
     return bool(CALVER_TAG_RE.match(value))
 
 
+def _shows_padding(part: str, other: str) -> bool:
+    """Whether a calver month or day component is zero-padded.
+
+    A leading zero shows padding and a single digit shows none.  Two
+    digits without a leading zero (``10``) do not show it, so the other
+    component decides: ``2026.10.01`` is padded, ``2026.10.12`` is not.
+    """
+    if len(part) == 1:
+        return False
+    return part.startswith('0') or other.startswith('0')
+
+
 def next_calver_tag(
     last_tag: str | None,
     today: datetime.date,
@@ -125,9 +137,10 @@ def next_calver_tag(
     The date is ``today`` in the separator and padding of ``last_tag``.
     With no prior calver tag, the date is unpadded and dot-separated
     (``2026.9.17``): calver.org names unpadded the sensible default, and
-    an unpadded date is also valid semver.  A prior tag is padded when
-    its month or day has a leading zero.  A tag such as ``2026.10.12``
-    does not show its padding, so it is taken as unpadded.
+    an unpadded date is also valid semver.  The month and day each keep
+    the padding of the prior tag (``2026.09.1`` yields ``2026.09.2``).
+    A tag such as ``2026.10.12`` does not show its padding, so it is
+    taken as unpadded.
 
     The suffix mirrors the prior tag's convention: a tag that carried a
     numeric build counter (``2026.9.16-0``) yields ``2026.9.17-0`` on a
@@ -138,13 +151,14 @@ def next_calver_tag(
     """
     match = _CALVER_PARTS_RE.match(last_tag or '')
     sep = match.group(2) if match else '.'
-    padded = match is not None and (
-        match.group(3).startswith('0') or match.group(4).startswith('0')
-    )
-    if padded:
-        date = today.strftime(f'%Y{sep}%m{sep}%d')
-    else:
-        date = f'{today.year}{sep}{today.month}{sep}{today.day}'
+    pad_month = pad_day = False
+    if match:
+        prior_month, prior_day = match.group(3), match.group(4)
+        pad_month = _shows_padding(prior_month, prior_day)
+        pad_day = _shows_padding(prior_day, prior_month)
+    month = f'{today.month:02d}' if pad_month else str(today.month)
+    day = f'{today.day:02d}' if pad_day else str(today.day)
+    date = f'{today.year}{sep}{month}{sep}{day}'
     if not match:
         return date
     year, _, month, day, suffix_sep, suffix = match.groups()
