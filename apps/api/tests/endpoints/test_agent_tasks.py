@@ -1153,6 +1153,21 @@ class DeleteTests(AgentTaskTestCase):
         response = await self.client.delete(self.url('T-2'))
         self.assertEqual(response.status_code, 409, response.text)
 
+    async def test_closed_child_of_open_legacy_root_is_refused(self) -> None:
+        child = (await self.create_task()).json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = NULL WHERE id = %s',
+                (uuid.UUID(self.task['id']),),
+            )
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
+            )
+        await self.cancel('T-2')
+        response = await self.client.delete(self.url('T-2'))
+        self.assertEqual(response.status_code, 409, response.text)
+
     async def test_fencing_chain_is_refused(self) -> None:
         await self.cancel('T-1')
         async with self.pool.connection() as conn:

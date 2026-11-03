@@ -756,12 +756,15 @@ class TaskStore:
             if task['log_archived_at'] is None:
                 raise TaskOpen(short_id)
             # The harness chain row of a root task cascades, so an open
-            # task in its chain must not lose it.
+            # task in its chain must not lose it. A legacy root has no
+            # stored chain_id.
+            chain_id = task['chain_id'] or task['id']
             cursor = await conn.execute(
                 'SELECT 1 FROM agent_runtime.tasks'
                 " WHERE status <> 'closed' AND (id = %s OR chain_id = %s"
+                ' OR (chain_id IS NULL AND id = %s)'
                 " OR (origin_kind = 'task' AND origin_id = %s)) LIMIT 1",
-                (task['id'], task['chain_id'] or task['id'], str(task['id'])),
+                (task['id'], chain_id, chain_id, str(task['id'])),
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
