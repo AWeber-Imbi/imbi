@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { computeDriftPairs, releaseRangeClean } from '../deployment-drift'
+import {
+  computeDriftPairs,
+  driftIsStale,
+  parseDuration,
+  releaseRangeClean,
+} from '../deployment-drift'
 
 const ENVS = [
   { name: 'Testing', slug: 'testing', sort_order: 1 },
@@ -107,5 +112,37 @@ describe('releaseRangeClean', () => {
       false,
     )
     expect(releaseRangeClean(null)).toBe(false)
+  })
+})
+
+describe('parseDuration', () => {
+  it('reads minutes, hours, days, and weeks', () => {
+    expect(parseDuration('90m')).toBe(90 * 60_000)
+    expect(parseDuration('12h')).toBe(12 * 3_600_000)
+    expect(parseDuration(' 3D ')).toBe(3 * 86_400_000)
+    expect(parseDuration('2w')).toBe(14 * 86_400_000)
+  })
+
+  it('returns null for empty or bad values', () => {
+    expect(parseDuration(undefined)).toBeNull()
+    expect(parseDuration('')).toBeNull()
+    expect(parseDuration('3')).toBeNull()
+    expect(parseDuration('3y')).toBeNull()
+    expect(parseDuration('{{env "VITE_DRIFT_STALE_AFTER"}}')).toBeNull()
+  })
+})
+
+describe('driftIsStale', () => {
+  const hoursAgo = (n: number) =>
+    new Date(Date.now() - n * 3_600_000).toISOString()
+
+  it('is stale only past the threshold', () => {
+    expect(driftIsStale(hoursAgo(5), 4 * 3_600_000)).toBe(true)
+    expect(driftIsStale(hoursAgo(3), 4 * 3_600_000)).toBe(false)
+  })
+
+  it('is never stale without a threshold or a date', () => {
+    expect(driftIsStale(hoursAgo(500), null)).toBe(false)
+    expect(driftIsStale(null, 60_000)).toBe(false)
   })
 })

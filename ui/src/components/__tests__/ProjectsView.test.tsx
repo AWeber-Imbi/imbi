@@ -388,6 +388,18 @@ describe('ProjectsView waiting age', () => {
     expect(within(release).getByText('5d')).toBeInTheDocument()
   })
 
+  it('marks the card behind its upstream', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      waiting('p25', 'Kilo', daysAgo(1)),
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Kilo')).toBeInTheDocument())
+    // Production runs v2 behind Staging's v1 in this fixture, so the
+    // waiting line names Staging's version.
+    expect(screen.getByText('Behind')).toBeInTheDocument()
+    expect(screen.getByText('↑ v1 waiting')).toBeInTheDocument()
+  })
+
   it('shows no age when the server has no date', async () => {
     vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
       waiting('p21', 'Golf', null),
@@ -411,7 +423,9 @@ describe('ProjectsView waiting age', () => {
     const names = () =>
       screen.getAllByText(/^(Hotel|India|Juliet)$/).map((el) => el.textContent)
 
-    const sortButton = screen.getByRole('button', { name: 'Drift' })
+    const sortButton = screen.getByRole('button', {
+      name: 'Current Deployments & Releases',
+    })
     await user.click(sortButton)
     expect(names()).toEqual(['Juliet', 'India', 'Hotel'])
 

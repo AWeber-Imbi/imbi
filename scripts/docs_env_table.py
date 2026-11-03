@@ -439,6 +439,9 @@ DESCRIPTIONS: dict[str, str] = {
     'VITE_API_URL': 'API URL that Caddy writes into `index.html` at request '
     'time. The UI does not start without it.',
     'VITE_SENTRY_DSN': 'Sentry DSN of the UI, written into `index.html`',
+    'VITE_DRIFT_STALE_AFTER': 'Drift that waits longer than this '
+    '(`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: '
+    'never.',
 }
 
 NOTES: dict[str, str] = {}

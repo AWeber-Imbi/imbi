@@ -5,6 +5,7 @@
 // pipeline, never across a `terminal` boundary (#285).
 
 import { splitChains } from '@/lib/environment-chains'
+import { parseServerTs } from '@/lib/formatDate'
 
 export interface DriftEnvironment {
   label_color?: null | string
@@ -146,4 +147,44 @@ export function releaseRangeClean(
     | { drift_detected?: boolean; latest_tag: null | string },
 ): boolean {
   return !!summary?.latest_tag && summary.drift_detected === false
+}
+
+const DURATION_UNITS_MS: Record<string, number> = {
+  d: 86_400_000,
+  h: 3_600_000,
+  m: 60_000,
+  w: 604_800_000,
+}
+
+// A duration such as `90m`, `12h`, `3d`, or `2w`, in ms. Null when the
+// value is empty or does not parse.
+export function parseDuration(raw: null | string | undefined): null | number {
+  const match = raw?.trim().match(/^(\d+)\s*([mhdw])$/i)
+  if (!match) return null
+  return Number(match[1]) * DURATION_UNITS_MS[match[2].toLowerCase()]
+}
+
+// Caddy writes VITE_DRIFT_STALE_AFTER into index.html at request time.
+// Without a templater the placeholder arrives literally; fall back to
+// the build-time value.
+function resolveStaleAfter(): null | number {
+  const runtime = window.__IMBI_DRIFT_STALE_AFTER__
+  return parseDuration(
+    runtime && !runtime.includes('{{')
+      ? runtime
+      : import.meta.env.VITE_DRIFT_STALE_AFTER,
+  )
+}
+
+const DRIFT_STALE_AFTER_MS = resolveStaleAfter()
+
+// Whether a change waiting since `since` has waited longer than the
+// configured threshold. Always false when no threshold is configured or
+// the server has no date.
+export function driftIsStale(
+  since: null | string | undefined,
+  staleAfterMs: null | number = DRIFT_STALE_AFTER_MS,
+): boolean {
+  if (!since || staleAfterMs === null) return false
+  return Date.now() - parseServerTs(since).getTime() > staleAfterMs
 }

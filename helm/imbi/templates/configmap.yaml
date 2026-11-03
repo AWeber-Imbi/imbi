@@ -48,6 +48,10 @@ data:
   # The API URL Caddy writes into the UI's index.html. The UI does not load
   # without it.
   VITE_API_URL: {{ required (printf "service.publicApiUrl is required when service.mode is '%s' -- it is the VITE_API_URL the UI loads its API from" .Values.service.mode) .Values.service.publicApiUrl | quote }}
+  {{- with .Values.service.ui.driftStaleAfter }}
+  # Drift older than this shows red on the Projects page.
+  VITE_DRIFT_STALE_AFTER: {{ . | quote }}
+  {{- end }}
   {{- end }}
   {{- if eq .Values.service.mode "ui" }}
   {{- range $name, $upstream := .Values.service.ui.upstreams }}
