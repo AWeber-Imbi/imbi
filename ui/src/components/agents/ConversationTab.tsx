@@ -716,24 +716,28 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
           <span className="text-accent text-[10.5px] font-semibold tracking-wide uppercase">
             {String(args.subagent_type ?? 'Subagent')}
           </span>
-          {entry.children.map((child) =>
-            child.event?.type === 'turn' ? (
-              child.event.payload.kind === 'thinking' ? (
-                <Thinking
-                  ctx={ctx}
-                  id={child.id}
-                  key={child.id}
-                  text={String(child.event.payload.body ?? '')}
-                />
+          {entry.children.map((child) => (
+            <div
+              id={child.event ? `e${child.event.seq}` : undefined}
+              key={child.id}
+            >
+              {child.event?.type === 'turn' ? (
+                child.event.payload.kind === 'thinking' ? (
+                  <Thinking
+                    ctx={ctx}
+                    id={child.id}
+                    text={String(child.event.payload.body ?? '')}
+                  />
+                ) : (
+                  <div className="text-secondary">
+                    <Prose>{String(child.event.payload.body ?? '')}</Prose>
+                  </div>
+                )
               ) : (
-                <div className="text-secondary" key={child.id}>
-                  <Prose>{String(child.event.payload.body ?? '')}</Prose>
-                </div>
-              )
-            ) : (
-              <ToolCall ctx={ctx} entry={child} key={child.id} />
-            ),
-          )}
+                <ToolCall ctx={ctx} entry={child} />
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -78,6 +78,10 @@ export function TaskDetail({
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
+  const conversationCount = useMemo(
+    () => timeline(events.data ?? []).length,
+    [events.data],
+  )
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -104,7 +108,7 @@ export function TaskDetail({
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
     {
-      count: timeline(log).length,
+      count: conversationCount,
       key: 'conversation',
       label: 'Conversation',
     },
