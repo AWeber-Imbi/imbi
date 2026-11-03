@@ -16,7 +16,8 @@ version, so the system prompt and the model come back too.
 Each agent is its own service principal (ADR 0020): a
 ``ServiceAccount`` that is ``MEMBER_OF`` the organization, with an
 ``ACTS_AS`` edge from the agent. It is made with the agent and deleted
-with it. It has no role, so it has no permissions.
+with it. Its slug is the slugified agent name, and its membership has
+the ``developer`` role.
 
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``), because the ``agent:*`` permissions are not scoped to
@@ -32,6 +33,7 @@ import fastapi
 import nanoid
 import psycopg.errors
 import pydantic
+import slugify
 
 from imbi.api import agent_tools, harness, workflows
 from imbi.api.auth import organizations, permissions
@@ -421,8 +423,13 @@ CREATE (s:ServiceAccount {{id: {sa_id}, slug: {sa_slug},
                           display_name: {sa_display_name},
                           description: {sa_description},
                           is_active: true, created_at: {sa_created_at}}})
-CREATE (s)-[:MEMBER_OF]->(o)
+CREATE (s)-[:MEMBER_OF {{role: 'developer'}}]->(o)
 CREATE (a)-[:ACTS_AS]->(s)
+"""
+
+_SA_SLUG_TAKEN_QUERY: typing.LiteralString = """
+MATCH (s:ServiceAccount {{slug: {slug}}})
+RETURN s.id AS id
 """
 
 _SERVICE_ACCOUNT_QUERY: typing.LiteralString = """
@@ -456,16 +463,21 @@ def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
     return typing.cast('dict[str, typing.Any]', parsed)
 
 
-def _service_account_params(agent_id: str, name: str) -> dict[str, typing.Any]:
+async def _service_account_params(
+    db: graph.Graph, agent_id: str, name: str
+) -> dict[str, typing.Any]:
     """Return the parameters of :data:`_CREATE_SERVICE_ACCOUNT`.
 
-    The slug comes from the agent id, which does not change, so two
-    requests that make the same service account collide on the unique
-    slug index.
+    The slug is the slugified agent name. Service account slugs are
+    unique across all organizations, so when another service account
+    has that slug, the agent id is added to it.
     """
+    slug = slugify.slugify(name)
+    if await db.execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id']):
+        slug = slugify.slugify(f'{name} {agent_id}')
     return {
         'sa_id': nanoid.generate(),
-        'sa_slug': f'agent-{agent_id}',
+        'sa_slug': slug,
         'sa_display_name': name,
         'sa_description': f'Service principal of the agent {name!r}',
         'sa_created_at': _now(),
@@ -487,7 +499,10 @@ async def ensure_service_account(
         try:
             records = await db.execute(
                 _ENSURE_SERVICE_ACCOUNT_QUERY,
-                {'id': agent_id, **_service_account_params(agent_id, name)},
+                {
+                    'id': agent_id,
+                    **await _service_account_params(db, agent_id, name),
+                },
                 ['id'],
             )
         except psycopg.errors.UniqueViolation:
@@ -1165,7 +1180,7 @@ async def create_agent(
             query,
             {
                 **props,
-                **_service_account_params(agent_id, snapshot.name),
+                **await _service_account_params(db, agent_id, snapshot.name),
                 'org_slug': org_slug,
                 'team_id': team_id,
             },
