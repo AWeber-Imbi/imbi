@@ -2144,6 +2144,15 @@ class SafeHeadersUnitTests(helpers.TestCase):
             ),
         )
 
+    def test_plugin_signature_header_is_redacted(self) -> None:
+        self.assertEqual(
+            {'X-Acme-Signature': '[redacted]', 'x-other': 'v'},
+            _safe_headers(
+                {'X-Acme-Signature': 'v1=abcd', 'x-other': 'v'},
+                'x-acme-signature',
+            ),
+        )
+
     def test_authorization_is_redacted(self) -> None:
         self.assertEqual(
             {'authorization': '[redacted]'},

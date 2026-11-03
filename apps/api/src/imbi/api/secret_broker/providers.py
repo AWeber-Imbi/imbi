@@ -212,12 +212,15 @@ class _Host:
 
 #: The providers, by type. One instance each.
 PROVIDERS: dict[str, Provider] = {'fake': FakeProvider()}
+#: The ``(plugin slug, type)`` conflicts already logged.
+_REPORTED: set[tuple[str, str]] = set()
 
 
 def _load() -> None:
     """Add the providers of the loaded plugins that are not here yet.
 
-    A type that two plugins declare keeps the first one.
+    A type that is already registered keeps its provider. Each conflict
+    is logged once.
     """
     for entry in plugin_registry.list_plugins():
         for cls in entry.manifest.secret_providers:
@@ -225,9 +228,13 @@ def _load() -> None:
             if current is None:
                 PROVIDERS[cls.type] = cls(_Host())
             elif not isinstance(current, cls):
+                key = (entry.manifest.slug, cls.type)
+                if key in _REPORTED:
+                    continue
+                _REPORTED.add(key)
                 LOGGER.error(
                     'Plugin %s declares secret provider type %r, which '
-                    'another plugin has; ignored',
+                    'is already registered; ignored',
                     entry.manifest.slug,
                     cls.type,
                 )

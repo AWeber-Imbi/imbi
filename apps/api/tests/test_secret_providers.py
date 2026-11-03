@@ -53,6 +53,21 @@ class RegistryTestCase(unittest.TestCase):
         self.assertTrue(callable(host.provider_key))
         self.assertTrue(callable(host.check_provider_key))
 
+    def test_a_conflict_is_logged_once(self) -> None:
+        with (
+            mock.patch.object(
+                providers.plugin_registry,
+                'list_plugins',
+                return_value=[_entry('a', _Provider), _entry('b', _Other)],
+            ),
+            mock.patch.object(providers, '_REPORTED', set()),
+            self.assertLogs(providers.LOGGER, 'ERROR') as logs,
+        ):
+            providers.all_providers()
+            providers.all_providers()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('already registered', logs.output[0])
+
     def test_unknown_type(self) -> None:
         with (
             mock.patch.object(

@@ -359,7 +359,9 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(
                 marketplaces,
                 '_public_readers',
-                side_effect=lambda url: [reader] if url == public else [],
+                side_effect=lambda _db, url: (
+                    [reader] if url == public else []
+                ),
             ),
         ):
             head = await marketplaces.fetch(mock.Mock(), 'acme', public)
@@ -375,7 +377,7 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                     mock.Mock(), 'acme', 'https://ghe.example.com/a/b'
                 )
 
-    def test_public_readers_come_from_deployment_plugins(self) -> None:
+    async def test_public_readers_come_from_enabled_plugins(self) -> None:
         reader = mock.Mock()
 
         class Deployment(base.DeploymentCapability):  # type: ignore[misc]
@@ -383,23 +385,44 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             def public_reader(cls, url: str) -> typing.Any:
                 return reader if url == 'https://h/a/b' else None
 
-        entries = [
-            mock.Mock(**{'manifest.get_capability.return_value': None}),
-            mock.Mock(
-                **{
-                    'manifest.get_capability.return_value': mock.Mock(
-                        handler=Deployment
-                    )
-                }
-            ),
-        ]
-        with mock.patch.object(
-            marketplaces.plugin_registry, 'list_plugins', return_value=entries
-        ):
-            self.assertEqual(
-                marketplaces._public_readers('https://h/a/b'), [reader]
+        def entry(slug: str, handler: type | None) -> mock.Mock:
+            capability = (
+                None if handler is None else mock.Mock(handler=handler)
             )
-            self.assertEqual(marketplaces._public_readers('https://x/y'), [])
+            return mock.Mock(
+                **{
+                    'manifest.slug': slug,
+                    'manifest.get_capability.return_value': capability,
+                }
+            )
+
+        entries = [
+            entry('none', None),
+            entry('enabled', Deployment),
+            entry('disabled', Deployment),
+        ]
+        from imbi.api.plugins import lifecycle
+
+        with (
+            mock.patch.object(
+                marketplaces.plugin_registry,
+                'list_plugins',
+                return_value=entries,
+            ),
+            mock.patch.object(
+                lifecycle,
+                'is_plugin_enabled',
+                side_effect=lambda _db, slug: slug != 'disabled',
+            ),
+        ):
+            db = mock.Mock()
+            self.assertEqual(
+                await marketplaces._public_readers(db, 'https://h/a/b'),
+                [reader],
+            )
+            self.assertEqual(
+                await marketplaces._public_readers(db, 'https://x/y'), []
+            )
 
     async def test_no_integration(self) -> None:
         with mock.patch.object(

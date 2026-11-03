@@ -335,7 +335,7 @@ async def _read[T](
             errors.append(f'{integration.get("slug")}: {missing}')
             continue
         return result
-    for public in _public_readers(url):
+    for public in await _public_readers(db, url):
         # As the runner does: a public repository needs no credentials,
         # so read it anonymously.
         try:
@@ -356,12 +356,19 @@ async def _read[T](
     raise SyncError('; '.join(errors))
 
 
-def _public_readers(url: str) -> list[base.RepositoryReader]:
-    """Return the credential-free readers that plugins offer for ``url``."""
+async def _public_readers(
+    db: graph.Graph, url: str
+) -> list[base.RepositoryReader]:
+    """Return the credential-free readers that enabled plugins offer for
+    ``url``."""
+    from imbi.api.plugins import lifecycle
+
     readers: list[base.RepositoryReader] = []
     for entry in plugin_registry.list_plugins():
         capability = entry.manifest.get_capability(_CAPABILITY)
-        if capability is None:
+        if capability is None or not await lifecycle.is_plugin_enabled(
+            db, entry.manifest.slug
+        ):
             continue
         handler = typing.cast(
             'type[base.DeploymentCapability]', capability.handler

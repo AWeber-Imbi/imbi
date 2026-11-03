@@ -36,17 +36,22 @@ class attributes:
   The broker refuses a binding whose credential class needs a capability
   that the provider does not have
 
-Then override the methods of those capabilities: `validate_config`,
-`validate_locator`, `check_config`, `check_locator`, `health`,
-`validate_binding`, `resolve`, `renew`, and `revoke`. A method that the
-provider does not override raises `BrokerError`.
+Every provider must override `validate_config` and `validate_locator`:
+the base methods raise `NotImplementedError`. Then override `health`,
+`validate_binding`, `resolve`, `renew`, and `revoke` for the capabilities
+that the provider has. The base methods raise `BrokerError`
+(`operation_not_supported`, `provider_lease_not_renewable`, or
+`provider_lease_not_revocable`). The base `check_config` and
+`check_locator` do nothing: override them only when the provider must
+check a configuration or a locator against the external system.
 
 Two optional methods are for providers that issue repository tokens:
 
 - `repository(config, url)` — return `(host, owner/name)` for the
   repository link of a project. The agent runner clones that repository.
+  The default returns `None`.
 - `check_key_host(host)` — validate the host of a provider key (see
-  below).
+  below). The default raises `ValueError`.
 
 ## Rules
 

@@ -64,14 +64,23 @@ _HANDLER_PATTERN = re.compile(r'^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$')
 _UNSIGNED_WEBHOOKS: set[str] = set()
 
 
-def _safe_headers(headers: 'abc.Mapping[str, str]') -> dict[str, str]:
+def _safe_headers(
+    headers: 'abc.Mapping[str, str]', signature_header: str | None = None
+) -> dict[str, str]:
     """Return a redacted copy of ``headers`` for persisted metadata.
 
     Sensitive header values (authorization, cookies, webhook signatures)
     are replaced with ``'[redacted]'`` so secrets never reach ClickHouse.
+    ``signature_header`` is the header that the plugin declares in its
+    :class:`plugin_base.WebhookSignature`; it is redacted too.
     """
+    sensitive = (
+        _SENSITIVE_HEADERS | {signature_header}
+        if signature_header
+        else _SENSITIVE_HEADERS
+    )
     return {
-        key: ('[redacted]' if key.lower() in _SENSITIVE_HEADERS else value)
+        key: ('[redacted]' if key.lower() in sensitive else value)
         for key, value in headers.items()
     }
 
@@ -376,6 +385,7 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
         event_type=event_type,
         body=body,
         github_signature_verified=github_signature_verified,
+        signature_header=None if signature is None else signature.header,
     )
     if not webhook_actions_enabled:
         LOGGER.debug(
@@ -1408,6 +1418,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     event_type: str,
     body: object,
     github_signature_verified: bool,
+    signature_header: str | None = None,
 ) -> dict[str, typing.Any]:
     """Record the activity-feed events and return the CEL filter context.
 
@@ -1436,7 +1447,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     """
     metadata: dict[str, typing.Any] = {
         'webhook_id': webhook_id,
-        'headers': _safe_headers(headers),
+        'headers': _safe_headers(headers, signature_header),
     }
     payload = _payload_dict(body)
     await recorder.record_received(
