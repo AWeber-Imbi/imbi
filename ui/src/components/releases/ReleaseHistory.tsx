@@ -7,6 +7,7 @@ import {
   ExternalLink,
   GitCompareArrows,
   ShieldAlert,
+  Tag,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -271,6 +272,16 @@ function ReleaseRow({
               <Ban className="size-3" />
               Blocked
               {blockers.length > 1 ? ` (${blockers.length})` : null}
+            </Badge>
+          ) : null}
+          {rel.tag_synced === false ? (
+            <Badge
+              className="inline-flex items-center gap-1"
+              title="Imbi recorded this release, but its tag has not been synced from the repository: the release may still be in flight, its build may have failed before the tag was pushed, or the tag was deleted"
+              variant="warning"
+            >
+              <Tag className="size-3" />
+              Tag not synced
             </Badge>
           ) : null}
           {rel.drift_detected === true ? (

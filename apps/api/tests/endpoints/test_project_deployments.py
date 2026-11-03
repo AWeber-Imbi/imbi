@@ -6462,6 +6462,104 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertFalse(data[1]['blocked'])
         self.assertEqual([], data[1]['blockers'])
 
+    def test_release_history_includes_release_without_synced_tag(
+        self,
+    ) -> None:
+        """A ``Release`` node whose tag never reached the repository.
+
+        A promote creates the node before dispatching the build; when
+        that build fails, the ``build-failure`` blocker hangs off a tag
+        ClickHouse has never synced.  The history used to be driven by
+        the synced tags alone, so the blocked release -- the one thing
+        the operator has to act on -- was the one thing it could not
+        show.
+        """
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': '2.8.6',
+                        'sha': 'd3fe0505aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/2.8.6',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return [
+                    {
+                        'tag': '2.9.0',
+                        'blocker': self._blocker(
+                            blocker_type='build-failure',
+                            description='Release build reported failure',
+                            created_by='deploybee',
+                        ),
+                    },
+                ]
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '2.8.6',
+                            'committish': 'd3fe050',
+                            'title': 'Release 2.8.6',
+                            'created_by': 'gr',
+                        }
+                    )
+                },
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '2.9.0',
+                            'committish': '28ae5f2',
+                            'title': '2.9.0',
+                            'created_by': 'deploybee',
+                            'created_at': '2026-01-02T00:00:00+00:00',
+                        }
+                    )
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        # The unsynced release leads: it is in flight, failed, or orphaned,
+        # and all three need the operator before anything older does.
+        self.assertEqual(['2.9.0', '2.8.6'], [e['tag'] for e in data])
+        unsynced = data[0]
+        self.assertFalse(unsynced['tag_synced'])
+        self.assertEqual(unsynced['sha'], '28ae5f2')
+        self.assertEqual(unsynced['short_sha'], '28ae5f2')
+        self.assertTrue(unsynced['published_at'].startswith('2026-01-02T'))
+        self.assertIsNone(unsynced['tag_url'])
+        self.assertEqual(unsynced['title'], '2.9.0')
+        self.assertTrue(unsynced['blocked'])
+        self.assertEqual(
+            ['build-failure'], [b['type'] for b in unsynced['blockers']]
+        )
+        self.assertEqual(
+            unsynced['blocked_reason'], 'Release build reported failure'
+        )
+        synced = data[1]
+        self.assertTrue(synced['tag_synced'])
+        self.assertEqual(synced['tag_url'], 'https://gh/releases/tag/2.8.6')
+        self.assertFalse(synced['blocked'])
+
 
 class ReleaseBlockerTestCase(ProjectDeploymentsTestCase):
     """The blocker endpoints: add, list, update, resolve, delete."""

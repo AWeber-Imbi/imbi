@@ -414,6 +414,12 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     release_url: str | None = None
     tag_url: str | None = None
     package_url: str | None = None
+    #: ``False`` when Imbi holds a ``Release`` node for the tag but the
+    #: tag itself has not been synced from the repository: a release
+    #: still being cut, one whose build failed before the tag was pushed,
+    #: or a tag since deleted upstream.  Such an entry's ``sha`` is the
+    #: node's committish and it has no ``tag_url``.
+    tag_synced: bool = True
     #: ``True`` when the release has at least one open blocker. Deploys
     #: and promotes targeting it are refused with a 409. The
     #: ``blocked_*`` fields mirror the newest open blocker so callers
@@ -6751,6 +6757,93 @@ async def _apply_ci_fallback(
         entry.ci_status = resolved.get(entry.sha, _CI_NOT_APPLICABLE)
 
 
+def _node_timestamp(value: typing.Any) -> datetime.datetime | None:
+    """An ISO timestamp off a graph node as an aware datetime, or ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.UTC)
+
+
+def _release_history_entry(
+    *,
+    tag: str,
+    sha: str,
+    node: dict[str, typing.Any],
+    open_blockers: list[ReleaseBlocker],
+    published_at: datetime.datetime | None,
+    author: str | None,
+    author_email: str | None,
+    ci_status: str,
+    tag_url: str | None,
+    tag_synced: bool = True,
+) -> ReleaseHistoryEntry:
+    """Build one history entry from its tag facts and ``Release`` node."""
+    newest = open_blockers[0] if open_blockers else None
+    return ReleaseHistoryEntry(
+        tag=tag,
+        sha=sha,
+        short_sha=sha[:7],
+        published_at=published_at,
+        author=author,
+        author_email=author_email,
+        ci_status=ci_status,
+        title=node.get('title'),
+        notes_markdown=node.get('description'),
+        release_url=_release_url_from_links(node.get('links')),
+        tag_url=tag_url,
+        package_url=None,
+        tag_synced=tag_synced,
+        blocked=bool(open_blockers),
+        blocked_reason=newest.description if newest else None,
+        blocked_by=newest.created_by if newest else None,
+        blocked_at=newest.created_at if newest else None,
+        blockers=open_blockers,
+        ci_override_by=node.get('ci_override_by') or None,
+        ci_override_at=node.get('ci_override_at') or None,
+        drift_detected=node.get('drift_detected'),
+    )
+
+
+def _unsynced_release_entry(
+    tag: str,
+    node: dict[str, typing.Any],
+    open_blockers: list[ReleaseBlocker],
+) -> ReleaseHistoryEntry:
+    """A history entry for a ``Release`` node with no synced tag row.
+
+    A promote creates the node before dispatching the build, so one
+    exists for a release still being cut, for one whose build failed
+    before the tag was pushed, and for a tag deleted upstream after the
+    fact.  The ``build-failure`` blocker the promote files hangs off that
+    node and the history is where it gets resolved, so the node has to
+    be listed even though ClickHouse has nothing to say about it.  The
+    node's committish stands in for the tag's sha and its ``created_at``
+    for the publish time; CI status is left for the fallback chain.
+    """
+    sha = versioning.short_committish(str(node.get('committish') or ''))
+    author, author_email = _release_author(
+        None,
+        node.get('created_by'),
+        _CommitFacts(ci_status='unknown', author=None, author_email=None),
+    )
+    return _release_history_entry(
+        tag=tag,
+        sha=sha,
+        node=node,
+        open_blockers=open_blockers,
+        published_at=_node_timestamp(node.get('created_at')),
+        author=author,
+        author_email=author_email,
+        ci_status='unknown',
+        tag_url=None,
+        tag_synced=False,
+    )
+
+
 @project_deployments_router.get('/release-history')
 async def get_release_history(
     org_slug: str,
@@ -6765,6 +6858,10 @@ async def get_release_history(
     limit: int = 20,
 ) -> list[ReleaseHistoryEntry]:
     """Release history: ClickHouse tags joined to their ``Release`` nodes.
+
+    A ``Release`` node whose tag ClickHouse has not synced is listed too,
+    flagged ``tag_synced=False`` and ranked first -- see
+    :func:`_unsynced_release_entry` for why it cannot be left out.
 
     ``ci_status`` comes from the synced ``commits`` table, which the
     deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
@@ -6792,44 +6889,43 @@ async def get_release_history(
         name = str(row['name'])
         sha = str(row['sha'])
         node = nodes.get(name) or {}
-        tagger = row.get('tagger_name')
-        open_blockers = blockers.get(name, [])
-        newest = open_blockers[0] if open_blockers else None
         facts = facts_by_sha.get(sha, unknown)
         author, author_email = _release_author(
-            tagger, node.get('created_by'), facts
+            row.get('tagger_name'), node.get('created_by'), facts
         )
         entries.append(
-            ReleaseHistoryEntry(
+            _release_history_entry(
                 tag=name,
                 sha=sha,
-                short_sha=sha[:7],
+                node=node,
+                open_blockers=blockers.get(name, []),
                 published_at=_tag_timestamp(row),
                 author=author,
                 author_email=author_email,
                 ci_status=facts.ci_status,
-                title=node.get('title'),
-                notes_markdown=node.get('description'),
-                release_url=_release_url_from_links(node.get('links')),
                 tag_url=str(row['url']) if row.get('url') else None,
-                package_url=None,
-                blocked=bool(open_blockers),
-                blocked_reason=newest.description if newest else None,
-                blocked_by=newest.created_by if newest else None,
-                blocked_at=newest.created_at if newest else None,
-                blockers=open_blockers,
-                ci_override_by=node.get('ci_override_by') or None,
-                ci_override_at=node.get('ci_override_at') or None,
-                drift_detected=node.get('drift_detected'),
             )
         )
+    synced = {str(row['name']) for row in tag_rows}
+    entries.extend(
+        _unsynced_release_entry(name, node, blockers.get(name, []))
+        for name, node in nodes.items()
+        if name not in synced
+    )
     # Order by the tagged commit's place in the synced history (semver as
     # the tie-break) so the head of the list is the current release --
-    # consistent with the drift base, which is chosen the same way.
+    # consistent with the drift base, which is chosen the same way.  A
+    # release with no synced tag ranks above every synced one: it is in
+    # flight, failed, or orphaned -- each needing the operator before
+    # anything older does -- and the ranking's input, the tagged commit's
+    # place in history, does not exist for it.
     authored_by_sha = _authored_by_sha(facts_by_sha)
     entries.sort(
-        key=lambda e: versioning.release_tag_order_key(
-            e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
+        key=lambda e: (
+            not e.tag_synced,
+            versioning.release_tag_order_key(
+                e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
+            ),
         ),
         reverse=True,
     )

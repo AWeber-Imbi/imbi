@@ -18106,6 +18106,11 @@ export interface components {
             /** Package Url */
             package_url?: string | null;
             /**
+             * Tag Synced
+             * @default true
+             */
+            tag_synced: boolean;
+            /**
              * Blocked
              * @default false
              */
