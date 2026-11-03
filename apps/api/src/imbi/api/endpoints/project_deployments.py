@@ -1768,9 +1768,10 @@ async def reconcile_release_committishes(
     -- the upsert never overwrites one) or when a tag is moved upstream.
     Nothing on the resync paths rewrites a committish, so a stale node
     outlives every sync until this runs: it heals each disagreeing node
-    through :func:`_set_release_committish`, which keeps the commit it
-    moves away from as ``promoted_committish``.  Returns the number of
-    nodes healed.
+    through :func:`_set_release_committish_if_unchanged`, which keeps
+    the commit it moves away from as ``promoted_committish`` and
+    declines when the node moved on since it was read.  Returns the
+    number of nodes healed.
 
     Only tagged nodes with a synced row are considered; a node whose tag
     ClickHouse has not seen has nothing to be reconciled against.
@@ -1799,8 +1800,11 @@ async def reconcile_release_committishes(
             actual,
             recorded,
         )
-        await _set_release_committish(
-            db, release_id=str(node['id']), committish=actual
+        await _set_release_committish_if_unchanged(
+            db,
+            release_id=str(node['id']),
+            committish=actual,
+            expected_committish=str(recorded) if recorded else None,
         )
         healed += 1
     return healed
@@ -5075,6 +5079,44 @@ async def _set_release_committish(
         {
             'release_id': release_id,
             'committish': committish,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        [],
+    )
+
+
+async def _set_release_committish_if_unchanged(
+    db: graph.Graph,
+    *,
+    release_id: str,
+    committish: str,
+    expected_committish: str | None,
+) -> None:
+    """Heal a ``Release`` only while its committish is what was read.
+
+    The commit-sync reconcile reads every node once and then writes
+    each heal, and a promote completing in between moves the node to
+    its new tag commit before ClickHouse has seen the new tag.  A heal
+    made from that stale read would put the superseded commit back
+    until the next sync, so the write lands only when the stored value
+    still equals the one the decision was made from.  A node with no
+    committish matches ``None``.  The ``promoted_committish`` handling
+    is :func:`_set_release_committish`'s.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    WHERE COALESCE(r.committish, '') = {expected_committish}
+    SET r.promoted_committish = COALESCE(
+            r.promoted_committish, r.committish),
+        r.committish = {committish},
+        r.updated_at = {now}
+    """
+    await db.execute(
+        query,
+        {
+            'release_id': release_id,
+            'committish': committish,
+            'expected_committish': expected_committish or '',
             'now': datetime.datetime.now(datetime.UTC).isoformat(),
         },
         [],

@@ -7145,6 +7145,41 @@ class ReleaseCommittishHealTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('r.committish = {committish}', query)
 
 
+class ReleaseCommittishGuardedHealTestCase(unittest.IsolatedAsyncioTestCase):
+    """The reconcile heal lands only on the committish it read."""
+
+    async def _heal(self, expected: str | None) -> dict[str, typing.Any]:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[])
+        await project_deployments._set_release_committish_if_unchanged(
+            db,
+            release_id='rel-1',
+            committish='bump123',
+            expected_committish=expected,
+        )
+        query, params = db.execute.await_args.args[:2]
+        self.assertIn(
+            "WHERE COALESCE(r.committish, '') = {expected_committish}",
+            query,
+        )
+        self.assertIn(
+            'r.promoted_committish = COALESCE(\n            '
+            'r.promoted_committish, r.committish)',
+            query,
+        )
+        self.assertIn('r.committish = {committish}', query)
+        return typing.cast('dict[str, typing.Any]', params)
+
+    async def test_guards_on_the_committish_that_was_read(self) -> None:
+        params = await self._heal('28ae5f2')
+        self.assertEqual('28ae5f2', params['expected_committish'])
+        self.assertEqual('bump123', params['committish'])
+
+    async def test_a_missing_committish_matches_an_empty_read(self) -> None:
+        params = await self._heal(None)
+        self.assertEqual('', params['expected_committish'])
+
+
 class ReleaseCommittishReconcileTestCase(unittest.IsolatedAsyncioTestCase):
     """The full commit sync points tagged nodes at their synced sha.
 
@@ -7189,6 +7224,9 @@ class ReleaseCommittishReconcileTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, len(writes))
         self.assertEqual('rel1', writes[0]['release_id'])
         self.assertEqual('a8507bb', writes[0]['committish'])
+        # The heal is guarded on the committish the decision was made
+        # from, so a node a promote moved in the meantime is left alone.
+        self.assertEqual('28ae5f2', writes[0]['expected_committish'])
 
     async def test_an_agreeing_node_is_left_alone(self) -> None:
         self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
@@ -7200,7 +7238,9 @@ class ReleaseCommittishReconcileTestCase(unittest.IsolatedAsyncioTestCase):
         self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
         self.nodes = {'2.9.0': {'id': 'rel1'}}
         self.assertEqual(1, await self._reconcile())
-        self.assertEqual('a8507bb', self._writes()[0]['committish'])
+        writes = self._writes()
+        self.assertEqual('a8507bb', writes[0]['committish'])
+        self.assertEqual('', writes[0]['expected_committish'])
 
     async def test_skips_tags_without_a_node_and_nodes_without_a_tag_row(
         self,
