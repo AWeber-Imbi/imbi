@@ -303,6 +303,31 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('already exists', response.json()['detail'])
         self.assertEqual(self._version_writes(), [])
 
+    def test_create_service_account_slug_conflict_exhausted(self) -> None:
+        # Both service account slugs are taken after the check.
+        diag = mock.Mock(table_name='ServiceAccount')
+        with mock.patch.object(
+            psycopg.errors.UniqueViolation,
+            'diag',
+            new_callable=mock.PropertyMock,
+            return_value=diag,
+        ):
+            self.mock_db.execute.side_effect = [
+                [{'team_id': 'team-1'}],
+                [],
+                [],
+                psycopg.errors.UniqueViolation(),
+                [{'id': 'other'}],
+                psycopg.errors.UniqueViolation(),
+            ]
+            response = self.client.post(
+                BASE + '/',
+                json={'name': 'T', 'slug': 'triage', 'team': 'ops'},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('Service account slug', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
     def test_create_retries_service_account_slug_conflict(self) -> None:
         # Another org took the service account slug after the check.
         conflict = psycopg.errors.UniqueViolation()

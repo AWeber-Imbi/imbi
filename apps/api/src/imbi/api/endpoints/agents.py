@@ -1224,10 +1224,17 @@ async def create_agent(
             # A concurrent create in another org can take the service
             # account slug first. The next attempt sees that slug as
             # taken and adds the agent id to it.
-            if attempt or exc.diag.table_name != 'ServiceAccount':
+            if exc.diag.table_name != 'ServiceAccount':
                 raise fastapi.HTTPException(
                     status_code=409,
                     detail=_slug_taken_detail(snapshot.slug),
+                ) from exc
+            if attempt:
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=(
+                        f'Service account slug for {snapshot.name!r} is in use'
+                    ),
                 ) from exc
     if not records:
         raise fastapi.HTTPException(
