@@ -467,6 +467,104 @@ describe('Tasks', () => {
     ).toHaveAttribute('aria-selected', 'true')
   })
 
+  describe('Conversation', () => {
+    const log = [
+      ...LOG,
+      event(4, 'turn', { body: 'Look first.', kind: 'thinking' }),
+      event(
+        5,
+        'turn',
+        { body: 'Searching the feeds.', parent_call_id: 'task-1' },
+        { actor_kind: 'subagent' },
+      ),
+      event(6, 'tool.called', {
+        arguments: { command: 'uv run pytest -q' },
+        call_id: 'bash-1',
+        is_error: true,
+        result: '1 failed, 3 passed',
+        tool: 'Bash',
+      }),
+      event(7, 'tool.called', {
+        arguments: { description: 'Find calls', subagent_type: 'search' },
+        call_id: 'task-1',
+        result: 'Two call sites.',
+        tool: 'Task',
+      }),
+      event(8, 'phase.changed', { phase: 'fix' }),
+    ]
+
+    beforeEach(() => {
+      vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+        async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
+      )
+    })
+
+    it('shows turns, calls, and nested subagent work in one timeline', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      expect(await screen.findByText('I read the task.')).toBeInTheDocument()
+      expect(screen.getByText('Look first.')).toBeInTheDocument()
+      expect(screen.getByText('failed')).toBeInTheDocument()
+      // Full detail shows the command and its output.
+      expect(screen.getByText(/1 failed, 3 passed/)).toBeInTheDocument()
+      const subagent = screen.getByText('search · Find calls').closest('div')!
+      expect(subagent.parentElement!.parentElement).toHaveTextContent(
+        'Searching the feeds.',
+      )
+      expect(screen.getByText('Phase fix')).toBeInTheDocument()
+    })
+
+    it('filters by kind, errors, and text', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('I read the task.')
+      fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
+      expect(screen.queryByText('uv run pytest -q')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
+      fireEvent.click(screen.getByRole('button', { name: /^Errors only/ }))
+      expect(screen.queryByText('I read the task.')).not.toBeInTheDocument()
+      expect(screen.getByText('uv run pytest -q')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^Errors only/ }))
+      fireEvent.change(screen.getByLabelText('Search this task'), {
+        target: { value: 'feeds' },
+      })
+      expect(screen.queryByText('I read the task.')).not.toBeInTheDocument()
+      expect(screen.getByText('Searching the feeds.')).toBeInTheDocument()
+    })
+
+    it('collapses tool calls and thinking in Compact', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('Look first.')
+      fireEvent.click(screen.getByRole('button', { name: 'Compact' }))
+      expect(screen.queryByText('Look first.')).not.toBeInTheDocument()
+      expect(screen.queryByText(/1 failed, 3 passed/)).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText('uv run pytest -q'))
+      expect(screen.getByText(/1 failed, 3 passed/)).toBeInTheDocument()
+    })
+
+    it('opens an old Actions taken link on the Conversation', async () => {
+      renderAt('/agents/tasks/acme/T-3/actions')
+      expect(
+        await screen.findByRole('tab', { name: /^Conversation/ }),
+      ).toHaveAttribute('aria-selected', 'true')
+    })
+  })
+
+  it('keeps the reply box on every tab while the task is open', async () => {
+    renderAt('/agents/tasks/acme/T-3/overview')
+    expect(await screen.findByLabelText('Reply')).toBeInTheDocument()
+  })
+
+  it('has no reply box on a closed task', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+      ...BLOCKED,
+      closed_at: '2026-10-08T13:00:00Z',
+      outcome: 'done_acted',
+      status: 'closed',
+    })
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    await screen.findByText('I read the task.')
+    expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+  })
+
   it('cancels a task after a confirm', async () => {
     vi.mocked(endpoints.controlAgentTask).mockResolvedValue({
       ...BLOCKED,

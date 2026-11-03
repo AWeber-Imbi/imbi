@@ -34,16 +34,15 @@ import type { AgentTask, AgentTaskEvent } from '@/types'
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
+import { ConversationTab } from './ConversationTab'
 import {
   checksFrom,
-  conversation,
   formatElapsed,
   formatTokens,
   phaseTimeline,
   requestsFrom,
   statusLabel,
   statusVariant,
-  toolCalls,
   TRIGGERS,
 } from './taskEvents'
 import {
@@ -53,15 +52,10 @@ import {
   useAgentTaskMutation,
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
-import {
-  ActionsTab,
-  ChecksTab,
-  ConversationTab,
-  InputRequiredTab,
-} from './TaskTabs'
+import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
+import { timeline } from './taskTimeline'
 
 type TabKey =
-  | 'actions'
   | 'checks'
   | 'conversation'
   | 'input'
@@ -110,11 +104,10 @@ export function TaskDetail({
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
     {
-      count: conversation(log).length,
+      count: timeline(log).length,
       key: 'conversation',
       label: 'Conversation',
     },
-    { count: toolCalls(log).length, key: 'actions', label: 'Actions taken' },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',
@@ -123,8 +116,10 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  const current: TabKey = tabs.some((x) => x.key === tab)
-    ? (tab as TabKey)
+  // Actions taken is part of the Conversation now; keep its old links.
+  const wanted = tab === 'actions' ? 'conversation' : tab
+  const current: TabKey = tabs.some((x) => x.key === wanted)
+    ? (wanted as TabKey)
     : 'overview'
 
   return (
@@ -171,9 +166,13 @@ export function TaskDetail({
           <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
         )}
         {current === 'conversation' && (
-          <ConversationTab events={log} orgSlug={orgSlug} task={t} />
+          <ConversationTab
+            events={log}
+            orgSlug={orgSlug}
+            requests={requests}
+            task={t}
+          />
         )}
-        {current === 'actions' && <ActionsTab events={log} orgSlug={orgSlug} />}
         {current === 'checks' && <ChecksTab events={log} />}
         {current === 'related' && (
           <RelatedTasksTab orgSlug={orgSlug} task={t} />
@@ -182,6 +181,7 @@ export function TaskDetail({
           <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
         )}
       </div>
+      {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
 }
