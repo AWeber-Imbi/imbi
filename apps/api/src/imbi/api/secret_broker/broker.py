@@ -48,6 +48,10 @@ from imbi.api.agent_tasks import store as task_store
 from imbi.api.secret_broker import audit, providers
 from imbi.common import settings
 from imbi.common.auth import encryption
+from imbi.common.plugins.secrets import Reference as Reference
+from imbi.common.plugins.secrets import (
+    parse_reference as parse_reference,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -101,11 +105,6 @@ _HANDLE_LABEL = b'imbi-secret-handle-v1'
 _NONCE_LABEL = b'imbi-secret-nonce-v1'
 _HANDLE_PREFIX = 'imh_'
 
-_REFERENCE = re.compile(
-    r'secret://(?P<scope>[a-z0-9_]+)/(?P<path>[a-z0-9_]+(?:/[a-z0-9_]+)*)'
-    r'(?:#(?P<field>[A-Za-z0-9_-]+))?'
-)
-_MAX_REFERENCE_LENGTH = 512
 PURPOSE = re.compile(r'[a-z][a-z0-9_]{0,63}')
 _ENV_NAME = re.compile(r'[A-Z][A-Z0-9_]{0,127}')
 _FILE_NAME = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}')
@@ -151,44 +150,6 @@ _UNSAFE_ENV_SUFFIXES = ('_PROXY',)
 
 
 # --- References and request syntax ---------------------------------------
-
-
-@dataclasses.dataclass(frozen=True)
-class Reference:
-    """A parsed ``secret://<scope>/<path>[#<field>]``."""
-
-    scope: str
-    path: str
-    field: str | None
-
-    @property
-    def binding(self) -> str:
-        """The reference without the field: what a binding stores."""
-        return f'secret://{self.scope}/{self.path}'
-
-    def __str__(self) -> str:
-        return self.binding + (f'#{self.field}' if self.field else '')
-
-
-def parse_reference(value: str, *, field: bool = True) -> Reference:
-    """Parse a reference. Only the canonical form is accepted.
-
-    Scope and path segments are lower case letters, digits, and
-    underscores. Matching is case sensitive. There is no other
-    spelling of a reference, so the input is its canonical form.
-
-    Raises:
-        BrokerError: ``invalid_secret_reference``.
-
-    """
-    match = (
-        _REFERENCE.fullmatch(value)
-        if len(value) <= _MAX_REFERENCE_LENGTH
-        else None
-    )
-    if match is None or (not field and match['field']):
-        raise providers.BrokerError('invalid_secret_reference')
-    return Reference(match['scope'], match['path'], match['field'])
 
 
 def check_delivery(mode: str, target: str | None) -> str | None:

@@ -56,7 +56,6 @@ from imbi.api.secret_broker import store as secret_store
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
-from imbi.plugins.github import _repos
 
 LOGGER = logging.getLogger(__name__)
 
@@ -746,23 +745,27 @@ async def _repositories(
     the GitHub integration verified, whatever this link says."""
     if not task.get('project_id'):
         return []
-    host = 'github.com'
+    config: dict[str, typing.Any] = {}
     if settings.github_app_binding is not None:
         provider = await store.binding_provider(
             task['organization_id'], settings.github_app_binding
         )
         if provider is not None and provider['type'] == 'github_app':
-            config: dict[str, typing.Any] = provider['config'] or {}
-            host = str(config.get('host', host))
+            config = provider['config'] or {}
     url = (await _helpers.lookup_project_links(db, task['project_id'])).get(
         _REPOSITORY_LINK
     )
-    found = None if url is None else _repos.parse_owner_repo(url, host)
-    if url is None or found is None:
+    if url is None:
         return []
-    return [
-        BundleRepository(host=host, name=f'{found[0]}/{found[1]}', url=url)
-    ]
+    try:
+        # The provider parses the link: an empty configuration is
+        # github.com.
+        found = providers.get('github_app').repository(config, url)
+    except providers.BrokerError:
+        return []
+    if found is None:
+        return []
+    return [BundleRepository(host=found[0], name=found[1], url=url)]
 
 
 async def _identity(

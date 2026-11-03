@@ -454,9 +454,6 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             request=self.request(reference='secret://production/dynamic'),
         )
         self.assertEqual(error.reason, 'missing_dynamic_issuance')
-        with self.assertRaises(providers.BrokerError) as ctx:
-            await providers.PROVIDERS['aws_secrets_manager'].revoke({}, 'x')
-        self.assertEqual(ctx.exception.code, 'provider_lease_not_revocable')
 
     async def test_disabled_resources_deny_new_resolutions(self) -> None:
         for table, row, code in (

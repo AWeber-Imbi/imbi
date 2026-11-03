@@ -260,9 +260,9 @@ unset.
 | `IMBI_PLUGINS_INDEX_URL` | str | `https://pypi.org/simple` | Package index for plugin installs |
 | `IMBI_PLUGINS_INSTALL_TIMEOUT` | int | `120` | Timeout of one plugin install in seconds |
 | `IMBI_PLUGINS_INSTALL_ENABLED` | bool | `true` | `false` turns off plugin install at runtime |
-| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
-| `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
 | `MAILPIT_SMTP_PORT` | str | none | In development, with the default SMTP host and port, use this port and no TLS (Mailpit) |
+| `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
+| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
 
 ### imbi-assistant
 

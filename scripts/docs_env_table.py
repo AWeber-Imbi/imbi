@@ -74,7 +74,8 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
             api_settings.IggyConnectors,
             api_settings.InternalServices,
         ],
-        ['apps/api/src'],
+        # The secret providers of the plugins run in imbi-api.
+        ['apps/api/src', 'plugins/aws/src', 'plugins/github/src'],
         [
             (
                 'IMBI_GATEWAY_API_TOKEN',

@@ -27,6 +27,7 @@ from imbi.plugins.aws.identity import (
     REFRESH_SCOPE,
     AWSIdentity,
 )
+from imbi.plugins.aws.secrets_manager import AwsSecretsManager
 from imbi.plugins.aws.ssm import SSMConfiguration
 
 _IDENTITY_WIDGET_TEXT = (
@@ -299,6 +300,7 @@ class AWSPlugin(plugins.Plugin):
                 summary='deleted parameter',
             ),
         },
+        secret_providers=[AwsSecretsManager],
     )
 
 

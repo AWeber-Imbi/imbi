@@ -40,6 +40,7 @@ from imbi.plugins.github.pull_requests import (
     GitHubPullRequestSync,
     sync_pull_requests_descriptor,
 )
+from imbi.plugins.github.secret_provider import GitHubApp
 
 
 class GitHubWebhookActions(WebhookActionsCapability):
@@ -426,4 +427,5 @@ class GitHubPlugin(Plugin):
             ),
         ],
         ops_log_templates=_OPS_LOG_TEMPLATES,
+        secret_providers=[GitHubApp],
     )

@@ -13,8 +13,14 @@ from unittest import mock
 from apps.api.tests.endpoints import test_agent_tasks
 from imbi.api import lifespans
 from imbi.api.endpoints import _helpers
-from imbi.api.secret_broker import github_app, providers
+from imbi.api.secret_broker import providers
 from imbi.common.plugins.base import PluginContext, ServiceWriteback
+from imbi.plugins.github import secret_provider
+
+#: The provider, with the graph of imbi-api (``lifespans._graph``).
+APP = secret_provider.GitHubApp(
+    providers._Host()  # pyright: ignore[reportPrivateUsage]
+)
 
 VERIFIED = 101
 OTHER = 202
@@ -90,7 +96,7 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
 
     async def assert_refused(self, host: str = 'github.com') -> None:
         with self.assertRaises(providers.BrokerError) as ctx:
-            await github_app.project_repository_ids(host, self.project_id)
+            await APP.project_repository_ids(host, self.project_id)
         self.assertEqual(
             (ctx.exception.code, ctx.exception.reason),
             ('secret_access_denied', 'project_repository_unverified'),
@@ -112,9 +118,7 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
     async def test_a_manual_edit_refuses_the_repository(self) -> None:
         await self.verify(self.integration, VERIFIED)
         self.assertEqual(
-            await github_app.project_repository_ids(
-                'github.com', self.project_id
-            ),
+            await APP.project_repository_ids('github.com', self.project_id),
             [VERIFIED],
         )
         response = await self.client.put(
@@ -147,9 +151,7 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
         await self.verify(self.ghe, VERIFIED)
         await self.assert_refused('github.com')
         self.assertEqual(
-            await github_app.project_repository_ids(
-                'acme.ghe.com', self.project_id
-            ),
+            await APP.project_repository_ids('acme.ghe.com', self.project_id),
             [VERIFIED],
         )
 
@@ -161,17 +163,13 @@ class VerifiedRepositoryTestCase(test_agent_tasks.AgentTaskTestCase):
         self.assertIsNotNone(refusal)
         self.assertIn(f'from {VERIFIED} to {OTHER}', str(refusal))
         self.assertEqual(
-            await github_app.project_repository_ids(
-                'github.com', self.project_id
-            ),
+            await APP.project_repository_ids('github.com', self.project_id),
             [VERIFIED],
         )
         self.assertIsNone(
             await self.verify(self.integration, OTHER, admin=True)
         )
         self.assertEqual(
-            await github_app.project_repository_ids(
-                'github.com', self.project_id
-            ),
+            await APP.project_repository_ids('github.com', self.project_id),
             [OTHER],
         )

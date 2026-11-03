@@ -18,6 +18,7 @@ import typing
 import pydantic
 
 from imbi.common.plugins.errors import PluginRemediationNotSupported
+from imbi.common.plugins.secrets import SecretProvider
 
 
 class PluginOption(pydantic.BaseModel):
@@ -305,6 +306,26 @@ class PluginManifest(pydantic.BaseModel):
     vertex_labels: list[PluginVertexLabel] = []
     edge_labels: list[PluginEdgeLabel] = []
     ops_log_templates: dict[str, OpsLogTemplate] = {}
+    #: Secret provider classes (:class:`SecretProvider` subclasses) for
+    #: imbi-api's secrets broker. They are not Integration capabilities:
+    #: an organization configures a provider in the secrets admin, not
+    #: in an Integration. Excluded from serialization, as
+    #: :attr:`Capability.handler` is.
+    secret_providers: list[type[SecretProvider]] = pydantic.Field(
+        default_factory=list[type[SecretProvider]], exclude=True, repr=False
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _validate_secret_providers(self) -> PluginManifest:
+        types: set[str] = set()
+        for provider in self.secret_providers:
+            if provider.type in types:
+                raise ValueError(
+                    f'PluginManifest declares secret provider type '
+                    f'{provider.type!r} twice'
+                )
+            types.add(provider.type)
+        return self
 
     @pydantic.model_validator(mode='after')
     def _validate_capabilities(self) -> PluginManifest:
