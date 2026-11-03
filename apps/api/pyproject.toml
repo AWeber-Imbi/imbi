@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "Pillow",
+  "Pillow>=13.0.0",
   "aioboto3>=15.5.0",
   "aiohttp",
   "argon2-cffi>=25.1.0",
