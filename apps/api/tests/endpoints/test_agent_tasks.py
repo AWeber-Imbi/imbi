@@ -16,6 +16,7 @@ import typing
 import uuid
 
 import httpx
+import slugify
 from psycopg import sql
 
 from apps.api.tests import support
@@ -1141,10 +1142,39 @@ class ServiceAccountTests(AgentTaskTestCase):
     async def test_agent_create_makes_service_account(self) -> None:
         agent = await self.create_agent('triage')
         (account,) = await self.service_accounts(agent['id'])
-        self.assertEqual(account['slug'], f'agent-{agent["id"]}')
+        self.assertEqual(account['slug'], 'triage')
         self.assertEqual(account['org'], self.org)
-        # No role, so no permissions.
-        self.assertIsNone(account['role'])
+        self.assertEqual(account['role'], 'developer')
+
+    async def test_service_account_slug_taken(self) -> None:
+        slug = f'triage-{self.org}'
+        await self.graph.execute(
+            'CREATE (s:ServiceAccount {{id: {id}, slug: {slug}}})',
+            {'id': f'other-{self.org}', 'slug': slug},
+            [],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (s:ServiceAccount {{id: {id}}}) DETACH DELETE s'
+            ' RETURN 1 AS ok',
+            {'id': f'other-{self.org}'},
+            ['ok'],
+        )
+        agent = await self.create_agent(slug)
+        (account,) = await self.service_accounts(agent['id'])
+        self.assertEqual(
+            account['slug'], slugify.slugify(f'{slug} {agent["id"]}')
+        )
+
+    async def test_service_account_slug_of_empty_name_slug(self) -> None:
+        response = await self.client.post(
+            f'/organizations/{self.org}/agents/',
+            json={'name': '!!!', 'slug': 'bang', 'team': self.team_id},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        agent = response.json()
+        (account,) = await self.service_accounts(agent['id'])
+        self.assertEqual(account['slug'], slugify.slugify(agent['id']))
 
     async def test_duplicate_gets_its_own_service_account(self) -> None:
         first = await self.create_agent('triage')
