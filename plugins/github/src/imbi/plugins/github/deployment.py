@@ -65,6 +65,7 @@ from imbi.common.plugins.base import (
     WorkflowFile,
 )
 from imbi.common.plugins.errors import PluginAuthenticationFailed
+from imbi.plugins.github import public
 from imbi.plugins.github._hosts import flavor_host, host_to_api_base
 from imbi.plugins.github._repos import (
     derive_owner_repo_from_links,
@@ -653,6 +654,10 @@ class GitHubDeployment(DeploymentCapability):
     decrypted blob, carrying the acting user's access token) and ``ctx``
     per call.
     """
+
+    @classmethod
+    def public_reader(cls, url: str) -> public.PublicRepository | None:
+        return public.PublicRepository.for_url(url)
 
     def _resolve_host(self, ctx: PluginContext) -> str:
         return flavor_host(ctx.integration_options, 'github deployment')

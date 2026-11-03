@@ -1335,9 +1335,51 @@ class IdentityCapability(CapabilityHandler):
         return connection
 
 
+class RepositoryReader(typing.Protocol):
+    """The repository reads that a host does without a project.
+
+    A :class:`DeploymentCapability` handler is one. So is the reader
+    that :meth:`DeploymentCapability.public_reader` returns, which
+    ignores ``ctx`` and ``credentials``.
+    """
+
+    async def list_refs(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        /,
+        kind: typing.Literal['default', 'branch', 'tag', 'all'] = 'all',
+    ) -> list[Ref]: ...
+
+    async def resolve_committish(
+        self, ctx: PluginContext, credentials: dict[str, str], ref: str, /
+    ) -> Ref | Commit: ...
+
+    async def get_file(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        path: str,
+        ref: str,
+        /,
+    ) -> str | None: ...
+
+
 class DeploymentCapability(CapabilityHandler):
     """Act on a repo: enumerate refs/commits, compare them, create
     tags/releases, and trigger CI workflow runs."""
+
+    @classmethod
+    def public_reader(cls, url: str) -> RepositoryReader | None:
+        """Return a reader of the public repository at ``url``.
+
+        The reader needs no Integration and no credentials. The host
+        uses it when no Integration of the organization can read the
+        repository. ``None``: the plugin cannot read ``url`` without
+        credentials (the default).
+        """
+        del url
+        return None
 
     @abc.abstractmethod
     async def list_refs(

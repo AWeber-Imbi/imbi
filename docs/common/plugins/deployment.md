@@ -157,6 +157,11 @@ These default to returning `'unknown'` or `None`, or raising
   `None` when the file does not exist. The default raises
   `NotImplementedError`. The host uses it to read agent plugin
   marketplace files from a repository.
+- **`public_reader(url)`** (class method) — return a `RepositoryReader`
+  that reads the public repository at `url` with no Integration and no
+  credentials, or `None` (the default). The host uses it when no
+  Integration of the organization can read a marketplace repository.
+  The GitHub plugin returns a reader for `github.com` repositories.
 
 ### Release builds
 

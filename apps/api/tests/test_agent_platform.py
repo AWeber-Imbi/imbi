@@ -2,10 +2,9 @@
 
 import json
 import pathlib
+import typing
 import unittest
 from unittest import mock
-
-import respx
 
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces, platform
@@ -339,19 +338,17 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(plugin['repository_url'])
         self.assertIsNone(changes['sync_error'])
 
-    @respx.mock
-    async def test_a_public_github_repository_is_read_anonymously(
+    async def test_a_public_repository_is_read_anonymously(
         self,
     ) -> None:
         handler = mock.AsyncMock(spec=base.DeploymentCapability)
         handler.list_refs.side_effect = RuntimeError('no installation')
-        api = 'https://api.github.com/repos/anthropics/plugins'
-        respx.get(api).respond(json={'default_branch': 'main'})
-        respx.get(f'{api}/commits/main').respond(json={'sha': SHA})
-        respx.get(
-            f'{api}/contents/.claude-plugin/marketplace.json',
-            params={'ref': SHA},
-        ).respond(text='{}')
+        reader = mock.AsyncMock(spec=base.DeploymentCapability)
+        reader.list_refs.return_value = [
+            base.Ref(name='main', kind='default', sha=SHA, is_default=True)
+        ]
+        reader.get_file.return_value = '{}'
+        public = 'https://github.com/anthropics/plugins'
         with (
             mock.patch.object(
                 assignments,
@@ -359,18 +356,50 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 return_value={'i1': {'slug': 'gh', 'plugin': 'github'}},
             ),
             mock.patch.object(marketplaces, '_handler', return_value=handler),
+            mock.patch.object(
+                marketplaces,
+                '_public_readers',
+                side_effect=lambda url: [reader] if url == public else [],
+            ),
         ):
-            head = await marketplaces.fetch(
-                mock.Mock(), 'acme', 'https://github.com/anthropics/plugins'
-            )
+            head = await marketplaces.fetch(mock.Mock(), 'acme', public)
             self.assertEqual(head, marketplaces.Head('main', SHA, '{}'))
-            # Another host is never read anonymously.
+            reader.get_file.assert_awaited_once_with(
+                None, {}, marketplaces.MARKETPLACE_FILE, SHA
+            )
+            # A URL that no plugin reads anonymously.
             with self.assertRaisesRegex(
                 marketplaces.SyncError, '^gh: no installation$'
             ):
                 await marketplaces.fetch(
                     mock.Mock(), 'acme', 'https://ghe.example.com/a/b'
                 )
+
+    def test_public_readers_come_from_deployment_plugins(self) -> None:
+        reader = mock.Mock()
+
+        class Deployment(base.DeploymentCapability):  # type: ignore[misc]
+            @classmethod
+            def public_reader(cls, url: str) -> typing.Any:
+                return reader if url == 'https://h/a/b' else None
+
+        entries = [
+            mock.Mock(**{'manifest.get_capability.return_value': None}),
+            mock.Mock(
+                **{
+                    'manifest.get_capability.return_value': mock.Mock(
+                        handler=Deployment
+                    )
+                }
+            ),
+        ]
+        with mock.patch.object(
+            marketplaces.plugin_registry, 'list_plugins', return_value=entries
+        ):
+            self.assertEqual(
+                marketplaces._public_readers('https://h/a/b'), [reader]
+            )
+            self.assertEqual(marketplaces._public_readers('https://x/y'), [])
 
     async def test_no_integration(self) -> None:
         with mock.patch.object(
