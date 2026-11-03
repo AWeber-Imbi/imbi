@@ -187,6 +187,9 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 assignments, 'org_integrations', return_value=integrations
             ),
             mock.patch.object(marketplaces, '_handler', return_value=handler),
+            mock.patch.object(
+                marketplaces, '_public_readers', return_value=[]
+            ),
         ):
             head = await marketplaces.fetch(
                 mock.Mock(), 'acme', 'https://github.com/acme/tools'
@@ -425,8 +428,13 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_no_integration(self) -> None:
-        with mock.patch.object(
-            assignments, 'org_integrations', return_value={}
+        with (
+            mock.patch.object(
+                assignments, 'org_integrations', return_value={}
+            ),
+            mock.patch.object(
+                marketplaces, '_public_readers', return_value=[]
+            ),
         ):
             with self.assertRaises(marketplaces.SyncError):
                 await marketplaces.fetch(mock.Mock(), 'acme', 'https://x/y')
