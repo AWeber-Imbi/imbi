@@ -218,6 +218,13 @@ describe('filterTimeline', () => {
     ).toEqual([])
   })
 
+  it('does not match a search on a child hidden with subagents', () => {
+    const filters = { ...DEFAULT_FILTERS, subagents: false }
+    expect(
+      rows(filterTimeline(entries, { ...filters, query: 'grep' })),
+    ).toEqual([])
+  })
+
   it('searches payloads, children included', () => {
     expect(
       rows(filterTimeline(entries, { ...DEFAULT_FILTERS, query: 'FEEDS' })),

@@ -107,13 +107,12 @@ export function filterTimeline(
   // Prune before searching, so a child the filters hide cannot match.
   const prune = (entry: TimelineEntry): TimelineEntry => ({
     ...entry,
-    children: entry.children.filter(keep).map(prune),
+    children: filters.subagents ? entry.children.filter(keep).map(prune) : [],
   })
   return entries
     .filter(keep)
     .map(prune)
     .filter((entry) => !query || searchText(entry).includes(query))
-    .map((entry) => (filters.subagents ? entry : { ...entry, children: [] }))
 }
 
 /** A tool call that policy denied before it ran. */
