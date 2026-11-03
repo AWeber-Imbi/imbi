@@ -17,11 +17,13 @@ import { Switch } from '@/components/ui/switch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 
+import { CopyId } from './CopyId'
 import { SecretDialog } from './SecretDialog'
 import {
   DELIVERY_MODES,
   type SecretGrant,
   type SecretGrantCreate,
+  type SecretGrantPatch,
 } from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
@@ -29,7 +31,8 @@ const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
 // fallow-ignore-next-line complexity
 export function GrantsTab({ orgSlug }: { orgSlug: string }) {
   const queryClient = useQueryClient()
-  const [creating, setCreating] = useState(false)
+  // 'new' for the create form, a row for the edit form.
+  const [editing, setEditing] = useState<'new' | null | SecretGrant>(null)
   const queryKey = ['secret-grants', orgSlug]
   const grantsQuery = useQuery({
     queryFn: ({ signal }) => listSecretGrants(orgSlug, signal),
@@ -51,13 +54,24 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
   )
   const refresh = () => queryClient.invalidateQueries({ queryKey })
 
-  const createMutation = useMutation({
-    mutationFn: (body: SecretGrantCreate) => createSecretGrant(orgSlug, body),
-    onSuccess: () => {
-      setCreating(false)
-      void refresh()
-    },
+  const saveMutation = useMutation({
+    mutationFn: ({
+      body,
+      id,
+    }: {
+      body: Record<string, unknown>
+      id?: string
+    }) =>
+      id
+        ? updateSecretGrant(orgSlug, id, body as SecretGrantPatch)
+        : createSecretGrant(orgSlug, body as SecretGrantCreate),
+    onSuccess: () => void refresh(),
   })
+  const open = (target: 'new' | SecretGrant) => {
+    saveMutation.reset()
+    setEditing(target)
+  }
+  const row = editing === 'new' ? undefined : (editing ?? undefined)
   const enableMutation = useMutation({
     mutationFn: ({ enabled, id }: { enabled: boolean; id: string }) =>
       updateSecretGrant(orgSlug, id, { enabled }),
@@ -73,10 +87,21 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setCreating(true)}>New grant</Button>
+        <Button onClick={() => open('new')}>New grant</Button>
       </div>
       <AdminTable<SecretGrant>
+        actions={(row) => (
+          <Button onClick={() => open(row)} size="sm" variant="outline">
+            Edit
+          </Button>
+        )}
         columns={[
+          {
+            header: 'Id',
+            interactive: true,
+            key: 'id',
+            render: (row) => <CopyId id={row.id} />,
+          },
           {
             header: 'Agents',
             key: 'agents',
@@ -139,10 +164,10 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
         onDelete={(row) => deleteMutation.mutate(row.id)}
         rows={grantsQuery.data ?? []}
       />
-      {creating && (
+      {editing && (
         <SecretDialog
           description="Exactly one enabled grant must allow a request, or the broker denies it. Ids are exact."
-          error={createMutation.error}
+          error={saveMutation.error}
           fields={[
             {
               kind: 'multi',
@@ -193,12 +218,18 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
             },
             { kind: 'text', label: 'Description', name: 'description' },
           ]}
-          isPending={createMutation.isPending}
-          onClose={() => setCreating(false)}
+          isPending={saveMutation.isPending}
+          onClose={() => setEditing(null)}
           onSubmit={(body) =>
-            createMutation.mutate(body as unknown as SecretGrantCreate)
+            // Close in a per-call callback: open() resets the mutation,
+            // so a stale save does not close a newer dialog.
+            saveMutation.mutate(
+              { body, id: row?.id },
+              { onSuccess: () => setEditing(null) },
+            )
           }
-          title="New grant"
+          original={row}
+          title={row ? 'Edit grant' : 'New grant'}
         />
       )}
     </div>
