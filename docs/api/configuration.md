@@ -389,6 +389,7 @@ unset.
 | `SERVE_SOURCE_MAPS` | str | none | `true` serves the UI `*.map` files. Otherwise Caddy answers 404. |
 | `VITE_API_URL` | str | none | API URL that Caddy writes into `index.html` at request time. The UI does not start without it. |
 | `VITE_SENTRY_DSN` | str | none | Sentry DSN of the UI, written into `index.html` |
+| `VITE_DRIFT_STALE_AFTER` | str | none | Drift that waits longer than this (`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: never. |
 
 <!-- END GENERATED -->
 
