@@ -1097,6 +1097,18 @@ class DeleteTests(AgentTaskTestCase):
     async def cancel(self, short_id: str) -> None:
         response = await self.client.post(self.url(f'{short_id}/cancel'))
         self.assertEqual(response.status_code, 200, response.text)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                ' WHERE short_id = %s',
+                (short_id,),
+            )
+
+    async def test_unarchived_task_is_refused(self) -> None:
+        response = await self.client.post(self.url('T-1/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
 
     async def test_open_task_is_refused(self) -> None:
         response = await self.client.delete(self.url('T-1'))

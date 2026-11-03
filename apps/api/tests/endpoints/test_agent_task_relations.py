@@ -279,8 +279,9 @@ class DependencyTests(RelationTestCase):
         relations = (await self.client.get(self.url('T-1/relations'))).json()
         self.assertEqual(len(relations['requires']), 1)
 
-    async def test_delegation_is_parent_and_children(self) -> None:
-        parent = self.agent_tasks['T-2']
+    async def delegate(
+        self, parent: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
         child, _ = await self.store.create(
             agent_tasks.NewTask(
                 organization_id=self.org,
@@ -301,6 +302,10 @@ class DependencyTests(RelationTestCase):
             agent_tasks.Actor('agent', parent['agent_id'], 'harness'),
             {},
         )
+        return child
+
+    async def test_delegation_is_parent_and_children(self) -> None:
+        child = await self.delegate(self.agent_tasks['T-2'])
         relations = (await self.client.get(self.url('T-2/relations'))).json()
         self.assertEqual(
             [t['short_id'] for t in relations['children']],
@@ -311,6 +316,13 @@ class DependencyTests(RelationTestCase):
             await self.client.get(self.url(f'{child["short_id"]}/relations'))
         ).json()
         self.assertEqual(relations['parent']['short_id'], 'T-2')
+
+    async def test_delegation_from_closed_parent_is_refused(self) -> None:
+        parent = self.agent_tasks['T-2']
+        response = await self.client.post(self.url('T-2/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+        with self.assertRaises(agent_tasks.TaskClosed):
+            await self.delegate(parent)
 
 
 class ProjectTests(RelationTestCase):

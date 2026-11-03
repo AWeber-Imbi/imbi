@@ -1806,35 +1806,40 @@ async def create_harness_child_task(
         'short_id': parent['short_id'],
         'agent_id': parent['agent_id'],
     }
-    task, created = await store.create(
-        agent_tasks.NewTask(
-            organization_id=parent['organization_id'],
-            agent_id=agent_id,
-            agent_version=agent_version,
-            prompt_version=prompt_version,
-            service_account_id=service_account_id,
-            project_id=parent['project_id'],
-            project_slug=parent['project_slug'],
-            title=data.title,
-            description=data.description,
-            origin_kind='task',
-            origin_id=origin_id,
-            origin=origin,
-            idempotency_key=data.idempotency_key,
-            owner=parent['owner'],
-            budget=budget,
-            chain_id=chain_id,
-        ),
-        agent_tasks.Actor('agent', parent['agent_id'], 'harness'),
-        {
-            'title': data.title,
-            'description': data.description,
-            'origin': origin,
-            'budget': None if budget is None else str(budget),
-            'agent_version': agent_version,
-            'prompt_version': prompt_version,
-        },
-    )
+    try:
+        task, created = await store.create(
+            agent_tasks.NewTask(
+                organization_id=parent['organization_id'],
+                agent_id=agent_id,
+                agent_version=agent_version,
+                prompt_version=prompt_version,
+                service_account_id=service_account_id,
+                project_id=parent['project_id'],
+                project_slug=parent['project_slug'],
+                title=data.title,
+                description=data.description,
+                origin_kind='task',
+                origin_id=origin_id,
+                origin=origin,
+                idempotency_key=data.idempotency_key,
+                owner=parent['owner'],
+                budget=budget,
+                chain_id=chain_id,
+            ),
+            agent_tasks.Actor('agent', parent['agent_id'], 'harness'),
+            {
+                'title': data.title,
+                'description': data.description,
+                'origin': origin,
+                'budget': None if budget is None else str(budget),
+                'agent_version': agent_version,
+                'prompt_version': prompt_version,
+            },
+        )
+    except agent_tasks.TaskClosed as e:
+        raise _conflict(
+            'task_closed', f'Task {parent["short_id"]} is closed'
+        ) from e
     if not created:
         response.status_code = 200
     return task

@@ -458,10 +458,24 @@ class TaskStore:
         Return the task and ``True``. When a concurrent request made a
         task with the same idempotency key first, return that task and
         ``False``. The rollback also returns the short id to the counter.
+
+        Raises:
+            TaskClosed: The origin is a task that is closed or gone.
+
         """
         task_id = uuid.uuid4()
         try:
             async with self._pool.connection() as conn, conn.transaction():
+                if task.origin_kind == 'task':
+                    # The lock conflicts with the lock in delete, so a
+                    # parent cannot go while its child is made.
+                    cursor = await conn.execute(
+                        'SELECT 1 FROM agent_runtime.tasks WHERE id = %s::uuid'
+                        " AND status <> 'closed' FOR KEY SHARE",
+                        (task.origin_id,),
+                    )
+                    if await cursor.fetchone() is None:
+                        raise TaskClosed(task.origin_id)
                 short_id = await _next_short_id(conn, task.organization_id)
                 await conn.execute(
                     'INSERT INTO agent_runtime.tasks (id, organization_id,'
@@ -723,7 +737,8 @@ class TaskStore:
 
         Raises:
             TaskNotFound: No such task.
-            TaskOpen: The task, or a child or chain task, is not closed.
+            TaskOpen: The task, or a child or chain task, is not closed,
+                or the log of the task is not archived.
 
         """
         async with self._pool.connection() as conn, conn.transaction():
@@ -735,6 +750,10 @@ class TaskStore:
             )
             if task is None:
                 raise TaskNotFound(short_id)
+            # The cascade would remove events and ledger rows that the
+            # sweep has not yet put in ClickHouse.
+            if task['log_archived_at'] is None:
+                raise TaskOpen(short_id)
             # The harness chain row of a root task cascades, so an open
             # task in its chain must not lose it.
             cursor = await conn.execute(

@@ -1153,7 +1153,10 @@ async def delete_agent_task(
     except agent_tasks.TaskOpen as e:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=f'Task {short_id!r} or a task in its chain is not closed',
+            detail=(
+                f'Task {short_id!r} or a task in its chain is not closed,'
+                ' or its log is not archived yet'
+            ),
         ) from e
     LOGGER.info(
         'Agent task %s (%s) deleted by %s',
