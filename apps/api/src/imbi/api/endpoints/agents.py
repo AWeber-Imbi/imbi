@@ -524,7 +524,12 @@ async def ensure_service_account(
                 ['id'],
             )
             break
-        except psycopg.errors.UniqueViolation:
+        except psycopg.errors.UniqueViolation as exc:
+            if not attempts:
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=f'Service account slug for {name!r} is in use',
+                ) from exc
             # A concurrent request took the slug first. Try again.
             continue
     if not records:
@@ -1192,17 +1197,31 @@ async def create_agent(
         + _CREATE_SERVICE_ACCOUNT
         + ' RETURN a.id AS id'
     )
-    with conflict_on_unique_violation(_slug_taken_detail(snapshot.slug)):
-        records = await db.execute(
-            query,
-            {
-                **props,
-                **await _service_account_params(db, agent_id, snapshot.name),
-                'org_slug': org_slug,
-                'team_id': team_id,
-            },
-            ['id'],
-        )
+    records: list[dict[str, typing.Any]] = []
+    for attempt in range(2):
+        try:
+            records = await db.execute(
+                query,
+                {
+                    **props,
+                    **await _service_account_params(
+                        db, agent_id, snapshot.name
+                    ),
+                    'org_slug': org_slug,
+                    'team_id': team_id,
+                },
+                ['id'],
+            )
+            break
+        except psycopg.errors.UniqueViolation as exc:
+            # A concurrent create in another org can take the service
+            # account slug first. The next attempt sees that slug as
+            # taken and adds the agent id to it.
+            if attempt or exc.diag.table_name != 'ServiceAccount':
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=_slug_taken_detail(snapshot.slug),
+                ) from exc
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
