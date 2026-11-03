@@ -474,7 +474,8 @@ async def _service_account_params(
     added when the name gives an empty slug, or a slug in the ``imbi-``
     namespace of the internal service accounts. Seeding adopts an
     existing account with an internal slug, so an agent must not have
-    one.
+    one: a slug that still starts with ``imbi-`` gets an ``agent-``
+    prefix.
     """
     slug = slugify.slugify(name)
     if (
@@ -483,6 +484,8 @@ async def _service_account_params(
         or await db.execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
     ):
         slug = slugify.slugify(f'{name} {agent_id}')
+    if slug.startswith('imbi-'):
+        slug = slugify.slugify(f'agent {slug}')
     return {
         'sa_id': nanoid.generate(),
         'sa_slug': slug,

@@ -284,8 +284,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         create = self.mock_db.execute.await_args_list[2].args[1]
         self.assertEqual(
             create['sa_slug'],
-            slugify.slugify(f'imbi-scheduler-{create["id"]}'),
+            slugify.slugify(f'agent-imbi-scheduler-{create["id"]}'),
         )
+        self.assertFalse(create['sa_slug'].startswith('imbi-'))
 
     def test_create_concurrent_slug_conflict(self) -> None:
         # The slug check passes, then the unique index stops the create.
