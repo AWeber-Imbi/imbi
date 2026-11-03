@@ -89,7 +89,6 @@ export function NewTaskDialog({
   const missing = [
     !request.trim() && 'a description',
     !agentSlug && 'an agent',
-    !projectId && 'a project',
   ].filter((m): m is string => !!m)
 
   const create = useMutation({
@@ -97,7 +96,7 @@ export function NewTaskDialog({
       createAgentTask(orgSlug, {
         agent_slug: agentSlug,
         description: request.trim(),
-        project_id: projectId,
+        project_id: projectId || null,
         title: titleFrom(request),
       }),
     onSuccess: (task) => {
@@ -184,7 +183,7 @@ export function NewTaskDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Overline>Project</Overline>
+            <Overline>Project (optional)</Overline>
             {project ? (
               <div className="border-secondary flex items-center gap-2 rounded-md border px-2.5 py-2">
                 <Box className="text-secondary size-3.5" />
