@@ -429,9 +429,16 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 await marketplaces._public_readers(db, 'https://h/a/b'),
                 [reader],
             )
-            self.assertEqual(
-                await marketplaces._public_readers(db, 'https://x/y'), []
-            )
+            with self.assertLogs(marketplaces.LOGGER, 'INFO') as logs:
+                self.assertEqual(
+                    await marketplaces._public_readers(
+                        db, 'https://u:secret@x/y?token=t#f'
+                    ),
+                    [],
+                )
+            self.assertIn('https://x/y:', logs.output[0])
+            self.assertNotIn('secret', '\n'.join(logs.output))
+            self.assertNotIn('token', '\n'.join(logs.output))
 
     async def test_no_integration(self) -> None:
         with (

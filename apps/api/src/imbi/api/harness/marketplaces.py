@@ -376,10 +376,19 @@ async def _public_readers(
         try:
             reader = handler.public_reader(url)
         except Exception as err:  # noqa: BLE001 - skip this plugin
+            # Do not log credentials in the userinfo or query.
+            parts = urllib.parse.urlsplit(url)
+            safe_url = urllib.parse.urlunsplit(
+                parts._replace(
+                    netloc=parts.netloc.rsplit('@', 1)[-1],
+                    query='',
+                    fragment='',
+                )
+            )
             LOGGER.info(
                 'Plugin %s cannot offer a public reader for %s: %s',
                 entry.manifest.slug,
-                url,
+                safe_url,
                 err,
             )
             continue
