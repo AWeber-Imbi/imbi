@@ -324,15 +324,23 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               label: 'Provider key consumers',
               name: 'consumers',
               options: bindings
-                .filter(
-                  (b) =>
-                    (b.credential_class === 'dynamic' &&
-                      appProviders.has(b.provider_id)) ||
-                    // Keep current consumers so the admin can remove them.
-                    (
-                      row?.provider_key_usage as KeyUsage | undefined
-                    )?.consumers?.includes(b.id),
-                )
+                .filter((b) => {
+                  const usage = row?.provider_key_usage as KeyUsage | undefined
+                  // Keep current consumers so the admin can remove them.
+                  if (usage?.consumers?.includes(b.id)) return true
+                  if (
+                    b.credential_class !== 'dynamic' ||
+                    !appProviders.has(b.provider_id)
+                  )
+                    return false
+                  // A key with no saved host and App id offers each App.
+                  // Otherwise offer only the Apps that the broker accepts.
+                  return (
+                    !usage?.host ||
+                    (usage.host === appProviders.get(b.provider_id) &&
+                      usage.app_id === String(b.locator.app_id))
+                  )
+                })
                 .map((b) => ({ label: b.reference, value: b.id })),
               show: keyClass,
             },

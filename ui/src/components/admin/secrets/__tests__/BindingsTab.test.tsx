@@ -121,4 +121,23 @@ describe('BindingsTab', () => {
     expect(screen.getByLabelText('secret://dev/github_app')).toBeInTheDocument()
     expect(screen.queryByLabelText('secret://dev/static_app')).toBeNull()
   })
+
+  it('offers only Apps that match the key host and App id', async () => {
+    const otherApp = {
+      ...app,
+      id: 'other-app',
+      locator: { ...app.locator, app_id: '7' },
+      reference: 'secret://dev/other_app',
+    }
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      key,
+      app,
+      otherApp,
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    expect(screen.getByLabelText('secret://dev/github_app')).toBeInTheDocument()
+    expect(screen.queryByLabelText('secret://dev/other_app')).toBeNull()
+  })
 })
