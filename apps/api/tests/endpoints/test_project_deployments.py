@@ -27,7 +27,7 @@ from imbi.api.llm.dependencies import _get_anthropic_client
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.api.release_promote import service as release_promote_service
 from imbi.common import deployments as common_deployments
-from imbi.common import graph
+from imbi.common import graph, versioning
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi.common.plugins import errors as plugin_errors
@@ -5293,6 +5293,40 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                 'v0.1.0',
                 project_deployments._suggest_version(
                     '2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]
+                ),
+            )
+
+    def test_suggest_version_follows_a_configured_scheme(self) -> None:
+        """``26.04.2`` is semver too; the scheme resets on a new month."""
+        scheme = 'YY.0M.MICRO'
+        patterns = [versioning.calver_scheme_pattern(scheme)]
+        suggest = project_deployments._suggest_version
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                '26.10.0', suggest('26.04.2', 'patch', patterns, [scheme])
+            )
+            self.assertEqual(
+                '26.10.1', suggest('26.10.0', 'patch', patterns, [scheme])
+            )
+            # No prior tag, or one from another scheme: the first tag.
+            self.assertEqual(
+                '26.10.0', suggest(None, 'patch', patterns, [scheme])
+            )
+            self.assertEqual(
+                '26.10.0', suggest('v1.2.3', 'patch', patterns, [scheme])
+            )
+            # A mixed policy with no tags keeps the semver default.
+            self.assertEqual(
+                'v0.1.0',
+                suggest(
+                    None,
+                    'patch',
+                    [*patterns, SEMVER_TAG_FORMAT.pattern],
+                    [scheme],
                 ),
             )
 

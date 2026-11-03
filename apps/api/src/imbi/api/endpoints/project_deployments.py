@@ -5530,18 +5530,31 @@ def _suggest_version(
     last_tag: str | None,
     bump: SemverBump,
     patterns: collections.abc.Sequence[str],
+    schemes: collections.abc.Sequence[str] = (),
 ) -> str:
     """The next tag to suggest, honouring the configured tag formats.
 
     Candidates are tried in order and the first one satisfying
-    ``patterns`` wins: the next calendar version when ``last_tag`` is
-    calver-shaped, its semver bump when it is semver-shaped, then the
-    first-release defaults (``v0.1.0``, ``0.1.0``, today's
-    date).  With no policy configured the first candidate stands, which
-    keeps the historical ``v0.1.0`` answer for an untagged project.
+    ``patterns`` wins: the next tag of each configured calver ``scheme``
+    that ``last_tag`` matches, the next calendar version when
+    ``last_tag`` is calver-shaped, its semver bump when it is
+    semver-shaped, then the first-release defaults (``v0.1.0``,
+    ``0.1.0``, today's date, then the first tag of each scheme).  With
+    no policy configured the first candidate stands, which keeps the
+    historical ``v0.1.0`` answer for an untagged project.
     """
     today = datetime.datetime.now(datetime.UTC).date()
-    candidates: list[str] = []
+    # A configured scheme knows its own counters, so it goes first: a tag
+    # such as ``26.4.1`` is valid semver too, and a semver bump would miss
+    # the reset when the month changes.
+    candidates: list[str] = [
+        versioning.next_scheme_tag(scheme, last_tag, today, bump)
+        for scheme in schemes
+        if last_tag
+        and versioning.matches_tag_formats(
+            last_tag, [versioning.calver_scheme_pattern(scheme)]
+        )
+    ]
     # Calver first: an unpadded date (``2026.9.17``) is also valid semver,
     # and a project tagging by date wants the next date, not ``.18``.
     # Advance the date only when the policy accepts the last tag. A date
@@ -5575,6 +5588,10 @@ def _suggest_version(
             versioning.next_calver_tag(None, today),
             # Zero-padded date, for a policy that requires padding.
             today.strftime('%Y.%m.%d'),
+            *(
+                versioning.next_scheme_tag(scheme, None, today)
+                for scheme in schemes
+            ),
         ]
     )
     for candidate in candidates:
@@ -5938,10 +5955,13 @@ async def draft_release_notes(
         commits = await _commits_through(project_id, body.head_sha)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
+    schemes = [fmt.scheme for fmt in tag_formats if fmt.scheme]
     fallback_bump = _classify_bump(commits, body.last_tag)
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
-        version=_suggest_version(body.last_tag, fallback_bump, patterns),
+        version=_suggest_version(
+            body.last_tag, fallback_bump, patterns, schemes
+        ),
         reasoning=(
             'AI unavailable — bump and notes derived from '
             'conventional-commit prefixes.'
@@ -5978,7 +5998,7 @@ async def draft_release_notes(
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
-                    body.last_tag, notes.bump, patterns
+                    body.last_tag, notes.bump, patterns, schemes
                 )
             }
         )
@@ -6526,10 +6546,9 @@ async def get_release_drift(
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
     latest_tag_at = _tag_timestamp(latest) if latest else None
-    patterns = [
-        fmt.pattern
-        for fmt in await _resolve_tag_formats(db, org_slug, project_id)
-    ]
+    tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
+    patterns = [fmt.pattern for fmt in tag_formats]
+    schemes = [fmt.scheme for fmt in tag_formats if fmt.scheme]
 
     head_rows = await clickhouse.query(
         'SELECT sha FROM commits FINAL '
@@ -6554,7 +6573,9 @@ async def get_release_drift(
                 commits_since_tag=0,
                 commits=[],
                 suggested_bump='patch',
-                suggested_tag=_suggest_version(latest_tag, 'patch', patterns),
+                suggested_tag=_suggest_version(
+                    latest_tag, 'patch', patterns, schemes
+                ),
             )
 
     where = 'project_id = {project_id:String}'
@@ -6595,7 +6616,7 @@ async def get_release_drift(
         commits_since_tag=commits_since_tag,
         commits=commits,
         suggested_bump=bump,
-        suggested_tag=_suggest_version(latest_tag, bump, patterns),
+        suggested_tag=_suggest_version(latest_tag, bump, patterns, schemes),
     )
 
 

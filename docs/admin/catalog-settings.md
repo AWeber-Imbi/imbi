@@ -171,8 +171,9 @@ Default Settings**. A project type can override the list.
 
 1. Open **Admin > &lt;Org&gt; Admin > Default Settings**.
 2. Under **Supported version formats**, turn on the formats to accept.
-3. Optional: click **Add custom format**. Enter a name and a pattern. Use
-   the test field to try a version. Click **Save format**.
+3. Optional: click **Add custom format**. Enter a name, and a pattern or
+   a calendar scheme (see [Calendar schemes](#calendar-schemes)). Use the
+   test field to try a version. Click **Save format**.
 4. Click **Save changes**.
 
 The built-in formats are:
@@ -201,6 +202,61 @@ on **Calendar versioning**, delete the custom row, and save.
 
 Use **Test a version string** to see which enabled formats accept a
 version.
+
+### Calendar schemes
+
+The built-in **Calendar versioning** format accepts year, month, and
+day only. For a different calendar scheme, add a custom format and
+enter the scheme in [calver.org](https://calver.org/) notation in
+**Calendar scheme**. Imbi then makes the pattern from the scheme and
+uses the scheme to suggest the next tag.
+
+| Token | Value | Example |
+|---|---|---|
+| `YYYY` | Full year | `2026` |
+| `YY` | Year minus 2000 | `6`, `26` |
+| `0Y` | Year minus 2000, two digits or more | `06`, `26` |
+| `M` / `0M` | Month, unpadded or zero-padded | `4` / `04` |
+| `W` / `0W` | ISO 8601 week, unpadded or zero-padded | `7` / `07` |
+| `D` / `0D` | Day, unpadded or zero-padded | `9` / `09` |
+| `MINOR` | A counter | `0`, `3` |
+| `MICRO` | A counter | `0`, `12` |
+| `MODIFIER` | A text tag, such as `rc1` or `acacia` | `rc.1` |
+
+Separate the tokens with `.`, `-`, or `_`. You can put the last segment
+in brackets to make it optional, for example `YYYY.0M.0D[.MICRO]`.
+
+The rules are:
+
+- A scheme has one year token.
+- A day needs a month. A week cannot have a month or a day.
+- Each token can occur one time only.
+- `MODIFIER` must be the optional last segment, for example
+  `YYYY-0M-0D[.MODIFIER]`.
+- Only `MINOR`, `MICRO`, or `MODIFIER` can be optional.
+- `MM`, `WW`, and `DD` are old spellings of `M`, `W`, and `D`.
+
+The next tag that Imbi suggests:
+
+- In a new calendar period (a new year, month, week, or day of the
+  scheme), the counters go back to `0`. An optional counter is left out.
+- In the same period, a minor or major bump increments `MINOR` when the
+  scheme has it. Else the last counter in the scheme increments, and the
+  counters after it go back to `0`.
+- Imbi does not suggest a `MODIFIER`.
+- A scheme with no counter gives the same tag for two releases in one
+  period.
+
+Examples, for a release on 17 April 2026:
+
+| Scheme | Used by | Last tag | Next tag |
+|---|---|---|---|
+| `YY.0M.MICRO` | Ubuntu | `26.03.2` | `26.04.0` |
+| `YY.0M[.MICRO]` | | `26.04` | `26.04.1` |
+| `YY.MINOR.MICRO` | pip | `26.1.4` | `26.1.5` (patch), `26.2.0` (minor) |
+| `YYYY.M.MICRO` | Home Assistant | `2026.4.0` | `2026.4.1` |
+| `YYYY.0M.0D[.MICRO]` | yt-dlp | `2026.04.17` | `2026.04.17.1` |
+| `YYYY.M.D_MICRO` | fusefs-ntfs | `2026.4.17_1` | `2026.4.17_2` |
 
 ### Project type formats
 

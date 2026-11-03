@@ -293,6 +293,125 @@ class CalverTestCase(unittest.TestCase):
                 )
 
 
+class CalverSchemeTestCase(unittest.TestCase):
+    """``calver_scheme_pattern`` and ``next_scheme_tag``."""
+
+    TODAY = datetime.date(2026, 4, 17)
+
+    def matches(self, scheme: str, tag: str) -> bool:
+        pattern = versioning.calver_scheme_pattern(scheme)
+        return versioning.matches_tag_formats(tag, [pattern])
+
+    def test_patterns_from_calver_org_examples(self) -> None:
+        accepted = {
+            'YY.0M.MICRO': ['26.04.0', '24.10.12'],
+            'YY.0M[.MICRO]': ['26.04', '26.04.1'],
+            'YY.MINOR.MICRO': ['26.4.1', '23.0.0'],
+            'YYYY.0M': ['2026.09'],
+            'YY.M': ['26.4', '26.12'],
+            'YYYY.M.MICRO': ['2026.11.3'],
+            'YYYY.M.D_MICRO': ['2026.9.17_1'],
+            'YYYY.0M.0D[.MICRO]': ['2026.09.17', '2026.09.17.2'],
+            'YYYY-0M-0D[.MODIFIER]': ['2026-09-30', '2026-09-30.acacia'],
+            'YYYY.0M.0D[-MODIFIER]': ['2026.09.17-rc.1'],
+            '0Y.0W': ['06.01', '26.53'],
+        }
+        for scheme, tags in accepted.items():
+            for tag in tags:
+                with self.subTest(scheme=scheme, tag=tag):
+                    self.assertTrue(self.matches(scheme, tag))
+
+    def test_patterns_check_ranges_and_padding(self) -> None:
+        rejected = {
+            'YYYY.0M.0D': ['2026.13.01', '2026.09.32', '2026.9.17'],
+            'YYYY.M.D': ['2026.09.17', '2026.0.1'],
+            'YY.0M.MICRO': ['26.04', '26.04.01', 'v26.04.1'],
+            'YYYY.0M': ['2026.9', '206.09'],
+            '0Y.0W': ['26.54', '26.00'],
+        }
+        for scheme, tags in rejected.items():
+            for tag in tags:
+                with self.subTest(scheme=scheme, tag=tag):
+                    self.assertFalse(self.matches(scheme, tag))
+
+    def test_deprecated_spellings_are_unpadded(self) -> None:
+        self.assertTrue(self.matches('YYYY.MM.DD', '2026.9.7'))
+        self.assertFalse(self.matches('YYYY.MM.DD', '2026.09.07'))
+
+    def test_invalid_schemes(self) -> None:
+        for scheme in (
+            '',
+            'YYYY.QQ',  # unknown token
+            'YYYY.YY',  # two years
+            '0M.MICRO',  # no year
+            'YYYY.0M.0M',  # repeated token
+            'YYYY.0W.D',  # week with day
+            'YYYY.D',  # day without month
+            'YYYY.0M.MODIFIER',  # modifier not optional
+            'YYYY[.0M]',  # optional calendar token
+            'YYYY..0M',  # empty segment
+            'YYYY.0M[.MICRO][.MODIFIER]',  # two optional segments
+        ):
+            with self.subTest(scheme=scheme):
+                with self.assertRaises(ValueError):
+                    versioning.calver_scheme_pattern(scheme)
+
+    def test_next_tag(self) -> None:
+        cases = [
+            # (scheme, last tag, bump, expected) with today 2026-04-17.
+            ('YY.0M.MICRO', '26.04.2', 'patch', '26.04.3'),
+            ('YY.0M.MICRO', '26.03.2', 'patch', '26.04.0'),
+            ('YY.0M.MICRO', None, 'patch', '26.04.0'),
+            ('YY.0M[.MICRO]', '26.04', 'patch', '26.04.1'),
+            ('YY.0M[.MICRO]', '26.04.1', 'patch', '26.04.2'),
+            ('YY.0M[.MICRO]', '25.10.3', 'patch', '26.04'),
+            ('YY.MINOR.MICRO', '26.1.4', 'patch', '26.1.5'),
+            ('YY.MINOR.MICRO', '26.1.4', 'minor', '26.2.0'),
+            ('YY.MINOR.MICRO', '26.1.4', 'major', '26.2.0'),
+            ('YY.MINOR.MICRO', '25.3.1', 'minor', '26.0.0'),
+            ('YYYY.M.MICRO', '2026.4.0', 'patch', '2026.4.1'),
+            ('YYYY.0M.0D[.MICRO]', '2026.04.17', 'patch', '2026.04.17.1'),
+            ('YYYY.0M.0D[.MICRO]', '2026.04.16.3', 'patch', '2026.04.17'),
+            ('YYYY.M.D_MICRO', '2026.4.17_1', 'patch', '2026.4.17_2'),
+            (
+                'YYYY-0M-0D[.MODIFIER]',
+                '2026-04-01.acacia',
+                'patch',
+                '2026-04-17',
+            ),
+            ('YYYY.0M', '2026.04', 'patch', '2026.04'),  # no counter
+            ('YY.0M.MICRO', 'v1.2.3', 'patch', '26.04.0'),  # no match
+        ]
+        for scheme, last, bump, expected in cases:
+            with self.subTest(scheme=scheme, last=last, bump=bump):
+                self.assertEqual(
+                    expected,
+                    versioning.next_scheme_tag(
+                        scheme,
+                        last,
+                        self.TODAY,
+                        typing.cast(
+                            typing.Literal['major', 'minor', 'patch'], bump
+                        ),
+                    ),
+                )
+
+    def test_weeks_use_the_iso_year(self) -> None:
+        # 2026-12-31 is in ISO week 53 of 2026; 2027-01-01 is too.
+        self.assertEqual(
+            '26.53',
+            versioning.next_scheme_tag(
+                '0Y.0W', None, datetime.date(2027, 1, 1)
+            ),
+        )
+        self.assertEqual(
+            '27.1.0',
+            versioning.next_scheme_tag(
+                'YY.W.MICRO', '26.53.4', datetime.date(2027, 1, 4)
+            ),
+        )
+
+
 class MatchesTagFormatsTestCase(unittest.TestCase):
     """Tests for ``matches_tag_formats``."""
 

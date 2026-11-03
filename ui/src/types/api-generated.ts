@@ -20225,12 +20225,19 @@ export interface components {
          *     Patterns are matched with :func:`re.fullmatch` and validated as
          *     compilable at assignment time so an invalid expression is rejected at
          *     the API boundary rather than at deploy/release time.
+         *
+         *     ``scheme`` is an optional calver.org scheme such as ``YY.0M.MICRO``.
+         *     When it is set, ``pattern`` is derived from it (any ``pattern`` sent
+         *     with it is replaced), and the next tag is suggested from the scheme
+         *     (see ``imbi.common.versioning.next_scheme_tag``).
          */
         TagFormat: {
             /** Label */
             label: string;
             /** Pattern */
             pattern: string;
+            /** Scheme */
+            scheme?: string | null;
         };
         /** TagRef */
         TagRef: {
