@@ -81,7 +81,10 @@ export function ReleasesTab({
     )
   }
 
-  const released = history[0] ?? null
+  // The API ranks releases with no synced tag first, since they need the
+  // operator; the current release is the newest one that actually shipped.
+  // An absent tag_synced means synced.
+  const released = history.find((entry) => entry.tag_synced !== false) ?? null
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">

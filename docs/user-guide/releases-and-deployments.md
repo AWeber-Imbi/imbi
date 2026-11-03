@@ -204,6 +204,7 @@ Each release shows these badges when they apply:
 | **Blocked (n)** | The release has n open blockers |
 | **Drift** | CI reported drift on the commit of this release. See [Drift](drift.md#release-drift) |
 | **CI overridden** | Someone released it over a failing CI run |
+| **Tag not synced** | Imbi has a record of the release, but its tag has not been synced from the repository: the release is still in flight or its build failed before the tag was pushed. These releases are listed first, and their blockers can be resolved here |
 | **Latest** | The newest release |
 
 Expand a release to see its notes, **View tag**, and **Add blocker**.

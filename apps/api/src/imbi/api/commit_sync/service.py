@@ -144,9 +144,12 @@ async def run_sync(
     :class:`CommitSyncUnavailable` when no integration provides the
     capability; other failures propagate so the caller can record them.
 
-    Once the tags are in, enriches any that carry no release notes -- a tag
-    cut outside imbi has no ``Release`` node, so this is what gives it a
-    title and body to show.  Then re-reads the drift notes ref, because
+    Once the tags are in, points every tagged ``Release`` node at the
+    commit its tag now names -- a tag re-promoted after a failed build
+    keeps its first commit on the node, and no other sync rewrites it.
+    Then enriches any that carry no release notes -- a tag cut outside
+    imbi has no ``Release`` node, so this is what gives it a title and
+    body to show.  Then re-reads the drift notes ref, because
     the commits this just recorded have no verdicts and readers fail
     closed on that: recovering a commit without its verdict shows it as
     drifted.  Both are best-effort: a failure there is logged and leaves
@@ -164,6 +167,7 @@ async def run_sync(
     )
     handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
     counts = await handler.sync_all_history(ctx=ctx, credentials=credentials)
+    await _reconcile_release_committishes(db, org_slug, project_id)
     await _backfill_release_notes(db, org_slug, project_id)
     await _resync_drift_verdicts(db, org_slug, project_id)
     return counts
@@ -201,6 +205,34 @@ async def run_tag_sync(
     )
     handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
     return await handler.sync_tag(ctx=ctx, credentials=credentials, tag=tag)
+
+
+async def _reconcile_release_committishes(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> None:
+    """Heal Release nodes whose synced tag names another commit."""
+    # Imported here (not at module load) so the worker/service module
+    # never pulls the endpoints package at import time.
+    from imbi.api.endpoints import project_deployments
+
+    try:
+        healed = await project_deployments.reconcile_release_committishes(
+            db, org_slug=org_slug, project_id=project_id
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'release committish reconcile failed for project %s',
+            project_id,
+            exc_info=True,
+        )
+        return
+    if healed:
+        LOGGER.info(
+            'commit-sync healed the committish of %d release(s) for '
+            'project %s',
+            healed,
+            project_id,
+        )
 
 
 async def _backfill_release_notes(

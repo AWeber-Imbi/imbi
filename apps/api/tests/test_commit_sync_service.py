@@ -132,6 +132,55 @@ class RunSyncTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(service.CommitSyncUnavailable):
                 await service.run_sync(db, 'octo', 'p1')
 
+    async def test_reconciles_release_committishes_once_tags_are_in(
+        self,
+    ) -> None:
+        # A tag re-promoted after a failed build leaves its node on the
+        # first commit; the synced tags table is what corrects it.
+        reconcile = mock.AsyncMock()
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                service,
+                'resolve_capability',
+                mock.AsyncMock(return_value=_resolved(_FakeCommitSync)),
+            ),
+            mock.patch.object(
+                service,
+                '_build_context',
+                mock.AsyncMock(return_value=mock.Mock()),
+            ),
+            mock.patch.object(
+                service, '_reconcile_release_committishes', reconcile
+            ),
+            mock.patch.object(
+                service, '_backfill_release_notes', mock.AsyncMock()
+            ),
+            mock.patch('imbi.api.drift.resync_verdicts', mock.AsyncMock()),
+        ):
+            result = await service.run_sync(db, 'octo', 'p1')
+        self.assertEqual((5, 1), result)
+        reconcile.assert_awaited_once_with(db, 'octo', 'p1')
+
+    async def test_a_failed_reconcile_leaves_the_sync_successful(
+        self,
+    ) -> None:
+        # The commits and tags are recorded either way; a node left on
+        # its old commit reads exactly as it did before this ran.
+        db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi.api.endpoints.project_deployments'
+                '.reconcile_release_committishes',
+                mock.AsyncMock(side_effect=RuntimeError('clickhouse down')),
+            ),
+            self.assertLogs(service.LOGGER, level='WARNING') as logs,
+        ):
+            await service._reconcile_release_committishes(db, 'octo', 'p1')
+        self.assertTrue(
+            any('reconcile failed' in line for line in logs.output)
+        )
+
 
 class RunTagSyncTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:

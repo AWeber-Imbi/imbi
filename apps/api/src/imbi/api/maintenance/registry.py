@@ -266,7 +266,10 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             description=(
                 'Backfill full commit and tag history for every '
                 'project with a commit-sync integration; projects '
-                'without one are skipped.'
+                'without one are skipped. Also points each tagged '
+                'release at the commit its tag now names, repairing '
+                'a release re-promoted from a new commit after a '
+                'failed build.'
             ),
             pause_key=commit_sync_queue.PAUSE_KEY,
             enumerate=operations.enumerate_all_projects,

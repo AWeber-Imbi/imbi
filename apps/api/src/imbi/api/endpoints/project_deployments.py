@@ -414,6 +414,12 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     release_url: str | None = None
     tag_url: str | None = None
     package_url: str | None = None
+    #: ``False`` when Imbi holds a ``Release`` node for the tag but the
+    #: tag itself has not been synced from the repository: a release
+    #: still being cut or one whose build failed before the tag was
+    #: pushed.  Such an entry's ``sha`` is the node's committish and it
+    #: has no ``tag_url``.
+    tag_synced: bool = True
     #: ``True`` when the release has at least one open blocker. Deploys
     #: and promotes targeting it are refused with a 409. The
     #: ``blocked_*`` fields mirror the newest open blocker so callers
@@ -1745,6 +1751,63 @@ async def backfill_release_notes(
             continue
         enriched += 1
     return enriched
+
+
+async def reconcile_release_committishes(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+) -> int:
+    """Point each tagged ``Release`` at the commit its synced tag names.
+
+    The ``tags`` table is what the repository says a tag resolves to;
+    the node's committish is what Imbi believed when it wrote the node.
+    The two part ways when a tag is re-promoted from a new commit after
+    its first build failed (the node keeps the first promote's commit
+    -- the upsert never overwrites one) or when a tag is moved upstream.
+    Nothing on the resync paths rewrites a committish, so a stale node
+    outlives every sync until this runs: it heals each disagreeing node
+    through :func:`_set_release_committish_if_unchanged`, which keeps
+    the commit it moves away from as ``promoted_committish`` and
+    declines when the node moved on since it was read.  Returns the
+    number of nodes healed.
+
+    Only tagged nodes with a synced row are considered; a node whose tag
+    ClickHouse has not seen has nothing to be reconciled against.
+    """
+    tag_rows = await clickhouse.query(
+        _PROJECT_TAGS_SQL, {'project_id': project_id}
+    )
+    if not tag_rows:
+        return 0
+    nodes = await _release_nodes_by_tag(db, org_slug, project_id)
+    healed = 0
+    for row in tag_rows:
+        sha = row.get('sha')
+        node = nodes.get(str(row['name']))
+        if not sha or not node or not node.get('id'):
+            continue
+        actual = versioning.short_committish(str(sha))
+        recorded = node.get('committish')
+        if recorded and versioning.short_committish(str(recorded)) == actual:
+            continue
+        LOGGER.info(
+            'commit-sync: tag %s on project %s points at %s, not the '
+            'recorded commit %s; updating the Release committish',
+            row['name'],
+            project_id,
+            actual,
+            recorded,
+        )
+        await _set_release_committish_if_unchanged(
+            db,
+            release_id=str(node['id']),
+            committish=actual,
+            expected_committish=str(recorded) if recorded else None,
+        )
+        healed += 1
+    return healed
 
 
 async def resync_for_project(
@@ -4961,6 +5024,30 @@ async def fail_promote_build(
     )
 
 
+async def _release_committish(
+    db: graph.Graph, *, release_id: str
+) -> str | None:
+    """The commit a ``Release`` node currently records, or ``None``.
+
+    What the post-build heal has to compare the tag against: the node's
+    value, not the promote's.  A re-promote of a tag whose first build
+    failed inherits the node that promote created -- the upsert never
+    overwrites a committish -- so the node can still carry the earlier
+    commit while the promote itself names the one the tag now points at.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    RETURN r.committish AS committish
+    """
+    rows = await db.execute(query, {'release_id': release_id}, ['committish'])
+    if not rows:
+        return None
+    value = graph.parse_agtype(rows[0].get('committish'))
+    if value is None:
+        return None
+    return versioning.short_committish(str(value))
+
+
 async def _set_release_committish(
     db: graph.Graph,
     *,
@@ -4992,6 +5079,44 @@ async def _set_release_committish(
         {
             'release_id': release_id,
             'committish': committish,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        [],
+    )
+
+
+async def _set_release_committish_if_unchanged(
+    db: graph.Graph,
+    *,
+    release_id: str,
+    committish: str,
+    expected_committish: str | None,
+) -> None:
+    """Heal a ``Release`` only while its committish is what was read.
+
+    The commit-sync reconcile reads every node once and then writes
+    each heal, and a promote completing in between moves the node to
+    its new tag commit before ClickHouse has seen the new tag.  A heal
+    made from that stale read would put the superseded commit back
+    until the next sync, so the write lands only when the stored value
+    still equals the one the decision was made from.  A node with no
+    committish matches ``None``.  The ``promoted_committish`` handling
+    is :func:`_set_release_committish`'s.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    WHERE COALESCE(r.committish, '') = {expected_committish}
+    SET r.promoted_committish = COALESCE(
+            r.promoted_committish, r.committish),
+        r.committish = {committish},
+        r.updated_at = {now}
+    """
+    await db.execute(
+        query,
+        {
+            'release_id': release_id,
+            'committish': committish,
+            'expected_committish': expected_committish or '',
             'now': datetime.datetime.now(datetime.UTC).isoformat(),
         },
         [],
@@ -5303,7 +5428,17 @@ async def complete_promote_build(
     )
     if tagged is not None:
         actual = versioning.short_committish(tagged.sha)
-        if actual != versioning.short_committish(committish):
+        # Compare against what the node holds, not what this promote
+        # asked for.  A tag whose first build failed and was then
+        # re-promoted from another commit keeps the first promote's
+        # node (the upsert never overwrites a committish), so the stale
+        # value is on the node while the promote's own committish
+        # already agrees with the tag.  Comparing to the promote left
+        # that node pointing at the commit that never shipped.
+        recorded = await _release_committish(db, release_id=release_id)
+        if recorded is None:
+            recorded = versioning.short_committish(committish)
+        if actual != recorded:
             # Imbi created the Release node keyed on the commit it asked
             # to tag, but the release workflow bumps the version and tags
             # the bump commit, so the tag routinely points somewhere
@@ -5314,16 +5449,21 @@ async def complete_promote_build(
             # carrying the post-bump SHA.
             LOGGER.info(
                 'release-promote: tag %s on project %s points at %s, not '
-                'the promoted commit %s; updating the Release committish',
+                'the recorded commit %s; updating the Release committish',
                 tag,
                 project_id,
                 actual,
-                committish,
+                recorded,
             )
             await _set_release_committish(
                 db, release_id=release_id, committish=actual
             )
-            committish = actual
+        # What the tag points at is what ships, whether or not the node
+        # needed healing: a node already healed by a reclaimed job or by
+        # the commit-sync reconcile agrees with the tag while this
+        # promote's own committish may not, and the deployment audit
+        # below must name the commit the tag deployed.
+        committish = actual
 
     remote = await _get_release(handler, ctx, creds, tag)
     release_url = remote.html_url if remote else None
@@ -6753,8 +6893,7 @@ async def _apply_ci_fallback(
     auth: permissions.AuthContext,
     entries: list[ReleaseHistoryEntry],
 ) -> None:
-    """Rewrite ``'unknown'`` CI statuses in place for a non-deployable
-    project, newest release first."""
+    """Rewrite ``'unknown'`` CI statuses in place, newest release first."""
     unknown = [e for e in entries if e.ci_status == 'unknown']
     if not unknown:
         return
@@ -6763,6 +6902,95 @@ async def _apply_ci_fallback(
     )
     for entry in unknown:
         entry.ci_status = resolved.get(entry.sha, _CI_NOT_APPLICABLE)
+
+
+def _node_timestamp(value: typing.Any) -> datetime.datetime | None:
+    """An ISO timestamp off a graph node as an aware datetime, or ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.UTC)
+
+
+def _release_history_entry(
+    *,
+    tag: str,
+    sha: str,
+    node: dict[str, typing.Any],
+    open_blockers: list[ReleaseBlocker],
+    published_at: datetime.datetime | None,
+    author: str | None,
+    author_email: str | None,
+    ci_status: str,
+    tag_url: str | None,
+    tag_synced: bool = True,
+) -> ReleaseHistoryEntry:
+    """Build one history entry from its tag facts and ``Release`` node."""
+    newest = open_blockers[0] if open_blockers else None
+    return ReleaseHistoryEntry(
+        tag=tag,
+        sha=sha,
+        short_sha=sha[:7],
+        published_at=published_at,
+        author=author,
+        author_email=author_email,
+        ci_status=ci_status,
+        title=node.get('title'),
+        notes_markdown=node.get('description'),
+        release_url=_release_url_from_links(node.get('links')),
+        tag_url=tag_url,
+        package_url=None,
+        tag_synced=tag_synced,
+        blocked=bool(open_blockers),
+        blocked_reason=newest.description if newest else None,
+        blocked_by=newest.created_by if newest else None,
+        blocked_at=newest.created_at if newest else None,
+        blockers=open_blockers,
+        ci_override_by=node.get('ci_override_by') or None,
+        ci_override_at=node.get('ci_override_at') or None,
+        drift_detected=node.get('drift_detected'),
+    )
+
+
+def _unsynced_release_entry(
+    tag: str,
+    node: dict[str, typing.Any],
+    open_blockers: list[ReleaseBlocker],
+) -> ReleaseHistoryEntry:
+    """A history entry for a ``Release`` node with no synced tag row.
+
+    A promote creates the node before dispatching the build, so one
+    exists for a release still being cut and for one whose build failed
+    before the tag was pushed.  The ``build-failure`` blocker the
+    promote files hangs off that node and the history is where it gets
+    resolved, so the node has to be listed even though ClickHouse has
+    nothing to say about it.  The node's committish stands in for the
+    tag's sha and its ``created_at`` for the publish time; CI status is
+    left for the fallback chain.  A tag deleted upstream after the fact
+    is not this case: the tag sync records no deletions, so its ``tags``
+    row -- and with it the synced entry -- outlives the tag.
+    """
+    sha = versioning.short_committish(str(node.get('committish') or ''))
+    author, author_email = _release_author(
+        None,
+        node.get('created_by'),
+        _CommitFacts(ci_status='unknown', author=None, author_email=None),
+    )
+    return _release_history_entry(
+        tag=tag,
+        sha=sha,
+        node=node,
+        open_blockers=open_blockers,
+        published_at=_node_timestamp(node.get('created_at')),
+        author=author,
+        author_email=author_email,
+        ci_status='unknown',
+        tag_url=None,
+        tag_synced=False,
+    )
 
 
 @project_deployments_router.get('/release-history')
@@ -6779,6 +7007,10 @@ async def get_release_history(
     limit: int = 20,
 ) -> list[ReleaseHistoryEntry]:
     """Release history: ClickHouse tags joined to their ``Release`` nodes.
+
+    A ``Release`` node whose tag ClickHouse has not synced is listed too,
+    flagged ``tag_synced=False`` and ranked first -- see
+    :func:`_unsynced_release_entry` for why it cannot be left out.
 
     ``ci_status`` comes from the synced ``commits`` table, which the
     deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
@@ -6806,54 +7038,67 @@ async def get_release_history(
         name = str(row['name'])
         sha = str(row['sha'])
         node = nodes.get(name) or {}
-        tagger = row.get('tagger_name')
-        open_blockers = blockers.get(name, [])
-        newest = open_blockers[0] if open_blockers else None
         facts = facts_by_sha.get(sha, unknown)
         author, author_email = _release_author(
-            tagger, node.get('created_by'), facts
+            row.get('tagger_name'), node.get('created_by'), facts
         )
         entries.append(
-            ReleaseHistoryEntry(
+            _release_history_entry(
                 tag=name,
                 sha=sha,
-                short_sha=sha[:7],
+                node=node,
+                open_blockers=blockers.get(name, []),
                 published_at=_tag_timestamp(row),
                 author=author,
                 author_email=author_email,
                 ci_status=facts.ci_status,
-                title=node.get('title'),
-                notes_markdown=node.get('description'),
-                release_url=_release_url_from_links(node.get('links')),
                 tag_url=str(row['url']) if row.get('url') else None,
-                package_url=None,
-                blocked=bool(open_blockers),
-                blocked_reason=newest.description if newest else None,
-                blocked_by=newest.created_by if newest else None,
-                blocked_at=newest.created_at if newest else None,
-                blockers=open_blockers,
-                ci_override_by=node.get('ci_override_by') or None,
-                ci_override_at=node.get('ci_override_at') or None,
-                drift_detected=node.get('drift_detected'),
             )
         )
+    synced = {str(row['name']) for row in tag_rows}
+    entries.extend(
+        _unsynced_release_entry(name, node, blockers.get(name, []))
+        for name, node in nodes.items()
+        if name not in synced
+    )
     # Order by the tagged commit's place in the synced history (semver as
     # the tie-break) so the head of the list is the current release --
-    # consistent with the drift base, which is chosen the same way.
+    # consistent with the drift base, which is chosen the same way.  A
+    # release with no synced tag ranks above every synced one: it is in
+    # flight, failed, or orphaned -- each needing the operator before
+    # anything older does -- and the ranking's input, the tagged commit's
+    # place in history, does not exist for it.
     authored_by_sha = _authored_by_sha(facts_by_sha)
     entries.sort(
-        key=lambda e: versioning.release_tag_order_key(
-            e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
+        key=lambda e: (
+            not e.tag_synced,
+            versioning.release_tag_order_key(
+                e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
+            ),
         ),
         reverse=True,
     )
-    entries = entries[:capped]
-    # Only for projects with nothing to deploy into.  A deployable project
-    # whose commit reads ``'unknown'`` really is unknown -- the sync asked
-    # and got nothing -- and paying for a live check-runs call per release
-    # on every page load would not change that.
-    if not await _project_is_deployable(db, project_id):
-        await _apply_ci_fallback(db, org_slug, project_id, auth, entries)
+    # The cap keeps the newest synced release: ``ReleasesTab`` shows it
+    # as the current release, and ``capped`` or more unsynced entries
+    # ranked ahead of it would otherwise push it out of the response.
+    newest_synced = next(
+        (i for i, e in enumerate(entries) if e.tag_synced), None
+    )
+    if newest_synced is not None and newest_synced >= capped:
+        entries = [*entries[: capped - 1], entries[newest_synced]]
+    else:
+        entries = entries[:capped]
+    # A deployable project's synced releases keep what the sync recorded:
+    # an ``'unknown'`` there really is unknown -- the sync asked and got
+    # nothing -- and paying for a live check-runs call per release on
+    # every page load would not change that.  An unsynced release has no
+    # commit row for the sync to have filled, so the fallback is its only
+    # source, deployable or not.
+    if await _project_is_deployable(db, project_id):
+        unanswered = [e for e in entries if not e.tag_synced]
+    else:
+        unanswered = entries
+    await _apply_ci_fallback(db, org_slug, project_id, auth, unanswered)
     return entries
 
 

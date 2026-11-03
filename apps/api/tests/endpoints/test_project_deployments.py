@@ -4177,6 +4177,95 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
+    @staticmethod
+    def _db_recording(committish: str) -> mock.AsyncMock:
+        """A graph whose ``Release`` node already holds *committish*."""
+
+        async def execute(query: str, *_: typing.Any) -> list[typing.Any]:
+            if 'RETURN r.committish AS committish' in query:
+                # A scalar agtype column arrives as JSON text, quotes and
+                # all, exactly as the real graph hands it back.
+                return [{'committish': json.dumps(committish)}]
+            return []
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=execute)
+        return db
+
+    def _committish_writes(self, db: mock.AsyncMock) -> list[typing.Any]:
+        return [
+            call.args[1]
+            for call in db.execute.await_args_list
+            if 'r.committish = {committish}' in call.args[0]
+        ]
+
+    async def test_heals_the_node_a_failed_first_promote_left(self) -> None:
+        """The tag agrees with this promote but not with the node.
+
+        First promote of the tag built from one commit and failed before
+        tagging; after an unblock the tag was re-promoted from another
+        commit, which the build then tagged.  The re-promote inherits the
+        first promote's node -- the upsert never overwrites a committish
+        -- so the stale commit is on the node while the promote's own
+        committish already matches the tag.  Comparing to the promote
+        saw no drift and left the node pointing at a commit that never
+        shipped.
+        """
+        self.tagged.sha = '3c1ea7bfedcba'
+        db = self._db_recording('28ae5f2')
+        await self._complete(db)
+        writes = self._committish_writes(db)
+        self.assertEqual(1, len(writes))
+        self.assertEqual('3c1ea7b', writes[0]['committish'])
+        self.assertEqual('rel1', writes[0]['release_id'])
+
+    async def test_a_node_already_healed_writes_nothing(self) -> None:
+        """A reclaimed job re-runs completion; the node already agrees."""
+        db = self._db_recording('27f2f81')
+        await self._complete(db)
+        self.assertFalse(self._committish_writes(db))
+
+    async def test_an_already_healed_node_ships_the_tagged_commit(
+        self,
+    ) -> None:
+        """The node agrees with the tag; this promote does not.
+
+        A re-promote of a tag whose node was already healed -- by a
+        reclaimed job or by the commit-sync reconcile -- finds nothing
+        to rewrite, but the promote's own committish still names the
+        commit it was asked to ship.  The deployment audit has to carry
+        the commit the tag deployed, not that one.
+        """
+        db = self._db_recording('27f2f81')
+        audit = mock.AsyncMock()
+        handler = project_deployments._handler.return_value
+        handler.trigger_deployment = mock.AsyncMock(
+            return_value=DeploymentRun(run_id='run-1', status='queued')
+        )
+        with (
+            mock.patch(f'{_MODULE}._record_deployment_audit', audit),
+            mock.patch(
+                f'{_MODULE}._release_ci_override',
+                mock.AsyncMock(return_value=(None, False)),
+            ),
+            mock.patch(
+                f'{_MODULE}.append_deployment_event',
+                mock.AsyncMock(return_value=(mock.Mock(), 'appended')),
+            ),
+        ):
+            await project_deployments.complete_promote_build(
+                db,
+                org_slug='octo',
+                project_id='p1',
+                release_id='rel1',
+                tag='2.45.3',
+                committish='3c1ea7b',
+                to_environment='production',
+            )
+        self.assertFalse(self._committish_writes(db))
+        audit.assert_awaited_once()
+        self.assertEqual('27f2f81', audit.await_args.kwargs['committish'])
+
 
 class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     """Recording a deployment whose release is not known yet."""
@@ -4905,6 +4994,7 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         super().setUp()
         self._deployable = False
         self._props: dict[str, typing.Any] = {}
+        self._releases: list[dict[str, typing.Any]] = []
         self.mock_db.execute = mock.AsyncMock(side_effect=self._execute)
 
     def _execute(
@@ -4915,6 +5005,8 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
             return [{'flags': json.dumps([self._deployable])}]
         if 'properties(p)' in query:
             return [{'props': json.dumps(self._props)}]
+        if 'RETURN r{{.*}} AS release' in query:
+            return [{'release': json.dumps(node)} for node in self._releases]
         return []
 
     def _tags(self, *shas: str) -> None:
@@ -5043,6 +5135,29 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         self._use_plugin('pass')
         self._tags('aaa1111aaa1111')
         self.assertEqual('unknown', self._history()[0]['ci_status'])
+
+    def test_a_deployable_projects_unsynced_release_gets_the_fallback(
+        self,
+    ) -> None:
+        """An unsynced release has no commit row for the sync to fill.
+
+        Its ``'unknown'`` is not the sync's answer -- nothing was asked --
+        so the fallback is its only source, even on a deployable project
+        whose synced releases keep what the sync recorded.
+        """
+        self._deployable = True
+        self._releases = [
+            {
+                'tag': 'v2.0.0',
+                'committish': 'bbb2222bbb2222',
+                'created_by': 'deploybee',
+                'created_at': '2026-01-02T00:00:00+00:00',
+            }
+        ]
+        self._use_plugin('fail')
+        self._tags('aaa1111aaa1111')
+        statuses = {e['tag']: e['ci_status'] for e in self._history()}
+        self.assertEqual({'v2.0.0': 'fail', 'v1.0.0': 'unknown'}, statuses)
 
     def test_the_live_fallback_is_bounded(self) -> None:
         """One request per release, on a page load -- so it is capped.
@@ -6486,6 +6601,169 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertFalse(data[1]['blocked'])
         self.assertEqual([], data[1]['blockers'])
 
+    def test_release_history_includes_release_without_synced_tag(
+        self,
+    ) -> None:
+        """A ``Release`` node whose tag never reached the repository.
+
+        A promote creates the node before dispatching the build; when
+        that build fails, the ``build-failure`` blocker hangs off a tag
+        ClickHouse has never synced.  The history used to be driven by
+        the synced tags alone, so the blocked release -- the one thing
+        the operator has to act on -- was the one thing it could not
+        show.
+        """
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': '2.8.6',
+                        'sha': 'd3fe0505aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/2.8.6',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return [
+                    {
+                        'tag': '2.9.0',
+                        'blocker': self._blocker(
+                            blocker_type='build-failure',
+                            description='Release build reported failure',
+                            created_by='deploybee',
+                        ),
+                    },
+                ]
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '2.8.6',
+                            'committish': 'd3fe050',
+                            'title': 'Release 2.8.6',
+                            'created_by': 'gr',
+                        }
+                    )
+                },
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '2.9.0',
+                            'committish': '28ae5f2',
+                            'title': '2.9.0',
+                            'created_by': 'deploybee',
+                            'created_at': '2026-01-02T00:00:00+00:00',
+                        }
+                    )
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        # The unsynced release leads: it is in flight, failed, or orphaned,
+        # and all three need the operator before anything older does.
+        self.assertEqual(['2.9.0', '2.8.6'], [e['tag'] for e in data])
+        unsynced = data[0]
+        self.assertFalse(unsynced['tag_synced'])
+        self.assertEqual(unsynced['sha'], '28ae5f2')
+        self.assertEqual(unsynced['short_sha'], '28ae5f2')
+        self.assertTrue(unsynced['published_at'].startswith('2026-01-02T'))
+        self.assertIsNone(unsynced['tag_url'])
+        self.assertEqual(unsynced['title'], '2.9.0')
+        self.assertTrue(unsynced['blocked'])
+        self.assertEqual(
+            ['build-failure'], [b['type'] for b in unsynced['blockers']]
+        )
+        self.assertEqual(
+            unsynced['blocked_reason'], 'Release build reported failure'
+        )
+        synced = data[1]
+        self.assertTrue(synced['tag_synced'])
+        self.assertEqual(synced['tag_url'], 'https://gh/releases/tag/2.8.6')
+        self.assertFalse(synced['blocked'])
+
+    def test_release_history_limit_keeps_the_newest_synced_release(
+        self,
+    ) -> None:
+        """``limit`` cannot push the current release out of the response.
+
+        Unsynced releases rank first, so a project with ``limit`` or
+        more of them would fill the whole response and ``ReleasesTab``
+        -- which shows the newest synced release as current -- would
+        find none.  The newest synced release takes the last slot
+        instead of the lowest-ranked unsynced one.
+        """
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'd3fe0505aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/v1.0.0',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return []
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': tag,
+                            'committish': sha,
+                            'title': tag,
+                            'created_by': 'deploybee',
+                            'created_at': '2026-01-02T00:00:00+00:00',
+                        }
+                    )
+                }
+                for tag, sha in (
+                    ('v1.0.0', 'd3fe050'),
+                    ('v2.0.0', '28ae5f2'),
+                    ('v3.0.0', '9b1c4e7'),
+                )
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history?limit=2')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        # v2.0.0, the lowest-ranked unsynced release, gives up its slot.
+        self.assertEqual(['v3.0.0', 'v1.0.0'], [e['tag'] for e in data])
+        self.assertEqual([False, True], [e['tag_synced'] for e in data])
+
 
 class ReleaseBlockerTestCase(ProjectDeploymentsTestCase):
     """The blocker endpoints: add, list, update, resolve, delete."""
@@ -6954,6 +7232,123 @@ class ReleaseCommittishHealTestCase(unittest.IsolatedAsyncioTestCase):
             query,
         )
         self.assertIn('r.committish = {committish}', query)
+
+
+class ReleaseCommittishGuardedHealTestCase(unittest.IsolatedAsyncioTestCase):
+    """The reconcile heal lands only on the committish it read."""
+
+    async def _heal(self, expected: str | None) -> dict[str, typing.Any]:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[])
+        await project_deployments._set_release_committish_if_unchanged(
+            db,
+            release_id='rel-1',
+            committish='bump123',
+            expected_committish=expected,
+        )
+        query, params = db.execute.await_args.args[:2]
+        self.assertIn(
+            "WHERE COALESCE(r.committish, '') = {expected_committish}",
+            query,
+        )
+        self.assertIn(
+            'r.promoted_committish = COALESCE(\n            '
+            'r.promoted_committish, r.committish)',
+            query,
+        )
+        self.assertIn('r.committish = {committish}', query)
+        return typing.cast('dict[str, typing.Any]', params)
+
+    async def test_guards_on_the_committish_that_was_read(self) -> None:
+        params = await self._heal('28ae5f2')
+        self.assertEqual('28ae5f2', params['expected_committish'])
+        self.assertEqual('bump123', params['committish'])
+
+    async def test_a_missing_committish_matches_an_empty_read(self) -> None:
+        params = await self._heal(None)
+        self.assertEqual('', params['expected_committish'])
+
+
+class ReleaseCommittishReconcileTestCase(unittest.IsolatedAsyncioTestCase):
+    """The full commit sync points tagged nodes at their synced sha.
+
+    A tag re-promoted from a new commit after its first build failed
+    keeps the first promote's commit on the node, and no resync rewrites
+    it; the ``tags`` table is the one place that knows where the tag
+    really points.
+    """
+
+    def setUp(self) -> None:
+        self.tag_rows: list[dict[str, typing.Any]] = []
+        self.nodes: dict[str, dict[str, typing.Any]] = {}
+        self.query = mock.AsyncMock(side_effect=lambda *_: self.tag_rows)
+        self.by_tag = mock.AsyncMock(side_effect=lambda *_: self.nodes)
+        for target, replacement in (
+            ('clickhouse.query', self.query),
+            ('_release_nodes_by_tag', self.by_tag),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', new=replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.db = mock.AsyncMock()
+        self.db.execute = mock.AsyncMock(return_value=[])
+
+    async def _reconcile(self) -> int:
+        return await project_deployments.reconcile_release_committishes(
+            self.db, org_slug='octo', project_id='p1'
+        )
+
+    def _writes(self) -> list[dict[str, typing.Any]]:
+        return [
+            call.args[1]
+            for call in self.db.execute.await_args_list
+            if 'r.committish = {committish}' in call.args[0]
+        ]
+
+    async def test_heals_a_node_whose_tag_moved(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1', 'committish': '28ae5f2'}}
+        self.assertEqual(1, await self._reconcile())
+        writes = self._writes()
+        self.assertEqual(1, len(writes))
+        self.assertEqual('rel1', writes[0]['release_id'])
+        self.assertEqual('a8507bb', writes[0]['committish'])
+        # The heal is guarded on the committish the decision was made
+        # from, so a node a promote moved in the meantime is left alone.
+        self.assertEqual('28ae5f2', writes[0]['expected_committish'])
+
+    async def test_an_agreeing_node_is_left_alone(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1', 'committish': 'A8507BB'}}
+        self.assertEqual(0, await self._reconcile())
+        self.assertFalse(self._writes())
+
+    async def test_a_node_with_no_committish_takes_the_tag(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1'}}
+        self.assertEqual(1, await self._reconcile())
+        writes = self._writes()
+        self.assertEqual('a8507bb', writes[0]['committish'])
+        self.assertEqual('', writes[0]['expected_committish'])
+
+    async def test_skips_tags_without_a_node_and_nodes_without_a_tag_row(
+        self,
+    ) -> None:
+        """Nothing to heal on either side of the join."""
+        self.tag_rows = [
+            {'name': '2.8.0', 'sha': '1111111'},
+            {'name': '2.9.0', 'sha': ''},
+        ]
+        self.nodes = {
+            '2.9.0': {'id': 'rel1', 'committish': '28ae5f2'},
+            '2.10.0': {'id': 'rel2', 'committish': '2222222'},
+        }
+        self.assertEqual(0, await self._reconcile())
+        self.assertFalse(self._writes())
+
+    async def test_no_synced_tags_reads_no_nodes(self) -> None:
+        self.assertEqual(0, await self._reconcile())
+        self.by_tag.assert_not_awaited()
 
 
 class ReleaseAuthorTestCase(unittest.TestCase):
