@@ -536,11 +536,16 @@ async def evaluate(
 
 
 async def _check_task(conn: Conn, context: ResolutionContext) -> None:
-    """The task must be open and match the trusted context."""
+    """The task must be open and match the trusted context.
+
+    The lock serializes the check with ``TaskStore.delete``. It is the
+    lock that the task event write takes later in the transaction, so
+    two writers do not deadlock on a lock upgrade.
+    """
     task = await _fetch_one(
         conn,
         'SELECT organization_id, agent_id, project_id, status'
-        ' FROM agent_runtime.tasks WHERE id = %s',
+        ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
