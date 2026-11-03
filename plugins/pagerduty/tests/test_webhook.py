@@ -13,3 +13,10 @@ class WebhookActionsTestCase(unittest.TestCase):
         self.assertIsInstance(
             PagerDutyWebhookActions(), PagerDutyWebhookActions
         )
+
+    def test_signature_is_on_the_edge(self) -> None:
+        signature = PagerDutyWebhookActions.signature()
+        self.assertEqual(
+            (signature.header, signature.prefix, signature.secret),
+            ('x-pagerduty-signature', 'v1=', 'edge'),
+        )

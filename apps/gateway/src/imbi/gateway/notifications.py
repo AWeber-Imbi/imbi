@@ -61,7 +61,7 @@ _HANDLER_PATTERN = re.compile(r'^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$')
 
 #: Ids of GitHub webhooks with no secret that this process has already
 #: logged as unverified, so each is logged once and not per delivery.
-_UNSIGNED_GITHUB_WEBHOOKS: set[str] = set()
+_UNSIGNED_WEBHOOKS: set[str] = set()
 
 
 def _safe_headers(headers: 'abc.Mapping[str, str]') -> dict[str, str]:
@@ -301,17 +301,15 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
     capability_options = _json_dict(webhook_capability.get('options'))
     webhook_actions_enabled = bool(webhook_capability.get('enabled'))
 
-    github_signature_verified = False
-    if integration_plugin == 'github':
-        verified = await _verify_github_delivery(
-            request,
-            secret_enc=webhook.get('secret'),
-            webhook_id=webhook_id,
-            integration_slug=integration_slug,
-        )
-        if verified is None:
-            return
-        github_signature_verified = verified
+    github_signature_verified, signature = await _check_webhook_secret(
+        request,
+        integration_plugin,
+        secret_enc=webhook.get('secret'),
+        webhook_id=webhook_id,
+        integration_slug=integration_slug,
+    )
+    if github_signature_verified is None:
+        return
 
     body = await _extract_json_body(request)
     try:
@@ -338,6 +336,11 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
         external_id=str(resolved),
         integration_slug=integration_slug,
         webhook_id=webhook_id,
+        signature=(
+            signature
+            if signature is not None and signature.secret == 'edge'
+            else None
+        ),
     )
     if project_records is None:
         return
@@ -509,11 +512,11 @@ def _verify_webhook_signature(  # noqa: PLR0913
 ) -> bool:
     """Verify an HMAC-signed inbound delivery; fail closed.
 
-    ``secret_enc`` is an encrypted signing secret: a PagerDuty V3
-    webhook-subscription secret on the matched ``EXISTS_IN`` edge, or
-    the ``Webhook.secret`` of a GitHub delivery. The signature header
-    is one or more comma-separated ``<prefix><hex>`` tokens (PagerDuty
-    ``v1=``, GitHub ``sha256=``), each an HMAC-SHA256 of the raw
+    ``secret_enc`` is an encrypted signing secret: the
+    ``webhook_secret_enc`` of the matched ``EXISTS_IN`` edge, or the
+    ``Webhook.secret`` (see :class:`plugin_base.WebhookSignature`). The
+    signature header is one or more comma-separated ``<prefix><hex>``
+    tokens, each an HMAC-SHA256 of the raw
     request body keyed by the decrypted secret; the delivery is
     accepted if any token matches (constant-time, so a secret rotation
     that briefly emits two signatures still verifies). Returns
@@ -566,18 +569,85 @@ def _verify_webhook_signature(  # noqa: PLR0913
     return False
 
 
-async def _verify_github_delivery(
+def _webhook_signature(
+    plugin_slug: str,
+) -> plugin_base.WebhookSignature | None:
+    """Return the delivery signature that the plugin declares, or
+    ``None`` when it declares none.
+
+    Raises:
+        PluginNotFoundError: The plugin is not loaded.
+
+    """
+    entry = plugin_registry.get_plugin(plugin_slug)
+    capability = entry.manifest.get_capability(_WEBHOOK_ACTIONS)
+    if capability is None:
+        return None
+    handler = typing.cast(
+        'type[plugin_base.WebhookActionsCapability]', capability.handler
+    )
+    return handler.signature()
+
+
+async def _check_webhook_secret(
     request: fastapi.Request,
+    plugin_slug: str,
+    *,
+    secret_enc: object,
+    webhook_id: str,
+    integration_slug: str,
+) -> tuple[bool | None, plugin_base.WebhookSignature | None]:
+    """Return the result of :func:`_verify_webhook_delivery` and the
+    plugin's signature.
+
+    The result is ``False`` when the plugin has no ``webhook``
+    signature, and ``None`` -- meaning drop the delivery -- when the
+    webhook has a secret and the plugin is not loaded (fail closed:
+    the signature is unknown).
+    """
+    try:
+        signature = _webhook_signature(plugin_slug)
+    except PluginNotFoundError:
+        if not secret_enc:
+            return False, None
+        LOGGER.warning(
+            'Plugin %r is not loaded; cannot verify a signed webhook;'
+            ' dropping delivery (webhook_id=%r integration=%r)',
+            plugin_slug,
+            webhook_id,
+            integration_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'integration_slug': integration_slug,
+            },
+        )
+        return None, None
+    if signature is None or signature.secret != 'webhook':
+        return False, signature
+    verified = await _verify_webhook_delivery(
+        request,
+        signature,
+        secret_enc=secret_enc,
+        webhook_id=webhook_id,
+        integration_slug=integration_slug,
+    )
+    return verified, signature
+
+
+async def _verify_webhook_delivery(
+    request: fastapi.Request,
+    signature: plugin_base.WebhookSignature,
     *,
     secret_enc: object,
     webhook_id: str,
     integration_slug: str,
 ) -> bool | None:
-    """Verify a GitHub delivery against the ``Webhook.secret``.
+    """Verify a delivery against the ``Webhook.secret``.
 
-    Returns ``True`` when ``X-Hub-Signature-256`` verifies, and ``None``
-    -- meaning drop the delivery -- when the webhook has a secret and
-    the header is missing or does not verify (fail closed). Returns
+    For a plugin whose signature secret is ``webhook`` (GitHub). Returns
+    ``True`` when the signature header verifies, and ``None`` --
+    meaning drop the delivery -- when the webhook has a secret and the
+    header is missing or does not verify (fail closed). Returns
     ``False`` when the webhook has no secret: the delivery is processed
     as before, but unverified, and is logged once per webhook per
     process.
@@ -586,17 +656,17 @@ async def _verify_github_delivery(
         if _verify_webhook_signature(
             secret_enc=str(secret_enc),
             raw_body=await request.body(),
-            signature_header=request.headers.get('x-hub-signature-256'),
+            signature_header=request.headers.get(signature.header),
             webhook_id=webhook_id,
             integration_slug=integration_slug,
-            prefix='sha256=',
+            prefix=signature.prefix,
         ):
             return True
         return None
-    if webhook_id not in _UNSIGNED_GITHUB_WEBHOOKS:
-        _UNSIGNED_GITHUB_WEBHOOKS.add(webhook_id)
+    if webhook_id not in _UNSIGNED_WEBHOOKS:
+        _UNSIGNED_WEBHOOKS.add(webhook_id)
         LOGGER.warning(
-            'GitHub webhook has no secret; processing deliveries'
+            'Webhook has no secret; processing deliveries'
             ' unverified (webhook_id=%r integration=%r)',
             webhook_id,
             integration_slug,
@@ -608,13 +678,14 @@ async def _verify_github_delivery(
     return False
 
 
-async def _resolve_project_and_verify(
+async def _resolve_project_and_verify(  # noqa: PLR0913
     db: graph.Pool,
     request: fastapi.Request,
     *,
     external_id: str,
     integration_slug: str,
     webhook_id: str | None,
+    signature: plugin_base.WebhookSignature | None,
 ) -> list[dict[str, typing.Any]] | None:
     """Resolve the project(s) for an inbound delivery and verify it.
 
@@ -626,7 +697,9 @@ async def _resolve_project_and_verify(
     ``external_id`` fans out to multiple projects, every secret-bearing
     edge must verify against the same request body, so acceptance is not
     row-order dependent. Integrations that don't sign deliveries store no
-    secret and pass straight through.
+    secret and pass straight through. ``signature`` is the plugin's
+    ``edge`` signature; with none, an edge that has a secret cannot
+    verify, so the delivery is dropped.
     """
     project_records: list[dict[str, typing.Any]] = await db.execute(
         'MATCH (p:Project)'
@@ -654,7 +727,9 @@ async def _resolve_project_and_verify(
         )
         return None
     raw_body = await request.body()
-    signature_header = request.headers.get('x-pagerduty-signature')
+    signature_header = (
+        None if signature is None else request.headers.get(signature.header)
+    )
     for record in project_records:
         secret_enc = graph.parse_agtype(record.get('webhook_secret_enc'))
         if secret_enc and not _verify_webhook_signature(
@@ -663,6 +738,7 @@ async def _resolve_project_and_verify(
             signature_header=signature_header,
             webhook_id=webhook_id,
             integration_slug=integration_slug,
+            prefix='' if signature is None else signature.prefix,
         ):
             return None
     return project_records
@@ -1349,9 +1425,11 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
       sensitive values redacted
     - ``payload`` — the webhook body
     - ``github_signature_verified`` — ``True`` only when the gateway
-      verified the delivery's ``X-Hub-Signature-256`` against the
-      ``Webhook.secret``. It is outside ``payload``, so the sender
-      cannot set it, and it is not recorded on the event row.
+      verified the delivery's signature against the ``Webhook.secret``
+      (a plugin whose signature secret is ``webhook``: GitHub). The
+      name stays for the filter expressions that use it. It is outside
+      ``payload``, so the sender cannot set it, and it is not recorded
+      on the event row.
 
     Per-row identity (``id``, ``project_id``, ``recorded_at``) is omitted:
     the filter runs once per delivery, not per matched project.

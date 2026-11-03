@@ -14,6 +14,7 @@ from __future__ import annotations
 from imbi.common.plugins.base import (
     ActionDescriptor,
     WebhookActionsCapability,
+    WebhookSignature,
 )
 
 
@@ -23,3 +24,11 @@ class PagerDutyWebhookActions(WebhookActionsCapability):
     @classmethod
     def actions(cls) -> list[ActionDescriptor]:
         return []
+
+    @classmethod
+    def signature(cls) -> WebhookSignature:
+        # V3 webhook subscriptions sign with a secret for each service,
+        # which provisioning writes to the project's EXISTS_IN edge.
+        return WebhookSignature(
+            header='x-pagerduty-signature', prefix='v1=', secret='edge'
+        )

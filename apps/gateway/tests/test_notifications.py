@@ -93,6 +93,26 @@ class StubWebhookActions(plugin_base.WebhookActionsCapability):
             ),
         ]
 
+    @classmethod
+    def signature(cls) -> plugin_base.WebhookSignature:
+        return plugin_base.WebhookSignature(
+            header='x-pagerduty-signature', prefix='v1=', secret='edge'
+        )
+
+
+class StubSignedWebhookActions(plugin_base.WebhookActionsCapability):
+    """A remote that signs with the Webhook.secret, as GitHub does."""
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return []
+
+    @classmethod
+    def signature(cls) -> plugin_base.WebhookSignature:
+        return plugin_base.WebhookSignature(
+            header='x-hub-signature-256', prefix='sha256=', secret='webhook'
+        )
+
 
 class StubCredsWebhookActions(plugin_base.WebhookActionsCapability):
     """webhook-actions catalog for the credential-requiring stub plugin."""
@@ -120,6 +140,24 @@ class StubNoCredsPlugin(plugin_base.Plugin):
                 label='Webhook actions',
                 project_scoped=False,
                 handler=StubWebhookActions,
+            )
+        ],
+    )
+
+
+class StubSignedPlugin(plugin_base.Plugin):
+    """Stub registered for tests of the Webhook.secret signature."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-signed',
+        name='Stub (signed with the webhook secret)',
+        auth_type='none',
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                project_scoped=False,
+                handler=StubSignedWebhookActions,
             )
         ],
     )
@@ -206,6 +244,7 @@ def _install_stub_plugins() -> None:
     )
     for cls in (
         StubNoCredsPlugin,
+        StubSignedPlugin,
         StubWithCredsPlugin,
         StubIdentityOnlyPlugin,
     ):
@@ -221,7 +260,12 @@ def _uninstall_stub_plugins() -> None:
     _registry: dict[str, plugin_registry.RegistryEntry] = (
         plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
     )
-    for slug in ('stub-nocreds', 'stub-creds', 'stub-identity-only'):
+    for slug in (
+        'stub-nocreds',
+        'stub-signed',
+        'stub-creds',
+        'stub-identity-only',
+    ):
         _registry.pop(slug, None)
 
 
@@ -852,7 +896,7 @@ class ProcessNotificationTests(helpers.TestCase):
         secret: str | None,
         raw: bytes,
         headers: abc.Mapping[str, str | bytes],
-        plugin: str = 'github',
+        plugin: str = 'stub-signed',
     ) -> httpx.Response:
         """Post ``raw`` to the webhook with ``secret`` as its secret."""
         await self._set_integration_plugin(plugin)
@@ -962,15 +1006,28 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertIs(False, self._github_verified())
         # Logged once per webhook, not once per delivery.
         self.assertEqual(
-            1, sum('GitHub webhook has no secret' in o for o in cm.output)
+            1, sum('Webhook has no secret' in o for o in cm.output)
         )
 
-    async def test_non_github_webhook_secret_not_checked(self) -> None:
-        # Only GitHub deliveries are checked against Webhook.secret.
+    async def test_unsigned_plugin_webhook_secret_not_checked(self) -> None:
+        # Only a plugin with a ``webhook`` signature is checked against
+        # Webhook.secret; stub-creds declares no signature.
         raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
-        resp = await self._post_github('ghsec', raw, {}, plugin='sonarqube')
+        resp = await self._post_github('ghsec', raw, {}, plugin='stub-creds')
         self.assertEqual(202, resp.status_code)
         self.assertIs(False, self._github_verified())
+
+    async def test_signed_webhook_of_unloaded_plugin_dropped(self) -> None:
+        # Without the plugin the signature is unknown: fail closed.
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        resp = await self._post_github(
+            'ghsec',
+            raw,
+            {'X-Hub-Signature-256': self._sign_github('ghsec', raw)},
+            plugin='not-installed',
+        )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
 
     async def _post_github_agent_task(
         self, secret: str | None

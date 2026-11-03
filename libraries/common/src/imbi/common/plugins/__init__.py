@@ -69,6 +69,7 @@ from imbi.common.plugins.base import (
     ToolsCapability,
     WebhookActionCallable,
     WebhookActionsCapability,
+    WebhookSignature,
     WorkflowFile,
 )
 from imbi.common.plugins.credentials import (
@@ -186,6 +187,7 @@ __all__ = [
     'ToolsCapability',
     'WebhookActionCallable',
     'WebhookActionsCapability',
+    'WebhookSignature',
     'WorkflowFile',
     'apply_plugin_schemas',
     'decrypt_integration_credentials',

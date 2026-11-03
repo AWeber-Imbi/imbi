@@ -50,3 +50,14 @@ class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
             '{}',
         )
         self.assertIsNone(await reader.get_file(None, {}, 'missing.json', SHA))
+
+
+class WebhookSignatureTests(unittest.TestCase):
+    def test_signature_is_the_webhook_secret(self) -> None:
+        from imbi.plugins.github.plugin import GitHubWebhookActions
+
+        signature = GitHubWebhookActions.signature()
+        self.assertEqual(
+            (signature.header, signature.prefix, signature.secret),
+            ('x-hub-signature-256', 'sha256=', 'webhook'),
+        )

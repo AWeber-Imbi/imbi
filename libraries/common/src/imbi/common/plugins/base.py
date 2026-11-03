@@ -1895,6 +1895,38 @@ class WebhookActionsCapability(CapabilityHandler):
         so misconfigured paths fail loud there rather than at request time.
         """
 
+    @classmethod
+    def signature(cls) -> WebhookSignature | None:
+        """Return how the remote signs its deliveries.
+
+        ``None`` (the default): the remote does not sign deliveries.
+        Then the gateway verifies nothing, and a delivery to a project
+        edge that has a signing secret is dropped (fail closed).
+        """
+        return None
+
+
+class WebhookSignature(pydantic.BaseModel):
+    """How a remote signs a webhook delivery.
+
+    The signature header holds one or more comma-separated
+    ``<prefix><hex>`` tokens. Each is the HMAC-SHA256 of the raw request
+    body, keyed by the signing secret. The gateway accepts the delivery
+    when one token matches.
+    """
+
+    model_config = pydantic.ConfigDict(frozen=True)
+
+    #: The request header, lower case (``x-hub-signature-256``).
+    header: str = pydantic.Field(pattern=r'^[a-z0-9-]+$')
+    #: The prefix of each token (``sha256=``, ``v1=``).
+    prefix: str
+    #: Where the signing secret is. ``webhook``: the ``Webhook.secret``,
+    #: one for the webhook. ``edge``: the ``webhook_secret_enc`` of each
+    #: project's ``EXISTS_IN`` edge, which the plugin writes with a
+    #: :class:`ServiceWriteback`.
+    secret: typing.Literal['webhook', 'edge']
+
 
 # ---------------------------------------------------------------------------
 # Analysis data models

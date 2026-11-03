@@ -104,6 +104,29 @@ The host invokes the action callable with keyword-only arguments:
   `payload.<field>` (plus `type`, `metadata`, …). Most actions rely on
   `ctx` and `external_identifier` instead.
 
+## Delivery signatures
+
+A remote that signs its deliveries declares how with the `signature()`
+class method. It returns a `WebhookSignature`:
+
+- `header` — the request header, lower case (`x-hub-signature-256`)
+- `prefix` — the prefix of each token (`sha256=`)
+- `secret` — `webhook` for the `Webhook.secret`, or `edge` for the
+  `webhook_secret_enc` that the plugin writes to each project's
+  `EXISTS_IN` edge
+
+The gateway verifies the HMAC-SHA256 of the raw body before it dispatches
+an action. The default `None` means that the remote does not sign. See
+[Signature verification](../../gateway/index.md#signature-verification).
+
+```python
+@classmethod
+def signature(cls) -> WebhookSignature:
+    return WebhookSignature(
+        header='x-hub-signature-256', prefix='sha256=', secret='webhook'
+    )
+```
+
 ## Rules of thumb
 
 - Keep one action per public verb (`update_project_from_webhook`,
@@ -129,5 +152,7 @@ The host invokes the action callable with keyword-only arguments:
 ::: imbi.common.plugins.WebhookActionsCapability
 
 ::: imbi.common.plugins.ActionDescriptor
+
+::: imbi.common.plugins.WebhookSignature
 
 ::: imbi.common.plugins.WebhookActionCallable
