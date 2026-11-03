@@ -103,6 +103,25 @@ describe('BindingsTab', () => {
     )
   })
 
+  it('does not send an unchanged key usage in a different order', async () => {
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      { ...key, provider_key_usage: { app_id: '42', host: 'github.com' } },
+      app,
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'new' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
+        description: 'new',
+      }),
+    )
+  })
+
   it('offers only dynamic App bindings as consumers', async () => {
     const staticApp = {
       ...key,

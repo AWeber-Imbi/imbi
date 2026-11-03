@@ -268,11 +268,25 @@ function toBody(
   if (!original) return body
   return Object.fromEntries(
     Object.entries(body).filter(
-      ([key, value]) =>
-        JSON.stringify(value) !== JSON.stringify(original[key] ?? null),
+      ([key, value]) => canonical(value) !== canonical(original[key] ?? null),
     ),
   )
 }
+
+/**
+ * JSON with sorted object keys, and without empty-list properties, so that
+ * key order and an absent list do not count as a change.
+ */
+const canonical = (value: unknown): string =>
+  JSON.stringify(value, (_key, val: unknown) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.entries(val)
+            .filter(([, v]) => !(Array.isArray(v) && !v.length))
+            .sort(([a], [b]) => a.localeCompare(b)),
+        )
+      : val,
+  )
 
 /**
  * The value to send for one field, or undefined to omit it. In an edit,
