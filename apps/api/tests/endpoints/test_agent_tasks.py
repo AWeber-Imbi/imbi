@@ -1100,8 +1100,8 @@ class DeleteTests(AgentTaskTestCase):
         async with self.pool.connection() as conn:
             await conn.execute(
                 'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
-                ' WHERE short_id = %s',
-                (short_id,),
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, short_id),
             )
 
     async def test_unarchived_task_is_refused(self) -> None:
@@ -1139,6 +1139,29 @@ class DeleteTests(AgentTaskTestCase):
                 (self.task['id'], uuid.UUID(child['id'])),
             )
         await self.cancel('T-1')
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_closed_child_of_open_chain_is_refused(self) -> None:
+        child = (await self.create_task()).json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
+            )
+        await self.cancel('T-2')
+        response = await self.client.delete(self.url('T-2'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_fencing_chain_is_refused(self) -> None:
+        await self.cancel('T-1')
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.chains'
+                ' (root_task_id, organization_id, state)'
+                " VALUES (%s, %s, 'fencing')",
+                (uuid.UUID(self.task['id']), self.org),
+            )
         response = await self.client.delete(self.url('T-1'))
         self.assertEqual(response.status_code, 409, response.text)
 
