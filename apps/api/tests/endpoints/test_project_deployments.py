@@ -5296,6 +5296,20 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                 ),
             )
 
+    def test_version_matches_bump_follows_a_configured_scheme(self) -> None:
+        """A semver bump of ``26.04.2`` is not the scheme's next tag."""
+        scheme = 'YY.0M.MICRO'
+        matches = project_deployments._version_matches_bump
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertFalse(matches('26.04.2', '26.04.3', 'patch', [scheme]))
+            self.assertTrue(matches('26.04.2', '26.10.0', 'patch', [scheme]))
+            # Without the scheme, the semver bump stands.
+            self.assertTrue(matches('26.04.2', '26.04.3', 'patch'))
+
     def test_suggest_version_follows_a_configured_scheme(self) -> None:
         """``26.04.2`` is semver too; the scheme resets on a new month."""
         scheme = 'YY.0M.MICRO'

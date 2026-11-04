@@ -5631,17 +5631,34 @@ def _version_allowed(
 
 
 def _version_matches_bump(
-    last_tag: str | None, version: str, bump: SemverBump
+    last_tag: str | None,
+    version: str,
+    bump: SemverBump,
+    schemes: collections.abc.Sequence[str] = (),
 ) -> bool:
     """Whether ``version`` is ``last_tag`` bumped by ``bump``.
 
-    Only a semver previous tag is checked: a calendar version's bump
+    When ``last_tag`` matches a configured calver scheme, ``version``
+    must be that scheme's next tag: ``26.04.3`` is a valid semver bump
+    of ``26.04.2``, but in October the scheme wants ``26.10.0``.
+    Otherwise only a semver previous tag is checked: a calendar version's bump
     does not change the date, and with no previous tag there is nothing
     to bump from.  Only a semver draft version is checked too: a version
     a custom tag policy accepts (``REL-42``) is the policy's business.
     The ``v`` prefix is not compared: the tag policy decides it, and
     ``_version_allowed`` checks that.
     """
+    if last_tag:
+        today = datetime.datetime.now(datetime.UTC).date()
+        expected = {
+            versioning.next_scheme_tag(scheme, last_tag, today, bump)
+            for scheme in schemes
+            if versioning.matches_tag_formats(
+                last_tag, [versioning.calver_scheme_pattern(scheme)]
+            )
+        }
+        if expected:
+            return version in expected
     if (
         not last_tag
         or versioning.is_calver_tag(last_tag)
@@ -6003,10 +6020,13 @@ async def draft_release_notes(
     if notes.bump == 'major' and _is_pre_one(body.last_tag):
         notes = notes.model_copy(update={'bump': 'minor'})
     # Re-derive the version when Claude's does not fit the tag policy, or
-    # is not the previous semver tag bumped by Claude's own bump.
+    # is not the previous tag advanced by Claude's own bump (under the
+    # configured scheme, when the previous tag follows one).
     if not _version_allowed(
         notes.version, patterns
-    ) or not _version_matches_bump(body.last_tag, notes.version, notes.bump):
+    ) or not _version_matches_bump(
+        body.last_tag, notes.version, notes.bump, schemes
+    ):
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
