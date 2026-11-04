@@ -25,6 +25,7 @@ from imbi.common.plugins.base import (
     PluginManifest,
     PluginOption,
     WebhookActionsCapability,
+    WebhookSignature,
 )
 from imbi.plugins.github.commits import (
     GitHubCommitSync,
@@ -39,6 +40,7 @@ from imbi.plugins.github.pull_requests import (
     GitHubPullRequestSync,
     sync_pull_requests_descriptor,
 )
+from imbi.plugins.github.secret_provider import GitHubApp
 
 
 class GitHubWebhookActions(WebhookActionsCapability):
@@ -57,6 +59,13 @@ class GitHubWebhookActions(WebhookActionsCapability):
             sync_tags_descriptor,
             sync_pull_requests_descriptor,
         ]
+
+    @classmethod
+    def signature(cls) -> WebhookSignature:
+        # The secret of the GitHub webhook is the Webhook.secret.
+        return WebhookSignature(
+            header='x-hub-signature-256', prefix='sha256=', secret='webhook'
+        )
 
 
 # Integration-level options, asked once per Integration.
@@ -418,4 +427,5 @@ class GitHubPlugin(Plugin):
             ),
         ],
         ops_log_templates=_OPS_LOG_TEMPLATES,
+        secret_providers=[GitHubApp],
     )

@@ -29,7 +29,6 @@ dependencies = [
   "filetype",
   "httpx>=0.28.1,<1",
   "imbi-common[databases,llm,mcp,sentry,server]==2.42.0",
-  "imbi-plugin-github==2.42.0",
   "jinja2",
   "jsonpatch>=1.33",
   "limits>=5,<6",

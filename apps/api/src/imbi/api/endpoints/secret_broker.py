@@ -31,7 +31,6 @@ from imbi.api.endpoints._helpers import (
 from imbi.api.secret_broker import (
     audit,
     broker,
-    github_app,
     providers,
     store,
 )
@@ -207,7 +206,15 @@ class ProviderKeyUsage(pydantic.BaseModel):
     @pydantic.field_validator('host')
     @classmethod
     def _host(cls, value: str) -> str:
-        return github_app.check_host(value)
+        # The github_app provider is the one that reads provider keys,
+        # so it sets the allowed hosts.
+        try:
+            consumer = providers.get('github_app')
+        except providers.BrokerError:
+            raise ValueError(
+                'the github_app secret provider is not installed'
+            ) from None
+        return consumer.check_key_host(value)
 
 
 class SecretBindingCreate(pydantic.BaseModel):
@@ -444,7 +451,7 @@ async def list_provider_types(_: ProviderRead) -> list[dict[str, typing.Any]]:
             'label': plugin.label,
             'capabilities': sorted(plugin.capabilities),
         }
-        for plugin in providers.PROVIDERS.values()
+        for plugin in providers.all_providers()
     ]
 
 

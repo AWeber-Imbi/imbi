@@ -111,6 +111,11 @@ rule makes belongs to that person.
 | GitHub | `X-Hub-Signature-256` | The **Secret** of the webhook | `sha256=` |
 | PagerDuty | `X-PagerDuty-Signature` | The secret on the identifier of the project | `v1=` |
 
+Each plugin declares its signature with `WebhookSignature` (the
+`signature()` class method of its `webhook-actions` capability). The table
+shows the first-party plugins. A plugin that declares no signature gets no
+verification.
+
 The signature is an HMAC-SHA256 of the raw body. The header can hold more
 than one signature, separated by commas. One match is sufficient.
 

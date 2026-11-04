@@ -18,6 +18,11 @@ short-lived STS credentials for the user from IAM Identity Center.
 | `logs` | AWS CloudWatch Logs | On | Project-scoped. Needs the user identity. Supports the histogram |
 | `configuration` | AWS SSM Parameter Store | On | Project-scoped. Needs the user identity |
 
+The plugin also supplies the `aws_secrets_manager` secret provider of the
+secrets broker. It is not part of an integration: configure it in
+**Admin, Secrets**. See [Secrets](../admin/secrets.md) and
+[Secret Providers](../common/plugins/secret-providers.md).
+
 ## Configuration
 
 ### Options

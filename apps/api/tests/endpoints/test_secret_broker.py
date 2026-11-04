@@ -85,7 +85,7 @@ class SecretEndpointTestCase(
         # No AWS here: the role probe has its own tests.
         self.check_config = mock.AsyncMock()
         patcher = mock.patch.object(
-            providers.PROVIDERS['aws_secrets_manager'],
+            providers.get('aws_secrets_manager'),
             'check_config',
             self.check_config,
         )

@@ -22,6 +22,27 @@ JSON_MATERIAL = (
 ).encode()
 
 
+def use_plugin_providers(case: unittest.TestCase) -> None:
+    """Register the providers of the AWS and GitHub plugins for a test.
+
+    imbi-api loads them from the plugin registry when it first needs a
+    provider (:func:`providers.get`). The tests do not load the registry.
+    """
+    from imbi.plugins.aws.secrets_manager import AwsSecretsManager
+    from imbi.plugins.github.secret_provider import GitHubApp
+
+    host = providers._Host()  # pyright: ignore[reportPrivateUsage]
+    patcher = mock.patch.dict(
+        providers.PROVIDERS,
+        {
+            'aws_secrets_manager': AwsSecretsManager(host),
+            'github_app': GitHubApp(host),
+        },
+    )
+    patcher.start()
+    case.addCleanup(patcher.stop)
+
+
 class SecretCase(unittest.IsolatedAsyncioTestCase):
     """A pool, a broker, a fake provider, and audit capture."""
 
@@ -56,6 +77,7 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         self.store = store.SecretStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
 
+        use_plugin_providers(self)
         fake = providers.PROVIDERS['fake']
         assert isinstance(fake, providers.FakeProvider)
         self.fake = fake

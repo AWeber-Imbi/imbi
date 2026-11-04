@@ -1361,7 +1361,6 @@ dependencies = [
     { name = "filetype" },
     { name = "httpx" },
     { name = "imbi-common", extra = ["databases", "llm", "mcp", "sentry", "server"] },
-    { name = "imbi-plugin-github" },
     { name = "jinja2" },
     { name = "jsonpatch" },
     { name = "limits" },
@@ -1403,7 +1402,6 @@ requires-dist = [
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "imbi-common", extras = ["databases", "llm", "mcp", "sentry", "server"], editable = "libraries/common" },
-    { name = "imbi-plugin-github", editable = "plugins/github" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "limits", specifier = ">=5,<6" },
@@ -1636,6 +1634,7 @@ name = "imbi-plugin-aws"
 version = "2.42.0"
 source = { editable = "plugins/aws" }
 dependencies = [
+    { name = "aioboto3" },
     { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
@@ -1643,6 +1642,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aioboto3", specifier = ">=15.5.0" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },

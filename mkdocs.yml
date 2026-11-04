@@ -161,6 +161,7 @@ nav:
           - Commit Sync: common/plugins/commit-sync.md
           - Pull Request Sync: common/plugins/pr-sync.md
           - Tools: common/plugins/tools.md
+          - Secret Providers: common/plugins/secret-providers.md
       - Architecture Decision Records:
           - API:
               - Overview: api/adr.md

@@ -13,20 +13,20 @@ in one installation.
 
 The App private key is not in Imbi: the binding names the ``secret://``
 reference of another binding (for example an ``aws_secrets_manager``
-binding), and imbi-api reads the key through the broker for each call.
-That key binding must be marked as a provider key for the same host and
-App id, and must list the requesting binding as a consumer
-(:meth:`Broker.check_provider_key` and :meth:`Broker.provider_key`).
+binding), and imbi-api reads the key through the broker for each call
+(:meth:`SecretProviderHost.provider_key
+<imbi.common.plugins.secrets.SecretProviderHost.provider_key>`). That key
+binding must be marked as a provider key for the same host and App id,
+and must list the requesting binding as a consumer.
 
 The GitHub host comes from an allowlist, never from free tenant input:
 ``github.com``, a GHEC tenant (``<tenant>.ghe.com``), or a GHES host that
 the operator lists in ``IMBI_SECRETS_GITHUB_GHES_HOSTS``. A JWT signed
 with an App key goes only to such a host.
 
-The JWT and the token exchange come from the GitHub plugin
-(:mod:`imbi.plugins.github._app_auth`). Its process-wide token cache is
-not used: each resolution gets its own token, so that release can
-revoke it.
+The JWT and the token exchange come from :mod:`._app_auth`. Its
+process-wide token cache is not used: each resolution gets its own
+token, so that release can revoke it.
 
 The lease id holds the token and the host it came from, because GitHub
 revokes a token only with the token itself, and only at that host. The
@@ -48,9 +48,9 @@ import jwt
 import orjson
 import pydantic
 
-from imbi.api.secret_broker import broker, providers
 from imbi.common import graph
-from imbi.plugins.github import _app_auth, _hosts
+from imbi.common.plugins import secrets
+from imbi.plugins.github import _app_auth, _hosts, _repos
 from imbi.plugins.github.deployment import (
     _accept_header,  # pyright: ignore[reportPrivateUsage]
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
@@ -187,8 +187,8 @@ class _Locator(pydantic.BaseModel):
     @classmethod
     def _reference(cls, value: str) -> str:
         try:
-            return str(broker.parse_reference(value))
-        except providers.BrokerError:
+            return str(secrets.parse_reference(value))
+        except secrets.BrokerError:
             raise ValueError('not a valid secret:// reference') from None
 
     @pydantic.field_validator('repositories')
@@ -207,7 +207,7 @@ def _api_base(host: str) -> str:
     """The API base of an allowed host. The allowlist is checked again
     at each call, because the operator list can change."""
     if not allowed_host(host):
-        raise providers.BrokerError('secret_access_denied', 'host_not_allowed')
+        raise secrets.BrokerError('secret_access_denied', 'host_not_allowed')
     return _hosts.host_to_api_base(host)
 
 
@@ -224,99 +224,39 @@ def _github_errors(code: str) -> collections.abc.Generator[None]:
     """
     try:
         yield
-    except providers.BrokerError:
+    except secrets.BrokerError:
         raise
     except httpx.HTTPStatusError as err:
         status = err.response.status_code
         LOGGER.warning('GitHub App call failed: HTTP %d', status)
         if status == 429 or status >= 500:
-            raise providers.BrokerError(
+            raise secrets.BrokerError(
                 'secret_provider_unavailable', 'throttled'
             ) from None
-        raise providers.BrokerError(
+        raise secrets.BrokerError(
             code, _HTTP_REASONS.get(status, 'provider_error')
         ) from None
     except httpx.TransportError as err:
         LOGGER.warning('GitHub App call failed: %s', type(err).__name__)
-        raise providers.BrokerError(
+        raise secrets.BrokerError(
             'secret_provider_unavailable', 'unreachable'
         ) from None
     except (ValueError, TypeError, jwt.PyJWTError) as err:
         LOGGER.warning('GitHub App key not usable: %s', type(err).__name__)
-        raise providers.BrokerError(code, 'invalid_private_key') from None
+        raise secrets.BrokerError(code, 'invalid_private_key') from None
 
 
-async def private_key(
-    organization_id: str,
-    locator: dict[str, typing.Any],
-    *,
-    host: str,
-    consumer: uuid.UUID | None,
-    task_id: uuid.UUID | None,
-) -> str:
-    """Read the App private key through the broker, for one consumer
-    binding, host, and App id."""
-    from imbi.api import secret_broker
-
-    material = await secret_broker.get_broker().provider_key(
-        organization_id,
-        locator['private_key'],
-        consumer=consumer,
-        host=host,
-        app_id=locator['app_id'],
-        task_id=task_id,
-    )
-    return material.value.decode()
-
-
-async def project_repository_ids(
-    host: str, project_id: str | None
-) -> list[int]:
-    """Return the verified GitHub repository ids of a project on ``host``.
-
-    Only the ``verified_identifier`` of an ``EXISTS_IN`` edge to a GitHub
-    Integration for ``host`` counts. The GitHub plugin writes it from the
-    GitHub API (the lifecycle plugin and the doctor repair). A project
-    link, or an edge identifier that a user edits, gives no access.
-
-    Raises:
-        BrokerError: ``project_repository_unverified`` when the project
-            has no verified repository on ``host``.
-
-    """
-    if project_id is None:
-        return []
-    from imbi.api import lifespans
-    from imbi.api.plugins import parse_options
-
-    db = lifespans._graph  # pyright: ignore[reportPrivateUsage]
-    if db is None:
-        raise providers.BrokerError(
-            'secret_provider_unavailable', 'graph_unavailable'
-        )
-    records = await db.execute(
-        _VERIFIED_REPOSITORIES,
-        {'project_id': project_id, 'plugin': GITHUB_PLUGIN},
-        ['options', 'repository_id'],
-    )
-    found: set[int] = set()
-    for record in records:
-        value = str(graph.parse_agtype(record.get('repository_id')) or '')
-        if _REPOSITORY_ID.fullmatch(value) is None:
-            continue
+def _options(raw: object) -> dict[str, typing.Any]:
+    """Decode an Integration ``options`` value, as AGE returns it."""
+    parsed = graph.parse_agtype(raw)
+    if isinstance(parsed, str):
         try:
-            integration_host = _hosts.flavor_host(
-                parse_options(record.get('options')), 'github_app'
-            )
-        except ValueError:
-            continue
-        if integration_host.lower() == host:
-            found.add(int(value))
-    if not found:
-        raise providers.BrokerError(
-            'secret_access_denied', 'project_repository_unverified'
-        )
-    return sorted(found)
+            parsed = orjson.loads(parsed)
+        except orjson.JSONDecodeError:
+            return {}
+    if isinstance(parsed, dict):
+        return typing.cast(dict[str, typing.Any], parsed)
+    return {}
 
 
 def _expiry(value: object) -> datetime.datetime:
@@ -332,34 +272,81 @@ def _expiry(value: object) -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC) + _DEFAULT_TTL
 
 
-class GitHubApp(providers.Provider):
+class GitHubApp(secrets.SecretProvider):
     """GitHub App installation access tokens, one for each resolution."""
 
     type = 'github_app'
     label = 'GitHub App'
-    capabilities = frozenset[providers.Capability](
+    capabilities = frozenset[secrets.SecretCapability](
         {'dynamic_issuance', 'lease_revocation', 'health_check'}
     )
 
     def validate_config(
         self, config: dict[str, typing.Any]
     ) -> dict[str, typing.Any]:
-        return providers._validate(  # pyright: ignore[reportPrivateUsage]
-            _Config, config
-        )
+        return secrets.validate_model(_Config, config)
 
     def validate_locator(
         self,
         locator: dict[str, typing.Any],
-        credential_class: providers.CredentialClass,
+        credential_class: secrets.CredentialClass,
     ) -> dict[str, typing.Any]:
         if credential_class != 'dynamic':
-            raise providers.InvalidConfiguration(
+            raise secrets.InvalidConfiguration(
                 'A github_app binding is dynamic'
             )
-        return providers._validate(  # pyright: ignore[reportPrivateUsage]
-            _Locator, locator
+        return secrets.validate_model(_Locator, locator)
+
+    def check_key_host(self, host: str) -> str:
+        return check_host(host)
+
+    def repository(
+        self, config: dict[str, typing.Any], url: str
+    ) -> tuple[str, str] | None:
+        host = _host(config)
+        found = _repos.parse_owner_repo(url, host)
+        return None if found is None else (host, f'{found[0]}/{found[1]}')
+
+    async def project_repository_ids(
+        self, host: str, project_id: str | None
+    ) -> list[int]:
+        """Return the verified GitHub repository ids of a project on ``host``.
+
+        Only the ``verified_identifier`` of an ``EXISTS_IN`` edge to a GitHub
+        Integration for ``host`` counts. The GitHub plugin writes it from the
+        GitHub API (the lifecycle plugin and the doctor repair). A project
+        link, or an edge identifier that a user edits, gives no access.
+
+        Raises:
+            BrokerError: ``project_repository_unverified`` when the project
+                has no verified repository on ``host``.
+
+        """
+        if project_id is None:
+            return []
+        records = await self.host.graph().execute(
+            _VERIFIED_REPOSITORIES,
+            {'project_id': project_id, 'plugin': GITHUB_PLUGIN},
+            ['options', 'repository_id'],
         )
+        found: set[int] = set()
+        for record in records:
+            value = str(graph.parse_agtype(record.get('repository_id')) or '')
+            if _REPOSITORY_ID.fullmatch(value) is None:
+                continue
+            try:
+                integration_host = _hosts.flavor_host(
+                    _options(record.get('options')), 'github_app'
+                )
+            except ValueError:
+                continue
+            if integration_host.lower() == host:
+                found.add(int(value))
+        if not found:
+            raise secrets.BrokerError(
+                'secret_access_denied', 'project_repository_unverified'
+            )
+        return sorted(found)
 
     async def check_locator(
         self,
@@ -368,17 +355,15 @@ class GitHubApp(providers.Provider):
         organization_id: str,
     ) -> None:
         """The key binding must be a provider key for this host and App."""
-        from imbi.api import secret_broker
-
         try:
-            await secret_broker.get_broker().check_provider_key(
+            await self.host.check_provider_key(
                 organization_id,
                 locator['private_key'],
                 host=_host(config),
                 app_id=locator['app_id'],
             )
-        except providers.BrokerError as err:
-            raise providers.InvalidConfiguration(
+        except secrets.BrokerError as err:
+            raise secrets.InvalidConfiguration(
                 'private_key must name a provider key binding for host '
                 f'{_host(config)} and App {locator["app_id"]}',
                 code=err.reason,
@@ -397,13 +382,15 @@ class GitHubApp(providers.Provider):
         """A client that authenticates as the App (a JWT)."""
         host = _host(config)
         base = _api_base(host)
-        key = await private_key(
+        material = await self.host.provider_key(
             organization_id,
-            locator,
-            host=host,
+            locator['private_key'],
             consumer=consumer,
+            host=host,
+            app_id=locator['app_id'],
             task_id=task_id,
         )
+        key = material.value.decode()
         app_jwt = _app_auth._app_jwt(  # pyright: ignore[reportPrivateUsage]
             locator['app_id'], key
         )
@@ -446,7 +433,7 @@ class GitHubApp(providers.Provider):
             installation = typing.cast(dict[str, typing.Any], response.json())
             found[str(installation.get('id'))] = installation
         if len(found) != 1:
-            raise providers.BrokerError(
+            raise secrets.BrokerError(
                 'secret_access_denied', 'repositories_span_installations'
             )
         return next(iter(found.values()))
@@ -470,7 +457,7 @@ class GitHubApp(providers.Provider):
 
     async def health(
         self, config: dict[str, typing.Any], organization_id: str
-    ) -> providers.Health:
+    ) -> secrets.Health:
         """Check that the GitHub API answers. No credentials are used."""
         try:
             async with httpx.AsyncClient(
@@ -479,13 +466,13 @@ class GitHubApp(providers.Provider):
                 timeout=_TIMEOUT_SECONDS,
             ) as client:
                 response = await client.get('/meta')
-        except providers.BrokerError as err:
-            return providers.Health('unhealthy', err.reason)
+        except secrets.BrokerError as err:
+            return secrets.Health('unhealthy', err.reason)
         except httpx.TransportError:
-            return providers.Health('unhealthy', 'unreachable')
+            return secrets.Health('unhealthy', 'unreachable')
         if response.status_code != 200:
-            return providers.Health('unhealthy', 'provider_error')
-        return providers.Health('healthy', identity={'host': _host(config)})
+            return secrets.Health('unhealthy', 'provider_error')
+        return secrets.Health('healthy', identity={'host': _host(config)})
 
     async def validate_binding(
         self,
@@ -596,14 +583,14 @@ class GitHubApp(providers.Provider):
         config: dict[str, typing.Any],
         locator: dict[str, typing.Any],
         field: str | None,
-        context: providers.ResolveContext,
-    ) -> providers.Material:
+        context: secrets.ResolveContext,
+    ) -> secrets.Material:
         """Mint a token for the task's repositories and the purpose.
 
         ``marketplace_fetch`` uses the repository that the runner asks
         for, which must be in the ``repositories`` of the binding; with
         none, all of them. The other purposes use the verified repository
-        ids of the task's project (:func:`project_repository_ids`).
+        ids of the task's project (:meth:`project_repository_ids`).
 
         Raises:
             BrokerError: The purpose is unknown, the task has no
@@ -612,10 +599,10 @@ class GitHubApp(providers.Provider):
 
         """
         if field is not None:
-            raise providers.BrokerError('secret_field_not_allowed')
+            raise secrets.BrokerError('secret_field_not_allowed')
         permissions = PURPOSE_PERMISSIONS.get(context.purpose)
         if permissions is None:
-            raise providers.BrokerError(
+            raise secrets.BrokerError(
                 'secret_access_denied', 'purpose_not_supported'
             )
         repositories: list[str] = []
@@ -626,18 +613,18 @@ class GitHubApp(providers.Provider):
                 if context.repository.lower() not in {
                     name.lower() for name in repositories
                 }:
-                    raise providers.BrokerError(
+                    raise secrets.BrokerError(
                         'secret_access_denied', 'repository_not_allowed'
                     )
                 repositories = [context.repository]
         else:
-            repository_ids = await project_repository_ids(
+            repository_ids = await self.project_repository_ids(
                 _host(config), context.project_id
             )
         # An empty list never reaches GitHub: no repositories would give
         # a token for every repository of the installation.
         if not repositories and not repository_ids:
-            raise providers.BrokerError(
+            raise secrets.BrokerError(
                 'secret_access_denied', 'no_repositories'
             )
         with _github_errors('secret_materialization_failed'):
@@ -669,7 +656,7 @@ class GitHubApp(providers.Provider):
                     names,
                     repository_ids,
                 )
-        return providers.Material(
+        return secrets.Material(
             token.encode(),
             credential_expires_at=expires_at,
             lease_id=_lease(_host(config), token),
@@ -688,7 +675,7 @@ class GitHubApp(providers.Provider):
             lease = typing.cast(dict[str, str], orjson.loads(lease_id))
             host, token = lease['host'], lease['token']
         except (orjson.JSONDecodeError, KeyError, TypeError):
-            raise providers.BrokerError(
+            raise secrets.BrokerError(
                 'provider_revocation_failed', 'invalid_lease'
             ) from None
         await _revoke_token(host, token)
@@ -706,14 +693,14 @@ async def _revoke_token(host: str, token: str) -> None:
             response = await client.delete('/installation/token')
     except httpx.TransportError as err:
         LOGGER.warning('GitHub token revocation: %s', type(err).__name__)
-        raise providers.BrokerError(
+        raise secrets.BrokerError(
             'provider_revocation_failed', 'unreachable'
         ) from None
     if response.status_code not in (204, 401):
         LOGGER.warning(
             'GitHub token revocation: HTTP %d', response.status_code
         )
-        raise providers.BrokerError(
+        raise secrets.BrokerError(
             'provider_revocation_failed', 'provider_error'
         )
 
@@ -732,7 +719,7 @@ def _names(
     for repository in repositories:
         owner, _, name = repository.partition('/')
         if not account or owner.lower() != account.lower():
-            raise providers.BrokerError(
+            raise secrets.BrokerError(
                 'secret_access_denied', 'repository_outside_installation'
             )
         names.append(name)

@@ -13,6 +13,11 @@ It can do these things:
   project.
 - Record commit, tag, and pull request history from webhooks.
 - Check the repository link and the repository homepage in the Doctor.
+- Issue GitHub App tokens to agent tasks through the `github_app` secret
+  provider, which you configure in **Admin, Secrets** (see
+  [Secrets](../admin/secrets.md)).
+- Read a public `github.com` repository with no credentials, for an agent
+  plugin marketplace.
 
 ## Capabilities
 
