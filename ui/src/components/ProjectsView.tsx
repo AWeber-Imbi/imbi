@@ -897,7 +897,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
   const { releaseDrifted } = driftBadges(project)
   const releaseSince = project.release_summary?.oldest_actionable_at
   return (
-    <div className="flex w-full items-stretch pt-2">
+    <div className="flex w-full items-stretch justify-center-safe pt-2">
       {releaseDrifted && (
         <span className="mr-2 flex shrink-0 items-center self-center">
           <DriftPill
@@ -925,7 +925,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
         const derived = env.label_color
           ? deriveChipColors(env.label_color, false)
           : null
-        const base = 'relative min-w-50 flex-1 rounded-lg border px-3 py-2'
+        const base = 'relative w-50 shrink-0 rounded-lg border px-3 py-2'
         const cardClass = derived
           ? `${base}${!release ? ' border-dashed opacity-60' : ''}`
           : `${base}${release ? ' border-border bg-card' : ' border-tertiary/40 border-dashed opacity-60'}`
