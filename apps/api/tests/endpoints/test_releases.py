@@ -2073,6 +2073,43 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
             latest.committish, detail['latest_deployment']['committish']
         )
 
+    def test_newer_attempt_survives_a_serving_node_that_closed_later(
+        self,
+    ) -> None:
+        # The serving run starts 10:00 and succeeds 10:10; a newer run
+        # starts 10:05.  The reader picked the newer run, so the list
+        # must not compare its start with the serving run's completion.
+        assert self.state.current is not None
+        state = self.state._replace(
+            current=self.state.current._replace(
+                started_at=datetime.datetime.fromisoformat(
+                    '2026-04-22T10:00:00+00:00'
+                ),
+                event=self.state.current.event.model_copy(
+                    update={
+                        'timestamp': datetime.datetime.fromisoformat(
+                            '2026-04-22T10:10:00+00:00'
+                        )
+                    }
+                ),
+            ),
+            latest=self.state.latest._replace(
+                started_at=datetime.datetime.fromisoformat(
+                    '2026-04-22T10:05:00+00:00'
+                )
+            ),
+        )
+        with mock.patch(
+            'imbi.common.deployments.current_and_latest_by_project',
+            mock.AsyncMock(return_value=[state]),
+        ):
+            latest = asyncio.run(
+                projects._apply_deployment_nodes(
+                    mock.AsyncMock(), [PROJECT_ID], {}
+                )
+            )
+        self.assertEqual('failed', latest[(PROJECT_ID, 'production')].status)
+
     def test_latest_is_omitted_when_it_is_the_current_release(self) -> None:
         """The newest attempt succeeded, so there is nothing extra."""
         assert self.state.current is not None

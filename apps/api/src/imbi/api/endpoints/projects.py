@@ -809,11 +809,12 @@ async def _apply_deployment_nodes(
     latest_deployments: dict[tuple[str, str], LatestDeployment] = {}
     for entry in rows:
         key = (entry.project_id, str(entry.environment.get('slug') or ''))
+        legacy = current.get(key)
         if entry.current is not None and entry.current.release is not None:
-            existing = current.get(key)
-            if existing is None or deployment_nodes.as_utc(
+            if legacy is None or deployment_nodes.as_utc(
                 entry.current.event.timestamp
-            ) > deployment_nodes.as_utc(existing[2]):
+            ) > deployment_nodes.as_utc(legacy[2]):
+                legacy = None
                 current[key] = (
                     entry.current.release.get('tag') or None,
                     entry.current.release.get('committish') or None,
@@ -824,18 +825,18 @@ async def _apply_deployment_nodes(
         # newest one is the one serving traffic, so the two compare
         # equal and there is nothing extra to report.
         if entry.latest.release is not None and entry.latest != entry.current:
-            # And it has to be newer than whatever *won* as current,
-            # which may be a legacy array entry the node's success could
-            # not displace.  The pill means "something happened here
-            # after the release that is serving"; against a newer legacy
-            # entry an unguarded write made that sentence false.
-            # Compare when the attempt *started*: one closed late (e.g. a
-            # stuck rollout swept to failed) is not newer than a release
-            # that went out after it began.
-            serving = current.get(key)
-            if serving is not None and deployment_nodes.started_at(
+            # And it has to be newer than a legacy array entry that won
+            # as current.  The pill means "something happened here after
+            # the release that is serving"; against a newer legacy entry
+            # an unguarded write made that sentence false.  Compare when
+            # the attempt *started*: one closed late (e.g. a stuck
+            # rollout swept to failed) is not newer than a release that
+            # went out after it began.  When a node won, the reader has
+            # already compared start times, and the serving node's
+            # timestamp is its last status change, not its start.
+            if legacy is not None and deployment_nodes.started_at(
                 entry.latest
-            ) <= deployment_nodes.as_utc(serving[2]):
+            ) <= deployment_nodes.as_utc(legacy[2]):
                 continue
             latest_deployments[key] = LatestDeployment(
                 status=entry.latest.event.status,

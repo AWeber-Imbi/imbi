@@ -646,6 +646,18 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         assert state.current is not None
         self.assertEqual('10', state.current.event.external_run_id)
 
+    async def test_tied_start_keeps_the_newer_in_flight_run(self) -> None:
+        # Run 10 outranks run 9 on the tie, so it stays the latest
+        # attempt; a non-strict guard replaced it with the serving run.
+        await self.upsert(status='success', external_run_id='9', timestamp=NOW)
+        await self.upsert(
+            status='in_progress', external_run_id='10', timestamp=NOW
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('9', state.current.event.external_run_id)
+        self.assertEqual('10', state.latest.event.external_run_id)
+
     async def test_pending_attempt_does_not_displace_a_success(self) -> None:
         """Matrix 2: the newest attempt is still in flight."""
         await self.upsert(status='success', external_run_id='1', timestamp=NOW)

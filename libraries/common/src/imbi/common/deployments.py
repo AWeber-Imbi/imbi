@@ -584,7 +584,7 @@ async def current_and_latest_by_project(
         # news.  An older attempt that changed status late (a stuck
         # rollout closed as failed long after a newer release went out)
         # says nothing about the environment now.
-        if serving is not None and started_at(entry) <= started_at(serving):
+        if serving is not None and started_at(entry) < started_at(serving):
             entry = serving
         out.append(
             EnvironmentReleaseState(
