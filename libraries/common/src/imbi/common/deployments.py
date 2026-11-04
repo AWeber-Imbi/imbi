@@ -337,6 +337,11 @@ class ProjectDeployment(typing.NamedTuple):
     #: deployment anyway rather than dropping it.
     release: dict[str, typing.Any] | None
     event: models.DeploymentEvent
+    #: When the rollout started (the node's ``created_at``).  Differs
+    #: from ``event.timestamp``, which is the last status change: an old
+    #: attempt closed late, e.g. by the stuck-deployment sweep, has a new
+    #: timestamp but an old start.
+    started_at: datetime.datetime | None = None
 
 
 _BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
@@ -570,15 +575,27 @@ async def current_and_latest_by_project(
     )
     out: list[EnvironmentReleaseState] = []
     for key, entry in latest.items():
+        serving = current.get(key)
+        # Only an attempt that started after the serving one can be
+        # news.  An older attempt that changed status late (a stuck
+        # rollout closed as failed long after a newer release went out)
+        # says nothing about the environment now.
+        if serving is not None and started_at(entry) <= started_at(serving):
+            entry = serving
         out.append(
             EnvironmentReleaseState(
                 entry.project_id,
                 entry.environment,
-                current.get(key),
+                serving,
                 entry,
             )
         )
     return out
+
+
+def started_at(deployment: ProjectDeployment) -> datetime.datetime:
+    """When *deployment* started, or its last change if that is unknown."""
+    return as_utc(deployment.started_at or deployment.event.timestamp)
 
 
 def _by_environment(
@@ -729,12 +746,22 @@ def _to_project_deployments(
         if event is None:
             continue
         release = graph.parse_agtype(row.get('release'))
+        created = props.get('created_at')
+        try:
+            started = (
+                datetime.datetime.fromisoformat(created)
+                if isinstance(created, str)
+                else None
+            )
+        except ValueError:
+            started = None
         out.append(
             ProjectDeployment(
                 project_id,
                 typing.cast('dict[str, typing.Any]', env),
                 typing.cast('dict[str, typing.Any] | None', release),
                 event,
+                started,
             )
         )
     return out

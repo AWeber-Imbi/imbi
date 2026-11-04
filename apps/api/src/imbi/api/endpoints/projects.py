@@ -826,9 +826,12 @@ async def _apply_deployment_nodes(
             # not displace.  The pill means "something happened here
             # after the release that is serving"; against a newer legacy
             # entry an unguarded write made that sentence false.
+            # Compare when the attempt *started*: one closed late (e.g. a
+            # stuck rollout swept to failed) is not newer than a release
+            # that went out after it began.
             serving = current.get(key)
-            if serving is not None and deployment_nodes.as_utc(
-                entry.latest.event.timestamp
+            if serving is not None and deployment_nodes.started_at(
+                entry.latest
             ) <= deployment_nodes.as_utc(serving[2]):
                 continue
             latest_deployments[key] = LatestDeployment(

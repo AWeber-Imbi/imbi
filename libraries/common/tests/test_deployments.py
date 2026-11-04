@@ -569,6 +569,33 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         self.assertEqual('2', state.latest.event.external_run_id)
         self.assertEqual('failed', state.latest.event.status)
 
+    async def test_older_attempt_failed_late_is_not_news(self) -> None:
+        # 3.4.3 starts, 3.4.4 starts and succeeds, then 3.4.3 is closed
+        # as failed (e.g. by the stuck-deployment sweep).  Its last
+        # change is the newest, but it started first: nothing to report.
+        await self._add_release()
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW,
+        )
+        await self.upsert(
+            status='success',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='failed',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('2', state.current.event.external_run_id)
+        self.assertEqual(state.current, state.latest)
+
     async def test_simultaneous_rollouts_rank_run_ids_numerically(
         self,
     ) -> None:
@@ -616,7 +643,8 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         assert state.current is not None
         assert state.current.release is not None
         self.assertEqual(OTHER_RELEASE_ID, state.current.release['id'])
-        self.assertEqual('rolled_back', state.latest.event.status)
+        # A started before B, so its late status change is not news.
+        self.assertEqual(state.current, state.latest)
 
     async def test_rollback_is_a_new_success_of_the_old_release(self) -> None:
         """Matrix 4: rolling back means deploying A again."""
