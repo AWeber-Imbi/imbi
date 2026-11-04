@@ -170,8 +170,10 @@ All messages are JSON.
 {"type": "subscribe", "topic": "project:acme:abc123"}
 {"type": "unsubscribe", "topic": "project:acme:abc123"}
 {"type": "presence", "topic": "agent:acme:triage", "state": {"editing": "system_prompt"}}
+{"type": "presence", "topic": "agent:acme:triage", "state": null}
 
 // server to browser
+{"type": "ping"}
 {"type": "subscribed", "topic": "project:acme:abc123"}
 {"type": "invalidate", "topic": "project:acme:abc123", "resource": "deployments", "actor": "alexc@aweber.com"}
 {"type": "presence", "topic": "agent:acme:triage", "members": [{"user": "...", "state": {"editing": "system_prompt"}}]}
@@ -179,6 +181,8 @@ All messages are JSON.
 {"type": "error", "topic": "project:acme:abc123", "code": "forbidden"}
 ```
 
+- **`ping`** keeps the socket busy and lets the browser detect a dead
+  connection. See [The `/realtime` endpoint](#the-realtime-endpoint).
 - **`subscribed`** confirms that a subscription is active.
   [Delivery](#delivery) explains why the browser waits for it.
 - **`invalidate`** says that a resource on a topic changed, and who
@@ -188,7 +192,10 @@ All messages are JSON.
   can therefore expose only that a resource changed and who changed it.
 - **`presence`** is short-lived state about who is on a topic and what
   they are doing. Each topic type defines and validates its own state
-  shape.
+  shape. From the browser it carries the sender's state, and
+  `state: null` leaves the topic. From the server it carries a
+  snapshot, the complete list of members, which replaces the one the
+  browser shows.
 - **`notify`** is a message for one person, shown as a toast. It is
   allowed only on `user:` topics, so only that person sees its text.
 - **`error`** reports a refused subscribe or a malformed message. The
@@ -245,13 +252,20 @@ imbi-api serves the WebSocket at `/realtime` under its route prefix.
   of its sockets that belong to the named user, or to a member of the
   named organization. It drops each subscription that fails and sends
   an `error` message for it.
+- **Each socket handles its subscribes and reauthorizations one at a
+  time**, in the order they arrive. A reauthorization that arrives while
+  a subscribe is still being checked runs after that subscribe
+  activates, so it rechecks that subscription too.
 - **The socket closes when the access token expires.** When the token's
   `exp` passes, the server closes the socket with code `4401`. The
   browser refreshes the token through the normal flow and reconnects.
   This also limits how long a connection lives, which
   [Multiple pods](#multiple-pods) relies on.
-- **The server pings every 25 seconds** so that proxies and load
-  balancers do not close an idle socket.
+- **The server sends a `ping` message every 25 seconds.** It stops
+  proxies and load balancers from closing an idle socket. It is a JSON
+  message rather than a WebSocket protocol ping because the browser
+  answers protocol pings itself and never shows them to page code, so
+  only a message lets the browser notice that the server went silent.
 - **Limits** cap topics per socket, message size, and presence updates
   per second.
 
@@ -269,15 +283,32 @@ The Helm chart documents Valkey as a required backing service.
   reconnects with backoff and a random delay, refreshes the token after
   a `4401` close, and shows `notify` toasts. It keeps its state in a
   zustand store.
+- **`RealtimeProvider` detects a dead socket.** A connection can die
+  without a `close` event, for example when the network drops. The
+  provider treats 60 seconds without a message as a closed socket, and
+  treats the window's `offline` event as one immediately.
+- **The page shows when live updates pause.** `RealtimeProvider`
+  exposes the connection state. When the socket has been down for more
+  than a few seconds, the page shows that live updates are paused. The
+  delay keeps the notice from flashing during the reconnect after a
+  rollout. The socket can be down while REST still works, so the
+  notice does not say the user is offline.
 - **`useTopic(topic)`** subscribes while a component is mounted. Several
   components can use the same topic, and the topic stays subscribed
   until the last one unmounts.
-- **The invalidation bridge** is one table that maps each `resource`
-  value to `queryKeys` builders. On an `invalidate` event, it calls
-  `queryClient.invalidateQueries` for those keys. A query whose key is
+- **The invalidation bridge** is one table keyed by topic type, then by
+  `resource`. Each entry lists `queryKeys` builders, which take the
+  topic's parameters, such as the organization and project ID. On an
+  `invalidate` event, the bridge calls `queryClient.invalidateQueries`
+  for the keys under the event's topic type and `resource`. A topic's
+  queries are all the keys under its topic type, and the refetches in
+  [Delivery](#delivery) and the fallback use them. A query whose key is
   in the table updates live with no change to its component.
 - **`usePresence(topic, state)`** sends the caller's state and returns
-  the other members.
+  the other members. When its component unmounts, it sends
+  `state: null`, which removes the caller from the topic. While the
+  socket is down, it returns no members, because the browser cannot
+  tell who is still there.
 - **One fallback replaces per-feature polling.** While the socket is
   down, `RealtimeProvider` refetches every subscribed topic's queries
   every 30 seconds.
@@ -290,6 +321,11 @@ both because an event only tells the browser to refetch. Two refetches
 give the same result as one, so order does not matter, and the browser
 recovers from a missed event by refetching. A missed `notify` is lost,
 but it only repeats information that pages show anyway.
+
+A `presence` message is the exception, because the browser shows its
+snapshot without refetching, so an older snapshot arriving last would
+stay on screen. [Presence](#presence) explains how snapshots arrive in
+order.
 
 The browser can miss an event in four ways, and recovers from each:
 
@@ -350,11 +386,21 @@ to the socket.
 - Each topic has a Valkey sorted set of members scored by expiry time,
   as `document_presence.py` does today. Each member records a user and
   that socket's current state for the topic.
-- The server refreshes a member while its socket is open and removes it
-  when the socket closes. If a pod crashes, its members expire after
-  the TTL.
-- When the member set changes, the server publishes a `presence` message
-  on the topic.
+- The server refreshes a member while its socket is on the topic. It
+  removes the member when the browser sends `state: null`, unsubscribes
+  from the topic, or closes the socket. If a pod crashes, its members
+  expire after the TTL.
+- Every change runs as one Valkey Lua script. The script updates the
+  set, removes expired members, reads the set, and, if any member was
+  added, removed, or changed state, publishes a `presence` snapshot on
+  the topic. Valkey runs a script as one step, so no other change can
+  happen between reading the set and publishing it. Snapshots therefore
+  reach every subscriber in the order the changes happened.
+- A pod's periodic refresh runs the same script. Removing expired
+  members counts as a change, so the refresh publishes when it removes
+  the members a crashed pod left behind. Sorted sets do not expire
+  members on their own, so without this step no snapshot would show
+  them leaving.
 - Presence is never stored past the TTL and never sent to ClickHouse.
 
 ### Deploy status
@@ -369,10 +415,16 @@ change, and publishes `invalidate` on the project topic for each one.
 When the run ends, the job publishes `notify` to the user who started
 it, so that person sees the outcome on any page, in any tab.
 
+While a watch job runs, it holds a lease, the Valkey key
+`imbi:deploy-watch:<run_id>` with a 120-second TTL, and renews it every
+30 seconds. These are the claim timings that the promote queue uses.
+The job renews the lease on its own timer, apart from polling, so the
+lease does not expire while the job pauses for a GitHub rate limit.
 `list_current_releases` still asks GitHub about in-flight runs, but only
-about runs that their watch job has not updated in five minutes. That
-check recovers a run whose watch job died, and other page loads no
-longer call GitHub.
+about runs with no lease. That check recovers a run whose watch job
+died, and other page loads no longer call GitHub. A run can stay in one
+status for longer than any fixed interval, so the time since the last
+status change cannot tell whether the job is still alive.
 
 ### Relation to Iggy
 
@@ -466,7 +518,7 @@ every `invalidate` event refetches them.
 - An open page shows changes from other people, agents, webhooks, and
   jobs within about a second.
 - Server load grows with the number of changes instead of the number of
-  open tabs. An idle tab sends one ping every 25 seconds.
+  open tabs. An idle socket carries one ping every 25 seconds.
 - One watch job polls GitHub for each deploy run. Page loads call
   GitHub only to recover a run whose watch job died.
 
