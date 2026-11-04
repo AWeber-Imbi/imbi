@@ -239,7 +239,20 @@ def _load() -> None:
         for cls in entry.manifest.secret_providers:
             current = PROVIDERS.get(cls.type)
             if current is None:
-                PROVIDERS[cls.type] = _LOADED[cls.type] = cls(_Host())
+                try:
+                    provider = cls(_Host())
+                except Exception as err:  # noqa: BLE001 - skip this plugin
+                    key = (entry.manifest.slug, cls.type)
+                    if key not in _REPORTED:
+                        _REPORTED.add(key)
+                        LOGGER.error(
+                            'Plugin %s secret provider %r failed to load: %s',
+                            entry.manifest.slug,
+                            cls.type,
+                            type(err).__name__,
+                        )
+                    continue
+                PROVIDERS[cls.type] = _LOADED[cls.type] = provider
             elif not isinstance(current, cls):
                 key = (entry.manifest.slug, cls.type)
                 if key in _REPORTED:

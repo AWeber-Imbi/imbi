@@ -69,6 +69,29 @@ class RegistryTestCase(unittest.TestCase):
         self.assertEqual(len(logs.output), 1)
         self.assertIn('already registered', logs.output[0])
 
+    def test_a_failing_provider_is_skipped(self) -> None:
+        class _Broken(_Other):
+            type = 'broken_provider'
+
+            def __init__(self, host: typing.Any) -> None:
+                raise RuntimeError('boom')
+
+        with (
+            mock.patch.object(
+                providers.plugin_registry,
+                'list_plugins',
+                return_value=[_entry('a', _Broken), _entry('b', _Provider)],
+            ),
+            mock.patch.object(providers, '_REPORTED', set()),
+            self.assertLogs(providers.LOGGER, 'ERROR') as logs,
+        ):
+            self.assertIsInstance(providers.get('test_provider'), _Provider)
+            self.assertIsNotNone(providers.get('fake'))
+            with self.assertRaises(providers.BrokerError):
+                providers.get('broken_provider')
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('failed to load', logs.output[0])
+
     def test_a_removed_plugin_removes_its_provider(self) -> None:
         with mock.patch.object(
             providers.plugin_registry,
