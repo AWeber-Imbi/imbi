@@ -230,11 +230,32 @@ of the task.
 |---|---|
 | Overview | The description, the latest todo list, the owner, the budget, the cost, the tokens, the prompt version, and the outcome |
 | Input required | The requests of the agent. See [Answer a request](#answer-a-request) |
-| Conversation | Turns, replies, and state changes. See [Reply](#reply) |
-| Actions taken | The tool calls. Click a call to expand it. Calls of a subagent show under their parent call |
+| Conversation | The whole task log in order: messages, thinking, tool calls, requests, and state changes. See [Read the conversation](#read-the-conversation) |
 | Signals and checks | The latest report of each check, with its value, baseline, and verdict. The tab count shows the failing checks |
 | Related tasks | Dependencies, the parent task, and child tasks |
 | Associated projects | The primary project and the other projects of the task |
+
+### Read the conversation
+
+The **Conversation** tab shows every event of the task on one timeline.
+A colored dot marks the kind of each event.
+
+- Tool calls show the tool, a summary of the input, and the duration. A
+  call that failed or that policy denied has a red border. Bash calls
+  show the command and output in a terminal pane. Edit and Write calls
+  show a diff.
+- The work of a subagent shows under the call that started it.
+- An open request shows where the agent asked it, with its buttons.
+- Use the chips to show or hide messages, thinking, tools, subagents,
+  and system events. **Errors only** keeps the failed and denied calls.
+  The search field matches any text in the events.
+- **Full** opens every tool call and thinking block. **Compact** shows
+  one line for each. Click a line to open or close it.
+- Each call has a **Readable** and a **JSON** view. **JSON** shows the
+  raw event.
+- Click the time of an event to get a link to it.
+
+Old links to the **Actions taken** tab open the **Conversation** tab.
 
 ### Pause, resume, cancel, and reassign
 
@@ -275,7 +296,8 @@ When the last open request is resolved, a **Needs input** task changes:
 
 ## Reply
 
-On the **Conversation** tab, write in the reply field. You need
+While a task is open, the reply field shows at the bottom of every tab.
+Write in the reply field. You need
 `agent_task:manage`.
 
 - **Reply** sends the text to the agent. The agent reads it at its next
