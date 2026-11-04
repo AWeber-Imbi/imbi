@@ -1582,6 +1582,34 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         read = self.mock_db.execute.await_args_list[3].args[0]
         self.assertIn("d.status = 'success'", read)
 
+    def test_replay_skips_after_a_newer_reconcile(self) -> None:
+        # A reconcile observed the environment after this success and
+        # cleared or moved the pointer; the replay must not undo that.
+        _edge, outcome = self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[
+                {**_STORED_SUCCESS, 'observed_at': '2026-05-13T15:00:00+00:00'}
+            ],
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(self._current_release_calls(), [])
+
+    def test_replay_repoints_after_an_older_reconcile(self) -> None:
+        _edge, outcome = self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[
+                {**_STORED_SUCCESS, 'observed_at': '2026-05-13T13:00:00+00:00'}
+            ],
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(len(self._current_release_calls()), 1)
+
     def test_replayed_non_success_skips_current_release(self) -> None:
         existing = [
             {

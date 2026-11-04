@@ -1682,20 +1682,43 @@ async def _replay_current_release(
     pointer write never happened.  It names the release that owns the
     node, which a tagged release can take over from the requested one,
     and skips a node that a later write moved off ``success``.
+
+    It also skips when a reconcile observed the environment at or after
+    the stored time: that snapshot already knew of this success, so the
+    pointer it left (or cleared) wins, as in ``_RECONCILE_GUARD``.
     """
     query: typing.LiteralString = """
     MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d:Deployment {{id: {id}}})
     WHERE d.status = 'success'
+    OPTIONAL MATCH (:Project {{id: {project_id}}})-[di:DEPLOYED_IN]->
+          (:Environment {{slug: {env_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     RETURN r.id AS release_id,
-           COALESCE(d.updated_at, d.created_at) AS at
+           COALESCE(d.updated_at, d.created_at) AS at,
+           di.current_state_observed_at AS observed_at
     LIMIT 1
     """
-    rows = await db.execute(query, {'id': deployment_id}, ['release_id', 'at'])
+    rows = await db.execute(
+        query,
+        {
+            'id': deployment_id,
+            'project_id': project_id,
+            'env_slug': env_slug,
+            'org_slug': org_slug,
+        },
+        ['release_id', 'at', 'observed_at'],
+    )
     if not rows:
         return
     release_id = graph.parse_agtype(rows[0]['release_id'])
     at = graph.parse_agtype(rows[0]['at'])
     if not release_id or not at:
+        return
+    timestamp = datetime.datetime.fromisoformat(str(at))
+    observed = graph.parse_agtype(rows[0].get('observed_at'))
+    if observed and (
+        datetime.datetime.fromisoformat(str(observed)) >= timestamp
+    ):
         return
     await _set_current_release(
         db,
@@ -1703,7 +1726,7 @@ async def _replay_current_release(
         project_id=project_id,
         env_slug=env_slug,
         release_id=str(release_id),
-        timestamp=datetime.datetime.fromisoformat(str(at)),
+        timestamp=timestamp,
     )
 
 
