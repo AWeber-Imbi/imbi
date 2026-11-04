@@ -1621,6 +1621,16 @@ async def append_deployment_event(
             ),
         )
     if result.outcome == 'noop':
+        if status == 'success' and external_run_id:
+            await _replay_current_release(
+                db,
+                org_slug=org_slug,
+                project_id=project_id,
+                env_slug=env_slug,
+                release_id=release_id,
+                stored=existing,
+                external_run_id=external_run_id,
+            )
         return _edge_to_response(env, existing), 'noop'
     # The node the upsert just wrote replaces whatever entry described
     # it before, so the response reflects the write without paying for
@@ -1655,6 +1665,38 @@ async def append_deployment_event(
     return (
         _edge_to_response(env, deployments),
         'appended' if result.outcome == 'created' else 'updated',
+    )
+
+
+async def _replay_current_release(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    release_id: str,
+    stored: list[models.DeploymentEvent],
+    external_run_id: str,
+) -> None:
+    """Point at the release of a replayed ``success`` that changed nothing.
+
+    A repeat of a write that stored the deployment but failed on the
+    pointer lands here.  It uses the stored timestamp, so the ratchet in
+    :func:`_set_current_release` moves the pointer only if that first
+    pointer write never happened.
+    """
+    event = next(
+        (e for e in stored if e.external_run_id == external_run_id), None
+    )
+    if event is None:
+        return
+    await _set_current_release(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        env_slug=env_slug,
+        release_id=release_id,
+        timestamp=event.timestamp,
     )
 
 

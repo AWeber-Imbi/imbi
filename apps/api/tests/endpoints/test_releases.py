@@ -1517,9 +1517,52 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(len(edge.deployments), 1)
-        # The upsert still runs -- it is what decides the replay
-        # changed nothing -- but nothing follows it.
-        self.assertEqual(self.mock_db.execute.await_count, 3)
+        # The upsert decides the replay changed nothing; only the
+        # ratcheted pointer write follows it, for a success.
+        self.assertEqual(self.mock_db.execute.await_count, 4)
+
+    def test_replayed_success_repoints_with_the_stored_time(self) -> None:
+        # A repeat after a failed pointer write must still move it.
+        existing = [
+            {
+                'timestamp': '2026-05-13T14:00:00+00:00',
+                'status': 'success',
+                'note': None,
+                'external_run_id': '42',
+                'external_run_url': 'https://gh/runs/42',
+            }
+        ]
+        _edge, outcome = self._call(
+            existing,
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+        )
+        self.assertEqual(outcome, 'noop')
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].args[1]['release_id'], RELEASE_ID)
+        # The stored time, not now: an old replay cannot move it forward.
+        self.assertEqual(calls[0].args[1]['ts'], '2026-05-13T14:00:00+00:00')
+
+    def test_replayed_non_success_skips_current_release(self) -> None:
+        existing = [
+            {
+                'timestamp': '2026-05-13T14:00:00+00:00',
+                'status': 'failed',
+                'note': None,
+                'external_run_id': '42',
+                'external_run_url': 'https://gh/runs/42',
+            }
+        ]
+        _edge, outcome = self._call(
+            existing,
+            external_run_id='42',
+            status='failed',
+            upsert=_upsert_row(created=False, unchanged=True),
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(self._current_release_calls(), [])
 
     def test_same_run_id_status_change_updates_in_place(self) -> None:
         existing = [
