@@ -2593,6 +2593,89 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
         self.assertEqual(body['current_status'], 'in_progress')
         self.assertIsNone(body['ci_status'])
 
+    def _get_with_newer_attempt(
+        self, run_status: str
+    ) -> tuple[dict[str, typing.Any], mock.AsyncMock]:
+        """GET while ``1.0.0`` serves and a ``1.1.0`` attempt is open.
+
+        The poll's answer must show in the response that learned it, not
+        only in the next one.
+        """
+        self._patch_plugin_resolution(
+            get_deployment_status=mock.AsyncMock(
+                return_value=mock.MagicMock(
+                    status=run_status,
+                    run_id='2',
+                    run_url='https://gh/runs/2',
+                )
+            ),
+            get_check_status=mock.AsyncMock(return_value='pass'),
+        )
+        state = deployment_nodes.EnvironmentReleaseState(
+            PROJECT_ID,
+            _PRODUCTION,
+            _project_deployment(
+                status='success',
+                timestamp='2026-04-20T10:00:00+00:00',
+                release=_release_row(tag='1.0.0', id='r1'),
+                external_run_id='1',
+            ),
+            _project_deployment(
+                status='in_progress',
+                timestamp='2026-04-22T10:00:00+00:00',
+                release=_release_row(
+                    tag='1.1.0', id='r2', committish='9999999'
+                ),
+                external_run_id='2',
+            ),
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'env': _PRODUCTION, 'release': None, 'deployments': None}],
+        ]
+        append_mock = mock.AsyncMock(return_value=(mock.Mock(), 'updated'))
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.append_deployment_event',
+                new=append_mock,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()[0], append_mock
+
+    def test_a_newer_attempt_that_succeeded_is_current(self) -> None:
+        body, append_mock = self._get_with_newer_attempt('success')
+        self.assertEqual('1.1.0', body['release']['tag'])
+        self.assertEqual('success', body['current_status'])
+        self.assertEqual('https://gh/runs/2', body['external_run_url'])
+        self.assertIsNone(body['latest_deployment'])
+        # CI was read for 1.0.0, which no longer serves.
+        self.assertIsNone(body['ci_status'])
+        self.assertEqual('success', append_mock.call_args.kwargs['status'])
+        self.assertEqual('r2', append_mock.call_args.kwargs['release_id'])
+
+    def test_a_newer_attempt_that_failed_is_reported_failed(self) -> None:
+        body, _append_mock = self._get_with_newer_attempt('failure')
+        self.assertEqual('1.0.0', body['release']['tag'])
+        self.assertEqual('pass', body['ci_status'])
+        self.assertEqual('failed', body['latest_deployment']['status'])
+        self.assertEqual('1.1.0', body['latest_deployment']['tag'])
+
+    def test_a_newer_attempt_still_running_stays_latest(self) -> None:
+        body, _append_mock = self._get_with_newer_attempt('in_progress')
+        self.assertEqual('1.0.0', body['release']['tag'])
+        self.assertEqual('pass', body['ci_status'])
+        self.assertEqual('in_progress', body['latest_deployment']['status'])
+
 
 def _tiny_sbom() -> dict[str, typing.Any]:
     """Return a fresh minimal CycloneDX 1.7 document."""

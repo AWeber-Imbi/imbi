@@ -601,8 +601,11 @@ async def _hydrate_release_train(
             models.DeploymentEvent | None,
         ],
     ],
-    also_in_flight: list[tuple[str, str, str, models.DeploymentEvent]]
+    also_in_flight: list[
+        tuple[str, dict[str, typing.Any], models.DeploymentEvent]
+    ]
     | None = None,
+    latest_by_slug: dict[str, LatestDeployment] | None = None,
 ) -> dict[str, CheckStatus | None]:
     """Hydrate live deploy run + CI check-runs status per env.
 
@@ -613,14 +616,14 @@ async def _hydrate_release_train(
     so the response reflects the live state.  Returns a slug →
     ``CheckStatus`` map that the caller folds into the response.
 
-    ``also_in_flight`` carries attempts to poll that are *not* what the
-    environment is showing as current.  Since the current-release read
-    became success-only, an in-flight attempt no longer appears in
-    ``by_env`` at all, and this pass -- the only thing that backfills a
-    run URL the first webhook could not carry, or closes out a run that
-    went terminal unheard -- would never see one again.  Those entries
-    are polled and persisted like any other, but they do not touch
-    ``by_env``: the response's current release stays the one serving.
+    ``also_in_flight`` carries ``(slug, release, event)`` for attempts
+    that are *not* what the environment is showing as current.  Since
+    the current-release read became success-only, an in-flight attempt
+    no longer appears in ``by_env`` at all, and this pass -- the only
+    thing that backfills a run URL the first webhook could not carry, or
+    closes out a run that went terminal unheard -- would never see one
+    again.  Those entries are polled and persisted like any other, and
+    folded into the response by :func:`_fold_attempt`.
 
     Failures are tolerated silently — the release train must keep
     rendering even if the plugin can't be resolved or its calls hiccup.
@@ -651,10 +654,14 @@ async def _hydrate_release_train(
             in_flight.append((slug, release_id, committish, event))
 
     # Appended after the ``by_env`` walk so the display entries keep the
-    # leading indices: everything from ``display_in_flight`` on is a
-    # poll-only attempt whose result must not replace a current release.
+    # leading indices: everything from ``display_in_flight`` on is an
+    # attempt that ``_fold_attempt`` handles instead.
     display_in_flight = len(in_flight)
-    in_flight.extend(also_in_flight or [])
+    attempts = also_in_flight or []
+    in_flight.extend(
+        (slug, str(release['id']), str(release['committish']), event)
+        for slug, release, event in attempts
+    )
     if not in_flight and not deployed:
         return {}
 
@@ -683,6 +690,7 @@ async def _hydrate_release_train(
         handler, ctx, credentials, in_flight, deployed
     )
 
+    promoted: set[str] = set()
     for index, ((slug, release_id, _committish, event), result) in enumerate(
         zip(in_flight, run_results, strict=True)
     ):
@@ -697,20 +705,74 @@ async def _hydrate_release_train(
             event=event,
             result=result,
         )
-        if new_event is None or index >= display_in_flight:
+        if new_event is None:
+            continue
+        if index >= display_in_flight:
+            release = attempts[index - display_in_flight][1]
+            if _fold_attempt(by_env, latest_by_slug, slug, release, new_event):
+                promoted.add(slug)
             continue
         env, release_raw, _ = by_env[slug]
         by_env[slug] = (env, release_raw, new_event)
 
+    return _ci_status_by_slug(deployed, ci_results, promoted)
+
+
+def _ci_status_by_slug(
+    deployed: list[tuple[str, str]],
+    ci_results: list[typing.Any],
+    promoted: set[str],
+) -> dict[str, CheckStatus | None]:
+    """Map each env to its CI status; ``None`` when unknown.
+
+    *promoted* envs get ``None``: their check-runs were read for the
+    release the attempt replaced.
+    """
     ci_status_by_slug: dict[str, CheckStatus | None] = {}
     for (slug, _committish), ci_result in zip(
         deployed, ci_results, strict=True
     ):
-        if isinstance(ci_result, BaseException) or ci_result == 'unknown':
+        if (
+            slug in promoted
+            or isinstance(ci_result, BaseException)
+            or ci_result == 'unknown'
+        ):
             ci_status_by_slug[slug] = None
         else:
             ci_status_by_slug[slug] = ci_result
     return ci_status_by_slug
+
+
+def _fold_attempt(
+    by_env: dict[
+        str,
+        tuple[
+            dict[str, typing.Any],
+            dict[str, typing.Any] | None,
+            models.DeploymentEvent | None,
+        ],
+    ],
+    latest_by_slug: dict[str, LatestDeployment] | None,
+    slug: str,
+    release: dict[str, typing.Any],
+    event: models.DeploymentEvent,
+) -> bool:
+    """Show a polled attempt's new state; ``True`` if it now serves.
+
+    Persisting a ``success`` moved the current-release pointer, so the
+    attempt replaces the current release in this same response rather
+    than only on the next load.
+    """
+    if event.status == 'success':
+        by_env[slug] = (by_env[slug][0], release, event)
+        if latest_by_slug is not None:
+            latest_by_slug.pop(slug, None)
+        return True
+    if latest_by_slug is not None and slug in latest_by_slug:
+        latest_by_slug[slug] = latest_by_slug[slug].model_copy(
+            update={'status': event.status, 'deployed_at': event.timestamp}
+        )
+    return False
 
 
 # -- Endpoints ----------------------------------------------------------
@@ -1086,7 +1148,9 @@ async def list_current_releases(
     # :func:`_hydrate_release_train`.  Without this an in-flight node
     # never reaches the self-heal at all, now that the current-release
     # read is success-only.
-    in_flight_nodes: list[tuple[str, str, str, models.DeploymentEvent]] = []
+    in_flight_nodes: list[
+        tuple[str, dict[str, typing.Any], models.DeploymentEvent]
+    ] = []
     for state in await deployment_nodes.current_and_latest_by_project(
         db, [project_id]
     ):
@@ -1109,20 +1173,22 @@ async def list_current_releases(
                 tag=newest.release.get('tag') or None,
                 committish=newest.release.get('committish') or None,
             )
-            release_id = str(newest.release.get('id') or '')
-            committish = str(newest.release.get('committish') or '')
             if (
                 newest.event.status in ('pending', 'in_progress')
                 and newest.event.external_run_id
-                and release_id
-                and committish
+                and newest.release.get('id')
+                and newest.release.get('committish')
             ):
-                in_flight_nodes.append(
-                    (slug, release_id, committish, newest.event)
-                )
+                in_flight_nodes.append((slug, newest.release, newest.event))
 
     ci_status_by_slug = await _hydrate_release_train(
-        db, org_slug, project_id, auth, by_env, in_flight_nodes
+        db,
+        org_slug,
+        project_id,
+        auth,
+        by_env,
+        in_flight_nodes,
+        latest_by_slug,
     )
 
     # Backfill performed_by from operations_log for events whose AGE edge
