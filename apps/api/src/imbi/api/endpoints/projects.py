@@ -180,7 +180,10 @@ class LatestDeployment(pydantic.BaseModel):
     """
 
     status: deployment_nodes.DeploymentStatus
+    #: The attempt's last status change.
     deployed_at: datetime.datetime
+    #: When the attempt started; ``None`` when the node does not say.
+    started_at: datetime.datetime | None = None
     tag: str | None = None
     committish: str | None = None
 
@@ -837,6 +840,7 @@ async def _apply_deployment_nodes(
             latest_deployments[key] = LatestDeployment(
                 status=entry.latest.event.status,
                 deployed_at=entry.latest.event.timestamp,
+                started_at=entry.latest.started_at,
                 tag=entry.latest.release.get('tag') or None,
                 committish=entry.latest.release.get('committish') or None,
             )

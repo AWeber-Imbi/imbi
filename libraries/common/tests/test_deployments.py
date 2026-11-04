@@ -596,6 +596,41 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         self.assertEqual('2', state.current.event.external_run_id)
         self.assertEqual(state.current, state.latest)
 
+    async def test_older_attempt_failed_late_does_not_hide_newer(
+        self,
+    ) -> None:
+        # Run 1 starts, run 2 succeeds, run 3 starts, then run 1 fails
+        # late.  Run 3 is the newest attempt and must stay the latest.
+        await self._add_release()
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW,
+        )
+        await self.upsert(
+            status='success',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='3',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        await self.upsert(
+            status='failed',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW + datetime.timedelta(hours=3),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('2', state.current.event.external_run_id)
+        self.assertEqual('3', state.latest.event.external_run_id)
+        self.assertEqual('in_progress', state.latest.event.status)
+
     async def test_simultaneous_rollouts_rank_run_ids_numerically(
         self,
     ) -> None:

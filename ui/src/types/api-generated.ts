@@ -14681,6 +14681,8 @@ export interface components {
              * Format: date-time
              */
             deployed_at: string;
+            /** Started At */
+            started_at?: string | null;
             /** Tag */
             tag?: string | null;
             /** Committish */

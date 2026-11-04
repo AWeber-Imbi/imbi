@@ -1106,6 +1106,7 @@ async def list_current_releases(
             latest_by_slug[slug] = LatestDeployment(
                 status=newest.event.status,
                 deployed_at=newest.event.timestamp,
+                started_at=newest.started_at,
                 tag=newest.release.get('tag') or None,
                 committish=newest.release.get('committish') or None,
             )

@@ -383,13 +383,17 @@ RETURN p.id AS project_id,
 
 #: The released-deployment read, with the status policy left open --
 #: :func:`_released_query` fills both placeholders.
+#:
+#: Ranked by when an attempt *started* (``created_at``), the same key
+#: :func:`_newest_per_environment` ranks by.  Ranking by the last status
+#: change let an old attempt that failed late hide a newer one.
 _RELEASED_BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
 MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
 WHERE p.id IN {project_ids}{filter}
 MATCH (:Release)-[:HAS_DEPLOYMENT]->(d)
-WITH p, e, max(COALESCE(d.updated_at, d.created_at)) AS ts
+WITH p, e, max(COALESCE(d.created_at, d.updated_at)) AS ts
 MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
-WHERE COALESCE(d2.updated_at, d2.created_at) = ts{filter2}
+WHERE COALESCE(d2.created_at, d2.updated_at) = ts{filter2}
 MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d2)
 RETURN p.id AS project_id,
        e{{.slug, .name, .sort_order}} AS env,
