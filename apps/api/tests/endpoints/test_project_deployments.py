@@ -897,6 +897,46 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             response.json()['version'], today.strftime('%Y.%m.%d-0')
         )
 
+    def test_draft_release_notes_scheme_only_replaces_invalid_draft(
+        self,
+    ) -> None:
+        """A scheme-only policy with no tag gets the period's first tag."""
+        scheme = 'YY.0M.MICRO'
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=versioning.calver_scheme_pattern(scheme),
+                scheme=scheme,
+            )
+        ]
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='patch',
+                    version='26.04.2',
+                    reasoning='same-period patch',
+                    notes_markdown='## Fixed',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': None,
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        today = datetime.datetime.now(datetime.UTC).date()
+        self.assertEqual(
+            response.json()['version'],
+            versioning.next_scheme_tag(scheme, None, today),
+        )
+
     def test_draft_release_notes_first_release_reads_synced_history(
         self,
     ) -> None:
