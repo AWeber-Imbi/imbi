@@ -897,6 +897,51 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             response.json()['version'], today.strftime('%Y.%m.%d-0')
         )
 
+    def test_draft_release_notes_scheme_only_replaces_invalid_draft(
+        self,
+    ) -> None:
+        """A scheme-only policy with no tag gets the period's first tag."""
+        scheme = 'YY.0M.MICRO'
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=versioning.calver_scheme_pattern(scheme),
+                scheme=scheme,
+            )
+        ]
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='patch',
+                    version='26.04.2',
+                    reasoning='same-period patch',
+                    notes_markdown='## Fixed',
+                ),
+                degraded=False,
+            )
+        )
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with (
+            mock.patch.object(
+                project_deployments.datetime,
+                'datetime',
+                wraps=datetime.datetime,
+            ) as dt,
+            testclient.TestClient(self.test_app) as client,
+        ):
+            dt.now.return_value = now
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': None,
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['version'], '26.10.0')
+
     def test_draft_release_notes_first_release_reads_synced_history(
         self,
     ) -> None:
@@ -5424,6 +5469,28 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             self.assertTrue(matches('26.04.2', '26.10.0', 'patch', [scheme]))
             # Without the scheme, the semver bump stands.
             self.assertTrue(matches('26.04.2', '26.04.3', 'patch'))
+            # Scheme-only policy, no prior tag or one from another
+            # format: only the first tag of the period passes.
+            patterns = [versioning.calver_scheme_pattern(scheme)]
+            self.assertFalse(
+                matches(None, '26.04.2', 'patch', [scheme], patterns)
+            )
+            self.assertTrue(
+                matches(None, '26.10.0', 'patch', [scheme], patterns)
+            )
+            self.assertFalse(
+                matches('v1.2.3', '26.04.2', 'patch', [scheme], patterns)
+            )
+            # A mixed policy keeps the old behaviour.
+            self.assertTrue(
+                matches(
+                    None,
+                    '26.04.2',
+                    'patch',
+                    [scheme],
+                    [*patterns, SEMVER_TAG_FORMAT.pattern],
+                )
+            )
 
     def test_suggest_version_follows_a_configured_scheme(self) -> None:
         """``26.04.2`` is semver too; the scheme resets on a new month."""

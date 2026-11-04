@@ -5721,12 +5721,7 @@ def _suggest_version(
     # schemes do not match (``v1.2.3`` -> ``1.2.4``) can satisfy an
     # unpadded ``YY.MINOR.MICRO`` pattern; the first tag of the current
     # period is the right answer there.
-    scheme_patterns = {
-        versioning.calver_scheme_pattern(scheme) for scheme in schemes
-    }
-    scheme_only = bool(patterns) and all(
-        pattern in scheme_patterns for pattern in patterns
-    )
+    scheme_only = _scheme_only(patterns, schemes)
     if last_tag and versioning.is_semver_tag(last_tag) and not scheme_only:
         bumped = _bump_semver(last_tag, bump)
         # The other prefix too, before the first-release defaults: a
@@ -5754,6 +5749,19 @@ def _suggest_version(
     return '' if patterns else candidates[0]
 
 
+def _scheme_only(
+    patterns: collections.abc.Sequence[str],
+    schemes: collections.abc.Sequence[str],
+) -> bool:
+    """Whether every pattern of the tag policy comes from a calver scheme."""
+    scheme_patterns = {
+        versioning.calver_scheme_pattern(scheme) for scheme in schemes
+    }
+    return bool(patterns) and all(
+        pattern in scheme_patterns for pattern in patterns
+    )
+
+
 def _version_allowed(
     version: str,
     patterns: collections.abc.Sequence[str],
@@ -5775,12 +5783,16 @@ def _version_matches_bump(
     version: str,
     bump: SemverBump,
     schemes: collections.abc.Sequence[str] = (),
+    patterns: collections.abc.Sequence[str] = (),
 ) -> bool:
     """Whether ``version`` is ``last_tag`` bumped by ``bump``.
 
     When ``last_tag`` matches a configured calver scheme, ``version``
     must be that scheme's next tag: ``26.04.3`` is a valid semver bump
     of ``26.04.2``, but in October the scheme wants ``26.10.0``.
+    When every pattern comes from a scheme and ``last_tag`` is absent
+    or matches no scheme, ``version`` must be the first tag of the
+    current period of a scheme.
     Otherwise only a semver previous tag is checked: a calendar version's bump
     does not change the date, and with no previous tag there is nothing
     to bump from.  Only a semver draft version is checked too: a version
@@ -5788,17 +5800,22 @@ def _version_matches_bump(
     The ``v`` prefix is not compared: the tag policy decides it, and
     ``_version_allowed`` checks that.
     """
-    if last_tag:
-        today = datetime.datetime.now(datetime.UTC).date()
+    today = datetime.datetime.now(datetime.UTC).date()
+    expected = {
+        versioning.next_scheme_tag(scheme, last_tag, today, bump)
+        for scheme in schemes
+        if last_tag
+        and versioning.matches_tag_formats(
+            last_tag, [versioning.calver_scheme_pattern(scheme)]
+        )
+    }
+    if not expected and _scheme_only(patterns, schemes):
         expected = {
-            versioning.next_scheme_tag(scheme, last_tag, today, bump)
+            versioning.next_scheme_tag(scheme, None, today)
             for scheme in schemes
-            if versioning.matches_tag_formats(
-                last_tag, [versioning.calver_scheme_pattern(scheme)]
-            )
         }
-        if expected:
-            return version in expected
+    if expected:
+        return version in expected
     if (
         not last_tag
         or versioning.is_calver_tag(last_tag)
@@ -6165,7 +6182,7 @@ async def draft_release_notes(
     if not _version_allowed(
         notes.version, patterns
     ) or not _version_matches_bump(
-        body.last_tag, notes.version, notes.bump, schemes
+        body.last_tag, notes.version, notes.bump, schemes, patterns
     ):
         notes = notes.model_copy(
             update={
