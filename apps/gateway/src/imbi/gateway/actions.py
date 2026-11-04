@@ -78,6 +78,7 @@ _COMMITTISH_PATTERN = re.compile(r'^[0-9a-f]{7}$')
 #: otherwise never recorded.
 _DEPLOYMENT_WRITE_RETRIES = 2
 _DEPLOYMENT_WRITE_BACKOFF = 0.5
+_REPEATABLE_STATUSES = frozenset({'success', 'failed', 'rolled_back'})
 
 
 class UpdateProjectRule(pydantic.BaseModel):
@@ -238,15 +239,19 @@ class ImbiClient(httpx.AsyncClient):
     async def _post_deployment(
         self, url: str, body: abc.Mapping[str, object]
     ) -> httpx.Response:
-        """POST a deployment write, repeating a 5xx when it is idempotent.
+        """POST a deployment write, repeating a 5xx for a terminal status.
 
         The API merges a deployment on ``external_run_id``, so a repeat
-        cannot record it twice.  Without one, a repeat could.
+        cannot record it twice; without one, a repeat could.  The API
+        keeps the last status written, so a repeated ``in_progress``
+        could land after the ``success`` and undo it.
         """
         response = await self.post(url, json=body)
-        retries = (
-            _DEPLOYMENT_WRITE_RETRIES if body.get('external_run_id') else 0
+        repeatable = (
+            body.get('external_run_id')
+            and body.get('status') in _REPEATABLE_STATUSES
         )
+        retries = _DEPLOYMENT_WRITE_RETRIES if repeatable else 0
         for attempt in range(retries):
             if response.status_code < http.HTTPStatus.INTERNAL_SERVER_ERROR:
                 break

@@ -2148,6 +2148,18 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
         self.assertEqual(500, response.status_code)
         self.assertEqual(1, mock_post.await_count)
 
+    async def test_server_error_for_a_running_status_is_not_retried(
+        self,
+    ) -> None:
+        # A late in_progress repeat could overwrite a newer success.
+        response, mock_post = await self._record(
+            httpx.Response(500),
+            httpx.Response(200),
+            body={'status': 'in_progress', 'external_run_id': '7'},
+        )
+        self.assertEqual(500, response.status_code)
+        self.assertEqual(1, mock_post.await_count)
+
     async def test_client_error_is_not_retried(self) -> None:
         response, mock_post = await self._record(
             httpx.Response(422),
