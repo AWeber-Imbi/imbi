@@ -24,10 +24,11 @@ import {
  * Building → Deploying → Released; a release-only cut (library / image)
  * has no rollout, so it is Building → Released.
  */
-export type InFlightKind = 'promote' | 'release'
+export type InFlightKind = 'deploy' | 'promote' | 'release'
 
 /** The train the banner walks while the operation runs. */
 const PHASES: Record<InFlightKind, readonly string[]> = {
+  deploy: [],
   promote: ['Building', 'Deploying', 'Released'],
   release: ['Building', 'Released'],
 }
@@ -36,6 +37,7 @@ const PHASE_INDEX: Record<
   InFlightKind,
   Partial<Record<ReleaseInFlightPhase, number>>
 > = {
+  deploy: {},
   promote: { building: 0, deploying: 1, success: 2 },
   release: { building: 0, success: 1 },
 }
@@ -94,7 +96,7 @@ export function ReleaseInFlightBanner({
           <Elapsed since={state.startedAt} until={state.endedAt} />
         </div>
         <span className="text-xs leading-relaxed opacity-90">
-          {error ?? DETAIL[phase]}
+          {error ?? (kind === 'deploy' ? DEPLOY_DETAIL : DETAIL[phase])}
         </span>
         {PHASE_INDEX[kind][phase] === undefined ? null : (
           <PhaseTrain
@@ -136,7 +138,7 @@ export function ReleaseInFlightBanner({
             target="_blank"
           >
             <ExternalLink className="size-3.5" />
-            View build
+            {kind === 'deploy' ? 'View run' : 'View build'}
           </a>
         ) : null}
         {TERMINAL.has(phase) ? (
@@ -171,6 +173,8 @@ const TONE_CLASS: Record<Tone, string> = {
   muted: 'border-tertiary text-tertiary',
   success: 'border-success bg-success text-success',
 }
+
+const DEPLOY_DETAIL = 'Deploy actions stay disabled until the rollout finishes.'
 
 const DETAIL: Record<ReleaseInFlightPhase, string> = {
   adopting: '',

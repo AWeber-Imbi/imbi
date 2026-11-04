@@ -67,7 +67,11 @@ import { ProjectDoctorTab } from '@/components/ProjectDoctorTab'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
-import { useReleaseInFlightState } from '@/components/releases/releaseInFlight'
+import {
+  RELEASE_IDLE,
+  type ReleaseInFlightState,
+  useReleaseInFlightState,
+} from '@/components/releases/releaseInFlight'
 import { ReleaseInFlightBanner } from '@/components/releases/ReleaseInFlightBanner'
 import { ReleasesTab } from '@/components/releases/ReleasesTab'
 import { useReleaseBlockMutation } from '@/components/releases/useReleaseBlockMutation'
@@ -120,6 +124,11 @@ import type {
   Project,
   ScoringPolicy,
 } from '@/types'
+
+// ponytail: a deploy attempt still pending after this long is treated as
+// stuck, so a lost status update cannot disable deploys forever. Raise it
+// if real rollouts take longer.
+const DEPLOY_STUCK_MS = 60 * 60 * 1000
 
 interface ProjectDetailProps {
   initialSubAction?: string
@@ -216,6 +225,12 @@ export function ProjectDetail({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
     queryKey: ['currentReleases', orgSlug, project.id],
+    // Poll while a deploy runs, so the banner and the disabled deploy
+    // buttons clear when it settles, also after a reload with no watcher.
+    refetchInterval: (q) =>
+      q.state.data?.some((row) => isDeployInFlight(row.latest_deployment))
+        ? 6000
+        : false,
   })
 
   const deploymentStatus: Record<
@@ -505,6 +520,27 @@ export function ProjectDetail({
     // knowledge that something is running is what turns it back on.
     watching: watchingBuild,
   })
+  // A plain deploy (not a promote) in flight. `promote-status` above
+  // does not see it, so it comes from a run this page dispatched or an
+  // attempt the server still reports as unsettled.
+  const deployInFlight = useMemo<null | ReleaseInFlightState>(() => {
+    const run = activeRuns.find((r) => r.originProjectId === project.id)
+    const row = currentReleases.find((r) =>
+      isDeployInFlight(r.latest_deployment),
+    )
+    if (!run && !row) return null
+    const latest = row?.latest_deployment
+    return {
+      ...RELEASE_IDLE,
+      blocked: true,
+      envName: row?.environment.name ?? run?.envName ?? null,
+      phase: 'deploying',
+      runUrl: sanitizeHttpUrl(run?.runUrl) ?? null,
+      startedAt: latest?.deployed_at ?? null,
+      tag: latest?.tag ?? latest?.committish?.slice(0, 7) ?? null,
+    }
+  }, [activeRuns, currentReleases, project.id])
+
   const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
     // The banner's `build_failed` comes from `promote-status`, which the
     // unblock does not rewrite — dismiss it so the page stops claiming
@@ -1159,6 +1195,17 @@ export function ProjectDetail({
             />
           </div>
         )}
+        {deployInFlight ? (
+          <div className="mb-6">
+            <ReleaseInFlightBanner
+              kind="deploy"
+              onRedeploy={() => handleTabChange('deployments')}
+              onUnblock={unblock}
+              state={deployInFlight}
+              unblockPending={unblockPending}
+            />
+          </div>
+        ) : null}
 
         <TabsContent className="space-y-6" value="overview">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
@@ -1454,7 +1501,11 @@ export function ProjectDetail({
               />
             ) : (
               <DeploymentsTab
-                canTrigger={canTriggerDeployments && !releaseInFlight.blocked}
+                canTrigger={
+                  canTriggerDeployments &&
+                  !releaseInFlight.blocked &&
+                  !deployInFlight
+                }
                 connectLabel={deploymentConnectLabel}
                 environments={sortedEnvironments}
                 onBuildStarted={handleBuildStarted}
@@ -1498,6 +1549,8 @@ export function ProjectDetail({
           projectId={run.originProjectId}
           runId={run.runId}
           runUrl={run.runUrl}
+          // This project's deploys are on screen in the banner.
+          silent={run.originProjectId === project.id}
           toastId={run.toastId}
         />
       ))}
@@ -1635,6 +1688,15 @@ function integrationLinkLabel(
   svc: { integration_name: null | string; integration_slug: string },
 ): string {
   return integration?.name || svc.integration_name || svc.integration_slug
+}
+
+/** True while `latest` is a deploy attempt that has not settled yet. */
+function isDeployInFlight(latest: LatestDeployment | null | undefined) {
+  if (latest?.status !== 'pending' && latest?.status !== 'in_progress') {
+    return false
+  }
+  const at = Date.parse(latest.deployed_at)
+  return Number.isFinite(at) && Date.now() - at < DEPLOY_STUCK_MS
 }
 
 function LinksSkeleton({ count }: { count: number }) {

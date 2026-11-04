@@ -61,6 +61,13 @@ interface DeploymentRunWatcherProps {
   projectId: string
   runId: string
   runUrl?: null | string
+  /**
+   * The page shows this run in its in-flight banner, so skip the
+   * in-progress toast. The outcome toast still fires: the banner
+   * disappears when the run settles, and the operator must see how it
+   * ended.
+   */
+  silent?: boolean
   /** Sonner toast to keep updated. */
   toastId: number | string
 }
@@ -84,6 +91,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     projectId,
     runId,
     runUrl,
+    silent,
     toastId,
   } = props
   // Prefer the explicit action URL; fall back to the workflow run URL
@@ -117,6 +125,12 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     retry: 3,
   })
 
+  // The mutation raised the dispatch toast before this watcher existed,
+  // so silence means clearing it too.
+  useEffect(() => {
+    if (silent) toast.dismiss(toastId)
+  }, [silent, toastId])
+
   useEffect(() => {
     // The parent removes us on terminal status, but a stale query.data
     // tick can fire before the unmount lands — bail so we don't
@@ -149,7 +163,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
         id: toastId,
       })
       onTerminal(runId)
-    } else {
+    } else if (!silent) {
       // queued / in_progress — keep the loading toast fresh.
       toast.loading(`Deploying to ${envName}…`, {
         action,
@@ -163,6 +177,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     envName,
     onTerminal,
     runId,
+    silent,
     toastActionLabel,
     toastActionUrl,
     toastId,
