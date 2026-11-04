@@ -5904,13 +5904,11 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertIsNone(data[1]['notes_markdown'])
         self.assertEqual(data[1]['ci_status'], 'not_applicable')
 
-    def test_release_history_head_is_highest_semver_not_newest(self) -> None:
-        """With no synced commits, the head of history is the highest semver.
+    def test_release_history_head_is_newest_tag(self) -> None:
+        """The most recently tagged release heads the list.
 
-        Neither tag's commit is in ``commits``, so the commit-history
-        ranking has nothing to go on and semver breaks the tie: a
-        late-synced lower version (newer timestamp) must not out-rank the
-        highest semver tag, mirroring the drift base selection.
+        The tag time decides before the version, so a lower version
+        tagged later ranks first.
         """
         older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
@@ -5943,7 +5941,7 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             response = client.get(f'{self._BASE}/release-history')
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual([e['tag'] for e in data], ['v7.1.0', 'v4.1.3'])
+        self.assertEqual([e['tag'] for e in data], ['v4.1.3', 'v7.1.0'])
 
     def test_release_history_head_follows_the_commit_history(self) -> None:
         """The tag on the newest synced commit heads the list.
@@ -6809,8 +6807,7 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
             response = client.get(f'{self._BASE}/release-history')
         self.assertEqual(response.status_code, 200, response.text)
         data = response.json()
-        # The unsynced release leads: it is in flight, failed, or orphaned,
-        # and all three need the operator before anything older does.
+        # The unsynced release leads because it is the newest.
         self.assertEqual(['2.9.0', '2.8.6'], [e['tag'] for e in data])
         unsynced = data[0]
         self.assertFalse(unsynced['tag_synced'])
@@ -6830,6 +6827,65 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertTrue(synced['tag_synced'])
         self.assertEqual(synced['tag_url'], 'https://gh/releases/tag/2.8.6')
         self.assertFalse(synced['blocked'])
+
+    def test_release_history_old_unsynced_release_sorts_by_its_age(
+        self,
+    ) -> None:
+        """An old ``Release`` node with no synced tag does not lead.
+
+        Legacy nodes (``saml``, ``0.26.0``) with no ``tags`` row went to
+        the top of every history, above the current release.
+        """
+        when = datetime.datetime(2026, 11, 4, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': '2.43.0',
+                        'sha': 'e42e585aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return []
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': tag,
+                            'committish': '',
+                            'title': tag,
+                            'created_at': created_at,
+                        }
+                    )
+                }
+                for tag, created_at in (
+                    ('saml', '2024-10-01T00:00:00+00:00'),
+                    ('0.26.0', '2025-10-01T00:00:00+00:00'),
+                )
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            ['2.43.0', '0.26.0', 'saml'], [e['tag'] for e in response.json()]
+        )
 
     def test_release_history_limit_keeps_the_newest_synced_release(
         self,
