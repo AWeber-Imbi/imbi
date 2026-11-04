@@ -533,7 +533,7 @@ describe('Tasks', () => {
     it('collapses tool calls and thinking in Compact', async () => {
       renderAt('/agents/tasks/acme/T-3/conversation')
       await screen.findByText('Look first.')
-      fireEvent.click(screen.getByRole('button', { name: 'Compact' }))
+      fireEvent.click(screen.getByRole('radio', { name: 'Compact' }))
       expect(screen.queryByText('Look first.')).not.toBeInTheDocument()
       expect(screen.queryByText(/1 failed, 3 passed/)).not.toBeInTheDocument()
       fireEvent.click(screen.getByText('uv run pytest -q'))

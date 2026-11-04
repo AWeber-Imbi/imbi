@@ -3,7 +3,17 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Search, TriangleAlert } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { Input } from '@/components/ui/input'
 import { RichMarkdown } from '@/components/ui/rich-markdown'
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
@@ -139,23 +149,25 @@ export function ConversationTab({
           }
           pressed={filters.errorsOnly}
         />
-        <Segmented
-          label="Detail"
-          onChange={(v) => setDensity(v === 'Full')}
-          options={['Compact', 'Full']}
-          value={full ? 'Full' : 'Compact'}
-        />
-        <label className="border-secondary ml-auto flex items-center gap-1.5 rounded-md border px-2 py-1">
-          <Search className="text-tertiary size-3.5" />
-          <input
+        <SegmentedControl
+          ariaLabel="Detail"
+          onValueChange={(v) => setDensity(v === 'full')}
+          value={full ? 'full' : 'compact'}
+        >
+          <SegmentedControlItem value="compact">Compact</SegmentedControlItem>
+          <SegmentedControlItem value="full">Full</SegmentedControlItem>
+        </SegmentedControl>
+        <div className="relative ml-auto">
+          <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+          <Input
             aria-label="Search this task"
-            className="w-40 bg-transparent text-xs outline-none"
+            className="h-8 w-48 pl-8 text-xs"
             onChange={(e) => setFilters({ ...filters, query: e.target.value })}
             placeholder="Search this task"
             type="search"
             value={filters.query}
           />
-        </label>
+        </div>
       </div>
       <ol className="flex-1 py-4">
         {all.length === 0 && (
@@ -440,7 +452,9 @@ function Output({ dark, error, text }: OutputProps) {
     <>
       <Pane dark={dark}>
         <span
-          className={cn(error && (dark ? 'text-[#f29a8e]' : 'text-danger'))}
+          className={cn(
+            error && (dark ? 'text-terminal-danger' : 'text-danger'),
+          )}
         >
           {cut ? lines.slice(0, OUTPUT_LINES).join('\n') : text}
         </span>
@@ -455,13 +469,13 @@ function Pane({ children, dark }: { children: ReactNode; dark?: boolean }) {
     <div
       className={cn(
         'overflow-x-auto rounded-md',
-        dark ? 'bg-[#1f1f1d]' : 'border-tertiary bg-tertiary border',
+        dark ? 'bg-terminal' : 'border-tertiary bg-tertiary border',
       )}
     >
       <pre
         className={cn(
           'px-3 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap',
-          dark && 'text-[#e6e5df]',
+          dark && 'text-terminal',
         )}
       >
         {children}
@@ -540,43 +554,6 @@ function Row({
   )
 }
 
-function Segmented({
-  label,
-  onChange,
-  options,
-  value,
-}: {
-  label: string
-  onChange: (value: string) => void
-  options: string[]
-  value: string
-}) {
-  return (
-    <span
-      aria-label={label}
-      className="border-secondary inline-flex overflow-hidden rounded-md border"
-      role="group"
-    >
-      {options.map((option) => (
-        <button
-          aria-pressed={value === option}
-          className={cn(
-            'px-2.5 py-0.5 text-xs',
-            value === option
-              ? 'bg-secondary text-primary font-medium'
-              : 'text-tertiary',
-          )}
-          key={option}
-          onClick={() => onChange(option)}
-          type="button"
-        >
-          {option}
-        </button>
-      ))}
-    </span>
-  )
-}
-
 function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
   return (
     <button
@@ -600,13 +577,12 @@ function Thinking({
 }) {
   const open = ctx.isOpen(id)
   return (
-    <div className="border-amber-border/50 bg-amber-bg/50 rounded-lg border">
-      <button
-        aria-expanded={open}
-        className="text-amber-text flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
-        onClick={() => ctx.toggle(id)}
-        type="button"
-      >
+    <Collapsible
+      className="border-amber-border/50 bg-amber-bg/50 rounded-lg border"
+      onOpenChange={() => ctx.toggle(id)}
+      open={open}
+    >
+      <CollapsibleTrigger className="text-amber-text flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs">
         <ChevronRight
           className={cn('size-3.5 transition-transform', open && 'rotate-90')}
         />
@@ -614,13 +590,13 @@ function Thinking({
         <span className="text-tertiary">
           {text.split(/\s+/).filter(Boolean).length} words
         </span>
-      </button>
-      {open && (
+      </CollapsibleTrigger>
+      <CollapsibleContent>
         <p className="text-secondary max-w-[80ch] px-4 pb-3 pl-8 text-[13px] leading-relaxed whitespace-pre-wrap italic">
           {text}
         </p>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -668,19 +644,16 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
   const denied = isDenied(p)
   const result = p.result == null ? '' : label(p.result)
   return (
-    <div
+    <Collapsible
       className={cn(
         'bg-primary overflow-hidden rounded-lg border shadow-xs',
         isError(entry) ? 'border-danger' : 'border-tertiary',
       )}
+      disabled={!e}
+      onOpenChange={() => ctx.toggle(entry.id)}
+      open={open}
     >
-      <button
-        aria-expanded={e ? open : undefined}
-        className="hover:bg-tertiary flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm"
-        disabled={!e}
-        onClick={() => ctx.toggle(entry.id)}
-        type="button"
-      >
+      <CollapsibleTrigger className="hover:bg-tertiary flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm">
         <ChevronRight
           className={cn(
             'text-tertiary size-3.5 shrink-0 transition-transform',
@@ -716,43 +689,44 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
         <span className="text-tertiary font-mono text-[11px] whitespace-nowrap tabular-nums">
           {ms == null ? '' : ms < 1000 ? `${ms}ms` : formatElapsed(ms)}
         </span>
-      </button>
-      {open && e && (
-        <div className="border-tertiary flex flex-col gap-2 border-t px-3 pt-2.5 pb-3">
-          {denied && (
-            <p className="bg-danger text-danger rounded-md px-2.5 py-1.5 text-xs">
-              {label(
-                (p.policy as { reason?: unknown }).reason ??
-                  'Denied by policy before it ran.',
-              )}
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
-              {json ? 'Raw event' : family === 'shell' ? 'Terminal' : 'Input'}
-            </span>
-            <span className="ml-auto">
-              <Segmented
-                label="View"
-                onChange={(v) => setJson(v === 'JSON')}
-                options={['Readable', 'JSON']}
-                value={json ? 'JSON' : 'Readable'}
-              />
-            </span>
-          </div>
-          {json ? (
-            <Pane>{JSON.stringify(p, null, 2)}</Pane>
-          ) : (
-            <ToolReadable
-              args={args}
-              argsText={argsText}
-              error={p.is_error === true}
-              family={family}
-              result={result}
-            />
-          )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-tertiary flex flex-col gap-2 border-t px-3 pt-2.5 pb-3">
+        {denied && (
+          <p className="bg-danger text-danger rounded-md px-2.5 py-1.5 text-xs">
+            {label(
+              (p.policy as { reason?: unknown }).reason ??
+                'Denied by policy before it ran.',
+            )}
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
+            {json ? 'Raw event' : family === 'shell' ? 'Terminal' : 'Input'}
+          </span>
+          <SegmentedControl
+            ariaLabel="View"
+            className="ml-auto"
+            onValueChange={(v) => setJson(v === 'json')}
+            value={json ? 'json' : 'readable'}
+          >
+            <SegmentedControlItem value="readable">
+              Readable
+            </SegmentedControlItem>
+            <SegmentedControlItem value="json">JSON</SegmentedControlItem>
+          </SegmentedControl>
         </div>
-      )}
+        {json ? (
+          <Pane>{JSON.stringify(p, null, 2)}</Pane>
+        ) : (
+          <ToolReadable
+            args={args}
+            argsText={argsText}
+            error={p.is_error === true}
+            family={family}
+            result={result}
+          />
+        )}
+      </CollapsibleContent>
       {entry.children.length > 0 && (
         <div className="border-accent/40 mx-3 mb-3 ml-6 flex flex-col gap-2 border-l-2 pt-1 pl-3.5">
           <span className="text-accent text-[10.5px] font-semibold tracking-wide uppercase">
@@ -784,7 +758,7 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
           ))}
         </div>
       )}
-    </div>
+    </Collapsible>
   )
 }
 
