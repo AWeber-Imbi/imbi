@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { ProjectRepoProvider } from '@/contexts/ProjectRepoContext'
@@ -61,17 +61,34 @@ describe('RichMarkdown', () => {
     expect(screen.getByText('#5')).toBeInTheDocument()
   })
 
-  it('renders images as links when asked', () => {
+  it('loads an image only on a click when asked', () => {
     const { container } = render(
-      <RichMarkdown imagesAsLinks>
+      <RichMarkdown deferImages>
         {'![chart](https://example.com/c.png?d=1)'}
       </RichMarkdown>,
     )
     expect(container.querySelector('img')).toBeNull()
-    expect(screen.getByRole('link', { name: 'chart' })).toHaveAttribute(
-      'href',
+    const show = screen.getByRole('button', { name: 'Show image: chart' })
+    fireEvent.click(show)
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
       'https://example.com/c.png?d=1',
     )
+    fireEvent.click(screen.getByRole('button', { name: 'Hide image' }))
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('defers images in the frontmatter too', () => {
+    const { container } = render(
+      <RichMarkdown deferImages>
+        {"---\nx: '![leak](https://example.com/?q=secret)'\n---\nBody"}
+      </RichMarkdown>,
+    )
+    expect(screen.getByText('Body')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Show image: leak' }),
+    ).toBeInTheDocument()
   })
 
   it('leaves URL fragments and reference links intact', () => {

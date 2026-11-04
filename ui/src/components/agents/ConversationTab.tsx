@@ -473,7 +473,7 @@ function Pane({ children, dark }: { children: ReactNode; dark?: boolean }) {
 function Prose({ children }: { children: string }) {
   return (
     <div className="document-markdown max-w-[74ch] text-sm">
-      <RichMarkdown imagesAsLinks>{children}</RichMarkdown>
+      <RichMarkdown deferImages>{children}</RichMarkdown>
     </div>
   )
 }

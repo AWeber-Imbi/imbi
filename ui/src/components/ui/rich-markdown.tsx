@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import Markdown, { type Components, type Options } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { DeferredImage } from '@/components/ui/deferred-image'
 import { FrontmatterTable } from '@/components/ui/frontmatter-table'
 import { useProjectRepoUrl } from '@/contexts/ProjectRepoContext'
 import { splitFrontmatter } from '@/lib/frontmatter'
@@ -11,11 +12,11 @@ import { remarkGithubRefs } from '@/lib/github-refs'
 interface RichMarkdownProps {
   children: string
   /**
-   * Render images as links instead of loading them. Use it for text an
-   * agent or another untrusted author wrote: an image loads with no
-   * click, so its URL can carry data out of the page.
+   * Load images only on a click, in the body and the frontmatter. Use it
+   * for text an agent or another untrusted author wrote: an image loads
+   * with no click, so its URL can carry data out of the page.
    */
-  imagesAsLinks?: boolean
+  deferImages?: boolean
 }
 
 const COMPONENTS: Components = {
@@ -24,12 +25,10 @@ const COMPONENTS: Components = {
   ),
 }
 
-const IMAGES_AS_LINKS: Components = {
+const DEFERRED_IMAGES: Components = {
   ...COMPONENTS,
   img: ({ alt, src }) => (
-    <a href={src} rel="noopener noreferrer" target="_blank">
-      {alt || src}
-    </a>
+    <DeferredImage alt={alt} src={typeof src === 'string' ? src : undefined} />
   ),
 }
 
@@ -41,7 +40,7 @@ const IMAGES_AS_LINKS: Components = {
  */
 export function RichMarkdown({
   children,
-  imagesAsLinks = false,
+  deferImages = false,
 }: RichMarkdownProps) {
   const repoUrl = useProjectRepoUrl()
   const remarkPlugins = useMemo<Options['remarkPlugins']>(
@@ -52,9 +51,9 @@ export function RichMarkdown({
   const { body, meta } = splitFrontmatter(children)
   return (
     <>
-      {meta && <FrontmatterTable meta={meta} />}
+      {meta && <FrontmatterTable deferImages={deferImages} meta={meta} />}
       <Markdown
-        components={imagesAsLinks ? IMAGES_AS_LINKS : COMPONENTS}
+        components={deferImages ? DEFERRED_IMAGES : COMPONENTS}
         remarkPlugins={remarkPlugins}
       >
         {body}
