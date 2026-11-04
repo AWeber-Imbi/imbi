@@ -225,6 +225,23 @@ describe('filterTimeline', () => {
     ).toEqual([])
   })
 
+  it('searches values, not field names', () => {
+    const calls = timeline([
+      call(1, 'Bash', { arguments: { command: 'ls' }, is_error: false }),
+      call(2, 'Bash', {
+        arguments: { command: 'make' },
+        is_error: true,
+        result: 'Error: no rule',
+      }),
+    ])
+    expect(
+      rows(filterTimeline(calls, { ...DEFAULT_FILTERS, query: 'error' })),
+    ).toEqual([['Bash', 0]])
+    expect(
+      filterTimeline(calls, { ...DEFAULT_FILTERS, query: 'error' })[0].seq,
+    ).toBe(2)
+  })
+
   it('searches payloads, children included', () => {
     expect(
       rows(filterTimeline(entries, { ...DEFAULT_FILTERS, query: 'FEEDS' })),

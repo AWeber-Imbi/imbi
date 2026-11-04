@@ -229,11 +229,25 @@ function partKey(e: AgentTaskEvent): null | string {
   return `${e.type}:${String(p.call_id)}`
 }
 
+/**
+ * The text a reader sees in an entry: its string and number values, at
+ * any depth. Field names are left out, so `error` does not match every
+ * call by its `is_error` key.
+ */
 function searchText(entry: TimelineEntry): string {
   return [
-    JSON.stringify(entry.event?.payload ?? {}),
+    ...values(entry.event?.payload ?? {}),
     ...entry.children.map(searchText),
   ]
     .join(' ')
     .toLowerCase()
+}
+
+function values(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (typeof value === 'number') return [String(value)]
+  if (Array.isArray(value)) return value.flatMap(values)
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(values)
+  return []
 }
