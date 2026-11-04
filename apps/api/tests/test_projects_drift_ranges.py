@@ -32,6 +32,20 @@ def _release(sha: str) -> projects.ReleaseInfo:
     return projects.ReleaseInfo(deployed_at=_at(1), committish=sha)
 
 
+#: ``(sha, at)`` for a commit that landed when it was made, or
+#: ``(sha, at, landed)`` for one that reached the default branch later.
+Mark = (
+    tuple[str, datetime.datetime]
+    | tuple[str, datetime.datetime, datetime.datetime]
+)
+
+
+def _commit(mark: Mark) -> projects.ActionableCommit:
+    sha, at = mark[0], mark[1]
+    landed = mark[2] if len(mark) == 3 else at
+    return projects.ActionableCommit(sha, at, landed)
+
+
 #: testing sorts first and tracks HEAD; staging and production run tags.
 PIPELINE = [_env('testing', 1), _env('staging', 2), _env('production', 3)]
 
@@ -121,7 +135,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     def _patch(
         self,
         times: dict[tuple[str, str], datetime.datetime],
-        actionable: dict[str, list[tuple[str, datetime.datetime]]] | None,
+        actionable: dict[str, list[projects.ActionableCommit]] | None,
     ) -> typing.Any:
         return (
             mock.patch.object(
@@ -138,21 +152,21 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
 
     async def _run(
         self,
-        actionable: list[tuple[str, datetime.datetime]] | None,
+        actionable: list[Mark] | None,
         times: dict[tuple[str, str], datetime.datetime] | None = None,
     ) -> dict[str, dict[str, bool]]:
         return (await self._evaluate(actionable, times)).ranges
 
     async def _oldest(
         self,
-        actionable: list[tuple[str, datetime.datetime]] | None,
+        actionable: list[Mark] | None,
         times: dict[tuple[str, str], datetime.datetime] | None = None,
     ) -> dict[str, dict[str, datetime.datetime]]:
         return (await self._evaluate(actionable, times)).oldest
 
     async def _evaluate(
         self,
-        actionable: list[tuple[str, datetime.datetime]] | None,
+        actionable: list[Mark] | None,
         times: dict[tuple[str, str], datetime.datetime] | None,
     ) -> projects.EnvironmentDrift:
         resolved = (
@@ -161,7 +175,10 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             else times
         )
         a, b = self._patch(
-            resolved, {'p1': actionable} if actionable is not None else None
+            resolved,
+            {'p1': [_commit(m) for m in actionable]}
+            if actionable is not None
+            else None,
         )
         with a, b:
             return await projects._evaluate_environment_drift([self.PROJECT])
@@ -270,6 +287,29 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             await self._oldest([('base', _at(10)), ('twin', _at(10))]),
         )
 
+    async def test_oldest_is_when_the_commit_landed_not_when_made(
+        self,
+    ) -> None:
+        # A pull request's commits keep the dates they were made with on
+        # the branch; the merge push is when they reached the default
+        # branch and started waiting.  Dating the range by the commit
+        # date over-reported the wait by the pull request's whole life.
+        self.assertEqual(
+            {'p1': {'base..head': _at(17)}},
+            await self._oldest(
+                [('branch', _at(12), _at(17)), ('merge', _at(17))]
+            ),
+        )
+
+    async def test_membership_still_goes_by_commit_time(self) -> None:
+        # ``landed`` dates the range; it does not decide what is in it.
+        # A commit made before the base but pushed after it is still
+        # behind the base endpoint.
+        self.assertEqual(
+            {},
+            await self._oldest([('old', _at(5), _at(15))]),
+        )
+
     async def test_a_clean_range_has_no_oldest(self) -> None:
         self.assertEqual({}, await self._oldest([]))
 
@@ -334,12 +374,35 @@ class FetchActionableCommitTimesTests(unittest.IsolatedAsyncioTestCase):
         sql, params = query.await_args.args
         self.assertIn('COALESCE(c.committed_at, c.authored_at) >=', sql)
         self.assertIn('c.short_sha AS short_sha', sql)
+        self.assertIn('c.pushed_at AS landed', sql)
         self.assertEqual(
             {'project_ids': ['p1'], 'los': [_at(10)], 'his': [_at(20)]},
             params,
         )
 
-    async def test_rows_come_back_as_sha_time_pairs(self) -> None:
+    async def test_rows_come_back_as_actionable_commits(self) -> None:
+        query = mock.AsyncMock(
+            return_value=[
+                {
+                    'project_id': 'p1',
+                    'short_sha': 'twin',
+                    'at': _at(10),
+                    'landed': _at(12),
+                }
+            ]
+        )
+        with mock.patch.object(clickhouse, 'query', query):
+            result = await projects._fetch_actionable_commit_times(
+                {'p1': (_at(10), _at(20))}
+            )
+        self.assertEqual(
+            {'p1': [projects.ActionableCommit('twin', _at(10), _at(12))]},
+            result,
+        )
+
+    async def test_a_missing_push_time_falls_back_to_the_commit_time(
+        self,
+    ) -> None:
         query = mock.AsyncMock(
             return_value=[
                 {'project_id': 'p1', 'short_sha': 'twin', 'at': _at(10)}
@@ -349,4 +412,7 @@ class FetchActionableCommitTimesTests(unittest.IsolatedAsyncioTestCase):
             result = await projects._fetch_actionable_commit_times(
                 {'p1': (_at(10), _at(20))}
             )
-        self.assertEqual({'p1': [('twin', _at(10))]}, result)
+        self.assertEqual(
+            {'p1': [projects.ActionableCommit('twin', _at(10), _at(10))]},
+            result,
+        )
