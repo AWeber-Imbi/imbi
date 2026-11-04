@@ -38,6 +38,13 @@ def _release_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
+#: What a replayed success reads back from its unchanged node.
+_STORED_SUCCESS: dict[str, typing.Any] = {
+    'release_id': RELEASE_ID,
+    'at': '2026-05-13T14:00:00+00:00',
+}
+
+
 def _upsert_row(
     *, created: bool = True, unchanged: bool = False
 ) -> list[dict[str, typing.Any]]:
@@ -1454,7 +1461,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         note: str | None = None,
         performed_by: str | None = None,
         upsert: list[dict[str, typing.Any]] | None = None,
-        stored_at: str | None = None,
+        replay: list[dict[str, typing.Any]] | None = None,
     ) -> typing.Any:
         """Drive one append against a scripted graph.
 
@@ -1464,14 +1471,14 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         node model, so the outcome a caller sees is the row the
         database returns rather than something re-derived in Python.
 
-        ``stored_at`` is the node time a replayed success reads back
-        before its pointer write.
+        ``replay`` is what a replayed success reads back from the node
+        before its pointer write: the owning release and the stored time.
         """
         import asyncio
 
         from imbi.api.endpoints.releases import append_deployment_event
 
-        replay = [[{'at': stored_at}]] if stored_at is not None else []
+        replay_rows = [replay] if replay is not None else []
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [
@@ -1482,7 +1489,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                 }
             ],
             upsert if upsert is not None else _upsert_row(),
-            *replay,
+            *replay_rows,
             # only consumed by the current_release write on success writes
             [{'current_release': RELEASE_ID}],
         ]
@@ -1520,7 +1527,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             external_run_id='42',
             status='success',
             upsert=_upsert_row(created=False, unchanged=True),
-            stored_at='2026-05-13T14:00:00+00:00',
+            replay=[_STORED_SUCCESS],
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(len(edge.deployments), 1)
@@ -1537,7 +1544,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             external_run_id='42',
             status='success',
             upsert=_upsert_row(created=False, unchanged=True),
-            stored_at='2026-05-13T14:00:00+00:00',
+            replay=[_STORED_SUCCESS],
         )
         self.assertEqual(outcome, 'noop')
         calls = self._current_release_calls()
@@ -1545,6 +1552,35 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         self.assertEqual(calls[0].args[1]['release_id'], RELEASE_ID)
         # The stored time, not now: an old replay cannot move it forward.
         self.assertEqual(calls[0].args[1]['ts'], '2026-05-13T14:00:00+00:00')
+
+    def test_replayed_success_names_the_owning_release(self) -> None:
+        # A tagged release took the deployment over from the requested
+        # one, so the pointer must name the tagged release.
+        self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[{**_STORED_SUCCESS, 'release_id': 'tagged-release'}],
+        )
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].args[1]['release_id'], 'tagged-release')
+
+    def test_replay_skips_a_node_no_longer_in_success(self) -> None:
+        # A later write moved the node off success after the upsert, so
+        # its stored time no longer describes the success.
+        _edge, outcome = self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[],
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(self._current_release_calls(), [])
+        read = self.mock_db.execute.await_args_list[3].args[0]
+        self.assertIn("d.status = 'success'", read)
 
     def test_replayed_non_success_skips_current_release(self) -> None:
         existing = [
@@ -1686,7 +1722,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             status='success',
             performed_by='octocat',
             upsert=_upsert_row(created=False, unchanged=True),
-            stored_at='2026-05-13T14:00:00+00:00',
+            replay=[_STORED_SUCCESS],
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(edge.deployments[0].performed_by, 'octocat')

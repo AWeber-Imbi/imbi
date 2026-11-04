@@ -1627,7 +1627,6 @@ async def append_deployment_event(
                 org_slug=org_slug,
                 project_id=project_id,
                 env_slug=env_slug,
-                release_id=release_id,
                 deployment_id=result.id,
             )
         return _edge_to_response(env, existing), 'noop'
@@ -1673,30 +1672,37 @@ async def _replay_current_release(
     org_slug: str,
     project_id: str,
     env_slug: str,
-    release_id: str,
     deployment_id: str,
 ) -> None:
     """Point at the release of a replayed ``success`` that changed nothing.
 
     A repeat of a write that stored the deployment but failed on the
-    pointer lands here.  It uses the node's stored time, read after the
-    upsert, so the ratchet in :func:`_set_current_release` moves the
-    pointer only if that first pointer write never happened.
+    pointer lands here.  It reads the node's stored time, so the ratchet
+    in :func:`_set_current_release` moves the pointer only if that first
+    pointer write never happened.  It names the release that owns the
+    node, which a tagged release can take over from the requested one,
+    and skips a node that a later write moved off ``success``.
     """
     query: typing.LiteralString = """
-    MATCH (d:Deployment {{id: {id}}})
-    RETURN COALESCE(d.updated_at, d.created_at) AS at
+    MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d:Deployment {{id: {id}}})
+    WHERE d.status = 'success'
+    RETURN r.id AS release_id,
+           COALESCE(d.updated_at, d.created_at) AS at
+    LIMIT 1
     """
-    rows = await db.execute(query, {'id': deployment_id}, ['at'])
-    at = graph.parse_agtype(rows[0]['at']) if rows else None
-    if not at:
+    rows = await db.execute(query, {'id': deployment_id}, ['release_id', 'at'])
+    if not rows:
+        return
+    release_id = graph.parse_agtype(rows[0]['release_id'])
+    at = graph.parse_agtype(rows[0]['at'])
+    if not release_id or not at:
         return
     await _set_current_release(
         db,
         org_slug=org_slug,
         project_id=project_id,
         env_slug=env_slug,
-        release_id=release_id,
+        release_id=str(release_id),
         timestamp=datetime.datetime.fromisoformat(str(at)),
     )
 
