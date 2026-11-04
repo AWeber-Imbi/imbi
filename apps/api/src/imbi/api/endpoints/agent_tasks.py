@@ -1123,6 +1123,49 @@ async def cancel_agent_task(
     return await _set_control(store, org_id, short_id, 'cancel', auth)
 
 
+@agent_tasks_router.delete('/{short_id}', status_code=204)
+async def delete_agent_task(
+    org_id: OrgId,
+    short_id: str,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:delete')),
+    ],
+) -> None:
+    """Delete a closed task, with its events and relations.
+
+    The secret audit and the usage records of the task stay.
+
+    Raises:
+        403: The caller has no ``agent_task:delete``, or is not a member
+            of the org.
+        404: No such task.
+        409: The task, or a task in its chain, is not closed.
+
+    """
+    try:
+        task = await store.delete(org_id, short_id.upper())
+    except agent_tasks.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        ) from e
+    except agent_tasks.TaskOpen as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Task {short_id!r} or a task in its chain is not closed,'
+                ' or its log is not archived yet'
+            ),
+        ) from e
+    LOGGER.info(
+        'Agent task %s (%s) deleted by %s',
+        task['short_id'],
+        task['id'],
+        _actor(auth).id,
+    )
+
+
 @agent_tasks_router.post(
     '/{short_id}/reassign', response_model=AgentTaskResponse
 )

@@ -256,6 +256,7 @@ it.
 | `agent_task:create` | Create agent tasks | yes | yes |  |  | yes | yes |  |
 | `agent_task:manage` | Pause, resume, cancel, and reassign agent tasks | yes | yes |  |  |  |  |  |
 | `agent_task:resolve` | Answer feedback requests and resolve approvals of agent tasks | yes | yes |  |  |  |  |  |
+| `agent_task:delete` | Delete closed agent tasks | yes |  |  |  |  |  |  |
 | `workflow:read` | View workflows, their versions, and their runs | yes | yes | yes | yes |  |  |  |
 | `workflow:create` | Create workflows | yes | yes |  |  |  |  |  |
 | `workflow:write` | Edit, activate, and pause workflows | yes | yes |  |  |  |  |  |

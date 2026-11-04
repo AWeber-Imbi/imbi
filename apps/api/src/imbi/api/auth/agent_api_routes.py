@@ -244,6 +244,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PUT /prompts/{namespace}/{slug}/labels/{label}',
         'PUT /prompts/{namespace}/{slug}/versions/{n}/evaluation',
         # Agent tasks: an agent works on its tasks through the harness routes only, so it cannot answer its own approval or question, reassign, or start another agent outside its chain
+        'DELETE /organizations/{org_slug}/agent-tasks/{short_id}',
         'DELETE /organizations/{org_slug}/agent-tasks/{short_id}/projects/{project_id}',
         'DELETE /organizations/{org_slug}/agent-tasks/{short_id}/requires/{prerequisite}',
         'POST /organizations/{org_slug}/agent-tasks/',

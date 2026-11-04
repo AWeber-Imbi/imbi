@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router-dom'
 
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Ban,
   Box,
@@ -11,11 +12,16 @@ import {
   Coins,
   Pause,
   Play,
+  Trash2,
   UserRoundPen,
 } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
-import { controlAgentTask, reassignAgentTask } from '@/api/endpoints'
+import {
+  controlAgentTask,
+  deleteAgentTask,
+  reassignAgentTask,
+} from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -30,6 +36,7 @@ import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
+import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
@@ -448,6 +455,60 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   )
 }
 
+/** Delete a closed task. Hidden without `agent_task:delete`. */
+function TaskDelete({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
+  const canDelete = useHasPermission('agent_task:delete', orgSlug)
+  const navigate = useNavigate()
+  const [confirm, setConfirm] = useState(false)
+  const queryClient = useQueryClient()
+  // Navigate before the refresh, so the deleted task is not read again.
+  const remove = useMutation({
+    mutationFn: () => deleteAgentTask(orgSlug, task.short_id),
+    onSuccess: () => {
+      navigate(agentsPath('tasks'))
+      queryClient.removeQueries({
+        queryKey: queryKeys.agentTask(orgSlug, task.short_id),
+      })
+      for (const queryKey of [
+        queryKeys.agentTasks(orgSlug),
+        queryKeys.agentTasksWaiting(orgSlug),
+      ])
+        void queryClient.invalidateQueries({ queryKey })
+    },
+  })
+  if (!canDelete || task.status !== 'closed') return null
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Button
+        aria-label="Delete task"
+        disabled={remove.isPending}
+        onClick={() => setConfirm(true)}
+        size="sm"
+        title="Delete"
+        variant="outline"
+      >
+        <Trash2 className="size-4" />
+      </Button>
+      <ConfirmDialog
+        confirmLabel="Delete task"
+        description="Imbi removes the task, its events, and its relations. The secret audit and the usage records stay. You cannot undo this."
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => {
+          setConfirm(false)
+          remove.mutate()
+        }}
+        open={confirm}
+        title={`Delete ${task.short_id}?`}
+      />
+      {remove.error && (
+        <span className="text-danger text-xs" role="alert">
+          {errorMessage(remove.error)}
+        </span>
+      )}
+    </div>
+  )
+}
+
 /**
  * `cost_total` and the token totals sit at title rank (F7), next to the
  * total age; the timeline gives the time in each phase.
@@ -484,6 +545,7 @@ function TaskHeader({
         </h2>
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         <TaskControls orgSlug={orgSlug} task={task} />
+        <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <Fact>

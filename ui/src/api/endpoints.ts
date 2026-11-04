@@ -3859,6 +3859,10 @@ export const listAgentTaskEvents = (
     signal,
   )
 
+/** Delete a closed task. Needs `agent_task:delete`. */
+export const deleteAgentTask = (orgSlug: string, shortId: string) =>
+  apiClient.delete<void>(agentTaskPath(orgSlug, shortId))
+
 /** Pause, resume, or cancel a task. */
 export const controlAgentTask = (
   orgSlug: string,

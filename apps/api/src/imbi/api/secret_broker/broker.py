@@ -536,11 +536,16 @@ async def evaluate(
 
 
 async def _check_task(conn: Conn, context: ResolutionContext) -> None:
-    """The task must be open and match the trusted context."""
+    """The task must be open and match the trusted context.
+
+    The lock serializes the check with ``TaskStore.delete``. It is the
+    lock that the task event write takes later in the transaction, so
+    two writers do not deadlock on a lock upgrade.
+    """
     task = await _fetch_one(
         conn,
         'SELECT organization_id, agent_id, project_id, status'
-        ' FROM agent_runtime.tasks WHERE id = %s',
+        ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
@@ -723,7 +728,7 @@ class Broker:
         target = check_delivery(request.delivery_mode, request.delivery_target)
         handle = _new_handle()
         async with self._pool.connection() as conn, conn.transaction():
-            await _check_task(conn, context)
+            existing: Row | None = None
             if request.idempotency_key:
                 existing = await _fetch_one(
                     conn,
@@ -733,18 +738,21 @@ class Broker:
                     ' FOR UPDATE',
                     (context.task_id, request.idempotency_key),
                 )
-                if existing is not None:
-                    repeated = await self._repeat(
-                        conn,
-                        existing,
-                        context,
-                        request,
-                        str(reference),
-                        handle,
-                    )
-                    return _created(repeated, handle), await _write(
-                        conn, 'secret_resolution_allowed', repeated
-                    )
+            # Lock the resolution before the task, as materialize and
+            # _finish do, so the two paths cannot deadlock.
+            await _check_task(conn, context)
+            if existing is not None:
+                repeated = await self._repeat(
+                    conn,
+                    existing,
+                    context,
+                    request,
+                    str(reference),
+                    handle,
+                )
+                return _created(repeated, handle), await _write(
+                    conn, 'secret_resolution_allowed', repeated
+                )
             decision = await evaluate(
                 conn,
                 context.organization_id,
