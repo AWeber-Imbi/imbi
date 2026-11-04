@@ -27,7 +27,7 @@ from imbi.api.llm.dependencies import _get_anthropic_client
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.api.release_promote import service as release_promote_service
 from imbi.common import deployments as common_deployments
-from imbi.common import graph
+from imbi.common import graph, versioning
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi.common.plugins import errors as plugin_errors
@@ -5410,6 +5410,71 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                     '2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]
                 ),
             )
+
+    def test_version_matches_bump_follows_a_configured_scheme(self) -> None:
+        """A semver bump of ``26.04.2`` is not the scheme's next tag."""
+        scheme = 'YY.0M.MICRO'
+        matches = project_deployments._version_matches_bump
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertFalse(matches('26.04.2', '26.04.3', 'patch', [scheme]))
+            self.assertTrue(matches('26.04.2', '26.10.0', 'patch', [scheme]))
+            # Without the scheme, the semver bump stands.
+            self.assertTrue(matches('26.04.2', '26.04.3', 'patch'))
+
+    def test_suggest_version_follows_a_configured_scheme(self) -> None:
+        """``26.04.2`` is semver too; the scheme resets on a new month."""
+        scheme = 'YY.0M.MICRO'
+        patterns = [versioning.calver_scheme_pattern(scheme)]
+        suggest = project_deployments._suggest_version
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                '26.10.0', suggest('26.04.2', 'patch', patterns, [scheme])
+            )
+            self.assertEqual(
+                '26.10.1', suggest('26.10.0', 'patch', patterns, [scheme])
+            )
+            # No prior tag, or one from another scheme: the first tag.
+            self.assertEqual(
+                '26.10.0', suggest(None, 'patch', patterns, [scheme])
+            )
+            self.assertEqual(
+                '26.10.0', suggest('v1.2.3', 'patch', patterns, [scheme])
+            )
+            # A mixed policy with no tags keeps the semver default.
+            self.assertEqual(
+                'v0.1.0',
+                suggest(
+                    None,
+                    'patch',
+                    [*patterns, SEMVER_TAG_FORMAT.pattern],
+                    [scheme],
+                ),
+            )
+            # Unpadded schemes also match ``0.1.0`` and a semver bump.
+            for unpadded in ('YY.MINOR.MICRO', 'YY.M.MICRO'):
+                first = versioning.next_scheme_tag(unpadded, None, now.date())
+                unpadded_patterns = [
+                    versioning.calver_scheme_pattern(unpadded)
+                ]
+                for last_tag in (None, 'v1.2.3'):
+                    with self.subTest(scheme=unpadded, last_tag=last_tag):
+                        self.assertEqual(
+                            first,
+                            suggest(
+                                last_tag,
+                                'patch',
+                                unpadded_patterns,
+                                [unpadded],
+                            ),
+                        )
 
     def test_suggest_version_padding_policy_after_an_ambiguous_tag(
         self,

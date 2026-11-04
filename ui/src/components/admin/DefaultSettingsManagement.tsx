@@ -75,11 +75,16 @@ export function DefaultSettingsManagement() {
     setEditing(null)
     setEditorOpen(false)
   }
-  const saveFormat = (label: string, pattern: string, example: string) => {
+  const saveFormat = (
+    label: string,
+    pattern: string,
+    example: string,
+    scheme: null | string,
+  ) => {
     setRows((rs) =>
       editing
         ? rs.map((r) =>
-            r.id === editing.id ? { ...r, example, label, pattern } : r,
+            r.id === editing.id ? { ...r, example, label, pattern, scheme } : r,
           )
         : [
             ...rs,
@@ -91,6 +96,7 @@ export function DefaultSettingsManagement() {
               id: nextRowId(),
               label,
               pattern,
+              scheme,
             },
           ],
     )
@@ -150,6 +156,7 @@ export function DefaultSettingsManagement() {
           initialExample={editing?.example}
           initialName={editing?.label}
           initialPattern={editing?.pattern}
+          initialScheme={editing?.scheme ?? ''}
           key={editing?.id ?? 'new'}
           onCancel={closeEditor}
           onSave={saveFormat}

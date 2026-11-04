@@ -366,6 +366,20 @@ class TagFormatModelTestCase(unittest.TestCase):
         with self.assertRaises(pydantic.ValidationError):
             models.TagFormat(label='X', pattern='')
 
+    def test_scheme_derives_the_pattern(self) -> None:
+        fmt = models.TagFormat.model_validate(
+            {'label': 'Ubuntu', 'scheme': ' YY.0M.MICRO ', 'pattern': 'x'}
+        )
+        self.assertEqual(fmt.scheme, 'YY.0M.MICRO')
+        self.assertTrue(re.fullmatch(fmt.pattern, '26.04.1'))
+        self.assertFalse(re.fullmatch(fmt.pattern, 'x'))
+
+    def test_invalid_scheme_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.TagFormat.model_validate(
+                {'label': 'Bad', 'scheme': 'YYYY.QQ'}
+            )
+
     def test_semver_tag_format_constant(self) -> None:
         self.assertEqual(models.SEMVER_TAG_FORMAT.label, 'Semver')
         self.assertTrue(

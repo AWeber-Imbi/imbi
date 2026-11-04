@@ -321,12 +321,37 @@ class TagFormat(pydantic.BaseModel):
     Patterns are matched with :func:`re.fullmatch` and validated as
     compilable at assignment time so an invalid expression is rejected at
     the API boundary rather than at deploy/release time.
+
+    ``scheme`` is an optional calver.org scheme such as ``YY.0M.MICRO``.
+    When it is set, ``pattern`` is derived from it (any ``pattern`` sent
+    with it is replaced), and the next tag is suggested from the scheme
+    (see ``imbi.common.versioning.next_scheme_tag``).
     """
 
     model_config = pydantic.ConfigDict(frozen=True)
 
     label: str = pydantic.Field(min_length=1, max_length=64)
     pattern: str = pydantic.Field(min_length=1, max_length=512)
+    # Left out when not set, so a format with no scheme is stored and
+    # returned as it was before schemes existed.
+    scheme: str | None = pydantic.Field(
+        default=None, max_length=64, exclude_if=lambda v: v is None
+    )
+
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def _derive_pattern(cls, data: typing.Any) -> typing.Any:
+        if not isinstance(data, dict):
+            return data
+        values = typing.cast(dict[str, typing.Any], data)
+        if not values.get('scheme'):
+            return values
+        scheme = str(values['scheme']).strip()
+        return {
+            **values,
+            'scheme': scheme,
+            'pattern': versioning.calver_scheme_pattern(scheme),
+        }
 
     @pydantic.field_validator('pattern')
     @classmethod

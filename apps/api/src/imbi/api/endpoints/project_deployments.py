@@ -5670,18 +5670,32 @@ def _suggest_version(
     last_tag: str | None,
     bump: SemverBump,
     patterns: collections.abc.Sequence[str],
+    schemes: collections.abc.Sequence[str] = (),
 ) -> str:
     """The next tag to suggest, honouring the configured tag formats.
 
     Candidates are tried in order and the first one satisfying
-    ``patterns`` wins: the next calendar version when ``last_tag`` is
-    calver-shaped, its semver bump when it is semver-shaped, then the
-    first-release defaults (``v0.1.0``, ``0.1.0``, today's
-    date).  With no policy configured the first candidate stands, which
-    keeps the historical ``v0.1.0`` answer for an untagged project.
+    ``patterns`` wins: the next tag of each configured calver ``scheme``
+    that ``last_tag`` matches, the next calendar version when
+    ``last_tag`` is calver-shaped, its semver bump when it is
+    semver-shaped (unless every pattern comes from a scheme), then the
+    first-release defaults (``v0.1.0``, the first tag of each scheme,
+    ``0.1.0``, then today's date).  With
+    no policy configured the first candidate stands, which keeps the
+    historical ``v0.1.0`` answer for an untagged project.
     """
     today = datetime.datetime.now(datetime.UTC).date()
-    candidates: list[str] = []
+    # A configured scheme knows its own counters, so it goes first: a tag
+    # such as ``26.4.1`` is valid semver too, and a semver bump would miss
+    # the reset when the month changes.
+    candidates: list[str] = [
+        versioning.next_scheme_tag(scheme, last_tag, today, bump)
+        for scheme in schemes
+        if last_tag
+        and versioning.matches_tag_formats(
+            last_tag, [versioning.calver_scheme_pattern(scheme)]
+        )
+    ]
     # Calver first: an unpadded date (``2026.9.17``) is also valid semver,
     # and a project tagging by date wants the next date, not ``.18``.
     # Advance the date only when the policy accepts the last tag. A date
@@ -5703,7 +5717,17 @@ def _suggest_version(
                 versioning.next_calver_tag(last_tag, today, pad=True),
             ]
         )
-    if last_tag and versioning.is_semver_tag(last_tag):
+    # When every pattern comes from a scheme, a semver bump of a tag the
+    # schemes do not match (``v1.2.3`` -> ``1.2.4``) can satisfy an
+    # unpadded ``YY.MINOR.MICRO`` pattern; the first tag of the current
+    # period is the right answer there.
+    scheme_patterns = {
+        versioning.calver_scheme_pattern(scheme) for scheme in schemes
+    }
+    scheme_only = bool(patterns) and all(
+        pattern in scheme_patterns for pattern in patterns
+    )
+    if last_tag and versioning.is_semver_tag(last_tag) and not scheme_only:
         bumped = _bump_semver(last_tag, bump)
         # The other prefix too, before the first-release defaults: a
         # policy for bare tags after a ``v`` tag must not fall to 0.1.0.
@@ -5711,6 +5735,11 @@ def _suggest_version(
     candidates.extend(
         [
             'v0.1.0',
+            # Before ``0.1.0``: that is also a valid ``YY.MINOR.MICRO`` tag.
+            *(
+                versioning.next_scheme_tag(scheme, None, today)
+                for scheme in schemes
+            ),
             '0.1.0',
             versioning.next_calver_tag(None, today),
             # Zero-padded date, for a policy that requires padding.
@@ -5742,17 +5771,34 @@ def _version_allowed(
 
 
 def _version_matches_bump(
-    last_tag: str | None, version: str, bump: SemverBump
+    last_tag: str | None,
+    version: str,
+    bump: SemverBump,
+    schemes: collections.abc.Sequence[str] = (),
 ) -> bool:
     """Whether ``version`` is ``last_tag`` bumped by ``bump``.
 
-    Only a semver previous tag is checked: a calendar version's bump
+    When ``last_tag`` matches a configured calver scheme, ``version``
+    must be that scheme's next tag: ``26.04.3`` is a valid semver bump
+    of ``26.04.2``, but in October the scheme wants ``26.10.0``.
+    Otherwise only a semver previous tag is checked: a calendar version's bump
     does not change the date, and with no previous tag there is nothing
     to bump from.  Only a semver draft version is checked too: a version
     a custom tag policy accepts (``REL-42``) is the policy's business.
     The ``v`` prefix is not compared: the tag policy decides it, and
     ``_version_allowed`` checks that.
     """
+    if last_tag:
+        today = datetime.datetime.now(datetime.UTC).date()
+        expected = {
+            versioning.next_scheme_tag(scheme, last_tag, today, bump)
+            for scheme in schemes
+            if versioning.matches_tag_formats(
+                last_tag, [versioning.calver_scheme_pattern(scheme)]
+            )
+        }
+        if expected:
+            return version in expected
     if (
         not last_tag
         or versioning.is_calver_tag(last_tag)
@@ -6078,10 +6124,13 @@ async def draft_release_notes(
         commits = await _commits_through(project_id, body.head_sha)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
+    schemes = [fmt.scheme for fmt in tag_formats if fmt.scheme]
     fallback_bump = _classify_bump(commits, body.last_tag)
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
-        version=_suggest_version(body.last_tag, fallback_bump, patterns),
+        version=_suggest_version(
+            body.last_tag, fallback_bump, patterns, schemes
+        ),
         reasoning=(
             'AI unavailable — bump and notes derived from '
             'conventional-commit prefixes.'
@@ -6111,14 +6160,17 @@ async def draft_release_notes(
     if notes.bump == 'major' and _is_pre_one(body.last_tag):
         notes = notes.model_copy(update={'bump': 'minor'})
     # Re-derive the version when Claude's does not fit the tag policy, or
-    # is not the previous semver tag bumped by Claude's own bump.
+    # is not the previous tag advanced by Claude's own bump (under the
+    # configured scheme, when the previous tag follows one).
     if not _version_allowed(
         notes.version, patterns
-    ) or not _version_matches_bump(body.last_tag, notes.version, notes.bump):
+    ) or not _version_matches_bump(
+        body.last_tag, notes.version, notes.bump, schemes
+    ):
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
-                    body.last_tag, notes.bump, patterns
+                    body.last_tag, notes.bump, patterns, schemes
                 )
             }
         )
@@ -6666,10 +6718,9 @@ async def get_release_drift(
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
     latest_tag_at = _tag_timestamp(latest) if latest else None
-    patterns = [
-        fmt.pattern
-        for fmt in await _resolve_tag_formats(db, org_slug, project_id)
-    ]
+    tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
+    patterns = [fmt.pattern for fmt in tag_formats]
+    schemes = [fmt.scheme for fmt in tag_formats if fmt.scheme]
 
     head_rows = await clickhouse.query(
         'SELECT sha FROM commits FINAL '
@@ -6694,7 +6745,9 @@ async def get_release_drift(
                 commits_since_tag=0,
                 commits=[],
                 suggested_bump='patch',
-                suggested_tag=_suggest_version(latest_tag, 'patch', patterns),
+                suggested_tag=_suggest_version(
+                    latest_tag, 'patch', patterns, schemes
+                ),
             )
 
     where = 'project_id = {project_id:String}'
@@ -6735,7 +6788,7 @@ async def get_release_drift(
         commits_since_tag=commits_since_tag,
         commits=commits,
         suggested_bump=bump,
-        suggested_tag=_suggest_version(latest_tag, bump, patterns),
+        suggested_tag=_suggest_version(latest_tag, bump, patterns, schemes),
     )
 
 
