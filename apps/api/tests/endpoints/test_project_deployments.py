@@ -5424,6 +5424,28 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             self.assertTrue(matches('26.04.2', '26.10.0', 'patch', [scheme]))
             # Without the scheme, the semver bump stands.
             self.assertTrue(matches('26.04.2', '26.04.3', 'patch'))
+            # Scheme-only policy, no prior tag or one from another
+            # format: only the first tag of the period passes.
+            patterns = [versioning.calver_scheme_pattern(scheme)]
+            self.assertFalse(
+                matches(None, '26.04.2', 'patch', [scheme], patterns)
+            )
+            self.assertTrue(
+                matches(None, '26.10.0', 'patch', [scheme], patterns)
+            )
+            self.assertFalse(
+                matches('v1.2.3', '26.04.2', 'patch', [scheme], patterns)
+            )
+            # A mixed policy keeps the old behaviour.
+            self.assertTrue(
+                matches(
+                    None,
+                    '26.04.2',
+                    'patch',
+                    [scheme],
+                    [*patterns, SEMVER_TAG_FORMAT.pattern],
+                )
+            )
 
     def test_suggest_version_follows_a_configured_scheme(self) -> None:
         """``26.04.2`` is semver too; the scheme resets on a new month."""
