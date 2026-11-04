@@ -1,3 +1,4 @@
+import asyncio
 import http
 import logging
 import re
@@ -71,6 +72,12 @@ LOGGER = logging.getLogger(__name__)
 
 
 _COMMITTISH_PATTERN = re.compile(r'^[0-9a-f]{7}$')
+
+#: Repeats of a deployment write the API refused with a 5xx.  A
+#: ``deployment_status`` webhook is delivered once, so a lost write is
+#: otherwise never recorded.
+_DEPLOYMENT_WRITE_RETRIES = 2
+_DEPLOYMENT_WRITE_BACKOFF = 0.5
 
 
 class UpdateProjectRule(pydantic.BaseModel):
@@ -191,7 +198,7 @@ class ImbiClient(httpx.AsyncClient):
             f'/releases/{release_id}/environments/{env_slug}'
         )
         LOGGER.debug('Recording deployment %s', url)
-        response = await self.post(url, json=body)
+        response = await self._post_deployment(url, body)
         if response.is_error and (
             response.status_code != http.HTTPStatus.NOT_FOUND
         ):
@@ -219,13 +226,32 @@ class ImbiClient(httpx.AsyncClient):
             f'/deployments/environments/{env_slug}/deployments'
         )
         LOGGER.debug('Recording unattached deployment %s', url)
-        response = await self.post(url, json=body)
+        response = await self._post_deployment(url, body)
         if response.is_error:
             LOGGER.warning(
                 'Failed to record unattached deployment %r: %s',
                 url,
                 response.text,
             )
+        return response
+
+    async def _post_deployment(
+        self, url: str, body: abc.Mapping[str, object]
+    ) -> httpx.Response:
+        """POST a deployment write, repeating a 5xx when it is idempotent.
+
+        The API merges a deployment on ``external_run_id``, so a repeat
+        cannot record it twice.  Without one, a repeat could.
+        """
+        response = await self.post(url, json=body)
+        retries = (
+            _DEPLOYMENT_WRITE_RETRIES if body.get('external_run_id') else 0
+        )
+        for attempt in range(retries):
+            if response.status_code < http.HTTPStatus.INTERNAL_SERVER_ERROR:
+                break
+            await asyncio.sleep(_DEPLOYMENT_WRITE_BACKOFF * (attempt + 1))
+            response = await self.post(url, json=body)
         return response
 
     async def list_releases(
