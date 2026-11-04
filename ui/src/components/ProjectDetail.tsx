@@ -227,10 +227,11 @@ export function ProjectDetail({
     queryKey: ['currentReleases', orgSlug, project.id],
     // Poll while a deploy runs, so the banner and the disabled deploy
     // buttons clear when it settles, also after a reload with no watcher.
+    // Poll slowly while idle, so a deploy started elsewhere shows up.
     refetchInterval: (q) =>
       q.state.data?.some((row) => isDeployInFlight(row.latest_deployment))
         ? 6000
-        : false,
+        : 30000,
   })
 
   const deploymentStatus: Record<
