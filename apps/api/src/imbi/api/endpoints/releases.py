@@ -1683,42 +1683,23 @@ async def _replay_current_release(
     node, which a tagged release can take over from the requested one,
     and skips a node that a later write moved off ``success``.
 
-    It also skips when a reconcile observed the environment at or after
-    the stored time: that snapshot already knew of this success, so the
-    pointer it left (or cleared) wins, as in ``_RECONCILE_GUARD``.
+    The pointer write also yields to a reconcile that observed the
+    environment at or after the stored time: that snapshot already knew
+    of this success, so the pointer it left (or cleared) wins.
     """
     query: typing.LiteralString = """
     MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d:Deployment {{id: {id}}})
     WHERE d.status = 'success'
-    OPTIONAL MATCH (:Project {{id: {project_id}}})-[di:DEPLOYED_IN]->
-          (:Environment {{slug: {env_slug}}})
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     RETURN r.id AS release_id,
-           COALESCE(d.updated_at, d.created_at) AS at,
-           di.current_state_observed_at AS observed_at
+           COALESCE(d.updated_at, d.created_at) AS at
     LIMIT 1
     """
-    rows = await db.execute(
-        query,
-        {
-            'id': deployment_id,
-            'project_id': project_id,
-            'env_slug': env_slug,
-            'org_slug': org_slug,
-        },
-        ['release_id', 'at', 'observed_at'],
-    )
+    rows = await db.execute(query, {'id': deployment_id}, ['release_id', 'at'])
     if not rows:
         return
     release_id = graph.parse_agtype(rows[0]['release_id'])
     at = graph.parse_agtype(rows[0]['at'])
     if not release_id or not at:
-        return
-    timestamp = datetime.datetime.fromisoformat(str(at))
-    observed = graph.parse_agtype(rows[0].get('observed_at'))
-    if observed and (
-        datetime.datetime.fromisoformat(str(observed)) >= timestamp
-    ):
         return
     await _set_current_release(
         db,
@@ -1726,7 +1707,8 @@ async def _replay_current_release(
         project_id=project_id,
         env_slug=env_slug,
         release_id=str(release_id),
-        timestamp=timestamp,
+        timestamp=datetime.datetime.fromisoformat(str(at)),
+        yield_to_reconcile=True,
     )
 
 
@@ -1738,6 +1720,7 @@ async def _set_current_release(
     env_slug: str,
     release_id: str,
     timestamp: datetime.datetime,
+    yield_to_reconcile: bool = False,
 ) -> None:
     """Point the project's ``DEPLOYED_IN`` edge at the current release.
 
@@ -1758,21 +1741,31 @@ async def _set_current_release(
     delayed webhook) cannot regress it to an older release. Timestamps
     are normalized to UTC ISO-8601 so the stored string comparison is
     chronologically correct.
+
+    With ``yield_to_reconcile`` the same statement also refuses when
+    ``current_state_observed_at`` is at or after ``timestamp``, so a
+    reconcile that lands between a replay's read and this write wins.
     """
     ts = timestamp.astimezone(datetime.UTC).isoformat()
+    guard: typing.LiteralString = (
+        '(d.current_release_at IS NULL OR d.current_release_at < {ts})'
+    )
+    if yield_to_reconcile:
+        guard += (
+            ' AND (d.current_state_observed_at IS NULL'
+            ' OR d.current_state_observed_at < {ts})'
+        )
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
     MATCH (e:Environment {{slug: {env_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     MERGE (p)-[d:DEPLOYED_IN]->(e)
     SET d.current_release = CASE
-          WHEN d.current_release_at IS NULL OR d.current_release_at < {ts}
-          THEN {release_id} ELSE d.current_release END,
+          WHEN {guard} THEN {release_id} ELSE d.current_release END,
         d.current_release_at = CASE
-          WHEN d.current_release_at IS NULL OR d.current_release_at < {ts}
-          THEN {ts} ELSE d.current_release_at END
+          WHEN {guard} THEN {ts} ELSE d.current_release_at END
     RETURN d.current_release AS current_release
-    """
+    """.replace('{guard}', guard)
     rows = await db.execute(
         query,
         {
