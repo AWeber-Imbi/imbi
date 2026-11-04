@@ -1,5 +1,6 @@
 """Tests for the credential-free reader of public repositories."""
 
+import typing
 import unittest
 
 import respx
@@ -15,7 +16,8 @@ class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
         reader = deployment.GitHubDeployment.public_reader(
             'https://github.com/anthropics/plugins.git'
         )
-        assert isinstance(reader, public.PublicRepository)
+        self.assertIsInstance(reader, public.PublicRepository)
+        reader = typing.cast(public.PublicRepository, reader)
         self.assertEqual(reader.base, API)
         for url in (
             'https://ghe.example.com/a/b',
@@ -50,6 +52,18 @@ class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
             '{}',
         )
         self.assertIsNone(await reader.get_file(None, {}, 'missing.json', SHA))
+
+    @respx.mock
+    async def test_get_file_encodes_the_ref(self) -> None:
+        route = respx.get(
+            f'{API}/contents/a.json', params={'ref': 'release&candidate'}
+        ).respond(text='{}')
+        reader = public.PublicRepository('anthropics', 'plugins')
+        self.assertEqual(
+            await reader.get_file(None, {}, 'a.json', 'release&candidate'),
+            '{}',
+        )
+        self.assertTrue(route.called)
 
 
 class WebhookSignatureTests(unittest.TestCase):

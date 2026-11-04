@@ -74,7 +74,8 @@ class PublicRepository:
         self, _ctx: object, _credentials: object, path: str, ref: str, /
     ) -> str | None:
         response = await self._get(
-            f'/contents/{urllib.parse.quote(path)}?ref={ref}',
+            f'/contents/{urllib.parse.quote(path)}?'
+            f'{urllib.parse.urlencode({"ref": ref})}',
             'application/vnd.github.raw+json',
         )
         if response.status_code == 404:
