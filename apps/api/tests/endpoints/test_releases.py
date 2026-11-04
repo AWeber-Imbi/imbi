@@ -1454,6 +1454,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         note: str | None = None,
         performed_by: str | None = None,
         upsert: list[dict[str, typing.Any]] | None = None,
+        stored_at: str | None = None,
     ) -> typing.Any:
         """Drive one append against a scripted graph.
 
@@ -1462,11 +1463,15 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         changed anything.  That decision moved into Cypher with the
         node model, so the outcome a caller sees is the row the
         database returns rather than something re-derived in Python.
+
+        ``stored_at`` is the node time a replayed success reads back
+        before its pointer write.
         """
         import asyncio
 
         from imbi.api.endpoints.releases import append_deployment_event
 
+        replay = [[{'at': stored_at}]] if stored_at is not None else []
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [
@@ -1477,6 +1482,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                 }
             ],
             upsert if upsert is not None else _upsert_row(),
+            *replay,
             # only consumed by the current_release write on success writes
             [{'current_release': RELEASE_ID}],
         ]
@@ -1514,29 +1520,24 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             external_run_id='42',
             status='success',
             upsert=_upsert_row(created=False, unchanged=True),
+            stored_at='2026-05-13T14:00:00+00:00',
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(len(edge.deployments), 1)
-        # The upsert decides the replay changed nothing; only the
-        # ratcheted pointer write follows it, for a success.
-        self.assertEqual(self.mock_db.execute.await_count, 4)
+        # The upsert decides the replay changed nothing; for a success
+        # only the node-time read and the ratcheted pointer write follow.
+        self.assertEqual(self.mock_db.execute.await_count, 5)
 
     def test_replayed_success_repoints_with_the_stored_time(self) -> None:
-        # A repeat after a failed pointer write must still move it.
-        existing = [
-            {
-                'timestamp': '2026-05-13T14:00:00+00:00',
-                'status': 'success',
-                'note': None,
-                'external_run_id': '42',
-                'external_run_url': 'https://gh/runs/42',
-            }
-        ]
+        # A repeat after a failed pointer write must still move it.  The
+        # node is read back, so a deployment the upsert only just
+        # attached to this release (absent from the edge read) counts.
         _edge, outcome = self._call(
-            existing,
+            [],
             external_run_id='42',
             status='success',
             upsert=_upsert_row(created=False, unchanged=True),
+            stored_at='2026-05-13T14:00:00+00:00',
         )
         self.assertEqual(outcome, 'noop')
         calls = self._current_release_calls()
@@ -1685,6 +1686,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             status='success',
             performed_by='octocat',
             upsert=_upsert_row(created=False, unchanged=True),
+            stored_at='2026-05-13T14:00:00+00:00',
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(edge.deployments[0].performed_by, 'octocat')
