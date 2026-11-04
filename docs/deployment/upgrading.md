@@ -74,6 +74,18 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## 2.43.0
+
+1. Run `imbi-api setup-permissions`. It gives the `admin` role
+   `agent_task:delete`, which the new **Delete** button on a closed agent
+   task needs.
+2. Optional: to show old drift in red on the projects list, set
+   `VITE_DRIFT_STALE_AFTER` (for example `7d`) on the UI service, or the
+   Helm value `service.ui.driftStaleAfter`. When it is empty, drift stays
+   amber.
+3. Remove `IMBI_OAUTH_ALLOW_INSECURE_URLS` from your environment, if it is
+   set. Imbi does not have this setting now.
+
 ## 2.41.0
 
 Upgrade from 2.40.0 as soon as you can. In 2.40.0, each Imbi service stored
