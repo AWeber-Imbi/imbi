@@ -925,7 +925,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
         const derived = env.label_color
           ? deriveChipColors(env.label_color, false)
           : null
-        const base = 'relative w-50 shrink-0 rounded-lg border px-3 py-2'
+        const base = 'relative z-10 w-50 shrink-0 rounded-lg border px-3 py-2'
         const cardClass = derived
           ? `${base}${!release ? ' border-dashed opacity-60' : ''}`
           : `${base}${release ? ' border-border bg-card' : ' border-tertiary/40 border-dashed opacity-60'}`
@@ -954,9 +954,11 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
               ) : (
                 <PipelineConnector />
               ))}
-            <span
+            <Link
+              aria-label={`View ${env.name} deployments`}
               className={`${cardClass}${behind ? ` ${DRIFT_TONE[tone].card}` : ''}`}
               style={cardStyle}
+              to={`/projects/${project.id}/deployments?env=${encodeURIComponent(env.slug)}`}
             >
               {behind && <BehindTab tone={tone} />}
               {release ? (
@@ -989,7 +991,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
                   no {env.name.toLowerCase()}
                 </span>
               )}
-            </span>
+            </Link>
           </React.Fragment>
         )
       })}
@@ -1372,7 +1374,11 @@ function ReleaseCards({
   const tone = driftTone(since)
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
-      <span className="border-border bg-card w-50 rounded-lg border px-3 py-2">
+      <Link
+        aria-label="View releases"
+        className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2"
+        to={`/projects/${projectId}/releases`}
+      >
         <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
           <GitCommit className="size-3 shrink-0" />
           Latest Commit
@@ -1385,7 +1391,7 @@ function ReleaseCards({
             <RelativeTime value={release_summary.head_authored_at} />
           )}
         </p>
-      </span>
+      </Link>
       {behind ? (
         <PipelineConnector tone={tone}>
           <DriftPill
@@ -1400,8 +1406,10 @@ function ReleaseCards({
       ) : (
         <PipelineConnector />
       )}
-      <span
-        className={`bg-amber-bg relative w-50 rounded-lg border px-3 py-2 ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
+      <Link
+        aria-label="View releases"
+        className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
+        to={`/projects/${projectId}/releases`}
       >
         {behind && <BehindTab tone={tone} />}
         <p className="text-amber-text mb-1.5 flex items-center gap-1.5 text-sm font-medium">
@@ -1424,7 +1432,7 @@ function ReleaseCards({
           )}
         </p>
         {behind && <WaitingLine tone={tone} version={headSha} />}
-      </span>
+      </Link>
     </div>
   )
 }
