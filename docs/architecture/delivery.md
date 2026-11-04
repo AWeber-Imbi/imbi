@@ -170,6 +170,15 @@ each environment. Two writers set it:
   runs it with the service credential of the integration, and writes the
   status of the last run on the `Project` node. The UI reads that status.
   See [Background workers](overview.md#background-workers-in-imbi-api).
+- A webhook delivers each deployment status once. The gateway repeats a
+  deployment write that imbi-api refuses with a 5xx, but only when the
+  event has a run ID, because Imbi merges deployments on that ID. The
+  promote watcher repeats its close-out after a graph write conflict, and
+  closes the operations-log entry of the rollout.
+- When the current releases of a project are read (the Deployments tab),
+  Imbi asks the plugin about each deployment that is still running. When
+  one has finished, Imbi records the result, and the same response shows
+  it.
 - `deployment-sweep` asks the remote about each deployment that is still
   running after 30 minutes. It marks a deployment `failed` when nothing can
   resolve it for a week. It also attaches early deployments to their
