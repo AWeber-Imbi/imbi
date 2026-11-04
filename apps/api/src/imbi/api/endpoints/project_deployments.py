@@ -7079,8 +7079,8 @@ async def get_release_history(
     """Release history: ClickHouse tags joined to their ``Release`` nodes.
 
     A ``Release`` node whose tag ClickHouse has not synced is listed too,
-    flagged ``tag_synced=False`` and ranked first -- see
-    :func:`_unsynced_release_entry` for why it cannot be left out.
+    flagged ``tag_synced=False`` -- see :func:`_unsynced_release_entry`
+    for why it cannot be left out.  Entries are newest tag first.
 
     ``ci_status`` comes from the synced ``commits`` table, which the
     deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
@@ -7131,20 +7131,17 @@ async def get_release_history(
         for name, node in nodes.items()
         if name not in synced
     )
-    # Order by the tagged commit's place in the synced history (semver as
-    # the tie-break) so the head of the list is the current release --
-    # consistent with the drift base, which is chosen the same way.  A
-    # release with no synced tag ranks above every synced one: it is in
-    # flight, failed, or orphaned -- each needing the operator before
-    # anything older does -- and the ranking's input, the tagged commit's
-    # place in history, does not exist for it.
-    authored_by_sha = _authored_by_sha(facts_by_sha)
+    # Newest tag first, then the tag itself (numerically when it parses as
+    # a release version).  An unsynced release sorts by its node's
+    # ``created_at``, so one in flight or failed today is at the top and
+    # an old orphaned node is at the bottom.  An entry with no time is
+    # last.
+    undated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
     entries.sort(
         key=lambda e: (
-            not e.tag_synced,
-            versioning.release_tag_order_key(
-                e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
-            ),
+            e.published_at or undated,
+            versioning.release_version_key(e.tag) or (),
+            e.tag,
         ),
         reverse=True,
     )
