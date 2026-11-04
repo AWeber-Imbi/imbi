@@ -920,7 +920,16 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 degraded=False,
             )
         )
-        with testclient.TestClient(self.test_app) as client:
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with (
+            mock.patch.object(
+                project_deployments.datetime,
+                'datetime',
+                wraps=datetime.datetime,
+            ) as dt,
+            testclient.TestClient(self.test_app) as client,
+        ):
+            dt.now.return_value = now
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments/'
                 'draft-release-notes',
@@ -931,11 +940,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
             )
         self.assertEqual(response.status_code, 200)
-        today = datetime.datetime.now(datetime.UTC).date()
-        self.assertEqual(
-            response.json()['version'],
-            versioning.next_scheme_tag(scheme, None, today),
-        )
+        self.assertEqual(response.json()['version'], '26.10.0')
 
     def test_draft_release_notes_first_release_reads_synced_history(
         self,
