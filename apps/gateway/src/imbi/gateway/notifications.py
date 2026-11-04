@@ -632,6 +632,20 @@ async def _check_webhook_secret(
             },
         )
         return None, None
+    except Exception:
+        # A broken plugin gives no signature: fail closed.
+        LOGGER.exception(
+            'Failed to read the webhook signature of plugin %r;'
+            ' dropping delivery (webhook_id=%r integration=%r)',
+            plugin_slug,
+            webhook_id,
+            integration_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'integration_slug': integration_slug,
+            },
+        )
+        return None, None
     if signature is None or signature.secret != 'webhook':
         return False, signature
     verified = await _verify_webhook_delivery(

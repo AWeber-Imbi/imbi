@@ -1029,6 +1029,25 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(204, resp.status_code)
         self.assertEqual([], ACTION_CALLS)
 
+    async def test_plugin_signature_failure_dropped(self) -> None:
+        # A plugin whose signature() raises: fail closed, no HTTP 500.
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        with (
+            unittest.mock.patch.object(
+                notifications,
+                '_webhook_signature',
+                side_effect=RuntimeError('boom'),
+            ),
+            self.assertLogs(notifications.LOGGER, level='ERROR'),
+        ):
+            resp = await self._post_github(
+                'ghsec',
+                raw,
+                {'X-Hub-Signature-256': self._sign_github('ghsec', raw)},
+            )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
     async def _post_github_agent_task(
         self, secret: str | None
     ) -> unittest.mock.AsyncMock:
