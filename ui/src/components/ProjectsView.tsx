@@ -1375,7 +1375,7 @@ function ReleaseCards({
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
       <Link
-        aria-label="View releases"
+        aria-label="Latest commit: view releases"
         className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2"
         to={`/projects/${projectId}/releases`}
       >
@@ -1407,7 +1407,7 @@ function ReleaseCards({
         <PipelineConnector />
       )}
       <Link
-        aria-label="View releases"
+        aria-label="Current release: view releases"
         className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
         to={`/projects/${projectId}/releases`}
       >

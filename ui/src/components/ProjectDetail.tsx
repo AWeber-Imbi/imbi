@@ -395,11 +395,15 @@ export function ProjectDetail({
   // calls back to remove its entry once the run reaches a terminal
   // state.  Refreshes the release-train view too so the freshly
   // recorded ``DeploymentEvent.status`` flips out of ``in_progress``.
-  const [activeRuns, setActiveRuns] = useState<DeploymentRunStarted[]>([])
+  const [activeRuns, setActiveRuns] = useState<
+    (DeploymentRunStarted & { startedMs: number })[]
+  >([])
   const queryClient = useQueryClient()
   const handleRunStarted = useCallback((run: DeploymentRunStarted) => {
     setActiveRuns((prev) =>
-      prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
+      prev.some((r) => r.runId === run.runId)
+        ? prev
+        : [...prev, { ...run, startedMs: Date.now() }],
     )
   }, [])
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -522,11 +526,34 @@ export function ProjectDetail({
   })
   // A plain deploy (not a promote) in flight. `promote-status` above
   // does not see it, so it comes from a run this page dispatched or an
-  // attempt the server still reports as unsettled.
+  // attempt the server still reports as unsettled. Both sources expire
+  // at DEPLOY_STUCK_MS; `now` ticks at the next expiry so the gate
+  // clears without a reload.
+  const [now, setNow] = useState(() => Date.now())
+  const deployDeadlines = useMemo(
+    () => [
+      ...activeRuns
+        .filter((r) => r.originProjectId === project.id)
+        .map((r) => r.startedMs + DEPLOY_STUCK_MS),
+      ...currentReleases.map((r) => deployDeadline(r.latest_deployment)),
+    ],
+    [activeRuns, currentReleases, project.id],
+  )
+  useEffect(() => {
+    const next = Math.min(
+      ...deployDeadlines.filter((d): d is number => d !== null && d > now),
+    )
+    if (!Number.isFinite(next)) return
+    const timer = setTimeout(() => setNow(Date.now()), next - Date.now())
+    return () => clearTimeout(timer)
+  }, [deployDeadlines, now])
   const deployInFlight = useMemo<null | ReleaseInFlightState>(() => {
-    const run = activeRuns.find((r) => r.originProjectId === project.id)
+    const run = activeRuns.find(
+      (r) =>
+        r.originProjectId === project.id && now < r.startedMs + DEPLOY_STUCK_MS,
+    )
     const row = currentReleases.find((r) =>
-      isDeployInFlight(r.latest_deployment),
+      isDeployInFlight(r.latest_deployment, now),
     )
     if (!run && !row) return null
     const latest = row?.latest_deployment
@@ -536,10 +563,10 @@ export function ProjectDetail({
       envName: row?.environment.name ?? run?.envName ?? null,
       phase: 'deploying',
       runUrl: sanitizeHttpUrl(run?.runUrl) ?? null,
-      startedAt: latest?.deployed_at ?? null,
+      startedAt: latest?.started_at ?? latest?.deployed_at ?? null,
       tag: latest?.tag ?? latest?.committish?.slice(0, 7) ?? null,
     }
-  }, [activeRuns, currentReleases, project.id])
+  }, [activeRuns, currentReleases, now, project.id])
 
   const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
     // The banner's `build_failed` comes from `promote-status`, which the
@@ -1635,6 +1662,16 @@ function buildRecommendation(
   return null
 }
 
+/** When unsettled `latest` counts as stuck, or null if it is settled. */
+function deployDeadline(latest: LatestDeployment | null | undefined) {
+  if (latest?.status !== 'pending' && latest?.status !== 'in_progress') {
+    return null
+  }
+  // Measure from the start: `deployed_at` moves on each status change.
+  const at = Date.parse(latest.started_at ?? latest.deployed_at)
+  return Number.isFinite(at) ? at + DEPLOY_STUCK_MS : null
+}
+
 function entriesAbove(
   map: Record<string, number>,
   current: number,
@@ -1691,12 +1728,12 @@ function integrationLinkLabel(
 }
 
 /** True while `latest` is a deploy attempt that has not settled yet. */
-function isDeployInFlight(latest: LatestDeployment | null | undefined) {
-  if (latest?.status !== 'pending' && latest?.status !== 'in_progress') {
-    return false
-  }
-  const at = Date.parse(latest.deployed_at)
-  return Number.isFinite(at) && Date.now() - at < DEPLOY_STUCK_MS
+function isDeployInFlight(
+  latest: LatestDeployment | null | undefined,
+  now = Date.now(),
+) {
+  const deadline = deployDeadline(latest)
+  return deadline !== null && now < deadline
 }
 
 function LinksSkeleton({ count }: { count: number }) {
