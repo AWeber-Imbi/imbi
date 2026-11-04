@@ -5329,6 +5329,23 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                     [scheme],
                 ),
             )
+            # Unpadded schemes also match ``0.1.0`` and a semver bump.
+            for unpadded in ('YY.MINOR.MICRO', 'YY.M.MICRO'):
+                first = versioning.next_scheme_tag(unpadded, None, now.date())
+                unpadded_patterns = [
+                    versioning.calver_scheme_pattern(unpadded)
+                ]
+                for last_tag in (None, 'v1.2.3'):
+                    with self.subTest(scheme=unpadded, last_tag=last_tag):
+                        self.assertEqual(
+                            first,
+                            suggest(
+                                last_tag,
+                                'patch',
+                                unpadded_patterns,
+                                [unpadded],
+                            ),
+                        )
 
     def test_suggest_version_padding_policy_after_an_ambiguous_tag(
         self,

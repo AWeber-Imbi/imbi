@@ -206,7 +206,7 @@ version.
 ### Calendar schemes
 
 The built-in **Calendar versioning** format accepts year, month, and
-day only. For a different calendar scheme, add a custom format and
+day, with an optional suffix. For a different calendar scheme, add a custom format and
 enter the scheme in [calver.org](https://calver.org/) notation in
 **Calendar scheme**. Imbi then makes the pattern from the scheme and
 uses the scheme to suggest the next tag.

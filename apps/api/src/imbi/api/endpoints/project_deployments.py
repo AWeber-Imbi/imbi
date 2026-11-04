@@ -5538,8 +5538,9 @@ def _suggest_version(
     ``patterns`` wins: the next tag of each configured calver ``scheme``
     that ``last_tag`` matches, the next calendar version when
     ``last_tag`` is calver-shaped, its semver bump when it is
-    semver-shaped, then the first-release defaults (``v0.1.0``,
-    ``0.1.0``, today's date, then the first tag of each scheme).  With
+    semver-shaped (unless every pattern comes from a scheme), then the
+    first-release defaults (``v0.1.0``, the first tag of each scheme,
+    ``0.1.0``, then today's date).  With
     no policy configured the first candidate stands, which keeps the
     historical ``v0.1.0`` answer for an untagged project.
     """
@@ -5576,7 +5577,17 @@ def _suggest_version(
                 versioning.next_calver_tag(last_tag, today, pad=True),
             ]
         )
-    if last_tag and versioning.is_semver_tag(last_tag):
+    # When every pattern comes from a scheme, a semver bump of a tag the
+    # schemes do not match (``v1.2.3`` -> ``1.2.4``) can satisfy an
+    # unpadded ``YY.MINOR.MICRO`` pattern; the first tag of the current
+    # period is the right answer there.
+    scheme_patterns = {
+        versioning.calver_scheme_pattern(scheme) for scheme in schemes
+    }
+    scheme_only = bool(patterns) and all(
+        pattern in scheme_patterns for pattern in patterns
+    )
+    if last_tag and versioning.is_semver_tag(last_tag) and not scheme_only:
         bumped = _bump_semver(last_tag, bump)
         # The other prefix too, before the first-release defaults: a
         # policy for bare tags after a ``v`` tag must not fall to 0.1.0.
@@ -5584,14 +5595,15 @@ def _suggest_version(
     candidates.extend(
         [
             'v0.1.0',
-            '0.1.0',
-            versioning.next_calver_tag(None, today),
-            # Zero-padded date, for a policy that requires padding.
-            today.strftime('%Y.%m.%d'),
+            # Before ``0.1.0``: that is also a valid ``YY.MINOR.MICRO`` tag.
             *(
                 versioning.next_scheme_tag(scheme, None, today)
                 for scheme in schemes
             ),
+            '0.1.0',
+            versioning.next_calver_tag(None, today),
+            # Zero-padded date, for a policy that requires padding.
+            today.strftime('%Y.%m.%d'),
         ]
     )
     for candidate in candidates:
