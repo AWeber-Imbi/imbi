@@ -184,6 +184,7 @@ class PullRequestResyncClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
 
         await pull_requests._prune_stale_prs(  # pyright: ignore[reportPrivateUsage]
             self.project_id,
+            'github.com',
             second + datetime.timedelta(milliseconds=500),
             [],
         )
