@@ -11,15 +11,15 @@ creates one instance of each on first use. ``fake`` and
 token. Every consumer calls it.
 """
 
+import asyncio
 import datetime
-import logging
 import typing
 import uuid
 
 import pydantic
 
+from imbi.api.secret_broker import providers
 from imbi.common import graph
-from imbi.common.plugins import registry as plugin_registry
 from imbi.common.plugins.identity import (
     AccessToken,
     IdentityError,
@@ -32,8 +32,6 @@ from imbi.common.plugins.identity import (
 
 if typing.TYPE_CHECKING:
     from imbi.api.secret_broker import store
-
-LOGGER = logging.getLogger(__name__)
 
 
 # --- fakes ---------------------------------------------------------------
@@ -111,43 +109,15 @@ _LOADED: dict[str, IdentitySource] = {}
 _REPORTED: set[tuple[str, str]] = set()
 
 
-def _report(slug: str, source_type: str, message: str) -> None:
-    if (slug, source_type) not in _REPORTED:
-        _REPORTED.add((slug, source_type))
-        LOGGER.error(message, slug, source_type)
-
-
 def _load() -> None:
-    """Make the sources agree with the loaded plugins, as
-    :func:`imbi.api.secret_broker.providers._load` does."""
-    entries = plugin_registry.list_plugins()
-    declared = {
-        cls for entry in entries for cls in entry.manifest.identity_sources
-    }
-    for source_type, source in list(_LOADED.items()):
-        if type(source) not in declared:
-            del _LOADED[source_type]
-            if SOURCES.get(source_type) is source:
-                del SOURCES[source_type]
-    for entry in entries:
-        for cls in entry.manifest.identity_sources:
-            current = SOURCES.get(cls.type)
-            if current is None:
-                try:
-                    SOURCES[cls.type] = _LOADED[cls.type] = cls()
-                except Exception:  # noqa: BLE001 - skip this plugin
-                    _report(
-                        entry.manifest.slug,
-                        cls.type,
-                        'Plugin %s identity source %r failed to load',
-                    )
-            elif not isinstance(current, cls):
-                _report(
-                    entry.manifest.slug,
-                    cls.type,
-                    'Plugin %s declares identity source type %r, which '
-                    'is already registered; ignored',
-                )
+    providers.reconcile(
+        'identity_sources',
+        'identity source',
+        SOURCES,
+        _LOADED,
+        _REPORTED,
+        lambda cls: cls(),
+    )
 
 
 def all_sources() -> list[IdentitySource]:
@@ -200,19 +170,21 @@ async def vendor_token(
             reason of the source or the exchanger.
 
     """
-    found = await db.execute(
-        _AGENT_QUERY, {'id': agent_id, 'org': organization_id}, ['id']
-    )
-    if not found:
-        raise IdentityError('agent_not_in_organization')
-    setting = await secrets.identity_source(organization_id)
-    if setting is None:
-        raise IdentityError('workload_identity_not_configured')
-    source = get(setting['type'])
     try:
         target = exchanger.validate_target(target)
     except InvalidConfiguration:
         raise IdentityError('invalid_target') from None
+    found, setting = await asyncio.gather(
+        db.execute(
+            _AGENT_QUERY, {'id': agent_id, 'org': organization_id}, ['id']
+        ),
+        secrets.identity_source(organization_id),
+    )
+    if not found:
+        raise IdentityError('agent_not_in_organization')
+    if setting is None:
+        raise IdentityError('workload_identity_not_configured')
+    source = get(setting['type'])
     request = IdentityRequest(
         organization_id=organization_id,
         audience=exchanger.audience,

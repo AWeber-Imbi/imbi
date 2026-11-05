@@ -121,22 +121,25 @@ def _invalid(
 def _event(
     event_type: audit.EventType,
     auth: permissions.AuthContext,
-    id_field: str,
+    id_field: str | None = None,
     **values: str,
 ) -> store.AuditEvent:
     """Return the audit event of a change, built from the changed row.
 
-    The store writes it in the transaction of the change.
+    The store writes it in the transaction of the change. ``id_field``
+    names the event field for ``row['id']``; ``None`` for a row with no
+    id.
     """
 
     def build(row: store.Row) -> audit.Event:
+        ids = {id_field: str(row['id'])} if id_field else {}
         return audit.Event.model_validate(
             {
                 'organization_id': row['organization_id'],
                 'type': event_type,
                 'actor': auth.principal_name,
-                id_field: str(row['id']),
             }
+            | ids
             | values
         )
 
@@ -1121,16 +1124,6 @@ class WorkloadIdentity(WorkloadIdentityPut):
     updated_at: datetime.datetime
 
 
-def _identity_event(
-    event_type: audit.EventType, auth: permissions.AuthContext
-) -> store.AuditEvent:
-    return lambda row: audit.Event(
-        organization_id=row['organization_id'],
-        type=event_type,
-        actor=auth.principal_name,
-    )
-
-
 @identity_router.get('/types', response_model=list[IdentitySourceType])
 async def list_identity_source_types(
     _: ProviderRead,
@@ -1180,7 +1173,7 @@ async def put_workload_identity(
         data.type,
         config,
         auth.principal_name,
-        event=_identity_event('workload_identity_updated', auth),
+        event=_event('workload_identity_updated', auth),
     )
 
 
@@ -1189,7 +1182,7 @@ async def delete_workload_identity(
     org_id: OrgId, secrets: secret_broker.Store, auth: ProviderWrite
 ) -> None:
     deleted = await secrets.delete_identity_source(
-        org_id, event=_identity_event('workload_identity_deleted', auth)
+        org_id, event=_event('workload_identity_deleted', auth)
     )
     if not deleted:
         raise fastapi.HTTPException(

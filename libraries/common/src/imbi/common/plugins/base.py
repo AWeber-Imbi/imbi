@@ -323,7 +323,7 @@ class PluginManifest(pydantic.BaseModel):
     )
 
     @pydantic.model_validator(mode='after')
-    def _validate_secret_providers(self) -> PluginManifest:
+    def _validate_typed_classes(self) -> PluginManifest:
         for kind, classes in (
             ('secret provider', self.secret_providers),
             ('identity source', self.identity_sources),

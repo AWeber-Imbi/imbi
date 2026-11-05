@@ -10,7 +10,7 @@ import unittest
 from unittest import mock
 
 from apps.api.tests import secret_support
-from imbi.api.secret_broker import identity
+from imbi.api.secret_broker import identity, providers
 from imbi.common.plugins import base
 from imbi.common.plugins import identity as contract
 
@@ -105,13 +105,13 @@ class RegistryTestCase(unittest.TestCase):
 
     def _plugins(self, *entries: mock.Mock) -> mock._patch[mock.MagicMock]:  # pyright: ignore[reportPrivateUsage]
         return mock.patch.object(
-            identity.plugin_registry, 'list_plugins', return_value=entries
+            providers.plugin_registry, 'list_plugins', return_value=entries
         )
 
     def test_load_conflict_and_removal(self) -> None:
         with (
             self._plugins(_entry('a', _Source), _entry('b', _Other)),
-            self.assertLogs(identity.LOGGER, 'ERROR') as logs,
+            self.assertLogs(providers.LOGGER, 'ERROR') as logs,
         ):
             source = identity.get('test_source')
             self.assertIsInstance(source, _Source)
