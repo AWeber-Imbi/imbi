@@ -172,6 +172,31 @@ describe('AccessTab', () => {
     expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
   })
 
+  it('marks a saved model key field when the binding allows no fields', async () => {
+    renderTab('secret://ci/npm_token#api-key')
+    expect(
+      await screen.findByText(/This binding cannot supply a model key/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
+  })
+
+  it('marks a saved model key whose binding is gone', async () => {
+    renderTab('secret://anthropic/deleted#api-key')
+    expect(
+      await screen.findByText(/This binding does not exist/),
+    ).toBeInTheDocument()
+  })
+
+  it('does not mark a missing binding before the bindings load', () => {
+    vi.mocked(endpoints.listSecretBindings).mockReturnValue(
+      new Promise(() => {}),
+    )
+    renderTab('secret://anthropic/deleted#api-key')
+    expect(
+      screen.queryByText(/This binding does not exist/),
+    ).not.toBeInTheDocument()
+  })
+
   it('uses the organization key when the agent has none', () => {
     renderTab()
     expect(screen.queryByText('Call the model')).not.toBeInTheDocument()

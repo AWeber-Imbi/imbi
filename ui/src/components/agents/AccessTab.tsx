@@ -181,6 +181,7 @@ export function AccessTab({
           covers(mine, bindingId, MODEL_PURPOSE, 'file_descriptor')
         }
         isPending={create.isPending}
+        loaded={bindings.isSuccess}
         onChange={(reference) => onChange({ ...value, modelKeyRef: reference })}
         onGrant={(binding) => grant(binding, MODEL_PURPOSE, 'file_descriptor')}
         showGrant={Boolean(agent) && canRead}
@@ -366,6 +367,7 @@ function ModelKey({
   canGrant,
   covered,
   isPending,
+  loaded,
   onChange,
   onGrant,
   showGrant,
@@ -375,6 +377,7 @@ function ModelKey({
   canGrant: boolean
   covered: (bindingId: string) => boolean
   isPending: boolean
+  loaded: boolean
   onChange: (reference: string) => void
   onGrant: (binding: SecretBinding) => void
   showGrant: boolean
@@ -393,11 +396,13 @@ function ModelKey({
   if (value && !references.includes(value)) references.push(value)
   const [bindingRef, field] = value.split('#')
   const binding = bindings.find((b) => b.reference === bindingRef)
-  // A field that is no longer in the field list is not usable.
+  // A field that is not in the field list is not usable. A binding
+  // without a field list accepts only a reference without a field.
   const usable = binding
     ? canSupplyModelKey(binding) &&
-      (!binding.allowed_fields.length ||
-        binding.allowed_fields.includes(field ?? ''))
+      (binding.allowed_fields.length
+        ? binding.allowed_fields.includes(field ?? '')
+        : field === undefined)
     : false
   const ok = binding ? covered(binding.id) : false
   return (
@@ -429,6 +434,11 @@ function ModelKey({
           </SelectContent>
         </Select>
       </Field>
+      {loaded && value && !binding && (
+        <p className="text-danger text-sm">
+          This binding does not exist. Select a different binding.
+        </p>
+      )}
       {binding && !usable && (
         <p className="text-danger text-sm">
           This binding cannot supply a model key. Select a different binding.
