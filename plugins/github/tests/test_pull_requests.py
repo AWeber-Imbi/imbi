@@ -187,6 +187,15 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('DELETE FROM pull_requests', sql)
         return typing.cast('dict[str, typing.Any]', params)
 
+    def _excluded(self) -> list[str]:
+        params = self._delete_params()
+        return [
+            pr_id
+            for name in sorted(params, key=lambda k: (len(k), k))
+            if name.startswith('pr_ids_')
+            for pr_id in params[name]
+        ]
+
     @respx.mock
     async def test_records_full_history(self) -> None:
         respx.get(f'{_REPO}/pulls').mock(
@@ -204,7 +213,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
         params = self._delete_params()
         self.assertEqual(params['project_id'], 'proj-1')
-        self.assertEqual(params['pr_ids'], ['1', '2'])
+        self.assertEqual(self._excluded(), ['1', '2'])
         started_at = params['started_at_64']
         self.assertIsInstance(started_at, datetime.datetime)
         self.assertIsNotNone(started_at.tzinfo)
@@ -228,7 +237,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 1)
         insert.assert_awaited_once()
         self.assertEqual(len(insert.await_args.args[2]), 1)
-        self.assertEqual(self._delete_params()['pr_ids'], ['1', '2'])
+        self.assertEqual(self._excluded(), ['1', '2'])
 
     @respx.mock
     async def test_empty_repo_prunes_everything(self) -> None:
@@ -243,7 +252,9 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(count, 0)
         insert.assert_not_awaited()
-        self.assertEqual(self._delete_params()['pr_ids'], [])
+        sql, _params = self.delete.await_args.args
+        self.assertNotIn('NOT IN', sql)
+        self.assertEqual(self._excluded(), [])
 
     @respx.mock
     async def test_page_cap_skips_prune(self) -> None:
@@ -310,6 +321,40 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 1)
         insert.assert_awaited_once()
         self.delete.assert_not_awaited()
+
+    @respx.mock
+    async def test_other_same_host_link_skips_prune(self) -> None:
+        # A link to some other repo on the same host resolves a target,
+        # but it is not the project's repository link, so no delete.
+        ctx = _ctx(
+            project_links={'docs': 'https://github.com/octo/demo'},
+        )
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()):
+            await pull_requests.GitHubPullRequestSync().sync_all_history(
+                ctx=ctx, credentials=_CREDS
+            )
+        self.delete.assert_not_awaited()
+
+    async def test_large_listing_splits_excluded_ids(self) -> None:
+        # Near the 10k page cap, one array would overrun ClickHouse's
+        # per-field limit; every ID must still be excluded.
+        pr_ids = [str(1_000_000_000 + n) for n in range(9_999)]
+        started_at = datetime.datetime.now(datetime.UTC)
+        await pull_requests._prune_stale_prs(  # pyright: ignore[reportPrivateUsage]
+            'proj-1', started_at, pr_ids
+        )
+        sql, params = self.delete.await_args.args
+        chunks = [v for k, v in params.items() if k.startswith('pr_ids_')]
+        self.assertEqual(len(chunks), 10)
+        for index, chunk in enumerate(chunks):
+            self.assertLessEqual(len(chunk), 1000)
+            self.assertIn(
+                f'pr_id NOT IN {{pr_ids_{index}:Array(String)}}', sql
+            )
+        self.assertEqual(self._excluded(), pr_ids)
 
     @respx.mock
     async def test_prune_failure_is_swallowed(self) -> None:

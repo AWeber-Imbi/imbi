@@ -41,6 +41,8 @@ from imbi.common.plugins.base import (
 from imbi.plugins.github._app_auth import AppNotInstalledError
 from imbi.plugins.github._hosts import host_to_api_base
 from imbi.plugins.github._repos import (
+    RepositoryTarget,
+    parse_owner_repo,
     resolve_owner_repo,
     resolve_repository_target,
 )
@@ -74,9 +76,12 @@ _SYNC_ACTIONS = frozenset({'opened', 'closed', 'reopened', 'synchronize'})
 _PRUNE_STALE_SQL = (
     'DELETE FROM pull_requests '
     'WHERE project_id = {project_id:String} '
-    "AND recorded_at < {started_at:DateTime64(3, 'UTC')} "
-    'AND pr_id NOT IN {pr_ids:Array(String)}'
+    "AND recorded_at < {started_at:DateTime64(3, 'UTC')}"
 )
+# Each bound array goes to ClickHouse as one HTTP field, capped at
+# 128 KiB by default.  A full 10k-PR listing in one array overruns it,
+# so the listed IDs are split across arrays of at most this many.
+_PRUNE_CHUNK_SIZE = 1000
 
 
 def _parse_pr_datetime(value: object) -> datetime.datetime | None:
@@ -197,6 +202,24 @@ async def _fetch_all_prs(
     return out, True
 
 
+def _is_repository_link(
+    ctx: PluginContext, host: str, target: RepositoryTarget
+) -> bool:
+    """Whether ``target`` came from the project's repository link.
+
+    ``resolve_repository_target`` also accepts any other same-host
+    link, which may name some other repo.  Only the Integration's own
+    link key or ``github-repository`` says which repo this project is.
+    """
+    for key in (ctx.integration_slug, 'github-repository'):
+        url = ctx.project_links.get(key) if key else None
+        if url is None:
+            continue
+        if parse_owner_repo(url, host.lower()) == (target.owner, target.repo):
+            return True
+    return False
+
+
 async def _prune_stale_prs(
     project_id: str,
     started_at: datetime.datetime,
@@ -207,18 +230,20 @@ async def _prune_stale_prs(
     Best-effort: a failure is logged and swallowed so a ClickHouse
     problem never fails the sync.
     """
+    parameters: dict[str, typing.Any] = {
+        'project_id': project_id,
+        # clickhouse-connect formats a plain ``datetime`` to whole
+        # seconds; the ``_64`` suffix binds it as ``started_at`` with
+        # its fractional seconds kept.
+        'started_at_64': started_at,
+    }
+    statement = _PRUNE_STALE_SQL
+    for offset in range(0, len(pr_ids), _PRUNE_CHUNK_SIZE):
+        name = f'pr_ids_{offset // _PRUNE_CHUNK_SIZE}'
+        parameters[name] = pr_ids[offset : offset + _PRUNE_CHUNK_SIZE]
+        statement += f' AND pr_id NOT IN {{{name}:Array(String)}}'
     try:
-        await clickhouse.command(
-            _PRUNE_STALE_SQL,
-            {
-                'project_id': project_id,
-                # clickhouse-connect formats a plain ``datetime`` to whole
-                # seconds; the ``_64`` suffix binds it as ``started_at``
-                # with its fractional seconds kept.
-                'started_at_64': started_at,
-                'pr_ids': pr_ids,
-            },
-        )
+        await clickhouse.command(statement, parameters)
     except Exception:
         LOGGER.exception(
             'github-pr-sync: failed to remove stale PR rows for project %s',
@@ -371,8 +396,10 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         too malformed to record.  A repo with no PRs deletes every row
         the project has from before the sync.  The delete is skipped when
         the listing was incomplete (a 404 on any page, or the page cap)
-        or the GitHub App is not installed.  It runs whether or not the
-        publish succeeded, and a delete failure is logged and swallowed.
+        or the GitHub App is not installed, and when the repo did not
+        come from the project's repository link.  It runs whether or not
+        the publish succeeded, and a delete failure is logged and
+        swallowed.
 
         ``additions``, ``deletions``, and ``changed_files`` are ``0`` for
         backfill rows (GitHub's list-PRs API omits them); they are
@@ -422,9 +449,10 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         recorded = await _publish_best_effort(
             'pull_requests', records, ctx.project_id
         )
-        # Only a linked repo is authoritative enough to delete against;
-        # a project-type/slug guess may name some other repo entirely.
-        if complete and target.source == 'link':
+        # Only the project's repository link is authoritative enough to
+        # delete against; another same-host link or a project-type/slug
+        # guess may name some other repo entirely.
+        if complete and _is_repository_link(ctx, host, target):
             pr_ids = [str(pr['id']) for pr in raw_prs if pr.get('id')]
             await _prune_stale_prs(ctx.project_id, started_at, pr_ids)
         return recorded
