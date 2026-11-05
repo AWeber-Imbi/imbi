@@ -221,6 +221,10 @@ export function ProjectDetail({
     spanFull: envSpanFull,
   } = useBalancedEnvLayout()
 
+  // Declared here, ahead of its comment below, so the poll can read it.
+  const [activeRuns, setActiveRuns] = useState<
+    (DeploymentRunStarted & { startedMs: number })[]
+  >([])
   const { data: currentReleases = [], isPending: releasesPending } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
@@ -228,7 +232,10 @@ export function ProjectDetail({
     // Poll while a deploy runs, so the banner and the disabled deploy
     // buttons clear when it settles, also after a reload with no watcher.
     // Poll slowly while idle, so a deploy started elsewhere shows up.
+    // A run this page dispatched counts too: its attempt can be missing
+    // from the first responses.
     refetchInterval: (q) =>
+      activeRuns.some((r) => r.originProjectId === project.id) ||
       q.state.data?.some((row) => isDeployInFlight(row.latest_deployment))
         ? 6000
         : 30000,
@@ -396,9 +403,6 @@ export function ProjectDetail({
   // calls back to remove its entry once the run reaches a terminal
   // state.  Refreshes the release-train view too so the freshly
   // recorded ``DeploymentEvent.status`` flips out of ``in_progress``.
-  const [activeRuns, setActiveRuns] = useState<
-    (DeploymentRunStarted & { startedMs: number })[]
-  >([])
   const queryClient = useQueryClient()
   const handleRunStarted = useCallback((run: DeploymentRunStarted) => {
     setActiveRuns((prev) =>
@@ -548,7 +552,11 @@ export function ProjectDetail({
     const timer = setTimeout(() => setNow(Date.now()), next - Date.now())
     return () => clearTimeout(timer)
   }, [deployDeadlines, now])
+  const promoteDeploying = releaseInFlight.phase === 'deploying'
   const deployInFlight = useMemo<null | ReleaseInFlightState>(() => {
+    // A promote's own Deployment also shows in `latest_deployment`; the
+    // promote banner already covers it, so show one banner, not two.
+    if (promoteDeploying) return null
     const run = activeRuns.find(
       (r) =>
         r.originProjectId === project.id && now < r.startedMs + DEPLOY_STUCK_MS,
@@ -567,7 +575,7 @@ export function ProjectDetail({
       startedAt: latest?.started_at ?? latest?.deployed_at ?? null,
       tag: latest?.tag ?? latest?.committish?.slice(0, 7) ?? null,
     }
-  }, [activeRuns, currentReleases, now, project.id])
+  }, [activeRuns, currentReleases, now, project.id, promoteDeploying])
 
   const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
     // The banner's `build_failed` comes from `promote-status`, which the
