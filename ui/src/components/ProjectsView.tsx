@@ -1607,7 +1607,7 @@ function ScrollableDeployments({
     <div className="relative flex w-full min-w-0 items-center">
       {canScrollLeft && (
         <button
-          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-10 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
+          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-20 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
           onClick={() => scroll('left')}
           type="button"
         >
@@ -1623,7 +1623,7 @@ function ScrollableDeployments({
       </div>
       {canScrollRight && (
         <button
-          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-10 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
+          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-20 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
           onClick={() => scroll('right')}
           type="button"
         >
