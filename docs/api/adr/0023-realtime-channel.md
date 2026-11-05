@@ -176,7 +176,7 @@ All messages are JSON.
 {"type": "ping"}
 {"type": "subscribed", "topic": "project:acme:abc123"}
 {"type": "invalidate", "topic": "project:acme:abc123", "resource": "deployments", "actor": "alexc@aweber.com"}
-{"type": "presence", "topic": "agent:acme:triage", "members": [{"user": "...", "state": {"editing": "system_prompt"}}]}
+{"type": "presence", "topic": "agent:acme:triage", "members": [{"user": "...", "state": {"editing": "system_prompt"}, "changed_at": "2026-10-23T20:12:49Z"}]}
 {"type": "notify", "topic": "user:42", "level": "success", "title": "Deployed abc1234 to testing", "url": "/projects/abc123/deployments"}
 {"type": "error", "topic": "project:acme:abc123", "code": "forbidden"}
 ```
@@ -262,10 +262,11 @@ imbi-api serves the WebSocket at `/realtime` under its route prefix.
   This also limits how long a connection lives, which
   [Multiple pods](#multiple-pods) relies on.
 - **The server sends a `ping` message every 25 seconds.** It stops
-  proxies and load balancers from closing an idle socket. It is a JSON
-  message rather than a WebSocket protocol ping because the browser
-  answers protocol pings itself and never shows them to page code, so
-  only a message lets the browser notice that the server went silent.
+  proxies and load balancers from closing an idle socket, and lets the
+  browser notice that the server went silent. uvicorn's WebSocket
+  protocol pings cover the other direction (see [Presence](#presence)),
+  but the browser answers protocol pings itself and never shows them to
+  page code, so the browser needs a message it can see.
 - **Limits** cap topics per socket, message size, and presence updates
   per second.
 
@@ -305,7 +306,11 @@ The Helm chart documents Valkey as a required backing service.
   [Delivery](#delivery) and the fallback use them. A query whose key is
   in the table updates live with no change to its component.
 - **`usePresence(topic, state)`** sends the caller's state and returns
-  the other members. When its component unmounts, it sends
+  the other users on the topic, each listed once. It drops the members
+  that belong to the caller's own user, so the caller's other tabs do
+  not appear. When one user's tabs have different states, a non-empty
+  state wins over an empty one, and between two non-empty states the
+  latest `changed_at` wins. When its component unmounts, it sends
   `state: null`, which removes the caller from the topic. While the
   socket is down, it returns no members, because the browser cannot
   tell who is still there.
@@ -384,12 +389,22 @@ Presence updates move from the HTTP heartbeat in `useDocumentPresence`
 to the socket.
 
 - Each topic has a Valkey sorted set of members scored by expiry time,
-  as `document_presence.py` does today. Each member records a user and
-  that socket's current state for the topic.
+  as `document_presence.py` does today. Each member is one socket. It
+  records a user, that socket's current state for the topic, and when
+  that state last changed. A user with two tabs open is two members, so
+  closing one tab leaves the other.
 - The server refreshes a member while its socket is on the topic. It
   removes the member when the browser sends `state: null`, unsubscribes
   from the topic, or closes the socket. If a pod crashes, its members
   expire after the TTL.
+- The server detects a client that vanished without closing its socket
+  through WebSocket protocol pings. uvicorn sends one every 20 seconds
+  (`ws_ping_interval`), the browser answers it on its own, and uvicorn
+  closes a socket whose answer has not arrived after 20 seconds
+  (`ws_ping_timeout`). Closing the socket removes its members.
+- A member's TTL is 30 seconds, and each pod refreshes its members every
+  10 seconds. A vanished client therefore leaves the member set within
+  about 40 seconds, and so do the members of a crashed pod.
 - Every change runs as one Valkey Lua script. The script updates the
   set, removes expired members, reads the set, and, if any member was
   added, removed, or changed state, publishes a `presence` snapshot on
@@ -421,8 +436,11 @@ While a watch job runs, it holds a lease, the Valkey key
 The job renews the lease on its own timer, apart from polling, so the
 lease does not expire while the job pauses for a GitHub rate limit.
 `list_current_releases` still asks GitHub about in-flight runs, but only
-about runs with no lease. That check recovers a run whose watch job
-died, and other page loads no longer call GitHub. A run can stay in one
+about runs with no lease. That check keeps a run's status current if
+its watch job died, and other page loads no longer call GitHub. The
+check does not start a new watch job. Like a promote job, a stalled
+deploy watch job is taken over by another pod through the queue's
+claim. A run can stay in one
 status for longer than any fixed interval, so the time since the last
 status change cannot tell whether the job is still alive.
 
@@ -520,7 +538,7 @@ every `invalidate` event refetches them.
 - Server load grows with the number of changes instead of the number of
   open tabs. An idle socket carries one ping every 25 seconds.
 - One watch job polls GitHub for each deploy run. Page loads call
-  GitHub only to recover a run whose watch job died.
+  GitHub only for a run whose watch job died.
 
 ### Costs and risks
 
