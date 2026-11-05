@@ -564,8 +564,13 @@ export function ProjectDetail({
       (r) =>
         r.originProjectId === project.id && now < r.startedMs + DEPLOY_STUCK_MS,
     )
-    const row = currentReleases.find((r) =>
-      isDeployInFlight(r.latest_deployment, now),
+    // With a local run, take only the row for the same environment, so
+    // the banner never mixes another attempt's details with this run's
+    // URL. Without a matching row, the run alone fills the banner.
+    const row = currentReleases.find(
+      (r) =>
+        isDeployInFlight(r.latest_deployment, now) &&
+        (!run || r.environment.name === run.envName),
     )
     if (!run && !row) return null
     const latest = row?.latest_deployment

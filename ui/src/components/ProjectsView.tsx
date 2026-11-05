@@ -925,7 +925,8 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
         const derived = env.label_color
           ? deriveChipColors(env.label_color, false)
           : null
-        const base = 'relative z-10 w-50 shrink-0 rounded-lg border px-3 py-2'
+        const base =
+          'relative z-10 w-50 shrink-0 rounded-lg border px-3 py-2 wrap-anywhere'
         const cardClass = derived
           ? `${base}${!release ? ' border-dashed opacity-60' : ''}`
           : `${base}${release ? ' border-border bg-card' : ' border-tertiary/40 border-dashed opacity-60'}`
@@ -955,7 +956,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
                 <PipelineConnector />
               ))}
             <Link
-              aria-label={`View ${env.name} deployments`}
+              aria-label={`View ${project.name} ${env.name} deployments`}
               className={`${cardClass}${behind ? ` ${DRIFT_TONE[tone].card}` : ''}`}
               style={cardStyle}
               to={`/projects/${project.id}/deployments?env=${encodeURIComponent(env.slug)}`}
@@ -1360,9 +1361,11 @@ function PipelineConnector({
 // fallow-ignore-next-line complexity
 function ReleaseCards({
   projectId,
+  projectName,
   release_summary,
 }: {
   projectId: string
+  projectName: string
   release_summary: NonNullable<ProjectListItem['release_summary']>
 }) {
   const headSha =
@@ -1375,8 +1378,8 @@ function ReleaseCards({
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
       <Link
-        aria-label="Latest commit: view releases"
-        className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2"
+        aria-label={`${projectName} latest commit: view releases`}
+        className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere"
         to={`/projects/${projectId}/releases`}
       >
         <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
@@ -1407,8 +1410,8 @@ function ReleaseCards({
         <PipelineConnector />
       )}
       <Link
-        aria-label="Current release: view releases"
-        className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
+        aria-label={`${projectName} current release: view releases`}
+        className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
         to={`/projects/${projectId}/releases`}
       >
         {behind && <BehindTab tone={tone} />}
@@ -1813,6 +1816,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <div className="min-w-0 overflow-x-auto">
               <ReleaseCards
                 projectId={project.id}
+                projectName={project.name}
                 release_summary={project.release_summary}
               />
             </div>
