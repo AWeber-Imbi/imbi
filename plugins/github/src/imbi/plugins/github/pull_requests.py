@@ -40,7 +40,10 @@ from imbi.common.plugins.base import (
 )
 from imbi.plugins.github._app_auth import AppNotInstalledError
 from imbi.plugins.github._hosts import host_to_api_base
-from imbi.plugins.github._repos import resolve_owner_repo
+from imbi.plugins.github._repos import (
+    resolve_owner_repo,
+    resolve_repository_target,
+)
 from imbi.plugins.github.commits import (
     _BACKFILL_MAX_WAIT_SECONDS,  # pyright: ignore[reportPrivateUsage]
     _client,  # pyright: ignore[reportPrivateUsage]
@@ -140,8 +143,10 @@ async def _fetch_all_prs(
     Caps at ``_MAX_HISTORY_PAGES`` pages (10k PRs) so a repo with a very
     large PR history can't pin the worker indefinitely.
 
-    ``complete`` is ``False`` when any page returns 404 or the page cap
-    is reached, so the caller knows the listing may be missing PRs.
+    ``complete`` is ``False`` when any page returns 404, a next-page
+    link can't be followed, or the page cap is reached, so the caller
+    knows the listing may be missing PRs.  Only a page with no next
+    link (or an empty page) ends the listing as complete.
     """
     out: list[dict[str, typing.Any]] = []
     params: dict[str, str] = {'state': 'all', 'per_page': '100'}
@@ -174,7 +179,13 @@ async def _fetch_all_prs(
             break
         next_page = _query_param(next_url, 'page')
         if next_page is None:
-            break
+            LOGGER.warning(
+                'github-pr-sync: next-page link without a page param '
+                '(%s); stopping after %d PRs',
+                next_url,
+                len(out),
+            )
+            return out, False
         params['page'] = next_page
     else:
         LOGGER.warning(
@@ -387,7 +398,8 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
                 'on-demand sync: set the Integration flavor/host'
             )
         base = host_to_api_base(host)
-        owner, repo = resolve_owner_repo(ctx, host, _SELF_SLUG)
+        target = resolve_repository_target(ctx, host, _SELF_SLUG)
+        owner, repo = target.owner, target.repo
         try:
             token = await _resolve_bearer(credentials, base, owner, repo)
         except AppNotInstalledError as exc:
@@ -410,7 +422,9 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         recorded = await _publish_best_effort(
             'pull_requests', records, ctx.project_id
         )
-        if complete:
+        # Only a linked repo is authoritative enough to delete against;
+        # a project-type/slug guess may name some other repo entirely.
+        if complete and target.source == 'link':
             pr_ids = [str(pr['id']) for pr in raw_prs if pr.get('id')]
             await _prune_stale_prs(ctx.project_id, started_at, pr_ids)
         return recorded

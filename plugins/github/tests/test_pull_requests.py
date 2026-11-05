@@ -264,6 +264,54 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any('2-page cap' in x for x in cm.output))
 
     @respx.mock
+    async def test_unfollowable_next_link_skips_prune(self) -> None:
+        # A next link with no page param leaves later pages unread, so
+        # the listing is incomplete and must not drive a delete.
+        link = f'<{_REPO}/pulls?after=abc>; rel="next"'
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(
+                200, json=[_pr(id=1, number=1)], headers={'link': link}
+            )
+        )
+        handler = pull_requests.GitHubPullRequestSync()
+        with (
+            mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert,
+            self.assertLogs(pull_requests.LOGGER, level='WARNING') as cm,
+        ):
+            count = await handler.sync_all_history(
+                ctx=_ctx(), credentials=_CREDS
+            )
+        self.assertEqual(count, 1)
+        insert.assert_awaited_once()
+        self.delete.assert_not_awaited()
+        self.assertTrue(any('without a page param' in x for x in cm.output))
+
+    @respx.mock
+    async def test_type_slug_fallback_skips_prune(self) -> None:
+        # A repo guessed from the project type and slug has no authority,
+        # so it still backfills but never deletes stored rows.
+        ctx = PluginContext(
+            project_id='proj-1',
+            project_slug='demo',
+            org_slug='octo',
+            integration_options=_connection(),
+            project_links={},
+            project_type_slugs=['octo'],
+        )
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(200, json=[_pr(id=1, number=1)])
+        )
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            count = (
+                await pull_requests.GitHubPullRequestSync().sync_all_history(
+                    ctx=ctx, credentials=_CREDS
+                )
+            )
+        self.assertEqual(count, 1)
+        insert.assert_awaited_once()
+        self.delete.assert_not_awaited()
+
+    @respx.mock
     async def test_prune_failure_is_swallowed(self) -> None:
         self.delete.side_effect = Exception('boom')
         respx.get(f'{_REPO}/pulls').mock(
