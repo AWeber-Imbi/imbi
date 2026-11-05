@@ -164,6 +164,14 @@ describe('AccessTab', () => {
     expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
   })
 
+  it('marks a saved model key field that the binding no longer allows', async () => {
+    renderTab('secret://anthropic/triage#old-key')
+    expect(
+      await screen.findByText(/This binding cannot supply a model key/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
+  })
+
   it('uses the organization key when the agent has none', () => {
     renderTab()
     expect(screen.queryByText('Call the model')).not.toBeInTheDocument()

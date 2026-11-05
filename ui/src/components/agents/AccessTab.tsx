@@ -391,8 +391,14 @@ function ModelKey({
     )
   // Keep a saved value visible after its binding is gone or disabled.
   if (value && !references.includes(value)) references.push(value)
-  const binding = bindings.find((b) => b.reference === value.split('#')[0])
-  const usable = binding ? canSupplyModelKey(binding) : false
+  const [bindingRef, field] = value.split('#')
+  const binding = bindings.find((b) => b.reference === bindingRef)
+  // A field that is no longer in the field list is not usable.
+  const usable = binding
+    ? canSupplyModelKey(binding) &&
+      (!binding.allowed_fields.length ||
+        binding.allowed_fields.includes(field ?? ''))
+    : false
   const ok = binding ? covered(binding.id) : false
   return (
     <section className="flex flex-col gap-3">
