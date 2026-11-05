@@ -18,6 +18,7 @@ import typing
 import pydantic
 
 from imbi.common.plugins.errors import PluginRemediationNotSupported
+from imbi.common.plugins.identity import IdentitySource
 from imbi.common.plugins.secrets import SecretProvider
 
 
@@ -314,17 +315,27 @@ class PluginManifest(pydantic.BaseModel):
     secret_providers: list[type[SecretProvider]] = pydantic.Field(
         default_factory=list[type[SecretProvider]], exclude=True, repr=False
     )
+    #: Identity source classes (:class:`IdentitySource` subclasses) for
+    #: workload identity federation. An organization selects one in its
+    #: ``workload_identity`` setting. Excluded from serialization.
+    identity_sources: list[type[IdentitySource]] = pydantic.Field(
+        default_factory=list[type[IdentitySource]], exclude=True, repr=False
+    )
 
     @pydantic.model_validator(mode='after')
     def _validate_secret_providers(self) -> PluginManifest:
-        types: set[str] = set()
-        for provider in self.secret_providers:
-            if provider.type in types:
-                raise ValueError(
-                    f'PluginManifest declares secret provider type '
-                    f'{provider.type!r} twice'
-                )
-            types.add(provider.type)
+        for kind, classes in (
+            ('secret provider', self.secret_providers),
+            ('identity source', self.identity_sources),
+        ):
+            types: set[str] = set()
+            for cls in classes:
+                if cls.type in types:
+                    raise ValueError(
+                        f'PluginManifest declares {kind} type '
+                        f'{cls.type!r} twice'
+                    )
+                types.add(cls.type)
         return self
 
     @pydantic.model_validator(mode='after')

@@ -31,9 +31,11 @@ from imbi.api.endpoints._helpers import (
 from imbi.api.secret_broker import (
     audit,
     broker,
+    identity,
     providers,
     store,
 )
+from imbi.common.plugins import identity as plugin_identity
 
 OrgId = organizations.MemberOrgId
 
@@ -1094,6 +1096,105 @@ async def revoke_provider_lease(
     except providers.BrokerError as err:
         raise broker_error(err) from None
     return _resolution(row)
+
+
+# --- Workload identity (WIF plan 4.1) -------------------------------------
+
+identity_router = fastapi.APIRouter(
+    tags=['Secrets'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
+
+
+class IdentitySourceType(pydantic.BaseModel):
+    type: str
+    label: str
+
+
+class WorkloadIdentityPut(pydantic.BaseModel):
+    type: str
+    config: dict[str, typing.Any] = {}
+
+
+class WorkloadIdentity(WorkloadIdentityPut):
+    updated_by: str
+    updated_at: datetime.datetime
+
+
+def _identity_event(
+    event_type: audit.EventType, auth: permissions.AuthContext
+) -> store.AuditEvent:
+    return lambda row: audit.Event(
+        organization_id=row['organization_id'],
+        type=event_type,
+        actor=auth.principal_name,
+    )
+
+
+@identity_router.get('/types', response_model=list[IdentitySourceType])
+async def list_identity_source_types(
+    _: ProviderRead,
+) -> list[dict[str, str]]:
+    return [
+        {'type': source.type, 'label': source.label}
+        for source in identity.all_sources()
+    ]
+
+
+@identity_router.get('/', response_model=WorkloadIdentity)
+async def get_workload_identity(
+    org_id: OrgId, secrets: secret_broker.Store, _: ProviderRead
+) -> store.Row:
+    row = await secrets.identity_source(org_id)
+    if row is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail='Workload identity is not configured'
+        )
+    return row
+
+
+@identity_router.put('/', response_model=WorkloadIdentity)
+async def put_workload_identity(
+    org_id: OrgId,
+    data: WorkloadIdentityPut,
+    secrets: secret_broker.Store,
+    auth: ProviderWrite,
+) -> store.Row:
+    """Set the identity source of the organization. No JWT is minted.
+
+    Raises:
+        422: Unknown type, or the configuration is not valid.
+
+    """
+    try:
+        source = identity.get(data.type)
+    except plugin_identity.IdentityError:
+        raise _invalid(f'Unknown identity source type {data.type!r}') from None
+    try:
+        config = source.validate_config(data.config)
+        await source.check_config(config, org_id)
+    except providers.InvalidConfiguration as err:
+        raise _invalid(str(err), err.code) from None
+    return await secrets.put_identity_source(
+        org_id,
+        data.type,
+        config,
+        auth.principal_name,
+        event=_identity_event('workload_identity_updated', auth),
+    )
+
+
+@identity_router.delete('/', status_code=204)
+async def delete_workload_identity(
+    org_id: OrgId, secrets: secret_broker.Store, auth: ProviderWrite
+) -> None:
+    deleted = await secrets.delete_identity_source(
+        org_id, event=_identity_event('workload_identity_deleted', auth)
+    )
+    if not deleted:
+        raise fastapi.HTTPException(
+            status_code=404, detail='Workload identity is not configured'
+        )
 
 
 # --- Audit ---------------------------------------------------------------

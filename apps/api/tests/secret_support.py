@@ -129,7 +129,13 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                 " WHERE event->>'organization_id' = %s",
                 (self.org,),
             )
-            for table in ('resolutions', 'grants', 'bindings', 'providers'):
+            for table in (
+                'resolutions',
+                'grants',
+                'bindings',
+                'providers',
+                'identity_sources',
+            ):
                 await conn.execute(
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
                     (self.org,),

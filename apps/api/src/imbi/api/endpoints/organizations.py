@@ -70,6 +70,9 @@ from .secret_broker import (
 )
 from .secret_broker import grants_router as secret_grants_router
 from .secret_broker import (
+    identity_router as secret_identity_router,
+)
+from .secret_broker import (
     providers_router as secret_providers_router,
 )
 from .secret_broker import (
@@ -255,6 +258,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     secret_resolutions_router,
     prefix='/{org_slug}/secret-resolutions',
+)
+organizations_router.include_router(
+    secret_identity_router,
+    prefix='/{org_slug}/workload-identity',
 )
 organizations_router.include_router(
     secret_audit_router,
