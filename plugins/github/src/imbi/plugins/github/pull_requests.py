@@ -83,13 +83,17 @@ _SELECT_STALE_SQL = (
     'WHERE project_id = {project_id:String} '
     "AND state = 'open' "
     'AND startsWith(url, {url_prefix:String}) '
-    "AND recorded_at < {cutoff:DateTime64(3, 'UTC')}"
+    'AND recorded_at < {cutoff:DateTime64(3)}'
 )
 _DELETE_STALE_SQL = (
     'DELETE FROM pull_requests '
     'WHERE project_id = {project_id:String} '
-    "AND recorded_at < {cutoff:DateTime64(3, 'UTC')}"
+    'AND startsWith(url, {url_prefix:String}) '
+    'AND recorded_at < {cutoff:DateTime64(3)}'
 )
+# ``cutoff`` is typed ``DateTime64(3)`` with no zone: clickhouse-connect
+# formats it in the server's timezone, which an explicit ``'UTC'`` would
+# misread on a server that isn't UTC.
 # ``recorded_at`` is stamped by whichever host wrote the row (this
 # worker, or the gateway for webhook rows), so back the cutoff off to
 # absorb clock skew and GitHub's listing lag.  Stale rows are old.

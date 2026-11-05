@@ -262,7 +262,9 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         sql, params = self.delete.await_args_list[0].args
         self.assertIn('DELETE FROM pull_requests', sql)
         self.assertIn('pr_id IN {stale_0:Array(String)}', sql)
-        self.assertIn('recorded_at < {cutoff:', sql)
+        self.assertIn('recorded_at < {cutoff:DateTime64(3)}', sql)
+        # The delete repeats the select's host filter.
+        self.assertIn('startsWith(url, {url_prefix:String})', sql)
         self.assertEqual(params['stale_0'], ['98', '99'])
         log = '\n'.join(cm.output)
         self.assertIn('removing 2 stale open PR row(s)', log)
