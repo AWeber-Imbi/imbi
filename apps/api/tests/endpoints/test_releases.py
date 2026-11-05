@@ -2140,6 +2140,45 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual('1.0.0', detail['release']['tag'])
         self.assertIsNone(detail['latest_deployment'])
 
+    def test_latest_older_than_a_serving_legacy_entry_is_omitted(
+        self,
+    ) -> None:
+        # A legacy array entry from 04-23 still wins over the 04-20
+        # node, so the 04-22 attempt is not newer than what is serving.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': _PRODUCTION,
+                    'release': _release_row(tag='2.0.0', id='r2'),
+                    'deployments': json.dumps(
+                        [
+                            {
+                                'timestamp': '2026-04-23T10:00:00+00:00',
+                                'status': 'success',
+                                'note': None,
+                            }
+                        ]
+                    ),
+                }
+            ],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[self.state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = response.json()[0]
+        self.assertEqual('2.0.0', detail['release']['tag'])
+        self.assertIsNone(detail['latest_deployment'])
+
 
 class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
     """GET /releases/current — deployment-plugin hydration pass.
