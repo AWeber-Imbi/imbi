@@ -233,10 +233,13 @@ export function ProjectDetail({
     // buttons clear when it settles, also after a reload with no watcher.
     // Poll slowly while idle, so a deploy started elsewhere shows up.
     // A run this page dispatched counts too: its attempt can be missing
-    // from the first responses.
+    // from the first responses, until it hits DEPLOY_STUCK_MS.
     refetchInterval: (q) =>
-      activeRuns.some((r) => r.originProjectId === project.id) ||
-      q.state.data?.some((row) => isDeployInFlight(row.latest_deployment))
+      activeRuns.some(
+        (r) =>
+          r.originProjectId === project.id &&
+          Date.now() < r.startedMs + DEPLOY_STUCK_MS,
+      ) || q.state.data?.some((row) => isDeployInFlight(row.latest_deployment))
         ? 6000
         : 30000,
   })
