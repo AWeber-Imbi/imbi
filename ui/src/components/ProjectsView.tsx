@@ -956,7 +956,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
                 <PipelineConnector />
               ))}
             <Link
-              aria-label={`View ${project.name} ${env.name} deployments`}
+              aria-label={`View ${project.name} ${env.name} deployments: ${release ? (release.tag ?? release.committish ?? 'unknown release') : 'not deployed'}`}
               className={`${cardClass}${behind ? ` ${DRIFT_TONE[tone].card}` : ''}`}
               style={cardStyle}
               to={`/projects/${project.id}/deployments?env=${encodeURIComponent(env.slug)}`}
@@ -1378,7 +1378,7 @@ function ReleaseCards({
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
       <Link
-        aria-label={`${projectName} latest commit: view releases`}
+        aria-label={`${projectName} latest commit ${headSha ?? 'unknown'}: view releases`}
         className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere"
         to={`/projects/${projectId}/releases`}
       >
@@ -1410,7 +1410,7 @@ function ReleaseCards({
         <PipelineConnector />
       )}
       <Link
-        aria-label={`${projectName} current release: view releases`}
+        aria-label={`${projectName} current release ${release_summary.latest_tag ?? 'none'}${behind ? `, waiting on ${headSha ?? 'a new release'}` : ''}: view releases`}
         className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
         to={`/projects/${projectId}/releases`}
       >
