@@ -3,10 +3,12 @@
 import datetime
 import typing
 import unittest
+import zoneinfo
 from unittest import mock
 
 import httpx
 import respx
+from clickhouse_connect.driver import binding
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -262,7 +264,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         sql, params = self.delete.await_args_list[0].args
         self.assertIn('DELETE FROM pull_requests', sql)
         self.assertIn('pr_id IN {stale_0:Array(String)}', sql)
-        self.assertIn('recorded_at < {cutoff:DateTime64(3)}', sql)
+        self.assertIn("recorded_at < {cutoff:DateTime64(3, 'UTC')}", sql)
         # The delete repeats the select's host filter.
         self.assertIn('startsWith(url, {url_prefix:String})', sql)
         self.assertEqual(params['stale_0'], ['98', '99'])
@@ -501,6 +503,32 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.select.assert_not_awaited()
         self.delete.assert_not_awaited()
         self.assertTrue(any('skipping backfill' in x for x in cm.output))
+
+
+class PruneCutoffBindingTestCase(unittest.TestCase):
+    """The cutoff reaches ClickHouse as UTC text on any server timezone."""
+
+    def test_cutoff_is_bound_as_utc_on_a_non_utc_server(self) -> None:
+        cutoff = datetime.datetime(
+            2026, 1, 5, 12, 0, 0, 500_000, tzinfo=datetime.UTC
+        )
+        berlin = zoneinfo.ZoneInfo('Europe/Berlin')
+        for sql in (
+            pull_requests._SELECT_STALE_SQL,  # pyright: ignore[reportPrivateUsage]
+            pull_requests._DELETE_STALE_SQL,  # pyright: ignore[reportPrivateUsage]
+        ):
+            _query, bound = binding.bind_query(
+                sql,
+                {
+                    'project_id': 'proj-1',
+                    'url_prefix': 'https://github.com/',
+                    'cutoff_64': cutoff,
+                },
+                berlin,
+            )
+            self.assertEqual(
+                bound['param_cutoff'], '2026-01-05 12:00:00.500000'
+            )
 
 
 class CheckAvailableTestCase(unittest.IsolatedAsyncioTestCase):
