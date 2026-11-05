@@ -10483,6 +10483,8 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
+            /** Model Key Ref */
+            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -10534,6 +10536,8 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
+            /** Model Key Ref */
+            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []

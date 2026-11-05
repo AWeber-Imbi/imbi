@@ -32,8 +32,13 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const AGENT = { id: 'agt-1', name: 'Mender' }
 
-function binding(id: string, reference: string): SecretBinding {
+function binding(
+  id: string,
+  reference: string,
+  allowed_fields: string[] = [],
+): SecretBinding {
   return {
+    allowed_fields,
     enabled: true,
     id,
     max_ttl_seconds: 3600,
@@ -63,6 +68,7 @@ describe('AccessTab', () => {
     vi.mocked(endpoints.listSecretBindings).mockResolvedValue([
       binding('b-gh', 'secret://dev/github_app'),
       binding('b-npm', 'secret://ci/npm_token'),
+      binding('b-key', 'secret://anthropic/triage', ['api-key']),
     ])
     vi.mocked(endpoints.listSecretGrants).mockResolvedValue([
       grant({
@@ -86,7 +92,7 @@ describe('AccessTab', () => {
     vi.mocked(endpoints.createSecretGrant).mockResolvedValue(grant({}) as never)
   })
 
-  function renderTab() {
+  function renderTab(modelKeyRef = '') {
     render(
       <AccessTab
         agent={AGENT}
@@ -96,6 +102,7 @@ describe('AccessTab', () => {
         value={{
           ...emptyDraft().settings,
           githubAppBinding: 'secret://dev/github_app',
+          modelKeyRef,
         }}
       />,
     )
@@ -123,6 +130,29 @@ describe('AccessTab', () => {
         purposes: ['github_write'],
       }),
     )
+  })
+
+  it('grants the model key that the agent uses', async () => {
+    renderTab('secret://anthropic/triage#api-key')
+    const row = (await screen.findByText('Call the model')).closest('div')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Grant' }))
+    await waitFor(() =>
+      expect(endpoints.createSecretGrant).toHaveBeenCalledWith('acme', {
+        agent_ids: [AGENT.id],
+        binding_ids: ['b-key'],
+        delivery_modes: ['file_descriptor'],
+        description: 'Mender: model_inference with secret://anthropic/triage',
+        enabled: true,
+        max_ttl_seconds: 900,
+        project_ids: [],
+        purposes: ['model_inference'],
+      }),
+    )
+  })
+
+  it('uses the organization key when the agent has none', () => {
+    renderTab()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
   })
 
   it('lists the secrets that the agent has grants for', async () => {

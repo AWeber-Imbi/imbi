@@ -893,6 +893,8 @@ async def _check_platform(
             platform.check_reference(reference)
         if settings.github_app_binding is not None:
             platform.check_reference(settings.github_app_binding, field=False)
+        if settings.model_key_ref is not None:
+            platform.check_reference(settings.model_key_ref)
     except ValueError as err:
         raise _unprocessable(str(err)) from err
     binding = settings.github_app_binding
