@@ -36,14 +36,17 @@ function binding(
   id: string,
   reference: string,
   allowed_fields: string[] = [],
+  changes: Partial<SecretBinding> = {},
 ): SecretBinding {
   return {
+    allowed_delivery_modes: ['file_descriptor', 'environment'],
     allowed_fields,
     enabled: true,
     id,
     max_ttl_seconds: 3600,
     provider_id: 'p-1',
     reference,
+    ...changes,
   } as SecretBinding
 }
 
@@ -69,6 +72,9 @@ describe('AccessTab', () => {
       binding('b-gh', 'secret://dev/github_app'),
       binding('b-npm', 'secret://ci/npm_token'),
       binding('b-key', 'secret://anthropic/triage', ['api-key']),
+      binding('b-env', 'secret://anthropic/env_only', [], {
+        allowed_delivery_modes: ['environment'],
+      }),
     ])
     vi.mocked(endpoints.listSecretGrants).mockResolvedValue([
       grant({
@@ -148,6 +154,14 @@ describe('AccessTab', () => {
         purposes: ['model_inference'],
       }),
     )
+  })
+
+  it('marks a saved model key that cannot supply a key', async () => {
+    renderTab('secret://anthropic/env_only')
+    expect(
+      await screen.findByText(/This binding cannot supply a model key/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
   })
 
   it('uses the organization key when the agent has none', () => {

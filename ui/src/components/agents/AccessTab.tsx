@@ -307,6 +307,18 @@ function AgentSecrets({
   )
 }
 
+/**
+ * The broker gives a model key only from an enabled binding that
+ * allows file_descriptor delivery and is not a provider key.
+ */
+function canSupplyModelKey(b: SecretBinding): boolean {
+  return (
+    b.enabled &&
+    !b.provider_key_usage &&
+    b.allowed_delivery_modes.includes('file_descriptor')
+  )
+}
+
 function GrantTable({ rows }: { rows: AccessRow[] }) {
   return (
     <table className="w-full text-sm">
@@ -371,7 +383,7 @@ function ModelKey({
   // A binding with a field list gives only those fields, so the
   // reference must name one of them.
   const references = bindings
-    .filter((b) => b.enabled)
+    .filter(canSupplyModelKey)
     .flatMap((b) =>
       b.allowed_fields.length
         ? b.allowed_fields.map((f) => `${b.reference}#${f}`)
@@ -380,6 +392,7 @@ function ModelKey({
   // Keep a saved value visible after its binding is gone or disabled.
   if (value && !references.includes(value)) references.push(value)
   const binding = bindings.find((b) => b.reference === value.split('#')[0])
+  const usable = binding ? canSupplyModelKey(binding) : false
   const ok = binding ? covered(binding.id) : false
   return (
     <section className="flex flex-col gap-3">
@@ -410,7 +423,12 @@ function ModelKey({
           </SelectContent>
         </Select>
       </Field>
-      {binding && showGrant && (
+      {binding && !usable && (
+        <p className="text-danger text-sm">
+          This binding cannot supply a model key. Select a different binding.
+        </p>
+      )}
+      {binding && usable && showGrant && (
         <div className="border-tertiary flex items-center gap-3 rounded-lg border px-3 py-2">
           {ok ? (
             <Check className="text-success size-4" />

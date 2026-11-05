@@ -149,7 +149,10 @@ that the pool serves.
 
 An agent can use its own key instead of the organization's key. Open the
 agent, click **Edit**, then **Access**. In **Model key**, select the binding,
-and click **Grant** to add its `model_inference` grant. The agent still uses
+and click **Grant** to add its `model_inference` grant. Then save the agent.
+The grant applies immediately, but the agent keeps its previous key until
+you save it. The binding must allow the delivery mode `file_descriptor`,
+and it cannot be a provider key. The agent still uses
 the upstream and the base URL of the organization.
 
 ### 6. Configure GitHub access
