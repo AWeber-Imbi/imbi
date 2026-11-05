@@ -205,7 +205,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         params = self._delete_params()
         self.assertEqual(params['project_id'], 'proj-1')
         self.assertEqual(params['pr_ids'], ['1', '2'])
-        started_at = params['started_at']
+        started_at = params['started_at_64']
         self.assertIsInstance(started_at, datetime.datetime)
         self.assertIsNotNone(started_at.tzinfo)
 

@@ -201,7 +201,10 @@ async def _prune_stale_prs(
             _PRUNE_STALE_SQL,
             {
                 'project_id': project_id,
-                'started_at': started_at,
+                # clickhouse-connect formats a plain ``datetime`` to whole
+                # seconds; the ``_64`` suffix binds it as ``started_at``
+                # with its fractional seconds kept.
+                'started_at_64': started_at,
                 'pr_ids': pr_ids,
             },
         )

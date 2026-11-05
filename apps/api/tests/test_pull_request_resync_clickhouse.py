@@ -52,7 +52,11 @@ def _github_pr(**overrides: typing.Any) -> dict[str, typing.Any]:
 
 
 def _seed_record(
-    project_id: str, pr_id: str, pr_number: int, url: str
+    project_id: str,
+    pr_id: str,
+    pr_number: int,
+    url: str,
+    recorded_at: datetime.datetime | None = None,
 ) -> PullRequestRecord:
     now = datetime.datetime.now(datetime.UTC)
     return PullRequestRecord(
@@ -67,7 +71,7 @@ def _seed_record(
         merged=False,
         created_at=now - datetime.timedelta(days=30),
         updated_at=now - datetime.timedelta(days=30),
-        recorded_at=now - datetime.timedelta(hours=1),
+        recorded_at=recorded_at or now - datetime.timedelta(hours=1),
     )
 
 
@@ -161,3 +165,27 @@ class PullRequestResyncClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(['1001'], list(rows))
         self.assertEqual('closed', rows['1001']['state'])
         self.assertTrue(rows['1001']['merged'])
+
+    async def test_the_cutoff_keeps_its_fractional_seconds(self) -> None:
+        # A row recorded earlier in the same second as the sync started is
+        # stale too. Bound as a plain ``datetime`` the cutoff loses its
+        # milliseconds and the row survives.
+        second = datetime.datetime(2026, 1, 5, 12, 0, 0, tzinfo=datetime.UTC)
+        await self._seed(
+            _seed_record(
+                self.project_id,
+                '9009',
+                9,
+                'https://github.com/octo/other/pull/9',
+                recorded_at=second + datetime.timedelta(milliseconds=100),
+            )
+        )
+        self.assertIn('9009', await self._rows())
+
+        await pull_requests._prune_stale_prs(  # pyright: ignore[reportPrivateUsage]
+            self.project_id,
+            second + datetime.timedelta(milliseconds=500),
+            [],
+        )
+
+        self.assertNotIn('9009', await self._rows())
