@@ -30,7 +30,7 @@ import httpx
 import jsonpointer
 import pydantic
 
-from imbi.common import iggy
+from imbi.common import clickhouse, iggy
 from imbi.common.json_pointer import JsonPointer
 from imbi.common.models import PullRequestRecord
 from imbi.common.plugins.base import (
@@ -66,6 +66,14 @@ _MAX_HISTORY_PAGES = 100
 # fires when new commits are pushed to the PR branch (title/state may
 # also change).
 _SYNC_ACTIONS = frozenset({'opened', 'closed', 'reopened', 'synchronize'})
+# Remove the project's rows for PRs a complete listing didn't return.
+# ``recorded_at`` guards the rows this sync just published.
+_PRUNE_STALE_SQL = (
+    'DELETE FROM pull_requests '
+    'WHERE project_id = {project_id:String} '
+    "AND recorded_at < {started_at:DateTime64(3, 'UTC')} "
+    'AND pr_id NOT IN {pr_ids:Array(String)}'
+)
 
 
 def _parse_pr_datetime(value: object) -> datetime.datetime | None:
@@ -124,13 +132,16 @@ async def _fetch_all_prs(
     client: httpx.AsyncClient,
     *,
     max_wait: float,
-) -> list[dict[str, typing.Any]]:
-    """Walk ``GET /pulls?state=all`` and return every PR object.
+) -> tuple[list[dict[str, typing.Any]], bool]:
+    """Walk ``GET /pulls?state=all`` and return ``(prs, complete)``.
 
     GitHub's list-PRs endpoint omits ``additions``, ``deletions``, and
     ``changed_files``; backfill rows store ``0`` for those fields.
     Caps at ``_MAX_HISTORY_PAGES`` pages (10k PRs) so a repo with a very
     large PR history can't pin the worker indefinitely.
+
+    ``complete`` is ``False`` when any page returns 404 or the page cap
+    is reached, so the caller knows the listing may be missing PRs.
     """
     out: list[dict[str, typing.Any]] = []
     params: dict[str, str] = {'state': 'all', 'per_page': '100'}
@@ -152,7 +163,7 @@ async def _fetch_all_prs(
                     'or removed); nothing to sync',
                     str(client.base_url).rstrip('/'),
                 )
-            return out
+            return out, False
         resp.raise_for_status()
         page: list[dict[str, typing.Any]] = resp.json()
         if not page:
@@ -171,7 +182,34 @@ async def _fetch_all_prs(
             'history may be truncated',
             _MAX_HISTORY_PAGES,
         )
-    return out
+        return out, False
+    return out, True
+
+
+async def _prune_stale_prs(
+    project_id: str,
+    started_at: datetime.datetime,
+    pr_ids: list[str],
+) -> None:
+    """Delete ``project_id``'s rows older than ``started_at`` not listed.
+
+    Best-effort: a failure is logged and swallowed so a ClickHouse
+    problem never fails the sync.
+    """
+    try:
+        await clickhouse.command(
+            _PRUNE_STALE_SQL,
+            {
+                'project_id': project_id,
+                'started_at': started_at,
+                'pr_ids': pr_ids,
+            },
+        )
+    except Exception:
+        LOGGER.exception(
+            'github-pr-sync: failed to remove stale PR rows for project %s',
+            project_id,
+        )
 
 
 class SyncPRsConfig(pydantic.BaseModel):
@@ -310,9 +348,17 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         PAT-or-App resolution the webhook actions use.
 
         Walks every PR in the repo (``state=all``, paginated) and upserts
-        into the ClickHouse ``pull_requests`` table.
-        ``ReplacingMergeTree`` dedupes against rows the webhook already
-        recorded, so re-running is safe.
+        into the ClickHouse ``pull_requests`` table, then reconciles: when
+        the listing was complete, it deletes the project's rows whose
+        ``pr_id`` GitHub did not return.  Only rows with ``recorded_at``
+        older than the start of the sync are deleted, so the rows this
+        sync published (and any webhook row written meanwhile) survive.
+        A PR GitHub returned with an ``id`` keeps its row even when it is
+        too malformed to record.  A repo with no PRs deletes every row
+        the project has from before the sync.  The delete is skipped when
+        the listing was incomplete (a 404 on any page, or the page cap)
+        or the GitHub App is not installed.  It runs whether or not the
+        publish succeeded, and a delete failure is logged and swallowed.
 
         ``additions``, ``deletions``, and ``changed_files`` are ``0`` for
         backfill rows (GitHub's list-PRs API omits them); they are
@@ -348,8 +394,9 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
                 ctx.project_id,
             )
             return 0
+        started_at = datetime.datetime.now(datetime.UTC)
         async with _client(base, owner, repo, token) as client:
-            raw_prs = await _fetch_all_prs(
+            raw_prs, complete = await _fetch_all_prs(
                 client, max_wait=_BACKFILL_MAX_WAIT_SECONDS
             )
         records: list[pydantic.BaseModel] = []
@@ -357,6 +404,10 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
             record = _pr_record(pr, project_id=ctx.project_id)
             if record is not None:
                 records.append(record)
-        return await _publish_best_effort(
+        recorded = await _publish_best_effort(
             'pull_requests', records, ctx.project_id
         )
+        if complete:
+            pr_ids = [str(pr['id']) for pr in raw_prs if pr.get('id')]
+            await _prune_stale_prs(ctx.project_id, started_at, pr_ids)
+        return recorded

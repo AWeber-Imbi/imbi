@@ -31,6 +31,11 @@ It can do these things:
 | `pr-sync` | Pull request sync | On | Project-scoped |
 | `analysis` | Project doctor | On | Project-scoped |
 
+An on-demand pull request sync also removes the project's rows for pull
+requests the repository no longer lists. It skips the removal when the
+listing was incomplete, for example when GitHub returned a 404 partway
+through or the sync hit its page limit.
+
 ## Configuration
 
 ### Options

@@ -88,6 +88,25 @@ credential in one of two modes, resolved per call:
   from the pushed repository (`GET /repos/{owner}/{repo}/installation`).
   The App needs **Contents: Read-only**.
 
+### Pull request history sync
+
+`GitHubPullRequestSync.sync_all_history` is the on-demand `pr-sync`
+backfill. It walks `GET /repos/{owner}/{repo}/pulls?state=all` (up to 100
+pages of 100) and publishes a `pull_requests` row for every PR.
+
+After a complete walk it reconciles: it deletes the project's rows whose
+`pr_id` GitHub did not list, so a row filed under the project for another
+repository's PR does not stay `open`. Only rows recorded before the sync
+started are deleted, so the rows the sync just wrote, and any webhook row
+written meanwhile, are kept. A PR GitHub lists but that is too malformed
+to record keeps its existing row. A repository with no PRs removes every
+older row the project has.
+
+The delete is skipped when the listing may be incomplete (a 404 on any
+page, or the page cap) and when the GitHub App is not installed for the
+repository. It runs even if the publish failed, and a delete failure is
+logged and does not fail the sync.
+
 ## Integration options
 
 Asked once per Integration and delivered to every capability on

@@ -1,5 +1,6 @@
 """Tests for the GitHub pull-request history sync capability."""
 
+import datetime
 import typing
 import unittest
 from unittest import mock
@@ -33,6 +34,8 @@ _APP_KEY_PEM = _gen_pem()
 _INSERT_BACKFILL = 'imbi.plugins.github.commits.iggy.publish'
 # The webhook action publishes directly through the pull_requests namespace.
 _INSERT_WEBHOOK = 'imbi.plugins.github.pull_requests.iggy.publish'
+# The stale-row prune ``sync_all_history`` runs after a complete walk.
+_DELETE_STALE = 'imbi.plugins.github.pull_requests.clickhouse.command'
 
 
 def _connection(
@@ -171,6 +174,19 @@ class SyncPullRequestsActionTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        # Every test patches the prune so none of them reaches ClickHouse.
+        patcher = mock.patch(_DELETE_STALE, new=mock.AsyncMock())
+        self.delete: mock.AsyncMock = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _delete_params(self) -> dict[str, typing.Any]:
+        self.delete.assert_awaited_once()
+        sql, params = self.delete.await_args.args
+        self.assertIn('DELETE FROM pull_requests', sql)
+        return typing.cast('dict[str, typing.Any]', params)
+
     @respx.mock
     async def test_records_full_history(self) -> None:
         respx.get(f'{_REPO}/pulls').mock(
@@ -186,6 +202,83 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(count, 2)
         insert.assert_awaited_once()
+        params = self._delete_params()
+        self.assertEqual(params['project_id'], 'proj-1')
+        self.assertEqual(params['pr_ids'], ['1', '2'])
+        started_at = params['started_at']
+        self.assertIsInstance(started_at, datetime.datetime)
+        self.assertIsNotNone(started_at.tzinfo)
+
+    @respx.mock
+    async def test_malformed_pr_keeps_its_row(self) -> None:
+        # A PR too malformed to record is still listed by GitHub, so its
+        # existing row must not be pruned.
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(
+                200,
+                json=[_pr(id=1, number=1), _pr(id=2, created_at=None)],
+            )
+        )
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            count = (
+                await pull_requests.GitHubPullRequestSync().sync_all_history(
+                    ctx=_ctx(), credentials=_CREDS
+                )
+            )
+        self.assertEqual(count, 1)
+        insert.assert_awaited_once()
+        self.assertEqual(len(insert.await_args.args[2]), 1)
+        self.assertEqual(self._delete_params()['pr_ids'], ['1', '2'])
+
+    @respx.mock
+    async def test_empty_repo_prunes_everything(self) -> None:
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            count = (
+                await pull_requests.GitHubPullRequestSync().sync_all_history(
+                    ctx=_ctx(), credentials=_CREDS
+                )
+            )
+        self.assertEqual(count, 0)
+        insert.assert_not_awaited()
+        self.assertEqual(self._delete_params()['pr_ids'], [])
+
+    @respx.mock
+    async def test_page_cap_skips_prune(self) -> None:
+        link = f'<{_REPO}/pulls?page=2>; rel="next"'
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(
+                200, json=[_pr(id=1, number=1)], headers={'link': link}
+            )
+        )
+        handler = pull_requests.GitHubPullRequestSync()
+        with (
+            mock.patch.object(pull_requests, '_MAX_HISTORY_PAGES', 2),
+            mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()),
+            self.assertLogs(pull_requests.LOGGER, level='WARNING') as cm,
+        ):
+            await handler.sync_all_history(ctx=_ctx(), credentials=_CREDS)
+        self.delete.assert_not_awaited()
+        self.assertTrue(any('2-page cap' in x for x in cm.output))
+
+    @respx.mock
+    async def test_prune_failure_is_swallowed(self) -> None:
+        self.delete.side_effect = Exception('boom')
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(200, json=[_pr(id=1, number=1)])
+        )
+        handler = pull_requests.GitHubPullRequestSync()
+        with (
+            mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()),
+            self.assertLogs(pull_requests.LOGGER, level='ERROR') as cm,
+        ):
+            count = await handler.sync_all_history(
+                ctx=_ctx(), credentials=_CREDS
+            )
+        self.assertEqual(count, 1)
+        self.assertTrue(any('proj-1' in x for x in cm.output))
 
     async def test_raises_without_host(self) -> None:
         with self.assertRaises(ValueError):
@@ -210,6 +303,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 0)
         self.assertEqual(1, pulls.call_count)
         insert.assert_not_awaited()
+        self.delete.assert_not_awaited()
         self.assertTrue(any('nothing to sync' in x for x in cm.output))
 
     @respx.mock
@@ -237,6 +331,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 1)
         self.assertEqual(2, pulls.call_count)
         insert.assert_awaited_once()
+        self.delete.assert_not_awaited()
         self.assertTrue(any('stopping after 1 PRs' in x for x in cm.output))
 
     @respx.mock
@@ -271,6 +366,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 0)
         self.assertEqual(1, discovery.call_count)
         insert.assert_not_awaited()
+        self.delete.assert_not_awaited()
         self.assertTrue(any('skipping backfill' in x for x in cm.output))
 
 
