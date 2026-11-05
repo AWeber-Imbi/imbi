@@ -564,9 +564,10 @@ export function ProjectDetail({
       (r) =>
         r.originProjectId === project.id && now < r.startedMs + DEPLOY_STUCK_MS,
     )
-    // With a local run, take only the row for the same environment, so
-    // the banner never mixes another attempt's details with this run's
-    // URL. Without a matching row, the run alone fills the banner.
+    // With a local run, take only the row for the same environment. The
+    // row has no attempt identity, so it can be another concurrent
+    // attempt. With a local run, the start time comes from the run and
+    // the banner shows no tag.
     const row = currentReleases.find(
       (r) =>
         isDeployInFlight(r.latest_deployment, now) &&
@@ -580,8 +581,12 @@ export function ProjectDetail({
       envName: row?.environment.name ?? run?.envName ?? null,
       phase: 'deploying',
       runUrl: sanitizeHttpUrl(run?.runUrl) ?? null,
-      startedAt: latest?.started_at ?? latest?.deployed_at ?? null,
-      tag: latest?.tag ?? latest?.committish?.slice(0, 7) ?? null,
+      startedAt: run
+        ? new Date(run.startedMs).toISOString()
+        : (latest?.started_at ?? latest?.deployed_at ?? null),
+      tag: run
+        ? null
+        : (latest?.tag ?? latest?.committish?.slice(0, 7) ?? null),
     }
   }, [activeRuns, currentReleases, now, project.id, promoteDeploying])
 
