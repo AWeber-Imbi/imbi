@@ -57,6 +57,7 @@ def _seed_record(
     pr_number: int,
     url: str,
     recorded_at: datetime.datetime | None = None,
+    state: str = 'open',
 ) -> PullRequestRecord:
     now = datetime.datetime.now(datetime.UTC)
     return PullRequestRecord(
@@ -65,10 +66,10 @@ def _seed_record(
         pr_number=pr_number,
         title='Seeded PR',
         url=url,
-        state='open',
+        state=state,
         author='octocat',
         draft=False,
-        merged=False,
+        merged=state == 'closed',
         created_at=now - datetime.timedelta(days=30),
         updated_at=now - datetime.timedelta(days=30),
         recorded_at=recorded_at or now - datetime.timedelta(hours=1),
@@ -167,7 +168,7 @@ class PullRequestResyncClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(rows['1001']['merged'])
 
     async def test_the_cutoff_keeps_its_fractional_seconds(self) -> None:
-        # A row recorded earlier in the same second as the sync started is
+        # A row recorded earlier in the same second as the cutoff is
         # stale too. Bound as a plain ``datetime`` the cutoff loses its
         # milliseconds and the row survives.
         second = datetime.datetime(2026, 1, 5, 12, 0, 0, tzinfo=datetime.UTC)
@@ -185,8 +186,49 @@ class PullRequestResyncClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
         await pull_requests._prune_stale_prs(  # pyright: ignore[reportPrivateUsage]
             self.project_id,
             'github.com',
-            second + datetime.timedelta(milliseconds=500),
+            second
+            + pull_requests._PRUNE_MARGIN  # pyright: ignore[reportPrivateUsage]
+            + datetime.timedelta(milliseconds=500),
             [],
         )
 
         self.assertNotIn('9009', await self._rows())
+
+    @respx.mock
+    async def test_closed_history_is_kept(self) -> None:
+        # Only open rows are pruned: closed and merged PRs the listing no
+        # longer has (after a move to a new repository, say) stay.
+        await self._seed(
+            _seed_record(
+                self.project_id,
+                '9009',
+                9,
+                'https://github.com/octo/old/pull/9',
+                state='closed',
+            )
+        )
+
+        await self._sync([_github_pr(id=1001, number=1)])
+
+        rows = await self._rows()
+        self.assertIn('9009', rows)
+        self.assertEqual('closed', rows['9009']['state'])
+
+    @respx.mock
+    async def test_a_row_recorded_within_the_margin_is_kept(self) -> None:
+        # A webhook row written just before or during the sync may not be
+        # in the listing yet; the margin before ``started_at`` keeps it.
+        await self._seed(
+            _seed_record(
+                self.project_id,
+                '9009',
+                9,
+                'https://github.com/octo/demo/pull/9',
+                recorded_at=datetime.datetime.now(datetime.UTC)
+                - datetime.timedelta(minutes=1),
+            )
+        )
+
+        await self._sync([_github_pr(id=1001, number=1)])
+
+        self.assertIn('9009', await self._rows())

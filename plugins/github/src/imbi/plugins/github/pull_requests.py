@@ -71,17 +71,29 @@ _MAX_HISTORY_PAGES = 100
 # fires when new commits are pushed to the PR branch (title/state may
 # also change).
 _SYNC_ACTIONS = frozenset({'opened', 'closed', 'reopened', 'synchronize'})
-# Remove the project's rows for PRs a complete listing didn't return.
-# ``recorded_at`` guards the rows this sync just published.  The ``url``
-# prefix limits the delete to the synced host: a project can bind more
-# than one pr-sync Integration, and rows another host's webhooks wrote
-# are never in this listing.
-_PRUNE_STALE_SQL = (
+# Stale rows: the project's ``open`` rows on the synced host that a
+# complete listing didn't return.  Only ``open`` rows, because that is
+# the symptom (a PR stuck open forever); closed and merged history
+# stays even when the listing no longer has it, e.g. after the project
+# moves to a new repository.  The ``url`` prefix limits it to the synced
+# host: a project can bind more than one pr-sync Integration.
+# ``cutoff`` spares rows recorded during (or just before) the sync.
+_SELECT_STALE_SQL = (
+    'SELECT pr_id, url FROM pull_requests FINAL '
+    'WHERE project_id = {project_id:String} '
+    "AND state = 'open' "
+    'AND startsWith(url, {url_prefix:String}) '
+    "AND recorded_at < {cutoff:DateTime64(3, 'UTC')}"
+)
+_DELETE_STALE_SQL = (
     'DELETE FROM pull_requests '
     'WHERE project_id = {project_id:String} '
-    'AND startsWith(url, {url_prefix:String}) '
-    "AND recorded_at < {started_at:DateTime64(3, 'UTC')}"
+    "AND recorded_at < {cutoff:DateTime64(3, 'UTC')}"
 )
+# ``recorded_at`` is stamped by whichever host wrote the row (this
+# worker, or the gateway for webhook rows), so back the cutoff off to
+# absorb clock skew and GitHub's listing lag.  Stale rows are old.
+_PRUNE_MARGIN = datetime.timedelta(minutes=5)
 # Each bound array goes to ClickHouse as one HTTP field, capped at
 # 128 KiB by default.  A full 10k-PR listing in one array overruns it,
 # so the listed IDs are split across arrays of at most this many.
@@ -224,38 +236,80 @@ def _is_repository_link(
     return False
 
 
+def _id_arrays(
+    parameters: dict[str, typing.Any], prefix: str, ids: list[str]
+) -> list[str]:
+    """Bind ``ids`` as arrays of at most ``_PRUNE_CHUNK_SIZE``.
+
+    Returns the placeholder for each array, e.g.
+    ``{prefix_0:Array(String)}``.
+    """
+    placeholders: list[str] = []
+    for offset in range(0, len(ids), _PRUNE_CHUNK_SIZE):
+        name = f'{prefix}_{offset // _PRUNE_CHUNK_SIZE}'
+        parameters[name] = ids[offset : offset + _PRUNE_CHUNK_SIZE]
+        placeholders.append(f'{{{name}:Array(String)}}')
+    return placeholders
+
+
 async def _prune_stale_prs(
     project_id: str,
     host: str,
     started_at: datetime.datetime,
     pr_ids: list[str],
-) -> None:
-    """Delete ``project_id``'s ``host`` rows older than ``started_at``.
+) -> int:
+    """Delete ``project_id``'s stale ``open`` rows on ``host``.
 
-    Only rows whose ``url`` is on ``host`` and whose ``pr_id`` is not in
-    ``pr_ids`` are deleted.  Best-effort: a failure is logged and
-    swallowed so a ClickHouse problem never fails the sync.
+    A row is stale when its ``pr_id`` is not in ``pr_ids`` (the complete
+    listing) and it was recorded before ``started_at`` less
+    ``_PRUNE_MARGIN``.  The stale rows are selected and logged first,
+    and only those ``pr_id``s are deleted, so the log says exactly what
+    was removed and a sync with nothing stale issues no mutation.
+
+    Returns the number of PRs deleted.  Best-effort: a failure is logged
+    and swallowed so a ClickHouse problem never fails the sync.
     """
     parameters: dict[str, typing.Any] = {
         'project_id': project_id,
         'url_prefix': f'https://{host.lower()}/',
         # clickhouse-connect formats a plain ``datetime`` to whole
-        # seconds; the ``_64`` suffix binds it as ``started_at`` with
-        # its fractional seconds kept.
-        'started_at_64': started_at,
+        # seconds; the ``_64`` suffix binds it as ``cutoff`` with its
+        # fractional seconds kept.
+        'cutoff_64': started_at - _PRUNE_MARGIN,
     }
-    statement = _PRUNE_STALE_SQL
-    for offset in range(0, len(pr_ids), _PRUNE_CHUNK_SIZE):
-        name = f'pr_ids_{offset // _PRUNE_CHUNK_SIZE}'
-        parameters[name] = pr_ids[offset : offset + _PRUNE_CHUNK_SIZE]
-        statement += f' AND pr_id NOT IN {{{name}:Array(String)}}'
+    select = _SELECT_STALE_SQL + ''.join(
+        f' AND pr_id NOT IN {placeholder}'
+        for placeholder in _id_arrays(parameters, 'listed', pr_ids)
+    )
     try:
-        await clickhouse.command(statement, parameters)
+        rows = await clickhouse.query(select, parameters)
+        if not rows:
+            return 0
+        stale = sorted(str(row['pr_id']) for row in rows)
+        LOGGER.warning(
+            'github-pr-sync: removing %d stale open PR row(s) for project '
+            '%s that %s no longer lists: %s',
+            len(stale),
+            project_id,
+            host,
+            ', '.join(sorted(str(row['url']) for row in rows)),
+        )
+        delete = _DELETE_STALE_SQL + (
+            ' AND ('
+            + ' OR '.join(
+                f'pr_id IN {placeholder}'
+                for placeholder in _id_arrays(parameters, 'stale', stale)
+            )
+            + ')'
+        )
+        await clickhouse.command(delete, parameters)
     except Exception:
         LOGGER.exception(
             'github-pr-sync: failed to remove stale PR rows for project %s',
             project_id,
         )
+        return 0
+    return len(stale)
 
 
 class SyncPRsConfig(pydantic.BaseModel):
@@ -394,20 +448,22 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         PAT-or-App resolution the webhook actions use.
 
         Walks every PR in the repo (``state=all``, paginated) and upserts
-        into the ClickHouse ``pull_requests`` table, then reconciles: when
-        the listing was complete, it deletes the project's rows on this
-        host whose ``pr_id`` GitHub did not return.  Rows from another
-        host (a second pr-sync Integration) are never touched.  Only rows
-        with ``recorded_at`` older than the start of the sync are
-        deleted, so the rows this sync published (and any webhook row
-        written meanwhile) survive.  A PR GitHub returned with an ``id``
-        keeps its row even when it is too malformed to record.  A repo
-        with no PRs deletes every row the project has on this host from
-        before the sync.  The delete is skipped when
-        the listing was incomplete (a 404 on any page, or the page cap)
-        or the GitHub App is not installed, and when the repo did not
-        come from the project's repository link.  It runs whether or not
-        the publish succeeded, and a delete failure is logged and
+        into the ClickHouse ``pull_requests`` table, then reconciles: it
+        deletes the project's ``open`` rows on this host whose ``pr_id``
+        GitHub did not return, so a PR filed under the project from
+        another repository doesn't stay open forever.  Closed and merged
+        rows are never deleted, and neither are rows from another host
+        (a second pr-sync Integration) or rows recorded less than
+        ``_PRUNE_MARGIN`` before the sync started.  A PR GitHub returned
+        with an ``id`` keeps its row even when it is too malformed to
+        record.  The rows deleted are logged.
+
+        The reconcile is skipped when the listing may be incomplete (a
+        404 on any page, a next link it can't follow, or the page cap),
+        when the GitHub App is not installed, and when the repo did not
+        come from the project's repository link (the Integration's link
+        key or ``github-repository``).  It runs whether or not the
+        publish succeeded, and a ClickHouse failure is logged and
         swallowed.
 
         ``additions``, ``deletions``, and ``changed_files`` are ``0`` for
