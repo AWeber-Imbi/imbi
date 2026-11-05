@@ -213,6 +213,11 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
         params = self._delete_params()
         self.assertEqual(params['project_id'], 'proj-1')
+        # Only rows on the synced host are deleted; a second pr-sync
+        # Integration's rows on another host are left alone.
+        self.assertEqual(params['url_prefix'], 'https://github.com/')
+        sql = self.delete.await_args.args[0]
+        self.assertIn('startsWith(url, {url_prefix:String})', sql)
         self.assertEqual(self._excluded(), ['1', '2'])
         started_at = params['started_at_64']
         self.assertIsInstance(started_at, datetime.datetime)
@@ -344,7 +349,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         pr_ids = [str(1_000_000_000 + n) for n in range(9_999)]
         started_at = datetime.datetime.now(datetime.UTC)
         await pull_requests._prune_stale_prs(  # pyright: ignore[reportPrivateUsage]
-            'proj-1', started_at, pr_ids
+            'proj-1', 'github.com', started_at, pr_ids
         )
         sql, params = self.delete.await_args.args
         chunks = [v for k, v in params.items() if k.startswith('pr_ids_')]

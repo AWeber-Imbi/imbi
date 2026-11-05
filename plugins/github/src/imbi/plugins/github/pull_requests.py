@@ -72,10 +72,14 @@ _MAX_HISTORY_PAGES = 100
 # also change).
 _SYNC_ACTIONS = frozenset({'opened', 'closed', 'reopened', 'synchronize'})
 # Remove the project's rows for PRs a complete listing didn't return.
-# ``recorded_at`` guards the rows this sync just published.
+# ``recorded_at`` guards the rows this sync just published.  The ``url``
+# prefix limits the delete to the synced host: a project can bind more
+# than one pr-sync Integration, and rows another host's webhooks wrote
+# are never in this listing.
 _PRUNE_STALE_SQL = (
     'DELETE FROM pull_requests '
     'WHERE project_id = {project_id:String} '
+    'AND startsWith(url, {url_prefix:String}) '
     "AND recorded_at < {started_at:DateTime64(3, 'UTC')}"
 )
 # Each bound array goes to ClickHouse as one HTTP field, capped at
@@ -222,16 +226,19 @@ def _is_repository_link(
 
 async def _prune_stale_prs(
     project_id: str,
+    host: str,
     started_at: datetime.datetime,
     pr_ids: list[str],
 ) -> None:
-    """Delete ``project_id``'s rows older than ``started_at`` not listed.
+    """Delete ``project_id``'s ``host`` rows older than ``started_at``.
 
-    Best-effort: a failure is logged and swallowed so a ClickHouse
-    problem never fails the sync.
+    Only rows whose ``url`` is on ``host`` and whose ``pr_id`` is not in
+    ``pr_ids`` are deleted.  Best-effort: a failure is logged and
+    swallowed so a ClickHouse problem never fails the sync.
     """
     parameters: dict[str, typing.Any] = {
         'project_id': project_id,
+        'url_prefix': f'https://{host.lower()}/',
         # clickhouse-connect formats a plain ``datetime`` to whole
         # seconds; the ``_64`` suffix binds it as ``started_at`` with
         # its fractional seconds kept.
@@ -388,13 +395,15 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
 
         Walks every PR in the repo (``state=all``, paginated) and upserts
         into the ClickHouse ``pull_requests`` table, then reconciles: when
-        the listing was complete, it deletes the project's rows whose
-        ``pr_id`` GitHub did not return.  Only rows with ``recorded_at``
-        older than the start of the sync are deleted, so the rows this
-        sync published (and any webhook row written meanwhile) survive.
-        A PR GitHub returned with an ``id`` keeps its row even when it is
-        too malformed to record.  A repo with no PRs deletes every row
-        the project has from before the sync.  The delete is skipped when
+        the listing was complete, it deletes the project's rows on this
+        host whose ``pr_id`` GitHub did not return.  Rows from another
+        host (a second pr-sync Integration) are never touched.  Only rows
+        with ``recorded_at`` older than the start of the sync are
+        deleted, so the rows this sync published (and any webhook row
+        written meanwhile) survive.  A PR GitHub returned with an ``id``
+        keeps its row even when it is too malformed to record.  A repo
+        with no PRs deletes every row the project has on this host from
+        before the sync.  The delete is skipped when
         the listing was incomplete (a 404 on any page, or the page cap)
         or the GitHub App is not installed, and when the repo did not
         come from the project's repository link.  It runs whether or not
@@ -454,5 +463,5 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         # guess may name some other repo entirely.
         if complete and _is_repository_link(ctx, host, target):
             pr_ids = [str(pr['id']) for pr in raw_prs if pr.get('id')]
-            await _prune_stale_prs(ctx.project_id, started_at, pr_ids)
+            await _prune_stale_prs(ctx.project_id, host, started_at, pr_ids)
         return recorded
