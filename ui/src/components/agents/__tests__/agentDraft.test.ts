@@ -38,6 +38,7 @@ describe('agentDraft', () => {
       githubAppBinding: '',
       kept: { approval_tools: [], denied_tools: [] },
       maxConcurrentTasks: '3',
+      modelKeyRef: '',
       monthlyCostCap: '$400.00',
       plugins: [],
       requiredLabels: '',
@@ -51,6 +52,7 @@ describe('agentDraft', () => {
       denied_tools: [],
       egress_destinations: [],
       github_app_binding: null,
+      model_key_ref: null,
       plugins: [],
       secrets: [],
     }
@@ -80,6 +82,7 @@ describe('agentDraft', () => {
       ...source.settings,
       denied_tools: ['WebFetch'],
       github_app_binding: 'secret://gh/mender',
+      model_key_ref: 'secret://anthropic/triage#api-key',
       permission_mode: 'plan',
       plugins: [{ marketplace: 'mp', plugin: 'lint', sha: 'a'.repeat(40) }],
       secrets: ['secret://ci/token'],
@@ -91,6 +94,7 @@ describe('agentDraft', () => {
     expect(settings.denied_tools).toEqual(['WebFetch'])
     expect(settings.plugins).toEqual(source.settings.plugins)
     expect(settings.github_app_binding).toBe('secret://gh/mender')
+    expect(settings.model_key_ref).toBe('secret://anthropic/triage#api-key')
   })
 
   it('checks the GitHub App binding reference', () => {

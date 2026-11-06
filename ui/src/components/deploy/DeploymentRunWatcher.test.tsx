@@ -19,6 +19,7 @@ vi.mock('@/api/endpoints', async () => {
 
 vi.mock('sonner', () => ({
   toast: {
+    dismiss: vi.fn(),
     error: vi.fn(),
     loading: vi.fn(),
     message: vi.fn(),
@@ -36,6 +37,7 @@ function renderWatcher(
     onTerminal: (id: string) => void
     runId: string
     runUrl: null | string
+    silent: boolean
     toastId: string
   }> = {},
 ) {
@@ -55,6 +57,7 @@ function renderWatcher(
         projectId="p1"
         runId={props.runId ?? 'run-42'}
         runUrl={props.runUrl ?? null}
+        silent={props.silent}
         toastId={props.toastId ?? 'toast-1'}
       />
     </QueryClientProvider>,
@@ -156,6 +159,26 @@ describe('DeploymentRunWatcher', () => {
     const call = toast.loading.mock.calls[0]
     expect(call[0]).toMatch(/Deploying to staging/)
     expect(call[1].id).toBe('toast-1')
+  })
+
+  it('skips the loading toast when silent but still toasts the outcome', async () => {
+    getDeploymentRunStatus.mockResolvedValueOnce({
+      run_id: 'run-42',
+      run_url: null,
+      status: 'in_progress',
+    } satisfies DeploymentRun)
+    getDeploymentRunStatus.mockResolvedValue({
+      run_id: 'run-42',
+      run_url: null,
+      status: 'success',
+    } satisfies DeploymentRun)
+    const sonner = await import('sonner')
+    const { client } = renderWatcher({ silent: true })
+    await waitFor(() => expect(getDeploymentRunStatus).toHaveBeenCalled())
+    expect(sonner.toast.dismiss).toHaveBeenCalledWith('toast-1')
+    expect(toast.loading).not.toHaveBeenCalled()
+    await client.refetchQueries()
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
   })
 
   it('prefers actionUrl over runUrl for the toast action', async () => {

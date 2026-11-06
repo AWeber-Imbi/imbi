@@ -146,7 +146,8 @@ def merge(
 
     Each value is the stricter of the two. An agent plugin from a
     marketplace that ``config`` does not allow is left out. A default
-    plugin wins over an agent plugin with the same name.
+    plugin wins over an agent plugin with the same name. The agent's
+    model key replaces the key of the organization's model upstream.
     """
     mode = config.permission_mode
     if settings.permission_mode is not None and _strictness(
@@ -170,8 +171,13 @@ def merge(
         if plugin.marketplace in allowed and key not in seen:
             plugins.append(plugin)
             seen.add(key)
+    upstream = config.model_upstream
+    if settings.model_key_ref is not None:
+        upstream = upstream.model_copy(
+            update={'key_ref': settings.model_key_ref}
+        )
     return MergedConfig(
-        model_upstream=config.model_upstream,
+        model_upstream=upstream,
         plugins=plugins,
         allowed_tools=config.allowed_tools,
         denied_tools=sorted({*config.denied_tools, *settings.denied_tools}),

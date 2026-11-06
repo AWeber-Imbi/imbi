@@ -180,7 +180,10 @@ class LatestDeployment(pydantic.BaseModel):
     """
 
     status: deployment_nodes.DeploymentStatus
+    #: The attempt's last status change.
     deployed_at: datetime.datetime
+    #: When the attempt started; ``None`` when the node does not say.
+    started_at: datetime.datetime | None = None
     tag: str | None = None
     committish: str | None = None
 
@@ -294,9 +297,10 @@ class ProjectListItem(pydantic.BaseModel):
     #: which the client must fail closed on and show.
     drift_ranges: dict[str, bool] = pydantic.Field(default_factory=dict)
     #: ``"<base>..<head>"`` -> when the oldest commit that needs action
-    #: in that range landed.  Only ranges that ``drift_ranges`` marks
-    #: ``true`` from their commits have an entry: a range that needs
-    #: action only because it could not be evaluated has no date.
+    #: in that range landed on the default branch.  Only ranges that
+    #: ``drift_ranges`` marks ``true`` from their commits have an entry:
+    #: a range that needs action only because it could not be evaluated
+    #: has no date.
     drift_range_oldest: dict[str, datetime.datetime] = pydantic.Field(
         default_factory=dict
     )
@@ -805,11 +809,12 @@ async def _apply_deployment_nodes(
     latest_deployments: dict[tuple[str, str], LatestDeployment] = {}
     for entry in rows:
         key = (entry.project_id, str(entry.environment.get('slug') or ''))
+        legacy = current.get(key)
         if entry.current is not None and entry.current.release is not None:
-            existing = current.get(key)
-            if existing is None or deployment_nodes.as_utc(
+            if legacy is None or deployment_nodes.as_utc(
                 entry.current.event.timestamp
-            ) > deployment_nodes.as_utc(existing[2]):
+            ) > deployment_nodes.as_utc(legacy[2]):
+                legacy = None
                 current[key] = (
                     entry.current.release.get('tag') or None,
                     entry.current.release.get('committish') or None,
@@ -820,19 +825,23 @@ async def _apply_deployment_nodes(
         # newest one is the one serving traffic, so the two compare
         # equal and there is nothing extra to report.
         if entry.latest.release is not None and entry.latest != entry.current:
-            # And it has to be newer than whatever *won* as current,
-            # which may be a legacy array entry the node's success could
-            # not displace.  The pill means "something happened here
-            # after the release that is serving"; against a newer legacy
-            # entry an unguarded write made that sentence false.
-            serving = current.get(key)
-            if serving is not None and deployment_nodes.as_utc(
-                entry.latest.event.timestamp
-            ) <= deployment_nodes.as_utc(serving[2]):
+            # And it has to be newer than a legacy array entry that won
+            # as current.  The pill means "something happened here after
+            # the release that is serving"; against a newer legacy entry
+            # an unguarded write made that sentence false.  Compare when
+            # the attempt *started*: one closed late (e.g. a stuck
+            # rollout swept to failed) is not newer than a release that
+            # went out after it began.  When a node won, the reader has
+            # already compared start times, and the serving node's
+            # timestamp is its last status change, not its start.
+            if legacy is not None and deployment_nodes.started_at(
+                entry.latest
+            ) <= deployment_nodes.as_utc(legacy[2]):
                 continue
             latest_deployments[key] = LatestDeployment(
                 status=entry.latest.event.status,
                 deployed_at=entry.latest.event.timestamp,
+                started_at=entry.latest.started_at,
                 tag=entry.latest.release.get('tag') or None,
                 committish=entry.latest.release.get('committish') or None,
             )
@@ -963,10 +972,23 @@ async def _fetch_current_releases(
     return CurrentReleaseState(current, in_flight)
 
 
+class ActionableCommit(typing.NamedTuple):
+    """One commit :func:`_fetch_actionable_commit_times` returned.
+
+    ``at`` is the commit time the range is evaluated by; ``landed`` is
+    when the commit reached the default branch, which is what a range
+    that needs action is dated by.
+    """
+
+    sha: str
+    at: datetime.datetime
+    landed: datetime.datetime
+
+
 async def _fetch_actionable_commit_times(
     windows: dict[str, tuple[datetime.datetime, datetime.datetime]],
-) -> dict[str, list[tuple[str, datetime.datetime]]] | None:
-    """Return {project_id: [(short_sha, time) of commits not proven clean]}.
+) -> dict[str, list[ActionableCommit]] | None:
+    """Return {project_id: [commits in the window not proven clean]}.
 
     Actionable means the verdict is ``true`` or there is no verdict at
     all -- the rule suppresses a commit only when CI positively said
@@ -986,6 +1008,14 @@ async def _fetch_actionable_commit_times(
     :func:`_fetch_release_summaries`: a rebase or cherry-pick leaves the
     author date pointing before the release it landed after.
 
+    ``pushed_at`` rides along as ``landed``: when the commit reached the
+    default branch, which is what the caller dates a range by.  Neither
+    commit date says that for a merged pull request's own commits --
+    they keep the dates they were made with on the branch, and the
+    merge that brought them onto the mainline can be hours or days
+    later.  The sync only records pushes to the default branch, so the
+    merge push is what stamps every commit it carried.
+
     Errors are swallowed and return ``None`` -- distinct from "no
     actionable commits" -- so the caller can mark every evaluable range
     actionable instead of clean.  Failing closed: an unavailable verdict
@@ -997,7 +1027,8 @@ async def _fetch_actionable_commit_times(
     try:
         rows = await clickhouse.query(
             'SELECT c.project_id AS project_id, c.short_sha AS short_sha,'
-            ' COALESCE(c.committed_at, c.authored_at) AS at'
+            ' COALESCE(c.committed_at, c.authored_at) AS at,'
+            ' c.pushed_at AS landed'
             ' FROM commits AS c FINAL'
             ' LEFT ANTI JOIN (SELECT project_id, sha'
             ' FROM commit_drift FINAL'
@@ -1020,13 +1051,16 @@ async def _fetch_actionable_commit_times(
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to fetch actionable commits', exc_info=True)
         return None
-    out: dict[str, list[tuple[str, datetime.datetime]]] = {}
+    out: dict[str, list[ActionableCommit]] = {}
     for row in rows:
         pid = str(row.get('project_id') or '')
         sha = str(row.get('short_sha') or '')
         at = clickhouse.as_utc_or_none(row.get('at'))
+        landed = clickhouse.as_utc_or_none(row.get('landed'))
         if pid and at is not None:
-            out.setdefault(pid, []).append((sha, at))
+            out.setdefault(pid, []).append(
+                ActionableCommit(sha, at, landed if landed else at)
+            )
     return out
 
 
@@ -1142,8 +1176,12 @@ async def _evaluate_environment_drift(
     is inclusive and only the base commit itself is excluded, by sha.
 
     The oldest date comes from the same in-range commits, so it needs no
-    third read.  A range that needs action only because its endpoints
-    are unorderable or the verdict read failed gets no date.
+    third read.  Membership goes by commit time, the date by when the
+    commit *landed* on the default branch: a merged pull request's
+    commits keep their branch-era commit dates, so dating the range by
+    those over-reports how long it has waited by however long the pull
+    request was open.  A range that needs action only because its
+    endpoints are unorderable or the verdict read failed gets no date.
     """
     ranges_by_pid: dict[str, list[tuple[str, str]]] = {}
     for project_data in project_data_list:
@@ -1194,8 +1232,8 @@ async def _evaluate_environment_drift(
                 out.setdefault(pid, {})[key] = True
                 continue
             in_range = [
-                at
-                for sha, at in marks
+                landed
+                for sha, at, landed in marks
                 if (lo < at <= hi) or (at == lo and sha != base)
             ]
             out.setdefault(pid, {})[key] = bool(in_range)
@@ -1511,6 +1549,10 @@ async def _fetch_release_summaries(
                 # LEFT JOIN cannot distinguish "no verdict row" from a
                 # real ``false`` -- Bool defaults to 0 -- so the
                 # subquery carries an explicit ``answered`` marker.
+                # ``oldest_actionable_at`` is ``pushed_at``, not a
+                # commit date: a merged pull request's commits keep
+                # their branch-era dates, and the push that merged
+                # them is when they started waiting for a release.
                 count_rows = await clickhouse.query(
                     'SELECT c.project_id AS project_id,'
                     ' count() AS c,'
@@ -1519,7 +1561,7 @@ async def _fetch_release_summaries(
                     ' countIf(d.answered = 1) AS answered,'
                     ' countIf(d.answered = 0 OR d.drift_detected)'
                     ' AS actionable,'
-                    ' minIf(COALESCE(c.committed_at, c.authored_at),'
+                    ' minIf(c.pushed_at,'
                     ' d.answered = 0 OR d.drift_detected)'
                     ' AS oldest_actionable_at'
                     ' FROM commits AS c FINAL'

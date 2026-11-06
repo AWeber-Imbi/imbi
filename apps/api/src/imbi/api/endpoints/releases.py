@@ -520,6 +520,23 @@ def _keep_latest(
         by_env[slug] = (env, release, event)
 
 
+def _predates_serving_legacy(
+    attempt: deployment_nodes.ProjectDeployment,
+    legacy_event: models.DeploymentEvent | None,
+    serving_event: models.DeploymentEvent | None,
+) -> bool:
+    """Same guard as the projects list: when a legacy array entry still
+    wins, an attempt that started at or before it is not newer than what
+    the environment serves.  When a node won, the reader has already
+    compared start times."""
+    return (
+        legacy_event is not None
+        and serving_event is legacy_event
+        and deployment_nodes.started_at(attempt)
+        <= deployment_nodes.as_utc(legacy_event.timestamp)
+    )
+
+
 async def _reconcile_in_flight_run(
     db: graph.Graph,
     *,
@@ -1157,6 +1174,7 @@ async def list_current_releases(
         slug = str(state.environment.get('slug') or '')
         if slug not in by_env:
             continue
+        legacy_event = by_env[slug][2]
         current = state.current
         if current is not None and current.release is not None:
             _keep_latest(
@@ -1166,10 +1184,17 @@ async def list_current_releases(
         # newest one is the one serving traffic; only a different
         # attempt is worth reporting.
         newest = state.latest
-        if newest.release is not None and newest != current:
+        if (
+            newest.release is not None
+            and newest != current
+            and not _predates_serving_legacy(
+                newest, legacy_event, by_env[slug][2]
+            )
+        ):
             latest_by_slug[slug] = LatestDeployment(
                 status=newest.event.status,
                 deployed_at=newest.event.timestamp,
+                started_at=newest.started_at,
                 tag=newest.release.get('tag') or None,
                 committish=newest.release.get('committish') or None,
             )

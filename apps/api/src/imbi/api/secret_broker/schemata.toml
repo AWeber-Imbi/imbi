@@ -212,3 +212,19 @@ columns = ["event_id"]
 [[tables.indexes]]
 name = "audit_outbox_seq_idx"
 columns = ["seq"]
+
+# The `workload_identity` setting of an organization (WIF plan 4.1): the
+# identity source type and its configuration. At most one row for each
+# organization. The configuration holds no credentials.
+[[tables]]
+name = "identity_sources"
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+type = "TEXT NOT NULL"
+config = "JSONB NOT NULL DEFAULT '{}'"
+updated_by = "TEXT NOT NULL"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id"]

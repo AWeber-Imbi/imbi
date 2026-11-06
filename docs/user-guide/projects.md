@@ -87,8 +87,10 @@ See [Pull requests and dependencies](pull-requests-and-dependencies.md).
 
 Each badge also shows how long its oldest waiting change has waited, for
 example `Δ T → S 12d`. That is the oldest commit in the range that still
-needs action. Commits that CI marked as not needing a deploy or a release
-do not count. Hover over the age to see the date. A badge with no age has
+needs action, counted from when it reached the default branch. For a
+merged pull request that is the merge, not the commits made on the
+branch. Commits that CI marked as not needing a deploy or a release do
+not count. Hover over the age to see the date. A badge with no age has
 no commit date, for example because Imbi could not read the commits.
 
 Sort by **Drift** to list the projects with the oldest waiting change first.
