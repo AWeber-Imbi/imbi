@@ -521,6 +521,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         )
 
     def test_compare_refused_by_source_host_is_422(self) -> None:
+        """A host 404 or 422 is not retryable, so each names its reason."""
         reasons = {
             404: 'does not have one of these refs',
             422: 'rejected the comparison',
@@ -588,6 +589,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertLessEqual(int(response.headers['retry-after']), 120)
 
     def test_compare_source_host_failure_is_503(self) -> None:
+        """A host 5xx or a transport error is retryable: 503 + Retry-After."""
         failures: tuple[BaseException, ...] = (
             _http_status_error(502),
             httpx.ConnectError('connection refused'),
