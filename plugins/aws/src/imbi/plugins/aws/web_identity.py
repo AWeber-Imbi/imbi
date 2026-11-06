@@ -13,27 +13,17 @@ federation turned on.
 """
 
 import logging
-import os
 import typing
 import urllib.parse
 import xml.etree.ElementTree as ET
 
 import httpx
 from botocore import (  # pyright: ignore[reportMissingTypeStubs]
-    auth as botocore_auth,
-)
-from botocore import (  # pyright: ignore[reportMissingTypeStubs]
-    awsrequest,
-)
-from botocore import (  # pyright: ignore[reportMissingTypeStubs]
-    credentials as botocore_credentials,
-)
-from botocore import (  # pyright: ignore[reportMissingTypeStubs]
     exceptions as botocore_exceptions,
 )
 
-from imbi.common.plugins import identity, secrets
-from imbi.plugins.aws import secrets_manager
+from imbi.common.plugins import identity
+from imbi.plugins.aws import aws_session, secrets_manager
 
 LOGGER = logging.getLogger(__name__)
 
@@ -74,7 +64,7 @@ def _error(code: str) -> identity.IdentityError:
 def _endpoint(region: str) -> str:
     """The regional STS endpoint. ``GetWebIdentityToken`` is not on the
     global endpoint. The operator override is for LocalStack only."""
-    override = os.environ.get('IMBI_SECRETS_AWS_ENDPOINT_URL')
+    override = secrets_manager.endpoint_url()
     if override:
         return override
     suffix = (
@@ -106,7 +96,7 @@ class AwsStsIdentity(identity.IdentitySource):
     def validate_config(
         self, config: dict[str, typing.Any]
     ) -> dict[str, typing.Any]:
-        return secrets.validate_model(secrets_manager.RoleConfig, config)
+        return identity.validate_model(secrets_manager.RoleConfig, config)
 
     async def check_config(
         self, config: dict[str, typing.Any], organization_id: str
@@ -116,9 +106,10 @@ class AwsStsIdentity(identity.IdentitySource):
     async def identity_token(
         self, config: dict[str, typing.Any], request: identity.IdentityRequest
     ) -> str:
-        # ponytail: one AssumeRole for each JWT. Cache the session (and
-        # renew it before it has less than session_seconds left) if the
-        # STS call rate matters.
+        # ponytail: each JWT costs a new aioboto3 session, an AssumeRole,
+        # and a new httpx client (two TLS handshakes). Cache the role
+        # session (renew it before it has less than session_seconds
+        # left) and share the clients if the mint rate matters.
         try:
             credentials = await secrets_manager.assume_role(
                 config,
@@ -127,9 +118,7 @@ class AwsStsIdentity(identity.IdentitySource):
                 DurationSeconds=session_seconds(request.duration_seconds),
             )
         except botocore_exceptions.ClientError as err:
-            code = str(
-                err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-            )
+            code = secrets_manager.client_error_code(err)
             LOGGER.warning('AWS identity role assumption failed: %s', code)
             raise _error(code) from None
         except Exception as err:  # noqa: BLE001 - fail closed
@@ -158,31 +147,29 @@ class AwsStsIdentity(identity.IdentitySource):
         # ``sts.get_web_identity_token`` when aioboto3 ships a botocore
         # with the operation.
         url = _endpoint(region)
-        body = _body(request)
-        signed = awsrequest.AWSRequest(
+        body = _body(request).encode()
+        headers = aws_session.sign_request(
             method='POST',
             url=url,
-            data=body,
             headers={
                 'Content-Type': 'application/x-www-form-urlencoded; '
                 'charset=utf-8'
             },
-        )
-        botocore_auth.SigV4Auth(
-            botocore_credentials.Credentials(
+            body=body,
+            service='sts',
+            credentials=aws_session.AwsCredentials(
                 credentials['AccessKeyId'],
                 credentials['SecretAccessKey'],
                 credentials['SessionToken'],
+                region,
             ),
-            'sts',
-            region,
-        ).add_auth(signed)  # pyright: ignore[reportUnknownMemberType]
+        )
         try:
             async with httpx.AsyncClient(
                 timeout=_TIMEOUT_SECONDS, follow_redirects=False
             ) as client:
                 response = await client.post(
-                    url, content=body, headers=dict(signed.headers.items())
+                    url, content=body, headers=headers
                 )
             root = ET.fromstring(response.content)  # noqa: S314
         except (httpx.HTTPError, ET.ParseError) as err:

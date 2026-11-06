@@ -78,12 +78,17 @@ _AWS_UNAVAILABLE = frozenset(
 )
 
 
+def client_error_code(err: botocore_exceptions.ClientError) -> str:
+    """The AWS error code of ``err``. Never the message."""
+    return str(
+        err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+    )
+
+
 def _aws_error(err: Exception) -> secrets.BrokerError:
     """Translate an AWS error. Only the error code is read."""
     if isinstance(err, botocore_exceptions.ClientError):
-        code = str(
-            err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-        )
+        code = client_error_code(err)
         if code in _AWS_UNAVAILABLE:
             return secrets.BrokerError(
                 'secret_provider_unavailable', 'throttled'
@@ -118,7 +123,7 @@ def _assume_role_args(
     } | overrides
 
 
-def _endpoint_url() -> str | None:
+def endpoint_url() -> str | None:
     """An operator override for AWS endpoints, for LocalStack in tests
     and development. Never from tenant configuration."""
     return os.environ.get('IMBI_SECRETS_AWS_ENDPOINT_URL') or None
@@ -139,7 +144,7 @@ async def assume_role(
     ``DurationSeconds``).
     """
     session: typing.Any = aioboto3.Session(region_name=config['region'])
-    async with session.client('sts', endpoint_url=_endpoint_url()) as sts:
+    async with session.client('sts', endpoint_url=endpoint_url()) as sts:
         response: dict[str, typing.Any] = await sts.assume_role(
             **_assume_role_args(
                 config, external_id(organization_id), **overrides
@@ -158,12 +163,10 @@ async def _external_id_problem(config: dict[str, typing.Any]) -> str | None:
     probe = f'imbi:probe-{stdlib_secrets.token_hex(8)}'
     try:
         session: typing.Any = aioboto3.Session(region_name=config['region'])
-        async with session.client('sts', endpoint_url=_endpoint_url()) as sts:
+        async with session.client('sts', endpoint_url=endpoint_url()) as sts:
             await sts.assume_role(**_assume_role_args(config, probe))
     except botocore_exceptions.ClientError as err:
-        code = str(
-            err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-        )
+        code = client_error_code(err)
         if code in ('AccessDenied', 'AccessDeniedException'):
             return None
         return 'role_not_verified'
@@ -268,7 +271,7 @@ class AwsSecretsManager(secrets.SecretProvider):
         try:
             session = await self._session(config, organization_id)
             async with session.client(
-                service, endpoint_url=_endpoint_url()
+                service, endpoint_url=endpoint_url()
             ) as client:
                 return typing.cast(
                     dict[str, typing.Any],
