@@ -763,6 +763,14 @@ class AIProvider(Node):
     #: stored key.
     workload_identity: AIProviderWorkloadIdentity | None = None
 
+    @pydantic.field_validator('workload_identity', mode='before')
+    @classmethod
+    def _parse_workload_identity(cls, value: object) -> object:
+        # The graph stores a dict property as a JSON string.
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+
     @pydantic.field_validator('base_url')
     @classmethod
     def _validate_base_url(cls, value: str | None) -> str | None:

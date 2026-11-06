@@ -32,13 +32,12 @@ interface CredentialsDialogProps {
   provider: AIProvider
 }
 
-// WIF plan 4.6 and D8: only these drivers, on the default endpoint.
-const WIF_DRIVERS = new Set(['anthropic', 'openai'])
+// WIF plan 4.6 and D8: only drivers with an installed token exchanger,
+// on the default endpoint. Add openai when its exchanger ships.
+const WIF_DRIVERS = new Set(['anthropic'])
 const TARGET_HELP: Record<string, string> = {
   anthropic:
     '{"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, from the Anthropic Console.',
-  openai:
-    '{"identity_provider_id": "...", "service_account_id": "..."}, from the OpenAI dashboard.',
 }
 
 export function CredentialsDialog({

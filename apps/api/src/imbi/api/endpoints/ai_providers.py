@@ -521,6 +521,15 @@ async def patch_ai_provider(
     node.credentials_encrypted = existing.credentials_encrypted
     node.credential_hint = existing.credential_hint
     node.credential_updated_at = existing.credential_updated_at
+    # The target is specific to the vendor of the driver.
+    if (
+        existing.workload_identity is not None
+        and node.driver != existing.driver
+    ):
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail='Remove workload identity before changing the driver',
+        )
     node.workload_identity = existing.workload_identity
     # The validators check workload identity against the new driver and
     # base_url.

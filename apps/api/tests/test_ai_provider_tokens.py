@@ -1,6 +1,7 @@
 """Tests for the AI Provider token cache (WIF plan 4.6)."""
 
 import datetime
+import time
 import unittest
 from unittest import mock
 
@@ -32,15 +33,14 @@ class TokenCacheTestCase(unittest.IsolatedAsyncioTestCase):
         self.now = 1000.0
         self.minted = 0
         self.fail: contract.IdentityError | None = None
-        for target, value in (
-            ('time.monotonic', lambda: self.now),
-            ('random.uniform', lambda a, b: 0),
-        ):
-            patcher = mock.patch(
-                f'imbi.api.llm.tokens.{target}', side_effect=value
-            )
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        # Replace the module references in tokens only: the event loop
+        # must keep the real clock.
+        clock = mock.patch('imbi.api.llm.tokens.time', wraps=time)
+        clock.start().monotonic.side_effect = lambda: self.now
+        self.addCleanup(clock.stop)
+        jitter = mock.patch('imbi.api.llm.tokens.random')
+        jitter.start().uniform.return_value = 0
+        self.addCleanup(jitter.stop)
         patcher = mock.patch(
             'imbi.api.llm.tokens.identity.ai_provider_token', self._mint
         )

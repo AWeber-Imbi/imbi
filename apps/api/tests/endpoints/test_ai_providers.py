@@ -1,6 +1,7 @@
 """Tests for the global AI provider endpoints."""
 
 import datetime
+import json
 import typing
 from unittest import mock
 
@@ -9,7 +10,7 @@ import psycopg.errors
 
 from apps.api.tests import support
 from imbi.api import models, secret_broker
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers
 from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
@@ -19,6 +20,8 @@ from imbi.common.llm import discovery
 #: Organization slug for tests that still need one (prompt render).
 ORG = 'acme'
 BASE = '/ai-providers'
+#: The real lookup, kept before a test patches it.
+CHECK_MEMBER = organizations.check_member
 
 
 class QueryRouter:
@@ -833,7 +836,10 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
     def test_put_stores_the_organization_and_target(self) -> None:
         router = self.route(
             (GET_PROVIDER, [{'p': provider_props()}]),
-            (UPDATE, [{'p': provider_props(workload_identity=WIF)}]),
+            (
+                UPDATE,
+                [{'p': provider_props(workload_identity=json.dumps(WIF))}],
+            ),
         )
         response = self.put()
         self.assertEqual(response.status_code, 200, response.text)
@@ -841,6 +847,32 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         self.assertEqual(response.json()['workload_identity'], WIF)
         self.assertEqual(router.params_for(UPDATE)['workload_identity'], WIF)
         self.assertEqual(self.check_member.await_args.args[0], 'acme')
+
+    def test_put_checks_the_permission_in_the_bound_organization(
+        self,
+    ) -> None:
+        # secret_provider:write in another organization.
+        self.user.is_admin = False
+        self.auth_context.permissions = {
+            'ai_model:credentials',
+            'secret_provider:write',
+        }
+        self.check_member.side_effect = CHECK_MEMBER
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props()}]),
+            (
+                organizations._ORG_MEMBER_QUERY,
+                [{'id': 'org-1', 'member': True}],
+            ),
+        )
+        # The role of the caller in acme does not grant it.
+        with mock.patch.object(
+            organizations,
+            'org_permissions',
+            new_callable=mock.AsyncMock,
+            return_value={'ai_model:credentials'},
+        ):
+            self.assertEqual(self.put().status_code, 403)
 
     def test_put_refuses_a_provider_with_a_key(self) -> None:
         self.route(
@@ -886,6 +918,16 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_patch_cannot_change_the_driver(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        response = self.client.patch(
+            f'{BASE}/prv-1',
+            json=[{'op': 'replace', 'path': '/driver', 'value': 'openai'}],
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_key_is_refused_while_workload_identity_is_set(self) -> None:
         self.route(
             (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
@@ -896,8 +938,10 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 409)
 
     def test_delete_clears_it(self) -> None:
+        # The graph returns the stored dict as a JSON string.
+        stored = provider_props(workload_identity=json.dumps(WIF))
         router = self.route(
-            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}]),
+            (GET_PROVIDER, [{'p': stored}]),
             (UPDATE, [{'p': provider_props()}]),
         )
         response = self.client.delete(f'{BASE}/prv-1/workload-identity')
