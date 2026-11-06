@@ -343,6 +343,7 @@ repository:
 | `github#sync_commits` | Gets the commits of a push and records them | Optional pointers: `before_selector`, `after_selector`, `ref_selector`, `repository_selector`, `repo_api_url_selector`. Optional `api_base_url` |
 | `github#sync_tags` | Records the pushed tag | As `sync_commits`, without `before_selector`. Optional `reconcile_all` (default `false`) records all tags |
 | `github#sync_pull_requests` | Records `pull_request` events | Optional pointers: `action_selector`, `pr_selector`, `repository_selector`, `repo_api_url_selector`. Optional `api_base_url` |
+| `github#sync_pull_request_reviews` | Records `pull_request_review` events | Optional pointers: `action_selector`, `review_selector`, `pr_selector` |
 | `sonarqube#update_project_from_webhook` | Gets SonarQube measures and patches the project | A list of `{"metric": "coverage", "path": "/<project pointer>"}` |
 
 The pointer defaults read the GitHub payload, for example

@@ -100,6 +100,9 @@ class PullRequestResyncClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(f'{_REPO}/pulls').mock(
             return_value=httpx.Response(200, json=prs)
         )
+        respx.get(url__regex=rf'{_REPO}/pulls/\d+/reviews').mock(
+            return_value=httpx.Response(200, json=[])
+        )
         handler = pull_requests.GitHubPullRequestSync()
         with support.sink_to_clickhouse():
             return await handler.sync_all_history(

@@ -34,8 +34,33 @@ DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 500
 
 _TIMESTAMP_FIELDS: frozenset[str] = frozenset(
-    {'created_at', 'updated_at', 'merged_at', 'last_deployed_at'}
+    {
+        'created_at',
+        'updated_at',
+        'merged_at',
+        'last_deployed_at',
+    }
 )
+
+ReviewerState = typing.Literal[
+    'requested', 'approved', 'changes_requested', 'commented', 'dismissed'
+]
+
+
+class PullRequestReviewer(pydantic.BaseModel):
+    """A requested or past reviewer on a pull request.
+
+    ``state`` is ``requested`` while a review request is pending
+    (including a re-request after an earlier review), otherwise the
+    reviewer's latest approve / request-changes / dismissed review, or
+    ``commented`` when they only left comments.  ``team`` marks a
+    requested GitHub team, whose ``login`` is the team slug.
+    """
+
+    login: str
+    state: ReviewerState
+    team: bool = False
+    submitted_at: datetime.datetime | None = None
 
 
 class PullRequestResponse(pydantic.BaseModel):
@@ -56,6 +81,7 @@ class PullRequestResponse(pydantic.BaseModel):
     additions: int
     deletions: int
     changed_files: int
+    reviewers: list[PullRequestReviewer] = pydantic.Field(default_factory=list)
 
 
 class PullRequestListResponse(pydantic.BaseModel):
@@ -235,14 +261,153 @@ async def _list_prs(
     project_count = int(count_rows[0]['project_count']) if count_rows else 0
 
     data_rows = await clickhouse.query(data_sql, params)
+    data = [
+        PullRequestResponse.model_validate(_row_to_response(r))
+        for r in data_rows
+    ]
+    # Only open PRs have reviewers worth showing; closed and merged
+    # listings skip the extra queries.
+    if state == 'open':
+        await _attach_reviewers(project_ids, data)
     return PullRequestListResponse(
-        data=[
-            PullRequestResponse.model_validate(_row_to_response(r))
-            for r in data_rows
-        ],
+        data=data,
         project_count=project_count,
         total=total,
     )
+
+
+async def _attach_reviewers(
+    project_ids: list[str], prs: list[PullRequestResponse]
+) -> None:
+    """Fill in ``reviewers`` on each PR, best-effort.
+
+    Reviewers are extra detail on a listing that works without them,
+    so a ClickHouse failure here is logged and the PRs go back with no
+    reviewers rather than failing the request.
+    """
+    pr_ids = [pr.pr_id for pr in prs]
+    if not pr_ids:
+        return
+    try:
+        reviews = await _fetch_reviews(project_ids, pr_ids)
+        requests = await _fetch_review_requests(project_ids, pr_ids)
+    except Exception:
+        LOGGER.exception('Failed to load pull request reviewers')
+        return
+    for pr in prs:
+        users, teams = requests.get(pr.pr_id, ([], []))
+        pr.reviewers = _merge_reviewers(
+            author=pr.author,
+            requested=users,
+            teams=teams,
+            reviews=reviews.get(pr.pr_id, []),
+        )
+
+
+async def _fetch_review_requests(
+    project_ids: list[str], pr_ids: list[str]
+) -> dict[str, tuple[list[str], list[str]]]:
+    """Pending ``(users, teams)`` review requests by ``pr_id``."""
+    sql = (
+        'SELECT pr_id, requested_reviewers, requested_teams'
+        ' FROM pull_request_review_requests FINAL'
+        ' WHERE project_id IN {project_ids:Array(String)}'
+        ' AND pr_id IN {pr_ids:Array(String)}'
+    )
+    rows = await clickhouse.query(
+        sql, {'project_ids': project_ids, 'pr_ids': pr_ids}
+    )
+    return {
+        str(row['pr_id']): (
+            _strings(row.get('requested_reviewers')),
+            _strings(row.get('requested_teams')),
+        )
+        for row in rows
+    }
+
+
+def _strings(value: object) -> list[str]:
+    """A ClickHouse ``Array(String)`` value as ``list[str]``."""
+    if not isinstance(value, list | tuple):
+        return []
+    return [str(v) for v in typing.cast('list[object]', value)]
+
+
+async def _fetch_reviews(
+    project_ids: list[str], pr_ids: list[str]
+) -> dict[str, list[dict[str, typing.Any]]]:
+    """Each reviewer's latest review state, grouped by ``pr_id``.
+
+    A reviewer's state is their latest non-comment review (approved,
+    changes requested, or dismissed); a reviewer who only commented is
+    ``commented``.  That matches how GitHub decides a reviewer's
+    verdict: a comment after an approval does not undo the approval.
+    """
+    # Aliases avoid the column names: ClickHouse would otherwise resolve
+    # ``state`` inside the aggregates to the aggregate itself.
+    sql = (
+        'SELECT pr_id, reviewer,'
+        " if(countIf(state != 'commented') > 0,"
+        " argMaxIf(state, submitted_at, state != 'commented'),"
+        " 'commented') AS review_state,"
+        ' max(submitted_at) AS last_submitted_at'
+        ' FROM pull_request_reviews FINAL'
+        ' WHERE project_id IN {project_ids:Array(String)}'
+        ' AND pr_id IN {pr_ids:Array(String)}'
+        ' GROUP BY pr_id, reviewer'
+        ' ORDER BY last_submitted_at ASC'
+    )
+    rows = await clickhouse.query(
+        sql, {'project_ids': project_ids, 'pr_ids': pr_ids}
+    )
+    out: dict[str, list[dict[str, typing.Any]]] = {}
+    for row in rows:
+        out.setdefault(str(row['pr_id']), []).append(row)
+    return out
+
+
+def _merge_reviewers(
+    *,
+    author: str,
+    requested: list[str],
+    teams: list[str],
+    reviews: list[dict[str, typing.Any]],
+) -> list[PullRequestReviewer]:
+    """Combine pending requests and past reviews into one list.
+
+    The author's own reviews (replies to comments show up as
+    ``commented`` reviews) are left out.  A pending request wins over an
+    earlier review: GitHub removes a reviewer from the request list
+    when they submit, so a reviewer still on it was asked again.
+    """
+    by_login: dict[str, PullRequestReviewer] = {}
+    for row in reviews:
+        login = str(row.get('reviewer') or '')
+        if not login or login == author:
+            continue
+        submitted = row.get('last_submitted_at')
+        if (
+            isinstance(submitted, datetime.datetime)
+            and submitted.tzinfo is None
+        ):
+            submitted = submitted.replace(tzinfo=datetime.UTC)
+        by_login[login] = PullRequestReviewer(
+            login=login,
+            state=row.get('review_state') or 'commented',
+            submitted_at=submitted,
+        )
+    for login in requested:
+        if login and login != author:
+            by_login[login] = PullRequestReviewer(
+                login=login, state='requested'
+            )
+    out = list(by_login.values())
+    out.extend(
+        PullRequestReviewer(login=slug, state='requested', team=True)
+        for slug in teams
+        if slug
+    )
+    return out
 
 
 @pull_requests_project_router.get(

@@ -38,6 +38,7 @@ from imbi.plugins.github.identity import DEFAULT_SCOPES, GitHubIdentity
 from imbi.plugins.github.lifecycle import GitHubLifecycle
 from imbi.plugins.github.pull_requests import (
     GitHubPullRequestSync,
+    sync_pull_request_reviews_descriptor,
     sync_pull_requests_descriptor,
 )
 from imbi.plugins.github.secret_provider import GitHubApp
@@ -58,6 +59,7 @@ class GitHubWebhookActions(WebhookActionsCapability):
             sync_commits_descriptor,
             sync_tags_descriptor,
             sync_pull_requests_descriptor,
+            sync_pull_request_reviews_descriptor,
         ]
 
     @classmethod

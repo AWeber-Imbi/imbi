@@ -101,9 +101,19 @@ Open **Reports** in the top bar.
 It reads a maximum of 500.
 
 - Filter with **All teams**, **All types** (project type), and
-  **Filter by title, author, project, or #**.
+  **Filter by title, author, reviewer, project, or #**.
 - The columns are **#**, **Title**, **Project**, **Team**, **Project
-  Type**, **Author**, **Files**, **Diff**, and **Updated**.
+  Type**, **Author**, **Reviewers**, **Files**, **Diff**, **Opened**, and
+  **Updated**. **Opened** is how long ago the pull request was opened.
+- **Reviewers** shows each requested reviewer and each person who
+  reviewed. The badge on the avatar is the review state: approved,
+  changes requested, commented, dismissed, or requested. A requested
+  team shows as a team badge. A person who reviewed and then got a new
+  review request shows as requested. Hold the pointer on an avatar to
+  see the name and state.
+- Reviews come from `pull_request_review` webhook deliveries and the
+  **Sync Pull Requests** backfill, which reads the reviews of open pull
+  requests. See [GitHub webhook actions](../plugins/github.md#webhook-actions).
 
 **PR Activity** shows, for each pull request author, how many pull
 requests were **Created**, **Open**, **Closed**, and **Merged** since a

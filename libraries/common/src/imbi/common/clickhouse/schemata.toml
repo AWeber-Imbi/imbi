@@ -86,6 +86,41 @@ ORDER BY (project_id, pr_id);
 """
 enabled = true
 
+# A PR's pending review requests. Separate from `pull_requests` because
+# `pull_request_review` deliveries carry the current request lists but no
+# diff stats, so they refresh this row without zeroing the PR row.
+[pull_request_review_requests]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.pull_request_review_requests {on_cluster}(
+    project_id          LowCardinality(String),
+    pr_id               String,
+    requested_reviewers Array(String),
+    requested_teams     Array(String),
+    recorded_at         DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+ORDER BY (project_id, pr_id);
+"""
+enabled = true
+
+# One row per GitHub review. Keyed by review_id so a dismissal replaces
+# the review it dismissed. The API reduces these to each reviewer's
+# latest decisive state.
+[pull_request_reviews]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.pull_request_reviews {on_cluster}(
+    project_id      LowCardinality(String),
+    pr_id           String,
+    review_id       String,
+    reviewer        String,
+    state           LowCardinality(String),
+    submitted_at    DateTime64(3, 'UTC'),
+    recorded_at     DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+PARTITION BY toYYYYMM(submitted_at)
+ORDER BY (project_id, pr_id, review_id);
+"""
+enabled = true
+
 [score_history]
 query = """
 CREATE TABLE IF NOT EXISTS imbi.score_history {on_cluster}(
