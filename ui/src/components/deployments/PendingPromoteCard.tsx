@@ -61,8 +61,11 @@ export function PendingPromoteCard({
   // What the new tag is bumped from. Not ``lastTag``: a release cut out of
   // band (or one this env never took) leaves the newest tag ahead of what is
   // deployed here, and bumping from the deployed tag would suggest a version
-  // that already exists or ranks below one that does.
-  const bumpFrom = stage.latestTag ?? lastTag
+  // that already exists or ranks below one that does. A deployed tag that was
+  // never pushed has no ref to compare from, so the draft uses history instead.
+  const pushedLastTag =
+    stage.currentHistoryEntry?.tag_synced === false ? null : lastTag
+  const bumpFrom = stage.latestTag ?? pushedLastTag
   const fromTipSha = stage.upstreamCurrent?.release?.committish ?? null
   // Already newest-first from the synced ClickHouse history. Commits at or
   // below a release already cut inside the range are excluded — that release
@@ -260,7 +263,7 @@ export function PendingPromoteCard({
               />
             </Label>
           </div>
-          {bumpFrom !== lastTag ? (
+          {bumpFrom && bumpFrom !== lastTag ? (
             <span className="text-tertiary text-xs">
               <span className="font-mono">{bumpFrom}</span> is the newest tag in
               this project; {stage.env.name.toLowerCase()} runs{' '}
