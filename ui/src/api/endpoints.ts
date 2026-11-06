@@ -1,4 +1,5 @@
 import type {
+  IdentitySourceType,
   SecretAuditEvent,
   SecretBinding,
   SecretBindingCreate,
@@ -13,6 +14,8 @@ import type {
   SecretProviderTest,
   SecretProviderType,
   SecretResolution,
+  WorkloadIdentity,
+  WorkloadIdentityPut,
 } from '@/components/admin/secrets/types'
 import type {
   AttentionRun,
@@ -32,6 +35,7 @@ import {
   TEAM_BASE_FIELDS,
 } from '@/lib/constants'
 import type { DeliveryMode } from '@/lib/delivery'
+import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import type {
   AdminSettings,
   AdminUser,
@@ -4139,6 +4143,38 @@ export const updateSecretProvider = (
 
 export const deleteSecretProvider = (orgSlug: string, id: string) =>
   apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-providers')}/${id}`)
+
+export const listIdentitySourceTypes = (
+  orgSlug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<IdentitySourceType[]>(
+    `${secretsPath(orgSlug, 'workload-identity')}/types`,
+    undefined,
+    signal,
+  )
+
+/** The identity source of the organization, or null when none is set. */
+export const getWorkloadIdentity = (orgSlug: string, signal?: AbortSignal) =>
+  treatNotFoundAsNull(() =>
+    apiClient.get<WorkloadIdentity>(
+      `${secretsPath(orgSlug, 'workload-identity')}/`,
+      undefined,
+      signal,
+    ),
+  )
+
+export const putWorkloadIdentity = (
+  orgSlug: string,
+  body: WorkloadIdentityPut,
+) =>
+  apiClient.put<WorkloadIdentity>(
+    `${secretsPath(orgSlug, 'workload-identity')}/`,
+    body,
+  )
+
+export const deleteWorkloadIdentity = (orgSlug: string) =>
+  apiClient.delete<void>(`${secretsPath(orgSlug, 'workload-identity')}/`)
 
 export const testSecretProvider = (orgSlug: string, id: string) =>
   apiClient.post<SecretProviderTest>(

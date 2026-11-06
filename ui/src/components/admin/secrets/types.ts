@@ -1,5 +1,6 @@
 import type { components } from '@/types/api-generated'
 
+export type IdentitySourceType = Schemas['IdentitySourceType']
 export type SecretAuditEvent = Schemas['SecretAuditEvent']
 export type SecretBinding = Schemas['SecretBinding']
 export type SecretBindingCreate = Schemas['SecretBindingCreate']
@@ -14,6 +15,8 @@ export type SecretProviderPatch = Schemas['SecretProviderPatch']
 export type SecretProviderTest = Schemas['SecretProviderTest']
 export type SecretProviderType = Schemas['SecretProviderType']
 export type SecretResolution = Schemas['SecretResolution']
+export type WorkloadIdentity = Schemas['WorkloadIdentity']
+export type WorkloadIdentityPut = Schemas['WorkloadIdentityPut']
 
 export const DELIVERY_MODES = [
   'file_descriptor',
