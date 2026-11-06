@@ -64,6 +64,7 @@ class _Harness:
         )
         self.fail = mock.AsyncMock()
         self.append = mock.AsyncMock(return_value=(mock.Mock(), 'appended'))
+        self.complete_opslog = mock.AsyncMock(return_value=True)
         self.set_status = mock.AsyncMock()
         self.slept: list[float] = []
 
@@ -92,6 +93,10 @@ class _Harness:
             mock.patch(
                 'imbi.api.endpoints.releases.append_deployment_event',
                 self.append,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.operations_log.complete_opslog_entry',
+                self.complete_opslog,
             ),
             mock.patch.object(service, 'set_status', self.set_status),
         ]
@@ -401,6 +406,70 @@ class RolloutCloseOutTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         with _Harness('success', rollout=('success',)) as harness:
             harness.append.side_effect = RuntimeError('graph down')
+            state = await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual('success', state)
+        # Only a write conflict is worth another attempt.
+        self.assertEqual(1, harness.append.await_count)
+
+    async def test_write_conflict_is_retried(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            harness.append.side_effect = [
+                RuntimeError('Entity failed to be updated: 3'),
+                (mock.Mock(), 'updated'),
+            ]
+            state = await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual('success', state)
+        self.assertEqual(
+            [('success', 'rollout succeeded')] * 2, harness.closed()
+        )
+
+    async def test_repeated_write_conflicts_give_up(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            harness.append.side_effect = RuntimeError(
+                'Entity failed to be updated: 3'
+            )
+            state = await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual('success', state)
+        self.assertEqual(
+            service._STATUS_WRITE_RETRIES,  # pyright: ignore[reportPrivateUsage]
+            harness.append.await_count,
+        )
+
+    async def test_operations_log_entry_is_closed(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            await service.run_watch(db, _job(), sleep=harness.sleep)
+        harness.complete_opslog.assert_awaited_once()
+        run_id, _completed_at, project_id, status = (
+            harness.complete_opslog.await_args.args
+        )
+        self.assertEqual(('99', 'p1', 'success'), (run_id, project_id, status))
+
+    async def test_failed_rollout_closes_the_operations_log_entry(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('failure',)) as harness:
+            await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual('failed', harness.complete_opslog.await_args.args[3])
+
+    async def test_operations_log_is_closed_when_the_graph_write_fails(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            harness.append.side_effect = RuntimeError('graph down')
+            await service.run_watch(db, _job(), sleep=harness.sleep)
+        harness.complete_opslog.assert_awaited_once()
+
+    async def test_operations_log_failure_does_not_change_the_outcome(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            harness.complete_opslog.side_effect = RuntimeError('ch down')
             state = await service.run_watch(db, _job(), sleep=harness.sleep)
         self.assertEqual('success', state)
 

@@ -527,33 +527,57 @@ async def _close_deployment(
     depended on a webhook correlating.  Writing it here makes the
     webhook a redundant confirmation rather than the only writer.
 
+    AGE write conflicts are retried like :func:`set_status`.  The
+    operations-log entry is closed even when the graph write fails, as
+    ``record_deployment`` does for the webhook.
+
     Failures are logged, never raised: the promote outcome is already
     decided by the time this runs, and losing the write must not turn a
     finished promote into an error.
     """
+    await _write_close_out(db, job, run_id=run_id, status=status, note=note)
+    if run_id:
+        await _complete_opslog(job, run_id=run_id, status=status)
+
+
+async def _write_close_out(
+    db: graph.Graph,
+    job: WatchJob,
+    *,
+    run_id: str,
+    status: typing.Literal['success', 'failed'],
+    note: str,
+) -> None:
+    """Append the close-out event, retrying AGE write conflicts."""
     from imbi.api.endpoints.releases import append_deployment_event
 
-    try:
-        result = await append_deployment_event(
-            db,
-            org_slug=job.org_slug,
-            project_id=job.project_id,
-            release_id=job.release_id,
-            env_slug=job.to_environment,
-            status=status,
-            note=note,
-            external_run_id=run_id or None,
-            performed_by=job.requested_by or None,
-            source='promote-watcher',
-        )
-    except Exception:
-        LOGGER.exception(
-            'release-promote could not close the deployment for project %s '
-            'tag %s',
-            job.project_id,
-            job.tag,
-        )
-        return
+    result: object = None
+    for attempt in range(_STATUS_WRITE_RETRIES):
+        try:
+            result = await append_deployment_event(
+                db,
+                org_slug=job.org_slug,
+                project_id=job.project_id,
+                release_id=job.release_id,
+                env_slug=job.to_environment,
+                status=status,
+                note=note,
+                external_run_id=run_id or None,
+                performed_by=job.requested_by or None,
+                source='promote-watcher',
+            )
+        except Exception as exc:
+            if _is_write_conflict(exc) and attempt + 1 < _STATUS_WRITE_RETRIES:
+                await asyncio.sleep(_STATUS_RETRY_BACKOFF * (attempt + 1))
+                continue
+            LOGGER.exception(
+                'release-promote could not close the deployment for '
+                'project %s tag %s',
+                job.project_id,
+                job.tag,
+            )
+            return
+        break
     if isinstance(result, str):
         LOGGER.warning(
             'release-promote could not close the deployment for project %s '
@@ -561,6 +585,31 @@ async def _close_deployment(
             job.project_id,
             job.release_id,
             result,
+        )
+
+
+async def _complete_opslog(
+    job: WatchJob,
+    *,
+    run_id: str,
+    status: typing.Literal['success', 'failed'],
+) -> None:
+    """Close the rollout's operations-log entry (best-effort)."""
+    from imbi.api.endpoints.operations_log import complete_opslog_entry
+
+    try:
+        await complete_opslog_entry(
+            run_id,
+            datetime.datetime.now(datetime.UTC),
+            job.project_id,
+            status,
+        )
+    except Exception:
+        LOGGER.exception(
+            'release-promote could not close the operations-log entry for '
+            'project %s tag %s',
+            job.project_id,
+            job.tag,
         )
 
 
