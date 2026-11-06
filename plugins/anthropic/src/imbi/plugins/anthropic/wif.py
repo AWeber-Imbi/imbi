@@ -24,6 +24,11 @@ LOGGER = logging.getLogger(__name__)
 #: Fixed in code (D8). No tenant setting can change it.
 TOKEN_URL = 'https://api.anthropic.com/v1/oauth/token'
 _GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:jwt-bearer'
+#: A jwt-bearer exchange needs both betas: ``oauth-2025-04-20`` opens
+#: the token endpoint, and ``oidc-federation-2026-04-01`` sends the
+#: request to the federation handler (anthropic SDK
+#: ``lib/credentials/_workload.py``).
+_BETA = 'oauth-2025-04-20,oidc-federation-2026-04-01'
 _TIMEOUT_SECONDS = 10
 
 _Id = typing.Annotated[
@@ -67,6 +72,7 @@ class AnthropicExchanger(identity.TokenExchanger):
             ) as client:
                 response = await client.post(
                     TOKEN_URL,
+                    headers={'anthropic-beta': _BETA},
                     json={
                         'grant_type': _GRANT_TYPE,
                         'assertion': identity_token,

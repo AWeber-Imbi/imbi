@@ -77,6 +77,10 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
         request = self.requests[0]
         self.assertEqual(str(request.url), wif.TOKEN_URL)
         self.assertEqual(
+            request.headers['anthropic-beta'],
+            'oauth-2025-04-20,oidc-federation-2026-04-01',
+        )
+        self.assertEqual(
             json.loads(request.content),
             {
                 'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',

@@ -417,6 +417,8 @@ class SecretMaterialization(pydantic.BaseModel):
     delivery: SecretDelivery
     resolution_expires_at: datetime.datetime
     credential_expires_at: datetime.datetime | None = None
+    #: An OAuth access token: send it in ``Authorization: Bearer``.
+    bearer: bool = False
 
 
 class SecretResolutionReleased(pydantic.BaseModel):
