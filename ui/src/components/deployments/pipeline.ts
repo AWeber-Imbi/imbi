@@ -215,11 +215,14 @@ export function defaultStageSlug(stages: PipelineStage[]): null | string {
  * history is empty or nothing parses. This — not the tag an environment
  * happens to run — is what a new tag must be bumped from, or a release cut
  * out of band gets a successor that ranks below it.
+ *
+ * Skips ``tag_synced: false`` entries: their tag was never pushed, so the
+ * source host cannot compare from it.
  */
 export function newestTag(history: ReleaseHistoryEntry[]): null | string {
   let best: null | string = null
   for (const entry of history) {
-    if (!semverKey(entry.tag)) continue
+    if (entry.tag_synced === false || !semverKey(entry.tag)) continue
     const cmp = compareTags(best, entry.tag)
     if (best === null || (cmp != null && cmp < 0)) best = entry.tag
   }
@@ -288,6 +291,7 @@ function entryFromRelease(release: {
     sha: release.committish,
     short_sha: release.committish.slice(0, 7),
     tag: release.tag ?? '',
+    tag_synced: false,
     title: release.title,
   }
 }
