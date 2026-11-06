@@ -603,6 +603,7 @@ export interface PullRequest {
   pr_id: string
   pr_number: number
   project_id: string
+  reviewers?: PullRequestReviewer[]
   state: string
   title: string
   updated_at: string
@@ -614,6 +615,20 @@ export interface PullRequestListResponse {
   project_count: number
   total: number
 }
+
+export interface PullRequestReviewer {
+  login: string
+  state: PullRequestReviewerState
+  submitted_at?: null | string
+  team?: boolean
+}
+
+export type PullRequestReviewerState =
+  | 'approved'
+  | 'changes_requested'
+  | 'commented'
+  | 'dismissed'
+  | 'requested'
 
 export interface RelationshipCondition {
   relationship: {

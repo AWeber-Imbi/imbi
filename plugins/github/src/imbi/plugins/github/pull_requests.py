@@ -22,6 +22,7 @@ gateway's own event recording behaves.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import typing
@@ -32,12 +33,17 @@ import pydantic
 
 from imbi.common import clickhouse, iggy
 from imbi.common.json_pointer import JsonPointer
-from imbi.common.models import PullRequestRecord
+from imbi.common.models import (
+    PullRequestRecord,
+    PullRequestReviewRecord,
+    PullRequestReviewRequestsRecord,
+)
 from imbi.common.plugins.base import (
     ActionDescriptor,
     PluginContext,
     PullRequestSyncCapability,
 )
+from imbi.common.plugins.errors import PluginRateLimited
 from imbi.plugins.github._app_auth import AppNotInstalledError
 from imbi.plugins.github._hosts import host_to_api_base
 from imbi.plugins.github._repos import (
@@ -69,8 +75,29 @@ _SELF_SLUG = 'github-pr-sync'
 _MAX_HISTORY_PAGES = 100
 # Webhook actions handle these PR lifecycle transitions; synchronize
 # fires when new commits are pushed to the PR branch (title/state may
-# also change).
-_SYNC_ACTIONS = frozenset({'opened', 'closed', 'reopened', 'synchronize'})
+# also change). The review-request actions keep ``requested_reviewers``
+# current.
+_SYNC_ACTIONS = frozenset(
+    {
+        'opened',
+        'closed',
+        'reopened',
+        'synchronize',
+        'review_requested',
+        'review_request_removed',
+    }
+)
+# ``pull_request_review`` actions that change a review's state.
+_REVIEW_ACTIONS = frozenset({'submitted', 'edited', 'dismissed'})
+# GitHub's review states, lower-cased.  ``PENDING`` is an unsubmitted
+# draft review only its author can see, so it is not recorded.
+_REVIEW_STATES = frozenset(
+    {'approved', 'changes_requested', 'commented', 'dismissed'}
+)
+# Cap per-PR review pages during backfill (100 reviews per page).
+_MAX_REVIEW_PAGES = 10
+# Open PRs whose reviews the backfill fetches at once.
+_REVIEW_FETCH_CONCURRENCY = 5
 # Stale rows: the project's ``open`` rows on the synced host that a
 # complete listing didn't return.  Only ``open`` rows, because that is
 # the symptom (a PR stuck open forever); closed and merged history
@@ -155,6 +182,177 @@ def _pr_record(
         deletions=int(pr.get('deletions') or 0),
         changed_files=int(pr.get('changed_files') or 0),
     )
+
+
+def _review_requests_record(
+    pr: dict[str, typing.Any],
+    *,
+    project_id: str,
+) -> PullRequestReviewRequestsRecord | None:
+    """The PR's pending review requests, or ``None`` without an id.
+
+    Both ``pull_request`` and ``pull_request_review`` payloads carry
+    the PR's current request lists, so either one can write this row.
+    """
+    pr_id = pr.get('id')
+    if not pr_id:
+        return None
+    return PullRequestReviewRequestsRecord(
+        project_id=project_id,
+        pr_id=str(pr_id),
+        requested_reviewers=_logins(pr.get('requested_reviewers'), 'login'),
+        requested_teams=_logins(pr.get('requested_teams'), 'slug'),
+    )
+
+
+def _logins(value: object, key: str) -> list[str]:
+    """Pull ``key`` out of each object in a GitHub user/team list."""
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in typing.cast('list[object]', value):
+        if isinstance(item, dict):
+            name = typing.cast('dict[str, typing.Any]', item).get(key)
+            if isinstance(name, str) and name:
+                out.append(name)
+    return out
+
+
+def _review_record(
+    review: dict[str, typing.Any],
+    *,
+    project_id: str,
+    pr_id: str,
+) -> PullRequestReviewRecord | None:
+    """Map a GitHub review object onto a review record.
+
+    Returns ``None`` for pending (unsubmitted) reviews and for reviews
+    missing an id, reviewer, or submission time.
+    """
+    review_id = review.get('id')
+    state = str(review.get('state') or '').lower()
+    user: dict[str, typing.Any] = review.get('user') or {}
+    login = user.get('login')
+    submitted_at = _parse_pr_datetime(review.get('submitted_at'))
+    if (
+        not review_id
+        or state not in _REVIEW_STATES
+        or not isinstance(login, str)
+        or not login
+        or submitted_at is None
+    ):
+        return None
+    return PullRequestReviewRecord(
+        project_id=project_id,
+        pr_id=pr_id,
+        review_id=str(review_id),
+        reviewer=login,
+        state=state,
+        submitted_at=submitted_at,
+    )
+
+
+async def _fetch_reviews(
+    client: httpx.AsyncClient,
+    pr_number: int,
+    *,
+    max_wait: float,
+) -> list[dict[str, typing.Any]]:
+    """Walk ``GET /pulls/{number}/reviews`` for one PR.
+
+    A 404 (PR or repo gone) returns what was collected so far.  GitHub
+    lists reviews oldest first, so hitting the page cap drops the
+    newest; that is logged.
+    """
+    out: list[dict[str, typing.Any]] = []
+    params: dict[str, str] = {'per_page': '100'}
+    for _ in range(_MAX_REVIEW_PAGES):
+        resp = await _request(
+            client,
+            'GET',
+            f'/pulls/{pr_number}/reviews',
+            params=params,
+            max_wait=max_wait,
+        )
+        if resp.status_code == 404:
+            return out
+        resp.raise_for_status()
+        page: list[dict[str, typing.Any]] = resp.json()
+        out.extend(page)
+        next_url = _next_page_url(resp.headers.get('link'))
+        next_page = _query_param(next_url, 'page') if next_url else None
+        if not page or next_page is None:
+            break
+        params['page'] = next_page
+    else:
+        LOGGER.warning(
+            'github-pr-sync: reached %d-page cap fetching reviews for PR '
+            '#%d; its newest reviews are missing',
+            _MAX_REVIEW_PAGES,
+            pr_number,
+        )
+    return out
+
+
+async def _open_pr_reviews(
+    client: httpx.AsyncClient,
+    raw_prs: list[dict[str, typing.Any]],
+    *,
+    project_id: str,
+    max_wait: float,
+) -> list[pydantic.BaseModel]:
+    """Fetch review records for the open PRs in ``raw_prs``.
+
+    Only open PRs: the report that shows reviewers lists open PRs, and
+    walking reviews for a repo's whole history would cost one request
+    per PR ever opened.  Best-effort per PR: a failed fetch is logged
+    and that PR's reviews are skipped (its webhooks fill them in).  A
+    rate limit stops the rest of the fetches but keeps what came back.
+    """
+    semaphore = asyncio.Semaphore(_REVIEW_FETCH_CONCURRENCY)
+    limited = asyncio.Event()
+
+    async def one(pr_id: str, number: int) -> list[pydantic.BaseModel]:
+        async with semaphore:
+            if limited.is_set():
+                return []
+            try:
+                reviews = await _fetch_reviews(
+                    client, number, max_wait=max_wait
+                )
+            except PluginRateLimited:
+                if not limited.is_set():
+                    LOGGER.warning(
+                        'github-pr-sync: rate limited fetching reviews for '
+                        'project %s; skipping the rest',
+                        project_id,
+                    )
+                limited.set()
+                return []
+            except httpx.HTTPError:
+                LOGGER.exception(
+                    'github-pr-sync: failed to fetch reviews for PR #%d of '
+                    'project %s',
+                    number,
+                    project_id,
+                )
+                return []
+        out: list[pydantic.BaseModel] = []
+        for review in reviews:
+            record = _review_record(review, project_id=project_id, pr_id=pr_id)
+            if record is not None:
+                out.append(record)
+        return out
+
+    jobs = [
+        one(str(pr['id']), pr['number'])
+        for pr in raw_prs
+        if pr.get('state') == 'open'
+        and pr.get('id')
+        and isinstance(pr.get('number'), int)
+    ]
+    results = await asyncio.gather(*jobs)
+    return [record for batch in results for record in batch]
 
 
 async def _fetch_all_prs(
@@ -355,10 +553,10 @@ async def sync_pull_requests(
 ) -> None:
     """Sync a pull_request event delivery into the ``pull_requests`` table.
 
-    Handles ``opened``, ``closed``, ``reopened``, and ``synchronize``
-    actions.  Other actions (e.g. ``labeled``, ``review_requested``) are
-    silently ignored -- the rule's CEL filter can pre-screen them, but
-    this action is defensive too.
+    Handles ``opened``, ``closed``, ``reopened``, ``synchronize``,
+    ``review_requested``, and ``review_request_removed`` actions.  Other
+    actions (e.g. ``labeled``) are silently ignored -- the rule's CEL
+    filter can pre-screen them, but this action is defensive too.
 
     The full PR object is in the webhook payload so no extra GitHub API
     call is needed.
@@ -388,6 +586,27 @@ async def sync_pull_requests(
             record.pr_number,
             ctx.project_id,
         )
+    await _publish_review_requests(pr_obj, ctx.project_id)
+
+
+async def _publish_review_requests(
+    pr: dict[str, typing.Any], project_id: str
+) -> None:
+    """Record the PR's pending review requests, best-effort."""
+    requests = _review_requests_record(pr, project_id=project_id)
+    if requests is None:
+        return
+    try:
+        await iggy.publish(
+            'pull_request_review_requests', 'github', [requests]
+        )
+    except Exception:
+        LOGGER.exception(
+            'github-pr-sync: failed to record review requests for PR %s '
+            'of project %s',
+            requests.pr_id,
+            project_id,
+        )
 
 
 sync_pull_requests_descriptor = ActionDescriptor(
@@ -395,7 +614,8 @@ sync_pull_requests_descriptor = ActionDescriptor(
     label='Sync Pull Request History',
     description=(
         'Record pull_request webhook events (opened, closed, reopened, '
-        'synchronize) directly into the ClickHouse pull_requests table.'
+        'synchronize, review_requested, review_request_removed) directly '
+        'into the ClickHouse pull_requests table.'
     ),
     callable=typing.cast(
         'typing.Any',
@@ -404,6 +624,86 @@ sync_pull_requests_descriptor = ActionDescriptor(
     config_model=typing.cast(
         'typing.Any',
         'imbi.plugins.github.pull_requests:SyncPRsConfig',
+    ),
+)
+
+
+class SyncPRReviewsConfig(pydantic.BaseModel):
+    """``WebhookRule.handler_config`` for ``sync_pull_request_reviews``."""
+
+    action_selector: JsonPointer = pydantic.Field(
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/action')
+    )
+    review_selector: JsonPointer = pydantic.Field(
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/review')
+    )
+    pr_selector: JsonPointer = pydantic.Field(
+        default_factory=lambda: jsonpointer.JsonPointer(
+            '/payload/pull_request'
+        )
+    )
+
+
+async def sync_pull_request_reviews(
+    *,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: SyncPRReviewsConfig,
+    event: object,
+) -> None:
+    """Record a ``pull_request_review`` delivery in ``pull_request_reviews``.
+
+    Handles ``submitted``, ``edited``, and ``dismissed``.  A dismissal
+    carries the dismissed review with state ``dismissed``, which
+    replaces that review's row.  GitHub drops a reviewer from the PR's
+    requested reviewers when they submit, so the payload's request
+    lists are recorded too; otherwise the reviewer would still read as
+    requested.  The PR row itself is not touched: the PR object in a
+    review payload has no diff stats, so writing it would zero them.
+    """
+    del credentials, external_identifier
+    action = _resolve(action_config.action_selector, event)
+    if not isinstance(action, str) or action not in _REVIEW_ACTIONS:
+        return
+    review_raw = _resolve(action_config.review_selector, event)
+    pr_raw = _resolve(action_config.pr_selector, event)
+    if not isinstance(review_raw, dict) or not isinstance(pr_raw, dict):
+        return
+    pr_obj = typing.cast('dict[str, typing.Any]', pr_raw)
+    if not pr_obj.get('id'):
+        return
+    record = _review_record(
+        typing.cast('dict[str, typing.Any]', review_raw),
+        project_id=ctx.project_id,
+        pr_id=str(pr_obj['id']),
+    )
+    if record is not None:
+        try:
+            await iggy.publish('pull_request_reviews', 'github', [record])
+        except Exception:
+            LOGGER.exception(
+                'github-pr-sync: failed to record review %s for project %s',
+                record.review_id,
+                ctx.project_id,
+            )
+    await _publish_review_requests(pr_obj, ctx.project_id)
+
+
+sync_pull_request_reviews_descriptor = ActionDescriptor(
+    name='sync_pull_request_reviews',
+    label='Sync Pull Request Reviews',
+    description=(
+        'Record pull_request_review webhook events (submitted, edited, '
+        'dismissed) into the ClickHouse pull_request_reviews table.'
+    ),
+    callable=typing.cast(
+        'typing.Any',
+        'imbi.plugins.github.pull_requests:sync_pull_request_reviews',
+    ),
+    config_model=typing.cast(
+        'typing.Any',
+        'imbi.plugins.github.pull_requests:SyncPRReviewsConfig',
     ),
 )
 
@@ -453,7 +753,9 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         PAT-or-App resolution the webhook actions use.
 
         Walks every PR in the repo (``state=all``, paginated) and upserts
-        into the ClickHouse ``pull_requests`` table, then reconciles: it
+        into the ClickHouse ``pull_requests`` table, records the review
+        requests and reviews of every open PR (best-effort, after the PR
+        rows are published), then reconciles: it
         deletes the project's ``open`` rows on this host whose ``pr_id``
         GitHub did not return, so a PR filed under the project from
         another repository doesn't stay open forever.  Closed and merged
@@ -511,14 +813,35 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
             raw_prs, complete = await _fetch_all_prs(
                 client, max_wait=_BACKFILL_MAX_WAIT_SECONDS
             )
-        records: list[pydantic.BaseModel] = []
-        for pr in raw_prs:
-            record = _pr_record(pr, project_id=ctx.project_id)
-            if record is not None:
-                records.append(record)
-        recorded = await _publish_best_effort(
-            'pull_requests', records, ctx.project_id
-        )
+            records: list[pydantic.BaseModel] = []
+            requests: list[pydantic.BaseModel] = []
+            for pr in raw_prs:
+                record = _pr_record(pr, project_id=ctx.project_id)
+                if record is not None:
+                    records.append(record)
+                if pr.get('state') == 'open':
+                    request = _review_requests_record(
+                        pr, project_id=ctx.project_id
+                    )
+                    if request is not None:
+                        requests.append(request)
+            # PRs go out before the review fetches, so a review fetch
+            # can never cost the PR rows.
+            recorded = await _publish_best_effort(
+                'pull_requests', records, ctx.project_id
+            )
+            await _publish_best_effort(
+                'pull_request_review_requests', requests, ctx.project_id
+            )
+            reviews = await _open_pr_reviews(
+                client,
+                raw_prs,
+                project_id=ctx.project_id,
+                max_wait=_BACKFILL_MAX_WAIT_SECONDS,
+            )
+            await _publish_best_effort(
+                'pull_request_reviews', reviews, ctx.project_id
+            )
         # Only the project's repository link is authoritative enough to
         # delete against; another same-host link or a project-type/slug
         # guess may name some other repo entirely.

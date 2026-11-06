@@ -71,6 +71,21 @@ def _ctx(
     )
 
 
+def _streams(insert: mock.AsyncMock) -> list[str]:
+    """The stream of each publish, in order."""
+    return [call.args[0] for call in insert.await_args_list]
+
+
+def _published(insert: mock.AsyncMock, stream: str) -> list[typing.Any]:
+    """Every record published to ``stream``."""
+    return [
+        record
+        for call in insert.await_args_list
+        if call.args[0] == stream
+        for record in call.args[2]
+    ]
+
+
 def _event(body: dict[str, typing.Any]) -> dict[str, typing.Any]:
     return {
         'type': '',
@@ -108,6 +123,7 @@ class ManifestTestCase(unittest.TestCase):
     def test_action_catalogued(self) -> None:
         names = [d.name for d in GitHubWebhookActions.actions()]
         self.assertIn('sync_pull_requests', names)
+        self.assertIn('sync_pull_request_reviews', names)
 
 
 class PrRecordTestCase(unittest.TestCase):
@@ -127,6 +143,25 @@ class PrRecordTestCase(unittest.TestCase):
         assert record is not None
         self.assertTrue(record.merged)
 
+    def test_requested_reviewers_and_teams(self) -> None:
+        record = pull_requests._review_requests_record(
+            _pr(
+                requested_reviewers=[{'login': 'alice'}, {'login': 'bob'}],
+                requested_teams=[{'slug': 'platform'}],
+            ),
+            project_id='p1',
+        )
+        assert record is not None
+        self.assertEqual(record.pr_id, '555')
+        self.assertEqual(record.requested_reviewers, ['alice', 'bob'])
+        self.assertEqual(record.requested_teams, ['platform'])
+
+    def test_missing_review_requests_are_empty(self) -> None:
+        record = pull_requests._review_requests_record(_pr(), project_id='p1')
+        assert record is not None
+        self.assertEqual(record.requested_reviewers, [])
+        self.assertEqual(record.requested_teams, [])
+
     def test_closed_without_merge_is_not_merged(self) -> None:
         pr = _pr(state='closed')
         del pr['merged']
@@ -145,12 +180,32 @@ class SyncPullRequestsActionTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=pull_requests.SyncPRsConfig(),
                 event=_event({'action': 'opened', 'pull_request': _pr()}),
             )
-        insert.assert_awaited_once()
-        assert insert.await_args is not None
-        table, _topic, records = insert.await_args.args
-        self.assertEqual(table, 'pull_requests')
+        self.assertEqual(
+            _streams(insert),
+            ['pull_requests', 'pull_request_review_requests'],
+        )
+        records = _published(insert, 'pull_requests')
         self.assertEqual(records[0].pr_number, 7)
         self.assertEqual(records[0].author, 'octocat')
+
+    async def test_review_requested_records_reviewers(self) -> None:
+        with mock.patch(_INSERT_WEBHOOK, new=mock.AsyncMock()) as insert:
+            await pull_requests.sync_pull_requests(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=pull_requests.SyncPRsConfig(),
+                event=_event(
+                    {
+                        'action': 'review_requested',
+                        'pull_request': _pr(
+                            requested_reviewers=[{'login': 'alice'}]
+                        ),
+                    }
+                ),
+            )
+        requests = _published(insert, 'pull_request_review_requests')
+        self.assertEqual(requests[0].requested_reviewers, ['alice'])
 
     async def test_ignored_action_no_insert(self) -> None:
         with mock.patch(_INSERT_WEBHOOK, new=mock.AsyncMock()) as insert:
@@ -177,9 +232,174 @@ class SyncPullRequestsActionTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_not_awaited()
 
 
+def _review(**overrides: typing.Any) -> dict[str, typing.Any]:
+    review: dict[str, typing.Any] = {
+        'id': 901,
+        'user': {'login': 'alice'},
+        'state': 'APPROVED',
+        'submitted_at': '2026-01-02T03:00:00Z',
+    }
+    review.update(overrides)
+    return review
+
+
+class SyncPullRequestReviewsActionTestCase(unittest.IsolatedAsyncioTestCase):
+    async def _sync(self, body: dict[str, typing.Any]) -> mock.AsyncMock:
+        with mock.patch(_INSERT_WEBHOOK, new=mock.AsyncMock()) as insert:
+            await pull_requests.sync_pull_request_reviews(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=pull_requests.SyncPRReviewsConfig(),
+                event=_event(body),
+            )
+        return insert
+
+    async def test_submitted_records_review_and_requests(self) -> None:
+        # Bob's submission removed him from the request list; carol is
+        # still waiting.
+        insert = await self._sync(
+            {
+                'action': 'submitted',
+                'review': _review(user={'login': 'bob'}),
+                'pull_request': _pr(requested_reviewers=[{'login': 'carol'}]),
+            }
+        )
+        self.assertEqual(
+            _streams(insert),
+            ['pull_request_reviews', 'pull_request_review_requests'],
+        )
+        review = _published(insert, 'pull_request_reviews')[0]
+        self.assertEqual(review.pr_id, '555')
+        self.assertEqual(review.review_id, '901')
+        self.assertEqual(review.reviewer, 'bob')
+        self.assertEqual(review.state, 'approved')
+        requests = _published(insert, 'pull_request_review_requests')[0]
+        self.assertEqual(requests.requested_reviewers, ['carol'])
+
+    async def test_dismissed_records_dismissed_state(self) -> None:
+        insert = await self._sync(
+            {
+                'action': 'dismissed',
+                'review': _review(state='DISMISSED'),
+                'pull_request': _pr(),
+            }
+        )
+        review = _published(insert, 'pull_request_reviews')[0]
+        self.assertEqual(review.state, 'dismissed')
+
+    async def test_pending_review_not_recorded(self) -> None:
+        insert = await self._sync(
+            {
+                'action': 'submitted',
+                'review': _review(state='PENDING', submitted_at=None),
+                'pull_request': _pr(),
+            }
+        )
+        self.assertEqual(_published(insert, 'pull_request_reviews'), [])
+
+    async def test_ignored_action_no_insert(self) -> None:
+        insert = await self._sync(
+            {
+                'action': 'requested',
+                'review': _review(),
+                'pull_request': _pr(),
+            }
+        )
+        insert.assert_not_awaited()
+
+
+class OpenPrReviewsTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_fetches_reviews_for_open_prs_only(self) -> None:
+        open_route = respx.get(f'{_REPO}/pulls/1/reviews').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _review(id=1),
+                    _review(id=2, state='PENDING', submitted_at=None),
+                ],
+            )
+        )
+        closed_route = respx.get(f'{_REPO}/pulls/2/reviews')
+        async with httpx.AsyncClient(base_url=_REPO) as client:
+            records = await pull_requests._open_pr_reviews(
+                client,
+                [
+                    _pr(id=11, number=1),
+                    _pr(id=12, number=2, state='closed'),
+                ],
+                project_id='proj-1',
+                max_wait=0,
+            )
+        self.assertTrue(open_route.called)
+        self.assertFalse(closed_route.called)
+        self.assertEqual(len(records), 1)
+        record = typing.cast('typing.Any', records[0])
+        self.assertEqual(record.pr_id, '11')
+
+    @respx.mock
+    async def test_one_failed_fetch_keeps_the_others(self) -> None:
+        respx.get(f'{_REPO}/pulls/1/reviews').mock(
+            return_value=httpx.Response(500)
+        )
+        respx.get(f'{_REPO}/pulls/2/reviews').mock(
+            return_value=httpx.Response(200, json=[_review()])
+        )
+        async with httpx.AsyncClient(base_url=_REPO) as client:
+            with self.assertLogs(pull_requests.LOGGER, level='ERROR'):
+                records = await pull_requests._open_pr_reviews(
+                    client,
+                    [_pr(id=11, number=1), _pr(id=12, number=2)],
+                    project_id='proj-1',
+                    max_wait=0,
+                )
+        self.assertEqual(
+            [typing.cast('typing.Any', r).pr_id for r in records], ['12']
+        )
+
+    async def test_rate_limit_stops_without_raising(self) -> None:
+        fetch = mock.AsyncMock(
+            side_effect=pull_requests.PluginRateLimited(0.0)
+        )
+        with mock.patch.object(pull_requests, '_fetch_reviews', new=fetch):
+            async with httpx.AsyncClient(base_url=_REPO) as client:
+                with self.assertLogs(pull_requests.LOGGER, level='WARNING'):
+                    records = await pull_requests._open_pr_reviews(
+                        client,
+                        [_pr(id=11, number=1), _pr(id=12, number=2)],
+                        project_id='proj-1',
+                        max_wait=0,
+                    )
+        self.assertEqual(records, [])
+
+    @respx.mock
+    async def test_gone_pr_yields_nothing(self) -> None:
+        respx.get(f'{_REPO}/pulls/1/reviews').mock(
+            return_value=httpx.Response(404)
+        )
+        async with httpx.AsyncClient(base_url=_REPO) as client:
+            records = await pull_requests._open_pr_reviews(
+                client,
+                [_pr(id=11, number=1)],
+                project_id='proj-1',
+                max_wait=0,
+            )
+        self.assertEqual(records, [])
+
+
+_OPEN_PR_REVIEWS = 'imbi.plugins.github.pull_requests._open_pr_reviews'
+
+
 class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        # Review fetches are covered by OpenPrReviewsTestCase.
+        reviews = mock.patch(
+            _OPEN_PR_REVIEWS, new=mock.AsyncMock(return_value=[])
+        )
+        self.reviews: mock.AsyncMock = reviews.start()
+        self.addCleanup(reviews.stop)
         # Every test patches the prune so none of them reaches ClickHouse.
         # The select finds nothing stale unless a test says otherwise.
         select = mock.patch(_SELECT_STALE, new=mock.AsyncMock(return_value=[]))
@@ -228,7 +448,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 )
             )
         self.assertEqual(count, 2)
-        insert.assert_awaited_once()
+        self.assertEqual(_streams(insert).count('pull_requests'), 1)
         sql, params = self._select()
         self.assertEqual(params['project_id'], 'proj-1')
         # Only open rows on the synced host are candidates: closed and
@@ -248,6 +468,29 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # Nothing stale, so no delete mutation at all.
         self.delete.assert_not_awaited()
+
+    @respx.mock
+    async def test_records_open_pr_reviews(self) -> None:
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(200, json=[_pr(id=1, number=1)])
+        )
+        review = pull_requests._review_record(
+            _review(), project_id='proj-1', pr_id='1'
+        )
+        self.reviews.return_value = [review]
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            await pull_requests.GitHubPullRequestSync().sync_all_history(
+                ctx=_ctx(), credentials=_CREDS
+            )
+        # The PR rows go out before any review fetch.
+        self.assertEqual(
+            _streams(insert),
+            [
+                'pull_requests',
+                'pull_request_review_requests',
+                'pull_request_reviews',
+            ],
+        )
 
     @respx.mock
     async def test_stale_rows_are_logged_then_deleted(self) -> None:
@@ -289,8 +532,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 )
             )
         self.assertEqual(count, 1)
-        insert.assert_awaited_once()
-        self.assertEqual(len(insert.await_args_list[0].args[2]), 1)
+        self.assertEqual(len(_published(insert, 'pull_requests')), 1)
         self.assertEqual(self._listed(), ['1', '2'])
 
     @respx.mock
@@ -463,7 +705,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(count, 1)
         self.assertEqual(2, pulls.call_count)
-        insert.assert_awaited_once()
+        self.assertEqual(_streams(insert).count('pull_requests'), 1)
         self.select.assert_not_awaited()
         self.delete.assert_not_awaited()
         self.assertTrue(any('stopping after 1 PRs' in x for x in cm.output))

@@ -1,9 +1,18 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink, GitPullRequest, RefreshCw } from 'lucide-react'
+import {
+  Check,
+  Circle,
+  ExternalLink,
+  GitPullRequest,
+  MessageSquare,
+  RefreshCw,
+  Users,
+  X,
+} from 'lucide-react'
 
 import { getOrgPullRequests, type ProjectListItem } from '@/api/endpoints'
 import { DiffBar } from '@/components/pull-requests/DiffBar'
@@ -27,7 +36,11 @@ import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
-import type { PullRequest } from '@/types'
+import type {
+  PullRequest,
+  PullRequestReviewer,
+  PullRequestReviewerState,
+} from '@/types'
 
 interface AuthorInfo {
   actor: string | undefined
@@ -70,6 +83,39 @@ interface SlugName {
 
 const ALL = '__all__'
 
+// Reviewer state shown as a small badge on the avatar, plus its
+// tooltip wording.
+const REVIEW_STATE: Record<
+  PullRequestReviewerState,
+  { className: string; Icon: typeof Check; label: string }
+> = {
+  approved: {
+    className: 'bg-success text-success',
+    Icon: Check,
+    label: 'approved',
+  },
+  changes_requested: {
+    className: 'bg-danger text-danger',
+    Icon: X,
+    label: 'requested changes',
+  },
+  commented: {
+    className: 'bg-secondary text-secondary',
+    Icon: MessageSquare,
+    label: 'commented',
+  },
+  dismissed: {
+    className: 'bg-secondary text-tertiary',
+    Icon: Circle,
+    label: 'review dismissed',
+  },
+  requested: {
+    className: 'bg-secondary text-tertiary',
+    Icon: Circle,
+    label: 'review requested',
+  },
+}
+
 const COLUMN_ALIGN: Record<'center' | 'left' | 'right', string> = {
   center: 'text-center',
   left: 'text-left',
@@ -87,8 +133,10 @@ const COLUMNS: {
   { align: 'left', label: '#', width: 'w-16' },
   { align: 'left', label: 'Title' },
   { align: 'center', label: 'Author', width: 'w-10' },
+  { align: 'left', label: 'Reviewers', width: 'w-36' },
   { align: 'center', label: 'Files', width: 'w-14' },
   { align: 'center', label: 'Diff', width: 'w-36' },
+  { align: 'right', label: 'Opened', width: 'w-20' },
   { align: 'right', label: 'Updated', width: 'w-20' },
 ]
 
@@ -158,7 +206,10 @@ function deriveSlugNameOptions(
 function EmptyRow() {
   return (
     <tr>
-      <td className="text-tertiary px-4 py-12 text-center" colSpan={9}>
+      <td
+        className="text-tertiary px-4 py-12 text-center"
+        colSpan={COLUMNS.length}
+      >
         No open pull requests match the current filters.
       </td>
     </tr>
@@ -192,7 +243,7 @@ function enrichPullRequests(
 function ErrorRow({ onRetry }: { onRetry: () => void }) {
   return (
     <tr>
-      <td className="px-4 py-8 text-center" colSpan={9}>
+      <td className="px-4 py-8 text-center" colSpan={COLUMNS.length}>
         <div className="text-danger text-sm">Failed to load pull requests.</div>
         <button
           className="text-action mt-2 text-xs hover:underline"
@@ -251,7 +302,39 @@ function matchesSearch(r: EnrichedPR, q: string): boolean {
     r.title.toLowerCase().includes(q) ||
     r.author.toLowerCase().includes(q) ||
     r.project_name.toLowerCase().includes(q) ||
+    (r.reviewers ?? []).some((rv) => rv.login.toLowerCase().includes(q)) ||
     String(r.pr_number).includes(q)
+  )
+}
+
+/** Small avatar with a name tooltip; ``children`` overlays a badge. */
+function PersonAvatar({
+  children,
+  info,
+  label,
+}: {
+  children?: ReactNode
+  info: AuthorInfo
+  label?: string
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span aria-label={label} className="relative inline-flex">
+          <UserIdentity
+            actor={info.actor}
+            displayNames={info.displayNamesForUser}
+            email={info.actor ? undefined : info.emailOrAuthor}
+            hideName
+            linkToProfile={info.linkToProfile}
+            size="small"
+            title=""
+          />
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label ?? info.tooltip}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -259,22 +342,7 @@ function PrAuthorCell({ info }: { info: AuthorInfo }) {
   return (
     <td className="px-4 py-3">
       <div className="flex justify-center">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <UserIdentity
-                actor={info.actor}
-                displayNames={info.displayNamesForUser}
-                email={info.actor ? undefined : info.emailOrAuthor}
-                hideName
-                linkToProfile={info.linkToProfile}
-                size="small"
-                title=""
-              />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{info.tooltip}</TooltipContent>
-        </Tooltip>
+        <PersonAvatar info={info} />
       </div>
     </td>
   )
@@ -328,6 +396,38 @@ function PrProjectTypesCell({
   )
 }
 
+function PrReviewersCell({
+  displayNames,
+  loginToEmail,
+  reviewers,
+}: {
+  displayNames: Map<string, string>
+  loginToEmail: Map<string, string>
+  reviewers: PullRequestReviewer[]
+}) {
+  return (
+    <td className="px-4 py-3">
+      {reviewers.length === 0 ? (
+        <span className="text-tertiary text-xs">—</span>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {reviewers.map((r) =>
+            r.team ? (
+              <TeamReviewer key={`team:${r.login}`} slug={r.login} />
+            ) : (
+              <UserReviewer
+                info={resolveAuthorInfo(r.login, loginToEmail, displayNames)}
+                key={r.login}
+                state={r.state}
+              />
+            ),
+          )}
+        </div>
+      )}
+    </td>
+  )
+}
+
 function PrRow({
   displayNames,
   loginToEmail,
@@ -350,11 +450,19 @@ function PrRow({
       <PrNumberCell number={pr.pr_number} />
       <PrTitleCell title={pr.title} url={pr.url} />
       <PrAuthorCell info={authorInfo} />
+      <PrReviewersCell
+        displayNames={displayNames}
+        loginToEmail={loginToEmail}
+        reviewers={pr.reviewers ?? []}
+      />
       <td className="text-secondary px-4 py-3 text-center">
         {pr.changed_files}
       </td>
       <td className="px-4 py-3 text-center">
         <DiffBar additions={pr.additions} deletions={pr.deletions} />
+      </td>
+      <td className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
+        <RelativeTime value={pr.created_at} variant="narrow" />
       </td>
       <td className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
         <RelativeTime value={pr.updated_at} variant="narrow" />
@@ -521,7 +629,7 @@ function ReportToolbar({
         <input
           className="border-input bg-background text-primary focus:ring-action h-8 w-64 rounded border px-3 text-sm focus:ring-1 focus:outline-none"
           onChange={(e) => filters.setSearch(e.target.value)}
-          placeholder="Filter by title, author, project, or #"
+          placeholder="Filter by title, author, reviewer, project, or #"
           type="text"
           value={filters.search}
         />
@@ -592,6 +700,12 @@ function SkeletonRow() {
         </div>
       </td>
       <td className="px-4 py-3">
+        <div className="flex gap-1.5">
+          <Sk circle h={20} w={20} />
+          <Sk circle h={20} w={20} />
+        </div>
+      </td>
+      <td className="px-4 py-3">
         <div className="flex justify-center">
           <Sk line w={20} />
         </div>
@@ -599,6 +713,11 @@ function SkeletonRow() {
       <td className="px-4 py-3">
         <div className="flex justify-center">
           <Sk h={10} r={4} w={120} />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex justify-end">
+          <Sk line w={48} />
         </div>
       </td>
       <td className="px-4 py-3">
@@ -617,6 +736,22 @@ function SkeletonRows() {
         <SkeletonRow key={i} />
       ))}
     </>
+  )
+}
+
+function TeamReviewer({ slug }: { slug: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Badge variant="neutral">
+            <Users className="size-3" />
+            {slug}
+          </Badge>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>Team {slug}: review requested</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -713,4 +848,23 @@ function useReportOptions(enriched: EnrichedPR[]) {
     [enriched],
   )
   return { projectTypeOptions, teamOptions }
+}
+
+function UserReviewer({
+  info,
+  state,
+}: {
+  info: AuthorInfo
+  state: PullRequestReviewerState
+}) {
+  const { className, Icon, label } = REVIEW_STATE[state]
+  return (
+    <PersonAvatar info={info} label={`${info.tooltip}: ${label}`}>
+      <span
+        className={`ring-primary absolute -right-1 -bottom-1 flex size-3 items-center justify-center rounded-full ring-2 ${className}`}
+      >
+        <Icon className="size-2" strokeWidth={3} />
+      </span>
+    </PersonAvatar>
+  )
 }

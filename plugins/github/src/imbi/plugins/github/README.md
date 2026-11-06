@@ -61,9 +61,12 @@ dispatches from webhook deliveries. A `WebhookRule.handler` is
 | `sync_commits`        | `github#sync_commits`        | `commits`               |
 | `sync_tags`           | `github#sync_tags`           | `tags`                  |
 | `sync_pull_requests`  | `github#sync_pull_requests`  | `pull_requests`         |
+| `sync_pull_request_reviews` | `github#sync_pull_request_reviews` | `pull_request_reviews` |
 
 `sync_commits` and `sync_tags` are dispatched from `push` deliveries;
-`sync_pull_requests` from `pull_request` deliveries.
+`sync_pull_requests` from `pull_request` deliveries, and
+`sync_pull_request_reviews` from `pull_request_review` deliveries (the
+webhook or GitHub App must subscribe to "Pull request reviews").
 
 `sync_commits` fetches the full set of commits in a push via the compare
 API (paginated, so it isn't capped by the 20-commit inline payload limit);

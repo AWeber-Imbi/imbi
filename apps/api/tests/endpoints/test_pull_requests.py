@@ -41,6 +41,12 @@ def _pr_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
+def _naive(hour: int) -> datetime.datetime:
+    """A naive 2026-04-02 timestamp, as ClickHouse returns them."""
+    aware = datetime.datetime(2026, 4, 2, hour, tzinfo=datetime.UTC)
+    return aware.replace(tzinfo=None)
+
+
 class _PullRequestsTestBase(support.SharedAppTestCase):
     """Shared setup mounting pull request endpoints with admin auth."""
 
@@ -113,6 +119,111 @@ class ListProjectPullRequestsTestCase(_PullRequestsTestBase):
         self.assertEqual(body['project_count'], 1)
         self.assertEqual(len(body['data']), 1)
         self.assertEqual(body['data'][0]['pr_number'], 42)
+
+    def test_list_merges_requested_and_past_reviewers(self) -> None:
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
+        query = mock.AsyncMock(
+            side_effect=[
+                [{'total': 1, 'project_count': 1}],
+                [_pr_row()],
+                [
+                    {
+                        'pr_id': 'pr-1',
+                        'reviewer': 'bob',
+                        'review_state': 'approved',
+                        'last_submitted_at': _naive(9),
+                    },
+                    {
+                        'pr_id': 'pr-1',
+                        'reviewer': 'dave',
+                        'review_state': 'changes_requested',
+                        'last_submitted_at': _naive(10),
+                    },
+                    # The author's replies are recorded as reviews too.
+                    {
+                        'pr_id': 'pr-1',
+                        'reviewer': 'alice',
+                        'review_state': 'commented',
+                        'last_submitted_at': _naive(11),
+                    },
+                ],
+                [
+                    {
+                        'pr_id': 'pr-1',
+                        'requested_reviewers': ['carol', 'bob'],
+                        'requested_teams': ['platform'],
+                    }
+                ],
+            ]
+        )
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
+                new=query,
+            ),
+        ):
+            response = self.client.get(self._url('?state=open'))
+        self.assertEqual(response.status_code, 200)
+        reviewers = response.json()['data'][0]['reviewers']
+        self.assertEqual(
+            [(r['login'], r['state'], r['team']) for r in reviewers],
+            [
+                # bob was re-requested after approving.
+                ('bob', 'requested', False),
+                ('dave', 'changes_requested', False),
+                ('carol', 'requested', False),
+                ('platform', 'requested', True),
+            ],
+        )
+        self.assertEqual(reviewers[1]['submitted_at'], '2026-04-02T10:00:00Z')
+        sql, params = query.call_args_list[2].args
+        self.assertIn('FROM pull_request_reviews FINAL', sql)
+        self.assertEqual(params['pr_ids'], ['pr-1'])
+        sql, _params = query.call_args_list[3].args
+        self.assertIn('FROM pull_request_review_requests FINAL', sql)
+
+    def _list_with(self, query: mock.AsyncMock, url: str) -> typing.Any:
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
+                new=query,
+            ),
+        ):
+            return self.client.get(url)
+
+    def test_closed_list_skips_reviewer_queries(self) -> None:
+        query = mock.AsyncMock(
+            side_effect=[
+                [{'total': 1, 'project_count': 1}],
+                [_pr_row(state='closed')],
+            ]
+        )
+        response = self._list_with(query, self._url('?state=closed'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(query.await_count, 2)
+        self.assertEqual(response.json()['data'][0]['reviewers'], [])
+
+    def test_reviewer_query_failure_still_lists_prs(self) -> None:
+        query = mock.AsyncMock(
+            side_effect=[
+                [{'total': 1, 'project_count': 1}],
+                [_pr_row()],
+                RuntimeError('no such table'),
+            ]
+        )
+        with self.assertLogs(pull_requests.LOGGER, level='ERROR'):
+            response = self._list_with(query, self._url('?state=open'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data'][0]['reviewers'], [])
 
     def test_list_keeps_drafts_and_archived_projects(self) -> None:
         # The project page has its own Draft tab and must stay readable
@@ -192,6 +303,8 @@ class ListOrgPullRequestsTestCase(_PullRequestsTestBase):
                             _pr_row(pr_id='pr-a', pr_number=1),
                             _pr_row(pr_id='pr-b', pr_number=2),
                         ],
+                        [],
+                        [],
                     ]
                 ),
             ),

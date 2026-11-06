@@ -164,11 +164,22 @@ The GitHub plugin writes these values:
 |---|---|---|---|
 | `github#sync_commits` | Sync Commit History | `push` | The commits of the push. Imbi reads them through the compare API, so the 20-commit limit of the push body does not apply |
 | `github#sync_tags` | Sync Tag History | `push` of a tag | The pushed tag. With `reconcile_all: true`, all tags of the repository |
-| `github#sync_pull_requests` | Sync Pull Request History | `pull_request` | The pull request |
+| `github#sync_pull_requests` | Sync Pull Request History | `pull_request` | The pull request and its pending review requests |
+| `github#sync_pull_request_reviews` | Sync Pull Request Reviews | `pull_request_review` | The review (reviewer, state, and time) and the pending review requests |
 
 These actions use the GitHub App or the token. They do not use a user
 identity. Imbi publishes the rows to Iggy, and the ClickHouse sink writes
-them to the `commits`, `tags`, and `pull_requests` tables.
+them to the `commits`, `tags`, `pull_requests`,
+`pull_request_review_requests`, and `pull_request_reviews` tables.
+
+`sync_pull_requests` records the `opened`, `closed`, `reopened`,
+`synchronize`, `review_requested`, and `review_request_removed` actions.
+`sync_pull_request_reviews` records `submitted`, `edited`, and
+`dismissed`. For reviewers to show on the **Open Pull Requests** report,
+the GitHub webhook or App must send **Pull request reviews** events, and
+a webhook rule must run `github#sync_pull_request_reviews` on them. If a
+rule filter limits the `pull_request` actions, add the two review
+request actions.
 
 Use the rule filter to select branches and tags. The webhook body is under
 `payload`. For example: `payload.ref == "refs/heads/main"` or
@@ -190,6 +201,9 @@ webhook body. These are the fields:
 | `reconcile_all` | `sync_tags` | `false` | Also record all tags of the repository |
 | `action_selector` | `sync_pull_requests` | `/payload/action` | The pull request action |
 | `pr_selector` | `sync_pull_requests` | `/payload/pull_request` | The pull request object |
+| `action_selector` | `sync_pull_request_reviews` | `/payload/action` | The review action |
+| `review_selector` | `sync_pull_request_reviews` | `/payload/review` | The review object |
+| `pr_selector` | `sync_pull_request_reviews` | `/payload/pull_request` | The pull request object. Its request lists replace the stored ones |
 
 On the webhook, set the identifier selector to the repository ID, for
 example `/repository/id`. imbi-gateway uses it to find the project. To

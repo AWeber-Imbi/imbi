@@ -161,6 +161,7 @@ each environment. Two writers set it:
 |---|---|---|---|
 | Commits and tags | `push` deliveries run the `sync_commits` and `sync_tags` actions | **Sync Commits & Tags** on a project | `commit-sync` |
 | Pull requests | `pull_request` deliveries run `sync_pull_requests` | **Sync Pull Requests** on a project | `pr-sync` |
+| Pull request reviews | `pull_request_review` deliveries run `sync_pull_request_reviews` | **Sync Pull Requests** reads the reviews of open pull requests | `pr-sync` |
 | Releases | `create_release`, `publish_release`, and `block_release` actions | Promote | `orphan-release-check`, `orphan-release-purge` |
 | Deployments | `add_deployment_event` (for example from `deployment_status`) | **Sync Deployments** on a project, and the promote watcher | `deployment-resync`, `deployment-sweep` |
 | Drift verdicts | `update_release_drift` (a push to the notes ref) | Commit sync reads the notes of the commits it records | `deployment-sweep` |

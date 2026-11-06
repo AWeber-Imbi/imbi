@@ -35,6 +35,8 @@ class TopicsTestCase(unittest.TestCase):
                 'events',
                 'maintenance_log',
                 'operations_log',
+                'pull_request_review_requests',
+                'pull_request_reviews',
                 'pull_requests',
                 'release_component_batches',
                 'release_components',

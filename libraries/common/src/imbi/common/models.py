@@ -69,6 +69,8 @@ __all__ = [
     'PromptVariable',
     'PromptVersion',
     'PullRequestRecord',
+    'PullRequestReviewRecord',
+    'PullRequestReviewRequestsRecord',
     'RelationshipEdge',
     'RelationshipLink',
     'Release',
@@ -2190,6 +2192,47 @@ class PullRequestRecord(pydantic.BaseModel):
     additions: int = 0
     deletions: int = 0
     changed_files: int = 0
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+class PullRequestReviewRequestsRecord(pydantic.BaseModel):
+    """A PR's pending review requests, in ``pull_request_review_requests``.
+
+    One row per PR in a ``ReplacingMergeTree(recorded_at)`` keyed by
+    ``(project_id, pr_id)``.  Kept apart from ``pull_requests`` because
+    ``pull_request_review`` deliveries carry the current request lists
+    but not the diff stats, so they can refresh this row without
+    touching the PR row.  GitHub drops a user from
+    ``requested_reviewers`` when they submit a review.
+    """
+
+    project_id: str
+    pr_id: str
+    requested_reviewers: list[str] = pydantic.Field(default_factory=list)
+    requested_teams: list[str] = pydantic.Field(default_factory=list)
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+class PullRequestReviewRecord(pydantic.BaseModel):
+    """A review recorded in the ClickHouse ``pull_request_reviews`` table.
+
+    One row per GitHub review, keyed by ``(project_id, pr_id,
+    review_id)`` in a ``ReplacingMergeTree(recorded_at)``, so a review
+    that is later dismissed replaces its own row. ``state`` is GitHub's
+    review state lower-cased: ``approved``, ``changes_requested``,
+    ``commented``, or ``dismissed``.
+    """
+
+    project_id: str
+    pr_id: str
+    review_id: str
+    reviewer: str
+    state: str
+    submitted_at: datetime.datetime
     recorded_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
     )

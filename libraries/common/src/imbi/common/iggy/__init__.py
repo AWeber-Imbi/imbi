@@ -43,6 +43,8 @@ TOPICS: dict[str, tuple[str, ...]] = {
     'events': ('comments', 'documents', 'gateway', 'lifecycle', 'projects'),
     'maintenance_log': ('maintenance',),
     'operations_log': ('api', 'configuration', 'deployments', 'maintenance'),
+    'pull_request_review_requests': ('github',),
+    'pull_request_reviews': ('github',),
     'pull_requests': ('github',),
     'release_component_batches': ('sbom',),
     'release_components': ('sbom',),
