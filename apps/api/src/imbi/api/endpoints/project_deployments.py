@@ -969,6 +969,63 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
+async def _compare_refs(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    *,
+    base: str,
+    head: str,
+) -> CompareResult:
+    """``handler.compare`` with the source host's failures mapped to HTTP.
+
+    A ref the host does not have is the caller's input, so it answers
+    422 (GitHub: 404, or 422 for a ref it cannot parse).  Any other host
+    or transport failure is the host failing to answer: 503.
+    """
+    try:
+        return await call_with_timeout(
+            handler.compare(ctx, credentials, base=base, head=head)
+        )
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status in (404, 422):
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=(
+                    f'Cannot compare {base}...{head}: the source host '
+                    'does not have one of these refs'
+                ),
+            ) from exc
+        LOGGER.warning(
+            'compare %s...%s for project=%s failed with %s',
+            base,
+            head,
+            ctx.project_id,
+            status,
+        )
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Could not reach the source host to compare {base}...'
+            f'{head}',
+            headers={'Retry-After': '5'},
+        ) from exc
+    except httpx.HTTPError as exc:
+        LOGGER.warning(
+            'compare %s...%s for project=%s failed: %r',
+            base,
+            head,
+            ctx.project_id,
+            exc,
+        )
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Could not reach the source host to compare {base}...'
+            f'{head}',
+            headers={'Retry-After': '5'},
+        ) from exc
+
+
 async def _resolve_ci_status(
     handler: DeploymentCapability,
     ctx: PluginContext,
@@ -2703,9 +2760,8 @@ async def compare_refs(
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
-    handler = _handler(resolved)
-    result = await call_with_timeout(
-        handler.compare(ctx, credentials, base=base, head=head)
+    result = await _compare_refs(
+        _handler(resolved), ctx, credentials, base=base, head=head
     )
     await asyncio.gather(
         persist_link_writeback(db, ctx),
@@ -6120,18 +6176,21 @@ async def draft_release_notes(
     ``{bump, version, reasoning, notes_markdown}`` payload, and returns
     it.  Falls back to a deterministic conventional-commit-prefix
     grouping with ``degraded=true`` when Claude is unavailable, the
-    response can't be parsed, or schema validation fails.
+    response can't be parsed, or schema validation fails.  A base or
+    head the source host does not have is a 422 (see
+    :func:`_compare_refs`).
     """
     await _require_delivery_enabled(db, project_id)
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
     if body.base_sha:
-        handler = _handler(resolved)
-        compare_result = await call_with_timeout(
-            handler.compare(
-                ctx, credentials, base=body.base_sha, head=body.head_sha
-            )
+        compare_result = await _compare_refs(
+            _handler(resolved),
+            ctx,
+            credentials,
+            base=body.base_sha,
+            head=body.head_sha,
         )
         commits = compare_result.commits
     else:

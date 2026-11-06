@@ -507,6 +507,47 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 422)
 
+    def _fail_compare(self, exc: BaseException) -> None:
+        """Make the plugin's ``compare`` raise *exc*."""
+
+        class _FailingCompare(_FakeDeploymentPlugin):
+            async def compare(  # type: ignore[override]
+                self, ctx, credentials, base, head
+            ):
+                raise exc
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _FailingCompare
+        )
+
+    def test_compare_unknown_ref_is_422(self) -> None:
+        for status in (404, 422):
+            with self.subTest(status=status):
+                self._fail_compare(_http_status_error(status))
+                with testclient.TestClient(self.test_app) as client:
+                    response = client.get(
+                        '/organizations/myorg/projects/proj1/deployments/'
+                        'compare?base=9.9.9&head=v2'
+                    )
+                self.assertEqual(response.status_code, 422)
+                self.assertIn('9.9.9...v2', response.json()['detail'])
+
+    def test_compare_source_host_failure_is_503(self) -> None:
+        failures: tuple[BaseException, ...] = (
+            _http_status_error(502),
+            httpx.ConnectError('connection refused'),
+        )
+        for exc in failures:
+            with self.subTest(exc=type(exc).__name__):
+                self._fail_compare(exc)
+                with testclient.TestClient(self.test_app) as client:
+                    response = client.get(
+                        '/organizations/myorg/projects/proj1/deployments/'
+                        'compare?base=v1&head=v2'
+                    )
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.headers['retry-after'], '5')
+
     def test_trigger_deploy(self) -> None:
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -714,6 +755,39 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertIn('Project: proj', prompt)
         self.assertIn('aaa..bbb', prompt)
         self.assertTrue(call.kwargs['cache_system_prompt'])
+
+    def test_draft_release_notes_unknown_base_is_422(self) -> None:
+        """A base tag the source host lacks is the caller's error."""
+        self._fail_compare(_http_status_error(404))
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': '2.69.1',
+                    'head_sha': 'bbb',
+                    'last_tag': '2.69.1',
+                },
+            )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('2.69.1...bbb', response.json()['detail'])
+        self.mock_anthropic.complete_json.assert_not_called()
+
+    def test_draft_release_notes_source_host_failure_is_503(self) -> None:
+        self._fail_compare(_http_status_error(502))
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers['retry-after'], '5')
+        self.mock_anthropic.complete_json.assert_not_called()
 
     def test_draft_release_notes_degraded_falls_back(self) -> None:
         self.mock_anthropic.complete_json = mock.AsyncMock(
