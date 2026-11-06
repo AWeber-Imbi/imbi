@@ -23,7 +23,7 @@ from imbi.common.plugins import secrets
 LOGGER = logging.getLogger(__name__)
 
 
-class _AwsConfig(pydantic.BaseModel):
+class RoleConfig(pydantic.BaseModel):
     """No access keys and no endpoint: ``extra='forbid'`` refuses them.
 
     ``role_arn`` is required. imbi-api always assumes the tenant's role,
@@ -78,12 +78,17 @@ _AWS_UNAVAILABLE = frozenset(
 )
 
 
+def client_error_code(err: botocore_exceptions.ClientError) -> str:
+    """The AWS error code of ``err``. Never the message."""
+    return str(
+        err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+    )
+
+
 def _aws_error(err: Exception) -> secrets.BrokerError:
     """Translate an AWS error. Only the error code is read."""
     if isinstance(err, botocore_exceptions.ClientError):
-        code = str(
-            err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-        )
+        code = client_error_code(err)
         if code in _AWS_UNAVAILABLE:
             return secrets.BrokerError(
                 'secret_provider_unavailable', 'throttled'
@@ -106,7 +111,7 @@ def external_id(organization_id: str) -> str:
 
 
 def _assume_role_args(
-    config: dict[str, typing.Any], external: str
+    config: dict[str, typing.Any], external: str, **overrides: typing.Any
 ) -> dict[str, typing.Any]:
     """The AssumeRole arguments. The probe and the real call share them,
     so only the ExternalId can make the probe fail."""
@@ -115,13 +120,95 @@ def _assume_role_args(
         'RoleSessionName': 'imbi-secrets-broker',
         'ExternalId': external,
         'DurationSeconds': 900,
-    }
+    } | overrides
 
 
-def _endpoint_url() -> str | None:
+def endpoint_url() -> str | None:
     """An operator override for AWS endpoints, for LocalStack in tests
     and development. Never from tenant configuration."""
     return os.environ.get('IMBI_SECRETS_AWS_ENDPOINT_URL') or None
+
+
+async def assume_role(
+    config: dict[str, typing.Any],
+    organization_id: str,
+    **overrides: typing.Any,
+) -> dict[str, typing.Any]:
+    """Assume the organization's role; return the ``Credentials``.
+
+    imbi-api's own identity (workload identity or the default chain)
+    only calls ``sts:AssumeRole``. The ``ExternalId`` is
+    :func:`external_id` of the organization, so the trust policy of a
+    role can name the one organization that may use it. ``overrides``
+    replace AssumeRole arguments (``RoleSessionName``,
+    ``DurationSeconds``).
+    """
+    session: typing.Any = aioboto3.Session(region_name=config['region'])
+    async with session.client('sts', endpoint_url=endpoint_url()) as sts:
+        response: dict[str, typing.Any] = await sts.assume_role(
+            **_assume_role_args(
+                config, external_id(organization_id), **overrides
+            )
+        )
+    return typing.cast(dict[str, typing.Any], response['Credentials'])
+
+
+async def _external_id_problem(config: dict[str, typing.Any]) -> str | None:
+    """Return ``None`` when the role refuses a wrong ExternalId.
+
+    The probe assumes the role with a random ExternalId that no trust
+    policy names. If AWS allows it, the trust policy does not require
+    the ExternalId, and any organization could use the role.
+    """
+    probe = f'imbi:probe-{stdlib_secrets.token_hex(8)}'
+    try:
+        session: typing.Any = aioboto3.Session(region_name=config['region'])
+        async with session.client('sts', endpoint_url=endpoint_url()) as sts:
+            await sts.assume_role(**_assume_role_args(config, probe))
+    except botocore_exceptions.ClientError as err:
+        code = client_error_code(err)
+        if code in ('AccessDenied', 'AccessDeniedException'):
+            return None
+        return 'role_not_verified'
+    except Exception as err:  # noqa: BLE001 - fail closed
+        LOGGER.warning('AWS role probe failed: %s', type(err).__name__)
+        return 'role_not_verified'
+    return 'role_does_not_require_external_id'
+
+
+async def check_role(
+    config: dict[str, typing.Any], organization_id: str
+) -> None:
+    """Refuse a role that the organization does not control.
+
+    Two calls: the role must refuse a wrong ExternalId, and it must
+    accept the organization's own ExternalId. The second call stops an
+    organization from claiming a role that only another organization
+    can assume.
+
+    Raises:
+        secrets.InvalidConfiguration: ``role_does_not_require_external_id``
+            or ``role_not_verified``.
+
+    """
+    problem = await _external_id_problem(config)
+    if problem is None:
+        try:
+            await assume_role(config, organization_id)
+        except Exception as err:  # noqa: BLE001 - fail closed
+            LOGGER.warning(
+                'AWS role ownership check failed: %s', type(err).__name__
+            )
+            problem = 'role_not_verified'
+    if problem is not None:
+        raise secrets.InvalidConfiguration(
+            'The role trust policy must require sts:ExternalId '
+            f'"{external_id(organization_id)}"'
+            if problem == 'role_does_not_require_external_id'
+            else 'The role cannot be assumed with sts:ExternalId '
+            f'"{external_id(organization_id)}"',
+            code=problem,
+        )
 
 
 class AwsSecretsManager(secrets.SecretProvider):
@@ -145,7 +232,7 @@ class AwsSecretsManager(secrets.SecretProvider):
     def validate_config(
         self, config: dict[str, typing.Any]
     ) -> dict[str, typing.Any]:
-        return secrets.validate_model(_AwsConfig, config)
+        return secrets.validate_model(RoleConfig, config)
 
     def validate_locator(
         self,
@@ -157,19 +244,8 @@ class AwsSecretsManager(secrets.SecretProvider):
     async def _session(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> typing.Any:
-        """Return a session for the organization's role.
-
-        imbi-api's own identity (workload identity or the default chain)
-        only calls ``sts:AssumeRole``. The ``ExternalId`` is
-        :func:`external_id` of the organization, so the trust policy of
-        a role can name the one organization that may use it.
-        """
-        session: typing.Any = aioboto3.Session(region_name=config['region'])
-        async with session.client('sts', endpoint_url=_endpoint_url()) as sts:
-            response: dict[str, typing.Any] = await sts.assume_role(
-                **_assume_role_args(config, external_id(organization_id))
-            )
-        credentials: dict[str, str] = response['Credentials']
+        """Return a session for the organization's role."""
+        credentials = await assume_role(config, organization_id)
         return aioboto3.Session(
             aws_access_key_id=credentials['AccessKeyId'],
             aws_secret_access_key=credentials['SecretAccessKey'],
@@ -177,65 +253,10 @@ class AwsSecretsManager(secrets.SecretProvider):
             region_name=config['region'],
         )
 
-    async def _external_id_problem(
-        self, config: dict[str, typing.Any]
-    ) -> str | None:
-        """Return ``None`` when the role refuses a wrong ExternalId.
-
-        The probe assumes the role with a random ExternalId that no
-        trust policy names. If AWS allows it, the trust policy does not
-        require the ExternalId, and any organization could use the role.
-        """
-        probe = f'imbi:probe-{stdlib_secrets.token_hex(8)}'
-        try:
-            session: typing.Any = aioboto3.Session(
-                region_name=config['region']
-            )
-            async with session.client(
-                'sts', endpoint_url=_endpoint_url()
-            ) as sts:
-                await sts.assume_role(**_assume_role_args(config, probe))
-        except botocore_exceptions.ClientError as err:
-            code = str(
-                err.response.get('Error', {}).get('Code', '')  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-            )
-            if code in ('AccessDenied', 'AccessDeniedException'):
-                return None
-            return 'role_not_verified'
-        except Exception as err:  # noqa: BLE001 - fail closed
-            LOGGER.warning('AWS role probe failed: %s', type(err).__name__)
-            return 'role_not_verified'
-        return 'role_does_not_require_external_id'
-
     async def check_config(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> None:
-        """Refuse a role that the organization does not control.
-
-        Two calls: the role must refuse a wrong ExternalId, and it must
-        accept the organization's own ExternalId. The second call stops
-        an organization from claiming a role that only another
-        organization can assume.
-        """
-        problem = await self._external_id_problem(config)
-        if problem is None:
-            try:
-                await self._session(config, organization_id)
-            except Exception as err:  # noqa: BLE001 - fail closed
-                LOGGER.warning(
-                    'AWS role ownership check failed: %s',
-                    type(err).__name__,
-                )
-                problem = 'role_not_verified'
-        if problem is not None:
-            raise secrets.InvalidConfiguration(
-                'The role trust policy must require sts:ExternalId '
-                f'"{external_id(organization_id)}"'
-                if problem == 'role_does_not_require_external_id'
-                else 'The role cannot be assumed with sts:ExternalId '
-                f'"{external_id(organization_id)}"',
-                code=problem,
-            )
+        await check_role(config, organization_id)
 
     async def _call(
         self,
@@ -250,7 +271,7 @@ class AwsSecretsManager(secrets.SecretProvider):
         try:
             session = await self._session(config, organization_id)
             async with session.client(
-                service, endpoint_url=_endpoint_url()
+                service, endpoint_url=endpoint_url()
             ) as client:
                 return typing.cast(
                     dict[str, typing.Any],
@@ -272,7 +293,7 @@ class AwsSecretsManager(secrets.SecretProvider):
     async def health(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> secrets.Health:
-        problem = await self._external_id_problem(config)
+        problem = await _external_id_problem(config)
         if problem is not None:
             return secrets.Health('unhealthy', problem)
         try:
