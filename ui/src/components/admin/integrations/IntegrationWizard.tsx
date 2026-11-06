@@ -588,8 +588,8 @@ function PluginStep({
     return (
       <Card>
         <CardContent className="text-secondary p-10 text-center text-sm">
-          No enabled plugins are installed. Enable a plugin on the Plugins page
-          first.
+          No enabled plugin can back an Integration. Enable a plugin with
+          Integration capabilities on the Plugins page first.
         </CardContent>
       </Card>
     )
