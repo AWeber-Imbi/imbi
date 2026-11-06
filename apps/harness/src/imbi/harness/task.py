@@ -847,6 +847,7 @@ class TaskRun:
             while self.credential.expires_at == expires_at:
                 try:
                     await self.renew_key()
+                    break  # same expiry: the outer loop waits the floor
                 # ValueError: a partial JSON reply from the executor.
                 except (Failed, httpx.HTTPError, ValueError) as err:
                     LOGGER.warning(

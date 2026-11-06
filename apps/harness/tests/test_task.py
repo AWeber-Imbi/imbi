@@ -611,6 +611,28 @@ class KeyRefreshTestCase(TaskTestCase):
         # is expired too: wait the minimum.
         self.assertEqual(sleeps, [0.0, 1.0, task.KEY_RENEW_MIN])
 
+    async def test_waits_after_renewal_with_same_expiry(self) -> None:
+        reply = self.token('t2', 0)
+        self.call.return_value = reply
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.fromisoformat(reply['expires_at'])
+        )
+        sleeps: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) > 1:
+                raise asyncio.CancelledError
+
+        with (
+            mock.patch.object(task.asyncio, 'sleep', sleep),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+        # One renewal, then the minimum wait: no renewal loop.
+        self.assertEqual(self.call.await_count, 1)
+        self.assertEqual(sleeps, [0.0, task.KEY_RENEW_MIN])
+
     async def test_static_key_is_not_renewed(self) -> None:
         self.run_task.credential = proxy.Credential(KEY)
         await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
