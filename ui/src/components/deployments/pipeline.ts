@@ -291,6 +291,7 @@ function entryFromRelease(release: {
     sha: release.committish,
     short_sha: release.committish.slice(0, 7),
     tag: release.tag ?? '',
+    tag_synced: false,
     title: release.title,
   }
 }

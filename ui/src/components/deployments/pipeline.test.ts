@@ -312,6 +312,13 @@ describe('buildPipeline', () => {
     ])
   })
 
+  it('marks a running tag missing from history as not synced', () => {
+    const current = [currentRelease('staging', 'ccc333ccc333', 'v9.9.9')]
+    const staging = buildPipeline(ENVS, current, HISTORY, COMMITS)[1]
+    expect(staging.currentHistoryEntry?.tag).toBe('v9.9.9')
+    expect(staging.currentHistoryEntry?.tag_synced).toBe(false)
+  })
+
   it('lists nothing when the deployed commit matches no release', () => {
     const unknown = [currentRelease('staging', '777zzz777zzz', null)]
     const staging = buildPipeline(ENVS, unknown, HISTORY, COMMITS)[1]
