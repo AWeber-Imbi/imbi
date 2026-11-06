@@ -55,6 +55,8 @@ to its table. See [Iggy](iggy.md) for `TOPICS` and the publish API.
 | `events` | table | `ReplacingMergeTree` | `(project_id, id)` | `comments`, `documents`, `gateway`, `lifecycle`, `projects` |
 | `operations_log` | table | `ReplacingMergeTree` | `(project_id, id)` | `api`, `configuration`, `deployments`, `maintenance` |
 | `pull_requests` | table | `ReplacingMergeTree` | `(project_id, pr_id)` | `github` |
+| `pull_request_review_requests` | table | `ReplacingMergeTree` | `(project_id, pr_id)` | `github` |
+| `pull_request_reviews` | table | `ReplacingMergeTree` | `(project_id, pr_id, review_id)` | `github` |
 | `score_history` | table | `MergeTree` | `(project_id, timestamp)` | `scoring` |
 | `score_latest_data` | materialized view | `AggregatingMergeTree` | `project_id` |  |
 | `score_latest` | view |  |  |  |

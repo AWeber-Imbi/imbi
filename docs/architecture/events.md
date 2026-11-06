@@ -80,6 +80,8 @@ run `uv run python scripts/docs_iggy_topics.py` and paste the output.
 | `events` | `comments`, `documents`, `gateway`, `lifecycle`, `projects` | `ReplacingMergeTree(version)` | none |
 | `maintenance_log` | `maintenance` | `MergeTree()` | `toDateTime(occurred_at) + INTERVAL 90 DAY` |
 | `operations_log` | `api`, `configuration`, `deployments`, `maintenance` | `ReplacingMergeTree(_row_version)` | none |
+| `pull_request_review_requests` | `github` | `ReplacingMergeTree(recorded_at)` | none |
+| `pull_request_reviews` | `github` | `ReplacingMergeTree(recorded_at)` | none |
 | `pull_requests` | `github` | `ReplacingMergeTree(recorded_at)` | none |
 | `release_component_batches` | `sbom` | `MergeTree()` | none |
 | `release_components` | `sbom` | `MergeTree()` | none |

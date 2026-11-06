@@ -2205,7 +2205,9 @@ class PullRequestReviewRequestsRecord(pydantic.BaseModel):
     ``pull_request_review`` deliveries carry the current request lists
     but not the diff stats, so they can refresh this row without
     touching the PR row.  GitHub drops a user from
-    ``requested_reviewers`` when they submit a review.
+    ``requested_reviewers`` when they submit a review.  The GitHub
+    plugin sets ``recorded_at`` to the PR's ``updated_at``, so an older
+    snapshot never replaces a newer one.
     """
 
     project_id: str

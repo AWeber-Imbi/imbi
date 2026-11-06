@@ -193,16 +193,23 @@ def _review_requests_record(
 
     Both ``pull_request`` and ``pull_request_review`` payloads carry
     the PR's current request lists, so either one can write this row.
+    The row is versioned by the PR's ``updated_at``, not the time Imbi
+    wrote it: a backfill builds rows from a listing fetched at the start
+    of a long walk, and must not replace a newer webhook row.
     """
     pr_id = pr.get('id')
     if not pr_id:
         return None
-    return PullRequestReviewRequestsRecord(
+    record = PullRequestReviewRequestsRecord(
         project_id=project_id,
         pr_id=str(pr_id),
         requested_reviewers=_logins(pr.get('requested_reviewers'), 'login'),
         requested_teams=_logins(pr.get('requested_teams'), 'slug'),
     )
+    updated_at = _parse_pr_datetime(pr.get('updated_at'))
+    if updated_at is not None:
+        record.recorded_at = updated_at
+    return record
 
 
 def _logins(value: object, key: str) -> list[str]:
@@ -277,8 +284,18 @@ async def _fetch_reviews(
         if resp.status_code == 404:
             return out
         resp.raise_for_status()
-        page: list[dict[str, typing.Any]] = resp.json()
-        out.extend(page)
+        page: object = resp.json()
+        if not isinstance(page, list):
+            LOGGER.warning(
+                'github-pr-sync: reviews for PR #%d were not a list; skipping',
+                pr_number,
+            )
+            break
+        out.extend(
+            typing.cast('dict[str, typing.Any]', item)
+            for item in typing.cast('list[object]', page)
+            if isinstance(item, dict)
+        )
         next_url = _next_page_url(resp.headers.get('link'))
         next_page = _query_param(next_url, 'page') if next_url else None
         if not page or next_page is None:
@@ -329,7 +346,8 @@ async def _open_pr_reviews(
                     )
                 limited.set()
                 return []
-            except httpx.HTTPError:
+            except httpx.HTTPError, ValueError:
+                # ValueError covers a body that is not valid JSON.
                 LOGGER.exception(
                     'github-pr-sync: failed to fetch reviews for PR #%d of '
                     'project %s',

@@ -156,6 +156,18 @@ class PrRecordTestCase(unittest.TestCase):
         self.assertEqual(record.requested_reviewers, ['alice', 'bob'])
         self.assertEqual(record.requested_teams, ['platform'])
 
+    def test_review_requests_versioned_by_updated_at(self) -> None:
+        # A backfill snapshot must not outrank a newer webhook row, so
+        # the version is GitHub's time, not the time Imbi wrote it.
+        record = pull_requests._review_requests_record(
+            _pr(updated_at='2026-01-05T06:07:08Z'), project_id='p1'
+        )
+        assert record is not None
+        self.assertEqual(
+            record.recorded_at,
+            datetime.datetime(2026, 1, 5, 6, 7, 8, tzinfo=datetime.UTC),
+        )
+
     def test_missing_review_requests_are_empty(self) -> None:
         record = pull_requests._review_requests_record(_pr(), project_id='p1')
         assert record is not None
@@ -356,6 +368,33 @@ class OpenPrReviewsTestCase(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(
             [typing.cast('typing.Any', r).pr_id for r in records], ['12']
+        )
+
+    @respx.mock
+    async def test_malformed_responses_are_skipped(self) -> None:
+        respx.get(f'{_REPO}/pulls/1/reviews').mock(
+            return_value=httpx.Response(200, json={'message': 'odd'})
+        )
+        respx.get(f'{_REPO}/pulls/2/reviews').mock(
+            return_value=httpx.Response(200, text='not json')
+        )
+        respx.get(f'{_REPO}/pulls/3/reviews').mock(
+            return_value=httpx.Response(200, json=['junk', _review()])
+        )
+        async with httpx.AsyncClient(base_url=_REPO) as client:
+            with self.assertLogs(pull_requests.LOGGER, level='WARNING'):
+                records = await pull_requests._open_pr_reviews(
+                    client,
+                    [
+                        _pr(id=11, number=1),
+                        _pr(id=12, number=2),
+                        _pr(id=13, number=3),
+                    ],
+                    project_id='proj-1',
+                    max_wait=0,
+                )
+        self.assertEqual(
+            [typing.cast('typing.Any', r).pr_id for r in records], ['13']
         )
 
     async def test_rate_limit_stops_without_raising(self) -> None:
