@@ -26,6 +26,7 @@ dependencies = [
   "imbi-common[databases,llm,mcp,otel,sentry,server]==2.43.1",
   "imbi-gateway==2.43.1",
   "imbi-mcp==2.43.1",
+  "imbi-plugin-anthropic==2.43.1",
   "imbi-plugin-aws==2.43.1",
   "imbi-plugin-github==2.43.1",
   "imbi-plugin-google==2.43.1",
@@ -108,6 +109,7 @@ files = [
   "apps/scheduler/src",
   "apps/slackbot/src",
   "apps/workflows/src",
+  "plugins/anthropic/src",
   "plugins/aws/src",
   "plugins/github/src",
   "plugins/google/src",
@@ -116,7 +118,7 @@ files = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/anthropic/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -154,6 +156,7 @@ extraPaths = [
   "apps/scheduler/src",
   "apps/slackbot/src",
   "apps/workflows/src",
+  "plugins/anthropic/src",
   "plugins/aws/src",
   "plugins/github/src",
   "plugins/google/src",
@@ -472,6 +475,31 @@ reportUnknownVariableType = "none"
 reportUnusedFunction = "none"
 
 [[tool.pyright.executionEnvironments]]
+root = "plugins/anthropic/tests"
+extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[[tool.pyright.executionEnvironments]]
 root = "plugins/oidc/tests"
 extraPaths = ["."]
 reportUnnecessaryIsInstance = "none"
@@ -762,6 +790,7 @@ imbi-mcp = { workspace = true }
 imbi-scheduler = { workspace = true }
 imbi-slackbot = { workspace = true }
 imbi-workflows = { workspace = true }
+imbi-plugin-anthropic = { workspace = true }
 imbi-plugin-aws = { workspace = true }
 imbi-plugin-github = { workspace = true }
 imbi-plugin-google = { workspace = true }

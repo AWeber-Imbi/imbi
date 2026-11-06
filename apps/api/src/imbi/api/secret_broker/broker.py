@@ -622,6 +622,10 @@ class Broker:
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
+    @property
+    def pool(self) -> Pool:
+        return self._pool
+
     async def create_resolution(
         self, context: ResolutionContext, request: ResolutionRequest
     ) -> Created:
@@ -965,6 +969,7 @@ class Broker:
                     credential_class=decision.binding['credential_class'],
                     binding_id=decision.binding['id'],
                     repository=row.get('repository'),
+                    agent_id=row['agent_id'],
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)

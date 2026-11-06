@@ -27,6 +27,7 @@ import pydantic
 
 if typing.TYPE_CHECKING:
     from imbi.common import graph
+    from imbi.common.plugins import identity
 
 SecretCapability = typing.Literal[
     'static_retrieval',
@@ -166,6 +167,9 @@ class ResolveContext:
     binding_id: uuid.UUID | None = None
     #: The ``owner/name`` repository that the runner asks a token for.
     repository: str | None = None
+    #: The agent of the task. The broker takes it from the resolution
+    #: (the task record), never from the request.
+    agent_id: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -300,6 +304,26 @@ class SecretProviderHost(typing.Protocol):
 
         Raises:
             BrokerError: The binding is not such a provider key.
+
+        """
+        ...
+
+    async def vendor_token(
+        self,
+        organization_id: str,
+        exchanger: identity.TokenExchanger,
+        target: dict[str, typing.Any],
+        *,
+        agent_id: str,
+    ) -> identity.AccessToken:
+        """Mint a vendor access token for an agent (WIF plan 4.4).
+
+        Core gets a new identity JWT from the organization's identity
+        source and sets every claim. ``target`` must come from the
+        binding of the agent, never from a request.
+
+        Raises:
+            identity.IdentityError: Core or the vendor refused.
 
         """
         ...
