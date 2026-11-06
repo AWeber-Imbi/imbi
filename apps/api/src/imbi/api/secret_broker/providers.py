@@ -244,10 +244,12 @@ def reconcile[T](
     loaded: dict[str, T],
     reported: set[tuple[str, str]],
     factory: typing.Callable[[typing.Any], T],
+    key: typing.Callable[[typing.Any], str] = lambda cls: cls.type,
 ) -> None:
     """Make ``registry`` agree with the loaded plugins.
 
     ``attribute`` is the manifest list of classes (``secret_providers``).
+    ``key(cls)`` is the registry key of a class (default ``cls.type``).
     Remove the instances that this function added for plugins that are
     now disabled or not installed. Add one instance (``factory(cls)``)
     for each new class. A type that is already registered keeps its
@@ -264,29 +266,30 @@ def reconcile[T](
                 del registry[item_type]
     for entry in entries:
         for cls in getattr(entry.manifest, attribute):
-            current = registry.get(cls.type)
-            key = (entry.manifest.slug, cls.type)
+            item_type = key(cls)
+            current = registry.get(item_type)
+            reported_key = (entry.manifest.slug, item_type)
             if current is None:
                 try:
-                    registry[cls.type] = loaded[cls.type] = factory(cls)
+                    registry[item_type] = loaded[item_type] = factory(cls)
                 except Exception as err:  # noqa: BLE001 - skip this plugin
-                    if key not in reported:
-                        reported.add(key)
+                    if reported_key not in reported:
+                        reported.add(reported_key)
                         LOGGER.error(
                             'Plugin %s %s %r failed to load: %s',
                             entry.manifest.slug,
                             kind,
-                            cls.type,
+                            item_type,
                             type(err).__name__,
                         )
-            elif not isinstance(current, cls) and key not in reported:
-                reported.add(key)
+            elif not isinstance(current, cls) and reported_key not in reported:
+                reported.add(reported_key)
                 LOGGER.error(
                     'Plugin %s declares %s type %r, which is already '
                     'registered; ignored',
                     entry.manifest.slug,
                     kind,
-                    cls.type,
+                    item_type,
                 )
 
 

@@ -149,11 +149,13 @@ export function ProviderTable({
                   row.provider?.description ?? row.driver?.description ?? null
                 const baseUrl =
                   row.provider?.base_url ?? row.driver?.default_base_url ?? null
-                // Discovery needs a configured provider, a stored key,
-                // and a driver whose list-models API Imbi can call.
+                // Discovery needs a configured provider, a stored key
+                // or workload identity, and a driver whose list-models
+                // API Imbi can call.
                 const canDiscover =
                   !!row.provider &&
-                  row.provider.has_credentials &&
+                  (row.provider.has_credentials ||
+                    row.provider.auth_kind === 'workload_identity') &&
                   (row.driver?.supports_discovery ?? false)
                 return (
                   <Fragment key={row.key}>
@@ -341,6 +343,9 @@ function CredentialsCell({ provider }: CredentialsCellProps) {
   }
   if (provider.auth_kind === 'iam') {
     return <Badge variant="info">IAM role</Badge>
+  }
+  if (provider.auth_kind === 'workload_identity') {
+    return <Badge variant="info">Workload identity</Badge>
   }
   if (provider.has_credentials) {
     return (

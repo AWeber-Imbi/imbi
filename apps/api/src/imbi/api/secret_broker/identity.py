@@ -4,11 +4,14 @@
 The contracts are :mod:`imbi.common.plugins.identity`. Plugins declare
 source classes in :attr:`PluginManifest.identity_sources
 <imbi.common.plugins.base.PluginManifest.identity_sources>`. :func:`get`
-creates one instance of each on first use. ``fake`` and
-:class:`FakeExchanger` are for tests only.
+creates one instance of each on first use. Token exchangers come from
+:attr:`PluginManifest.token_exchangers
+<imbi.common.plugins.base.PluginManifest.token_exchangers>`, by vendor
+(:func:`exchanger`). ``fake`` and :class:`FakeExchanger` are for tests
+only.
 
-:func:`vendor_token` is the one function that mints a vendor access
-token. Every consumer calls it.
+:func:`vendor_token` (an agent) and :func:`ai_provider_token` (an AI
+Provider) mint a vendor access token. Every consumer calls one of them.
 """
 
 import asyncio
@@ -19,7 +22,7 @@ import uuid
 import pydantic
 
 from imbi.api.secret_broker import providers
-from imbi.common import graph
+from imbi.common import graph, models
 from imbi.common.plugins.identity import (
     AccessToken,
     IdentityError,
@@ -120,6 +123,34 @@ def _load() -> None:
     )
 
 
+#: The token exchangers, by vendor. One instance each.
+EXCHANGERS: dict[str, TokenExchanger] = {}
+_LOADED_EXCHANGERS: dict[str, TokenExchanger] = {}
+_REPORTED_EXCHANGERS: set[tuple[str, str]] = set()
+
+
+def exchanger(vendor: str) -> TokenExchanger:
+    """Return the token exchanger of a vendor.
+
+    Raises:
+        IdentityError: ``unknown_exchanger``.
+
+    """
+    providers.reconcile(
+        'token_exchangers',
+        'token exchanger',
+        EXCHANGERS,
+        _LOADED_EXCHANGERS,
+        _REPORTED_EXCHANGERS,
+        lambda cls: cls(),
+        key=lambda cls: cls.vendor,
+    )
+    found = EXCHANGERS.get(vendor)
+    if found is None:
+        raise IdentityError('unknown_exchanger')
+    return found
+
+
 def all_sources() -> list[IdentitySource]:
     _load()
     return list(SOURCES.values())
@@ -182,13 +213,64 @@ async def vendor_token(
     )
     if not found:
         raise IdentityError('agent_not_in_organization')
+    return await _mint(
+        setting, organization_id, exchanger, target, 'imbi_agent', agent_id
+    )
+
+
+async def ai_provider_token(
+    provider: models.AIProvider,
+    setting: dict[str, typing.Any] | None,
+) -> AccessToken:
+    """Mint a vendor access token for an AI Provider (WIF plan 4.6).
+
+    The organization and the target come from the provider record, never
+    from a request. ``setting`` is the identity source of that
+    organization (:meth:`SecretStore.identity_source`); the caller reads
+    it to key its cache.
+
+    Raises:
+        IdentityError: ``workload_identity_not_configured``,
+            ``unknown_exchanger``, ``unknown_identity_source``,
+            ``invalid_target``, or the reason of the source or the
+            exchanger.
+
+    """
+    wif = provider.workload_identity
+    if wif is None:
+        raise IdentityError('workload_identity_not_configured')
+    # The driver name is the vendor (models.WIF_DRIVERS).
+    vendor = exchanger(provider.driver)
+    try:
+        target = vendor.validate_target(wif.target)
+    except InvalidConfiguration:
+        raise IdentityError('invalid_target') from None
+    return await _mint(
+        setting,
+        wif.organization_id,
+        vendor,
+        target,
+        'imbi_ai_provider',
+        provider.id,
+    )
+
+
+async def _mint(
+    setting: dict[str, typing.Any] | None,
+    organization_id: str,
+    exchanger: TokenExchanger,
+    target: dict[str, typing.Any],
+    subject_tag: str,
+    subject_id: str,
+) -> AccessToken:
+    """Get a new JWT for the subject and exchange it once."""
     if setting is None:
         raise IdentityError('workload_identity_not_configured')
     source = get(setting['type'])
     request = IdentityRequest(
         organization_id=organization_id,
         audience=exchanger.audience,
-        tags={'imbi_org': organization_id, 'imbi_agent': agent_id},
+        tags={'imbi_org': organization_id, subject_tag: subject_id},
         duration_seconds=exchanger.jwt_seconds,
     )
     token = await source.identity_token(setting['config'], request)

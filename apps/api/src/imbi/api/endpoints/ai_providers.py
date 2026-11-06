@@ -15,9 +15,15 @@ via :mod:`imbi.common.auth.encryption`, and persisted only as
 Responses carry ``has_credentials``, ``credential_hint`` (the last four
 characters, stored in the clear at write time so an admin can tell two
 keys apart) and ``credential_updated_at``.
+
+A provider of a WIF driver can use workload identity instead of a key
+(WIF plan 4.6, O7): it names an organization, and imbi-api mints a
+short-lived token with the identity source of that organization
+(:mod:`imbi.api.llm.tokens`). A key and workload identity are exclusive.
 """
 
 import datetime
+import http
 import logging
 import typing
 
@@ -25,9 +31,12 @@ import fastapi
 import pydantic
 import slugify
 
-from imbi.api.auth import permissions
+from imbi.api import secret_broker
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.llm import tokens
+from imbi.api.secret_broker import identity
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.auth.encryption import (
@@ -35,6 +44,7 @@ from imbi.common.auth.encryption import (
     encrypt_config_value,
 )
 from imbi.common.llm import discovery, drivers
+from imbi.common.plugins import identity as plugin_identity
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +58,7 @@ ai_providers_router = fastapi.APIRouter(
     tags=['AI Models'],
 )
 
-AuthKind = typing.Literal['api_key', 'iam', 'none']
+AuthKind = typing.Literal['api_key', 'iam', 'none', 'workload_identity']
 
 #: Provider fields an admin may set through create / patch. Everything
 #: else on the node is either identity (``id``), timestamps, or
@@ -80,6 +90,7 @@ _READONLY_PATHS: frozenset[str] = json_patch.READONLY_PATHS | frozenset(
         '/has_credentials',
         '/is_builtin_driver',
         '/model_count',
+        '/workload_identity',
     ]
 )
 
@@ -117,6 +128,7 @@ class AIProviderResponse(pydantic.BaseModel):
     region: str | None = None
     project_id: str | None = None
     auth_kind: AuthKind = 'none'
+    workload_identity: models.AIProviderWorkloadIdentity | None = None
     has_credentials: bool = False
     credential_hint: str | None = None
     credential_updated_at: datetime.datetime | None = None
@@ -131,6 +143,17 @@ class AIProviderCredentials(pydantic.BaseModel):
     """Request body for setting a provider's API key."""
 
     api_key: str = pydantic.Field(min_length=1)
+
+
+class AIProviderWorkloadIdentityPut(pydantic.BaseModel):
+    """Request body for the workload identity of a provider.
+
+    ``organization`` is the slug of the organization whose identity
+    source signs the JWT. ``target`` holds the vendor ids.
+    """
+
+    organization: str = pydantic.Field(min_length=1)
+    target: dict[str, typing.Any]
 
 
 class DiscoveredModel(pydantic.BaseModel):
@@ -153,14 +176,19 @@ class DiscoveryResponse(pydantic.BaseModel):
     fetched_at: datetime.datetime
 
 
-def auth_kind(driver: str, has_credentials: bool) -> AuthKind:
+def auth_kind(
+    driver: str, has_credentials: bool, workload_identity: bool = False
+) -> AuthKind:
     """Derive how a provider authenticates.
 
-    A stored key always wins. Otherwise a driver that can authenticate
+    Workload identity and a stored key are exclusive; either one wins.
+    Otherwise a driver that can authenticate
     from ambient cloud credentials (``bedrock``, ``vertex``) reports
     ``iam``, and everything else reports ``none`` — which the UI renders
     as "not configured yet".
     """
+    if workload_identity:
+        return 'workload_identity'
     if has_credentials:
         return 'api_key'
     info = drivers.get_driver(driver)
@@ -185,7 +213,10 @@ def to_response(
         enabled=node.enabled,
         region=node.region,
         project_id=node.project_id,
-        auth_kind=auth_kind(node.driver, has_credentials),
+        auth_kind=auth_kind(
+            node.driver, has_credentials, node.workload_identity is not None
+        ),
+        workload_identity=node.workload_identity,
         has_credentials=has_credentials,
         credential_hint=node.credential_hint,
         credential_updated_at=node.credential_updated_at,
@@ -490,6 +521,10 @@ async def patch_ai_provider(
     node.credentials_encrypted = existing.credentials_encrypted
     node.credential_hint = existing.credential_hint
     node.credential_updated_at = existing.credential_updated_at
+    node.workload_identity = existing.workload_identity
+    # The validators check workload identity against the new driver and
+    # base_url.
+    node = _build(node.model_dump())
 
     if node.slug != existing.slug:
         await _assert_slug_free(db, node.slug, exclude_id=id)
@@ -579,6 +614,14 @@ async def set_ai_provider_credentials(
     """
     _ = auth
     node = await fetch_provider(db, id)
+    if node.workload_identity is not None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'AI provider {id!r} uses workload identity; remove it '
+                f'before setting a key'
+            ),
+        )
     node.credentials_encrypted = encrypt_config_value(data.api_key)
     node.credential_hint = credential_hint(data.api_key)
     node.credential_updated_at = datetime.datetime.now(datetime.UTC)
@@ -626,6 +669,7 @@ async def delete_ai_provider_credentials(
 async def discover_ai_provider_models(
     id: str,
     db: graph.Pool,
+    secrets: secret_broker.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ai_model:create')),
@@ -651,7 +695,8 @@ async def discover_ai_provider_models(
         404: No such provider.
         409: The provider has no stored credentials.
         422: The driver does not support discovery.
-        502: The provider rejected or failed the call.
+        502: The provider rejected or failed the call, or no workload
+            identity token could be minted.
 
     """
     _ = auth
@@ -662,23 +707,28 @@ async def discover_ai_provider_models(
             status_code=422,
             detail=f'Driver {node.driver!r} does not support discovery',
         )
-    api_key = decrypt_config_value(node.credentials_encrypted)
-    if not api_key:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'AI provider {id!r} has no stored credentials to '
-                f'discover models with'
-            ),
-        )
+    base_url = drivers.resolve_base_url(node.driver, node.base_url)
     try:
-        found = await discovery.list_models(
-            node.driver,
-            api_key,
-            drivers.resolve_base_url(node.driver, node.base_url),
-        )
+        if node.workload_identity is not None:
+            found = await _discover_with_token(secrets, node, base_url)
+        else:
+            api_key = decrypt_config_value(node.credentials_encrypted)
+            if not api_key:
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=(
+                        f'AI provider {id!r} has no stored credentials to '
+                        f'discover models with'
+                    ),
+                )
+            found = await discovery.list_models(node.driver, api_key, base_url)
     except discovery.DiscoveryError as exc:
         raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
+    except plugin_identity.IdentityError as exc:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f'No workload identity token: {exc.reason}',
+        ) from None
 
     configured = await _configured_model_ids(db, id)
     return DiscoveryResponse(
@@ -695,6 +745,130 @@ async def discover_ai_provider_models(
         ],
         fetched_at=datetime.datetime.now(datetime.UTC),
     )
+
+
+async def _discover_with_token(
+    secrets: secret_broker.store.SecretStore,
+    node: models.AIProvider,
+    base_url: str | None,
+) -> list[discovery.DiscoveredModel]:
+    """List models with a workload identity token.
+
+    After a ``401`` the token is dropped from the cache and the call
+    runs one more time with a new token.
+    """
+    for attempt in (1, 2):
+        token = await tokens.CACHE.get(secrets, node)
+        try:
+            return await discovery.list_models(
+                node.driver, token, base_url, bearer=True
+            )
+        except discovery.DiscoveryError as exc:
+            if exc.status != http.HTTPStatus.UNAUTHORIZED or attempt == 2:
+                raise
+            tokens.CACHE.invalidate(node.id, token)
+    raise AssertionError('unreachable')
+
+
+@ai_providers_router.put(
+    '/{id}/workload-identity', response_model=AIProviderResponse
+)
+async def set_ai_provider_workload_identity(
+    id: str,
+    data: AIProviderWorkloadIdentityPut,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('ai_model:credentials')
+        ),
+    ],
+) -> AIProviderResponse:
+    """Use workload identity for a provider (WIF plan 4.6, O7).
+
+    The caller must be a member of the organization with
+    ``secret_provider:write`` there: the provider then uses the identity
+    source of that organization. No token is minted here.
+
+    Raises:
+        403: Not a member, or no ``secret_provider:write`` there.
+        404: No such provider or organization.
+        409: The provider has a stored key.
+        422: The driver cannot use workload identity, the provider has a
+            ``base_url``, no exchanger is installed for the vendor, or
+            the target is not valid.
+
+    """
+    node = await fetch_provider(db, id)
+    if node.credentials_encrypted is not None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'AI provider {id!r} has a stored key; remove it before '
+                f'using workload identity'
+            ),
+        )
+    org_id = await organizations.check_member(data.organization, db, auth)
+    # As require_permission: an admin passes, but must be a member.
+    if not auth.is_admin and 'secret_provider:write' not in auth.permissions:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'Permission secret_provider:write in organization '
+                f'{data.organization!r} is required'
+            ),
+        )
+    try:
+        vendor = identity.exchanger(node.driver)
+    except plugin_identity.IdentityError:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=f'Driver {node.driver!r} cannot use workload identity',
+        ) from None
+    try:
+        target = vendor.validate_target(data.target)
+    except plugin_identity.InvalidConfiguration as err:
+        raise fastapi.HTTPException(status_code=422, detail=str(err)) from None
+    node = _build(
+        {
+            **node.model_dump(),
+            'workload_identity': {'organization_id': org_id, 'target': target},
+        }
+    )
+    LOGGER.info(
+        'Set workload identity for AI provider %s (organization %s)',
+        id,
+        org_id,
+    )
+    counts = await model_counts(db)
+    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+
+
+@ai_providers_router.delete(
+    '/{id}/workload-identity', response_model=AIProviderResponse
+)
+async def delete_ai_provider_workload_identity(
+    id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('ai_model:credentials')
+        ),
+    ],
+) -> AIProviderResponse:
+    """Stop using workload identity for a provider.
+
+    Raises:
+        404: No such provider.
+
+    """
+    _ = auth
+    node = await fetch_provider(db, id)
+    node.workload_identity = None
+    LOGGER.info('Removed workload identity for AI provider %s', id)
+    counts = await model_counts(db)
+    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 _CONFIGURED_QUERY: typing.LiteralString = """

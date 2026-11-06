@@ -131,9 +131,14 @@ export interface AIProvider {
   region: null | string
   slug: string
   updated_at?: null | string
+  workload_identity?: AIProviderWorkloadIdentity | null
 }
 
-export type AIProviderAuthKind = 'api_key' | 'iam' | 'none'
+export type AIProviderAuthKind =
+  | 'api_key'
+  | 'iam'
+  | 'none'
+  | 'workload_identity'
 
 export interface AIProviderCreate {
   api_key?: null | string
@@ -166,6 +171,12 @@ export type AIProviderDriverSlug =
   | 'openai_compatible'
   | 'typesafe'
   | 'vertex'
+
+/** The organization whose identity source signs, and the vendor ids. */
+export interface AIProviderWorkloadIdentity {
+  organization_id: string
+  target: Record<string, unknown>
+}
 
 export interface AITeamRef {
   id: string

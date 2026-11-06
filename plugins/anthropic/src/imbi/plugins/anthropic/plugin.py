@@ -1,7 +1,7 @@
 """The Anthropic plugin manifest.
 
-The plugin has no Integration capability. It adds only the
-``anthropic_wif`` secret provider.
+The plugin has no Integration capability. It adds the ``anthropic_wif``
+secret provider and the Anthropic token exchanger (for AI Providers).
 """
 
 import imbi.common.plugins as plugins
@@ -17,4 +17,5 @@ class AnthropicPlugin(plugins.Plugin):
         auth_type='none',
         capabilities=[],
         secret_providers=[wif.AnthropicWif],
+        token_exchangers=[wif.AnthropicExchanger],
     )

@@ -464,10 +464,50 @@ export interface paths {
          *         404: No such provider.
          *         409: The provider has no stored credentials.
          *         422: The driver does not support discovery.
-         *         502: The provider rejected or failed the call.
+         *         502: The provider rejected or failed the call, or no workload
+         *             identity token could be minted.
          */
         post: operations["discover_ai_provider_models_api_ai_providers__id__discover_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-providers/{id}/workload-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Ai Provider Workload Identity
+         * @description Use workload identity for a provider (WIF plan 4.6, O7).
+         *
+         *     The caller must be a member of the organization with
+         *     ``secret_provider:write`` there: the provider then uses the identity
+         *     source of that organization. No token is minted here.
+         *
+         *     Raises:
+         *         403: Not a member, or no ``secret_provider:write`` there.
+         *         404: No such provider or organization.
+         *         409: The provider has a stored key.
+         *         422: The driver cannot use workload identity, the provider has a
+         *             ``base_url``, no exchanger is installed for the vendor, or
+         *             the target is not valid.
+         */
+        put: operations["set_ai_provider_workload_identity_api_ai_providers__id__workload_identity_put"];
+        post?: never;
+        /**
+         * Delete Ai Provider Workload Identity
+         * @description Stop using workload identity for a provider.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        delete: operations["delete_ai_provider_workload_identity_api_ai_providers__id__workload_identity_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10009,7 +10049,8 @@ export interface components {
              * @default none
              * @enum {string}
              */
-            auth_kind: "api_key" | "iam" | "none";
+            auth_kind: "api_key" | "iam" | "none" | "workload_identity";
+            workload_identity?: components["schemas"]["AIProviderWorkloadIdentity"] | null;
             /**
              * Has Credentials
              * @default false
@@ -10038,6 +10079,37 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /**
+         * AIProviderWorkloadIdentity
+         * @description How an AI Provider gets a vendor token (WIF plan 4.6, O7).
+         *
+         *     ``organization_id`` names the organization whose identity source
+         *     signs the JWT. ``target`` holds the vendor ids, validated by the
+         *     token exchanger of the vendor.
+         */
+        AIProviderWorkloadIdentity: {
+            /** Organization Id */
+            organization_id: string;
+            /** Target */
+            target: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AIProviderWorkloadIdentityPut
+         * @description Request body for the workload identity of a provider.
+         *
+         *     ``organization`` is the slug of the organization whose identity
+         *     source signs the JWT. ``target`` holds the vendor ids.
+         */
+        AIProviderWorkloadIdentityPut: {
+            /** Organization */
+            organization: string;
+            /** Target */
+            target: {
+                [key: string]: unknown;
+            };
         };
         /**
          * APIKeyCreate
@@ -22663,6 +22735,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ai_provider_workload_identity_api_ai_providers__id__workload_identity_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderWorkloadIdentityPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_provider_workload_identity_api_ai_providers__id__workload_identity_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
                 };
             };
             /** @description Validation Error */

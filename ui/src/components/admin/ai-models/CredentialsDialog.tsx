@@ -12,6 +12,8 @@ import {
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import type { AIProvider } from '@/types'
 
 interface CredentialsDialogProps {
@@ -19,9 +21,23 @@ interface CredentialsDialogProps {
   isPending: boolean
   onClose: () => void
   onRemove: () => void
+  onRemoveWorkloadIdentity: () => void
   onSave: (apiKey: string) => void
+  onSaveWorkloadIdentity: (body: {
+    organization: string
+    target: Record<string, unknown>
+  }) => void
   open: boolean
   provider: AIProvider
+}
+
+// WIF plan 4.6 and D8: only these drivers, on the default endpoint.
+const WIF_DRIVERS = new Set(['anthropic', 'openai'])
+const TARGET_HELP: Record<string, string> = {
+  anthropic:
+    '{"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, from the Anthropic Console.',
+  openai:
+    '{"identity_provider_id": "...", "service_account_id": "..."}, from the OpenAI dashboard.',
 }
 
 export function CredentialsDialog({
@@ -29,13 +45,27 @@ export function CredentialsDialog({
   isPending,
   onClose,
   onRemove,
+  onRemoveWorkloadIdentity,
   onSave,
+  onSaveWorkloadIdentity,
   open,
   provider,
 }: CredentialsDialogProps) {
   const [apiKey, setApiKey] = useState('')
+  const [targetText, setTargetText] = useState('')
   const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const { organizations, selectedOrganization } = useOrganization()
   const usesIam = provider.auth_kind === 'iam'
+  const wif = provider.workload_identity ?? null
+  const canUseWif =
+    WIF_DRIVERS.has(provider.driver) &&
+    !provider.base_url &&
+    !provider.has_credentials
+  const target = parseTarget(targetText)
+  const wifOrg = wif
+    ? (organizations.find((o) => o.id === wif.organization_id)?.name ??
+      wif.organization_id)
+    : null
 
   return (
     <Dialog
@@ -67,33 +97,74 @@ export function CredentialsDialog({
               </p>
             </div>
           )}
-          <FormField
-            description={
-              provider.has_credentials
-                ? `Replacing the key takes effect on the next request from every model under ${provider.name}.`
-                : 'No key is set, so models under this provider cannot be called.'
-            }
-            htmlFor="ai-provider-key"
-            label="API key"
-          >
-            <Input
-              autoComplete="new-password"
-              className="font-mono"
-              id="ai-provider-key"
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Paste a key to set credentials"
-              type="password"
-              value={apiKey}
-            />
-          </FormField>
+          {wif && (
+            <div className="border-tertiary bg-secondary rounded-md border p-3">
+              <div className="text-primary text-sm font-medium">
+                Authenticating with workload identity
+              </div>
+              <p className="text-tertiary mt-1 text-sm">
+                imbi-api gets a short-lived token with the identity source of{' '}
+                {wifOrg}. There is no stored key.
+              </p>
+              <pre className="text-tertiary mt-2 font-mono text-xs whitespace-pre-wrap">
+                {JSON.stringify(wif.target)}
+              </pre>
+            </div>
+          )}
+          {!wif && (
+            <FormField
+              description={
+                provider.has_credentials
+                  ? `Replacing the key takes effect on the next request from every model under ${provider.name}.`
+                  : 'No key is set, so models under this provider cannot be called.'
+              }
+              htmlFor="ai-provider-key"
+              label="API key"
+            >
+              <Input
+                autoComplete="new-password"
+                className="font-mono"
+                id="ai-provider-key"
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Paste a key to set credentials"
+                type="password"
+                value={apiKey}
+              />
+            </FormField>
+          )}
           {provider.has_credentials && provider.credential_hint && (
             <p className="text-tertiary font-mono text-xs">
               Current key ends in ••••{provider.credential_hint}
             </p>
           )}
+          {canUseWif && !wif && selectedOrganization && (
+            <FormField
+              description={`Instead of a key: a short-lived token from the identity source of ${selectedOrganization.name} (Admin, Secrets, Identity). The vendor ids: ${TARGET_HELP[provider.driver] ?? ''}`}
+              htmlFor="ai-provider-wif-target"
+              label="Workload identity target"
+            >
+              <Textarea
+                className="font-mono"
+                id="ai-provider-wif-target"
+                onChange={(e) => setTargetText(e.target.value)}
+                placeholder="{}"
+                value={targetText}
+              />
+            </FormField>
+          )}
         </div>
 
         <DialogFooter>
+          {wif && (
+            <button
+              className="text-destructive mr-auto text-sm font-medium"
+              disabled={isPending}
+              onClick={onRemoveWorkloadIdentity}
+              type="button"
+            >
+              Stop using workload identity
+            </button>
+          )}
           {provider.has_credentials && (
             <button
               className="text-destructive mr-auto text-sm font-medium"
@@ -111,14 +182,32 @@ export function CredentialsDialog({
           >
             Cancel
           </button>
-          <button
-            className="bg-action text-action-foreground hover:bg-action-hover rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-            disabled={isPending || apiKey.trim() === ''}
-            onClick={() => onSave(apiKey.trim())}
-            type="button"
-          >
-            Save key
-          </button>
+          {canUseWif && !wif && selectedOrganization && (
+            <button
+              className="border-tertiary text-primary rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
+              disabled={isPending || target === null}
+              onClick={() =>
+                target &&
+                onSaveWorkloadIdentity({
+                  organization: selectedOrganization.slug,
+                  target,
+                })
+              }
+              type="button"
+            >
+              Use workload identity
+            </button>
+          )}
+          {!wif && (
+            <button
+              className="bg-action text-action-foreground hover:bg-action-hover rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
+              disabled={isPending || apiKey.trim() === ''}
+              onClick={() => onSave(apiKey.trim())}
+              type="button"
+            >
+              Save key
+            </button>
+          )}
         </DialogFooter>
       </DialogContent>
 
@@ -135,4 +224,15 @@ export function CredentialsDialog({
       />
     </Dialog>
   )
+}
+
+function parseTarget(text: string): null | Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(text)
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
 }

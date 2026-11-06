@@ -18,7 +18,7 @@ import typing
 import pydantic
 
 from imbi.common.plugins.errors import PluginRemediationNotSupported
-from imbi.common.plugins.identity import IdentitySource
+from imbi.common.plugins.identity import IdentitySource, TokenExchanger
 from imbi.common.plugins.secrets import SecretProvider
 
 
@@ -321,21 +321,28 @@ class PluginManifest(pydantic.BaseModel):
     identity_sources: list[type[IdentitySource]] = pydantic.Field(
         default_factory=list[type[IdentitySource]], exclude=True, repr=False
     )
+    #: Token exchanger classes (:class:`TokenExchanger` subclasses), one
+    #: for each vendor. imbi-api uses them for the AI Providers of that
+    #: vendor. Excluded from serialization.
+    token_exchangers: list[type[TokenExchanger]] = pydantic.Field(
+        default_factory=list[type[TokenExchanger]], exclude=True, repr=False
+    )
 
     @pydantic.model_validator(mode='after')
     def _validate_typed_classes(self) -> PluginManifest:
-        for kind, classes in (
-            ('secret provider', self.secret_providers),
-            ('identity source', self.identity_sources),
+        for kind, types in (
+            ('secret provider', [c.type for c in self.secret_providers]),
+            ('identity source', [c.type for c in self.identity_sources]),
+            ('token exchanger', [c.vendor for c in self.token_exchangers]),
         ):
-            types: set[str] = set()
-            for cls in classes:
-                if cls.type in types:
+            seen: set[str] = set()
+            for item_type in types:
+                if item_type in seen:
                     raise ValueError(
                         f'PluginManifest declares {kind} type '
-                        f'{cls.type!r} twice'
+                        f'{item_type!r} twice'
                     )
-                types.add(cls.type)
+                seen.add(item_type)
         return self
 
     @pydantic.model_validator(mode='after')
@@ -344,7 +351,10 @@ class PluginManifest(pydantic.BaseModel):
         # (for example a model vendor's token exchange) has no
         # Integration capability.
         if not (
-            self.capabilities or self.secret_providers or self.identity_sources
+            self.capabilities
+            or self.secret_providers
+            or self.identity_sources
+            or self.token_exchangers
         ):
             raise ValueError(
                 'PluginManifest.capabilities must declare at least one '

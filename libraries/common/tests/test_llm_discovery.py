@@ -182,6 +182,26 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.headers['x-api-key'], 'sk-test')
         self.assertEqual(request.url.params.get('limit'), '100')
 
+    async def test_anthropic_bearer_token(self) -> None:
+        """A WIF token is a Bearer with the OAuth beta and no key."""
+        api = AnthropicAPI([_model_json('claude-x')], status_code=401)
+        patcher, _ = _real_sdk(api)
+        with (
+            patcher,
+            unittest.mock.patch.dict(
+                'os.environ', {'ANTHROPIC_API_KEY': 'sk-env'}
+            ),
+            self.assertRaises(discovery.DiscoveryError) as ctx,
+        ):
+            await discovery.list_models(
+                'anthropic', 'sk-ant-oat01-x', None, bearer=True
+            )
+        self.assertEqual(ctx.exception.status, 401)
+        headers = api.requests[0].headers
+        self.assertEqual(headers['authorization'], 'Bearer sk-ant-oat01-x')
+        self.assertEqual(headers['anthropic-beta'], discovery.OAUTH_BETA)
+        self.assertNotIn('x-api-key', headers)
+
     async def test_anthropic_without_token_limits(self) -> None:
         """Both limits are optional on older published models."""
         patcher, _ = _real_sdk(AnthropicAPI([_model_json('claude-x')]))

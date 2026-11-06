@@ -1973,6 +1973,20 @@ export const deleteAIProviderCredentials = (id: string) =>
     `/ai-providers/${encodeURIComponent(id)}/credentials`,
   )
 
+export const setAIProviderWorkloadIdentity = (
+  id: string,
+  body: { organization: string; target: Record<string, unknown> },
+) =>
+  apiClient.put<AIProvider>(
+    `/ai-providers/${encodeURIComponent(id)}/workload-identity`,
+    body,
+  )
+
+export const deleteAIProviderWorkloadIdentity = (id: string) =>
+  apiClient.delete<AIProvider>(
+    `/ai-providers/${encodeURIComponent(id)}/workload-identity`,
+  )
+
 export const listAIModels = async (
   signal?: AbortSignal,
 ): Promise<AIModel[]> => {

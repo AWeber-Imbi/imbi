@@ -9,7 +9,10 @@ Two contracts:
   organization selects one source in its ``workload_identity`` setting.
 - A :class:`TokenExchanger` exchanges that JWT for a short-lived access
   token of a model vendor. The vendor plugin uses its exchanger
-  directly; there is no registry of exchangers.
+  directly for its secret provider, and declares it in
+  :attr:`PluginManifest.token_exchangers
+  <imbi.common.plugins.base.PluginManifest.token_exchangers>` for the
+  AI Providers of that vendor.
 
 Core supplies every claim value in an :class:`IdentityRequest`. A
 source never takes a claim value from its configuration. Plugins are

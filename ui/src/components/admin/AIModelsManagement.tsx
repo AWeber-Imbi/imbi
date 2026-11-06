@@ -12,12 +12,14 @@ import {
   deleteAIModel,
   deleteAIProvider,
   deleteAIProviderCredentials,
+  deleteAIProviderWorkloadIdentity,
   importAIModels,
   listAIModels,
   listAIProviderDrivers,
   listAIProviders,
   listTeams,
   setAIProviderCredentials,
+  setAIProviderWorkloadIdentity,
   updateAIModel,
   updateAIProvider,
 } from '@/api/endpoints'
@@ -183,6 +185,22 @@ export function AIModelsManagement() {
   })
   const removeCredentialsMutation = useMutation({
     mutationFn: (id: string) => deleteAIProviderCredentials(id),
+    onError: onMutationError,
+    onSuccess: closeAndRefresh,
+  })
+  const setWorkloadIdentityMutation = useMutation({
+    mutationFn: ({
+      body,
+      id,
+    }: {
+      body: { organization: string; target: Record<string, unknown> }
+      id: string
+    }) => setAIProviderWorkloadIdentity(id, body),
+    onError: onMutationError,
+    onSuccess: closeAndRefresh,
+  })
+  const removeWorkloadIdentityMutation = useMutation({
+    mutationFn: (id: string) => deleteAIProviderWorkloadIdentity(id),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
@@ -473,19 +491,33 @@ export function AIModelsManagement() {
       {credentialsProvider && (
         <CredentialsDialog
           error={
-            setCredentialsMutation.error ?? removeCredentialsMutation.error
+            setCredentialsMutation.error ??
+            removeCredentialsMutation.error ??
+            setWorkloadIdentityMutation.error ??
+            removeWorkloadIdentityMutation.error
           }
           isPending={
             setCredentialsMutation.isPending ||
-            removeCredentialsMutation.isPending
+            removeCredentialsMutation.isPending ||
+            setWorkloadIdentityMutation.isPending ||
+            removeWorkloadIdentityMutation.isPending
           }
           onClose={goToList}
           onRemove={() =>
             removeCredentialsMutation.mutate(credentialsProvider.id)
           }
+          onRemoveWorkloadIdentity={() =>
+            removeWorkloadIdentityMutation.mutate(credentialsProvider.id)
+          }
           onSave={(apiKey) =>
             setCredentialsMutation.mutate({
               apiKey,
+              id: credentialsProvider.id,
+            })
+          }
+          onSaveWorkloadIdentity={(body) =>
+            setWorkloadIdentityMutation.mutate({
+              body,
               id: credentialsProvider.id,
             })
           }
@@ -599,7 +631,7 @@ function matchesFilter(row: ProviderRow, filter: ProviderFilter): boolean {
   }
   if (filter === 'missing-credentials') {
     if (!row.provider) return true
-    return !row.provider.has_credentials && row.provider.auth_kind !== 'iam'
+    return row.provider.auth_kind === 'none'
   }
   return true
 }
