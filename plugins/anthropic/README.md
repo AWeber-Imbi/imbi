@@ -9,14 +9,26 @@ that agent.
 
 1. The organization selects an identity source (for example `aws_sts`) in
    Admin, Secrets, Identity.
-2. For each agent, an admin creates an Anthropic service account and a
+2. In the Anthropic Console, register the issuer of that identity source.
+   The registered issuer must match the `iss` claim of the identity JWT.
+   See the [Anthropic setup guide](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation).
+3. For each agent, an admin creates an Anthropic service account and a
    federation rule. The rule matches the role ARN (`sub`) and the
-   agent's `imbi_agent` request tag.
-3. A dynamic `anthropic_wif` binding holds the Anthropic ids of that
-   agent. The agent's **Model key** names the binding.
-4. At resolution time, Imbi gets a new identity JWT, exchanges it at
+   agent's `imbi_agent` request tag. The rule sets the token lifetime
+   (`token_lifetime_seconds`). Imbi cannot revoke the token, so keep this
+   lifetime short.
+4. A dynamic `anthropic_wif` binding holds the Anthropic ids of that
+   agent. Select the binding as the agent's **Model key**. This does not
+   create a grant: also add a `model_inference` grant for the agent and
+   the binding, with delivery mode `file_descriptor`. Without it,
+   resolution fails with `no_grant`.
+5. At resolution time, Imbi gets a new identity JWT, exchanges it at
    `https://api.anthropic.com/v1/oauth/token`, and gives the token to
    the runner.
+
+The runner does not yet send this token as `Authorization: Bearer`
+(WIF plan phase P4). Until then, the runner cannot use an
+`anthropic_wif` token for model calls.
 
 ## Binding locator
 
