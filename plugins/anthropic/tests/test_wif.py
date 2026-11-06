@@ -77,6 +77,10 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
         request = self.requests[0]
         self.assertEqual(str(request.url), wif.TOKEN_URL)
         self.assertEqual(
+            request.headers['anthropic-beta'],
+            'oauth-2025-04-20,oidc-federation-2026-04-01',
+        )
+        self.assertEqual(
             json.loads(request.content),
             {
                 'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -147,6 +151,7 @@ class ProviderTestCase(unittest.IsolatedAsyncioTestCase):
         material = await self._resolve()
         self.assertEqual(material.value, b'sk-ant-oat01-x')
         self.assertEqual(material.credential_expires_at, self.expires)
+        self.assertTrue(material.bearer)
         self.host.vendor_token.assert_awaited_once_with(
             'org', wif.EXCHANGER, TARGET, agent_id='agent-1'
         )

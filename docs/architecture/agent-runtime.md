@@ -122,7 +122,11 @@ The runner has these parts:
   and forwards only `POST /v1/messages` and
   `POST /v1/messages/count_tokens` to the upstream (the Anthropic API or a
   LiteLLM gateway). It reads the token usage of each response. When the
-  budget is spent, it refuses the next call.
+  budget is spent, it refuses the next call. A vendor access token from
+  workload identity federation (the broker marks it `bearer`) goes in
+  `Authorization: Bearer`, not in `x-api-key`. The runner gets a new token
+  before the old one expires, and after a `401` it gets a new token and
+  sends the call again one time.
 - **Imbi relay.** The runner is the MCP client of imbi-mcp. It calls with
   the agent API token, which the model never sees. The model gets only
   the Imbi tools that the agent's tool map has. imbi-api checks the

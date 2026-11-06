@@ -453,6 +453,19 @@ class FetchTestCase(BaseTestCase):
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
         self.spawn.assert_not_called()
 
+    async def test_returns_the_expiry_of_a_dynamic_credential(self) -> None:
+        await self.hello()
+        expires = '2026-11-06T20:00:00+00:00'
+        self.api.materialize.return_value |= {
+            'credential_expires_at': expires,
+            'bearer': True,
+        }
+        reply = await self.executor.dispatch(self.fetch())
+        self.assertEqual(
+            reply, {'material': SECRET, 'expires_at': expires, 'bearer': True}
+        )
+        self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+
     async def test_returns_an_mcp_server_credential(self) -> None:
         await self.hello()
         reply = await self.executor.dispatch(self.fetch('mcp_server'))

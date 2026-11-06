@@ -16,6 +16,7 @@ proxy refuses model calls when the remaining budget is zero.
 import asyncio
 import contextlib
 import dataclasses
+import datetime
 import decimal
 import hashlib
 import http
@@ -23,6 +24,7 @@ import json
 import logging
 import os
 import pathlib
+import random
 import re
 import shutil
 import typing
@@ -57,6 +59,12 @@ SESSION_HEARTBEAT = 10
 #: The largest CLI message line that the SDK reads.
 SDK_BUFFER = 64 * 1024 * 1024
 RESOLUTION_TTL = 300
+#: The longest refresh lead of a model access token (WIF plan 4.6).
+KEY_REFRESH_LEAD = 300.0
+#: The longest wait between two failed refreshes.
+KEY_RETRY_MAX = 30.0
+#: The shortest wait between two successful refreshes.
+KEY_RENEW_MIN = 30.0
 ANTHROPIC_API = 'https://api.anthropic.com'
 #: The built-in tools when the organization allows all of them. The
 #: runner uses ``dontAsk``, so a tool must be listed to run: the CLI's
@@ -510,10 +518,20 @@ class TaskRun:
         self.control = 'run'
         self.closed = False
         self.remaining: decimal.Decimal | None = None
+        #: ``last_seq`` of the newest task state applied. Each usage
+        #: report writes an event, so ``last_seq`` gives server order. A
+        #: late reply with an older state must not restore a spent budget.
+        self.state_seq = 0
         self.failure: str | None = None
         self.client: sdk.ClaudeSDKClient | None = None
         self.stopping: asyncio.Task[None] | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
+        #: The model credential that the proxy sends. A refresh
+        #: replaces it (WIF plan 4.7).
+        self.credential = proxy.Credential('')
+        #: One refresh at a time; a second caller waits for it.
+        self.key_lock = asyncio.Lock()
+        self.refresher: asyncio.Task[None] | None = None
         #: Runs a child task of the chain and returns its summary.
         self.children = children
         #: The agent API token (P7): memory only. The runner heartbeat
@@ -587,6 +605,8 @@ class TaskRun:
             done = ('failed_external', 'harness_error')
         finally:
             heartbeat.cancel()
+            if self.refresher is not None:
+                self.refresher.cancel()
         if self.failure is not None:
             done = ('failed_external', self.failure)
         await self.flush()
@@ -599,14 +619,17 @@ class TaskRun:
             await self.build_workspace()
         self.cwd = self._cwd()
         self.layout.make_task(str(self.task['id']))
-        key = await self.model_key()
+        self.credential = await self.model_key()
+        if self.credential.expires_at is not None:
+            self.refresher = asyncio.create_task(self._refresh_key())
         upstream: Body = self.config.get('model_upstream') or {}
         url = proxy.start(
             str(upstream.get('base_url') or ANTHROPIC_API),
-            key,
+            lambda: self.credential,
             litellm=upstream.get('kind') == 'litellm',
             meter=self.meter,
             allowed=self.allowed,
+            refresh=self.refresh_after_401,
         )
         await self.start_relay()
         await self.start_external()
@@ -651,7 +674,14 @@ class TaskRun:
         LOGGER.info('Task %s ended: %s %s', self.api.short_id, kind, reason)
 
     def _state(self, state: Body) -> None:
-        """Apply a task state from a heartbeat or a usage report."""
+        """Apply a task state from a heartbeat or a usage report. Ignore
+        a state that is older (by ``last_seq``) than one already applied.
+        """
+        if 'last_seq' in state:
+            seq = int(state['last_seq'] or 0)
+            if seq < self.state_seq:
+                return
+            self.state_seq = seq
         self.state = {**self.state, **state}
         control = str(state.get('control') or self.control)
         if control != self.control or state.get('status') == 'closed':
@@ -700,14 +730,29 @@ class TaskRun:
     def meter(self, model: str, usage: Body) -> None:
         """Report one model call (proxy thread). Wait for the reply, so
         the next call sees the new budget."""
-        assert self.loop is not None  # noqa: S101 - set by run()
-        future = asyncio.run_coroutine_threadsafe(
-            self.report(model, usage), self.loop
+        self._wait_on_loop(
+            self.report(model, usage), 'Usage report', cancel=False
         )
+
+    def _wait_on_loop(
+        self,
+        coro: abc.Coroutine[typing.Any, typing.Any, None],
+        what: str,
+        *,
+        cancel: bool = True,
+    ) -> None:
+        """Run ``coro`` on the task loop from a proxy thread and wait
+        for it. A failure or a timeout is only logged: the proxy thread
+        must go on. Without ``cancel``, a timed-out ``coro`` continues
+        on the loop (a usage report must not be lost)."""
+        assert self.loop is not None  # noqa: S101 - set by run()
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         try:
             future.result(timeout=60)
         except Exception:  # noqa: BLE001 - the proxy thread must go on
-            LOGGER.warning('Usage report of %s failed', self.api.short_id)
+            if cancel:
+                future.cancel()
+            LOGGER.warning('%s of %s failed', what, self.api.short_id)
 
     async def report(self, model: str, usage: Body) -> None:
         """Send the ADR 0020 usage report. A missing cache field is 0;
@@ -744,26 +789,99 @@ class TaskRun:
             return
         raise RuntimeError('usage report failed')
 
-    async def model_key(self) -> str:
+    async def model_key(self) -> proxy.Credential:
         """Get the model key through a ``model_inference`` resolution.
 
         The executor materializes it and gives it to the runner, then
-        releases it: the key is static, so the release ends only Imbi
-        access (plan section 9.1 rule 7).
+        releases it: the release ends only Imbi access (plan section
+        9.1 rule 7). A dynamic credential has ``expires_at``; a vendor
+        access token is ``bearer``.
         """
         upstream: Body = self.config.get('model_upstream') or {}
         reference = upstream.get('key_ref')
         if not reference:
             raise Failed('model_key_missing')
-        return await self.fetch_secret(
+        reply = await self.fetch(
             str(reference), 'model_inference', 'model_key'
         )
+        expires_at = reply.get('expires_at')
+        return proxy.Credential(
+            str(reply['material']),
+            datetime.datetime.fromisoformat(expires_at)
+            if expires_at
+            else None,
+            bearer=bool(reply.get('bearer')),
+        )
+
+    async def renew_key(self, failed: str | None = None) -> None:
+        """Replace the model access token. With ``failed``, only when
+        that token is still the current one (another caller can have
+        replaced it). A call in progress keeps the old token.
+
+        Raises:
+            Failed: as :meth:`model_key`.
+
+        """
+        async with self.key_lock:
+            if self.credential.expires_at is None or (
+                failed is not None and failed != self.credential.value
+            ):
+                return
+            self.credential = await self.model_key()
+
+    async def _refresh_key(self) -> None:
+        """Renew the model access token before it expires (WIF plan
+        4.6): at the lesser of :data:`KEY_REFRESH_LEAD` and 20 percent
+        of its lifetime before the expiry, with a jitter of at most
+        half of that lead. Retry a failed renewal with bounded backoff.
+        Wait at least :data:`KEY_RENEW_MIN` after a renewal, also when
+        the new token is near its expiry. Task cancellation stops it."""
+        floor = 0.0
+        while (expires_at := self.credential.expires_at) is not None:
+            lifetime = (
+                expires_at - datetime.datetime.now(datetime.UTC)
+            ).total_seconds()
+            lead = min(KEY_REFRESH_LEAD, 0.2 * max(lifetime, 0.0))
+            await asyncio.sleep(
+                max(lifetime - lead - random.uniform(0, lead / 2), floor)  # noqa: S311 - jitter, not a secret
+            )
+            floor = KEY_RENEW_MIN
+            delay = 1.0
+            while self.credential.expires_at == expires_at:
+                try:
+                    await self.renew_key()
+                    break  # same expiry: the outer loop waits the floor
+                # ValueError: a partial JSON reply from the executor.
+                except (Failed, httpx.HTTPError, ValueError) as err:
+                    LOGGER.warning(
+                        'Model key renewal of %s failed: %s',
+                        self.api.short_id,
+                        err,
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, KEY_RETRY_MAX)
+
+    def refresh_after_401(self, failed: str) -> None:
+        """Renew the model access token after a ``401`` (proxy
+        thread). Return when it is done or failed."""
+        self._wait_on_loop(self.renew_key(failed), 'Model key renewal')
 
     async def fetch_secret(
         self, reference: str, purpose: str, name: str
     ) -> str:
         """The material of a setup secret that the runner itself uses,
         through the executor (H22). It goes to the redactor.
+
+        Raises:
+            Failed: as :meth:`fetch`.
+
+        """
+        return str((await self.fetch(reference, purpose, name))['material'])
+
+    async def fetch(self, reference: str, purpose: str, name: str) -> Body:
+        """The executor reply for a setup secret: ``material``, and
+        ``expires_at`` for a dynamic credential. The material goes to
+        the redactor.
 
         Raises:
             Failed: ``<name>_refused``, ``executor_unavailable``, or
@@ -781,9 +899,8 @@ class TaskRun:
             raise Failed('executor_unavailable') from err
         if 'material' not in reply:
             raise Failed(f'{name}_unavailable')
-        material = str(reply['material'])
-        self.redactor.add(material)
-        return material
+        self.redactor.add(str(reply['material']))
+        return reply
 
     async def setup_secret(
         self, reference: str, purpose: str, repository: str | None = None

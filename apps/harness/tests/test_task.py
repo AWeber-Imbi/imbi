@@ -7,6 +7,7 @@ The user switches and the CLI start need the pod; the kind suite in
 
 import asyncio
 import contextlib
+import datetime
 import decimal
 import json
 import os
@@ -492,7 +493,9 @@ class ConfigTestCase(TaskTestCase):
 class ModelKeyTestCase(TaskTestCase):
     async def test_fetches_through_the_executor(self) -> None:
         self.call.return_value = {'material': KEY}
-        self.assertEqual(await self.run_task.model_key(), KEY)
+        self.assertEqual(
+            await self.run_task.model_key(), proxy.Credential(KEY)
+        )
         body = self.client.create_resolution.call_args.args[1]
         self.assertEqual(body['purpose'], 'model_inference')
         self.assertEqual(body['delivery'], task.SETUP_DELIVERY)
@@ -525,6 +528,139 @@ class ModelKeyTestCase(TaskTestCase):
         with self.assertRaises(task.Failed) as ctx:
             await self.run_task.model_key()
         self.assertEqual(ctx.exception.reason, 'executor_unavailable')
+
+
+class KeyRefreshTestCase(TaskTestCase):
+    """The model access token refresh (WIF plan 4.6 and 4.7)."""
+
+    def token(self, name: str, seconds: float) -> dict[str, str]:
+        expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            seconds=seconds
+        )
+        return {
+            'material': name,
+            'expires_at': expires.isoformat(),
+            'bearer': True,
+        }
+
+    async def test_access_token_has_its_expiry(self) -> None:
+        reply = self.token('t1', 600)
+        self.call.return_value = reply
+        credential = await self.run_task.model_key()
+        self.assertEqual(credential.value, 't1')
+        self.assertTrue(credential.bearer)
+        self.assertEqual(
+            credential.expires_at,
+            datetime.datetime.fromisoformat(reply['expires_at']),
+        )
+
+    async def test_renews_before_expiry_and_retries(self) -> None:
+        self.call.side_effect = [
+            self.token('t2', 600),
+            httpx.ConnectError('down'),
+            self.token('t3', 600),
+        ]
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.now(datetime.UTC)
+        )
+        sleeps: list[float] = []
+        real_sleep = asyncio.sleep
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) > 3:
+                raise asyncio.CancelledError
+            await real_sleep(0)
+
+        with (
+            mock.patch.object(task.asyncio, 'sleep', sleep),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+        self.assertEqual(self.run_task.credential.value, 't3')
+        # Expired: at once. A 600-second token: 120 seconds before the
+        # expiry, with at most 60 seconds of jitter. A failure: 1 second.
+        self.assertEqual(sleeps[0], 0.0)
+        self.assertTrue(420 <= sleeps[1] <= 481, sleeps[1])
+        self.assertEqual(sleeps[2], 1.0)
+
+    async def test_waits_after_renewal_to_expired_token(self) -> None:
+        self.call.side_effect = [
+            ValueError('partial reply'),
+            self.token('t2', 0),
+        ]
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.now(datetime.UTC)
+        )
+        sleeps: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) > 2:
+                raise asyncio.CancelledError
+
+        with (
+            mock.patch.object(task.asyncio, 'sleep', sleep),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+        self.assertEqual(self.run_task.credential.value, 't2')
+        # Expired: at once. A decode error: 1 second. The new token
+        # is expired too: wait the minimum.
+        self.assertEqual(sleeps, [0.0, 1.0, task.KEY_RENEW_MIN])
+
+    async def test_waits_after_renewal_with_same_expiry(self) -> None:
+        reply = self.token('t2', 0)
+        self.call.return_value = reply
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.fromisoformat(reply['expires_at'])
+        )
+        sleeps: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) > 1:
+                raise asyncio.CancelledError
+
+        with (
+            mock.patch.object(task.asyncio, 'sleep', sleep),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+        # One renewal, then the minimum wait: no renewal loop.
+        self.assertEqual(self.call.await_count, 1)
+        self.assertEqual(sleeps, [0.0, task.KEY_RENEW_MIN])
+
+    async def test_static_key_is_not_renewed(self) -> None:
+        self.run_task.credential = proxy.Credential(KEY)
+        await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+        await self.run_task.renew_key(KEY)
+        self.call.assert_not_called()
+
+    async def test_renews_once_for_concurrent_401s(self) -> None:
+        self.call.return_value = self.token('t2', 600)
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.now(datetime.UTC)
+        )
+        await asyncio.gather(
+            self.run_task.renew_key('t1'), self.run_task.renew_key('t1')
+        )
+        self.assertEqual(self.run_task.credential.value, 't2')
+        self.call.assert_awaited_once()
+
+    async def test_401_from_the_proxy_thread(self) -> None:
+        self.run_task.loop = asyncio.get_running_loop()
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.now(datetime.UTC)
+        )
+        self.call.return_value = {'error': 'secret_provider_unavailable'}
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await asyncio.to_thread(self.run_task.refresh_after_401, 't1')
+        self.call.return_value = self.token('t2', 600)
+        await asyncio.to_thread(self.run_task.refresh_after_401, 't1')
+        self.assertEqual(self.run_task.credential.value, 't2')
 
 
 class UsageTestCase(TaskTestCase):
@@ -582,6 +718,43 @@ class UsageTestCase(TaskTestCase):
         assert self.run_task.stopping is not None
         await self.run_task.stopping
         self.run_task.client.interrupt.assert_awaited_once()
+
+    async def late_reply(
+        self, first: dict[str, typing.Any], second: dict[str, typing.Any]
+    ) -> None:
+        """Send two reports. The reply to the first arrives last."""
+        first_sent = asyncio.Event()
+        release_first = asyncio.Event()
+        replies = [first, second]
+
+        async def post(*_args: typing.Any, **_kwargs: typing.Any) -> mock.Mock:
+            reply = replies.pop(0)
+            if not first_sent.is_set():
+                first_sent.set()
+                await release_first.wait()
+            return mock.Mock(json=mock.Mock(return_value=reply))
+
+        self.client.post.side_effect = post
+        older = asyncio.create_task(self.run_task.report('m', {}))
+        await first_sent.wait()
+        await self.run_task.report('m', {})
+        release_first.set()
+        await older
+
+    async def test_late_reply_does_not_restore_the_budget(self) -> None:
+        await self.late_reply(
+            self.reply(last_seq=1),
+            self.reply(last_seq=2, budget_remaining='0'),
+        )
+        self.assertFalse(self.run_task.allowed())
+
+    async def test_late_reply_with_newer_state_is_applied(self) -> None:
+        # The server did the first report last: its state is the newest.
+        await self.late_reply(
+            self.reply(last_seq=2, budget_remaining='0'),
+            self.reply(last_seq=1),
+        )
+        self.assertFalse(self.run_task.allowed())
 
     async def test_closed_task(self) -> None:
         self.client.post.side_effect = api.Refused(409, 'task_closed')
@@ -998,7 +1171,7 @@ class RunTestCase(TaskTestCase):
         self.assertNotIn(KEY, json.dumps(events))
         upstream, key = self.proxy.call_args.args
         self.assertEqual(upstream, task.ANTHROPIC_API)
-        self.assertEqual(key, KEY)
+        self.assertEqual(key(), proxy.Credential(KEY))
         self.assertFalse(self.proxy.call_args.kwargs['litellm'])
         transcript = self.tmp / 'transcripts' / 't.jsonl'
         self.assertEqual(len(transcript.read_text().splitlines()), 4)

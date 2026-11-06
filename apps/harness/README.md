@@ -23,7 +23,8 @@ A runner process runs one chain. For its root task it:
    repository gets, for its host only, a push helper that reads `GH_TOKEN`
    from a `run_with_secret` command (`git-credential-env`),
 3. gets the model key through a `model_inference` resolution, which the
-   executor materializes and releases,
+   executor materializes and releases; it gets a new vendor access token
+   (workload identity federation) before the old one expires,
 4. starts a loopback model proxy for the task (Anthropic or LiteLLM), which
    reports usage after each call and refuses calls when the budget is spent,
 5. writes the task's `CLAUDE_CONFIG_DIR` (`settings.json`, `CLAUDE.md`) and

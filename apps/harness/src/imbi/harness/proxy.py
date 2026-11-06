@@ -19,8 +19,17 @@ model and the counts to ``meter`` before the response ends, so the
 next call sees the new budget. When ``allowed`` returns false (the
 budget is spent), it refuses a new call with no upstream call. The
 overshoot is one model call (ADR 0020).
+
+The credential comes from ``key`` on each call, so a refresh replaces
+it and a call in progress keeps the old one. A vendor access token
+(WIF plan 4.7) goes in ``Authorization: Bearer``, not in
+``x-api-key``. After a ``401`` for a credential with an expiry, the
+proxy calls ``refresh`` with the failed token and sends the call again
+one time with the new token. The client has no response bytes yet, so
+this is also safe for a stream.
 """
 
+import datetime  # noqa: TC003 - NamedTuple reads its annotations
 import http.client
 import http.server
 import json
@@ -31,6 +40,17 @@ import urllib.parse
 #: ``meter(model, usage)``: the model id and the ``usage`` fields of one
 #: call; ``usage`` is empty when the response had none.
 type Meter = typing.Callable[[str, dict[str, typing.Any]], None]
+
+
+class Credential(typing.NamedTuple):
+    """The upstream key, its expiry, and whether it is an OAuth access
+    token (``Authorization: Bearer``)."""
+
+    value: str
+    expires_at: datetime.datetime | None = None
+    bearer: bool = False
+
+
 #: The largest JSON response body that the proxy reads usage from.
 _JSON_LIMIT = 64 * 1024 * 1024
 _SPENT = json.dumps(
@@ -58,6 +78,9 @@ _DROP = frozenset(
         'x-api-key',
     }
 )
+_BETA = 'anthropic-beta'
+#: The API beta that enables ``Authorization: Bearer`` access tokens.
+_OAUTH_BETA = 'oauth-2025-04-20'
 #: The largest request body. The Anthropic Messages API takes requests
 #: of up to 32 MB, which images and long contexts can reach; a larger
 #: body cannot succeed upstream.
@@ -146,18 +169,20 @@ def _nominated(values: list[str]) -> frozenset[str]:
 class _Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only inputs
         self,
         upstream: str,
-        key: str,
+        key: typing.Callable[[], Credential],
         *,
         litellm: bool,
         meter: Meter | None,
         allowed: typing.Callable[[], bool] | None,
+        refresh: typing.Callable[[str], None] | None,
     ) -> None:
         super().__init__(('127.0.0.1', 0), _Handler)
         self.upstream = urllib.parse.urlsplit(upstream)
         self.key = key
+        self.refresh = refresh
         self.litellm = litellm
         self.meter = meter
         self.allowed = allowed
@@ -241,23 +266,18 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             for name, value in self.headers.items()
             if name.lower() not in drop
         }
-        headers['x-api-key'] = server.key
-        if server.litellm:
-            headers['Authorization'] = f'Bearer {server.key}'
-        connection_class = (
-            http.client.HTTPSConnection
-            if server.upstream.scheme == 'https'
-            else http.client.HTTPConnection
-        )
-        upstream = connection_class(server.upstream.netloc, timeout=600)
+        key = server.key()
+        upstream, response = self._send(target, body, headers, key)
         try:
-            upstream.request(
-                self.command,
-                server.upstream.path.rstrip('/') + target,
-                body=body,
-                headers=headers,
-            )
-            response = upstream.getresponse()
+            if (
+                response.status == http.client.UNAUTHORIZED
+                and key.expires_at is not None
+                and server.refresh is not None
+            ):
+                server.refresh(key.value)
+                if (new := server.key()).value != key.value:
+                    upstream.close()
+                    upstream, response = self._send(target, body, headers, new)
             self.send_response(response.status)
             hop = _HOP | _nominated(
                 response.headers.get_all('Connection') or []
@@ -283,22 +303,73 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         finally:
             upstream.close()
 
+    def _send(
+        self,
+        target: str,
+        body: bytes,
+        headers: dict[str, str],
+        key: Credential,
+    ) -> tuple[http.client.HTTPConnection, http.client.HTTPResponse]:
+        server = typing.cast('_Server', self.server)
+        headers = dict(headers)
+        if not key.bearer:
+            headers['x-api-key'] = key.value
+        if key.bearer or server.litellm:
+            headers['Authorization'] = f'Bearer {key.value}'
+        if key.bearer:
+            # The API accepts a bearer access token only with this beta.
+            flags = [
+                flag.strip()
+                for name in [n for n in headers if n.lower() == _BETA]
+                for flag in headers.pop(name).split(',')
+                if flag.strip()
+            ]
+            if _OAUTH_BETA not in flags:
+                flags.append(_OAUTH_BETA)
+            headers[_BETA] = ','.join(flags)
+        connection_class = (
+            http.client.HTTPSConnection
+            if server.upstream.scheme == 'https'
+            else http.client.HTTPConnection
+        )
+        upstream = connection_class(server.upstream.netloc, timeout=600)
+        try:
+            upstream.request(
+                self.command,
+                server.upstream.path.rstrip('/') + target,
+                body=body,
+                headers=headers,
+            )
+            return upstream, upstream.getresponse()
+        except BaseException:
+            upstream.close()
+            raise
 
-def start(
+
+def start(  # noqa: PLR0913 - keyword-only inputs
     upstream: str,
-    key: str,
+    key: typing.Callable[[], Credential],
     *,
     litellm: bool = False,
     meter: Meter | None = None,
     allowed: typing.Callable[[], bool] | None = None,
+    refresh: typing.Callable[[str], None] | None = None,
 ) -> str:
     """Start the proxy in a daemon thread. Return its base URL.
 
-    ``litellm``: the upstream is a LiteLLM gateway, which also takes
-    the key as a bearer token.
+    ``key`` returns the current credential. ``litellm``: the upstream
+    is a LiteLLM gateway, which also takes the key as a bearer token.
+    ``refresh(failed)`` (proxy thread) replaces the credential after a
+    ``401``; it returns when the new credential is in place or the
+    refresh failed.
     """
     server = _Server(
-        upstream, key, litellm=litellm, meter=meter, allowed=allowed
+        upstream,
+        key,
+        litellm=litellm,
+        meter=meter,
+        allowed=allowed,
+        refresh=refresh,
     )
     threading.Thread(target=server.serve_forever, daemon=True).start()
     host, port = server.server_address[:2]

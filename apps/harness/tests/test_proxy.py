@@ -1,4 +1,5 @@
 import concurrent.futures
+import datetime
 import http.client
 import http.server
 import json
@@ -11,6 +12,8 @@ import urllib.error
 import urllib.request
 
 from imbi.harness import proxy
+
+REAL = proxy.Credential('real-key')
 
 
 class _Upstream(http.server.BaseHTTPRequestHandler):
@@ -57,7 +60,7 @@ class ProxyTestCase(unittest.TestCase):
         threading.Thread(target=upstream.serve_forever, daemon=True).start()
         self.addCleanup(upstream.shutdown)
         host, port = upstream.server_address[:2]
-        self.url = proxy.start(f'http://{host!s}:{port}', 'real-key')
+        self.url = proxy.start(f'http://{host!s}:{port}', lambda: REAL)
         self.host, self.port = self.url.removeprefix('http://').split(':')
 
     def raw(
@@ -188,6 +191,11 @@ class _Model(http.server.BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         self.calls.append({k.lower(): v for k, v in self.headers.items()})
+        if self.headers.get('Authorization') == 'Bearer old-token':
+            self.send_response(401)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         if self.path.startswith('/v1/messages/count_tokens'):
             data, kind = b'{"input_tokens": 3}', 'application/json'
         elif body.get('stream'):
@@ -238,7 +246,7 @@ class MeterTestCase(unittest.TestCase):
     def start(self, **kwargs: typing.Any) -> str:
         return proxy.start(
             self.upstream,
-            'real-key',
+            kwargs.pop('key', lambda: REAL),
             meter=lambda model, usage: self.metered.append((model, usage)),
             allowed=lambda: self.budget,
             **kwargs,
@@ -283,7 +291,10 @@ class MeterTestCase(unittest.TestCase):
             self.budget = False
 
         url = proxy.start(
-            self.upstream, 'real-key', meter=meter, allowed=lambda: self.budget
+            self.upstream,
+            lambda: REAL,
+            meter=meter,
+            allowed=lambda: self.budget,
         )
         with concurrent.futures.ThreadPoolExecutor(2) as pool:
             statuses = sorted(
@@ -326,6 +337,71 @@ class MeterTestCase(unittest.TestCase):
         self.post(self.start(), {'model': 'm'})
         (headers,) = _Model.calls
         self.assertNotIn('authorization', headers)
+
+    def test_access_token_goes_in_bearer_only(self) -> None:
+        token = proxy.Credential(
+            'sk-ant-oat01-t', datetime.datetime.now(datetime.UTC), bearer=True
+        )
+        self.post(self.start(key=lambda: token), {'model': 'm'})
+        (headers,) = _Model.calls
+        self.assertEqual(headers['authorization'], 'Bearer sk-ant-oat01-t')
+        self.assertNotIn('x-api-key', headers)
+        self.assertEqual(headers['anthropic-beta'], 'oauth-2025-04-20')
+
+    def test_access_token_keeps_the_client_betas(self) -> None:
+        token = proxy.Credential('t', None, bearer=True)
+        url = self.start(key=lambda: token)
+        for path in ('/v1/messages', '/v1/messages/count_tokens'):
+            request = urllib.request.Request(
+                url + path,
+                data=b'{"model": "m"}',
+                headers={'anthropic-beta': 'a-1, oauth-2025-04-20,b-2'},
+            )
+            with urllib.request.urlopen(request) as response:
+                response.read()
+        self.assertEqual(
+            [headers['anthropic-beta'] for headers in _Model.calls],
+            ['a-1,oauth-2025-04-20,b-2'] * 2,
+        )
+
+    def test_api_key_gets_no_beta(self) -> None:
+        self.post(self.start(), {'model': 'm'})
+        (headers,) = _Model.calls
+        self.assertNotIn('anthropic-beta', headers)
+
+    def test_401_refreshes_and_sends_again_once(self) -> None:
+        expires = datetime.datetime.now(datetime.UTC)
+        current = [proxy.Credential('old-token', expires, bearer=True)]
+        failed: list[str] = []
+
+        def refresh(token: str) -> None:
+            failed.append(token)
+            current[0] = proxy.Credential('new-token', expires, bearer=True)
+
+        status, _ = self.post(
+            self.start(key=lambda: current[0], refresh=refresh),
+            {'model': 'm', 'stream': True},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(failed, ['old-token'])
+        self.assertEqual(
+            [h['authorization'] for h in _Model.calls],
+            ['Bearer old-token', 'Bearer new-token'],
+        )
+        self.assertEqual(len(self.metered), 1)
+
+    def test_401_with_no_new_token_goes_to_the_client(self) -> None:
+        token = proxy.Credential(
+            'old-token', datetime.datetime.now(datetime.UTC), bearer=True
+        )
+        refresh = unittest.mock.Mock()
+        status, _ = self.post(
+            self.start(key=lambda: token, refresh=refresh), {'model': 'm'}
+        )
+        self.assertEqual(status, 401)
+        refresh.assert_called_once_with('old-token')
+        self.assertEqual(len(_Model.calls), 1)
+        self.assertEqual(self.metered, [])
 
 
 class UsageTestCase(unittest.TestCase):
