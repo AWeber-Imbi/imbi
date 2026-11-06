@@ -1088,6 +1088,11 @@ class AgentSettings(pydantic.BaseModel):
     plugins: list[AgentPlugin] = []
     #: The ``secret://`` reference of the agent's GitHub App binding.
     github_app_binding: str | None = None
+    #: The ``secret://`` reference of the agent's model key. It replaces
+    #: the key of the organization's model upstream. ``None`` uses the
+    #: organization's key. A ``model_inference`` grant is still
+    #: necessary.
+    model_key_ref: str | None = None
     #: The ``secret://`` references that the agent may request. A grant
     #: is still necessary.
     secrets: list[str] = []

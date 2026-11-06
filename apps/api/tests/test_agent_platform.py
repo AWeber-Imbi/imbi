@@ -520,6 +520,38 @@ class NarrowingTests(unittest.TestCase):
             'plan',
         )
 
+    def test_merge_uses_the_agent_model_key(self) -> None:
+        config = platform.AgentPlatformConfig(
+            model_upstream=platform.ModelUpstream(
+                kind='litellm',
+                base_url='https://llm.example.com',
+                key_ref='secret://anthropic/org#api-key',
+            )
+        )
+        merged = platform.merge(config, models.AgentSettings())
+        self.assertEqual(
+            merged.model_upstream.key_ref, 'secret://anthropic/org#api-key'
+        )
+        merged = platform.merge(
+            config,
+            models.AgentSettings(
+                model_key_ref='secret://anthropic/triage#api-key'
+            ),
+        )
+        self.assertEqual(
+            merged.model_upstream.key_ref,
+            'secret://anthropic/triage#api-key',
+        )
+        # Only the key changes; the upstream stays the organization's.
+        self.assertEqual(merged.model_upstream.kind, 'litellm')
+        self.assertEqual(
+            str(merged.model_upstream.base_url), 'https://llm.example.com/'
+        )
+        # The organization's configuration is not changed.
+        self.assertEqual(
+            config.model_upstream.key_ref, 'secret://anthropic/org#api-key'
+        )
+
 
 class PinTests(unittest.TestCase):
     def test_pins_to_the_catalog_head(self) -> None:

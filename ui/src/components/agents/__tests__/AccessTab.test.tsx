@@ -32,13 +32,21 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const AGENT = { id: 'agt-1', name: 'Mender' }
 
-function binding(id: string, reference: string): SecretBinding {
+function binding(
+  id: string,
+  reference: string,
+  allowed_fields: string[] = [],
+  changes: Partial<SecretBinding> = {},
+): SecretBinding {
   return {
+    allowed_delivery_modes: ['file_descriptor', 'environment'],
+    allowed_fields,
     enabled: true,
     id,
     max_ttl_seconds: 3600,
     provider_id: 'p-1',
     reference,
+    ...changes,
   } as SecretBinding
 }
 
@@ -63,6 +71,10 @@ describe('AccessTab', () => {
     vi.mocked(endpoints.listSecretBindings).mockResolvedValue([
       binding('b-gh', 'secret://dev/github_app'),
       binding('b-npm', 'secret://ci/npm_token'),
+      binding('b-key', 'secret://anthropic/triage', ['api-key']),
+      binding('b-env', 'secret://anthropic/env_only', [], {
+        allowed_delivery_modes: ['environment'],
+      }),
     ])
     vi.mocked(endpoints.listSecretGrants).mockResolvedValue([
       grant({
@@ -86,7 +98,7 @@ describe('AccessTab', () => {
     vi.mocked(endpoints.createSecretGrant).mockResolvedValue(grant({}) as never)
   })
 
-  function renderTab() {
+  function renderTab(modelKeyRef = '') {
     render(
       <AccessTab
         agent={AGENT}
@@ -96,6 +108,7 @@ describe('AccessTab', () => {
         value={{
           ...emptyDraft().settings,
           githubAppBinding: 'secret://dev/github_app',
+          modelKeyRef,
         }}
       />,
     )
@@ -123,6 +136,70 @@ describe('AccessTab', () => {
         purposes: ['github_write'],
       }),
     )
+  })
+
+  it('grants the model key that the agent uses', async () => {
+    renderTab('secret://anthropic/triage#api-key')
+    const row = (await screen.findByText('Call the model')).closest('div')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Grant' }))
+    await waitFor(() =>
+      expect(endpoints.createSecretGrant).toHaveBeenCalledWith('acme', {
+        agent_ids: [AGENT.id],
+        binding_ids: ['b-key'],
+        delivery_modes: ['file_descriptor'],
+        description: 'Mender: model_inference with secret://anthropic/triage',
+        enabled: true,
+        max_ttl_seconds: 900,
+        project_ids: [],
+        purposes: ['model_inference'],
+      }),
+    )
+  })
+
+  it('marks a saved model key that cannot supply a key', async () => {
+    renderTab('secret://anthropic/env_only')
+    expect(
+      await screen.findByText(/This binding cannot supply a model key/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
+  })
+
+  it('marks a saved model key field that the binding no longer allows', async () => {
+    renderTab('secret://anthropic/triage#old-key')
+    expect(
+      await screen.findByText(/This binding cannot supply a model key/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
+  })
+
+  it('marks a saved model key field when the binding allows no fields', async () => {
+    renderTab('secret://ci/npm_token#api-key')
+    expect(
+      await screen.findByText(/This binding cannot supply a model key/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
+  })
+
+  it('marks a saved model key whose binding is gone', async () => {
+    renderTab('secret://anthropic/deleted#api-key')
+    expect(
+      await screen.findByText(/This binding does not exist/),
+    ).toBeInTheDocument()
+  })
+
+  it('does not mark a missing binding before the bindings load', () => {
+    vi.mocked(endpoints.listSecretBindings).mockReturnValue(
+      new Promise(() => {}),
+    )
+    renderTab('secret://anthropic/deleted#api-key')
+    expect(
+      screen.queryByText(/This binding does not exist/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('uses the organization key when the agent has none', () => {
+    renderTab()
+    expect(screen.queryByText('Call the model')).not.toBeInTheDocument()
   })
 
   it('lists the secrets that the agent has grants for', async () => {
