@@ -697,6 +697,27 @@ class UsageTestCase(TaskTestCase):
         await self.run_task.stopping
         self.run_task.client.interrupt.assert_awaited_once()
 
+    async def test_late_reply_does_not_restore_the_budget(self) -> None:
+        first_sent = asyncio.Event()
+        release_first = asyncio.Event()
+        replies = [self.reply(), self.reply(budget_remaining='0')]
+
+        async def post(*_args: typing.Any, **_kwargs: typing.Any) -> mock.Mock:
+            reply = replies.pop(0)
+            if not first_sent.is_set():
+                first_sent.set()
+                await release_first.wait()
+            return mock.Mock(json=mock.Mock(return_value=reply))
+
+        self.client.post.side_effect = post
+        older = asyncio.create_task(self.run_task.report('m', {}))
+        await first_sent.wait()
+        await self.run_task.report('m', {})
+        self.assertFalse(self.run_task.allowed())
+        release_first.set()
+        await older
+        self.assertFalse(self.run_task.allowed())
+
     async def test_closed_task(self) -> None:
         self.client.post.side_effect = api.Refused(409, 'task_closed')
         await self.run_task.report('m', {'input_tokens': 1})

@@ -518,6 +518,10 @@ class TaskRun:
         self.control = 'run'
         self.closed = False
         self.remaining: decimal.Decimal | None = None
+        #: Usage reports sent and the newest one applied. A late reply
+        #: from an older report must not restore a spent budget.
+        self.reports_sent = 0
+        self.report_applied = 0
         self.failure: str | None = None
         self.client: sdk.ClaudeSDKClient | None = None
         self.stopping: asyncio.Task[None] | None = None
@@ -763,6 +767,8 @@ class TaskRun:
             'cache_write_tokens': count('cache_creation_input_tokens'),
             'session_id': self.session_id,
         }
+        self.reports_sent += 1
+        generation = self.reports_sent
         for attempt in range(3):
             try:
                 reply = await self.api.report_usage(body)
@@ -774,7 +780,9 @@ class TaskRun:
                     self._state({'status': 'closed'})
                     return
                 raise
-            self._state(reply['task'])
+            if generation > self.report_applied:
+                self.report_applied = generation
+                self._state(reply['task'])
             return
         raise RuntimeError('usage report failed')
 
