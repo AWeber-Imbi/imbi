@@ -3267,9 +3267,6 @@ export interface paths {
          *     DEPLOYED_IN edge properties, and the hypermedia
          *     ``relationships`` block. Cuts the response from megabytes to
          *     kilobytes for large orgs.
-         *
-         *     ``limit`` pages the result in ``(name, id)`` order. Follow the
-         *     ``next`` link of the ``Link`` header to get the next page.
          */
         get: operations["list_projects_api_organizations__org_slug__projects__get"];
         put?: never;
@@ -5091,7 +5088,19 @@ export interface paths {
         get: operations["get_agent_task_api_organizations__org_slug__agent_tasks__short_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Agent Task
+         * @description Delete a closed task, with its events and relations.
+         *
+         *     The secret audit and the usage records of the task stay.
+         *
+         *     Raises:
+         *         403: The caller has no ``agent_task:delete``, or is not a member
+         *             of the org.
+         *         404: No such task.
+         *         409: The task, or a task in its chain, is not closed.
+         */
+        delete: operations["delete_agent_task_api_organizations__org_slug__agent_tasks__short_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6611,6 +6620,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workload-identity/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Identity Source Types */
+        get: operations["list_identity_source_types_api_organizations__org_slug__workload_identity_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workload-identity/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workload Identity */
+        get: operations["get_workload_identity_api_organizations__org_slug__workload_identity__get"];
+        /**
+         * Put Workload Identity
+         * @description Set the identity source of the organization. No JWT is minted.
+         *
+         *     Raises:
+         *         422: Unknown type, or the configuration is not valid.
+         */
+        put: operations["put_workload_identity_api_organizations__org_slug__workload_identity__put"];
+        post?: never;
+        /** Delete Workload Identity */
+        delete: operations["delete_workload_identity_api_organizations__org_slug__workload_identity__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/secret-audit-events/": {
         parameters: {
             query?: never;
@@ -7222,7 +7273,9 @@ export interface paths {
          *     ``{bump, version, reasoning, notes_markdown}`` payload, and returns
          *     it.  Falls back to a deterministic conventional-commit-prefix
          *     grouping with ``degraded=true`` when Claude is unavailable, the
-         *     response can't be parsed, or schema validation fails.
+         *     response can't be parsed, or schema validation fails.  A base or
+         *     head the source host does not have is a 422 (see
+         *     :func:`_compare_refs`).
          */
         post: operations["draft_release_notes_api_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post"];
         delete?: never;
@@ -7318,6 +7371,10 @@ export interface paths {
         /**
          * Get Release History
          * @description Release history: ClickHouse tags joined to their ``Release`` nodes.
+         *
+         *     A ``Release`` node whose tag ClickHouse has not synced is listed too,
+         *     flagged ``tag_synced=False`` -- see :func:`_unsynced_release_entry`
+         *     for why it cannot be left out.  Entries are newest tag first.
          *
          *     ``ci_status`` comes from the synced ``commits`` table, which the
          *     deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
@@ -14278,6 +14335,13 @@ export interface components {
             /** Last Used */
             last_used?: string | null;
         };
+        /** IdentitySourceType */
+        IdentitySourceType: {
+            /** Type */
+            type: string;
+            /** Label */
+            label: string;
+        };
         /**
          * IggyTopic
          * @description One Iggy topic and the sink group that consumes it.
@@ -16830,6 +16894,12 @@ export interface components {
                 [key: string]: number | string;
             };
             /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
+            /**
              * Services
              * @default []
              */
@@ -17574,6 +17644,34 @@ export interface components {
             deletions: number;
             /** Changed Files */
             changed_files: number;
+            /** Reviewers */
+            reviewers?: components["schemas"]["PullRequestReviewer"][];
+        };
+        /**
+         * PullRequestReviewer
+         * @description A requested or past reviewer on a pull request.
+         *
+         *     ``state`` is ``requested`` while a review request is pending
+         *     (including a re-request after an earlier review), otherwise the
+         *     reviewer's latest approve / request-changes / dismissed review, or
+         *     ``commented`` when they only left comments.  ``team`` marks a
+         *     requested GitHub team, whose ``login`` is the team slug.
+         */
+        PullRequestReviewer: {
+            /** Login */
+            login: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "requested" | "approved" | "changes_requested" | "commented" | "dismissed";
+            /**
+             * Team
+             * @default false
+             */
+            team: boolean;
+            /** Submitted At */
+            submitted_at?: string | null;
         };
         /**
          * ReadEvent
@@ -18294,11 +18392,8 @@ export interface components {
              * @default 0
              */
             drift_answered: number;
-            /**
-             * Oldest Actionable At
-             * @default null
-             */
-            oldest_actionable_at: string | null;
+            /** Oldest Actionable At */
+            oldest_actionable_at?: string | null;
         };
         /**
          * RelocationTarget
@@ -19686,6 +19781,11 @@ export interface components {
             resolution_expires_at: string;
             /** Credential Expires At */
             credential_expires_at?: string | null;
+            /**
+             * Bearer
+             * @default false
+             */
+            bearer: boolean;
         };
         /**
          * SecretMaterializationCreate
@@ -21101,6 +21201,37 @@ export interface components {
              */
             created_at: string;
         };
+        /** WorkloadIdentity */
+        WorkloadIdentity: {
+            /** Type */
+            type: string;
+            /**
+             * Config
+             * @default {}
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkloadIdentityPut */
+        WorkloadIdentityPut: {
+            /** Type */
+            type: string;
+            /**
+             * Config
+             * @default {}
+             */
+            config: {
+                [key: string]: unknown;
+            };
+        };
         /** Environment */
         EnvironmentBlueprintRequest: {
             /** Id */
@@ -21645,6 +21776,12 @@ export interface components {
              * @default null
              */
             score: number | null;
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
         };
@@ -21706,6 +21843,12 @@ export interface components {
              * @default null
              */
             score: number | null;
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
         };
@@ -26452,10 +26595,6 @@ export interface operations {
                 project_type?: string | null;
                 include_archived?: boolean;
                 slim?: boolean;
-                /** @description Page size. When set, the response holds at most this many projects and a ``Link`` header with a ``next`` URL when more remain. Omit to return every project. */
-                limit?: number | null;
-                /** @description Opaque cursor from the ``next`` link of the previous page. Requires ``limit``. */
-                cursor?: string | null;
                 /** @description Restrict results to projects that have an EXISTS_IN relationship to the integration with this slug in the organization. Combine with ``identifier`` to match a specific external identifier on that integration. */
                 integration_slug?: string | null;
                 /** @description Restrict results to projects whose EXISTS_IN edge to ``integration_slug`` carries this external identifier (exact match). Requires ``integration_slug``. */
@@ -30254,6 +30393,36 @@ export interface operations {
             };
         };
     };
+    delete_agent_task_api_organizations__org_slug__agent_tasks__short_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_get: {
         parameters: {
             query?: {
@@ -32656,6 +32825,132 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SecretResolution"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_identity_source_types_api_organizations__org_slug__workload_identity_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentitySourceType"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workload_identity_api_organizations__org_slug__workload_identity__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkloadIdentity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_workload_identity_api_organizations__org_slug__workload_identity__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkloadIdentityPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkloadIdentity"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workload_identity_api_organizations__org_slug__workload_identity__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -6,6 +6,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { AuditTab } from './AuditTab'
 import { BindingsTab } from './BindingsTab'
 import { GrantsTab } from './GrantsTab'
+import { IdentityTab } from './IdentityTab'
 import { ProvidersTab } from './ProvidersTab'
 import { ResolutionsTab } from './ResolutionsTab'
 
@@ -14,6 +15,7 @@ const TABS = [
   ['bindings', 'Bindings'],
   ['grants', 'Grants'],
   ['resolutions', 'Resolutions'],
+  ['identity', 'Identity'],
   ['audit', 'Audit'],
 ] as const
 
@@ -56,6 +58,9 @@ export function SecretsManagement() {
       </TabsContent>
       <TabsContent value="resolutions">
         <ResolutionsTab orgSlug={orgSlug} />
+      </TabsContent>
+      <TabsContent value="identity">
+        <IdentityTab orgSlug={orgSlug} />
       </TabsContent>
       <TabsContent value="audit">
         <AuditTab orgSlug={orgSlug} />

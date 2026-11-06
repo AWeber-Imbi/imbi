@@ -228,6 +228,31 @@ secret a reference, a purpose, and an environment variable name:
 The value is in the environment of that one command only. Imbi removes the
 value from the command output before the agent sees it.
 
+## Workload identity
+
+With workload identity federation, an agent gets a short-lived vendor
+access token instead of a static API key. imbi-api gets an identity JWT
+from the organization's identity source and exchanges it with the vendor.
+
+1. On the **Identity** tab, select **Set identity source**. Select
+   **AWS STS** and enter the configuration, for example
+   `{"region": "us-east-1", "role_arn": "arn:aws:iam::123456789012:role/imbi-identity"}`.
+   Use a separate role, not the Secrets Manager role. Its trust policy must
+   require `sts:ExternalId` `imbi:<organization id>`. Imbi checks the
+   configuration with one call to AWS STS when you save.
+2. On the **Providers** tab, add a provider of the type **Anthropic
+   workload identity** with the configuration `{}`.
+3. For each agent, add a `dynamic` binding to that provider. The locator
+   holds the Anthropic Console ids of the agent's service account and
+   federation rule: `organization_id`, `federation_rule_id`,
+   `service_account_id`, and `workspace_id` (only when the rule has more
+   than one workspace).
+4. Grant the agent `model_inference` on its binding, and set the binding
+   as the agent's **Model key**.
+
+An agent cannot use the binding of another agent. Removing the identity
+source stops all token exchanges for the organization.
+
 ## Check what happened
 
 - **Resolutions** lists the secret reads that are active now.
