@@ -2073,6 +2073,43 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
             latest.committish, detail['latest_deployment']['committish']
         )
 
+    def test_newer_attempt_survives_a_serving_node_that_closed_later(
+        self,
+    ) -> None:
+        # The serving run starts 10:00 and succeeds 10:10; a newer run
+        # starts 10:05.  The reader picked the newer run, so the list
+        # must not compare its start with the serving run's completion.
+        assert self.state.current is not None
+        state = self.state._replace(
+            current=self.state.current._replace(
+                started_at=datetime.datetime.fromisoformat(
+                    '2026-04-22T10:00:00+00:00'
+                ),
+                event=self.state.current.event.model_copy(
+                    update={
+                        'timestamp': datetime.datetime.fromisoformat(
+                            '2026-04-22T10:10:00+00:00'
+                        )
+                    }
+                ),
+            ),
+            latest=self.state.latest._replace(
+                started_at=datetime.datetime.fromisoformat(
+                    '2026-04-22T10:05:00+00:00'
+                )
+            ),
+        )
+        with mock.patch(
+            'imbi.common.deployments.current_and_latest_by_project',
+            mock.AsyncMock(return_value=[state]),
+        ):
+            latest = asyncio.run(
+                projects._apply_deployment_nodes(
+                    mock.AsyncMock(), [PROJECT_ID], {}
+                )
+            )
+        self.assertEqual('failed', latest[(PROJECT_ID, 'production')].status)
+
     def test_latest_is_omitted_when_it_is_the_current_release(self) -> None:
         """The newest attempt succeeded, so there is nothing extra."""
         assert self.state.current is not None
@@ -2101,6 +2138,45 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         detail = response.json()[0]
         self.assertEqual('1.0.0', detail['release']['tag'])
+        self.assertIsNone(detail['latest_deployment'])
+
+    def test_latest_older_than_a_serving_legacy_entry_is_omitted(
+        self,
+    ) -> None:
+        # A legacy array entry from 04-23 still wins over the 04-20
+        # node, so the 04-22 attempt is not newer than what is serving.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': _PRODUCTION,
+                    'release': _release_row(tag='2.0.0', id='r2'),
+                    'deployments': json.dumps(
+                        [
+                            {
+                                'timestamp': '2026-04-23T10:00:00+00:00',
+                                'status': 'success',
+                                'note': None,
+                            }
+                        ]
+                    ),
+                }
+            ],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[self.state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = response.json()[0]
+        self.assertEqual('2.0.0', detail['release']['tag'])
         self.assertIsNone(detail['latest_deployment'])
 
 

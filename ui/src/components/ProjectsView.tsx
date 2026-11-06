@@ -897,7 +897,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
   const { releaseDrifted } = driftBadges(project)
   const releaseSince = project.release_summary?.oldest_actionable_at
   return (
-    <div className="flex w-full items-stretch pt-2">
+    <div className="flex w-full items-stretch justify-center-safe pt-2">
       {releaseDrifted && (
         <span className="mr-2 flex shrink-0 items-center self-center">
           <DriftPill
@@ -925,7 +925,8 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
         const derived = env.label_color
           ? deriveChipColors(env.label_color, false)
           : null
-        const base = 'relative min-w-50 flex-1 rounded-lg border px-3 py-2'
+        const base =
+          'relative z-10 w-50 shrink-0 rounded-lg border px-3 py-2 wrap-anywhere'
         const cardClass = derived
           ? `${base}${!release ? ' border-dashed opacity-60' : ''}`
           : `${base}${release ? ' border-border bg-card' : ' border-tertiary/40 border-dashed opacity-60'}`
@@ -954,9 +955,11 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
               ) : (
                 <PipelineConnector />
               ))}
-            <span
+            <Link
+              aria-label={`View ${project.name} ${env.name} deployments: ${release ? (release.tag ?? release.committish ?? 'unknown release') : 'not deployed'}`}
               className={`${cardClass}${behind ? ` ${DRIFT_TONE[tone].card}` : ''}`}
               style={cardStyle}
+              to={`/projects/${project.id}/deployments?env=${encodeURIComponent(env.slug)}`}
             >
               {behind && <BehindTab tone={tone} />}
               {release ? (
@@ -989,7 +992,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
                   no {env.name.toLowerCase()}
                 </span>
               )}
-            </span>
+            </Link>
           </React.Fragment>
         )
       })}
@@ -1358,9 +1361,11 @@ function PipelineConnector({
 // fallow-ignore-next-line complexity
 function ReleaseCards({
   projectId,
+  projectName,
   release_summary,
 }: {
   projectId: string
+  projectName: string
   release_summary: NonNullable<ProjectListItem['release_summary']>
 }) {
   const headSha =
@@ -1372,7 +1377,11 @@ function ReleaseCards({
   const tone = driftTone(since)
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
-      <span className="border-border bg-card w-50 rounded-lg border px-3 py-2">
+      <Link
+        aria-label={`${projectName} latest commit ${headSha ?? 'unknown'}: view releases`}
+        className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere"
+        to={`/projects/${projectId}/releases`}
+      >
         <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
           <GitCommit className="size-3 shrink-0" />
           Latest Commit
@@ -1385,7 +1394,7 @@ function ReleaseCards({
             <RelativeTime value={release_summary.head_authored_at} />
           )}
         </p>
-      </span>
+      </Link>
       {behind ? (
         <PipelineConnector tone={tone}>
           <DriftPill
@@ -1400,8 +1409,10 @@ function ReleaseCards({
       ) : (
         <PipelineConnector />
       )}
-      <span
-        className={`bg-amber-bg relative w-50 rounded-lg border px-3 py-2 ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
+      <Link
+        aria-label={`${projectName} current release ${release_summary.latest_tag ?? 'none'}${behind ? `, waiting on ${headSha ?? 'a new release'}` : ''}: view releases`}
+        className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
+        to={`/projects/${projectId}/releases`}
       >
         {behind && <BehindTab tone={tone} />}
         <p className="text-amber-text mb-1.5 flex items-center gap-1.5 text-sm font-medium">
@@ -1424,7 +1435,7 @@ function ReleaseCards({
           )}
         </p>
         {behind && <WaitingLine tone={tone} version={headSha} />}
-      </span>
+      </Link>
     </div>
   )
 }
@@ -1596,7 +1607,7 @@ function ScrollableDeployments({
     <div className="relative flex w-full min-w-0 items-center">
       {canScrollLeft && (
         <button
-          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-10 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
+          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-20 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
           onClick={() => scroll('left')}
           type="button"
         >
@@ -1612,7 +1623,7 @@ function ScrollableDeployments({
       </div>
       {canScrollRight && (
         <button
-          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-10 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
+          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-20 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
           onClick={() => scroll('right')}
           type="button"
         >
@@ -1805,6 +1816,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <div className="min-w-0 overflow-x-auto">
               <ReleaseCards
                 projectId={project.id}
+                projectName={project.name}
                 release_summary={project.release_summary}
               />
             </div>

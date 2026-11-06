@@ -569,6 +569,68 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         self.assertEqual('2', state.latest.event.external_run_id)
         self.assertEqual('failed', state.latest.event.status)
 
+    async def test_older_attempt_failed_late_is_not_news(self) -> None:
+        # 3.4.3 starts, 3.4.4 starts and succeeds, then 3.4.3 is closed
+        # as failed (e.g. by the stuck-deployment sweep).  Its last
+        # change is the newest, but it started first: nothing to report.
+        await self._add_release()
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW,
+        )
+        await self.upsert(
+            status='success',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='failed',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('2', state.current.event.external_run_id)
+        self.assertEqual(state.current, state.latest)
+
+    async def test_older_attempt_failed_late_does_not_hide_newer(
+        self,
+    ) -> None:
+        # Run 1 starts, run 2 succeeds, run 3 starts, then run 1 fails
+        # late.  Run 3 is the newest attempt and must stay the latest.
+        await self._add_release()
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW,
+        )
+        await self.upsert(
+            status='success',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='3',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        await self.upsert(
+            status='failed',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='1',
+            timestamp=NOW + datetime.timedelta(hours=3),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('2', state.current.event.external_run_id)
+        self.assertEqual('3', state.latest.event.external_run_id)
+        self.assertEqual('in_progress', state.latest.event.status)
+
     async def test_simultaneous_rollouts_rank_run_ids_numerically(
         self,
     ) -> None:
@@ -583,6 +645,18 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         state = await self._state()
         assert state.current is not None
         self.assertEqual('10', state.current.event.external_run_id)
+
+    async def test_tied_start_keeps_the_newer_in_flight_run(self) -> None:
+        # Run 10 outranks run 9 on the tie, so it stays the latest
+        # attempt; a non-strict guard replaced it with the serving run.
+        await self.upsert(status='success', external_run_id='9', timestamp=NOW)
+        await self.upsert(
+            status='in_progress', external_run_id='10', timestamp=NOW
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('9', state.current.event.external_run_id)
+        self.assertEqual('10', state.latest.event.external_run_id)
 
     async def test_pending_attempt_does_not_displace_a_success(self) -> None:
         """Matrix 2: the newest attempt is still in flight."""
@@ -616,7 +690,8 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         assert state.current is not None
         assert state.current.release is not None
         self.assertEqual(OTHER_RELEASE_ID, state.current.release['id'])
-        self.assertEqual('rolled_back', state.latest.event.status)
+        # A started before B, so its late status change is not news.
+        self.assertEqual(state.current, state.latest)
 
     async def test_rollback_is_a_new_success_of_the_old_release(self) -> None:
         """Matrix 4: rolling back means deploying A again."""
