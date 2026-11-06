@@ -19,12 +19,18 @@ export function extractApiErrorDetail(
     const data = error.data as
       | undefined
       | {
-          detail?: string | { [k: string]: unknown; error?: string }
+          detail?:
+            | string
+            | { [k: string]: unknown; error?: string; message?: string }
           message?: string
         }
     const detail = data?.detail
     if (typeof detail === 'string' && detail) return detail
     if (detail && typeof detail === 'object') {
+      // ``{error, message}`` details (e.g. invalid_configuration): the
+      // message explains the problem, the error is only a code.
+      if (typeof detail.message === 'string' && detail.message)
+        return detail.message
       if (typeof detail.error === 'string' && detail.error) return detail.error
       try {
         return JSON.stringify(detail)
