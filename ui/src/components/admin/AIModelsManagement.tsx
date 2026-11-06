@@ -204,6 +204,15 @@ export function AIModelsManagement() {
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
+  // Clear every credential error before a new action, so the banner
+  // shows only the result of the latest action.
+  const resetCredentialErrors = () => {
+    setCredentialsMutation.reset()
+    removeCredentialsMutation.reset()
+    setWorkloadIdentityMutation.reset()
+    removeWorkloadIdentityMutation.reset()
+  }
+
   const createModelMutation = useMutation({
     mutationFn: (values: ModelFormValues) =>
       createAIModel({
@@ -503,24 +512,28 @@ export function AIModelsManagement() {
             removeWorkloadIdentityMutation.isPending
           }
           onClose={goToList}
-          onRemove={() =>
+          onRemove={() => {
+            resetCredentialErrors()
             removeCredentialsMutation.mutate(credentialsProvider.id)
-          }
-          onRemoveWorkloadIdentity={() =>
+          }}
+          onRemoveWorkloadIdentity={() => {
+            resetCredentialErrors()
             removeWorkloadIdentityMutation.mutate(credentialsProvider.id)
-          }
-          onSave={(apiKey) =>
+          }}
+          onSave={(apiKey) => {
+            resetCredentialErrors()
             setCredentialsMutation.mutate({
               apiKey,
               id: credentialsProvider.id,
             })
-          }
-          onSaveWorkloadIdentity={(body) =>
+          }}
+          onSaveWorkloadIdentity={(body) => {
+            resetCredentialErrors()
             setWorkloadIdentityMutation.mutate({
               body,
               id: credentialsProvider.id,
             })
-          }
+          }}
           open
           provider={credentialsProvider}
         />

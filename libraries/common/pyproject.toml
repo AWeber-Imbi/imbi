@@ -49,7 +49,7 @@ databases = [
   "valkey>=6",
 ]
 llm = [
-  "anthropic>=0.40",
+  "anthropic>=0.115.0",
 ]
 mcp = [
   "fastmcp>=3,<4",

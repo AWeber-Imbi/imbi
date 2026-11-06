@@ -1518,7 +1518,7 @@ server = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.40" },
+    { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.115.0" },
     { name = "apache-iggy", marker = "extra == 'databases'", specifier = ">=0.9.1.dev1" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "certifi", specifier = ">=2026.10.23" },
