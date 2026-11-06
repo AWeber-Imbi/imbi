@@ -269,6 +269,7 @@ class Materialization:
     """Material for one child process. No readable ``repr``, no pickle."""
 
     __slots__ = (
+        'bearer',
         'credential_expires_at',
         'delivery_mode',
         'delivery_target',
@@ -288,6 +289,7 @@ class Materialization:
         self.delivery_target: str | None = row['delivery_target']
         self.resolution_expires_at: datetime.datetime = row['expires_at']
         self.credential_expires_at = material.credential_expires_at
+        self.bearer = material.bearer
         self.encoding, self.material = _encode(material)
 
     def __repr__(self) -> str:
@@ -309,6 +311,7 @@ class Materialization:
                 'target': self.delivery_target,
             },
             'resolution_expires_at': self.resolution_expires_at.isoformat(),
+            'bearer': self.bearer,
             'credential_expires_at': (
                 self.credential_expires_at.isoformat()
                 if self.credential_expires_at

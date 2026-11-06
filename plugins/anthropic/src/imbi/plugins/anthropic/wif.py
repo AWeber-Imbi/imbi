@@ -159,5 +159,6 @@ class AnthropicWif(secrets.SecretProvider):
         )
         return secrets.Material(
             token.token.encode(),
+            bearer=True,
             credential_expires_at=token.expires_at,
         )

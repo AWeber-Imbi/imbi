@@ -147,6 +147,7 @@ class ProviderTestCase(unittest.IsolatedAsyncioTestCase):
         material = await self._resolve()
         self.assertEqual(material.value, b'sk-ant-oat01-x')
         self.assertEqual(material.credential_expires_at, self.expires)
+        self.assertTrue(material.bearer)
         self.host.vendor_token.assert_awaited_once_with(
             'org', wif.EXCHANGER, TARGET, agent_id='agent-1'
         )

@@ -28,7 +28,9 @@ Two more requests are for the runner's own setup secrets (H22):
   that reads ``GH_TOKEN`` (#422).
 - ``fetch`` returns the material of a ``model_inference`` resolution to
   the runner, for its model proxy (plan section 6.4), or of an
-  ``mcp_server`` resolution, for its MCP relay (plan P7).
+  ``mcp_server`` resolution, for its MCP relay (plan P7). The reply
+  also has ``expires_at`` for a dynamic credential, and ``bearer`` for
+  an OAuth access token (WIF plan 4.7).
 
 Rev 1 runs one request at a time (:attr:`Executor.lock`), so every
 ``agent`` process of this container belongs to the current command.
@@ -432,21 +434,32 @@ class Executor:
         if secret.get('purpose') not in FETCH_PURPOSES:
             raise Invalid('purpose_not_allowed')
         try:
-            material = await self._materialize(
+            body = await self._materialized(
                 secret, request.get('context') or {}
             )
+            reply: Message = {'material': _material(body)}
         except api.Refused as err:
             return {'error': err.code}
         except httpx.HTTPError:
             return {'error': 'imbi_unavailable'}
         finally:
-            # A static key: the release ends only Imbi access.
+            # The runner holds the credential now, and a vendor token
+            # cannot be revoked: the release ends only Imbi access.
             await self._release([secret])
-        return {'material': material}
+        if body.get('credential_expires_at'):
+            reply['expires_at'] = body['credential_expires_at']
+        if body.get('bearer'):
+            reply['bearer'] = True
+        return reply
 
     async def _materialize(self, secret: Message, context: Message) -> str:
+        return _material(await self._materialized(secret, context))
+
+    async def _materialized(
+        self, secret: Message, context: Message
+    ) -> Message:
         assert self.token is not None  # noqa: S101 - checked by callers
-        body = await self.api.materialize(
+        return await self.api.materialize(
             self.token,
             {
                 'handle': secret.get('handle'),
@@ -457,7 +470,6 @@ class Executor:
                 'purpose': secret.get('purpose'),
             },
         )
-        return _material(body)
 
     async def _spawn(
         self,

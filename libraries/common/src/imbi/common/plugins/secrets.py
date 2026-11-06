@@ -115,6 +115,7 @@ class Material:
     """
 
     __slots__ = (
+        'bearer',
         'binary',
         'credential_expires_at',
         'lease_id',
@@ -129,6 +130,7 @@ class Material:
         value: bytes,
         *,
         binary: bool = False,
+        bearer: bool = False,
         credential_expires_at: datetime.datetime | None = None,
         provider_version: str | None = None,
         lease_id: str | None = None,
@@ -137,6 +139,9 @@ class Material:
     ) -> None:
         self.value = value
         self.binary = binary
+        #: An OAuth access token: the client sends it in
+        #: ``Authorization: Bearer``, not as an API key.
+        self.bearer = bearer
         self.credential_expires_at = credential_expires_at
         self.provider_version = provider_version
         self.lease_id = lease_id
