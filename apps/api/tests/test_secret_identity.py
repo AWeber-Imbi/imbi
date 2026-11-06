@@ -76,6 +76,47 @@ class VendorTokenTestCase(secret_support.SecretCase):
         await self.store.put_identity_source(self.org, 'gone', {}, 'test')
         self.assertEqual(await self._reason(), 'unknown_identity_source')
 
+    async def test_host_mints_through_core(self) -> None:
+        await self.store.put_identity_source(self.org, 'fake', {}, 'test')
+        with (
+            mock.patch.object(
+                identity.providers._Host,  # pyright: ignore[reportPrivateUsage]
+                'graph',
+                return_value=self.db,
+            ),
+            mock.patch(
+                'imbi.api.secret_broker.get_broker', return_value=self.broker
+            ),
+        ):
+            token = await identity.providers._Host().vendor_token(  # pyright: ignore[reportPrivateUsage]
+                self.org, self.exchanger, self.target, agent_id=self.agent
+            )
+        self.assertTrue(token.token.startswith('fake-token-'))
+        self.assertEqual(
+            self.source.requests[-1].tags['imbi_agent'], self.agent
+        )
+
+    async def test_broker_maps_refusals(self) -> None:
+        for fail, retryable, code in (
+            ('access_denied', False, 'secret_materialization_failed'),
+            ('throttled', True, 'secret_provider_unavailable'),
+        ):
+            error = contract.IdentityError(fail, retryable=retryable)
+            with (
+                self.subTest(code=code),
+                mock.patch.object(identity, 'vendor_token', side_effect=error),
+            ):
+                with self.assertRaises(providers.BrokerError) as ctx:
+                    await self.broker.vendor_token(
+                        self.db,
+                        self.org,
+                        self.exchanger,
+                        self.target,
+                        agent_id=self.agent,
+                    )
+                self.assertEqual(ctx.exception.code, code)
+                self.assertEqual(ctx.exception.reason, fail)
+
 
 class _Source(contract.IdentitySource):
     type = 'test_source'
@@ -129,6 +170,13 @@ class RegistryTestCase(unittest.TestCase):
                 capabilities=[],
                 identity_sources=[_Source, _Other],
             )
+
+    def test_manifest_needs_a_capability_or_a_typed_class(self) -> None:
+        base.PluginManifest(
+            slug='x', name='x', capabilities=[], identity_sources=[_Source]
+        )
+        with self.assertRaisesRegex(ValueError, 'at least one'):
+            base.PluginManifest(slug='x', name='x', capabilities=[])
 
 
 class AccessTokenTestCase(unittest.TestCase):

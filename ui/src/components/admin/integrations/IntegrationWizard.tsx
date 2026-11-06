@@ -68,9 +68,7 @@ export function IntegrationWizard({
   const queryClient = useQueryClient()
 
   const [step, setStep] = useState(1)
-  const [pluginSlug, setPluginSlug] = useState<null | string>(
-    plugins.length === 1 ? plugins[0].slug : null,
-  )
+  const [pluginSlug, setPluginSlug] = useState<null | string>(null)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugEdited, setSlugEdited] = useState(false)
@@ -100,6 +98,9 @@ export function IntegrationWizard({
     setCaps(initCapabilities(p.capabilities))
     setErrors({})
   }
+
+  // Select a sole plugin with full state, also when the list loads late.
+  if (pluginSlug === null && plugins.length === 1) selectPlugin(plugins[0])
 
   const createMutation = useMutation({
     // fallow-ignore-next-line complexity
@@ -588,8 +589,8 @@ function PluginStep({
     return (
       <Card>
         <CardContent className="text-secondary p-10 text-center text-sm">
-          No enabled plugins are installed. Enable a plugin on the Plugins page
-          first.
+          No enabled plugin can back an Integration. Enable a plugin with
+          Integration capabilities on the Plugins page first.
         </CardContent>
       </Card>
     )

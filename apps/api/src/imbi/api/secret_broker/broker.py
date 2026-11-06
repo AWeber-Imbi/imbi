@@ -48,6 +48,7 @@ from imbi.api.agent_tasks import store as task_store
 from imbi.api.secret_broker import audit, providers
 from imbi.common import settings
 from imbi.common.auth import encryption
+from imbi.common.plugins import identity as plugin_identity
 from imbi.common.plugins.secrets import Reference as Reference
 from imbi.common.plugins.secrets import (
     parse_reference as parse_reference,
@@ -622,6 +623,42 @@ class Broker:
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
+    async def vendor_token(
+        self,
+        db: typing.Any,
+        organization_id: str,
+        exchanger: plugin_identity.TokenExchanger,
+        target: dict[str, typing.Any],
+        *,
+        agent_id: str,
+    ) -> plugin_identity.AccessToken:
+        """Mint a vendor access token for an agent (WIF plan 4.4).
+
+        Raises:
+            BrokerError: ``secret_provider_unavailable`` when the refusal
+                is retryable, else ``secret_materialization_failed``.
+                The reason is the :class:`IdentityError` reason.
+
+        """
+        from imbi.api.secret_broker import identity, store
+
+        try:
+            return await identity.vendor_token(
+                db,
+                store.SecretStore(self._pool),
+                organization_id,
+                exchanger,
+                target,
+                agent_id=agent_id,
+            )
+        except plugin_identity.IdentityError as err:
+            raise providers.BrokerError(
+                'secret_provider_unavailable'
+                if err.retryable
+                else 'secret_materialization_failed',
+                err.reason,
+            ) from None
+
     async def create_resolution(
         self, context: ResolutionContext, request: ResolutionRequest
     ) -> Created:
@@ -965,6 +1002,7 @@ class Broker:
                     credential_class=decision.binding['credential_class'],
                     binding_id=decision.binding['id'],
                     repository=row.get('repository'),
+                    agent_id=row['agent_id'],
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)

@@ -19,6 +19,7 @@ import pydantic
 from imbi.common import graph
 from imbi.common.plugins import registry as plugin_registry
 from imbi.common.plugins import secrets
+from imbi.common.plugins.identity import AccessToken, TokenExchanger
 from imbi.common.plugins.secrets import (
     ALL_CAPABILITIES,
     ERROR_STATUS,
@@ -207,6 +208,24 @@ class _Host:
 
         return await secret_broker.get_broker().check_provider_key(
             organization_id, reference, host=host, app_id=app_id
+        )
+
+    async def vendor_token(
+        self,
+        organization_id: str,
+        exchanger: TokenExchanger,
+        target: dict[str, typing.Any],
+        *,
+        agent_id: str,
+    ) -> AccessToken:
+        from imbi.api import secret_broker
+
+        return await secret_broker.get_broker().vendor_token(
+            self.graph(),
+            organization_id,
+            exchanger,
+            target,
+            agent_id=agent_id,
         )
 
 

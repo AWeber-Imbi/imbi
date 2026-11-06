@@ -20,6 +20,7 @@ members = [
     "imbi-gateway",
     "imbi-harness",
     "imbi-mcp",
+    "imbi-plugin-anthropic",
     "imbi-plugin-aws",
     "imbi-plugin-github",
     "imbi-plugin-google",
@@ -1250,6 +1251,7 @@ dependencies = [
     { name = "imbi-common", extra = ["databases", "llm", "mcp", "otel", "sentry", "server"] },
     { name = "imbi-gateway" },
     { name = "imbi-mcp" },
+    { name = "imbi-plugin-anthropic" },
     { name = "imbi-plugin-aws" },
     { name = "imbi-plugin-github" },
     { name = "imbi-plugin-google" },
@@ -1302,6 +1304,7 @@ requires-dist = [
     { name = "imbi-common", extras = ["databases", "llm", "mcp", "otel", "sentry", "server"], editable = "libraries/common" },
     { name = "imbi-gateway", editable = "apps/gateway" },
     { name = "imbi-mcp", editable = "apps/mcp" },
+    { name = "imbi-plugin-anthropic", editable = "plugins/anthropic" },
     { name = "imbi-plugin-aws", editable = "plugins/aws" },
     { name = "imbi-plugin-github", editable = "plugins/github" },
     { name = "imbi-plugin-google", editable = "plugins/google" },
@@ -1627,6 +1630,23 @@ requires-dist = [
     { name = "pydantic", specifier = "~=2.12" },
     { name = "pyjwt", specifier = ">=2.10" },
     { name = "sentry-sdk", specifier = ">=2.48.0" },
+]
+
+[[package]]
+name = "imbi-plugin-anthropic"
+version = "2.43.1"
+source = { editable = "plugins/anthropic" }
+dependencies = [
+    { name = "httpx" },
+    { name = "imbi-common" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "imbi-common", editable = "libraries/common" },
+    { name = "pydantic", specifier = ">=2" },
 ]
 
 [[package]]

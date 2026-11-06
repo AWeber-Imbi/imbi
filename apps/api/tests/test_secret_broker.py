@@ -544,6 +544,16 @@ class MaterializeTestCase(secret_support.SecretCase):
             },
         )
 
+    async def test_provider_gets_the_agent_of_the_task(self) -> None:
+        created = await self._create()
+        with mock.patch.object(
+            self.fake, 'resolve', wraps=self.fake.resolve
+        ) as resolve:
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        self.assertEqual(resolve.call_args.args[3].agent_id, self.agent)
+
     async def test_binary_material_is_base64(self) -> None:
         self.fake.values['plain'] = b'\xff\x00secret'
         created = await self._create()

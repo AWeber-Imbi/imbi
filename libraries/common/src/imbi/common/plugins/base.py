@@ -340,7 +340,12 @@ class PluginManifest(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def _validate_capabilities(self) -> PluginManifest:
-        if not self.capabilities:
+        # A plugin that only adds secret providers or identity sources
+        # (for example a model vendor's token exchange) has no
+        # Integration capability.
+        if not (
+            self.capabilities or self.secret_providers or self.identity_sources
+        ):
             raise ValueError(
                 'PluginManifest.capabilities must declare at least one '
                 'capability'
