@@ -218,52 +218,68 @@ _REPORTED: set[tuple[str, str]] = set()
 _LOADED: dict[str, Provider] = {}
 
 
-def _load() -> None:
-    """Make the providers agree with the loaded plugins.
+def reconcile[T](
+    attribute: str,
+    kind: str,
+    registry: dict[str, T],
+    loaded: dict[str, T],
+    reported: set[tuple[str, str]],
+    factory: typing.Callable[[typing.Any], T],
+) -> None:
+    """Make ``registry`` agree with the loaded plugins.
 
-    Remove the providers that this function added for plugins that are
-    now disabled or not installed. Add the providers of new plugins. A
-    type that is already registered keeps its provider. Each conflict
-    is logged once.
+    ``attribute`` is the manifest list of classes (``secret_providers``).
+    Remove the instances that this function added for plugins that are
+    now disabled or not installed. Add one instance (``factory(cls)``)
+    for each new class. A type that is already registered keeps its
+    instance. Each conflict is logged once.
     """
     entries = plugin_registry.list_plugins()
     declared = {
-        cls for entry in entries for cls in entry.manifest.secret_providers
+        cls for entry in entries for cls in getattr(entry.manifest, attribute)
     }
-    for provider_type, provider in list(_LOADED.items()):
-        if type(provider) not in declared:
-            del _LOADED[provider_type]
-            if PROVIDERS.get(provider_type) is provider:
-                del PROVIDERS[provider_type]
+    for item_type, item in list(loaded.items()):
+        if type(item) not in declared:
+            del loaded[item_type]
+            if registry.get(item_type) is item:
+                del registry[item_type]
     for entry in entries:
-        for cls in entry.manifest.secret_providers:
-            current = PROVIDERS.get(cls.type)
+        for cls in getattr(entry.manifest, attribute):
+            current = registry.get(cls.type)
+            key = (entry.manifest.slug, cls.type)
             if current is None:
                 try:
-                    provider = cls(_Host())
+                    registry[cls.type] = loaded[cls.type] = factory(cls)
                 except Exception as err:  # noqa: BLE001 - skip this plugin
-                    key = (entry.manifest.slug, cls.type)
-                    if key not in _REPORTED:
-                        _REPORTED.add(key)
+                    if key not in reported:
+                        reported.add(key)
                         LOGGER.error(
-                            'Plugin %s secret provider %r failed to load: %s',
+                            'Plugin %s %s %r failed to load: %s',
                             entry.manifest.slug,
+                            kind,
                             cls.type,
                             type(err).__name__,
                         )
-                    continue
-                PROVIDERS[cls.type] = _LOADED[cls.type] = provider
-            elif not isinstance(current, cls):
-                key = (entry.manifest.slug, cls.type)
-                if key in _REPORTED:
-                    continue
-                _REPORTED.add(key)
+            elif not isinstance(current, cls) and key not in reported:
+                reported.add(key)
                 LOGGER.error(
-                    'Plugin %s declares secret provider type %r, which '
-                    'is already registered; ignored',
+                    'Plugin %s declares %s type %r, which is already '
+                    'registered; ignored',
                     entry.manifest.slug,
+                    kind,
                     cls.type,
                 )
+
+
+def _load() -> None:
+    reconcile(
+        'secret_providers',
+        'secret provider',
+        PROVIDERS,
+        _LOADED,
+        _REPORTED,
+        lambda cls: cls(_Host()),
+    )
 
 
 def all_providers() -> list[Provider]:

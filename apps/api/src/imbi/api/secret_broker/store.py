@@ -346,6 +346,67 @@ class SecretStore:
         )
         return found[0] if found else None
 
+    async def identity_source(self, organization_id: str) -> Row | None:
+        """Return the ``workload_identity`` setting, or ``None``."""
+        found = await self._all(
+            'SELECT * FROM secrets.identity_sources'
+            ' WHERE organization_id = %s',
+            (organization_id,),
+        )
+        return found[0] if found else None
+
+    async def put_identity_source(
+        self,
+        organization_id: str,
+        source_type: str,
+        config: Row,
+        updated_by: str,
+        *,
+        event: AuditEvent | None = None,
+    ) -> Row:
+        """Create or replace the ``workload_identity`` setting."""
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'INSERT INTO secrets.identity_sources'
+                ' (organization_id, type, config, updated_by)'
+                ' VALUES (%s, %s, %s, %s)'
+                ' ON CONFLICT (organization_id) DO UPDATE'
+                ' SET type = EXCLUDED.type, config = EXCLUDED.config,'
+                ' updated_by = EXCLUDED.updated_by, updated_at = NOW()'
+                ' RETURNING *',
+                (
+                    organization_id,
+                    source_type,
+                    pg_json.Jsonb(config),
+                    updated_by,
+                ),
+            )
+            row = typing.cast(Row, await cur.fetchone())
+            await _audit(conn, event, row)
+            return row
+
+    async def delete_identity_source(
+        self, organization_id: str, *, event: AuditEvent | None = None
+    ) -> bool:
+        """Delete the setting; return ``False`` when it is not there."""
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'DELETE FROM secrets.identity_sources'
+                ' WHERE organization_id = %s RETURNING *',
+                (organization_id,),
+            )
+            row = await cur.fetchone()
+            await _audit(conn, event, row)
+            return row is not None
+
 
 async def _check_binding_unused(
     conn: broker.Conn, organization_id: str, binding_id: uuid.UUID

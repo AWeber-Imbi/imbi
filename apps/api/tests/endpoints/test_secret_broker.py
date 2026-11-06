@@ -262,6 +262,39 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.json()['health_status'], 'healthy')
 
+    async def test_workload_identity(self) -> None:
+        path = self.base + '/workload-identity/'
+        response = await self.client.get(path + 'types')
+        self.assertIn('fake', [t['type'] for t in response.json()])
+        self.assertEqual((await self.client.get(path)).status_code, 404)
+        for body in (
+            {'type': 'unknown'},
+            {'type': 'fake', 'config': {'region': 'us-east-1'}},
+        ):
+            response = await self.client.put(path, json=body)
+            self.assertEqual(response.status_code, 422, response.text)
+
+        response = await self.client.put(path, json={'type': 'fake'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['updated_by'], self.email)
+        self.assertEqual((await self.client.get(path)).json()['type'], 'fake')
+        # A second write replaces the setting.
+        response = await self.client.put(path, json={'type': 'fake'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [e.type for e in await self.audit_events()][-2:],
+            ['workload_identity_updated', 'workload_identity_updated'],
+        )
+
+        self.permissions.discard('secret_provider:write')
+        self.assertEqual((await self.client.delete(path)).status_code, 403)
+        self.permissions.add('secret_provider:write')
+        self.assertEqual((await self.client.delete(path)).status_code, 204)
+        self.assertEqual((await self.client.delete(path)).status_code, 404)
+        self.assertEqual(
+            (await self.audit_events())[-1].type, 'workload_identity_deleted'
+        )
+
     async def test_binding_rules(self) -> None:
         body: dict[str, typing.Any] = {
             'reference': 'secret://production/pg/app',

@@ -51,6 +51,8 @@ EventType = typing.Literal[
     'secret_lease_renewed',
     'secret_lease_revoked',
     'secret_lease_revocation_failed',
+    'workload_identity_updated',
+    'workload_identity_deleted',
 ]
 Result = typing.Literal['allowed', 'denied', 'succeeded', 'failed']
 
