@@ -43,6 +43,11 @@ jobs:
         uses: moonrepo/setup-toolchain@v0
       - name: Build documentation
         run: moon run root:docs-build
+        env:
+          # apache-iggy has no cp314 wheel, so a uv cache miss builds it
+          # from the sdist, and it makes some lints errors. Cap lints at
+          # warnings, as test.yml and container/Dockerfile do.
+          RUSTFLAGS: "--cap-lints=warn"
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:

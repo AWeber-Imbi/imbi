@@ -115,7 +115,7 @@ describe('saveAgent', () => {
     expect(Object.keys(body.variable_schema ?? {}).sort()).toEqual([
       'agent',
       'organization',
-      'project',
+      'project_slug',
       'task',
       'team',
     ])

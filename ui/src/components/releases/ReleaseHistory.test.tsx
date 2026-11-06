@@ -123,6 +123,29 @@ describe('ReleaseHistory', () => {
     expect(screen.queryByText('Drift')).not.toBeInTheDocument()
   })
 
+  it('marks a release whose tag has not been synced from the repository', () => {
+    renderHistory([
+      {
+        ...RELEASES[0],
+        release_url: null,
+        sha: '28ae5f2',
+        short_sha: '28ae5f2',
+        tag: 'v1.2.0',
+        tag_synced: false,
+      },
+      { ...RELEASES[1], tag_synced: true },
+    ])
+    expect(screen.getAllByText('Tag not synced')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /v1\.2\.0/ })).toHaveTextContent(
+      'Tag not synced',
+    )
+  })
+
+  it('shows no sync badge when the field is absent', () => {
+    renderHistory(RELEASES)
+    expect(screen.queryByText('Tag not synced')).not.toBeInTheDocument()
+  })
+
   it('marks a blocked release and shows why, who, and an unblock action', async () => {
     const user = userEvent.setup()
     renderHistory([{ ...RELEASES[1], blocked: true, blockers: [BLOCKER] }])

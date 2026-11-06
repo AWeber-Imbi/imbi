@@ -454,9 +454,6 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             request=self.request(reference='secret://production/dynamic'),
         )
         self.assertEqual(error.reason, 'missing_dynamic_issuance')
-        with self.assertRaises(providers.BrokerError) as ctx:
-            await providers.PROVIDERS['aws_secrets_manager'].revoke({}, 'x')
-        self.assertEqual(ctx.exception.code, 'provider_lease_not_revocable')
 
     async def test_disabled_resources_deny_new_resolutions(self) -> None:
         for table, row, code in (
@@ -546,6 +543,16 @@ class MaterializeTestCase(secret_support.SecretCase):
                 'X-Content-Type-Options': 'nosniff',
             },
         )
+
+    async def test_provider_gets_the_agent_of_the_task(self) -> None:
+        created = await self._create()
+        with mock.patch.object(
+            self.fake, 'resolve', wraps=self.fake.resolve
+        ) as resolve:
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        self.assertEqual(resolve.call_args.args[3].agent_id, self.agent)
 
     async def test_binary_material_is_base64(self) -> None:
         self.fake.values['plain'] = b'\xff\x00secret'

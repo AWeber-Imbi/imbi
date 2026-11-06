@@ -25,7 +25,8 @@ from unittest import mock
 
 import httpx
 
-from imbi.api.secret_broker import github_app, providers
+from imbi.common.plugins import secrets
+from imbi.plugins.github import secret_provider as github_app
 
 ENV = {
     name: os.environ.get(f'IMBI_LIVE_GITHUB_{name}', '')
@@ -47,7 +48,14 @@ ENV = {
 class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        self.app = github_app.GitHubApp()
+        key = pathlib.Path(ENV['PRIVATE_KEY_FILE']).read_text()
+        self.app = github_app.GitHubApp(
+            mock.Mock(
+                provider_key=mock.AsyncMock(
+                    return_value=secrets.Material(key.encode())
+                )
+            )
+        )
         self.config = self.app.validate_config(
             {'host': ENV['HOST'] or 'github.com'}
         )
@@ -59,17 +67,13 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
             },
             'dynamic',
         )
-        key = pathlib.Path(ENV['PRIVATE_KEY_FILE']).read_text()
-        for name, value in (
-            ('private_key', mock.AsyncMock(return_value=key)),
-            (
-                'project_repository_ids',
-                mock.AsyncMock(return_value=[int(ENV['REPOSITORY_ID'])]),
-            ),
-        ):
-            patcher = mock.patch.object(github_app, name, value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(
+            self.app,
+            'project_repository_ids',
+            mock.AsyncMock(return_value=[int(ENV['REPOSITORY_ID'])]),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.workdir = pathlib.Path(tempfile.mkdtemp())
         self.leases: dict[str, str] = {}
         self.url = f'https://{self.config["host"]}/{ENV["REPOSITORY"]}.git'
@@ -79,7 +83,7 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
             self.config,
             self.locator,
             None,
-            providers.ResolveContext(
+            secrets.ResolveContext(
                 organization_id='live',
                 task_id=uuid.uuid4(),
                 project_id='live',

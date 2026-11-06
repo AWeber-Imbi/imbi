@@ -31,6 +31,7 @@ import {
   PROJECT_TYPE_BASE_FIELDS,
   TEAM_BASE_FIELDS,
 } from '@/lib/constants'
+import type { DeliveryMode } from '@/lib/delivery'
 import type {
   AdminSettings,
   AdminUser,
@@ -297,7 +298,11 @@ export interface ProjectListItem {
       tag?: null | string
     }
   >
+  delivery_mode?: DeliveryMode
   description: null | string
+  // `"<base>..<head>"` -> when the oldest commit that needs action in
+  // that range landed.
+  drift_range_oldest?: Record<string, string>
   // `"<base>..<head>"` -> whether CI flagged any commit in that range.
   // Keyed by the two committishes of one promotion step; a step with no
   // entry was never evaluated.
@@ -333,6 +338,7 @@ export interface ProjectListItem {
     latest_tag_at: null | string
     latest_tag_author: null | string
     latest_tag_sha: null | string
+    oldest_actionable_at?: null | string
   }
   score: null | number
   slug: string
@@ -3852,6 +3858,10 @@ export const listAgentTaskEvents = (
     { after_seq: afterSeq, limit },
     signal,
   )
+
+/** Delete a closed task. Needs `agent_task:delete`. */
+export const deleteAgentTask = (orgSlug: string, shortId: string) =>
+  apiClient.delete<void>(agentTaskPath(orgSlug, shortId))
 
 /** Pause, resume, or cancel a task. */
 export const controlAgentTask = (

@@ -89,7 +89,7 @@ them.
 | `{{ organization }}` | The organization slug |
 | `{{ agent }}` | The agent slug |
 | `{{ task }}` | The task id, for example `T-42` |
-| `{{ project }}` | The project slug of the task, or empty |
+| `{{ project_slug }}` | The project slug of the task, or empty |
 
 The **System prompt** tab is a Markdown editor. The **Model** tab has these
 fields:

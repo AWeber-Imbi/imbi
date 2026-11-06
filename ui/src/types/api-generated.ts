@@ -10483,6 +10483,8 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
+            /** Model Key Ref */
+            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -10534,6 +10536,8 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
+            /** Model Key Ref */
+            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -14681,6 +14685,8 @@ export interface components {
              * Format: date-time
              */
             deployed_at: string;
+            /** Started At */
+            started_at?: string | null;
             /** Tag */
             tag?: string | null;
             /** Committish */
@@ -16570,6 +16576,12 @@ export interface components {
             identifiers: {
                 [key: string]: number | string;
             };
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
         } & {
             [key: string]: unknown;
         };
@@ -16686,6 +16698,12 @@ export interface components {
              */
             environments: components["schemas"]["ProjectListEnvironmentRef"][];
             /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
+            /**
              * Open Pr Count
              * @default 0
              */
@@ -16717,6 +16735,10 @@ export interface components {
             /** Drift Ranges */
             drift_ranges?: {
                 [key: string]: boolean;
+            };
+            /** Drift Range Oldest */
+            drift_range_oldest?: {
+                [key: string]: string;
             };
         };
         /**
@@ -16978,6 +17000,12 @@ export interface components {
             identifiers: {
                 [key: string]: number | string;
             };
+            /**
+             * Delivery Mode
+             * @default project-type
+             * @enum {string}
+             */
+            delivery_mode: "project-type" | "deployable" | "releasable" | "disabled";
             /**
              * Services
              * @default []
@@ -18084,6 +18112,11 @@ export interface components {
             /** Package Url */
             package_url?: string | null;
             /**
+             * Tag Synced
+             * @default true
+             */
+            tag_synced: boolean;
+            /**
              * Blocked
              * @default false
              */
@@ -18261,6 +18294,11 @@ export interface components {
              * @default 0
              */
             drift_answered: number;
+            /**
+             * Oldest Actionable At
+             * @default null
+             */
+            oldest_actionable_at: string | null;
         };
         /**
          * RelocationTarget
@@ -20198,12 +20236,19 @@ export interface components {
          *     Patterns are matched with :func:`re.fullmatch` and validated as
          *     compilable at assignment time so an invalid expression is rejected at
          *     the API boundary rather than at deploy/release time.
+         *
+         *     ``scheme`` is an optional calver.org scheme such as ``YY.0M.MICRO``.
+         *     When it is set, ``pattern`` is derived from it (any ``pattern`` sent
+         *     with it is replaced), and the next tag is suggested from the scheme
+         *     (see ``imbi.common.versioning.next_scheme_tag``).
          */
         TagFormat: {
             /** Label */
             label: string;
             /** Pattern */
             pattern: string;
+            /** Scheme */
+            scheme?: string | null;
         };
         /** TagRef */
         TagRef: {

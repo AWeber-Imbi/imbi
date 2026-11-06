@@ -73,6 +73,10 @@ service:
     replicas: 1
   ui:
     replicas: 1
+    # Drift on the Projects page that waits longer than this shows red
+    # instead of amber: a number and a unit (m, h, d, w), e.g. "7d". Empty:
+    # never red. Becomes VITE_DRIFT_STALE_AFTER in "all" and "ui" modes.
+    driftStaleAfter: ""
     # host:port of each service the Caddyfile proxies to, when they run as
     # their own releases. Left empty, Caddy falls back to the in-pod loopback,
     # which in "ui" mode reaches nothing.

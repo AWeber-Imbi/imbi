@@ -6,7 +6,6 @@ import {
   groupTasks,
   phaseTimeline,
   requestsFrom,
-  toolCalls,
 } from '../taskEvents'
 import { event, task } from './taskFixtures'
 
@@ -95,32 +94,6 @@ describe('requestsFrom', () => {
       ['c', 'expired', null, null],
     ])
     expect(requests[1].options).toEqual(['yes', 'no'])
-  })
-})
-
-describe('toolCalls', () => {
-  it('nests a call under the call_id of its parent, in seq order', () => {
-    const rows = toolCalls([
-      event(1, 'tool.called', { tool: 'read' }),
-      event(2, 'tool.called', {
-        parent_call_id: 'delegate',
-        tool: 'sub.read',
-      }),
-      event(3, 'turn', { body: 'hi' }),
-      event(4, 'tool.called', { call_id: 'delegate', tool: 'delegate' }),
-      event(5, 'tool.called', {
-        parent_call_id: event(1, 'x').event_id,
-        tool: 'by-event-id',
-      }),
-      event(6, 'tool.called', { parent_call_id: 'gone', tool: 'orphan' }),
-    ])
-    expect(rows.map((r) => [r.event.payload.tool, r.depth])).toEqual([
-      ['read', 0],
-      ['delegate', 0],
-      ['sub.read', 1],
-      ['by-event-id', 0],
-      ['orphan', 0],
-    ])
   })
 })
 

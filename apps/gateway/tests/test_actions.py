@@ -2095,6 +2095,103 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
             any('Failed to record deployment' in line for line in cm.output)
         )
 
+    async def _record(
+        self, *responses: httpx.Response, body: dict[str, object]
+    ) -> tuple[httpx.Response, unittest.mock.AsyncMock]:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions, '_DEPLOYMENT_WRITE_BACKOFF', 0
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                side_effect=list(responses),
+            ) as mock_post,
+        ):
+            async with actions.ImbiClient() as client:
+                response = await client.record_deployment(
+                    'o', 'p', 'v1', 'prod', body
+                )
+        return response, mock_post
+
+    async def test_server_error_is_retried_with_a_run_id(self) -> None:
+        response, mock_post = await self._record(
+            httpx.Response(500),
+            httpx.Response(200),
+            body={'status': 'success', 'external_run_id': '7'},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(2, mock_post.await_count)
+
+    async def test_server_error_retries_are_bounded(self) -> None:
+        response, mock_post = await self._record(
+            *[httpx.Response(500) for _ in range(5)],
+            body={'status': 'success', 'external_run_id': '7'},
+        )
+        self.assertEqual(500, response.status_code)
+        self.assertEqual(
+            actions._DEPLOYMENT_WRITE_RETRIES + 1,  # pyright: ignore[reportPrivateUsage]
+            mock_post.await_count,
+        )
+
+    async def test_server_error_without_a_run_id_is_not_retried(
+        self,
+    ) -> None:
+        # Nothing to merge on, so a repeat could record it twice.
+        response, mock_post = await self._record(
+            httpx.Response(500),
+            httpx.Response(200),
+            body={'status': 'success'},
+        )
+        self.assertEqual(500, response.status_code)
+        self.assertEqual(1, mock_post.await_count)
+
+    async def test_server_error_for_a_running_status_is_not_retried(
+        self,
+    ) -> None:
+        # A late in_progress repeat could overwrite a newer success.
+        response, mock_post = await self._record(
+            httpx.Response(500),
+            httpx.Response(200),
+            body={'status': 'in_progress', 'external_run_id': '7'},
+        )
+        self.assertEqual(500, response.status_code)
+        self.assertEqual(1, mock_post.await_count)
+
+    async def test_client_error_is_not_retried(self) -> None:
+        response, mock_post = await self._record(
+            httpx.Response(422),
+            httpx.Response(200),
+            body={'status': 'success', 'external_run_id': '7'},
+        )
+        self.assertEqual(422, response.status_code)
+        self.assertEqual(1, mock_post.await_count)
+
+    async def test_unattached_server_error_is_retried(self) -> None:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions, '_DEPLOYMENT_WRITE_BACKOFF', 0
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                side_effect=[httpx.Response(503), httpx.Response(201)],
+            ) as mock_post,
+        ):
+            async with actions.ImbiClient() as client:
+                response = await client.record_unattached_deployment(
+                    'o',
+                    'p',
+                    'prod',
+                    {'status': 'success', 'external_run_id': '7'},
+                )
+        self.assertEqual(201, response.status_code)
+        self.assertEqual(2, mock_post.await_count)
+
 
 class ImbiClientListReleasesTests(helpers.TestCase):
     async def test_url_and_no_filters(self) -> None:

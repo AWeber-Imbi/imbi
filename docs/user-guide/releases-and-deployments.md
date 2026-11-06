@@ -8,8 +8,14 @@ A project gets one of two tabs:
 
 | Tab | Shows for a project that | What you do there |
 |---|---|---|
-| **Deployments** | Has a deployable project type, a deployment plugin, and at least one environment | Deploy commits, promote between environments, and roll back |
-| **Releases** | Has a releasable project type, no deployable type, and a deployment plugin | Cut releases (tags and release notes) |
+| **Deployments** | Is deployable, has a deployment plugin, and at least one environment | Deploy commits, promote between environments, and roll back |
+| **Releases** | Is releasable and has a deployment plugin | Cut releases (tags and release notes) |
+
+By default a project is deployable when one of its project types is
+deployable, and releasable when none is deployable and one is releasable.
+The **Releases and deployments** setting of the project overrides that:
+see [Delivery](projects.md#delivery). A project set to **Disabled** gets
+neither tab, and the API refuses to deploy, promote, or release it.
 
 If you have no connection to the provider of the plugin, the tab asks you
 to connect it. Open **Settings > Connections** to connect. See
@@ -198,6 +204,7 @@ Each release shows these badges when they apply:
 | **Blocked (n)** | The release has n open blockers |
 | **Drift** | CI reported drift on the commit of this release. See [Drift](drift.md#release-drift) |
 | **CI overridden** | Someone released it over a failing CI run |
+| **Tag not synced** | Imbi has a record of the release, but its tag has not been synced from the repository: the release is still in flight or its build failed before the tag was pushed. These releases are listed first, and their blockers can be resolved here |
 | **Latest** | The newest release |
 
 Expand a release to see its notes, **View tag**, and **Add blocker**.

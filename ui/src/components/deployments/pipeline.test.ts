@@ -312,6 +312,13 @@ describe('buildPipeline', () => {
     ])
   })
 
+  it('marks a running tag missing from history as not synced', () => {
+    const current = [currentRelease('staging', 'ccc333ccc333', 'v9.9.9')]
+    const staging = buildPipeline(ENVS, current, HISTORY, COMMITS)[1]
+    expect(staging.currentHistoryEntry?.tag).toBe('v9.9.9')
+    expect(staging.currentHistoryEntry?.tag_synced).toBe(false)
+  })
+
   it('lists nothing when the deployed commit matches no release', () => {
     const unknown = [currentRelease('staging', '777zzz777zzz', null)]
     const staging = buildPipeline(ENVS, unknown, HISTORY, COMMITS)[1]
@@ -376,6 +383,15 @@ describe('newestTag', () => {
     )
     expect(newestTag([])).toBeNull()
     expect(newestTag([entry('nightly', 'a')])).toBeNull()
+  })
+
+  it('skips releases whose tag was never pushed', () => {
+    const unpushed = { ...entry('2.69.1', '0000000'), tag_synced: false }
+    expect(newestTag([unpushed, entry('2.54.4', 'b')])).toBe('2.54.4')
+    expect(newestTag([unpushed])).toBeNull()
+    expect(newestTag([{ ...entry('2.54.5', 'c'), tag_synced: true }])).toBe(
+      '2.54.5',
+    )
   })
 })
 

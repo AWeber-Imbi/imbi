@@ -1,6 +1,6 @@
 [project]
 name = "imbi"
-version = "2.41.0"
+version = "2.43.1"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [
   { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
   { name = "Dave Shawley", email = "daves@aweber.com" },
-  { name = "Alex Campbell", email = "alexc@aweber.com" }
+  { name = "Alex Campbell", email = "alexc@aweber.com" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -21,21 +21,22 @@ classifiers = [
 ]
 # Meta-distribution: installing `imbi` installs the whole platform.
 dependencies = [
-  "imbi-api==2.41.0",
-  "imbi-assistant==2.41.0",
-  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.41.0",
-  "imbi-gateway==2.41.0",
-  "imbi-mcp==2.41.0",
-  "imbi-plugin-aws==2.41.0",
-  "imbi-plugin-github==2.41.0",
-  "imbi-plugin-google==2.41.0",
-  "imbi-plugin-logzio==2.41.0",
-  "imbi-plugin-oidc==2.41.0",
-  "imbi-plugin-pagerduty==2.41.0",
-  "imbi-plugin-sonarqube==2.41.0",
-  "imbi-scheduler==2.41.0",
-  "imbi-slackbot==2.41.0",
-  "imbi-workflows==2.41.0",
+  "imbi-api==2.43.1",
+  "imbi-assistant==2.43.1",
+  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.43.1",
+  "imbi-gateway==2.43.1",
+  "imbi-mcp==2.43.1",
+  "imbi-plugin-anthropic==2.43.1",
+  "imbi-plugin-aws==2.43.1",
+  "imbi-plugin-github==2.43.1",
+  "imbi-plugin-google==2.43.1",
+  "imbi-plugin-logzio==2.43.1",
+  "imbi-plugin-oidc==2.43.1",
+  "imbi-plugin-pagerduty==2.43.1",
+  "imbi-plugin-sonarqube==2.43.1",
+  "imbi-scheduler==2.43.1",
+  "imbi-slackbot==2.43.1",
+  "imbi-workflows==2.43.1",
 ]
 
 [dependency-groups]
@@ -108,6 +109,7 @@ files = [
   "apps/scheduler/src",
   "apps/slackbot/src",
   "apps/workflows/src",
+  "plugins/anthropic/src",
   "plugins/aws/src",
   "plugins/github/src",
   "plugins/google/src",
@@ -116,7 +118,7 @@ files = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/anthropic/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -154,6 +156,7 @@ extraPaths = [
   "apps/scheduler/src",
   "apps/slackbot/src",
   "apps/workflows/src",
+  "plugins/anthropic/src",
   "plugins/aws/src",
   "plugins/github/src",
   "plugins/google/src",
@@ -168,7 +171,7 @@ exclude = [
   ".venv",
   "ui",
   "typings",
-  "docs"
+  "docs",
 ]
 
 [[tool.pyright.executionEnvironments]]
@@ -472,6 +475,31 @@ reportUnknownVariableType = "none"
 reportUnusedFunction = "none"
 
 [[tool.pyright.executionEnvironments]]
+root = "plugins/anthropic/tests"
+extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[[tool.pyright.executionEnvironments]]
 root = "plugins/oidc/tests"
 extraPaths = ["."]
 reportUnnecessaryIsInstance = "none"
@@ -668,7 +696,7 @@ max-complexity = 15
   "RSE",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 "apps/api/**" = [
   "A",
@@ -684,7 +712,7 @@ max-complexity = 15
   "RSE",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 "plugins/**" = [
   "A",
@@ -701,7 +729,7 @@ max-complexity = 15
   "RSE",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 "apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "apps/gateway/**" = ["TC", "UP"]
@@ -734,7 +762,7 @@ max-complexity = 15
   "S",
   "SIM",
   "TC",
-  "TRY"
+  "TRY",
 ]
 
 [tool.uv]
@@ -762,6 +790,7 @@ imbi-mcp = { workspace = true }
 imbi-scheduler = { workspace = true }
 imbi-slackbot = { workspace = true }
 imbi-workflows = { workspace = true }
+imbi-plugin-anthropic = { workspace = true }
 imbi-plugin-aws = { workspace = true }
 imbi-plugin-github = { workspace = true }
 imbi-plugin-google = { workspace = true }

@@ -95,6 +95,7 @@ class ProjectCreate(pydantic.BaseModel):
     )
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
+    delivery_mode: models.DeliveryMode = 'project-type'
 
     @pydantic.field_validator('project_type_slugs')
     @classmethod
@@ -138,6 +139,7 @@ class ProjectUpdate(pydantic.BaseModel):
     )
     links: dict[str, pydantic.AnyUrl] | None = None
     identifiers: dict[str, int | str] | None = None
+    delivery_mode: models.DeliveryMode | None = None
 
 
 # ProjectRelationships now lives in imbi.common.models so the OpenAPI
@@ -178,7 +180,10 @@ class LatestDeployment(pydantic.BaseModel):
     """
 
     status: deployment_nodes.DeploymentStatus
+    #: The attempt's last status change.
     deployed_at: datetime.datetime
+    #: When the attempt started; ``None`` when the node does not say.
+    started_at: datetime.datetime | None = None
     tag: str | None = None
     committish: str | None = None
 
@@ -214,6 +219,10 @@ class ReleaseSummary(pydantic.BaseModel):
     #: much of the range's ``drift_detected`` rests on verdicts rather
     #: than on the fail-closed default.
     drift_answered: int = 0
+    #: When the oldest unreleased commit that needs action landed:
+    #: the same commits ``drift_detected`` counts, so a commit CI
+    #: answered ``false`` is skipped.  ``None`` when none needs action.
+    oldest_actionable_at: datetime.datetime | None = None
 
 
 class ProjectListTeamRef(pydantic.BaseModel):
@@ -264,6 +273,7 @@ class ProjectListItem(pydantic.BaseModel):
     team: ProjectListTeamRef
     project_types: list[ProjectListProjectTypeRef] = []
     environments: list[ProjectListEnvironmentRef] = []
+    delivery_mode: models.DeliveryMode = 'project-type'
     open_pr_count: int = 0
     closed_pr_count: int = 0
     viewer_open_pr_count: int = 0
@@ -286,6 +296,14 @@ class ProjectListItem(pydantic.BaseModel):
     #: every pair it draws.  A pair with no entry was never evaluated,
     #: which the client must fail closed on and show.
     drift_ranges: dict[str, bool] = pydantic.Field(default_factory=dict)
+    #: ``"<base>..<head>"`` -> when the oldest commit that needs action
+    #: in that range landed on the default branch.  Only ranges that
+    #: ``drift_ranges`` marks ``true`` from their commits have an entry:
+    #: a range that needs action only because it could not be evaluated
+    #: has no date.
+    drift_range_oldest: dict[str, datetime.datetime] = pydantic.Field(
+        default_factory=dict
+    )
 
 
 class ProjectResponse(pydantic.BaseModel):
@@ -307,6 +325,7 @@ class ProjectResponse(pydantic.BaseModel):
     environments: list[EnvironmentRef] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
+    delivery_mode: models.DeliveryMode = 'project-type'
     # The project's EXISTS_IN connections, one entry per
     # ``(:Project)-[:EXISTS_IN]->(:Integration)`` edge.  Read-only
     # structured surface (identifier + canonical API URL + the dashboard
@@ -790,11 +809,12 @@ async def _apply_deployment_nodes(
     latest_deployments: dict[tuple[str, str], LatestDeployment] = {}
     for entry in rows:
         key = (entry.project_id, str(entry.environment.get('slug') or ''))
+        legacy = current.get(key)
         if entry.current is not None and entry.current.release is not None:
-            existing = current.get(key)
-            if existing is None or deployment_nodes.as_utc(
+            if legacy is None or deployment_nodes.as_utc(
                 entry.current.event.timestamp
-            ) > deployment_nodes.as_utc(existing[2]):
+            ) > deployment_nodes.as_utc(legacy[2]):
+                legacy = None
                 current[key] = (
                     entry.current.release.get('tag') or None,
                     entry.current.release.get('committish') or None,
@@ -805,19 +825,23 @@ async def _apply_deployment_nodes(
         # newest one is the one serving traffic, so the two compare
         # equal and there is nothing extra to report.
         if entry.latest.release is not None and entry.latest != entry.current:
-            # And it has to be newer than whatever *won* as current,
-            # which may be a legacy array entry the node's success could
-            # not displace.  The pill means "something happened here
-            # after the release that is serving"; against a newer legacy
-            # entry an unguarded write made that sentence false.
-            serving = current.get(key)
-            if serving is not None and deployment_nodes.as_utc(
-                entry.latest.event.timestamp
-            ) <= deployment_nodes.as_utc(serving[2]):
+            # And it has to be newer than a legacy array entry that won
+            # as current.  The pill means "something happened here after
+            # the release that is serving"; against a newer legacy entry
+            # an unguarded write made that sentence false.  Compare when
+            # the attempt *started*: one closed late (e.g. a stuck
+            # rollout swept to failed) is not newer than a release that
+            # went out after it began.  When a node won, the reader has
+            # already compared start times, and the serving node's
+            # timestamp is its last status change, not its start.
+            if legacy is not None and deployment_nodes.started_at(
+                entry.latest
+            ) <= deployment_nodes.as_utc(legacy[2]):
                 continue
             latest_deployments[key] = LatestDeployment(
                 status=entry.latest.event.status,
                 deployed_at=entry.latest.event.timestamp,
+                started_at=entry.latest.started_at,
                 tag=entry.latest.release.get('tag') or None,
                 committish=entry.latest.release.get('committish') or None,
             )
@@ -948,10 +972,23 @@ async def _fetch_current_releases(
     return CurrentReleaseState(current, in_flight)
 
 
+class ActionableCommit(typing.NamedTuple):
+    """One commit :func:`_fetch_actionable_commit_times` returned.
+
+    ``at`` is the commit time the range is evaluated by; ``landed`` is
+    when the commit reached the default branch, which is what a range
+    that needs action is dated by.
+    """
+
+    sha: str
+    at: datetime.datetime
+    landed: datetime.datetime
+
+
 async def _fetch_actionable_commit_times(
     windows: dict[str, tuple[datetime.datetime, datetime.datetime]],
-) -> dict[str, list[tuple[str, datetime.datetime]]] | None:
-    """Return {project_id: [(short_sha, time) of commits not proven clean]}.
+) -> dict[str, list[ActionableCommit]] | None:
+    """Return {project_id: [commits in the window not proven clean]}.
 
     Actionable means the verdict is ``true`` or there is no verdict at
     all -- the rule suppresses a commit only when CI positively said
@@ -971,6 +1008,14 @@ async def _fetch_actionable_commit_times(
     :func:`_fetch_release_summaries`: a rebase or cherry-pick leaves the
     author date pointing before the release it landed after.
 
+    ``pushed_at`` rides along as ``landed``: when the commit reached the
+    default branch, which is what the caller dates a range by.  Neither
+    commit date says that for a merged pull request's own commits --
+    they keep the dates they were made with on the branch, and the
+    merge that brought them onto the mainline can be hours or days
+    later.  The sync only records pushes to the default branch, so the
+    merge push is what stamps every commit it carried.
+
     Errors are swallowed and return ``None`` -- distinct from "no
     actionable commits" -- so the caller can mark every evaluable range
     actionable instead of clean.  Failing closed: an unavailable verdict
@@ -982,7 +1027,8 @@ async def _fetch_actionable_commit_times(
     try:
         rows = await clickhouse.query(
             'SELECT c.project_id AS project_id, c.short_sha AS short_sha,'
-            ' COALESCE(c.committed_at, c.authored_at) AS at'
+            ' COALESCE(c.committed_at, c.authored_at) AS at,'
+            ' c.pushed_at AS landed'
             ' FROM commits AS c FINAL'
             ' LEFT ANTI JOIN (SELECT project_id, sha'
             ' FROM commit_drift FINAL'
@@ -1005,13 +1051,16 @@ async def _fetch_actionable_commit_times(
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to fetch actionable commits', exc_info=True)
         return None
-    out: dict[str, list[tuple[str, datetime.datetime]]] = {}
+    out: dict[str, list[ActionableCommit]] = {}
     for row in rows:
         pid = str(row.get('project_id') or '')
         sha = str(row.get('short_sha') or '')
         at = clickhouse.as_utc_or_none(row.get('at'))
+        landed = clickhouse.as_utc_or_none(row.get('landed'))
         if pid and at is not None:
-            out.setdefault(pid, []).append((sha, at))
+            out.setdefault(pid, []).append(
+                ActionableCommit(sha, at, landed if landed else at)
+            )
     return out
 
 
@@ -1089,9 +1138,21 @@ def _range_key(base: str, head: str) -> str:
     return f'{base}..{head}'
 
 
+class EnvironmentDrift(typing.NamedTuple):
+    """The per-project results of :func:`_evaluate_environment_drift`.
+
+    Both map project id -> range key -> value.  ``ranges`` is whether
+    the range needs action; ``oldest`` is when its oldest commit that
+    needs action landed.
+    """
+
+    ranges: dict[str, dict[str, bool]]
+    oldest: dict[str, dict[str, datetime.datetime]]
+
+
 async def _evaluate_environment_drift(
     project_data_list: list[dict[str, typing.Any]],
-) -> dict[str, dict[str, bool]]:
+) -> EnvironmentDrift:
     """Apply the rule to every project's promotion steps.
 
     Two sequential reads: the endpoint commit times first, then the
@@ -1113,6 +1174,14 @@ async def _evaluate_environment_drift(
     range must not read as clean.  The same precision means a distinct
     commit can share the *base* commit's timestamp, so the lower bound
     is inclusive and only the base commit itself is excluded, by sha.
+
+    The oldest date comes from the same in-range commits, so it needs no
+    third read.  Membership goes by commit time, the date by when the
+    commit *landed* on the default branch: a merged pull request's
+    commits keep their branch-era commit dates, so dating the range by
+    those over-reports how long it has waited by however long the pull
+    request was open.  A range that needs action only because its
+    endpoints are unorderable or the verdict read failed gets no date.
     """
     ranges_by_pid: dict[str, list[tuple[str, str]]] = {}
     for project_data in project_data_list:
@@ -1123,7 +1192,7 @@ async def _evaluate_environment_drift(
         if found:
             ranges_by_pid[pid] = found
     if not ranges_by_pid:
-        return {}
+        return EnvironmentDrift({}, {})
     pids = list(ranges_by_pid)
     shas = sorted(
         {
@@ -1150,6 +1219,7 @@ async def _evaluate_environment_drift(
             )
     actionable = await _fetch_actionable_commit_times(windows)
     out: dict[str, dict[str, bool]] = {}
+    oldest: dict[str, dict[str, datetime.datetime]] = {}
     for pid, pairs in ranges_by_pid.items():
         marks = actionable.get(pid, []) if actionable is not None else None
         for base, head in pairs:
@@ -1158,16 +1228,18 @@ async def _evaluate_environment_drift(
             if lo is None or hi is None:
                 continue
             key = _range_key(base, head)
-            if hi <= lo:
+            if hi <= lo or marks is None:
                 out.setdefault(pid, {})[key] = True
-            elif marks is None:
-                out.setdefault(pid, {})[key] = True
-            else:
-                out.setdefault(pid, {})[key] = any(
-                    (lo < at <= hi) or (at == lo and sha != base)
-                    for sha, at in marks
-                )
-    return out
+                continue
+            in_range = [
+                landed
+                for sha, at, landed in marks
+                if (lo < at <= hi) or (at == lo and sha != base)
+            ]
+            out.setdefault(pid, {})[key] = bool(in_range)
+            if in_range:
+                oldest.setdefault(pid, {})[key] = min(in_range)
+    return EnvironmentDrift(out, oldest)
 
 
 def _release_range_cutoffs(
@@ -1361,6 +1433,18 @@ async def _fetch_authored_times(
     return authored_by_project
 
 
+def _delivery_of(project_data: dict[str, typing.Any]) -> models.Delivery:
+    """Resolve a listed project's delivery flags from its graph record."""
+    project_types = typing.cast(
+        list[dict[str, typing.Any]], project_data.get('project_types') or []
+    )
+    return models.resolve_delivery(
+        project_data.get('delivery_mode'),
+        deployable=any(pt.get('deployable') for pt in project_types),
+        releasable=any(pt.get('releasable') for pt in project_types),
+    )
+
+
 async def _fetch_release_summaries(
     project_ids: list[str],
 ) -> dict[str, ReleaseSummary]:
@@ -1446,6 +1530,7 @@ async def _fetch_release_summaries(
     ]
     counts_since_tag: dict[str, int] = {}
     drift_by_pid: dict[str, tuple[bool, int]] = {}
+    oldest_by_pid: dict[str, datetime.datetime] = {}
     if tagged_pids:
         try:
             pid_cutoff = _release_range_cutoffs(
@@ -1464,12 +1549,21 @@ async def _fetch_release_summaries(
                 # LEFT JOIN cannot distinguish "no verdict row" from a
                 # real ``false`` -- Bool defaults to 0 -- so the
                 # subquery carries an explicit ``answered`` marker.
+                # ``oldest_actionable_at`` is ``pushed_at``, not a
+                # commit date: a merged pull request's commits keep
+                # their branch-era dates, and the push that merged
+                # them is when they started waiting for a release.
                 count_rows = await clickhouse.query(
                     'SELECT c.project_id AS project_id,'
                     ' count() AS c,'
                     ' countIf(d.answered = 1 AND d.drift_detected)'
                     ' AS drifted,'
-                    ' countIf(d.answered = 1) AS answered'
+                    ' countIf(d.answered = 1) AS answered,'
+                    ' countIf(d.answered = 0 OR d.drift_detected)'
+                    ' AS actionable,'
+                    ' minIf(c.pushed_at,'
+                    ' d.answered = 0 OR d.drift_detected)'
+                    ' AS oldest_actionable_at'
                     ' FROM commits AS c FINAL'
                     ' LEFT JOIN (SELECT project_id, sha, drift_detected,'
                     ' toUInt8(1) AS answered FROM commit_drift FINAL'
@@ -1509,6 +1603,21 @@ async def _fetch_release_summaries(
                     )
                     for row in count_rows
                     if row.get('project_id') is not None
+                }
+                # ``minIf`` over no matching rows gives the type's zero
+                # (the epoch), not NULL, so read it only when a commit
+                # needs action.
+                oldest_by_pid = {
+                    str(row['project_id']): at
+                    for row in count_rows
+                    if row.get('project_id') is not None
+                    and int(row.get('actionable') or 0) > 0
+                    and (
+                        at := clickhouse.as_utc_or_none(
+                            row.get('oldest_actionable_at')
+                        )
+                    )
+                    is not None
                 }
         except Exception:  # noqa: BLE001
             LOGGER.warning(
@@ -1559,6 +1668,7 @@ async def _fetch_release_summaries(
             commits_since_tag=counts_since_tag.get(pid, 0),
             drift_detected=drift_by_pid.get(pid, (False, 0))[0],
             drift_answered=drift_by_pid.get(pid, (False, 0))[1],
+            oldest_actionable_at=oldest_by_pid.get(pid),
         )
     return release_result
 
@@ -1765,6 +1875,7 @@ _SLIM_RETURN_FRAGMENT: typing.LiteralString = """
                       END) AS envs
     RETURN p{{.id, .name, .slug, .description, .score,
               archived: coalesce(p.archived, false),
+              delivery_mode: coalesce(p.delivery_mode, 'project-type'),
               team: t{{.name, .slug}},
               project_types: pts,
               environments: envs}} AS project
@@ -1819,6 +1930,7 @@ async def create_project(
             description=data.description,
             icon=data.icon,
             links=data.links,
+            delivery_mode=data.delivery_mode,
             **{
                 k: v
                 for k, v in typing.cast(
@@ -2409,14 +2521,7 @@ async def list_projects(
     releasable_ids = [
         str(p.get('id', ''))
         for p in project_data_list
-        if p.get('id')
-        and any(
-            pt.get('releasable')
-            for pt in typing.cast(
-                list[dict[str, typing.Any]],
-                p.get('project_types') or [],
-            )
-        )
+        if p.get('id') and _delivery_of(p).releasable
     ]
     viewer = auth.identity_for('github-enterprise-cloud')
     pr_counts, releases, release_summaries = await asyncio.gather(
@@ -2436,8 +2541,10 @@ async def list_projects(
         project_data['latest_deployments'] = releases.latest.get(pid, {})
     # Only ``ProjectListItem`` carries ``drift_ranges``, so the two
     # reads behind it are pure waste on the full-response path.
-    drift_ranges = (
-        await _evaluate_environment_drift(project_data_list) if slim else {}
+    drift = (
+        await _evaluate_environment_drift(project_data_list)
+        if slim
+        else EnvironmentDrift({}, {})
     )
 
     for project_data in project_data_list:
@@ -2449,7 +2556,8 @@ async def list_projects(
         project_data['closed_pr_count'] = closed_count
         project_data['viewer_open_pr_count'] = viewer_open
         project_data['viewer_closed_pr_count'] = viewer_closed
-        project_data['drift_ranges'] = drift_ranges.get(pid, {})
+        project_data['drift_ranges'] = drift.ranges.get(pid, {})
+        project_data['drift_range_oldest'] = drift.oldest.get(pid, {})
         summary = release_summaries.get(pid)
         if summary is not None:
             project_data['release_summary'] = summary.model_dump()
@@ -3347,6 +3455,11 @@ async def _execute_project_update(
             if data.identifiers is not None
             else existing_identifiers
         ),
+        'delivery_mode': (
+            data.delivery_mode
+            or existing_p.get('delivery_mode')
+            or 'project-type'
+        ),
     }
 
     # Merge blueprint extra fields: start from existing unknown keys,
@@ -3620,6 +3733,7 @@ async def patch_project(
         'environments': current_environments,
         'links': parsed_links,
         'identifiers': parsed_identifiers,
+        'delivery_mode': project_data.get('delivery_mode') or 'project-type',
         **extras,
     }
 

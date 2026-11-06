@@ -3,17 +3,21 @@
 import datetime
 import json
 import typing
+import unittest
 import uuid
 from unittest import mock
 
+import fastapi
 import httpx
 import psycopg.errors
+import slugify
 from fastapi import testclient
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_prompts
 from imbi.api import harness, models, workflows
 from imbi.api.auth import organizations, permissions
+from imbi.api.endpoints import agents
 from imbi.common import graph
 
 BASE = '/organizations/engineering/agents'
@@ -174,10 +178,12 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     # -- Create --------------------------------------------------------
 
     def test_create_writes_version_one(self) -> None:
-        # team, tags, slug check, create, attach tags, version, fetch
+        # team, tags, slug check, SA slug check, create, attach tags,
+        # version, fetch
         self.mock_db.execute.side_effect = [
             [{'team_id': 'team-1'}],
             [{'tag_slug': 'red', 'found': True}],
+            [],
             [],
             [{'id': 'agent-1'}],
             [{'attached': 1}],
@@ -211,10 +217,13 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(body['settings']['response_sla'], '24h')
         self.assertNotIn('model', body)
 
-        create = self.mock_db.execute.await_args_list[3].args
+        sa_check = self.mock_db.execute.await_args_list[3].args
+        self.assertEqual(sa_check[1], {'slug': 'triage'})
+        create = self.mock_db.execute.await_args_list[4].args
         self.assertIn('CREATE (a:Agent', create[0])
         self.assertIn('CREATE (a)-[:ACTS_AS]->(s)', create[0])
-        self.assertEqual(create[1]['sa_slug'], f'agent-{create[1]["id"]}')
+        self.assertIn("[:MEMBER_OF {{role: 'developer'}}]", create[0])
+        self.assertEqual(create[1]['sa_slug'], 'triage')
         self.assertEqual(create[1]['team_id'], 'team-1')
         self.assertEqual(create[1]['version'], 1)
         self.assertEqual(create[1]['prompt_version'], 2)
@@ -247,6 +256,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [{'team_id': 'team-1'}],
             [],
+            [],
             [{'id': 'agent-1'}],
             [{'n': 1}],
             [self._row()],
@@ -255,12 +265,34 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             BASE + '/', json={'name': 'T', 'slug': 'triage', 'team': 'ops'}
         )
         self.assertEqual(response.status_code, 201, response.text)
-        self.assertIn('SET a.org_id = o.id', self._queries()[2])
+        self.assertIn('SET a.org_id = o.id', self._queries()[3])
+
+    def test_create_avoids_internal_service_account_slug(self) -> None:
+        # team, slug check, create, version, fetch: no SA slug check
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [],
+            [{'id': 'agent-1'}],
+            [{'n': 1}],
+            [self._row()],
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={'name': 'Imbi Scheduler', 'slug': 'sched', 'team': 'ops'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        create = self.mock_db.execute.await_args_list[2].args[1]
+        self.assertEqual(
+            create['sa_slug'],
+            slugify.slugify(f'agent-imbi-scheduler-{create["id"]}'),
+        )
+        self.assertFalse(create['sa_slug'].startswith('imbi-'))
 
     def test_create_concurrent_slug_conflict(self) -> None:
         # The slug check passes, then the unique index stops the create.
         self.mock_db.execute.side_effect = [
             [{'team_id': 'team-1'}],
+            [],
             [],
             psycopg.errors.UniqueViolation(),
         ]
@@ -271,9 +303,65 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('already exists', response.json()['detail'])
         self.assertEqual(self._version_writes(), [])
 
+    def test_create_service_account_slug_conflict_exhausted(self) -> None:
+        # Both service account slugs are taken after the check.
+        diag = mock.Mock(table_name='ServiceAccount')
+        with mock.patch.object(
+            psycopg.errors.UniqueViolation,
+            'diag',
+            new_callable=mock.PropertyMock,
+            return_value=diag,
+        ):
+            self.mock_db.execute.side_effect = [
+                [{'team_id': 'team-1'}],
+                [],
+                [],
+                psycopg.errors.UniqueViolation(),
+                [{'id': 'other'}],
+                psycopg.errors.UniqueViolation(),
+            ]
+            response = self.client.post(
+                BASE + '/',
+                json={'name': 'T', 'slug': 'triage', 'team': 'ops'},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('Service account slug', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
+    def test_create_retries_service_account_slug_conflict(self) -> None:
+        # Another org took the service account slug after the check.
+        conflict = psycopg.errors.UniqueViolation()
+        diag = mock.Mock(table_name='ServiceAccount')
+        with mock.patch.object(
+            psycopg.errors.UniqueViolation,
+            'diag',
+            new_callable=mock.PropertyMock,
+            return_value=diag,
+        ):
+            self.mock_db.execute.side_effect = [
+                [{'team_id': 'team-1'}],
+                [],
+                [],
+                conflict,
+                [{'id': 'other'}],
+                [{'id': 'agent-1'}],
+                [{'n': 1}],
+                [self._row()],
+            ]
+            response = self.client.post(
+                BASE + '/',
+                json={'name': 'T', 'slug': 'triage', 'team': 'ops'},
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        create = self.mock_db.execute.await_args_list[5].args[1]
+        self.assertEqual(
+            create['sa_slug'], slugify.slugify(f'T {create["id"]}')
+        )
+
     def test_create_removes_agent_when_version_fails(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'team_id': 'team-1'}],
+            [],
             [],
             [{'id': 'agent-1'}],
             RuntimeError('version write failed'),
@@ -286,11 +374,11 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
                 json={'name': 'T', 'slug': 'triage', 'team': 'ops'},
             )
         queries = self._queries()
-        self.assertIn('DETACH DELETE v', queries[4])
-        self.assertIn('DETACH DELETE c, s, a', queries[5])
-        agent_id = self.mock_db.execute.await_args_list[2].args[1]['id']
+        self.assertIn('DETACH DELETE v', queries[5])
+        self.assertIn('DETACH DELETE c, s, a', queries[6])
+        agent_id = self.mock_db.execute.await_args_list[3].args[1]['id']
         self.assertEqual(
-            self.mock_db.execute.await_args_list[5].args[1], {'id': agent_id}
+            self.mock_db.execute.await_args_list[6].args[1], {'id': agent_id}
         )
 
     def test_create_unknown_team(self) -> None:
@@ -1084,10 +1172,11 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(self.client.get(BASE + '/triage').json()['tools'], {})
 
     def test_create_with_tools(self) -> None:
-        # team, environments, slug check, create, version, fetch
+        # team, environments, slug check, SA slug check, create, version, fetch
         self.mock_db.execute.side_effect = [
             [{'team_id': 'team-1'}],
             self._env_rows(production=True, staging=True),
+            [],
             [],
             [{'id': 'agent-1'}],
             [{'n': 1}],
@@ -1105,7 +1194,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         env_query = self.mock_db.execute.await_args_list[1].args
         self.assertEqual(env_query[1]['slugs'], ['production', 'staging'])
-        create = self.mock_db.execute.await_args_list[3].args
+        create = self.mock_db.execute.await_args_list[4].args
         self.assertEqual(json.loads(create[1]['tools']), self._STORED_TOOLS)
         (version,) = self._version_writes()
         snapshot = json.loads(version['snapshot'])
@@ -1447,10 +1536,11 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(self.mock_db.execute.await_count, 1)
 
     def test_create_with_subagents(self) -> None:
-        # team, subagents, slug check, create, version, fetch
+        # team, subagents, slug check, SA slug check, create, version, fetch
         self.mock_db.execute.side_effect = [
             [{'team_id': 'team-1'}],
             self._found('writer', 'coder'),
+            [],
             [],
             [{'id': 'agent-1'}],
             [{'n': 1}],
@@ -1474,7 +1564,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             {'agent_id': 'writer', 'instructions': 'Short.'},
             {'agent_id': 'coder', 'instructions': ''},
         ]
-        create = self.mock_db.execute.await_args_list[3].args
+        create = self.mock_db.execute.await_args_list[4].args
         self.assertEqual(json.loads(create[1]['subagents']), expected)
         (version,) = self._version_writes()
         self.assertEqual(
@@ -1942,3 +2032,20 @@ class AgentMembershipTests(support.SharedAppAsyncTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'organization_forbidden'
         )
+
+
+class EnsureServiceAccountTests(unittest.IsolatedAsyncioTestCase):
+    """Tests for :func:`agents.ensure_service_account`."""
+
+    async def test_slug_conflict_on_every_attempt_is_409(self) -> None:
+        db = mock.AsyncMock()
+        conflict = psycopg.errors.UniqueViolation()
+        # No account, then per attempt: slug check, re-read, create.
+        db.execute.side_effect = [[]] + [
+            [{'id': 'other'}],
+            [],
+            conflict,
+        ] * 3
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await agents.ensure_service_account(db, 'agent-1', 'Triage')
+        self.assertEqual(ctx.exception.status_code, 409)

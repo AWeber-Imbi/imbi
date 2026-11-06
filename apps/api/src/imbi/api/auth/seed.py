@@ -484,6 +484,13 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'resolve',
         'Answer feedback requests and resolve approvals of agent tasks',
     ),
+    # Granted to no non-admin default role.
+    (
+        'agent_task:delete',
+        'agent_task',
+        'delete',
+        'Delete closed agent tasks',
+    ),
     # Workflows (ADR 0021)
     (
         'workflow:read',

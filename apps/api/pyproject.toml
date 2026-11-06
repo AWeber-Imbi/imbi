@@ -1,6 +1,6 @@
 [project]
 name = "imbi-api"
-version = "2.41.0"
+version = "2.43.1"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "Pillow",
+  "Pillow>=13.0.0",
   "aioboto3>=15.5.0",
   "aiohttp",
   "argon2-cffi>=25.1.0",
@@ -28,8 +28,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,mcp,sentry,server]==2.41.0",
-  "imbi-plugin-github==2.41.0",
+  "imbi-common[databases,llm,mcp,sentry,server]==2.43.1",
   "jinja2",
   "jsonpatch>=1.33",
   "limits>=5,<6",

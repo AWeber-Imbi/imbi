@@ -228,6 +228,63 @@ describe('PendingPromoteCard — tag formats and first promotes', () => {
     })
   })
 
+  const runningTag = (tag: string, tagSynced: boolean): PipelineStage => ({
+    ...STAGE,
+    current: {
+      ...UPSTREAM_CURRENT,
+      environment: { name: 'staging', slug: 'staging' },
+      release: { committish: OLDER.sha, tag },
+    },
+    currentHistoryEntry: {
+      ci_status: 'pass',
+      notes_markdown: null,
+      published_at: '2026-06-01T00:00:00Z',
+      sha: OLDER.sha,
+      short_sha: OLDER.short_sha,
+      tag,
+      tag_synced: tagSynced,
+    },
+    latestTag: null,
+  })
+
+  it('does not compare from a running tag that was never pushed', async () => {
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '## First',
+      reasoning: 'initial',
+      version: '0.1.0',
+    })
+    renderCard(makeActions(), runningTag('2.69.1', false))
+    await waitFor(() => {
+      expect(endpoints.draftReleaseNotes).toHaveBeenCalledWith('acme', 'p1', {
+        base_sha: '',
+        head_sha: TIP.sha,
+        last_tag: null,
+      })
+    })
+  })
+
+  it('bumps from a pushed running tag that is not semver', async () => {
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'patch',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '## Notes',
+      reasoning: 'a fix landed',
+      version: 'REL-43',
+    })
+    renderCard(makeActions(), runningTag('REL-42', true))
+    await waitFor(() => {
+      expect(endpoints.draftReleaseNotes).toHaveBeenCalledWith('acme', 'p1', {
+        base_sha: 'REL-42',
+        head_sha: TIP.sha,
+        last_tag: 'REL-42',
+      })
+    })
+  })
+
   it('accepts a calver tag when the project type allows it', async () => {
     vi.mocked(endpoints.getTagFormats).mockResolvedValue([
       {

@@ -16,7 +16,8 @@ version, so the system prompt and the model come back too.
 Each agent is its own service principal (ADR 0020): a
 ``ServiceAccount`` that is ``MEMBER_OF`` the organization, with an
 ``ACTS_AS`` edge from the agent. It is made with the agent and deleted
-with it. It has no role, so it has no permissions.
+with it. Its slug is the slugified agent name, and its membership has
+the ``developer`` role.
 
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``), because the ``agent:*`` permissions are not scoped to
@@ -32,6 +33,7 @@ import fastapi
 import nanoid
 import psycopg.errors
 import pydantic
+import slugify
 
 from imbi.api import agent_tools, harness, workflows
 from imbi.api.auth import organizations, permissions
@@ -421,13 +423,22 @@ CREATE (s:ServiceAccount {{id: {sa_id}, slug: {sa_slug},
                           display_name: {sa_display_name},
                           description: {sa_description},
                           is_active: true, created_at: {sa_created_at}}})
-CREATE (s)-[:MEMBER_OF]->(o)
+CREATE (s)-[:MEMBER_OF {{role: 'developer'}}]->(o)
 CREATE (a)-[:ACTS_AS]->(s)
 """
 
+_SA_SLUG_TAKEN_QUERY: typing.LiteralString = """
+MATCH (s:ServiceAccount {{slug: {slug}}})
+RETURN s.id AS id
+"""
+
+# A rename during concurrent lazy creation can give an agent two
+# accounts. The order makes all later calls use the same one.
 _SERVICE_ACCOUNT_QUERY: typing.LiteralString = """
 MATCH (:Agent {{id: {id}}})-[:ACTS_AS]->(s:ServiceAccount)
 RETURN s.id AS id
+ORDER BY s.created_at, s.id
+LIMIT 1
 """
 
 _ENSURE_SERVICE_ACCOUNT_QUERY: typing.LiteralString = (
@@ -456,16 +467,32 @@ def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
     return typing.cast('dict[str, typing.Any]', parsed)
 
 
-def _service_account_params(agent_id: str, name: str) -> dict[str, typing.Any]:
+async def _service_account_params(
+    db: graph.Graph, agent_id: str, name: str
+) -> dict[str, typing.Any]:
     """Return the parameters of :data:`_CREATE_SERVICE_ACCOUNT`.
 
-    The slug comes from the agent id, which does not change, so two
-    requests that make the same service account collide on the unique
-    slug index.
+    The slug is the slugified agent name. Service account slugs are
+    unique across all organizations, so when another service account
+    has that slug, the agent id is added to it. The agent id is also
+    added when the name gives an empty slug, or a slug in the ``imbi-``
+    namespace of the internal service accounts. Seeding adopts an
+    existing account with an internal slug, so an agent must not have
+    one: a slug that still starts with ``imbi-`` gets an ``agent-``
+    prefix.
     """
+    slug = slugify.slugify(name)
+    if (
+        not slug
+        or slug.startswith('imbi-')
+        or await db.execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
+    ):
+        slug = slugify.slugify(f'{name} {agent_id}')
+    if slug.startswith('imbi-'):
+        slug = slugify.slugify(f'agent {slug}')
     return {
         'sa_id': nanoid.generate(),
-        'sa_slug': f'agent-{agent_id}',
+        'sa_slug': slug,
         'sa_display_name': name,
         'sa_description': f'Service principal of the agent {name!r}',
         'sa_created_at': _now(),
@@ -483,18 +510,35 @@ async def ensure_service_account(
     records = await db.execute(
         _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
     )
-    if not records:
+    attempts = 3
+    while not records and attempts:
+        attempts -= 1
+        params = await _service_account_params(db, agent_id, name)
+        # Read again after the slug check. When a concurrent request
+        # made the account of this agent first, its slug looks taken,
+        # and this read finds that account. Thus the agent does not
+        # get a second account.
+        records = await db.execute(
+            _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
+        )
+        if records:
+            break
         try:
+            # Empty when the agent does not exist.
             records = await db.execute(
                 _ENSURE_SERVICE_ACCOUNT_QUERY,
-                {'id': agent_id, **_service_account_params(agent_id, name)},
+                {'id': agent_id, **params},
                 ['id'],
             )
-        except psycopg.errors.UniqueViolation:
-            # A concurrent request made it first.
-            records = await db.execute(
-                _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
-            )
+            break
+        except psycopg.errors.UniqueViolation as exc:
+            if not attempts:
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=f'Service account slug for {name!r} is in use',
+                ) from exc
+            # A concurrent request took the slug first. Try again.
+            continue
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Agent {name!r} not found'
@@ -849,6 +893,8 @@ async def _check_platform(
             platform.check_reference(reference)
         if settings.github_app_binding is not None:
             platform.check_reference(settings.github_app_binding, field=False)
+        if settings.model_key_ref is not None:
+            platform.check_reference(settings.model_key_ref)
     except ValueError as err:
         raise _unprocessable(str(err)) from err
     binding = settings.github_app_binding
@@ -1160,17 +1206,38 @@ async def create_agent(
         + _CREATE_SERVICE_ACCOUNT
         + ' RETURN a.id AS id'
     )
-    with conflict_on_unique_violation(_slug_taken_detail(snapshot.slug)):
-        records = await db.execute(
-            query,
-            {
-                **props,
-                **_service_account_params(agent_id, snapshot.name),
-                'org_slug': org_slug,
-                'team_id': team_id,
-            },
-            ['id'],
-        )
+    records: list[dict[str, typing.Any]] = []
+    for attempt in range(2):
+        try:
+            records = await db.execute(
+                query,
+                {
+                    **props,
+                    **await _service_account_params(
+                        db, agent_id, snapshot.name
+                    ),
+                    'org_slug': org_slug,
+                    'team_id': team_id,
+                },
+                ['id'],
+            )
+            break
+        except psycopg.errors.UniqueViolation as exc:
+            # A concurrent create in another org can take the service
+            # account slug first. The next attempt sees that slug as
+            # taken and adds the agent id to it.
+            if exc.diag.table_name != 'ServiceAccount':
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=_slug_taken_detail(snapshot.slug),
+                ) from exc
+            if attempt:
+                raise fastapi.HTTPException(
+                    status_code=409,
+                    detail=(
+                        f'Service account slug for {snapshot.name!r} is in use'
+                    ),
+                ) from exc
     if not records:
         raise fastapi.HTTPException(
             status_code=404,

@@ -32,6 +32,7 @@ __all__ = [
     'SEMVER_TAG_PATTERN',
     'SEMVER_TAG_RE',
     'VersionFormat',
+    'calver_scheme_pattern',
     'get_version_validator',
     'is_calver_tag',
     'is_commitish',
@@ -39,6 +40,7 @@ __all__ = [
     'latest_release_tag',
     'matches_tag_formats',
     'next_calver_tag',
+    'next_scheme_tag',
     'release_tag_order_key',
     'release_version_key',
     'validate_version',
@@ -86,6 +88,11 @@ _CALVER_PARTS_RE: typing.Final[re.Pattern[str]] = re.compile(
     r'^(\d{4})([.-])(\d{1,2})\2(\d{1,2})(?:([.-])(\w+))?$'
 )
 
+# A calver modifier that ends in a number, such as ``rc1``.
+_TRAILING_NUMBER_RE: typing.Final[re.Pattern[str]] = re.compile(
+    r'^(.*\D)(\d+)$'
+)
+
 # 7 to 40 lowercase hex chars — matches a git short or full SHA.
 COMMITISH_RE: typing.Final[re.Pattern[str]] = re.compile(r'^[0-9a-f]{7,40}$')
 
@@ -111,22 +118,52 @@ def is_calver_tag(value: str) -> bool:
     return bool(CALVER_TAG_RE.match(value))
 
 
+def _shows_padding(part: str, other: str) -> bool:
+    """Whether a calver month or day component is zero-padded.
+
+    A leading zero shows padding and a single digit shows none.  Two
+    digits without a leading zero (``10``) do not show it, so the other
+    component decides: ``2026.10.01`` is padded, ``2026.10.12`` is not.
+    """
+    if len(part) == 1:
+        return False
+    return part.startswith('0') or other.startswith('0')
+
+
 def next_calver_tag(
     last_tag: str | None,
     today: datetime.date,
+    *,
+    pad: bool = False,
 ) -> str:
     """The calendar-versioning tag that follows ``last_tag`` on ``today``.
 
-    The date is ``today`` with zero-padded month and day, using the
-    separator of ``last_tag`` (``.`` when there is no prior calver tag).
+    The date is ``today`` in the separator and padding of ``last_tag``.
+    With no prior calver tag, the date is unpadded and dot-separated
+    (``2026.9.17``): calver.org names unpadded the sensible default, and
+    an unpadded date is also valid semver.  The month and day each keep
+    the padding of the prior tag (``2026.09.1`` yields ``2026.09.2``).
+    A tag such as ``2026.10.12`` does not show its padding, so it is
+    taken as unpadded.  Set ``pad`` to zero-pad the month and day
+    always, for a tag policy that requires padding.
+
     The suffix mirrors the prior tag's convention: a tag that carried a
-    numeric build counter (``2026.09.16-0``) yields ``2026.09.17-0`` on a
-    new day and ``2026.09.16-1`` on the same day; a bare tag yields a bare
-    date on a new day and ``-1`` on the same day.
+    numeric build counter (``2026.9.16-0``) yields ``2026.9.17-0`` on a
+    new day and ``2026.9.16-1`` on the same day.  On the same day, a
+    modifier that ends in a number (``rc1``) is kept and its number goes
+    up (``rc2``).  A bare tag, or a modifier without a number, yields a
+    bare date on a new day and ``-1`` on the same day.
     """
     match = _CALVER_PARTS_RE.match(last_tag or '')
     sep = match.group(2) if match else '.'
-    date = today.strftime(f'%Y{sep}%m{sep}%d')
+    pad_month = pad_day = pad
+    if match and not pad:
+        prior_month, prior_day = match.group(3), match.group(4)
+        pad_month = _shows_padding(prior_month, prior_day)
+        pad_day = _shows_padding(prior_day, prior_month)
+    month = f'{today.month:02d}' if pad_month else str(today.month)
+    day = f'{today.day:02d}' if pad_day else str(today.day)
+    date = f'{today.year}{sep}{month}{sep}{day}'
     if not match:
         return date
     year, _, month, day, suffix_sep, suffix = match.groups()
@@ -139,10 +176,223 @@ def next_calver_tag(
     if same_day:
         if counted:
             return f'{date}{suffix_sep}{int(suffix) + 1}'
+        numbered = _TRAILING_NUMBER_RE.match(suffix or '')
+        if numbered:
+            stem, number = numbered.groups()
+            return f'{date}{suffix_sep}{stem}{int(number) + 1}'
         return f'{date}-1'
     if counted:
         return f'{date}{suffix_sep}0'
     return date
+
+
+# Calendar-versioning schemes in calver.org notation, such as
+# ``YY.0M.MICRO`` or ``YYYY.0M.0D[.MICRO]``.  Each token maps to the
+# regular expression for one value.  The UI's version-format editor
+# (``ui/src/lib/calverSchemes.ts``) ports this table; keep the two in step.
+_SCHEME_TOKENS: typing.Final[dict[str, str]] = {
+    'YYYY': r'[1-9]\d{3}',
+    'YY': r'0|[1-9]\d{0,2}',
+    '0Y': r'\d{2}|[1-9]\d{2}',
+    'M': r'1[0-2]|[1-9]',
+    '0M': r'1[0-2]|0[1-9]',
+    'W': r'5[0-3]|[1-4]\d|[1-9]',
+    '0W': r'5[0-3]|[1-4]\d|0[1-9]',
+    'D': r'3[01]|[12]\d|[1-9]',
+    '0D': r'3[01]|[12]\d|0[1-9]',
+    'MINOR': r'0|[1-9]\d*',
+    'MICRO': r'0|[1-9]\d*',
+    'MODIFIER': r'[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*',
+}
+# calver.org deprecated these spellings; they mean the unpadded tokens.
+_SCHEME_ALIASES: typing.Final[dict[str, str]] = {
+    'MM': 'M',
+    'WW': 'W',
+    'DD': 'D',
+}
+_YEAR_TOKENS: typing.Final = frozenset({'YYYY', 'YY', '0Y'})
+_COUNTER_TOKENS: typing.Final = ('MINOR', 'MICRO')
+_PADDED_TOKENS: typing.Final = frozenset({'0Y', '0M', '0W', '0D'})
+_SCHEME_RE: typing.Final[re.Pattern[str]] = re.compile(
+    r'^(?P<body>[0-9A-Z]+(?:[._-][0-9A-Z]+)*)'
+    r'(?:\[(?P<sep>[._-])(?P<optional>[0-9A-Z]+)\])?$'
+)
+
+
+class _Segment(typing.NamedTuple):
+    sep: str  # The separator in front of the value; empty for the first.
+    token: str
+    optional: bool
+
+
+def _parse_scheme(scheme: str) -> tuple[_Segment, ...]:
+    """Split a calver.org scheme into segments and check the rules."""
+    match = _SCHEME_RE.match(scheme.strip())
+    if not match:
+        raise ValueError(
+            f'Invalid calver scheme {scheme!r}: use tokens such as YYYY,'
+            ' 0M, and MICRO separated by ".", "-", or "_", with an'
+            ' optional last segment in brackets, e.g. YYYY.0M.0D[.MICRO]'
+        )
+    parts = re.split(r'([._-])', match['body'])
+    segments = [_Segment('', parts[0], False)]
+    segments += [
+        _Segment(parts[i], parts[i + 1], False)
+        for i in range(1, len(parts), 2)
+    ]
+    if match['optional']:
+        segments.append(_Segment(match['sep'], match['optional'], True))
+    segments = [
+        s._replace(token=_SCHEME_ALIASES.get(s.token, s.token))
+        for s in segments
+    ]
+    tokens = [s.token for s in segments]
+    for token in tokens:
+        if token not in _SCHEME_TOKENS:
+            raise ValueError(
+                f'Unknown calver token {token!r}; use one of '
+                + ', '.join(_SCHEME_TOKENS)
+            )
+    if len(set(tokens)) != len(tokens):
+        raise ValueError('A calver token can appear only once')
+    if len(_YEAR_TOKENS.intersection(tokens)) != 1:
+        raise ValueError('A calver scheme needs one year: YYYY, YY, or 0Y')
+    has_week = bool({'W', '0W'}.intersection(tokens))
+    has_month = bool({'M', '0M'}.intersection(tokens))
+    has_day = bool({'D', '0D'}.intersection(tokens))
+    if has_week and (has_month or has_day):
+        raise ValueError('Weeks cannot be combined with months or days')
+    if has_day and not has_month:
+        raise ValueError('A day needs a month')
+    for segment in segments:
+        if segment.token == 'MODIFIER' and not segment.optional:
+            raise ValueError(
+                'MODIFIER must be the optional last segment, e.g. [-MODIFIER]'
+            )
+        if segment.optional and segment.token not in (
+            *_COUNTER_TOKENS,
+            'MODIFIER',
+        ):
+            raise ValueError(
+                'Only MINOR, MICRO, or MODIFIER can be the optional segment'
+            )
+    return tuple(segments)
+
+
+def calver_scheme_pattern(scheme: str) -> str:
+    """The regular expression that matches tags of a calver.org ``scheme``.
+
+    Raises:
+        ValueError: If ``scheme`` is not a valid calver scheme.
+
+    """
+    pattern = ''
+    for index, segment in enumerate(_parse_scheme(scheme)):
+        part = (
+            f'{re.escape(segment.sep)}'
+            f'(?P<t{index}>{_SCHEME_TOKENS[segment.token]})'
+        )
+        pattern += f'(?:{part})?' if segment.optional else part
+    return f'^{pattern}$'
+
+
+def _scheme_calendar(
+    segments: collections.abc.Sequence[_Segment],
+    today: datetime.date,
+) -> dict[str, int]:
+    """The value of each calendar token in ``segments`` on ``today``.
+
+    Weeks are ISO 8601 weeks, and a scheme with a week uses the ISO year,
+    so the last days of December can belong to week 1 of the next year.
+    """
+    iso_year, iso_week, _ = today.isocalendar()
+    week = any(s.token in ('W', '0W') for s in segments)
+    year = iso_year if week else today.year
+    values = {
+        'YYYY': year,
+        'YY': year - 2000,
+        '0Y': year - 2000,
+        'M': today.month,
+        '0M': today.month,
+        'W': iso_week,
+        '0W': iso_week,
+        'D': today.day,
+        '0D': today.day,
+    }
+    return {s.token: values[s.token] for s in segments if s.token in values}
+
+
+def next_scheme_tag(
+    scheme: str,
+    last_tag: str | None,
+    today: datetime.date,
+    bump: typing.Literal['major', 'minor', 'patch'] = 'patch',
+) -> str:
+    """The tag of a calver.org ``scheme`` that follows ``last_tag``.
+
+    In a new calendar period (the year, month, week, or day changed),
+    the counters (``MINOR``, ``MICRO``) go back to 0, and an optional
+    counter is left out.  In the same period, a ``major`` or ``minor``
+    bump increments ``MINOR`` when the scheme has it; otherwise the last
+    counter in the scheme goes up by 1 (an optional counter that was
+    left out becomes 1), and the counters after it go back to 0.  A
+    ``MODIFIER`` is never suggested.
+
+    A scheme with no counter gives the same tag for two releases in one
+    period.  When ``last_tag`` does not match ``scheme``, the result is
+    the first tag of the current period.
+
+    Raises:
+        ValueError: If ``scheme`` is not a valid calver scheme.
+
+    """
+    segments = _parse_scheme(scheme)
+    calendar = _scheme_calendar(segments, today)
+    last = re.fullmatch(calver_scheme_pattern(scheme), last_tag or '')
+    prior: dict[str, str | None] = {
+        s.token: last[f't{i}'] if last else None
+        for i, s in enumerate(segments)
+    }
+    same_period = last is not None and all(
+        int(prior[token] or 0) == value for token, value in calendar.items()
+    )
+    counters: dict[str, int | None] = {}
+    present = [s for s in segments if s.token in _COUNTER_TOKENS]
+    if same_period and present:
+        names = [s.token for s in present]
+        target = (
+            'MINOR'
+            if bump in ('major', 'minor') and 'MINOR' in names
+            else names[-1]
+        )
+        reset = False
+        for segment in present:
+            value = prior[segment.token]
+            if reset:
+                counters[segment.token] = None if segment.optional else 0
+            elif segment.token == target:
+                counters[segment.token] = int(value) + 1 if value else 1
+                reset = True
+            else:
+                counters[segment.token] = int(value) if value else None
+    else:
+        for segment in present:
+            counters[segment.token] = None if segment.optional else 0
+    tag = ''
+    for segment in segments:
+        if segment.token in calendar:
+            number = calendar[segment.token]
+            text = (
+                f'{number:02d}'
+                if segment.token in _PADDED_TOKENS
+                else str(number)
+            )
+        elif counters.get(segment.token) is not None:
+            text = str(counters[segment.token])
+        else:
+            continue  # An optional counter left out, or a MODIFIER.
+        tag += f'{segment.sep}{text}'
+    return tag
 
 
 def is_commitish(value: str) -> bool:
@@ -236,9 +486,14 @@ def release_version_key(name: str) -> tuple[int, ...] | None:
     ``(0, 17, 0) < (0, 17, 0, 1) < (1, 0, 0)`` as intended.
     """
     match = RELEASE_VERSION_RE.match(name)
-    if not match:
-        return None
-    return tuple(int(part) for part in match.group(1).split('.'))
+    if match:
+        return tuple(int(part) for part in match.group(1).split('.'))
+    # A calver tag with ``-`` between the date parts (``2026-09-17``,
+    # Stripe's ``2026-09-30.acacia``).  As above, the suffix is ignored.
+    calver = _CALVER_PARTS_RE.match(name)
+    if calver:
+        return int(calver.group(1)), int(calver.group(3)), int(calver.group(4))
+    return None
 
 
 def release_tag_order_key(

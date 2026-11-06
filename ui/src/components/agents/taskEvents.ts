@@ -8,7 +8,7 @@ import type {
 
 // Pure helpers for the Tasks inbox and the task detail. The detail reads
 // everything from the event log (ADR 0020), so the requests, the phase
-// timeline, the transcript, and the tool calls are folds over events.
+// timeline, and the conversation timeline are folds over events.
 
 export interface InboxGroup {
   id: InboxGroupId
@@ -42,11 +42,6 @@ export interface TaskRequestView {
   why: null | string
 }
 
-export interface ToolCallRow {
-  depth: number
-  event: AgentTaskEvent
-}
-
 const GROUPS: { id: InboxGroupId; label: string }[] = [
   { id: 'input', label: 'Human input required' },
   { id: 'running', label: 'Running' },
@@ -70,17 +65,6 @@ const GROUP_OF: Record<AgentTaskStatus, InboxGroupId> = {
 function groupOf(task: AgentTaskListItem): InboxGroupId {
   return task.blocked_since ? 'input' : GROUP_OF[task.status]
 }
-
-/** The event types that the Conversation tab shows (O5). */
-const CONVERSATION_TYPES = new Set([
-  'control.changed',
-  'outcome.set',
-  'owner.changed',
-  'request.opened',
-  'request.resolved',
-  'state.changed',
-  'turn',
-])
 
 /** What started a task, by origin kind. */
 export const TRIGGERS = {
@@ -125,11 +109,6 @@ export function checksFrom(events: AgentTaskEvent[]): AgentTaskEvent[] {
   for (const e of events)
     if (e.type === 'check.reported') byName.set(String(e.payload.name), e)
   return [...byName.values()]
-}
-
-/** Events in the Conversation tab: turns, with state changes inline. */
-export function conversation(events: AgentTaskEvent[]): AgentTaskEvent[] {
-  return events.filter((e) => CONVERSATION_TYPES.has(e.type))
 }
 
 /** `9m 12s`, `2h 4m`, `3d 2h`: the two largest units. */
@@ -267,33 +246,4 @@ export function statusVariant(task: {
   )
     return 'danger'
   return 'neutral'
-}
-
-/**
- * The tool calls of a task in seq order, each nested call under its
- * parent (N3). `payload.parent_call_id` names the `payload.call_id` of
- * the parent. The harness plan defines these two fields. A call whose
- * parent is not in the log is a top-level row.
- */
-export function toolCalls(events: AgentTaskEvent[]): ToolCallRow[] {
-  const calls = events.filter((e) => e.type === 'tool.called')
-  const idOf = (e: AgentTaskEvent) =>
-    typeof e.payload.call_id === 'string' ? e.payload.call_id : null
-  const ids = new Set(calls.map(idOf))
-  const children = new Map<string, AgentTaskEvent[]>()
-  const roots: AgentTaskEvent[] = []
-  for (const call of calls) {
-    const parent = call.payload.parent_call_id
-    if (typeof parent === 'string' && ids.has(parent) && parent !== idOf(call))
-      children.set(parent, [...(children.get(parent) ?? []), call])
-    else roots.push(call)
-  }
-  const rows: ToolCallRow[] = []
-  const walk = (call: AgentTaskEvent, depth: number) => {
-    rows.push({ depth, event: call })
-    const id = idOf(call)
-    for (const child of (id && children.get(id)) || []) walk(child, depth + 1)
-  }
-  for (const root of roots) walk(root, 0)
-  return rows
 }

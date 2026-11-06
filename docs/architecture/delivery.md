@@ -42,6 +42,7 @@ flowchart LR
 | Node or edge | What it is |
 |---|---|
 | `ProjectType` | Sets the delivery shape of its projects. A `deployable` type deploys into environments. A `releasable` type publishes an artifact with a tag and a release, and has no deploy step. A type can be one, or neither, but not both |
+| `Project.delivery_mode` | Overrides the types for one project: `project-type` (the default) resolves from the flags above, `deployable` and `releasable` force that shape, and `disabled` turns delivery off, so neither tab shows and the API refuses to deploy, promote, resync, or cut a release. `imbi.common.models.resolve_delivery` and `resolveDelivery` in the UI do the resolution |
 | `Environment` | One environment of an organization. `sort_order` puts the environments in pipeline order. `terminal` ends a pipeline, so the next environment starts a new one. `can_deploy` and `can_promote` turn the actions on for that environment. `allow_autonomous` lets a principal with no user (a service account that uses the credential of an integration) deploy or promote into it |
 | `Release` | A version of a project. It has a 7-character `committish` (short SHA) and an optional `tag`. A tag must match the tag formats of the organization or the project type |
 | `Deployment` | One rollout of a release (or of a commit) into one environment. Its identity is the project and the remote run id, so every writer that learns about one rollout updates the same node. Its status is `pending`, `in_progress`, `success`, `failed`, or `rolled_back` |
@@ -169,6 +170,15 @@ each environment. Two writers set it:
   runs it with the service credential of the integration, and writes the
   status of the last run on the `Project` node. The UI reads that status.
   See [Background workers](overview.md#background-workers-in-imbi-api).
+- A webhook delivers each deployment status once. The gateway repeats a
+  deployment write that imbi-api refuses with a 5xx, but only when the
+  event has a run ID, because Imbi merges deployments on that ID. The
+  promote watcher repeats its close-out after a graph write conflict, and
+  closes the operations-log entry of the rollout.
+- When the current releases of a project are read (the Deployments tab),
+  Imbi asks the plugin about each deployment that is still running. When
+  one has finished, Imbi records the result, and the same response shows
+  it.
 - `deployment-sweep` asks the remote about each deployment that is still
   running after 30 minutes. It marks a deployment `failed` when nothing can
   resolve it for a week. It also attaches early deployments to their

@@ -78,6 +78,12 @@ function FormatTableRow({
         </div>
       </div>
       <div className="min-w-0">
+        {row.scheme && (
+          <div className="text-tertiary mb-1 text-xs">
+            Scheme{' '}
+            <span className="text-secondary font-mono">{row.scheme}</span>
+          </div>
+        )}
         <code className="bg-secondary text-secondary block rounded px-2 py-1.5 font-mono text-xs break-all">
           {row.pattern}
         </code>

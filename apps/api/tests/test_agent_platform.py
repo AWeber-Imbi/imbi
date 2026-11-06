@@ -2,10 +2,9 @@
 
 import json
 import pathlib
+import typing
 import unittest
 from unittest import mock
-
-import respx
 
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces, platform
@@ -188,6 +187,9 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 assignments, 'org_integrations', return_value=integrations
             ),
             mock.patch.object(marketplaces, '_handler', return_value=handler),
+            mock.patch.object(
+                marketplaces, '_public_readers', return_value=[]
+            ),
         ):
             head = await marketplaces.fetch(
                 mock.Mock(), 'acme', 'https://github.com/acme/tools'
@@ -339,19 +341,17 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(plugin['repository_url'])
         self.assertIsNone(changes['sync_error'])
 
-    @respx.mock
-    async def test_a_public_github_repository_is_read_anonymously(
+    async def test_a_public_repository_is_read_anonymously(
         self,
     ) -> None:
         handler = mock.AsyncMock(spec=base.DeploymentCapability)
         handler.list_refs.side_effect = RuntimeError('no installation')
-        api = 'https://api.github.com/repos/anthropics/plugins'
-        respx.get(api).respond(json={'default_branch': 'main'})
-        respx.get(f'{api}/commits/main').respond(json={'sha': SHA})
-        respx.get(
-            f'{api}/contents/.claude-plugin/marketplace.json',
-            params={'ref': SHA},
-        ).respond(text='{}')
+        reader = mock.AsyncMock(spec=base.DeploymentCapability)
+        reader.list_refs.return_value = [
+            base.Ref(name='main', kind='default', sha=SHA, is_default=True)
+        ]
+        reader.get_file.return_value = '{}'
+        public = 'https://github.com/anthropics/plugins'
         with (
             mock.patch.object(
                 assignments,
@@ -359,12 +359,20 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 return_value={'i1': {'slug': 'gh', 'plugin': 'github'}},
             ),
             mock.patch.object(marketplaces, '_handler', return_value=handler),
+            mock.patch.object(
+                marketplaces,
+                '_public_readers',
+                side_effect=lambda _db, url: (
+                    [reader] if url == public else []
+                ),
+            ),
         ):
-            head = await marketplaces.fetch(
-                mock.Mock(), 'acme', 'https://github.com/anthropics/plugins'
-            )
+            head = await marketplaces.fetch(mock.Mock(), 'acme', public)
             self.assertEqual(head, marketplaces.Head('main', SHA, '{}'))
-            # Another host is never read anonymously.
+            reader.get_file.assert_awaited_once_with(
+                None, {}, marketplaces.MARKETPLACE_FILE, SHA
+            )
+            # A URL that no plugin reads anonymously.
             with self.assertRaisesRegex(
                 marketplaces.SyncError, '^gh: no installation$'
             ):
@@ -372,9 +380,74 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                     mock.Mock(), 'acme', 'https://ghe.example.com/a/b'
                 )
 
+    async def test_public_readers_come_from_enabled_plugins(self) -> None:
+        reader = mock.Mock()
+
+        class Deployment(base.DeploymentCapability):  # type: ignore[misc]
+            @classmethod
+            def public_reader(cls, url: str) -> typing.Any:
+                return reader if url == 'https://h/a/b' else None
+
+        class Broken(base.DeploymentCapability):  # type: ignore[misc]
+            @classmethod
+            def public_reader(cls, url: str) -> typing.Any:
+                raise RuntimeError('broken')
+
+        def entry(slug: str, handler: type | None) -> mock.Mock:
+            capability = (
+                None if handler is None else mock.Mock(handler=handler)
+            )
+            return mock.Mock(
+                **{
+                    'manifest.slug': slug,
+                    'manifest.get_capability.return_value': capability,
+                }
+            )
+
+        entries = [
+            entry('none', None),
+            entry('broken', Broken),
+            entry('enabled', Deployment),
+            entry('disabled', Deployment),
+        ]
+        from imbi.api.plugins import lifecycle
+
+        with (
+            mock.patch.object(
+                marketplaces.plugin_registry,
+                'list_plugins',
+                return_value=entries,
+            ),
+            mock.patch.object(
+                lifecycle,
+                'is_plugin_enabled',
+                side_effect=lambda _db, slug: slug != 'disabled',
+            ),
+        ):
+            db = mock.Mock()
+            self.assertEqual(
+                await marketplaces._public_readers(db, 'https://h/a/b'),
+                [reader],
+            )
+            with self.assertLogs(marketplaces.LOGGER, 'INFO') as logs:
+                self.assertEqual(
+                    await marketplaces._public_readers(
+                        db, 'https://u:secret@x/y?token=t#f'
+                    ),
+                    [],
+                )
+            self.assertIn('https://x/y:', logs.output[0])
+            self.assertNotIn('secret', '\n'.join(logs.output))
+            self.assertNotIn('token', '\n'.join(logs.output))
+
     async def test_no_integration(self) -> None:
-        with mock.patch.object(
-            assignments, 'org_integrations', return_value={}
+        with (
+            mock.patch.object(
+                assignments, 'org_integrations', return_value={}
+            ),
+            mock.patch.object(
+                marketplaces, '_public_readers', return_value=[]
+            ),
         ):
             with self.assertRaises(marketplaces.SyncError):
                 await marketplaces.fetch(mock.Mock(), 'acme', 'https://x/y')
@@ -445,6 +518,38 @@ class NarrowingTests(unittest.TestCase):
                 config, models.AgentSettings(permission_mode='plan')
             ).permission_mode,
             'plan',
+        )
+
+    def test_merge_uses_the_agent_model_key(self) -> None:
+        config = platform.AgentPlatformConfig(
+            model_upstream=platform.ModelUpstream(
+                kind='litellm',
+                base_url='https://llm.example.com',
+                key_ref='secret://anthropic/org#api-key',
+            )
+        )
+        merged = platform.merge(config, models.AgentSettings())
+        self.assertEqual(
+            merged.model_upstream.key_ref, 'secret://anthropic/org#api-key'
+        )
+        merged = platform.merge(
+            config,
+            models.AgentSettings(
+                model_key_ref='secret://anthropic/triage#api-key'
+            ),
+        )
+        self.assertEqual(
+            merged.model_upstream.key_ref,
+            'secret://anthropic/triage#api-key',
+        )
+        # Only the key changes; the upstream stays the organization's.
+        self.assertEqual(merged.model_upstream.kind, 'litellm')
+        self.assertEqual(
+            str(merged.model_upstream.base_url), 'https://llm.example.com/'
+        )
+        # The organization's configuration is not changed.
+        self.assertEqual(
+            config.model_upstream.key_ref, 'secret://anthropic/org#api-key'
         )
 
 
@@ -561,6 +666,21 @@ class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prompt.ref, 'ops/triage@7')
         self.assertEqual(prompt.system, 'You are triage in acme.')
         self.assertEqual(prompt.model, 'sonnet')
+
+    async def test_renders_the_project_slug(self) -> None:
+        self.version.system = 'On {{ project_slug }}.'
+        self.version.variable_schema = {
+            'project_slug': models.PromptVariable(type='str')
+        }
+        prompt, error = await harness_api._rendered_prompt(
+            mock.Mock(),
+            {'short_id': 'T-1', 'project_slug': 'billing'},
+            self.bundle,
+            'acme',
+        )
+        self.assertIsNone(error)
+        assert prompt is not None
+        self.assertEqual(prompt.system, 'On billing.')
 
     async def test_a_render_error_is_returned(self) -> None:
         self.version.system = '{{ missing.attr }}'

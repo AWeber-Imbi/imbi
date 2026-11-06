@@ -1,9 +1,8 @@
 """Identity-flow state JWT helpers.
 
-Reuses the existing ``OAuthStateData`` model + JWT signing primitives
-from :mod:`imbi.api.auth.oauth` so login and identity flows share one
-state-token format.  ``intent='identity'`` discriminates the identity
-flow path.
+Uses the ``OAuthStateData`` model (:mod:`imbi.api.auth.models`) so
+login and identity flows share one state-token format.
+``intent='identity'`` discriminates the identity flow path.
 """
 
 import logging

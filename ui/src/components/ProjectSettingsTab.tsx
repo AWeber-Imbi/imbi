@@ -26,10 +26,23 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectLifecycleSync } from '@/hooks/useLifecycleSync'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import {
+  DEFAULT_DELIVERY_MODE,
+  DELIVERY_MODE_OPTIONS,
+  type DeliveryMode,
+} from '@/lib/delivery'
 import type { Project } from '@/types'
 
 // fallow-ignore-next-line complexity
@@ -38,12 +51,20 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { patch } = useProjectPatch(orgSlug, project.id)
+  const { patch, pendingPath } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteRepository, setDeleteRepository] = useState(true)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const isArchived = project.archived === true
+  // Unknown values (a project written by a newer API) fall back to the
+  // default rather than rendering an empty select.
+  const deliveryMode: DeliveryMode =
+    DELIVERY_MODE_OPTIONS.find((o) => o.value === project.delivery_mode)
+      ?.value ?? DEFAULT_DELIVERY_MODE
+  const deliveryOption = DELIVERY_MODE_OPTIONS.find(
+    (o) => o.value === deliveryMode,
+  )
 
   const invalidateProject = () => {
     queryClient.invalidateQueries({
@@ -194,6 +215,48 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
           onPatch={(entries) => patch('/links', entries)}
         />
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Releases and deployments</CardTitle>
+          <CardDescription className="text-secondary">
+            How Imbi ships this project. By default the deployable or releasable
+            flag of the project types decides which of the Deployments and
+            Releases tabs shows; pick another option to override that for this
+            project only.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="delivery-mode">Delivery</Label>
+          <Select
+            disabled={pendingPath === '/delivery_mode'}
+            onValueChange={(value) => {
+              if (value !== deliveryMode) {
+                void patch('/delivery_mode', value).catch(() => {
+                  // The hook already toasts and rolls back.
+                })
+              }
+            }}
+            value={deliveryMode}
+          >
+            <SelectTrigger className="max-w-sm" id="delivery-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DELIVERY_MODE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {deliveryOption && (
+            <p className="text-tertiary text-sm">
+              {deliveryOption.description}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <IntegrationsCard orgSlug={orgSlug} projectId={project.id} />
 

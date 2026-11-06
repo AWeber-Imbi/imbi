@@ -414,6 +414,12 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     release_url: str | None = None
     tag_url: str | None = None
     package_url: str | None = None
+    #: ``False`` when Imbi holds a ``Release`` node for the tag but the
+    #: tag itself has not been synced from the repository: a release
+    #: still being cut or one whose build failed before the tag was
+    #: pushed.  Such an entry's ``sha`` is the node's committish and it
+    #: has no ``tag_url``.
+    tag_synced: bool = True
     #: ``True`` when the release has at least one open blocker. Deploys
     #: and promotes targeting it are refused with a 409. The
     #: ``blocked_*`` fields mirror the newest open blocker so callers
@@ -961,6 +967,87 @@ def _promote_warning(step: str, exc: BaseException) -> str:
 def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     """Instantiate and type-narrow the plugin handler."""
     return typing.cast(DeploymentCapability, resolved.capability_cls())
+
+
+def _host_retry_after(response: httpx.Response) -> str:
+    """Seconds the source host asks a caller to wait, for ``Retry-After``.
+
+    The host's ``Retry-After``, else the wait until ``x-ratelimit-reset``
+    once ``x-ratelimit-remaining`` is 0 (GitHub's primary rate limit),
+    else 5.
+    """
+    headers = response.headers
+    retry_after = str(headers.get('retry-after', ''))
+    if retry_after.isdigit():
+        return retry_after
+    reset = str(headers.get('x-ratelimit-reset', ''))
+    if headers.get('x-ratelimit-remaining') == '0' and reset.isdigit():
+        now = int(datetime.datetime.now(datetime.UTC).timestamp())
+        return str(max(1, int(reset) - now))
+    return '5'
+
+
+async def _compare_refs(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    *,
+    base: str,
+    head: str,
+) -> CompareResult:
+    """``handler.compare`` with the source host's failures mapped to HTTP.
+
+    The host refusing this comparison is a 422, because a retry gets the
+    same answer: GitHub's 404 (a ref, or the repo, it cannot find) or 422
+    (a comparison it will not compute).  Any other host or transport
+    failure is the host failing to answer: 503, with the host's own wait
+    as ``Retry-After`` (see :func:`_host_retry_after`).
+    """
+    try:
+        return await call_with_timeout(
+            handler.compare(ctx, credentials, base=base, head=head)
+        )
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status in (404, 422):
+            # GitHub's 404 body is the same "Not Found" for a missing ref,
+            # a malformed ref, and an unreachable repo.
+            reason = (
+                'the source host does not have one of these refs'
+                if status == 404
+                else 'the source host rejected the comparison'
+            )
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=f'Cannot compare {base}...{head}: {reason}',
+            ) from exc
+        LOGGER.warning(
+            'compare %s...%s for project=%s failed with %s',
+            base,
+            head,
+            ctx.project_id,
+            status,
+        )
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Could not reach the source host to compare {base}...'
+            f'{head}',
+            headers={'Retry-After': _host_retry_after(exc.response)},
+        ) from exc
+    except httpx.HTTPError as exc:
+        LOGGER.warning(
+            'compare %s...%s for project=%s failed: %r',
+            base,
+            head,
+            ctx.project_id,
+            exc,
+        )
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Could not reach the source host to compare {base}...'
+            f'{head}',
+            headers={'Retry-After': '5'},
+        ) from exc
 
 
 async def _resolve_ci_status(
@@ -1745,6 +1832,63 @@ async def backfill_release_notes(
             continue
         enriched += 1
     return enriched
+
+
+async def reconcile_release_committishes(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+) -> int:
+    """Point each tagged ``Release`` at the commit its synced tag names.
+
+    The ``tags`` table is what the repository says a tag resolves to;
+    the node's committish is what Imbi believed when it wrote the node.
+    The two part ways when a tag is re-promoted from a new commit after
+    its first build failed (the node keeps the first promote's commit
+    -- the upsert never overwrites one) or when a tag is moved upstream.
+    Nothing on the resync paths rewrites a committish, so a stale node
+    outlives every sync until this runs: it heals each disagreeing node
+    through :func:`_set_release_committish_if_unchanged`, which keeps
+    the commit it moves away from as ``promoted_committish`` and
+    declines when the node moved on since it was read.  Returns the
+    number of nodes healed.
+
+    Only tagged nodes with a synced row are considered; a node whose tag
+    ClickHouse has not seen has nothing to be reconciled against.
+    """
+    tag_rows = await clickhouse.query(
+        _PROJECT_TAGS_SQL, {'project_id': project_id}
+    )
+    if not tag_rows:
+        return 0
+    nodes = await _release_nodes_by_tag(db, org_slug, project_id)
+    healed = 0
+    for row in tag_rows:
+        sha = row.get('sha')
+        node = nodes.get(str(row['name']))
+        if not sha or not node or not node.get('id'):
+            continue
+        actual = versioning.short_committish(str(sha))
+        recorded = node.get('committish')
+        if recorded and versioning.short_committish(str(recorded)) == actual:
+            continue
+        LOGGER.info(
+            'commit-sync: tag %s on project %s points at %s, not the '
+            'recorded commit %s; updating the Release committish',
+            row['name'],
+            project_id,
+            actual,
+            recorded,
+        )
+        await _set_release_committish_if_unchanged(
+            db,
+            release_id=str(node['id']),
+            committish=actual,
+            expected_committish=str(recorded) if recorded else None,
+        )
+        healed += 1
+    return healed
 
 
 async def resync_for_project(
@@ -2640,9 +2784,8 @@ async def compare_refs(
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
-    handler = _handler(resolved)
-    result = await call_with_timeout(
-        handler.compare(ctx, credentials, base=base, head=head)
+    result = await _compare_refs(
+        _handler(resolved), ctx, credentials, base=base, head=head
     )
     await asyncio.gather(
         persist_link_writeback(db, ctx),
@@ -2758,6 +2901,7 @@ async def _trigger_deployment(
     source: str | None,
     valkey_client: typing.Any,
 ) -> DeploymentTriggerResponse:
+    await _require_delivery_enabled(db, project_id)
     if body.action == 'promote':
         return await _handle_promote(
             db,
@@ -3024,6 +3168,7 @@ async def resync_project_deployments(
     button using the plugin manifest flag.  Returns ``enqueued=False``
     when the job was debounced or Valkey is unavailable.
     """
+    await _require_delivery_enabled(db, project_id)
     resolved = await resolve_capability(db, project_id, 'deployment', source)
     _require_deployment_sync_support(resolved)
     requested_by = auth.principal_name
@@ -3258,21 +3403,10 @@ async def _handle_deploy(
         if body.ref_label and _SEMVER_REF_RE.match(body.ref_label)
         else None
     )
-    # Look up the release that was deployed. Try (committish, tag) first
-    # so a SHA that ships under a tag matches the tagged Release node;
-    # fall back to (committish, None) so a raw-SHA deploy still finds
-    # an untagged Release if one exists.
-    result: tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None = None
-    matched_tag: str | None = None
-    for try_tag in [candidate_tag, None] if candidate_tag else [None]:
-        release_id = await _release_id_for(
-            db,
-            project_id=project_id,
-            committish=committish_short,
-            tag=try_tag,
-        )
-        if release_id is None:
-            continue
+
+    async def _append(
+        release_id: str,
+    ) -> tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None:
         appended = await append_deployment_event(
             db,
             org_slug=org_slug,
@@ -3285,14 +3419,62 @@ async def _handle_deploy(
             external_run_url=run.run_url,
             credential=ctx.credential_note,
         )
-        if not isinstance(appended, str):
-            result = appended
+        return None if isinstance(appended, str) else appended
+
+    # Look up the release that was deployed. Try (committish, tag) first
+    # so a SHA that ships under a tag matches the tagged Release node;
+    # fall back to (committish, None) so a raw-SHA deploy still finds
+    # an untagged Release if one exists.
+    result: tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None = None
+    matched_tag: str | None = None
+    release_found = False
+    for try_tag in [candidate_tag, None] if candidate_tag else [None]:
+        release_id = await _release_id_for(
+            db,
+            project_id=project_id,
+            committish=committish_short,
+            tag=try_tag,
+        )
+        if release_id is None:
+            continue
+        release_found = True
+        result = await _append(release_id)
+        if result is not None:
             matched_tag = try_tag
             break
+    if not release_found:
+        # No Release names this deploy yet -- typically a raw commit
+        # shipped to the first environment.  Create it the way resync
+        # would on observing the same deployment, so the rollout is
+        # recorded now rather than only if a webhook later reports it.
+        try:
+            matched_tag = candidate_tag or await _existing_tag_for_committish(
+                db, project_id=project_id, committish=committish_short
+            )
+        except ValueError:
+            LOGGER.warning(
+                'Deploy triggered for project=%s committish=%s but several'
+                ' tagged Releases carry that commit; not recorded',
+                project_id,
+                committish_short,
+            )
+        else:
+            result = await _append(
+                await _upsert_release_node(
+                    db,
+                    project_id=project_id,
+                    tag=matched_tag,
+                    committish=committish_short,
+                    title=matched_tag or body.ref_label or committish_short,
+                    notes_markdown='',
+                    release_url=None,
+                    created_by=auth.principal_name,
+                )
+            )
     if result is None:
         LOGGER.warning(
-            'Deploy triggered for project=%s committish=%s tag=%s but no'
-            ' matching Release node was found; audit row suppressed',
+            'Deploy triggered for project=%s committish=%s tag=%s but it'
+            ' could not be recorded; audit row suppressed',
             project_id,
             committish_short,
             candidate_tag,
@@ -4546,26 +4728,79 @@ def _watcher_auth() -> permissions.AuthContext:
     )
 
 
-async def _project_is_deployable(db: graph.Graph, project_id: str) -> bool:
-    """True when any of the project's types is ``deployable``.
+async def _project_delivery(
+    db: graph.Graph, project_id: str
+) -> common_models.Delivery:
+    """Resolve how *project_id* is delivered: deploy, release, or neither.
 
-    A project can carry more than one ``ProjectType``, so this aggregates
+    The project's own ``delivery_mode`` wins; ``project-type`` (and a
+    node written before the property existed) defers to the types.  A
+    project can carry more than one ``ProjectType``, so this aggregates
     rather than reading one: ``deployable`` XOR ``releasable`` holds per
-    type, not per project.  A project with no type at all answers
-    ``False`` -- there is nothing to deploy into.
+    type, not per project.  A project with no type at all, or one that
+    does not exist, answers neither -- there is nothing to ship.
     """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
     OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
-    RETURN collect(COALESCE(pt.deployable, false)) AS flags
+    RETURN p.delivery_mode AS mode,
+           collect(COALESCE(pt.deployable, false)) AS flags,
+           collect(COALESCE(pt.releasable, false)) AS releasable
     """
-    rows = await db.execute(query, {'project_id': project_id}, ['flags'])
+    rows = await db.execute(
+        query, {'project_id': project_id}, ['mode', 'flags', 'releasable']
+    )
+    if not rows:
+        return common_models.Delivery(deployable=False, releasable=False)
+    row = rows[0]
+
+    def _any(column: str) -> bool:
+        flags = typing.cast(
+            'list[object]', graph.parse_agtype(row.get(column)) or []
+        )
+        return any(bool(flag) for flag in flags)
+
+    mode = graph.parse_agtype(row.get('mode'))
+    return common_models.resolve_delivery(
+        mode if isinstance(mode, str) else None,
+        deployable=_any('flags'),
+        releasable=_any('releasable'),
+    )
+
+
+async def _project_is_deployable(db: graph.Graph, project_id: str) -> bool:
+    """True when the project resolves to ``deployable``."""
+    return (await _project_delivery(db, project_id)).deployable
+
+
+async def _require_delivery_enabled(db: graph.Graph, project_id: str) -> None:
+    """Refuse to ship a project whose ``delivery_mode`` is ``disabled``.
+
+    Raises a 409: the project exists and the caller may act on it, but
+    its releases are governed outside Imbi, so deploying, promoting,
+    cutting a release, drafting notes, or resyncing it is off.
+    """
+    if await _delivery_mode_is_disabled(db, project_id):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                'Release and deployment processing is disabled for this '
+                'project (delivery_mode is "disabled").'
+            ),
+        )
+
+
+async def _delivery_mode_is_disabled(db: graph.Graph, project_id: str) -> bool:
+    """True when the project node's ``delivery_mode`` is ``disabled``."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    RETURN p.delivery_mode AS mode
+    """
+    rows = await db.execute(query, {'project_id': project_id}, ['mode'])
     if not rows:
         return False
-    flags = typing.cast(
-        'list[object]', graph.parse_agtype(rows[0].get('flags')) or []
-    )
-    return any(bool(flag) for flag in flags)
+    mode = graph.parse_agtype(rows[0].get('mode'))
+    return isinstance(mode, str) and mode == 'disabled'
 
 
 async def poll_artifact_run(
@@ -4869,6 +5104,30 @@ async def fail_promote_build(
     )
 
 
+async def _release_committish(
+    db: graph.Graph, *, release_id: str
+) -> str | None:
+    """The commit a ``Release`` node currently records, or ``None``.
+
+    What the post-build heal has to compare the tag against: the node's
+    value, not the promote's.  A re-promote of a tag whose first build
+    failed inherits the node that promote created -- the upsert never
+    overwrites a committish -- so the node can still carry the earlier
+    commit while the promote itself names the one the tag now points at.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    RETURN r.committish AS committish
+    """
+    rows = await db.execute(query, {'release_id': release_id}, ['committish'])
+    if not rows:
+        return None
+    value = graph.parse_agtype(rows[0].get('committish'))
+    if value is None:
+        return None
+    return versioning.short_committish(str(value))
+
+
 async def _set_release_committish(
     db: graph.Graph,
     *,
@@ -4900,6 +5159,44 @@ async def _set_release_committish(
         {
             'release_id': release_id,
             'committish': committish,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        [],
+    )
+
+
+async def _set_release_committish_if_unchanged(
+    db: graph.Graph,
+    *,
+    release_id: str,
+    committish: str,
+    expected_committish: str | None,
+) -> None:
+    """Heal a ``Release`` only while its committish is what was read.
+
+    The commit-sync reconcile reads every node once and then writes
+    each heal, and a promote completing in between moves the node to
+    its new tag commit before ClickHouse has seen the new tag.  A heal
+    made from that stale read would put the superseded commit back
+    until the next sync, so the write lands only when the stored value
+    still equals the one the decision was made from.  A node with no
+    committish matches ``None``.  The ``promoted_committish`` handling
+    is :func:`_set_release_committish`'s.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    WHERE COALESCE(r.committish, '') = {expected_committish}
+    SET r.promoted_committish = COALESCE(
+            r.promoted_committish, r.committish),
+        r.committish = {committish},
+        r.updated_at = {now}
+    """
+    await db.execute(
+        query,
+        {
+            'release_id': release_id,
+            'committish': committish,
+            'expected_committish': expected_committish or '',
             'now': datetime.datetime.now(datetime.UTC).isoformat(),
         },
         [],
@@ -5211,7 +5508,17 @@ async def complete_promote_build(
     )
     if tagged is not None:
         actual = versioning.short_committish(tagged.sha)
-        if actual != versioning.short_committish(committish):
+        # Compare against what the node holds, not what this promote
+        # asked for.  A tag whose first build failed and was then
+        # re-promoted from another commit keeps the first promote's
+        # node (the upsert never overwrites a committish), so the stale
+        # value is on the node while the promote's own committish
+        # already agrees with the tag.  Comparing to the promote left
+        # that node pointing at the commit that never shipped.
+        recorded = await _release_committish(db, release_id=release_id)
+        if recorded is None:
+            recorded = versioning.short_committish(committish)
+        if actual != recorded:
             # Imbi created the Release node keyed on the commit it asked
             # to tag, but the release workflow bumps the version and tags
             # the bump commit, so the tag routinely points somewhere
@@ -5222,16 +5529,21 @@ async def complete_promote_build(
             # carrying the post-bump SHA.
             LOGGER.info(
                 'release-promote: tag %s on project %s points at %s, not '
-                'the promoted commit %s; updating the Release committish',
+                'the recorded commit %s; updating the Release committish',
                 tag,
                 project_id,
                 actual,
-                committish,
+                recorded,
             )
             await _set_release_committish(
                 db, release_id=release_id, committish=actual
             )
-            committish = actual
+        # What the tag points at is what ships, whether or not the node
+        # needed healing: a node already healed by a reclaimed job or by
+        # the commit-sync reconcile agrees with the tag while this
+        # promote's own committish may not, and the deployment audit
+        # below must name the commit the tag deployed.
+        committish = actual
 
     remote = await _get_release(handler, ctx, creds, tag)
     release_url = remote.html_url if remote else None
@@ -5438,18 +5750,32 @@ def _suggest_version(
     last_tag: str | None,
     bump: SemverBump,
     patterns: collections.abc.Sequence[str],
+    schemes: collections.abc.Sequence[str] = (),
 ) -> str:
     """The next tag to suggest, honouring the configured tag formats.
 
     Candidates are tried in order and the first one satisfying
-    ``patterns`` wins: the next calendar version when ``last_tag`` is
-    calver-shaped, its semver bump when it is semver-shaped, then the
-    first-release defaults (``v0.1.0``, ``0.1.0``, today's
-    date).  With no policy configured the first candidate stands, which
-    keeps the historical ``v0.1.0`` answer for an untagged project.
+    ``patterns`` wins: the next tag of each configured calver ``scheme``
+    that ``last_tag`` matches, the next calendar version when
+    ``last_tag`` is calver-shaped, its semver bump when it is
+    semver-shaped (unless every pattern comes from a scheme), then the
+    first-release defaults (``v0.1.0``, the first tag of each scheme,
+    ``0.1.0``, then today's date).  With
+    no policy configured the first candidate stands, which keeps the
+    historical ``v0.1.0`` answer for an untagged project.
     """
     today = datetime.datetime.now(datetime.UTC).date()
-    candidates: list[str] = []
+    # A configured scheme knows its own counters, so it goes first: a tag
+    # such as ``26.4.1`` is valid semver too, and a semver bump would miss
+    # the reset when the month changes.
+    candidates: list[str] = [
+        versioning.next_scheme_tag(scheme, last_tag, today, bump)
+        for scheme in schemes
+        if last_tag
+        and versioning.matches_tag_formats(
+            last_tag, [versioning.calver_scheme_pattern(scheme)]
+        )
+    ]
     # Calver first: an unpadded date (``2026.9.17``) is also valid semver,
     # and a project tagging by date wants the next date, not ``.18``.
     # Advance the date only when the policy accepts the last tag. A date
@@ -5462,14 +5788,38 @@ def _suggest_version(
             not patterns or versioning.matches_tag_formats(last_tag, patterns)
         )
     ):
-        candidates.append(versioning.next_calver_tag(last_tag, today))
-    if last_tag and versioning.is_semver_tag(last_tag):
+        # The padded date too, before the semver bump: ``2026.10.31`` reads
+        # as unpadded, and a padding policy must get ``2026.11.01``, not
+        # the semver bump ``2026.10.32``.
+        candidates.extend(
+            [
+                versioning.next_calver_tag(last_tag, today),
+                versioning.next_calver_tag(last_tag, today, pad=True),
+            ]
+        )
+    # When every pattern comes from a scheme, a semver bump of a tag the
+    # schemes do not match (``v1.2.3`` -> ``1.2.4``) can satisfy an
+    # unpadded ``YY.MINOR.MICRO`` pattern; the first tag of the current
+    # period is the right answer there.
+    scheme_only = _scheme_only(patterns, schemes)
+    if last_tag and versioning.is_semver_tag(last_tag) and not scheme_only:
         bumped = _bump_semver(last_tag, bump)
         # The other prefix too, before the first-release defaults: a
         # policy for bare tags after a ``v`` tag must not fall to 0.1.0.
         candidates.extend([bumped, bumped.removeprefix('v'), f'v{bumped}'])
     candidates.extend(
-        ['v0.1.0', '0.1.0', versioning.next_calver_tag(None, today)]
+        [
+            'v0.1.0',
+            # Before ``0.1.0``: that is also a valid ``YY.MINOR.MICRO`` tag.
+            *(
+                versioning.next_scheme_tag(scheme, None, today)
+                for scheme in schemes
+            ),
+            '0.1.0',
+            versioning.next_calver_tag(None, today),
+            # Zero-padded date, for a policy that requires padding.
+            today.strftime('%Y.%m.%d'),
+        ]
     )
     for candidate in candidates:
         if versioning.matches_tag_formats(candidate, patterns):
@@ -5477,6 +5827,19 @@ def _suggest_version(
     # A policy none of the known schemes satisfy (custom formats only):
     # suggest nothing rather than a tag the form would have to reject.
     return '' if patterns else candidates[0]
+
+
+def _scheme_only(
+    patterns: collections.abc.Sequence[str],
+    schemes: collections.abc.Sequence[str],
+) -> bool:
+    """Whether every pattern of the tag policy comes from a calver scheme."""
+    scheme_patterns = {
+        versioning.calver_scheme_pattern(scheme) for scheme in schemes
+    }
+    return bool(patterns) and all(
+        pattern in scheme_patterns for pattern in patterns
+    )
 
 
 def _version_allowed(
@@ -5496,17 +5859,43 @@ def _version_allowed(
 
 
 def _version_matches_bump(
-    last_tag: str | None, version: str, bump: SemverBump
+    last_tag: str | None,
+    version: str,
+    bump: SemverBump,
+    schemes: collections.abc.Sequence[str] = (),
+    patterns: collections.abc.Sequence[str] = (),
 ) -> bool:
     """Whether ``version`` is ``last_tag`` bumped by ``bump``.
 
-    Only a semver previous tag is checked: a calendar version's bump
+    When ``last_tag`` matches a configured calver scheme, ``version``
+    must be that scheme's next tag: ``26.04.3`` is a valid semver bump
+    of ``26.04.2``, but in October the scheme wants ``26.10.0``.
+    When every pattern comes from a scheme and ``last_tag`` is absent
+    or matches no scheme, ``version`` must be the first tag of the
+    current period of a scheme.
+    Otherwise only a semver previous tag is checked: a calendar version's bump
     does not change the date, and with no previous tag there is nothing
     to bump from.  Only a semver draft version is checked too: a version
     a custom tag policy accepts (``REL-42``) is the policy's business.
     The ``v`` prefix is not compared: the tag policy decides it, and
     ``_version_allowed`` checks that.
     """
+    today = datetime.datetime.now(datetime.UTC).date()
+    expected = {
+        versioning.next_scheme_tag(scheme, last_tag, today, bump)
+        for scheme in schemes
+        if last_tag
+        and versioning.matches_tag_formats(
+            last_tag, [versioning.calver_scheme_pattern(scheme)]
+        )
+    }
+    if not expected and _scheme_only(patterns, schemes):
+        expected = {
+            versioning.next_scheme_tag(scheme, None, today)
+            for scheme in schemes
+        }
+    if expected:
+        return version in expected
     if (
         not last_tag
         or versioning.is_calver_tag(last_tag)
@@ -5811,17 +6200,21 @@ async def draft_release_notes(
     ``{bump, version, reasoning, notes_markdown}`` payload, and returns
     it.  Falls back to a deterministic conventional-commit-prefix
     grouping with ``degraded=true`` when Claude is unavailable, the
-    response can't be parsed, or schema validation fails.
+    response can't be parsed, or schema validation fails.  A base or
+    head the source host does not have is a 422 (see
+    :func:`_compare_refs`).
     """
+    await _require_delivery_enabled(db, project_id)
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
     if body.base_sha:
-        handler = _handler(resolved)
-        compare_result = await call_with_timeout(
-            handler.compare(
-                ctx, credentials, base=body.base_sha, head=body.head_sha
-            )
+        compare_result = await _compare_refs(
+            _handler(resolved),
+            ctx,
+            credentials,
+            base=body.base_sha,
+            head=body.head_sha,
         )
         commits = compare_result.commits
     else:
@@ -5831,10 +6224,13 @@ async def draft_release_notes(
         commits = await _commits_through(project_id, body.head_sha)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
+    schemes = [fmt.scheme for fmt in tag_formats if fmt.scheme]
     fallback_bump = _classify_bump(commits, body.last_tag)
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
-        version=_suggest_version(body.last_tag, fallback_bump, patterns),
+        version=_suggest_version(
+            body.last_tag, fallback_bump, patterns, schemes
+        ),
         reasoning=(
             'AI unavailable — bump and notes derived from '
             'conventional-commit prefixes.'
@@ -5864,14 +6260,17 @@ async def draft_release_notes(
     if notes.bump == 'major' and _is_pre_one(body.last_tag):
         notes = notes.model_copy(update={'bump': 'minor'})
     # Re-derive the version when Claude's does not fit the tag policy, or
-    # is not the previous semver tag bumped by Claude's own bump.
+    # is not the previous tag advanced by Claude's own bump (under the
+    # configured scheme, when the previous tag follows one).
     if not _version_allowed(
         notes.version, patterns
-    ) or not _version_matches_bump(body.last_tag, notes.version, notes.bump):
+    ) or not _version_matches_bump(
+        body.last_tag, notes.version, notes.bump, schemes, patterns
+    ):
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
-                    body.last_tag, notes.bump, patterns
+                    body.last_tag, notes.bump, patterns, schemes
                 )
             }
         )
@@ -6419,10 +6818,9 @@ async def get_release_drift(
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
     latest_tag_at = _tag_timestamp(latest) if latest else None
-    patterns = [
-        fmt.pattern
-        for fmt in await _resolve_tag_formats(db, org_slug, project_id)
-    ]
+    tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
+    patterns = [fmt.pattern for fmt in tag_formats]
+    schemes = [fmt.scheme for fmt in tag_formats if fmt.scheme]
 
     head_rows = await clickhouse.query(
         'SELECT sha FROM commits FINAL '
@@ -6447,7 +6845,9 @@ async def get_release_drift(
                 commits_since_tag=0,
                 commits=[],
                 suggested_bump='patch',
-                suggested_tag=_suggest_version(latest_tag, 'patch', patterns),
+                suggested_tag=_suggest_version(
+                    latest_tag, 'patch', patterns, schemes
+                ),
             )
 
     where = 'project_id = {project_id:String}'
@@ -6488,7 +6888,7 @@ async def get_release_drift(
         commits_since_tag=commits_since_tag,
         commits=commits,
         suggested_bump=bump,
-        suggested_tag=_suggest_version(latest_tag, bump, patterns),
+        suggested_tag=_suggest_version(latest_tag, bump, patterns, schemes),
     )
 
 
@@ -6646,8 +7046,7 @@ async def _apply_ci_fallback(
     auth: permissions.AuthContext,
     entries: list[ReleaseHistoryEntry],
 ) -> None:
-    """Rewrite ``'unknown'`` CI statuses in place for a non-deployable
-    project, newest release first."""
+    """Rewrite ``'unknown'`` CI statuses in place, newest release first."""
     unknown = [e for e in entries if e.ci_status == 'unknown']
     if not unknown:
         return
@@ -6656,6 +7055,95 @@ async def _apply_ci_fallback(
     )
     for entry in unknown:
         entry.ci_status = resolved.get(entry.sha, _CI_NOT_APPLICABLE)
+
+
+def _node_timestamp(value: typing.Any) -> datetime.datetime | None:
+    """An ISO timestamp off a graph node as an aware datetime, or ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.UTC)
+
+
+def _release_history_entry(
+    *,
+    tag: str,
+    sha: str,
+    node: dict[str, typing.Any],
+    open_blockers: list[ReleaseBlocker],
+    published_at: datetime.datetime | None,
+    author: str | None,
+    author_email: str | None,
+    ci_status: str,
+    tag_url: str | None,
+    tag_synced: bool = True,
+) -> ReleaseHistoryEntry:
+    """Build one history entry from its tag facts and ``Release`` node."""
+    newest = open_blockers[0] if open_blockers else None
+    return ReleaseHistoryEntry(
+        tag=tag,
+        sha=sha,
+        short_sha=sha[:7],
+        published_at=published_at,
+        author=author,
+        author_email=author_email,
+        ci_status=ci_status,
+        title=node.get('title'),
+        notes_markdown=node.get('description'),
+        release_url=_release_url_from_links(node.get('links')),
+        tag_url=tag_url,
+        package_url=None,
+        tag_synced=tag_synced,
+        blocked=bool(open_blockers),
+        blocked_reason=newest.description if newest else None,
+        blocked_by=newest.created_by if newest else None,
+        blocked_at=newest.created_at if newest else None,
+        blockers=open_blockers,
+        ci_override_by=node.get('ci_override_by') or None,
+        ci_override_at=node.get('ci_override_at') or None,
+        drift_detected=node.get('drift_detected'),
+    )
+
+
+def _unsynced_release_entry(
+    tag: str,
+    node: dict[str, typing.Any],
+    open_blockers: list[ReleaseBlocker],
+) -> ReleaseHistoryEntry:
+    """A history entry for a ``Release`` node with no synced tag row.
+
+    A promote creates the node before dispatching the build, so one
+    exists for a release still being cut and for one whose build failed
+    before the tag was pushed.  The ``build-failure`` blocker the
+    promote files hangs off that node and the history is where it gets
+    resolved, so the node has to be listed even though ClickHouse has
+    nothing to say about it.  The node's committish stands in for the
+    tag's sha and its ``created_at`` for the publish time; CI status is
+    left for the fallback chain.  A tag deleted upstream after the fact
+    is not this case: the tag sync records no deletions, so its ``tags``
+    row -- and with it the synced entry -- outlives the tag.
+    """
+    sha = versioning.short_committish(str(node.get('committish') or ''))
+    author, author_email = _release_author(
+        None,
+        node.get('created_by'),
+        _CommitFacts(ci_status='unknown', author=None, author_email=None),
+    )
+    return _release_history_entry(
+        tag=tag,
+        sha=sha,
+        node=node,
+        open_blockers=open_blockers,
+        published_at=_node_timestamp(node.get('created_at')),
+        author=author,
+        author_email=author_email,
+        ci_status='unknown',
+        tag_url=None,
+        tag_synced=False,
+    )
 
 
 @project_deployments_router.get('/release-history')
@@ -6672,6 +7160,10 @@ async def get_release_history(
     limit: int = 20,
 ) -> list[ReleaseHistoryEntry]:
     """Release history: ClickHouse tags joined to their ``Release`` nodes.
+
+    A ``Release`` node whose tag ClickHouse has not synced is listed too,
+    flagged ``tag_synced=False`` -- see :func:`_unsynced_release_entry`
+    for why it cannot be left out.  Entries are newest tag first.
 
     ``ci_status`` comes from the synced ``commits`` table, which the
     deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
@@ -6699,54 +7191,64 @@ async def get_release_history(
         name = str(row['name'])
         sha = str(row['sha'])
         node = nodes.get(name) or {}
-        tagger = row.get('tagger_name')
-        open_blockers = blockers.get(name, [])
-        newest = open_blockers[0] if open_blockers else None
         facts = facts_by_sha.get(sha, unknown)
         author, author_email = _release_author(
-            tagger, node.get('created_by'), facts
+            row.get('tagger_name'), node.get('created_by'), facts
         )
         entries.append(
-            ReleaseHistoryEntry(
+            _release_history_entry(
                 tag=name,
                 sha=sha,
-                short_sha=sha[:7],
+                node=node,
+                open_blockers=blockers.get(name, []),
                 published_at=_tag_timestamp(row),
                 author=author,
                 author_email=author_email,
                 ci_status=facts.ci_status,
-                title=node.get('title'),
-                notes_markdown=node.get('description'),
-                release_url=_release_url_from_links(node.get('links')),
                 tag_url=str(row['url']) if row.get('url') else None,
-                package_url=None,
-                blocked=bool(open_blockers),
-                blocked_reason=newest.description if newest else None,
-                blocked_by=newest.created_by if newest else None,
-                blocked_at=newest.created_at if newest else None,
-                blockers=open_blockers,
-                ci_override_by=node.get('ci_override_by') or None,
-                ci_override_at=node.get('ci_override_at') or None,
-                drift_detected=node.get('drift_detected'),
             )
         )
-    # Order by the tagged commit's place in the synced history (semver as
-    # the tie-break) so the head of the list is the current release --
-    # consistent with the drift base, which is chosen the same way.
-    authored_by_sha = _authored_by_sha(facts_by_sha)
+    synced = {str(row['name']) for row in tag_rows}
+    entries.extend(
+        _unsynced_release_entry(name, node, blockers.get(name, []))
+        for name, node in nodes.items()
+        if name not in synced
+    )
+    # Newest tag first, then the tag itself (numerically when it parses as
+    # a release version).  An unsynced release sorts by its node's
+    # ``created_at``, so one in flight or failed today is at the top and
+    # an old orphaned node is at the bottom.  An entry with no time is
+    # last.
+    undated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
     entries.sort(
-        key=lambda e: versioning.release_tag_order_key(
-            e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
+        key=lambda e: (
+            e.published_at or undated,
+            versioning.release_version_key(e.tag) or (),
+            e.tag,
         ),
         reverse=True,
     )
-    entries = entries[:capped]
-    # Only for projects with nothing to deploy into.  A deployable project
-    # whose commit reads ``'unknown'`` really is unknown -- the sync asked
-    # and got nothing -- and paying for a live check-runs call per release
-    # on every page load would not change that.
-    if not await _project_is_deployable(db, project_id):
-        await _apply_ci_fallback(db, org_slug, project_id, auth, entries)
+    # The cap keeps the newest synced release: ``ReleasesTab`` shows it
+    # as the current release, and ``capped`` or more unsynced entries
+    # ranked ahead of it would otherwise push it out of the response.
+    newest_synced = next(
+        (i for i, e in enumerate(entries) if e.tag_synced), None
+    )
+    if newest_synced is not None and newest_synced >= capped:
+        entries = [*entries[: capped - 1], entries[newest_synced]]
+    else:
+        entries = entries[:capped]
+    # A deployable project's synced releases keep what the sync recorded:
+    # an ``'unknown'`` there really is unknown -- the sync asked and got
+    # nothing -- and paying for a live check-runs call per release on
+    # every page load would not change that.  An unsynced release has no
+    # commit row for the sync to have filled, so the fallback is its only
+    # source, deployable or not.
+    if await _project_is_deployable(db, project_id):
+        unanswered = [e for e in entries if not e.tag_synced]
+    else:
+        unanswered = entries
+    await _apply_ci_fallback(db, org_slug, project_id, auth, unanswered)
     return entries
 
 
@@ -6774,6 +7276,7 @@ async def cut_release(
     minus the deploy step), upsert the matching ``Release`` node, and
     record an audit row.
     """
+    await _require_delivery_enabled(db, project_id)
     tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
     patterns = [fmt.pattern for fmt in tag_formats]
     if not versioning.matches_tag_formats(body.tag, patterns):

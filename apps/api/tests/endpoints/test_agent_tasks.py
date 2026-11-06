@@ -16,6 +16,7 @@ import typing
 import uuid
 
 import httpx
+import slugify
 from psycopg import sql
 
 from apps.api.tests import support
@@ -33,6 +34,7 @@ ALL_PERMISSIONS = frozenset(
         'agent_task:create',
         'agent_task:manage',
         'agent_task:resolve',
+        'agent_task:delete',
     }
 )
 
@@ -1087,6 +1089,103 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
 
+class DeleteTests(AgentTaskTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.make_agent()
+        self.task = (await self.create_task()).json()
+
+    async def cancel(self, short_id: str) -> None:
+        response = await self.client.post(self.url(f'{short_id}/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, short_id),
+            )
+
+    async def test_unarchived_task_is_refused(self) -> None:
+        response = await self.client.post(self.url('T-1/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_open_task_is_refused(self) -> None:
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_closed_task_is_deleted_with_its_relations(self) -> None:
+        await self.create_task()
+        response = await self.client.put(self.url('T-2/requires/T-1'))
+        self.assertEqual(response.status_code, 204, response.text)
+        await self.cancel('T-1')
+        response = await self.client.delete(self.url('t-1'))
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 404, response.text)
+        response = await self.client.get(self.url('T-2/relations'))
+        self.assertEqual(response.json()['requires'], [])
+        listed = (await self.client.get(self.url())).json()
+        self.assertEqual([t['short_id'] for t in listed], ['T-2'])
+
+    async def test_open_child_is_refused(self) -> None:
+        child = (await self.create_task()).json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE agent_runtime.tasks SET origin_kind = 'task',"
+                ' origin_id = %s WHERE id = %s',
+                (self.task['id'], uuid.UUID(child['id'])),
+            )
+        await self.cancel('T-1')
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_closed_child_of_open_chain_is_refused(self) -> None:
+        child = (await self.create_task()).json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
+            )
+        await self.cancel('T-2')
+        response = await self.client.delete(self.url('T-2'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_closed_child_of_open_legacy_root_is_refused(self) -> None:
+        child = (await self.create_task()).json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = NULL WHERE id = %s',
+                (uuid.UUID(self.task['id']),),
+            )
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
+            )
+        await self.cancel('T-2')
+        response = await self.client.delete(self.url('T-2'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_fencing_chain_is_refused(self) -> None:
+        await self.cancel('T-1')
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.chains'
+                ' (root_task_id, organization_id, state)'
+                " VALUES (%s, %s, 'fencing')",
+                (uuid.UUID(self.task['id']), self.org),
+            )
+        response = await self.client.delete(self.url('T-1'))
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_unknown_task_is_404(self) -> None:
+        response = await self.client.delete(self.url('T-9'))
+        self.assertEqual(response.status_code, 404, response.text)
+
+
 class PermissionTests(AgentTaskTestCase):
     async def test_each_endpoint_needs_its_permission(self) -> None:
         await self.make_agent()
@@ -1112,6 +1211,7 @@ class PermissionTests(AgentTaskTestCase):
                 {'owner': self.member},
             ),
             ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
+            ('agent_task:delete', 'DELETE', 'T-1', None),
             (
                 'agent_task:resolve',
                 'POST',
@@ -1141,10 +1241,39 @@ class ServiceAccountTests(AgentTaskTestCase):
     async def test_agent_create_makes_service_account(self) -> None:
         agent = await self.create_agent('triage')
         (account,) = await self.service_accounts(agent['id'])
-        self.assertEqual(account['slug'], f'agent-{agent["id"]}')
+        self.assertEqual(account['slug'], 'triage')
         self.assertEqual(account['org'], self.org)
-        # No role, so no permissions.
-        self.assertIsNone(account['role'])
+        self.assertEqual(account['role'], 'developer')
+
+    async def test_service_account_slug_taken(self) -> None:
+        slug = f'triage-{self.org}'
+        await self.graph.execute(
+            'CREATE (s:ServiceAccount {{id: {id}, slug: {slug}}})',
+            {'id': f'other-{self.org}', 'slug': slug},
+            [],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (s:ServiceAccount {{id: {id}}}) DETACH DELETE s'
+            ' RETURN 1 AS ok',
+            {'id': f'other-{self.org}'},
+            ['ok'],
+        )
+        agent = await self.create_agent(slug)
+        (account,) = await self.service_accounts(agent['id'])
+        self.assertEqual(
+            account['slug'], slugify.slugify(f'{slug} {agent["id"]}')
+        )
+
+    async def test_service_account_slug_of_empty_name_slug(self) -> None:
+        response = await self.client.post(
+            f'/organizations/{self.org}/agents/',
+            json={'name': '!!!', 'slug': 'bang', 'team': self.team_id},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        agent = response.json()
+        (account,) = await self.service_accounts(agent['id'])
+        self.assertEqual(account['slug'], slugify.slugify(agent['id']))
 
     async def test_duplicate_gets_its_own_service_account(self) -> None:
         first = await self.create_agent('triage')

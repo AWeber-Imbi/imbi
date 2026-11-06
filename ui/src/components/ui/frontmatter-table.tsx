@@ -1,9 +1,12 @@
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { DeferredImage } from '@/components/ui/deferred-image'
 import { formatFrontmatterValue } from '@/lib/frontmatter'
 
 interface FrontmatterTableProps {
+  /** Load images only on a click. See `RichMarkdown`. */
+  deferImages?: boolean
   meta: Record<string, unknown>
 }
 
@@ -15,8 +18,18 @@ const CELL_COMPONENTS: Components = {
   p: ({ children }) => <>{children}</>,
 }
 
+const CELL_DEFERRED_IMAGES: Components = {
+  ...CELL_COMPONENTS,
+  img: ({ alt, src }) => (
+    <DeferredImage alt={alt} src={typeof src === 'string' ? src : undefined} />
+  ),
+}
+
 /** Render parsed YAML frontmatter as a key/value table of markdown. */
-export function FrontmatterTable({ meta }: FrontmatterTableProps) {
+export function FrontmatterTable({
+  deferImages = false,
+  meta,
+}: FrontmatterTableProps) {
   return (
     <div className="frontmatter">
       <table>
@@ -26,7 +39,9 @@ export function FrontmatterTable({ meta }: FrontmatterTableProps) {
               <th scope="row">{key}</th>
               <td>
                 <Markdown
-                  components={CELL_COMPONENTS}
+                  components={
+                    deferImages ? CELL_DEFERRED_IMAGES : CELL_COMPONENTS
+                  }
                   remarkPlugins={[remarkGfm]}
                 >
                   {formatFrontmatterValue(value)}

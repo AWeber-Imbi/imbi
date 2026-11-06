@@ -142,6 +142,10 @@ class TaskClosed(ValueError):
     """The task is closed. A closed task does not change."""
 
 
+class TaskOpen(ValueError):
+    """The task, or a task that it delegated to, is not closed."""
+
+
 class CancelPending(ValueError):
     """A cancel waits for the harness; the control cannot change."""
 
@@ -454,10 +458,24 @@ class TaskStore:
         Return the task and ``True``. When a concurrent request made a
         task with the same idempotency key first, return that task and
         ``False``. The rollback also returns the short id to the counter.
+
+        Raises:
+            TaskClosed: The origin is a task that is closed or gone.
+
         """
         task_id = uuid.uuid4()
         try:
             async with self._pool.connection() as conn, conn.transaction():
+                if task.origin_kind == 'task':
+                    # The lock conflicts with the lock in delete, so a
+                    # parent cannot go while its child is made.
+                    cursor = await conn.execute(
+                        'SELECT 1 FROM agent_runtime.tasks WHERE id = %s::uuid'
+                        " AND status <> 'closed' FOR KEY SHARE",
+                        (task.origin_id,),
+                    )
+                    if await cursor.fetchone() is None:
+                        raise TaskClosed(task.origin_id)
                 short_id = await _next_short_id(conn, task.organization_id)
                 await conn.execute(
                     'INSERT INTO agent_runtime.tasks (id, organization_id,'
@@ -708,6 +726,76 @@ class TaskStore:
                 (task_id,),
             )
         return True
+
+    async def delete(self, organization_id: str, short_id: str) -> Row:
+        """Delete a closed task and return its row.
+
+        Its events, sessions, requests, budget ledger, and harness rows
+        go by cascade; its dependency and project rows go here. The
+        secret resolutions and the ClickHouse rows (archived events,
+        usage) stay, for the security and cost history.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskOpen: The task, or a child or chain task, is not closed,
+                the log of the task is not archived, its harness chain
+                is not done, or it has open secret resolutions.
+
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            task = await _fetch_one(
+                conn,
+                'SELECT * FROM agent_runtime.tasks'
+                ' WHERE organization_id = %s AND short_id = %s FOR UPDATE',
+                (organization_id, short_id),
+            )
+            if task is None:
+                raise TaskNotFound(short_id)
+            # The cascade would remove events and ledger rows that the
+            # sweep has not yet put in ClickHouse.
+            if task['log_archived_at'] is None:
+                raise TaskOpen(short_id)
+            # The harness chain row of a root task cascades, so an open
+            # task in its chain must not lose it. A legacy root has no
+            # stored chain_id.
+            chain_id = task['chain_id'] or task['id']
+            cursor = await conn.execute(
+                'SELECT 1 FROM agent_runtime.tasks'
+                " WHERE status <> 'closed' AND (id = %s OR chain_id = %s"
+                ' OR (chain_id IS NULL AND id = %s)'
+                " OR (origin_kind = 'task' AND origin_id = %s)) LIMIT 1",
+                (task['id'], chain_id, chain_id, str(task['id'])),
+            )
+            if await cursor.fetchone() is not None:
+                raise TaskOpen(short_id)
+            # The lease sweep still needs the chain row of a root that
+            # waits for its fencers, and Broker.sweep joins the open
+            # resolutions of a failed close hook to the task.
+            cursor = await conn.execute(
+                'SELECT 1 FROM harness.chains WHERE root_task_id = %s'
+                " AND state IN ('running', 'fencing', 'stuck')"
+                ' UNION ALL SELECT 1 FROM secrets.resolutions'
+                " WHERE task_id = %s AND state IN ('pending', 'active')"
+                ' LIMIT 1',
+                (task['id'], task['id']),
+            )
+            if await cursor.fetchone() is not None:
+                raise TaskOpen(short_id)
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_dependencies'
+                ' WHERE organization_id = %s'
+                ' AND (dependent_task_id = %s OR prerequisite_task_id = %s)',
+                (organization_id, task['id'], task['id']),
+            )
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_projects'
+                ' WHERE organization_id = %s AND task_id = %s',
+                (organization_id, task['id']),
+            )
+            await conn.execute(
+                'DELETE FROM agent_runtime.tasks WHERE id = %s', (task['id'],)
+            )
+        return task
 
     async def set_control(
         self,

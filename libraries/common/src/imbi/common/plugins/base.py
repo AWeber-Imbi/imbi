@@ -18,6 +18,8 @@ import typing
 import pydantic
 
 from imbi.common.plugins.errors import PluginRemediationNotSupported
+from imbi.common.plugins.identity import IdentitySource
+from imbi.common.plugins.secrets import SecretProvider
 
 
 class PluginOption(pydantic.BaseModel):
@@ -305,10 +307,45 @@ class PluginManifest(pydantic.BaseModel):
     vertex_labels: list[PluginVertexLabel] = []
     edge_labels: list[PluginEdgeLabel] = []
     ops_log_templates: dict[str, OpsLogTemplate] = {}
+    #: Secret provider classes (:class:`SecretProvider` subclasses) for
+    #: imbi-api's secrets broker. They are not Integration capabilities:
+    #: an organization configures a provider in the secrets admin, not
+    #: in an Integration. Excluded from serialization, as
+    #: :attr:`Capability.handler` is.
+    secret_providers: list[type[SecretProvider]] = pydantic.Field(
+        default_factory=list[type[SecretProvider]], exclude=True, repr=False
+    )
+    #: Identity source classes (:class:`IdentitySource` subclasses) for
+    #: workload identity federation. An organization selects one in its
+    #: ``workload_identity`` setting. Excluded from serialization.
+    identity_sources: list[type[IdentitySource]] = pydantic.Field(
+        default_factory=list[type[IdentitySource]], exclude=True, repr=False
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _validate_typed_classes(self) -> PluginManifest:
+        for kind, classes in (
+            ('secret provider', self.secret_providers),
+            ('identity source', self.identity_sources),
+        ):
+            types: set[str] = set()
+            for cls in classes:
+                if cls.type in types:
+                    raise ValueError(
+                        f'PluginManifest declares {kind} type '
+                        f'{cls.type!r} twice'
+                    )
+                types.add(cls.type)
+        return self
 
     @pydantic.model_validator(mode='after')
     def _validate_capabilities(self) -> PluginManifest:
-        if not self.capabilities:
+        # A plugin that only adds secret providers or identity sources
+        # (for example a model vendor's token exchange) has no
+        # Integration capability.
+        if not (
+            self.capabilities or self.secret_providers or self.identity_sources
+        ):
             raise ValueError(
                 'PluginManifest.capabilities must declare at least one '
                 'capability'
@@ -1335,9 +1372,51 @@ class IdentityCapability(CapabilityHandler):
         return connection
 
 
+class RepositoryReader(typing.Protocol):
+    """The repository reads that a host does without a project.
+
+    A :class:`DeploymentCapability` handler is one. So is the reader
+    that :meth:`DeploymentCapability.public_reader` returns, which
+    ignores ``ctx`` and ``credentials``.
+    """
+
+    async def list_refs(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        /,
+        kind: typing.Literal['default', 'branch', 'tag', 'all'] = 'all',
+    ) -> list[Ref]: ...
+
+    async def resolve_committish(
+        self, ctx: PluginContext, credentials: dict[str, str], ref: str, /
+    ) -> Ref | Commit: ...
+
+    async def get_file(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        path: str,
+        ref: str,
+        /,
+    ) -> str | None: ...
+
+
 class DeploymentCapability(CapabilityHandler):
     """Act on a repo: enumerate refs/commits, compare them, create
     tags/releases, and trigger CI workflow runs."""
+
+    @classmethod
+    def public_reader(cls, url: str) -> RepositoryReader | None:
+        """Return a reader of the public repository at ``url``.
+
+        The reader needs no Integration and no credentials. The host
+        uses it when no Integration of the organization can read the
+        repository. ``None``: the plugin cannot read ``url`` without
+        credentials (the default).
+        """
+        del url
+        return None
 
     @abc.abstractmethod
     async def list_refs(
@@ -1852,6 +1931,38 @@ class WebhookActionsCapability(CapabilityHandler):
         ``callable`` and ``config_model`` ImportStrings at registry load,
         so misconfigured paths fail loud there rather than at request time.
         """
+
+    @classmethod
+    def signature(cls) -> WebhookSignature | None:
+        """Return how the remote signs its deliveries.
+
+        ``None`` (the default): the remote does not sign deliveries.
+        Then the gateway verifies nothing, and a delivery to a project
+        edge that has a signing secret is dropped (fail closed).
+        """
+        return None
+
+
+class WebhookSignature(pydantic.BaseModel):
+    """How a remote signs a webhook delivery.
+
+    The signature header holds one or more comma-separated
+    ``<prefix><hex>`` tokens. Each is the HMAC-SHA256 of the raw request
+    body, keyed by the signing secret. The gateway accepts the delivery
+    when one token matches.
+    """
+
+    model_config = pydantic.ConfigDict(frozen=True)
+
+    #: The request header, lower case (``x-hub-signature-256``).
+    header: str = pydantic.Field(pattern=r'^[a-z0-9-]+$')
+    #: The prefix of each token (``sha256=``, ``v1=``).
+    prefix: str
+    #: Where the signing secret is. ``webhook``: the ``Webhook.secret``,
+    #: one for the webhook. ``edge``: the ``webhook_secret_enc`` of each
+    #: project's ``EXISTS_IN`` edge, which the plugin writes with a
+    #: :class:`ServiceWriteback`.
+    secret: typing.Literal['webhook', 'edge']
 
 
 # ---------------------------------------------------------------------------

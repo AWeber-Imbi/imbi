@@ -27,7 +27,9 @@ from imbi.plugins.aws.identity import (
     REFRESH_SCOPE,
     AWSIdentity,
 )
+from imbi.plugins.aws.secrets_manager import AwsSecretsManager
 from imbi.plugins.aws.ssm import SSMConfiguration
+from imbi.plugins.aws.web_identity import AwsStsIdentity
 
 _IDENTITY_WIDGET_TEXT = (
     'Connect to enable project level functionality such as '
@@ -299,6 +301,8 @@ class AWSPlugin(plugins.Plugin):
                 summary='deleted parameter',
             ),
         },
+        secret_providers=[AwsSecretsManager],
+        identity_sources=[AwsStsIdentity],
     )
 
 

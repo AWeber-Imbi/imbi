@@ -217,6 +217,9 @@ class GitHubPlugin(Plugin):
 - **`ops_log_templates`** supply Mustache-style templates the UI uses to
   render operations-log entries tagged with the plugin's slug, keyed by
   the `action` value the host wrote into the entry.
+- **`secret_providers`** are classes for the imbi-api secrets broker. They
+  are not capabilities and are not serialized with the manifest (see
+  [Secret Providers](secret-providers.md)).
 
 ::: imbi.common.plugins.Plugin
 

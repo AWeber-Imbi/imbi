@@ -203,8 +203,13 @@ function OverridePanel({
     setEditorOpen(false)
   }
 
-  const save = (label: string, pattern: string, example: string) => {
-    onUpsert(editing?.id ?? null, { example, label, pattern })
+  const save = (
+    label: string,
+    pattern: string,
+    example: string,
+    scheme: null | string,
+  ) => {
+    onUpsert(editing?.id ?? null, { example, label, pattern, scheme })
     close()
   }
 
@@ -239,6 +244,7 @@ function OverridePanel({
           initialExample={editing?.example}
           initialName={editing?.label}
           initialPattern={editing?.pattern}
+          initialScheme={editing?.scheme ?? ''}
           key={editing?.id ?? 'new'}
           onCancel={close}
           onSave={save}

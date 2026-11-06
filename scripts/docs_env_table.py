@@ -74,7 +74,8 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
             api_settings.IggyConnectors,
             api_settings.InternalServices,
         ],
-        ['apps/api/src'],
+        # The secret providers of the plugins run in imbi-api.
+        ['apps/api/src', 'plugins/aws/src', 'plugins/github/src'],
         [
             (
                 'IMBI_GATEWAY_API_TOKEN',
@@ -354,8 +355,6 @@ DESCRIPTIONS: dict[str, str] = {
     'runtime',
     'IMBI_PLUGINS_INSTALL_TIMEOUT': 'Timeout of one plugin install in seconds',
     'IMBI_PLUGINS_INDEX_URL': 'Package index for plugin installs',
-    'IMBI_OAUTH_ALLOW_INSECURE_URLS': '`true` allows `http://localhost` '
-    'OAuth provider URLs. Development only.',
     # Other services
     'IMBI_INTERNAL_API_URL': 'In-cluster origin of imbi-api',
     'IMBI_INTERNAL_UI_URL': 'In-cluster UI URL for `llms.txt`. Unset: '
@@ -439,6 +438,9 @@ DESCRIPTIONS: dict[str, str] = {
     'VITE_API_URL': 'API URL that Caddy writes into `index.html` at request '
     'time. The UI does not start without it.',
     'VITE_SENTRY_DSN': 'Sentry DSN of the UI, written into `index.html`',
+    'VITE_DRIFT_STALE_AFTER': 'Drift that waits longer than this '
+    '(`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: '
+    'never.',
 }
 
 NOTES: dict[str, str] = {}

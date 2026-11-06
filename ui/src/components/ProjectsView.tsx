@@ -12,7 +12,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowRight,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -39,13 +38,18 @@ import { useAuth } from '@/hooks/useAuth'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { useUrlSearchQuery } from '@/hooks/useUrlSearchQuery'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { type DeliveryProject, resolveDelivery } from '@/lib/delivery'
 import {
   computeDriftPairs,
+  driftIsStale,
   type DriftPair,
   type DriftProject,
   projectReleaseDrifted,
   rangeNeedsAction,
+  rangeOldest,
 } from '@/lib/deployment-drift'
+import { sortByPipelineOrder } from '@/lib/environment-chains'
+import { absTime, parseServerTs, relTime } from '@/lib/formatDate'
 import type { DeploymentStatus, LatestDeployment } from '@/types'
 
 import { NewProjectDialog } from './NewProjectDialog'
@@ -64,6 +68,11 @@ import { ScoreBadge } from './ui/score-badge'
 import { Sk } from './ui/skeleton'
 
 // The dropdown filters, each backed by its own URL search param.
+type DriftCellProject = DriftProject & {
+  id: string
+  project_types?: null | object[]
+}
+
 type FacetKey = 'drifts' | 'scores' | 'teams' | 'types'
 
 interface FilterHeaderProps {
@@ -90,12 +99,14 @@ type SortDir = 'asc' | 'desc'
 interface SortHeaderProps {
   children: React.ReactNode
   className?: string
+  filter?: React.ReactNode
   onSort: () => void
   sortDir: SortDir
   sorted: boolean
+  title?: string
 }
 
-type SortKey = 'name' | 'prs' | 'score' | 'team' | 'type'
+type SortKey = 'drift' | 'name' | 'prs' | 'score' | 'team' | 'type'
 
 // Footprint skeleton for the projects results area — mirrors the grid cards
 // or the table rows depending on the active view, so the layout reads as
@@ -170,6 +181,10 @@ const VIEW_MODE_STORAGE_KEY = 'imbi.projects.view-mode'
 // downstream filter+render pass) doesn't fire on every keystroke.
 // 200ms is short enough to feel synchronous for the common
 // type-pause-look pattern.
+
+// Highlight colours for a change waiting to move on: amber, or red once
+// it has waited past VITE_DRIFT_STALE_AFTER.
+type DriftTone = 'amber' | 'red'
 
 // fallow-ignore-next-line complexity
 export function ProjectsView() {
@@ -425,10 +440,25 @@ export function ProjectsView() {
     const collator = new Intl.Collator('en', { sensitivity: 'base' })
     const key = (s: null | string | undefined) => (s ?? '').trim()
 
+    // Projects with no dated drift sort last in either direction.
+    const waiting =
+      sortKey === 'drift'
+        ? new Map(all.map((p) => [p.id, oldestPendingTime(p)]))
+        : null
+
     // fallow-ignore-next-line complexity
     return [...all].sort((a, b) => {
       let cmp = 0
-      if (sortKey === 'name') cmp = collator.compare(key(a.name), key(b.name))
+      if (waiting) {
+        const ta = waiting.get(a.id) ?? null
+        const tb = waiting.get(b.id) ?? null
+        if (ta === null || tb === null) {
+          if (ta === tb) return 0
+          return ta === null ? 1 : -1
+        }
+        cmp = ta - tb
+      } else if (sortKey === 'name')
+        cmp = collator.compare(key(a.name), key(b.name))
       else if (sortKey === 'team')
         cmp = collator.compare(key(a.team.name), key(b.team.name))
       else if (sortKey === 'type') {
@@ -680,7 +710,7 @@ export function ProjectsView() {
                       <span>{project.viewer_open_pr_count ?? 0}</span>
                     </Link>
                     <div className="ml-auto flex flex-wrap items-center gap-2">
-                      <DriftCell inline project={project} />
+                      <DriftCell project={project} />
                     </div>
                     {isProjectDeployable(project) && envs.length > 0 && (
                       <div className="relative z-10 ml-auto flex flex-wrap items-center gap-2">
@@ -733,52 +763,46 @@ export function ProjectsView() {
               Project
             </FilterHeader>
             <SortHeader
-              className="w-40 shrink-0 text-center whitespace-nowrap"
+              className="w-40 shrink-0 px-6 text-center whitespace-nowrap"
               onSort={() => setSort('prs')}
               sortDir={sortDir}
               sorted={sortKey === 'prs'}
             >
               PRs
             </SortHeader>
-            <div className="w-40 shrink-0 px-2.5 py-3 text-center whitespace-nowrap">
-              <div className="flex items-center justify-center gap-1 text-center">
-                Drift
+            <SortHeader
+              className="min-w-0 flex-1 px-6 text-center whitespace-nowrap"
+              filter={
                 <FilterPopover
                   activeFilters={driftSet}
                   label="drift"
                   onToggle={(s) => toggleFilter('drifts', s)}
                   options={driftFilterOptions}
                 />
-              </div>
-            </div>
-            <div className="min-w-0 flex-1 px-6 py-3 text-center whitespace-nowrap">
-              Current Deployments &amp; Releases
-            </div>
-            <div
-              className="hover:text-primary w-28 shrink-0 cursor-pointer px-6 py-3 text-center whitespace-nowrap select-none"
-              onClick={() => setSort('score')}
+              }
+              onSort={() => setSort('drift')}
+              sortDir={sortDir}
+              sorted={sortKey === 'drift'}
+              title="Sort by the oldest change waiting to move on"
             >
-              <span className="inline-flex items-center gap-1">
-                Score
-                {sortKey === 'score' ? (
-                  sortDir === 'asc' ? (
-                    <ChevronUp className="size-3.5 shrink-0" />
-                  ) : (
-                    <ChevronDown className="size-3.5 shrink-0" />
-                  )
-                ) : (
-                  <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
-                )}
-                <span onClick={(e) => e.stopPropagation()}>
-                  <FilterPopover
-                    activeFilters={scoreSet}
-                    label="health score"
-                    onToggle={(s) => toggleFilter('scores', s)}
-                    options={scoreFilterOptions}
-                  />
-                </span>
-              </span>
-            </div>
+              Current Deployments &amp; Releases
+            </SortHeader>
+            <SortHeader
+              className="w-28 shrink-0 px-6 text-center whitespace-nowrap"
+              filter={
+                <FilterPopover
+                  activeFilters={scoreSet}
+                  label="health score"
+                  onToggle={(s) => toggleFilter('scores', s)}
+                  options={scoreFilterOptions}
+                />
+              }
+              onSort={() => setSort('score')}
+              sortDir={sortDir}
+              sorted={sortKey === 'score'}
+            >
+              Score
+            </SortHeader>
           </div>
           <div
             className="divide-tertiary divide-y overflow-y-auto"
@@ -831,125 +855,207 @@ function abbreviateEnvName(name: string): string {
   return parts.map((w) => w[0]!.toUpperCase()).join('')
 }
 
-function DeploymentCards({
-  environments,
-  latest,
-  releases,
-}: {
-  environments: {
-    label_color?: null | string
-    name: string
-    slug: string
-    sort_order?: null | number
-  }[]
-  latest: Record<string, LatestDeployment>
-  releases: Record<
-    string,
-    {
-      committish?: null | string
-      deployed_at: string
-      performed_by?: null | string
-      tag?: null | string
-    }
-  >
-}) {
-  const sorted = [...environments].sort(
-    (a, b) =>
-      (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name),
-  )
+const DRIFT_TONE: Record<
+  DriftTone,
+  { card: string; line: string; pill: string; tab: string; text: string }
+> = {
+  amber: {
+    card: 'border-amber-border ring-1 ring-amber-border ring-inset',
+    line: 'border-amber-border',
+    pill: 'border-amber-border bg-amber-bg text-amber-text',
+    tab: 'bg-amber-border',
+    text: 'text-amber-text-mid',
+  },
+  red: {
+    card: 'border-danger ring-1 ring-danger ring-inset',
+    line: 'border-danger',
+    pill: 'border-danger bg-danger text-danger',
+    tab: 'bg-(--ds-border-danger)',
+    text: 'text-danger',
+  },
+}
+
+// The "BEHIND" tab and "↑ <version> waiting" footer of a card that is
+// behind the one before it.
+function BehindTab({ tone }: { tone: DriftTone }) {
   return (
-    <div className="flex items-start gap-2" style={{ flexWrap: 'nowrap' }}>
+    <span
+      className={`absolute -top-2 right-2 rounded px-1.5 py-px text-[10px] leading-tight font-semibold tracking-wide text-white uppercase ${DRIFT_TONE[tone].tab}`}
+    >
+      Behind
+    </span>
+  )
+}
+
+// fallow-ignore-next-line complexity
+function DeploymentCards({ project }: { project: ProjectListItem }) {
+  const environments = project.environments ?? []
+  const releases = project.current_releases ?? {}
+  const latest = project.latest_deployments ?? {}
+  const sorted = sortByPipelineOrder(environments)
+  const pairs = computeDriftPairs(environments, releases)
+  const { releaseDrifted } = driftBadges(project)
+  const releaseSince = project.release_summary?.oldest_actionable_at
+  return (
+    <div className="flex w-full items-stretch justify-center-safe pt-2">
+      {releaseDrifted && (
+        <span className="mr-2 flex shrink-0 items-center self-center">
+          <DriftPill
+            label="Cut a release"
+            since={releaseSince}
+            to={`/projects/${project.id}/deployments`}
+            tone={driftTone(releaseSince)}
+          />
+        </span>
+      )}
       {/* fallow-ignore-next-line complexity */}
       {sorted.map((env, idx) => {
+        const prev = idx > 0 ? sorted[idx - 1] : null
+        const pair = prev
+          ? pairs.find((p) => p.from === prev.name && p.toSlug === env.slug)
+          : undefined
+        const behind =
+          !!pair && pair.drifted && rangeNeedsAction(project.drift_ranges, pair)
+        const since = pair
+          ? rangeOldest(project.drift_range_oldest, pair)
+          : null
+        const tone = driftTone(since)
         const release = releases[env.slug]
+        const upstream = prev ? releases[prev.slug] : undefined
         const derived = env.label_color
           ? deriveChipColors(env.label_color, false)
           : null
+        const base =
+          'relative z-10 w-50 shrink-0 rounded-lg border px-3 py-2 wrap-anywhere'
         const cardClass = derived
-          ? `w-50 rounded-lg border px-3 py-2${!release ? ' border-dashed opacity-60' : ''}`
-          : `w-50 rounded-lg border px-3 py-2${release ? ' border-border bg-card' : ' border-tertiary/40 border-dashed opacity-60'}`
+          ? `${base}${!release ? ' border-dashed opacity-60' : ''}`
+          : `${base}${release ? ' border-border bg-card' : ' border-tertiary/40 border-dashed opacity-60'}`
         const cardStyle = derived
-          ? { backgroundColor: derived.bg, borderColor: derived.border }
+          ? {
+              backgroundColor: derived.bg,
+              ...(behind ? {} : { borderColor: derived.border }),
+            }
           : undefined
         return (
-          <span className="flex shrink-0 items-center" key={env.slug}>
-            {idx > 0 && (
-              <ArrowRight className="text-tertiary mx-2 size-3.5 shrink-0" />
-            )}
-            <span className={cardClass} style={cardStyle}>
-              <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={
-                    env.label_color
-                      ? { backgroundColor: env.label_color }
-                      : undefined
-                  }
-                />
-                {env.name}
-              </p>
-              <p className="flex items-center gap-2 font-mono text-base leading-tight">
-                <ReleaseLabel release={release} />
-              </p>
-              <ReleaseStamp release={release} />
-              <LatestDeploymentPill latest={latest[env.slug]} />
-            </span>
-          </span>
+          <React.Fragment key={env.slug}>
+            {prev &&
+              (!pair ? (
+                <PipelineConnector />
+              ) : !pair.drifted ? (
+                <EqualConnector />
+              ) : behind ? (
+                <PipelineConnector tone={tone}>
+                  <DriftPill
+                    label={`Deploy ${pair.from} to ${pair.to}`}
+                    since={since}
+                    to={`/projects/${project.id}/deployments?env=${encodeURIComponent(pair.toSlug)}`}
+                    tone={tone}
+                  />
+                </PipelineConnector>
+              ) : (
+                <PipelineConnector />
+              ))}
+            <Link
+              aria-label={`View ${project.name} ${env.name} deployments: ${release ? (release.tag ?? release.committish ?? 'unknown release') : 'not deployed'}`}
+              className={`${cardClass}${behind ? ` ${DRIFT_TONE[tone].card}` : ''}`}
+              style={cardStyle}
+              to={`/projects/${project.id}/deployments?env=${encodeURIComponent(env.slug)}`}
+            >
+              {behind && <BehindTab tone={tone} />}
+              {release ? (
+                <>
+                  <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={
+                        env.label_color
+                          ? { backgroundColor: env.label_color }
+                          : undefined
+                      }
+                    />
+                    {env.name}
+                  </p>
+                  <p className="flex items-center gap-2 font-mono text-base leading-tight">
+                    <ReleaseLabel release={release} />
+                  </p>
+                  <ReleaseStamp release={release} />
+                  {behind && (
+                    <WaitingLine
+                      tone={tone}
+                      version={upstream?.tag ?? upstream?.committish}
+                    />
+                  )}
+                  <LatestDeploymentPill latest={latest[env.slug]} />
+                </>
+              ) : (
+                <span className="text-tertiary flex h-full items-center justify-center text-sm">
+                  no {env.name.toLowerCase()}
+                </span>
+              )}
+            </Link>
+          </React.Fragment>
         )
       })}
     </div>
   )
 }
 
-// fallow-ignore-next-line complexity
-function DriftCell({
-  inline,
-  project,
-}: {
-  inline?: boolean
-  project: DriftProject & {
-    id: string
-    project_types?: null | object[]
-  }
-}) {
-  const { isDarkMode } = useTheme()
-  // z-10 lifts the badges above the row/card overlay Link so their own
-  // deep-links win the click.
-  const containerCls = inline
-    ? 'relative z-10 flex flex-row flex-wrap items-center gap-1'
-    : 'relative z-10 flex flex-col items-center gap-1.5'
-  const badgeBaseCls = inline
-    ? 'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-mono text-xs'
-    : 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs'
-  const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
-
-  // Same predicate the count and the filter use, so a badge never
-  // appears for a project the "Drifted" tally does not include.
+// The badges a project shows. Same predicate the count and the filter
+// use, so a badge never appears for a project the "Drifted" tally does
+// not include.
+function driftBadges(project: DriftCellProject): {
+  deployDrifted: DriftPair[]
+  releaseDrifted: boolean
+} {
   const deployDrifted: DriftPair[] = isProjectDeployable(project)
     ? computeDriftPairs(
         project.environments ?? [],
         project.current_releases ?? {},
       ).filter((p) => p.drifted && rangeNeedsAction(project.drift_ranges, p))
     : []
-
   const releaseDrifted =
     isProjectReleasable(project) && projectReleaseDrifted(project)
+  return { deployDrifted, releaseDrifted }
+}
+
+// fallow-ignore-next-line complexity
+function DriftCell({ project }: { project: DriftCellProject }) {
+  const { isDarkMode } = useTheme()
+  // z-10 lifts the badges above the card overlay Link so their own
+  // deep-links win the click.
+  const badgeBaseCls =
+    'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-mono text-xs'
+  const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
+  const staleCls = `border ${DRIFT_TONE.red.pill}`
+
+  const { deployDrifted, releaseDrifted } = driftBadges(project)
 
   if (deployDrifted.length === 0 && !releaseDrifted) return null
 
+  const releaseSince = project.release_summary?.oldest_actionable_at
+
   return (
-    <div className={containerCls}>
+    <div className="relative z-10 flex flex-row flex-wrap items-center gap-1">
       {deployDrifted.map((p) => {
-        const derived = p.toLabelColor
-          ? deriveChipColors(p.toLabelColor, isDarkMode)
-          : null
+        const since = rangeOldest(project.drift_range_oldest, p)
+        const stale = driftIsStale(since)
+        const derived =
+          !stale && p.toLabelColor
+            ? deriveChipColors(p.toLabelColor, isDarkMode)
+            : null
         return (
           <Link
-            aria-label={`Deploy ${p.from} to ${p.to}`}
+            aria-label={
+              since
+                ? `Deploy ${p.from} to ${p.to}, waiting since ${absTime(since)}`
+                : `Deploy ${p.from} to ${p.to}`
+            }
             className={
-              derived
-                ? `${badgeBaseCls} border`
-                : `${badgeBaseCls} ${fallbackCls}`
+              stale
+                ? `${badgeBaseCls} ${staleCls}`
+                : derived
+                  ? `${badgeBaseCls} border`
+                  : `${badgeBaseCls} ${fallbackCls}`
             }
             key={`${p.from}->${p.to}`}
             style={
@@ -967,19 +1073,25 @@ function DriftCell({
             <span>{abbreviateEnvName(p.from)}</span>
             <span>→</span>
             <span>{abbreviateEnvName(p.to)}</span>
+            <WaitingAge since={since} />
           </Link>
         )
       })}
       {releaseDrifted && (
         <Link
-          aria-label="Cut a release"
-          className={`${badgeBaseCls} ${fallbackCls}`}
+          aria-label={
+            releaseSince
+              ? `Cut a release, waiting since ${absTime(releaseSince)}`
+              : 'Cut a release'
+          }
+          className={`${badgeBaseCls} ${driftIsStale(releaseSince) ? staleCls : fallbackCls}`}
           to={`/projects/${project.id}/deployments`}
         >
           <span className="font-medium">Δ</span>
           <span>C</span>
           <span>→</span>
           <span>R</span>
+          <WaitingAge since={releaseSince} />
         </Link>
       )}
     </div>
@@ -991,6 +1103,29 @@ function driftPairLabel(slug: string): string {
   if (slug === 'C->R') return 'C → R (commit → release)'
   const [from, to] = slug.split('->')
   return `${abbreviateEnvName(from)} → ${abbreviateEnvName(to)}`
+}
+
+function DriftPill({
+  label,
+  since,
+  to,
+  tone,
+}: {
+  label: string
+  since: null | string | undefined
+  to: string
+  tone: DriftTone
+}) {
+  return (
+    <Link
+      aria-label={since ? `${label}, waiting since ${absTime(since)}` : label}
+      className={`relative z-10 mx-1 inline-flex items-center rounded-full border px-1.5 py-0.5 font-mono text-xs whitespace-nowrap ${DRIFT_TONE[tone].pill}`}
+      to={to}
+    >
+      <span className="font-medium">Δ</span>
+      <WaitingAge since={since} />
+    </Link>
+  )
 }
 
 // Every drift-pair slug a project currently exhibits: ``from->to`` for
@@ -1014,6 +1149,10 @@ function driftSlugsFor(project: ProjectListItem): string[] {
     slugs.push('C->R')
   }
   return slugs
+}
+
+function driftTone(since: null | string | undefined): DriftTone {
+  return driftIsStale(since) ? 'red' : 'amber'
 }
 
 // fallow-ignore-next-line complexity
@@ -1078,6 +1217,14 @@ function EnvDeploymentHover({
         </div>
       </HoverCardContent>
     </HoverCard>
+  )
+}
+
+function EqualConnector() {
+  return (
+    <PipelineConnector>
+      <span className="text-tertiary mx-1.5 text-xs">=</span>
+    </PipelineConnector>
   )
 }
 
@@ -1146,20 +1293,12 @@ function FilterHeader({
   )
 }
 
-function isProjectDeployable(project: {
-  project_types?: null | object[]
-}): boolean {
-  return (project.project_types ?? []).some(
-    (pt) => (pt as { deployable?: boolean }).deployable === true,
-  )
+function isProjectDeployable(project: DeliveryProject): boolean {
+  return resolveDelivery(project).deployable
 }
 
-function isProjectReleasable(project: {
-  project_types?: null | object[]
-}): boolean {
-  return (project.project_types ?? []).some(
-    (pt) => (pt as { releasable?: boolean }).releasable === true,
-  )
+function isProjectReleasable(project: DeliveryProject): boolean {
+  return resolveDelivery(project).releasable
 }
 
 // fallow-ignore-next-line complexity
@@ -1181,25 +1320,68 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   return next
 }
 
+// When the oldest change waiting behind any of the project's badges
+// landed, in ms. Null when no badge has a date.
+function oldestPendingTime(project: DriftCellProject): null | number {
+  const { deployDrifted, releaseDrifted } = driftBadges(project)
+  const dates = deployDrifted.map((p) =>
+    rangeOldest(project.drift_range_oldest, p),
+  )
+  if (releaseDrifted)
+    dates.push(project.release_summary?.oldest_actionable_at ?? null)
+  const times = dates
+    .filter((d): d is string => !!d)
+    .map((d) => parseServerTs(d).getTime())
+    .filter(Number.isFinite)
+  return times.length > 0 ? Math.min(...times) : null
+}
+
+// The line between two cards: dashed with a Δ pill when the later card
+// is behind, plain with "=" when both run the same code, plain and bare
+// when they differ but CI says nothing needs promoting.
+function PipelineConnector({
+  children,
+  tone,
+}: {
+  children?: React.ReactNode
+  tone?: DriftTone
+}) {
+  const line = tone
+    ? `border-t-2 border-dashed ${DRIFT_TONE[tone].line}`
+    : 'border-tertiary border-t'
+  return (
+    <span className="flex w-24 shrink-0 items-center self-center px-1">
+      <span className={`flex-1 ${line}`} />
+      {children}
+      <span className={`flex-1 ${line}`} />
+    </span>
+  )
+}
+
+// fallow-ignore-next-line complexity
 function ReleaseCards({
+  projectId,
+  projectName,
   release_summary,
 }: {
-  release_summary: {
-    head_authored_at: null | string
-    head_sha: null | string
-    head_short_sha: null | string
-    latest_tag: null | string
-    latest_tag_at: null | string
-    latest_tag_sha: null | string
-  }
+  projectId: string
+  projectName: string
+  release_summary: NonNullable<ProjectListItem['release_summary']>
 }) {
   const headSha =
     release_summary.head_short_sha ??
     release_summary.head_sha?.slice(0, 7) ??
     null
+  const behind = projectReleaseDrifted({ release_summary })
+  const since = release_summary.oldest_actionable_at
+  const tone = driftTone(since)
   return (
-    <div className="flex items-start gap-2" style={{ flexWrap: 'nowrap' }}>
-      <span className="border-border bg-card w-50 rounded-lg border px-3 py-2">
+    <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
+      <Link
+        aria-label={`${projectName} latest commit ${headSha ?? 'unknown'}: view releases`}
+        className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere"
+        to={`/projects/${projectId}/releases`}
+      >
         <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
           <GitCommit className="size-3 shrink-0" />
           Latest Commit
@@ -1212,9 +1394,27 @@ function ReleaseCards({
             <RelativeTime value={release_summary.head_authored_at} />
           )}
         </p>
-      </span>
-      <ArrowRight className="text-tertiary mx-2 mt-3 size-3.5 shrink-0 self-start" />
-      <span className="border-amber-border bg-amber-bg w-50 rounded-lg border px-3 py-2">
+      </Link>
+      {behind ? (
+        <PipelineConnector tone={tone}>
+          <DriftPill
+            label="Cut a release"
+            since={since}
+            to={`/projects/${projectId}/deployments`}
+            tone={tone}
+          />
+        </PipelineConnector>
+      ) : release_summary.commits_since_tag === 0 ? (
+        <EqualConnector />
+      ) : (
+        <PipelineConnector />
+      )}
+      <Link
+        aria-label={`${projectName} current release ${release_summary.latest_tag ?? 'none'}${behind ? `, waiting on ${headSha ?? 'a new release'}` : ''}: view releases`}
+        className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
+        to={`/projects/${projectId}/releases`}
+      >
+        {behind && <BehindTab tone={tone} />}
         <p className="text-amber-text mb-1.5 flex items-center gap-1.5 text-sm font-medium">
           <Tag className="size-3 shrink-0" />
           Current Release
@@ -1234,7 +1434,8 @@ function ReleaseCards({
             <RelativeTime value={release_summary.latest_tag_at} />
           )}
         </p>
-      </span>
+        {behind && <WaitingLine tone={tone} version={headSha} />}
+      </Link>
     </div>
   )
 }
@@ -1281,6 +1482,32 @@ function ReleaseStamp({
       ) : (
         <span className="invisible">—</span>
       )}
+    </p>
+  )
+}
+
+// The age of the oldest waiting change, as a badge suffix.
+function WaitingAge({ since }: { since: null | string | undefined }) {
+  if (!since) return null
+  return (
+    <span className="ml-1 opacity-75" title={`Waiting since ${absTime(since)}`}>
+      {relTime(since)}
+    </span>
+  )
+}
+
+function WaitingLine({
+  tone,
+  version,
+}: {
+  tone: DriftTone
+  version: null | string | undefined
+}) {
+  return (
+    <p
+      className={`mt-1 font-mono text-xs font-medium ${DRIFT_TONE[tone].text}`}
+    >
+      ↑ {version ?? '—'} waiting
     </p>
   )
 }
@@ -1340,26 +1567,11 @@ function scoreBucket(score: null | number | undefined): string {
 }
 
 function ScrollableDeployments({
+  children,
   environments,
-  latest,
-  releases,
 }: {
-  environments: {
-    label_color?: null | string
-    name: string
-    slug: string
-    sort_order?: null | number
-  }[]
-  latest: Record<string, LatestDeployment>
-  releases: Record<
-    string,
-    {
-      committish?: null | string
-      deployed_at: string
-      performed_by?: null | string
-      tag?: null | string
-    }
-  >
+  children: React.ReactNode
+  environments: unknown[]
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
@@ -1392,10 +1604,10 @@ function ScrollableDeployments({
   }
 
   return (
-    <div className="relative flex min-w-0 items-center">
+    <div className="relative flex w-full min-w-0 items-center">
       {canScrollLeft && (
         <button
-          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-10 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
+          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-20 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
           onClick={() => scroll('left')}
           type="button"
         >
@@ -1403,19 +1615,15 @@ function ScrollableDeployments({
         </button>
       )}
       <div
-        className="overflow-x-auto"
+        className="w-full overflow-x-auto"
         ref={scrollRef}
         style={{ scrollbarWidth: 'none' }}
       >
-        <DeploymentCards
-          environments={environments}
-          latest={latest}
-          releases={releases}
-        />
+        {children}
       </div>
       {canScrollRight && (
         <button
-          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-10 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
+          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-20 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
           onClick={() => scroll('right')}
           type="button"
         >
@@ -1429,26 +1637,33 @@ function ScrollableDeployments({
 function SortHeader({
   children,
   className,
+  filter,
   onSort,
   sortDir,
   sorted,
+  title,
 }: SortHeaderProps) {
   return (
-    <div
-      className={`hover:text-primary cursor-pointer px-6 py-3 select-none ${className ? ` ${className}` : ''}`}
-      onClick={onSort}
-    >
+    <div className={`py-3${className ? ` ${className}` : ''}`}>
       <span className="inline-flex items-center gap-1">
-        {children}
-        {sorted ? (
-          sortDir === 'asc' ? (
-            <ChevronUp className="size-3.5 shrink-0" />
+        <button
+          className="hover:text-primary inline-flex items-center gap-1"
+          onClick={onSort}
+          title={title}
+          type="button"
+        >
+          {children}
+          {sorted ? (
+            sortDir === 'asc' ? (
+              <ChevronUp className="size-3.5 shrink-0" />
+            ) : (
+              <ChevronDown className="size-3.5 shrink-0" />
+            )
           ) : (
-            <ChevronDown className="size-3.5 shrink-0" />
-          )
-        ) : (
-          <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
-        )}
+            <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
+          )}
+        </button>
+        {filter}
       </span>
     </div>
   )
@@ -1584,9 +1799,6 @@ const ProjectListRow = React.memo(function ProjectListRow({
           )}
         </div>
       </div>
-      <div className="flex w-40 shrink-0 items-center justify-center px-5 py-4">
-        <DriftCell project={project} />
-      </div>
       <div
         className="flex min-w-0 flex-1 px-6 py-4"
         style={{ justifyContent: 'safe center' }}
@@ -1594,17 +1806,19 @@ const ProjectListRow = React.memo(function ProjectListRow({
         {isProjectDeployable(project) &&
           project.environments &&
           project.environments.length > 0 && (
-            <ScrollableDeployments
-              environments={project.environments}
-              latest={project.latest_deployments ?? {}}
-              releases={project.current_releases ?? {}}
-            />
+            <ScrollableDeployments environments={project.environments}>
+              <DeploymentCards project={project} />
+            </ScrollableDeployments>
           )}
         {!isProjectDeployable(project) &&
           isProjectReleasable(project) &&
           project.release_summary && (
             <div className="min-w-0 overflow-x-auto">
-              <ReleaseCards release_summary={project.release_summary} />
+              <ReleaseCards
+                projectId={project.id}
+                projectName={project.name}
+                release_summary={project.release_summary}
+              />
             </div>
           )}
       </div>

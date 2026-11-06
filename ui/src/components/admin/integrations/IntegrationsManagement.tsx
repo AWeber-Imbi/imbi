@@ -74,6 +74,13 @@ export function IntegrationsManagement() {
     [plugins],
   )
 
+  // A plugin with no capabilities (for example one that only adds a
+  // secret provider) cannot back an Integration.
+  const integrationPlugins = useMemo(
+    () => plugins.filter((p) => p.enabled && p.capabilities.length > 0),
+    [plugins],
+  )
+
   const pluginIconBySlug = useMemo(() => {
     const map = new Map<string, string>()
     for (const p of plugins) if (p.icon) map.set(p.slug, p.icon)
@@ -124,7 +131,7 @@ export function IntegrationsManagement() {
       <IntegrationWizard
         onCancel={goToList}
         onCreated={(created) => goToDetail(created.slug)}
-        plugins={plugins.filter((p) => p.enabled)}
+        plugins={integrationPlugins}
       />
     )
   }
@@ -145,7 +152,7 @@ export function IntegrationsManagement() {
     return (
       <IntegrationsFirstRun
         onNew={goToCreate}
-        quickStart={plugins.filter((p) => p.enabled).slice(0, 4)}
+        quickStart={integrationPlugins.slice(0, 4)}
       />
     )
   }

@@ -5,6 +5,7 @@
 // pipeline, never across a `terminal` boundary (#285).
 
 import { splitChains } from '@/lib/environment-chains'
+import { parseServerTs } from '@/lib/formatDate'
 
 export interface DriftEnvironment {
   label_color?: null | string
@@ -35,6 +36,9 @@ export interface DriftProject {
     string,
     { committish?: null | string; tag?: null | string }
   >
+  /** `"<base>..<head>"` -> when the oldest commit that needs action in
+   *  that range landed. Absent when the server has no date for it. */
+  drift_range_oldest?: Record<string, string>
   /** `"<base>..<head>"` -> whether that range needs action. `false`
    *  means every commit in it carries a CI verdict of `false`; `true`
    *  means a `true` verdict or an unanswered commit. Absent means the
@@ -45,6 +49,8 @@ export interface DriftProject {
     commits_since_tag: number
     drift_detected?: boolean
     head_sha: null | string
+    /** When the oldest unreleased commit that needs action landed. */
+    oldest_actionable_at?: null | string
   }
 }
 
@@ -121,6 +127,16 @@ export function rangeNeedsAction(
   return ranges?.[`${pair.baseSha}..${pair.headSha}`] !== false
 }
 
+// When the oldest commit that needs action in this promotion step
+// landed, or null when the server has no date for the range.
+export function rangeOldest(
+  oldest: Record<string, string> | undefined,
+  pair: DriftPair,
+): null | string {
+  if (!pair.baseSha || !pair.headSha) return null
+  return oldest?.[`${pair.baseSha}..${pair.headSha}`] ?? null
+}
+
 // Whether the tag..HEAD verdict proves the unreleased commits clean. A
 // project with no tag has no evaluated range, so its `false` default is
 // not a verdict and does not count.
@@ -131,4 +147,44 @@ export function releaseRangeClean(
     | { drift_detected?: boolean; latest_tag: null | string },
 ): boolean {
   return !!summary?.latest_tag && summary.drift_detected === false
+}
+
+const DURATION_UNITS_MS: Record<string, number> = {
+  d: 86_400_000,
+  h: 3_600_000,
+  m: 60_000,
+  w: 604_800_000,
+}
+
+// A duration such as `90m`, `12h`, `3d`, or `2w`, in ms. Null when the
+// value is empty or does not parse.
+export function parseDuration(raw: null | string | undefined): null | number {
+  const match = raw?.trim().match(/^(\d+)\s*([mhdw])$/i)
+  if (!match) return null
+  return Number(match[1]) * DURATION_UNITS_MS[match[2].toLowerCase()]
+}
+
+// Caddy writes VITE_DRIFT_STALE_AFTER into index.html at request time.
+// Without a templater the placeholder arrives literally; fall back to
+// the build-time value.
+function resolveStaleAfter(): null | number {
+  const runtime = window.__IMBI_DRIFT_STALE_AFTER__
+  return parseDuration(
+    runtime && !runtime.includes('{{')
+      ? runtime
+      : import.meta.env.VITE_DRIFT_STALE_AFTER,
+  )
+}
+
+const DRIFT_STALE_AFTER_MS = resolveStaleAfter()
+
+// Whether a change waiting since `since` has waited longer than the
+// configured threshold. Always false when no threshold is configured or
+// the server has no date.
+export function driftIsStale(
+  since: null | string | undefined,
+  staleAfterMs: null | number = DRIFT_STALE_AFTER_MS,
+): boolean {
+  if (!since || staleAfterMs === null) return false
+  return Date.now() - parseServerTs(since).getTime() > staleAfterMs
 }

@@ -255,15 +255,14 @@ unset.
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | str | none | See `IMBI_SCHEDULER_SA_CLIENT_ID`. |
 | `IMBI_WORKFLOWS_SA_CLIENT_ID` | str | none | The same, for the `imbi-workflows` service account. |
 | `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | str | none | See `IMBI_WORKFLOWS_SA_CLIENT_ID`. |
-| `IMBI_OAUTH_ALLOW_INSECURE_URLS` | str | `''` | `true` allows `http://localhost` OAuth provider URLs. Development only. |
 | `IMBI_PLUGIN_CACHE_TTL` | int | `60` | Seconds that Valkey keeps the configuration key list of a project |
 | `IMBI_PLUGIN_TIMEOUT_SECONDS` | int | `10` | Timeout of one plugin call in seconds |
 | `IMBI_PLUGINS_INDEX_URL` | str | `https://pypi.org/simple` | Package index for plugin installs |
 | `IMBI_PLUGINS_INSTALL_TIMEOUT` | int | `120` | Timeout of one plugin install in seconds |
 | `IMBI_PLUGINS_INSTALL_ENABLED` | bool | `true` | `false` turns off plugin install at runtime |
-| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
-| `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
 | `MAILPIT_SMTP_PORT` | str | none | In development, with the default SMTP host and port, use this port and no TLS (Mailpit) |
+| `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
+| `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
 
 ### imbi-assistant
 
@@ -389,6 +388,7 @@ unset.
 | `SERVE_SOURCE_MAPS` | str | none | `true` serves the UI `*.map` files. Otherwise Caddy answers 404. |
 | `VITE_API_URL` | str | none | API URL that Caddy writes into `index.html` at request time. The UI does not start without it. |
 | `VITE_SENTRY_DSN` | str | none | Sentry DSN of the UI, written into `index.html` |
+| `VITE_DRIFT_STALE_AFTER` | str | none | Drift that waits longer than this (`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: never. |
 
 <!-- END GENERATED -->
 

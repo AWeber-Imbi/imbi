@@ -147,6 +147,14 @@ that the pool serves.
    `model_upstream.key_ref` in the platform configuration.
 7. Click **Save version**.
 
+An agent can use its own key instead of the organization's key. Open the
+agent, click **Edit**, then **Access**. In **Model key**, select the binding,
+and click **Grant** to add its `model_inference` grant. Then save the agent.
+The grant applies immediately, but the agent keeps its previous key until
+you save it. The binding must allow the delivery mode `file_descriptor`,
+and it cannot be a provider key. The agent still uses
+the upstream and the base URL of the organization.
+
 ### 6. Configure GitHub access
 
 The runner clones project repositories and plugin marketplaces with a
@@ -517,7 +525,7 @@ Find the error code first:
 | Reason | Cause | Fix |
 |---|---|---|
 | `model_key_missing` | The platform configuration has no `model_upstream.key_ref` | Do [step 5](#5-configure-the-model-key) |
-| `model_key_refused` | The broker refused the `model_inference` request | Check the grant: the agent, the binding, the purpose `model_inference`, and the delivery mode `file_descriptor` |
+| `model_key_refused` | The broker refused the `model_inference` request | Check the grant: the agent, the binding, the purpose `model_inference`, and the delivery mode `file_descriptor`. The binding is the agent's **Model key**, or the organization's key when the agent has none |
 | `model_key_unavailable` | The executor could not get the key value | Validate the binding. Check the provider |
 | `mcp_credential_refused` | The broker refused the `mcp_server` request | Check the `mcp_server` grant for the agent |
 | `workspace_checkout_refused` | The broker refused the `workspace_checkout` token | Check the GitHub grants of [step 6](#6-configure-github-access) |

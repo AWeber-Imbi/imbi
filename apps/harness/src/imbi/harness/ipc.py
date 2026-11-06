@@ -28,7 +28,7 @@ def peer_uid(sock: socket.socket) -> int:
         socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')
     )
     _pid, uid, _gid = struct.unpack('3i', creds)
-    return uid
+    return int(uid)
 
 
 async def read(reader: asyncio.StreamReader) -> Message | None:

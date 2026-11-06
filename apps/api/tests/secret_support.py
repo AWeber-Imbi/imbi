@@ -22,6 +22,37 @@ JSON_MATERIAL = (
 ).encode()
 
 
+def use_plugin_providers(case: unittest.TestCase) -> None:
+    """Register the providers of the AWS and GitHub plugins for a test.
+
+    imbi-api loads them from the plugin registry when it first needs a
+    provider (:func:`providers.get`). The tests do not load the registry.
+    """
+    from imbi.plugins.aws.secrets_manager import AwsSecretsManager
+    from imbi.plugins.github.secret_provider import GitHubApp
+
+    host = providers._Host()  # pyright: ignore[reportPrivateUsage]
+    # Start from these providers only: a registry that an earlier test
+    # loaded must not add more types.
+    for patcher in (
+        mock.patch.dict(
+            providers.PROVIDERS,
+            {
+                'fake': providers.PROVIDERS['fake'],
+                'aws_secrets_manager': AwsSecretsManager(host),
+                'github_app': GitHubApp(host),
+            },
+            clear=True,
+        ),
+        mock.patch.dict(providers._LOADED, clear=True),  # pyright: ignore[reportPrivateUsage]
+        mock.patch.object(
+            providers.plugin_registry, 'list_plugins', return_value=[]
+        ),
+    ):
+        patcher.start()
+        case.addCleanup(patcher.stop)
+
+
 class SecretCase(unittest.IsolatedAsyncioTestCase):
     """A pool, a broker, a fake provider, and audit capture."""
 
@@ -56,6 +87,7 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         self.store = store.SecretStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
 
+        use_plugin_providers(self)
         fake = providers.PROVIDERS['fake']
         assert isinstance(fake, providers.FakeProvider)
         self.fake = fake
@@ -107,7 +139,13 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                 " WHERE event->>'organization_id' = %s",
                 (self.org,),
             )
-            for table in ('resolutions', 'grants', 'bindings', 'providers'):
+            for table in (
+                'resolutions',
+                'grants',
+                'bindings',
+                'providers',
+                'identity_sources',
+            ):
                 await conn.execute(
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
                     (self.org,),

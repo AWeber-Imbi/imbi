@@ -321,12 +321,37 @@ class TagFormat(pydantic.BaseModel):
     Patterns are matched with :func:`re.fullmatch` and validated as
     compilable at assignment time so an invalid expression is rejected at
     the API boundary rather than at deploy/release time.
+
+    ``scheme`` is an optional calver.org scheme such as ``YY.0M.MICRO``.
+    When it is set, ``pattern`` is derived from it (any ``pattern`` sent
+    with it is replaced), and the next tag is suggested from the scheme
+    (see ``imbi.common.versioning.next_scheme_tag``).
     """
 
     model_config = pydantic.ConfigDict(frozen=True)
 
     label: str = pydantic.Field(min_length=1, max_length=64)
     pattern: str = pydantic.Field(min_length=1, max_length=512)
+    # Left out when not set, so a format with no scheme is stored and
+    # returned as it was before schemes existed.
+    scheme: str | None = pydantic.Field(
+        default=None, max_length=64, exclude_if=lambda v: v is None
+    )
+
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def _derive_pattern(cls, data: typing.Any) -> typing.Any:
+        if not isinstance(data, dict):
+            return data
+        values = typing.cast(dict[str, typing.Any], data)
+        if not values.get('scheme'):
+            return values
+        scheme = str(values['scheme']).strip()
+        return {
+            **values,
+            'scheme': scheme,
+            'pattern': versioning.calver_scheme_pattern(scheme),
+        }
 
     @pydantic.field_validator('pattern')
     @classmethod
@@ -416,6 +441,51 @@ class Environment(Node):
     allow_autonomous: bool = False
 
     organization: BelongsToOrganization
+
+
+#: How a project is delivered. ``project-type`` (the default) defers to
+#: the ``deployable`` / ``releasable`` flags of the project's types; the
+#: other three override them per project. ``disabled`` turns release and
+#: deployment processing off entirely -- for a project whose releases are
+#: governed outside Imbi -- so neither tab shows and the API refuses to
+#: deploy, promote, or cut a release for it.
+DeliveryMode = typing.Literal[
+    'project-type', 'deployable', 'releasable', 'disabled'
+]
+
+
+class Delivery(typing.NamedTuple):
+    """The resolved delivery flags of one project.
+
+    Both false covers an explicit ``disabled`` and a project whose types
+    carry neither flag. Both true is only reachable through
+    ``project-type`` on a project that carries one type of each kind;
+    callers that need a single answer treat that as deployable, as the
+    Deployments / Releases tab choice always has.
+    """
+
+    deployable: bool
+    releasable: bool
+
+
+def resolve_delivery(
+    mode: DeliveryMode | str | None, *, deployable: bool, releasable: bool
+) -> Delivery:
+    """Resolve a project's delivery flags from its mode and type flags.
+
+    ``deployable`` / ``releasable`` aggregate the project's types: true
+    when *any* type carries the flag. ``project-type`` passes them
+    through unchanged; the other modes replace them. A missing or
+    unknown ``mode`` (a node written before the property existed) reads
+    as ``project-type``.
+    """
+    if mode == 'disabled':
+        return Delivery(deployable=False, releasable=False)
+    if mode == 'deployable':
+        return Delivery(deployable=True, releasable=False)
+    if mode == 'releasable':
+        return Delivery(deployable=False, releasable=True)
+    return Delivery(deployable=deployable, releasable=releasable)
 
 
 class ProjectType(Node):
@@ -1018,6 +1088,11 @@ class AgentSettings(pydantic.BaseModel):
     plugins: list[AgentPlugin] = []
     #: The ``secret://`` reference of the agent's GitHub App binding.
     github_app_binding: str | None = None
+    #: The ``secret://`` reference of the agent's model key. It replaces
+    #: the key of the organization's model upstream. ``None`` uses the
+    #: organization's key. A ``model_inference`` grant is still
+    #: necessary.
+    model_key_ref: str | None = None
     #: The ``secret://`` references that the agent may request. A grant
     #: is still necessary.
     secrets: list[str] = []
@@ -1213,6 +1288,9 @@ class Project(Node):
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
     score: float | None = None
+    # Per-project override of the types' ``deployable`` / ``releasable``
+    # flags; see :data:`DeliveryMode` and :func:`resolve_delivery`.
+    delivery_mode: DeliveryMode = 'project-type'
     # Populated by the API on response build; never read from the graph.
     relationships: ProjectRelationships | None = None
 

@@ -38,6 +38,13 @@ def _release_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
+#: What a replayed success reads back from its unchanged node.
+_STORED_SUCCESS: dict[str, typing.Any] = {
+    'release_id': RELEASE_ID,
+    'at': '2026-05-13T14:00:00+00:00',
+}
+
+
 def _upsert_row(
     *, created: bool = True, unchanged: bool = False
 ) -> list[dict[str, typing.Any]]:
@@ -1454,6 +1461,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         note: str | None = None,
         performed_by: str | None = None,
         upsert: list[dict[str, typing.Any]] | None = None,
+        replay: list[dict[str, typing.Any]] | None = None,
     ) -> typing.Any:
         """Drive one append against a scripted graph.
 
@@ -1462,11 +1470,15 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         changed anything.  That decision moved into Cypher with the
         node model, so the outcome a caller sees is the row the
         database returns rather than something re-derived in Python.
+
+        ``replay`` is what a replayed success reads back from the node
+        before its pointer write: the owning release and the stored time.
         """
         import asyncio
 
         from imbi.api.endpoints.releases import append_deployment_event
 
+        replay_rows = [replay] if replay is not None else []
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [
@@ -1477,6 +1489,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                 }
             ],
             upsert if upsert is not None else _upsert_row(),
+            *replay_rows,
             # only consumed by the current_release write on success writes
             [{'current_release': RELEASE_ID}],
         ]
@@ -1514,12 +1527,100 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             external_run_id='42',
             status='success',
             upsert=_upsert_row(created=False, unchanged=True),
+            replay=[_STORED_SUCCESS],
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(len(edge.deployments), 1)
-        # The upsert still runs -- it is what decides the replay
-        # changed nothing -- but nothing follows it.
-        self.assertEqual(self.mock_db.execute.await_count, 3)
+        # The upsert decides the replay changed nothing; for a success
+        # only the node-time read and the ratcheted pointer write follow.
+        self.assertEqual(self.mock_db.execute.await_count, 5)
+
+    def test_replayed_success_repoints_with_the_stored_time(self) -> None:
+        # A repeat after a failed pointer write must still move it.  The
+        # node is read back, so a deployment the upsert only just
+        # attached to this release (absent from the edge read) counts.
+        _edge, outcome = self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[_STORED_SUCCESS],
+        )
+        self.assertEqual(outcome, 'noop')
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].args[1]['release_id'], RELEASE_ID)
+        # The stored time, not now: an old replay cannot move it forward.
+        self.assertEqual(calls[0].args[1]['ts'], '2026-05-13T14:00:00+00:00')
+
+    def test_replayed_success_names_the_owning_release(self) -> None:
+        # A tagged release took the deployment over from the requested
+        # one, so the pointer must name the tagged release.
+        self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[{**_STORED_SUCCESS, 'release_id': 'tagged-release'}],
+        )
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].args[1]['release_id'], 'tagged-release')
+
+    def test_replay_skips_a_node_no_longer_in_success(self) -> None:
+        # A later write moved the node off success after the upsert, so
+        # its stored time no longer describes the success.
+        _edge, outcome = self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[],
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(self._current_release_calls(), [])
+        read = self.mock_db.execute.await_args_list[3].args[0]
+        self.assertIn("d.status = 'success'", read)
+
+    def test_replay_yields_to_a_later_reconcile(self) -> None:
+        # A reconcile that observed the environment at or after this
+        # success cleared or moved the pointer; the replay must not undo
+        # it, even when the reconcile lands after the replay's read.
+        self._call(
+            [],
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
+            replay=[_STORED_SUCCESS],
+        )
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertIn('d.current_state_observed_at < {ts}', calls[0].args[0])
+
+    def test_success_write_does_not_yield_to_reconcile(self) -> None:
+        self._call([], external_run_id='42', status='success')
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn('current_state_observed_at', calls[0].args[0])
+
+    def test_replayed_non_success_skips_current_release(self) -> None:
+        existing = [
+            {
+                'timestamp': '2026-05-13T14:00:00+00:00',
+                'status': 'failed',
+                'note': None,
+                'external_run_id': '42',
+                'external_run_url': 'https://gh/runs/42',
+            }
+        ]
+        _edge, outcome = self._call(
+            existing,
+            external_run_id='42',
+            status='failed',
+            upsert=_upsert_row(created=False, unchanged=True),
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(self._current_release_calls(), [])
 
     def test_same_run_id_status_change_updates_in_place(self) -> None:
         existing = [
@@ -1642,6 +1743,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             status='success',
             performed_by='octocat',
             upsert=_upsert_row(created=False, unchanged=True),
+            replay=[_STORED_SUCCESS],
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(edge.deployments[0].performed_by, 'octocat')
@@ -2073,6 +2175,43 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
             latest.committish, detail['latest_deployment']['committish']
         )
 
+    def test_newer_attempt_survives_a_serving_node_that_closed_later(
+        self,
+    ) -> None:
+        # The serving run starts 10:00 and succeeds 10:10; a newer run
+        # starts 10:05.  The reader picked the newer run, so the list
+        # must not compare its start with the serving run's completion.
+        assert self.state.current is not None
+        state = self.state._replace(
+            current=self.state.current._replace(
+                started_at=datetime.datetime.fromisoformat(
+                    '2026-04-22T10:00:00+00:00'
+                ),
+                event=self.state.current.event.model_copy(
+                    update={
+                        'timestamp': datetime.datetime.fromisoformat(
+                            '2026-04-22T10:10:00+00:00'
+                        )
+                    }
+                ),
+            ),
+            latest=self.state.latest._replace(
+                started_at=datetime.datetime.fromisoformat(
+                    '2026-04-22T10:05:00+00:00'
+                )
+            ),
+        )
+        with mock.patch(
+            'imbi.common.deployments.current_and_latest_by_project',
+            mock.AsyncMock(return_value=[state]),
+        ):
+            latest = asyncio.run(
+                projects._apply_deployment_nodes(
+                    mock.AsyncMock(), [PROJECT_ID], {}
+                )
+            )
+        self.assertEqual('failed', latest[(PROJECT_ID, 'production')].status)
+
     def test_latest_is_omitted_when_it_is_the_current_release(self) -> None:
         """The newest attempt succeeded, so there is nothing extra."""
         assert self.state.current is not None
@@ -2101,6 +2240,45 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         detail = response.json()[0]
         self.assertEqual('1.0.0', detail['release']['tag'])
+        self.assertIsNone(detail['latest_deployment'])
+
+    def test_latest_older_than_a_serving_legacy_entry_is_omitted(
+        self,
+    ) -> None:
+        # A legacy array entry from 04-23 still wins over the 04-20
+        # node, so the 04-22 attempt is not newer than what is serving.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': _PRODUCTION,
+                    'release': _release_row(tag='2.0.0', id='r2'),
+                    'deployments': json.dumps(
+                        [
+                            {
+                                'timestamp': '2026-04-23T10:00:00+00:00',
+                                'status': 'success',
+                                'note': None,
+                            }
+                        ]
+                    ),
+                }
+            ],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[self.state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = response.json()[0]
+        self.assertEqual('2.0.0', detail['release']['tag'])
         self.assertIsNone(detail['latest_deployment'])
 
 
@@ -2592,6 +2770,89 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
         # Status untouched (still in_progress); ci_status null.
         self.assertEqual(body['current_status'], 'in_progress')
         self.assertIsNone(body['ci_status'])
+
+    def _get_with_newer_attempt(
+        self, run_status: str
+    ) -> tuple[dict[str, typing.Any], mock.AsyncMock]:
+        """GET while ``1.0.0`` serves and a ``1.1.0`` attempt is open.
+
+        The poll's answer must show in the response that learned it, not
+        only in the next one.
+        """
+        self._patch_plugin_resolution(
+            get_deployment_status=mock.AsyncMock(
+                return_value=mock.MagicMock(
+                    status=run_status,
+                    run_id='2',
+                    run_url='https://gh/runs/2',
+                )
+            ),
+            get_check_status=mock.AsyncMock(return_value='pass'),
+        )
+        state = deployment_nodes.EnvironmentReleaseState(
+            PROJECT_ID,
+            _PRODUCTION,
+            _project_deployment(
+                status='success',
+                timestamp='2026-04-20T10:00:00+00:00',
+                release=_release_row(tag='1.0.0', id='r1'),
+                external_run_id='1',
+            ),
+            _project_deployment(
+                status='in_progress',
+                timestamp='2026-04-22T10:00:00+00:00',
+                release=_release_row(
+                    tag='1.1.0', id='r2', committish='9999999'
+                ),
+                external_run_id='2',
+            ),
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'env': _PRODUCTION, 'release': None, 'deployments': None}],
+        ]
+        append_mock = mock.AsyncMock(return_value=(mock.Mock(), 'updated'))
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.append_deployment_event',
+                new=append_mock,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()[0], append_mock
+
+    def test_a_newer_attempt_that_succeeded_is_current(self) -> None:
+        body, append_mock = self._get_with_newer_attempt('success')
+        self.assertEqual('1.1.0', body['release']['tag'])
+        self.assertEqual('success', body['current_status'])
+        self.assertEqual('https://gh/runs/2', body['external_run_url'])
+        self.assertIsNone(body['latest_deployment'])
+        # CI was read for 1.0.0, which no longer serves.
+        self.assertIsNone(body['ci_status'])
+        self.assertEqual('success', append_mock.call_args.kwargs['status'])
+        self.assertEqual('r2', append_mock.call_args.kwargs['release_id'])
+
+    def test_a_newer_attempt_that_failed_is_reported_failed(self) -> None:
+        body, _append_mock = self._get_with_newer_attempt('failure')
+        self.assertEqual('1.0.0', body['release']['tag'])
+        self.assertEqual('pass', body['ci_status'])
+        self.assertEqual('failed', body['latest_deployment']['status'])
+        self.assertEqual('1.1.0', body['latest_deployment']['tag'])
+
+    def test_a_newer_attempt_still_running_stays_latest(self) -> None:
+        body, _append_mock = self._get_with_newer_attempt('in_progress')
+        self.assertEqual('1.0.0', body['release']['tag'])
+        self.assertEqual('pass', body['ci_status'])
+        self.assertEqual('in_progress', body['latest_deployment']['status'])
 
 
 def _tiny_sbom() -> dict[str, typing.Any]:

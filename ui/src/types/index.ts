@@ -1,3 +1,5 @@
+import type { DeliveryMode } from '@/lib/delivery'
+
 import type { components } from './api-generated'
 import type { ProjectServiceEdge } from './integrations'
 
@@ -317,6 +319,8 @@ export * from './integrations'
 export interface LatestDeployment {
   committish?: null | string
   deployed_at: string
+  // When the attempt started; `deployed_at` is its last status change.
+  started_at?: null | string
   status: DeploymentStatus
   tag?: null | string
 }
@@ -435,6 +439,9 @@ export interface Project {
   closed_pr_count?: number
   created_at?: null | string
   current_releases?: Record<string, ReleaseInfo>
+  // Per-project override of the project types' deployable / releasable
+  // flags; see `resolveDelivery` in `@/lib/delivery`.
+  delivery_mode?: DeliveryMode
   description?: null | string
   environments?: Environment[]
   icon?: null | string
@@ -1710,6 +1717,13 @@ export interface ReleaseHistoryEntry {
   sha: string
   short_sha: string
   tag: string
+  /**
+   * `false` when Imbi holds a Release record for the tag but the tag has
+   * not been synced from the repository: a release still being cut or one
+   * whose build failed before the tag was pushed. Its `sha` is the
+   * record's committish and it has no `tag_url`.
+   */
+  tag_synced?: boolean
   tag_url?: null | string
   title?: null | string
 }

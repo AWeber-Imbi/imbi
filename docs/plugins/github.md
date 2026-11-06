@@ -13,6 +13,11 @@ It can do these things:
   project.
 - Record commit, tag, and pull request history from webhooks.
 - Check the repository link and the repository homepage in the Doctor.
+- Issue GitHub App tokens to agent tasks through the `github_app` secret
+  provider, which you configure in **Admin, Secrets** (see
+  [Secrets](../admin/secrets.md)).
+- Read a public `github.com` repository with no credentials, for an agent
+  plugin marketplace.
 
 ## Capabilities
 
@@ -25,6 +30,12 @@ It can do these things:
 | `commit-sync` | Commit history sync | On | Project-scoped |
 | `pr-sync` | Pull request sync | On | Project-scoped |
 | `analysis` | Project doctor | On | Project-scoped |
+
+An on-demand pull request sync also removes the project's open pull
+requests that the repository no longer lists, such as one filed under the
+project from another repository. Closed and merged pull requests are kept.
+It only does this when the project's repository link names the repository
+and the listing was complete, and it logs each pull request it removes.
 
 ## Configuration
 

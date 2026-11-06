@@ -1,10 +1,12 @@
 """Tests for the project deployment plugin endpoints."""
 
 import asyncio
+import contextlib
 import datetime
 import json
 import typing
 import unittest
+import uuid
 from unittest import mock
 
 import fastapi
@@ -15,7 +17,7 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.api.auth import organizations, password, permissions
-from imbi.api.endpoints import _helpers, project_deployments
+from imbi.api.endpoints import _helpers, project_deployments, releases
 from imbi.api.endpoints.project_deployments import (
     DraftReleaseNotes,
     _EnvFlags,
@@ -25,7 +27,7 @@ from imbi.api.llm.dependencies import _get_anthropic_client
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.api.release_promote import service as release_promote_service
 from imbi.common import deployments as common_deployments
-from imbi.common import graph
+from imbi.common import graph, versioning
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi.common.plugins import errors as plugin_errors
@@ -505,6 +507,104 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 422)
 
+    def _fail_compare(self, exc: BaseException) -> None:
+        """Make the plugin's ``compare`` raise *exc*."""
+
+        class _FailingCompare(_FakeDeploymentPlugin):
+            async def compare(  # type: ignore[override]
+                self, ctx, credentials, base, head
+            ):
+                raise exc
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _FailingCompare
+        )
+
+    def test_compare_refused_by_source_host_is_422(self) -> None:
+        """A host 404 or 422 is not retryable, so each names its reason."""
+        reasons = {
+            404: 'does not have one of these refs',
+            422: 'rejected the comparison',
+        }
+        for status, reason in reasons.items():
+            with self.subTest(status=status):
+                self._fail_compare(_http_status_error(status))
+                with testclient.TestClient(self.test_app) as client:
+                    response = client.get(
+                        '/organizations/myorg/projects/proj1/deployments/'
+                        'compare?base=9.9.9&head=v2'
+                    )
+                self.assertEqual(response.status_code, 422)
+                detail = response.json()['detail']
+                self.assertIn('9.9.9...v2', detail)
+                self.assertIn(reason, detail)
+
+    def test_compare_forwards_source_host_retry_after(self) -> None:
+        request = httpx.Request('GET', 'https://api.github.test/compare/x')
+        self._fail_compare(
+            httpx.HTTPStatusError(
+                'HTTP 403',
+                request=request,
+                response=httpx.Response(
+                    403, request=request, headers={'Retry-After': '60'}
+                ),
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'compare?base=v1&head=v2'
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers['retry-after'], '60')
+
+    def test_compare_waits_for_primary_rate_limit_reset(self) -> None:
+        """No Retry-After: the 503 waits until GitHub's quota resets."""
+        reset = int(datetime.datetime.now(datetime.UTC).timestamp()) + 120
+        request = httpx.Request('GET', 'https://api.github.test/compare/x')
+        self._fail_compare(
+            httpx.HTTPStatusError(
+                'HTTP 403',
+                request=request,
+                response=httpx.Response(
+                    403,
+                    request=request,
+                    headers={
+                        'x-ratelimit-remaining': '0',
+                        'x-ratelimit-reset': str(reset),
+                    },
+                ),
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'compare?base=v1&head=v2'
+            )
+        now = int(datetime.datetime.now(datetime.UTC).timestamp())
+        self.assertEqual(response.status_code, 503)
+        self.assertGreaterEqual(
+            int(response.headers['retry-after']), reset - now
+        )
+        self.assertLessEqual(int(response.headers['retry-after']), 120)
+
+    def test_compare_source_host_failure_is_503(self) -> None:
+        """A host 5xx or a transport error is retryable: 503 + Retry-After."""
+        failures: tuple[BaseException, ...] = (
+            _http_status_error(502),
+            httpx.ConnectError('connection refused'),
+        )
+        for exc in failures:
+            with self.subTest(exc=type(exc).__name__):
+                self._fail_compare(exc)
+                with testclient.TestClient(self.test_app) as client:
+                    response = client.get(
+                        '/organizations/myorg/projects/proj1/deployments/'
+                        'compare?base=v1&head=v2'
+                    )
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.headers['retry-after'], '5')
+
     def test_trigger_deploy(self) -> None:
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -713,6 +813,39 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertIn('aaa..bbb', prompt)
         self.assertTrue(call.kwargs['cache_system_prompt'])
 
+    def test_draft_release_notes_unknown_base_is_422(self) -> None:
+        """A base tag the source host lacks is the caller's error."""
+        self._fail_compare(_http_status_error(404))
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': '2.69.1',
+                    'head_sha': 'bbb',
+                    'last_tag': '2.69.1',
+                },
+            )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('2.69.1...bbb', response.json()['detail'])
+        self.mock_anthropic.complete_json.assert_not_called()
+
+    def test_draft_release_notes_source_host_failure_is_503(self) -> None:
+        self._fail_compare(_http_status_error(502))
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers['retry-after'], '5')
+        self.mock_anthropic.complete_json.assert_not_called()
+
     def test_draft_release_notes_degraded_falls_back(self) -> None:
         self.mock_anthropic.complete_json = mock.AsyncMock(
             side_effect=lambda *args, **kwargs: CompletionResult(
@@ -894,6 +1027,51 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(
             response.json()['version'], today.strftime('%Y.%m.%d-0')
         )
+
+    def test_draft_release_notes_scheme_only_replaces_invalid_draft(
+        self,
+    ) -> None:
+        """A scheme-only policy with no tag gets the period's first tag."""
+        scheme = 'YY.0M.MICRO'
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=versioning.calver_scheme_pattern(scheme),
+                scheme=scheme,
+            )
+        ]
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='patch',
+                    version='26.04.2',
+                    reasoning='same-period patch',
+                    notes_markdown='## Fixed',
+                ),
+                degraded=False,
+            )
+        )
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with (
+            mock.patch.object(
+                project_deployments.datetime,
+                'datetime',
+                wraps=datetime.datetime,
+            ) as dt,
+            testclient.TestClient(self.test_app) as client,
+        ):
+            dt.now.return_value = now
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': None,
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['version'], '26.10.0')
 
     def test_draft_release_notes_first_release_reads_synced_history(
         self,
@@ -1644,22 +1822,75 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(row['version'], 'v6.4.0')
         self.assertEqual(row['plugin_slug'], 'github-deployment')
 
-    def test_deploy_suppresses_audit_when_no_release_matches(self) -> None:
-        # L24: when ``_release_id_for`` returns no match, the workflow
-        # was still dispatched but we cannot tie it to a Release node,
-        # so the audit row is suppressed to keep operations_log clean.
+    def _deploy_without_a_release(
+        self, ref_label: str, existing_tag: typing.Any = None
+    ) -> typing.Any:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value=None)
+        )
+        self._start(
+            mock.patch(
+                f'{_MODULE}._existing_tag_for_committish',
+                side_effect=[existing_tag],
+            )
+        )
+        self.upsert_release = self._start(
+            mock.patch(
+                f'{_MODULE}._upsert_release_node',
+                return_value='new-release-id',
+            )
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
                 json={
                     'action': 'deploy',
                     'environment': 'testing',
-                    'committish': 'abc1234',
-                    'ref_label': 'main',
+                    'committish': 'abc1234def5678',
+                    'ref_label': ref_label,
                 },
             )
         self.assertEqual(response.status_code, 202)
+        return response
+
+    def test_deploy_without_a_release_records_an_untagged_one(self) -> None:
+        response = self._deploy_without_a_release('main')
+        self.assertTrue(response.json()['recorded'])
+        kwargs = self.upsert_release.await_args.kwargs
+        self.assertIsNone(kwargs['tag'])
+        self.assertEqual('abc1234', kwargs['committish'])
+        self.assertEqual('admin@example.com', kwargs['created_by'])
+        call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual('new-release-id', call.kwargs['release_id'])
+        self.assertEqual('in_progress', call.kwargs['status'])
+        self.assertEqual('42', call.kwargs['external_run_id'])
+        row = self._published_audit_row()
+        self.assertEqual('abc1234', row['version'])
+        self.assertEqual('testing', row['environment_slug'])
+
+    def test_deploy_of_an_unrecorded_tag_records_it(self) -> None:
+        response = self._deploy_without_a_release('v6.4.0')
+        self.assertTrue(response.json()['recorded'])
+        self.assertEqual(
+            'v6.4.0', self.upsert_release.await_args.kwargs['tag']
+        )
+        self.assertEqual('v6.4.0', self._published_audit_row()['version'])
+
+    def test_raw_commit_deploy_reuses_the_tag_on_its_commit(self) -> None:
+        response = self._deploy_without_a_release('main', '1.2.3')
+        self.assertTrue(response.json()['recorded'])
+        self.assertEqual('1.2.3', self.upsert_release.await_args.kwargs['tag'])
+
+    def test_deploy_of_a_commit_with_several_tags_is_not_recorded(
+        self,
+    ) -> None:
+        response = self._deploy_without_a_release(
+            'main', ValueError('several tags')
+        )
         self.assertFalse(response.json()['recorded'])
+        self.upsert_release.assert_not_called()
+        self.mocks['append_deployment_event'].assert_not_called()
         self.mocks['publish_rows'].assert_not_called()
 
 
@@ -4122,6 +4353,95 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
+    @staticmethod
+    def _db_recording(committish: str) -> mock.AsyncMock:
+        """A graph whose ``Release`` node already holds *committish*."""
+
+        async def execute(query: str, *_: typing.Any) -> list[typing.Any]:
+            if 'RETURN r.committish AS committish' in query:
+                # A scalar agtype column arrives as JSON text, quotes and
+                # all, exactly as the real graph hands it back.
+                return [{'committish': json.dumps(committish)}]
+            return []
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=execute)
+        return db
+
+    def _committish_writes(self, db: mock.AsyncMock) -> list[typing.Any]:
+        return [
+            call.args[1]
+            for call in db.execute.await_args_list
+            if 'r.committish = {committish}' in call.args[0]
+        ]
+
+    async def test_heals_the_node_a_failed_first_promote_left(self) -> None:
+        """The tag agrees with this promote but not with the node.
+
+        First promote of the tag built from one commit and failed before
+        tagging; after an unblock the tag was re-promoted from another
+        commit, which the build then tagged.  The re-promote inherits the
+        first promote's node -- the upsert never overwrites a committish
+        -- so the stale commit is on the node while the promote's own
+        committish already matches the tag.  Comparing to the promote
+        saw no drift and left the node pointing at a commit that never
+        shipped.
+        """
+        self.tagged.sha = '3c1ea7bfedcba'
+        db = self._db_recording('28ae5f2')
+        await self._complete(db)
+        writes = self._committish_writes(db)
+        self.assertEqual(1, len(writes))
+        self.assertEqual('3c1ea7b', writes[0]['committish'])
+        self.assertEqual('rel1', writes[0]['release_id'])
+
+    async def test_a_node_already_healed_writes_nothing(self) -> None:
+        """A reclaimed job re-runs completion; the node already agrees."""
+        db = self._db_recording('27f2f81')
+        await self._complete(db)
+        self.assertFalse(self._committish_writes(db))
+
+    async def test_an_already_healed_node_ships_the_tagged_commit(
+        self,
+    ) -> None:
+        """The node agrees with the tag; this promote does not.
+
+        A re-promote of a tag whose node was already healed -- by a
+        reclaimed job or by the commit-sync reconcile -- finds nothing
+        to rewrite, but the promote's own committish still names the
+        commit it was asked to ship.  The deployment audit has to carry
+        the commit the tag deployed, not that one.
+        """
+        db = self._db_recording('27f2f81')
+        audit = mock.AsyncMock()
+        handler = project_deployments._handler.return_value
+        handler.trigger_deployment = mock.AsyncMock(
+            return_value=DeploymentRun(run_id='run-1', status='queued')
+        )
+        with (
+            mock.patch(f'{_MODULE}._record_deployment_audit', audit),
+            mock.patch(
+                f'{_MODULE}._release_ci_override',
+                mock.AsyncMock(return_value=(None, False)),
+            ),
+            mock.patch(
+                f'{_MODULE}.append_deployment_event',
+                mock.AsyncMock(return_value=(mock.Mock(), 'appended')),
+            ),
+        ):
+            await project_deployments.complete_promote_build(
+                db,
+                org_slug='octo',
+                project_id='p1',
+                release_id='rel1',
+                tag='2.45.3',
+                committish='3c1ea7b',
+                to_environment='production',
+            )
+        self.assertFalse(self._committish_writes(db))
+        audit.assert_awaited_once()
+        self.assertEqual('27f2f81', audit.await_args.kwargs['committish'])
+
 
 class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     """Recording a deployment whose release is not known yet."""
@@ -4540,14 +4860,36 @@ class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
-    """``deployable`` is per project *type*, and a project can have several."""
+    """``deployable`` is per project *type*, and a project can have several.
 
-    async def _ask(self, flags: typing.Any) -> bool:
+    The project's own ``delivery_mode`` overrides the type flags.
+    """
+
+    @staticmethod
+    def _db(
+        flags: typing.Any,
+        *,
+        releasable: typing.Any = None,
+        mode: str | None = None,
+    ) -> mock.AsyncMock:
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(
-            return_value=[{'flags': json.dumps(flags)}]
+            return_value=[
+                {
+                    'mode': json.dumps(mode),
+                    'flags': json.dumps(flags),
+                    'releasable': json.dumps(
+                        releasable if releasable is not None else []
+                    ),
+                }
+            ]
         )
-        return await project_deployments._project_is_deployable(db, 'p1')
+        return db
+
+    async def _ask(self, flags: typing.Any) -> bool:
+        return await project_deployments._project_is_deployable(
+            self._db(flags), 'p1'
+        )
 
     async def test_true_when_any_type_is_deployable(self) -> None:
         self.assertTrue(await self._ask([False, True]))
@@ -4564,6 +4906,116 @@ class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(
             await project_deployments._project_is_deployable(db, 'nope')
         )
+        self.assertEqual(
+            await project_deployments._project_delivery(db, 'nope'),
+            (False, False),
+        )
+
+    async def test_releasable_type_resolves_to_releasable(self) -> None:
+        self.assertEqual(
+            await project_deployments._project_delivery(
+                self._db([False], releasable=[True]), 'p1'
+            ),
+            (False, True),
+        )
+
+    async def test_deployable_mode_overrides_releasable_types(self) -> None:
+        self.assertTrue(
+            await project_deployments._project_is_deployable(
+                self._db([False], releasable=[True], mode='deployable'),
+                'p1',
+            )
+        )
+
+    async def test_releasable_mode_overrides_deployable_types(self) -> None:
+        self.assertEqual(
+            await project_deployments._project_delivery(
+                self._db([True], mode='releasable'), 'p1'
+            ),
+            (False, True),
+        )
+
+    async def test_disabled_mode_resolves_to_neither(self) -> None:
+        self.assertEqual(
+            await project_deployments._project_delivery(
+                self._db([True], releasable=[True], mode='disabled'), 'p1'
+            ),
+            (False, False),
+        )
+
+
+class DeliveryDisabledTestCase(ProjectDeploymentsTestCase):
+    """A project whose ``delivery_mode`` is ``disabled`` cannot ship.
+
+    Every Imbi-initiated release / deployment entry point answers 409
+    before touching the deployment plugin.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+
+    def _disable(self) -> None:
+        # Not in ``setUp``: this class inherits every test on the base,
+        # and those must keep seeing a project that can ship.
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'mode': json.dumps('disabled')}]
+        )
+
+    def _assert_refused(self, response: httpx.Response) -> None:
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('disabled', response.json()['detail'])
+        self.mocks['resolve_capability'].assert_not_called()
+
+    def test_deploy_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'deploy',
+                    'environment': 'staging',
+                    'committish': 'abc1234',
+                },
+            )
+        self._assert_refused(response)
+
+    def test_promote_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': 'abc1234',
+                    'tag': '1.0.0',
+                },
+            )
+        self._assert_refused(response)
+
+    def test_cut_release_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': 'abc1234', 'tag': '1.0.0'},
+            )
+        self._assert_refused(response)
+
+    def test_resync_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(f'{self._BASE}/resync')
+        self._assert_refused(response)
+
+    def test_draft_release_notes_is_refused(self) -> None:
+        self._disable()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/draft-release-notes',
+                json={'base_sha': 'abc1234', 'head_sha': 'def5678'},
+            )
+        self._assert_refused(response)
 
 
 def _relocating_resolved() -> ResolvedCapability:
@@ -4718,6 +5170,7 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         super().setUp()
         self._deployable = False
         self._props: dict[str, typing.Any] = {}
+        self._releases: list[dict[str, typing.Any]] = []
         self.mock_db.execute = mock.AsyncMock(side_effect=self._execute)
 
     def _execute(
@@ -4728,6 +5181,8 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
             return [{'flags': json.dumps([self._deployable])}]
         if 'properties(p)' in query:
             return [{'props': json.dumps(self._props)}]
+        if 'RETURN r{{.*}} AS release' in query:
+            return [{'release': json.dumps(node)} for node in self._releases]
         return []
 
     def _tags(self, *shas: str) -> None:
@@ -4856,6 +5311,29 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         self._use_plugin('pass')
         self._tags('aaa1111aaa1111')
         self.assertEqual('unknown', self._history()[0]['ci_status'])
+
+    def test_a_deployable_projects_unsynced_release_gets_the_fallback(
+        self,
+    ) -> None:
+        """An unsynced release has no commit row for the sync to fill.
+
+        Its ``'unknown'`` is not the sync's answer -- nothing was asked --
+        so the fallback is its only source, even on a deployable project
+        whose synced releases keep what the sync recorded.
+        """
+        self._deployable = True
+        self._releases = [
+            {
+                'tag': 'v2.0.0',
+                'committish': 'bbb2222bbb2222',
+                'created_by': 'deploybee',
+                'created_at': '2026-01-02T00:00:00+00:00',
+            }
+        ]
+        self._use_plugin('fail')
+        self._tags('aaa1111aaa1111')
+        statuses = {e['tag']: e['ci_status'] for e in self._history()}
+        self.assertEqual({'v2.0.0': 'fail', 'v1.0.0': 'unknown'}, statuses)
 
     def test_the_live_fallback_is_bounded(self) -> None:
         """One request per release, on a page load -- so it is capped.
@@ -5109,6 +5587,109 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                 ),
             )
 
+    def test_version_matches_bump_follows_a_configured_scheme(self) -> None:
+        """A semver bump of ``26.04.2`` is not the scheme's next tag."""
+        scheme = 'YY.0M.MICRO'
+        matches = project_deployments._version_matches_bump
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertFalse(matches('26.04.2', '26.04.3', 'patch', [scheme]))
+            self.assertTrue(matches('26.04.2', '26.10.0', 'patch', [scheme]))
+            # Without the scheme, the semver bump stands.
+            self.assertTrue(matches('26.04.2', '26.04.3', 'patch'))
+            # Scheme-only policy, no prior tag or one from another
+            # format: only the first tag of the period passes.
+            patterns = [versioning.calver_scheme_pattern(scheme)]
+            self.assertFalse(
+                matches(None, '26.04.2', 'patch', [scheme], patterns)
+            )
+            self.assertTrue(
+                matches(None, '26.10.0', 'patch', [scheme], patterns)
+            )
+            self.assertFalse(
+                matches('v1.2.3', '26.04.2', 'patch', [scheme], patterns)
+            )
+            # A mixed policy keeps the old behaviour.
+            self.assertTrue(
+                matches(
+                    None,
+                    '26.04.2',
+                    'patch',
+                    [scheme],
+                    [*patterns, SEMVER_TAG_FORMAT.pattern],
+                )
+            )
+
+    def test_suggest_version_follows_a_configured_scheme(self) -> None:
+        """``26.04.2`` is semver too; the scheme resets on a new month."""
+        scheme = 'YY.0M.MICRO'
+        patterns = [versioning.calver_scheme_pattern(scheme)]
+        suggest = project_deployments._suggest_version
+        now = datetime.datetime(2026, 10, 2, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                '26.10.0', suggest('26.04.2', 'patch', patterns, [scheme])
+            )
+            self.assertEqual(
+                '26.10.1', suggest('26.10.0', 'patch', patterns, [scheme])
+            )
+            # No prior tag, or one from another scheme: the first tag.
+            self.assertEqual(
+                '26.10.0', suggest(None, 'patch', patterns, [scheme])
+            )
+            self.assertEqual(
+                '26.10.0', suggest('v1.2.3', 'patch', patterns, [scheme])
+            )
+            # A mixed policy with no tags keeps the semver default.
+            self.assertEqual(
+                'v0.1.0',
+                suggest(
+                    None,
+                    'patch',
+                    [*patterns, SEMVER_TAG_FORMAT.pattern],
+                    [scheme],
+                ),
+            )
+            # Unpadded schemes also match ``0.1.0`` and a semver bump.
+            for unpadded in ('YY.MINOR.MICRO', 'YY.M.MICRO'):
+                first = versioning.next_scheme_tag(unpadded, None, now.date())
+                unpadded_patterns = [
+                    versioning.calver_scheme_pattern(unpadded)
+                ]
+                for last_tag in (None, 'v1.2.3'):
+                    with self.subTest(scheme=unpadded, last_tag=last_tag):
+                        self.assertEqual(
+                            first,
+                            suggest(
+                                last_tag,
+                                'patch',
+                                unpadded_patterns,
+                                [unpadded],
+                            ),
+                        )
+
+    def test_suggest_version_padding_policy_after_an_ambiguous_tag(
+        self,
+    ) -> None:
+        """``2026.10.31`` reads as unpadded; a padding policy gets a date."""
+        now = datetime.datetime(2026, 11, 1, tzinfo=datetime.UTC)
+        with mock.patch.object(
+            project_deployments.datetime, 'datetime', wraps=datetime.datetime
+        ) as dt:
+            dt.now.return_value = now
+            self.assertEqual(
+                '2026.11.01',
+                project_deployments._suggest_version(
+                    '2026.10.31', 'patch', [r'^\d{4}\.\d{2}\.\d{2}$']
+                ),
+            )
+
     def test_suggest_version_honours_the_tag_policy(self) -> None:
         calver = [r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$']
         today = datetime.datetime.now(datetime.UTC).date()
@@ -5123,16 +5704,23 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
         # Calver-only policy: a semver prior tag cannot be bumped into it.
         self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest('v1.2.3', 'patch', calver)
+            f'{today.year}.{today.month}.{today.day}',
+            suggest('v1.2.3', 'patch', calver),
         )
         self.assertEqual(
-            today.strftime('%Y.%m.%d'), suggest(None, 'patch', calver)
+            f'{today.year}.{today.month}.{today.day}',
+            suggest(None, 'patch', calver),
         )
         # Semver-only policy with a calver prior tag: first semver default
         # (the built-in Semver format tolerates the ``v`` prefix).
         self.assertEqual(
             'v0.1.0',
             suggest('2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]),
+        )
+        # A policy that requires padding gets the padded date.
+        self.assertEqual(
+            today.strftime('%Y.%m.%d'),
+            suggest(None, 'patch', [r'^\d{4}\.\d{2}\.\d{2}$']),
         )
         # A policy no known scheme satisfies: nothing to suggest.
         self.assertEqual('', suggest('v1.2.3', 'patch', [r'^REL-\d+$']))
@@ -5163,7 +5751,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200)
         today = datetime.datetime.now(datetime.UTC).date()
         self.assertEqual(
-            response.json()['suggested_tag'], today.strftime('%Y.%m.%d')
+            response.json()['suggested_tag'],
+            f'{today.year}.{today.month}.{today.day}',
         )
 
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:
@@ -5446,13 +6035,11 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertIsNone(data[1]['notes_markdown'])
         self.assertEqual(data[1]['ci_status'], 'not_applicable')
 
-    def test_release_history_head_is_highest_semver_not_newest(self) -> None:
-        """With no synced commits, the head of history is the highest semver.
+    def test_release_history_head_is_newest_tag(self) -> None:
+        """The most recently tagged release heads the list.
 
-        Neither tag's commit is in ``commits``, so the commit-history
-        ranking has nothing to go on and semver breaks the tie: a
-        late-synced lower version (newer timestamp) must not out-rank the
-        highest semver tag, mirroring the drift base selection.
+        The tag time decides before the version, so a lower version
+        tagged later ranks first.
         """
         older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
@@ -5485,7 +6072,7 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             response = client.get(f'{self._BASE}/release-history')
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual([e['tag'] for e in data], ['v7.1.0', 'v4.1.3'])
+        self.assertEqual([e['tag'] for e in data], ['v4.1.3', 'v7.1.0'])
 
     def test_release_history_head_follows_the_commit_history(self) -> None:
         """The tag on the newest synced commit heads the list.
@@ -6275,6 +6862,227 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertFalse(data[1]['blocked'])
         self.assertEqual([], data[1]['blockers'])
 
+    def test_release_history_includes_release_without_synced_tag(
+        self,
+    ) -> None:
+        """A ``Release`` node whose tag never reached the repository.
+
+        A promote creates the node before dispatching the build; when
+        that build fails, the ``build-failure`` blocker hangs off a tag
+        ClickHouse has never synced.  The history used to be driven by
+        the synced tags alone, so the blocked release -- the one thing
+        the operator has to act on -- was the one thing it could not
+        show.
+        """
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': '2.8.6',
+                        'sha': 'd3fe0505aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/2.8.6',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return [
+                    {
+                        'tag': '2.9.0',
+                        'blocker': self._blocker(
+                            blocker_type='build-failure',
+                            description='Release build reported failure',
+                            created_by='deploybee',
+                        ),
+                    },
+                ]
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '2.8.6',
+                            'committish': 'd3fe050',
+                            'title': 'Release 2.8.6',
+                            'created_by': 'gr',
+                        }
+                    )
+                },
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '2.9.0',
+                            'committish': '28ae5f2',
+                            'title': '2.9.0',
+                            'created_by': 'deploybee',
+                            'created_at': '2026-01-02T00:00:00+00:00',
+                        }
+                    )
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        # The unsynced release leads because it is the newest.
+        self.assertEqual(['2.9.0', '2.8.6'], [e['tag'] for e in data])
+        unsynced = data[0]
+        self.assertFalse(unsynced['tag_synced'])
+        self.assertEqual(unsynced['sha'], '28ae5f2')
+        self.assertEqual(unsynced['short_sha'], '28ae5f2')
+        self.assertTrue(unsynced['published_at'].startswith('2026-01-02T'))
+        self.assertIsNone(unsynced['tag_url'])
+        self.assertEqual(unsynced['title'], '2.9.0')
+        self.assertTrue(unsynced['blocked'])
+        self.assertEqual(
+            ['build-failure'], [b['type'] for b in unsynced['blockers']]
+        )
+        self.assertEqual(
+            unsynced['blocked_reason'], 'Release build reported failure'
+        )
+        synced = data[1]
+        self.assertTrue(synced['tag_synced'])
+        self.assertEqual(synced['tag_url'], 'https://gh/releases/tag/2.8.6')
+        self.assertFalse(synced['blocked'])
+
+    def test_release_history_old_unsynced_release_sorts_by_its_age(
+        self,
+    ) -> None:
+        """An old ``Release`` node with no synced tag does not lead.
+
+        Legacy nodes (``saml``, ``0.26.0``) with no ``tags`` row went to
+        the top of every history, above the current release.
+        """
+        when = datetime.datetime(2026, 11, 4, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': '2.43.0',
+                        'sha': 'e42e585aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return []
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': tag,
+                            'committish': '',
+                            'title': tag,
+                            'created_at': created_at,
+                        }
+                    )
+                }
+                for tag, created_at in (
+                    ('saml', '2024-10-01T00:00:00+00:00'),
+                    ('0.26.0', '2025-10-01T00:00:00+00:00'),
+                )
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            ['2.43.0', '0.26.0', 'saml'], [e['tag'] for e in response.json()]
+        )
+
+    def test_release_history_limit_keeps_the_newest_synced_release(
+        self,
+    ) -> None:
+        """``limit`` cannot push the current release out of the response.
+
+        Unsynced releases rank first, so a project with ``limit`` or
+        more of them would fill the whole response and ``ReleasesTab``
+        -- which shows the newest synced release as current -- would
+        find none.  The newest synced release takes the last slot
+        instead of the lowest-ranked unsynced one.
+        """
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'd3fe0505aa6a2896ba29b96151f89c12d88c2542',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/v1.0.0',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return []
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': tag,
+                            'committish': sha,
+                            'title': tag,
+                            'created_by': 'deploybee',
+                            'created_at': '2026-01-02T00:00:00+00:00',
+                        }
+                    )
+                }
+                for tag, sha in (
+                    ('v1.0.0', 'd3fe050'),
+                    ('v2.0.0', '28ae5f2'),
+                    ('v3.0.0', '9b1c4e7'),
+                )
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history?limit=2')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        # v2.0.0, the lowest-ranked unsynced release, gives up its slot.
+        self.assertEqual(['v3.0.0', 'v1.0.0'], [e['tag'] for e in data])
+        self.assertEqual([False, True], [e['tag_synced'] for e in data])
+
 
 class ReleaseBlockerTestCase(ProjectDeploymentsTestCase):
     """The blocker endpoints: add, list, update, resolve, delete."""
@@ -6745,6 +7553,123 @@ class ReleaseCommittishHealTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('r.committish = {committish}', query)
 
 
+class ReleaseCommittishGuardedHealTestCase(unittest.IsolatedAsyncioTestCase):
+    """The reconcile heal lands only on the committish it read."""
+
+    async def _heal(self, expected: str | None) -> dict[str, typing.Any]:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[])
+        await project_deployments._set_release_committish_if_unchanged(
+            db,
+            release_id='rel-1',
+            committish='bump123',
+            expected_committish=expected,
+        )
+        query, params = db.execute.await_args.args[:2]
+        self.assertIn(
+            "WHERE COALESCE(r.committish, '') = {expected_committish}",
+            query,
+        )
+        self.assertIn(
+            'r.promoted_committish = COALESCE(\n            '
+            'r.promoted_committish, r.committish)',
+            query,
+        )
+        self.assertIn('r.committish = {committish}', query)
+        return typing.cast('dict[str, typing.Any]', params)
+
+    async def test_guards_on_the_committish_that_was_read(self) -> None:
+        params = await self._heal('28ae5f2')
+        self.assertEqual('28ae5f2', params['expected_committish'])
+        self.assertEqual('bump123', params['committish'])
+
+    async def test_a_missing_committish_matches_an_empty_read(self) -> None:
+        params = await self._heal(None)
+        self.assertEqual('', params['expected_committish'])
+
+
+class ReleaseCommittishReconcileTestCase(unittest.IsolatedAsyncioTestCase):
+    """The full commit sync points tagged nodes at their synced sha.
+
+    A tag re-promoted from a new commit after its first build failed
+    keeps the first promote's commit on the node, and no resync rewrites
+    it; the ``tags`` table is the one place that knows where the tag
+    really points.
+    """
+
+    def setUp(self) -> None:
+        self.tag_rows: list[dict[str, typing.Any]] = []
+        self.nodes: dict[str, dict[str, typing.Any]] = {}
+        self.query = mock.AsyncMock(side_effect=lambda *_: self.tag_rows)
+        self.by_tag = mock.AsyncMock(side_effect=lambda *_: self.nodes)
+        for target, replacement in (
+            ('clickhouse.query', self.query),
+            ('_release_nodes_by_tag', self.by_tag),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', new=replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.db = mock.AsyncMock()
+        self.db.execute = mock.AsyncMock(return_value=[])
+
+    async def _reconcile(self) -> int:
+        return await project_deployments.reconcile_release_committishes(
+            self.db, org_slug='octo', project_id='p1'
+        )
+
+    def _writes(self) -> list[dict[str, typing.Any]]:
+        return [
+            call.args[1]
+            for call in self.db.execute.await_args_list
+            if 'r.committish = {committish}' in call.args[0]
+        ]
+
+    async def test_heals_a_node_whose_tag_moved(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1', 'committish': '28ae5f2'}}
+        self.assertEqual(1, await self._reconcile())
+        writes = self._writes()
+        self.assertEqual(1, len(writes))
+        self.assertEqual('rel1', writes[0]['release_id'])
+        self.assertEqual('a8507bb', writes[0]['committish'])
+        # The heal is guarded on the committish the decision was made
+        # from, so a node a promote moved in the meantime is left alone.
+        self.assertEqual('28ae5f2', writes[0]['expected_committish'])
+
+    async def test_an_agreeing_node_is_left_alone(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1', 'committish': 'A8507BB'}}
+        self.assertEqual(0, await self._reconcile())
+        self.assertFalse(self._writes())
+
+    async def test_a_node_with_no_committish_takes_the_tag(self) -> None:
+        self.tag_rows = [{'name': '2.9.0', 'sha': 'a8507bb0123456'}]
+        self.nodes = {'2.9.0': {'id': 'rel1'}}
+        self.assertEqual(1, await self._reconcile())
+        writes = self._writes()
+        self.assertEqual('a8507bb', writes[0]['committish'])
+        self.assertEqual('', writes[0]['expected_committish'])
+
+    async def test_skips_tags_without_a_node_and_nodes_without_a_tag_row(
+        self,
+    ) -> None:
+        """Nothing to heal on either side of the join."""
+        self.tag_rows = [
+            {'name': '2.8.0', 'sha': '1111111'},
+            {'name': '2.9.0', 'sha': ''},
+        ]
+        self.nodes = {
+            '2.9.0': {'id': 'rel1', 'committish': '28ae5f2'},
+            '2.10.0': {'id': 'rel2', 'committish': '2222222'},
+        }
+        self.assertEqual(0, await self._reconcile())
+        self.assertFalse(self._writes())
+
+    async def test_no_synced_tags_reads_no_nodes(self) -> None:
+        self.assertEqual(0, await self._reconcile())
+        self.by_tag.assert_not_awaited()
+
+
 class ReleaseAuthorTestCase(unittest.TestCase):
     """Who a release-history entry is attributed to."""
 
@@ -7208,3 +8133,208 @@ class DerivedRankTestCase(unittest.TestCase):
             project_deployments._derived_rank(self._entry('1')),
             project_deployments._derived_rank(self._entry(None)),
         )
+
+
+class DirectDeployRecordingTestCase(unittest.IsolatedAsyncioTestCase):
+    """A direct deploy of an unreleased commit, against the live graph.
+
+    The writes only matter if the readers find them: the deploy has to
+    land where current-releases looks, and where the ``deployment_status``
+    webhook for the same run lands, so a mocked graph cannot show it.
+    """
+
+    async def asyncSetUp(self) -> None:
+        suffix = uuid.uuid4().hex[:10]
+        self.org = f'direct-deploy-org-{suffix}'
+        self.team = f'direct-deploy-team-{suffix}'
+        self.project = f'direct-deploy-project-{suffix}'
+        self.env = f'direct-deploy-env-{suffix}'
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            """
+            CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})
+            CREATE (t:Team {{id: {team}, slug: {team}, name: {team}}})
+            CREATE (p:Project {{id: {project}, slug: {project},
+                                name: {project}}})
+            CREATE (e:Environment {{id: {env}, slug: {env}, name: {env},
+                                    sort_order: 1}})
+            CREATE (t)-[:BELONGS_TO]->(o)
+            CREATE (p)-[:OWNED_BY]->(t)
+            CREATE (e)-[:BELONGS_TO]->(o)
+            CREATE (p)-[:DEPLOYED_IN]->(e)
+            RETURN p.id AS id
+            """,
+            {
+                'org': self.org,
+                'team': self.team,
+                'project': self.project,
+                'env': self.env,
+            },
+            ['id'],
+        )
+        self.auth = permissions.AuthContext(
+            user=models.User(
+                email='deployer@example.com',
+                display_name='Deployer',
+                is_active=True,
+                is_admin=True,
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            session_id='s',
+            auth_method='jwt',
+            permissions={'project:read', 'project:deployment:write'},
+        )
+
+    async def _cleanup(self) -> None:
+        for query in (
+            'MATCH (:Project {{id: {project}}})-[:HAS_RELEASE]->(r:Release)'
+            ' DETACH DELETE r RETURN 1 AS ok',
+            'MATCH (:Project {{id: {project}}})<-[:BELONGS_TO]-(d:Deployment)'
+            ' DETACH DELETE d RETURN 1 AS ok',
+        ):
+            await self.graph.execute(query, {'project': self.project}, ['ok'])
+        await self.graph.execute(
+            'MATCH (n) WHERE n.id IN {ids} DETACH DELETE n RETURN 1 AS ok',
+            {'ids': [self.org, self.team, self.project, self.env]},
+            ['ok'],
+        )
+        await self.graph.close()
+
+    async def _deploy(
+        self, environment: str | None = None, ref_label: str = 'main'
+    ) -> typing.Any:
+        ctx = mock.Mock(
+            environment_config={},
+            actor_user_id=None,
+            project_slug=self.project,
+            credential_note=None,
+        )
+        patches = {
+            '_load_env_flags': _EnvFlags(
+                found=True, can_deploy=True, can_promote=True
+            ),
+            '_resolve_and_context': (_make_resolved(), ctx, {}),
+            '_assert_ci_not_failing': 'unknown',
+            'call_with_identity_retry': DeploymentRun(
+                run_id='4242', run_url=None, status='queued'
+            ),
+            'persist_link_writeback': None,
+        }
+        with contextlib.ExitStack() as stack:
+            for name, value in patches.items():
+                stack.enter_context(
+                    mock.patch(
+                        f'{_MODULE}.{name}',
+                        mock.AsyncMock(return_value=value),
+                    )
+                )
+            return await project_deployments._handle_deploy(
+                self.graph,
+                self.org,
+                self.project,
+                self.auth,
+                project_deployments.DeployActionRequest(
+                    action='deploy',
+                    environment=environment or self.env,
+                    committish='abc1234def5678',
+                    ref_label=ref_label,
+                ),
+                background=fastapi.BackgroundTasks(),
+                source=None,
+            )
+
+    async def _current(self) -> typing.Any:
+        with (
+            mock.patch(
+                f'{_MODULE}._resolve_and_context',
+                mock.AsyncMock(side_effect=fastapi.HTTPException(404)),
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.lookup_ops_log_performed_by',
+                mock.AsyncMock(return_value={}),
+            ),
+        ):
+            rows = await releases.list_current_releases(
+                self.org, self.project, self.graph, self.auth
+            )
+        self.assertEqual(1, len(rows))
+        return rows[0]
+
+    async def test_deploy_without_a_release_is_in_flight(self) -> None:
+        response = await self._deploy()
+        self.assertTrue(response.recorded)
+        current = await self._current()
+        self.assertIsNone(current.release)
+        assert current.latest_deployment is not None
+        self.assertEqual('in_progress', current.latest_deployment.status)
+        self.assertEqual('abc1234', current.latest_deployment.committish)
+
+    async def test_found_release_is_not_duplicated_when_append_fails(
+        self,
+    ) -> None:
+        """An environment deleted mid-deploy must not fork the Release.
+
+        The env-flag gate normally 404s a missing environment before
+        anything is dispatched, so the gate is patched to model the
+        environment vanishing during the remote call.
+        """
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project}}})
+            CREATE (p)-[:HAS_RELEASE]->(:Release {{
+                id: {release}, committish: 'abc1234', title: 'main',
+                links: '[]', created_by: 'deployer@example.com',
+                created_at: '2026-10-01T00:00:00+00:00',
+                updated_at: '2026-10-01T00:00:00+00:00'}})
+            RETURN p.id AS id
+            """,
+            {'project': self.project, 'release': f'{self.project}-rel'},
+            ['id'],
+        )
+        response = await self._deploy(
+            environment=f'{self.env}-gone', ref_label='1.2.3'
+        )
+        self.assertFalse(response.recorded)
+        found = await releases.list_releases(
+            self.org, self.project, self.graph, self.auth
+        )
+        self.assertEqual([f'{self.project}-rel'], [r.id for r in found])
+
+    async def test_webhook_for_the_run_lands_on_the_same_deployment(
+        self,
+    ) -> None:
+        await self._deploy()
+        # The gateway resolves the webhook's release by committish.
+        found = await releases.list_releases(
+            self.org, self.project, self.graph, self.auth, committish='abc1234'
+        )
+        self.assertEqual(1, len(found))
+        with mock.patch(
+            'imbi.api.endpoints.releases.complete_opslog_entry',
+            mock.AsyncMock(return_value=True),
+        ):
+            await releases.record_deployment(
+                self.org,
+                self.project,
+                found[0].id,
+                self.env,
+                releases.DeploymentEventInput(
+                    status='success', external_run_id='4242'
+                ),
+                self.graph,
+                None,
+                self.auth,
+            )
+        deployed = await common_deployments.deployments_by_project(
+            self.graph, [self.project]
+        )
+        self.assertEqual(1, len(deployed))
+        self.assertEqual('success', deployed[0].event.status)
+        current = await self._current()
+        assert current.release is not None
+        self.assertEqual(found[0].id, current.release.id)
+        self.assertEqual('success', current.current_status)
+        self.assertIsNone(current.latest_deployment)

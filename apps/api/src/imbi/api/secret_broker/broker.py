@@ -48,6 +48,11 @@ from imbi.api.agent_tasks import store as task_store
 from imbi.api.secret_broker import audit, providers
 from imbi.common import settings
 from imbi.common.auth import encryption
+from imbi.common.plugins import identity as plugin_identity
+from imbi.common.plugins.secrets import Reference as Reference
+from imbi.common.plugins.secrets import (
+    parse_reference as parse_reference,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -101,11 +106,6 @@ _HANDLE_LABEL = b'imbi-secret-handle-v1'
 _NONCE_LABEL = b'imbi-secret-nonce-v1'
 _HANDLE_PREFIX = 'imh_'
 
-_REFERENCE = re.compile(
-    r'secret://(?P<scope>[a-z0-9_]+)/(?P<path>[a-z0-9_]+(?:/[a-z0-9_]+)*)'
-    r'(?:#(?P<field>[A-Za-z0-9_-]+))?'
-)
-_MAX_REFERENCE_LENGTH = 512
 PURPOSE = re.compile(r'[a-z][a-z0-9_]{0,63}')
 _ENV_NAME = re.compile(r'[A-Z][A-Z0-9_]{0,127}')
 _FILE_NAME = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}')
@@ -151,44 +151,6 @@ _UNSAFE_ENV_SUFFIXES = ('_PROXY',)
 
 
 # --- References and request syntax ---------------------------------------
-
-
-@dataclasses.dataclass(frozen=True)
-class Reference:
-    """A parsed ``secret://<scope>/<path>[#<field>]``."""
-
-    scope: str
-    path: str
-    field: str | None
-
-    @property
-    def binding(self) -> str:
-        """The reference without the field: what a binding stores."""
-        return f'secret://{self.scope}/{self.path}'
-
-    def __str__(self) -> str:
-        return self.binding + (f'#{self.field}' if self.field else '')
-
-
-def parse_reference(value: str, *, field: bool = True) -> Reference:
-    """Parse a reference. Only the canonical form is accepted.
-
-    Scope and path segments are lower case letters, digits, and
-    underscores. Matching is case sensitive. There is no other
-    spelling of a reference, so the input is its canonical form.
-
-    Raises:
-        BrokerError: ``invalid_secret_reference``.
-
-    """
-    match = (
-        _REFERENCE.fullmatch(value)
-        if len(value) <= _MAX_REFERENCE_LENGTH
-        else None
-    )
-    if match is None or (not field and match['field']):
-        raise providers.BrokerError('invalid_secret_reference')
-    return Reference(match['scope'], match['path'], match['field'])
 
 
 def check_delivery(mode: str, target: str | None) -> str | None:
@@ -536,11 +498,16 @@ async def evaluate(
 
 
 async def _check_task(conn: Conn, context: ResolutionContext) -> None:
-    """The task must be open and match the trusted context."""
+    """The task must be open and match the trusted context.
+
+    The lock serializes the check with ``TaskStore.delete``. It is the
+    lock that the task event write takes later in the transaction, so
+    two writers do not deadlock on a lock upgrade.
+    """
     task = await _fetch_one(
         conn,
         'SELECT organization_id, agent_id, project_id, status'
-        ' FROM agent_runtime.tasks WHERE id = %s',
+        ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
@@ -656,6 +623,42 @@ class Broker:
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
+    async def vendor_token(
+        self,
+        db: typing.Any,
+        organization_id: str,
+        exchanger: plugin_identity.TokenExchanger,
+        target: dict[str, typing.Any],
+        *,
+        agent_id: str,
+    ) -> plugin_identity.AccessToken:
+        """Mint a vendor access token for an agent (WIF plan 4.4).
+
+        Raises:
+            BrokerError: ``secret_provider_unavailable`` when the refusal
+                is retryable, else ``secret_materialization_failed``.
+                The reason is the :class:`IdentityError` reason.
+
+        """
+        from imbi.api.secret_broker import identity, store
+
+        try:
+            return await identity.vendor_token(
+                db,
+                store.SecretStore(self._pool),
+                organization_id,
+                exchanger,
+                target,
+                agent_id=agent_id,
+            )
+        except plugin_identity.IdentityError as err:
+            raise providers.BrokerError(
+                'secret_provider_unavailable'
+                if err.retryable
+                else 'secret_materialization_failed',
+                err.reason,
+            ) from None
+
     async def create_resolution(
         self, context: ResolutionContext, request: ResolutionRequest
     ) -> Created:
@@ -723,7 +726,7 @@ class Broker:
         target = check_delivery(request.delivery_mode, request.delivery_target)
         handle = _new_handle()
         async with self._pool.connection() as conn, conn.transaction():
-            await _check_task(conn, context)
+            existing: Row | None = None
             if request.idempotency_key:
                 existing = await _fetch_one(
                     conn,
@@ -733,18 +736,21 @@ class Broker:
                     ' FOR UPDATE',
                     (context.task_id, request.idempotency_key),
                 )
-                if existing is not None:
-                    repeated = await self._repeat(
-                        conn,
-                        existing,
-                        context,
-                        request,
-                        str(reference),
-                        handle,
-                    )
-                    return _created(repeated, handle), await _write(
-                        conn, 'secret_resolution_allowed', repeated
-                    )
+            # Lock the resolution before the task, as materialize and
+            # _finish do, so the two paths cannot deadlock.
+            await _check_task(conn, context)
+            if existing is not None:
+                repeated = await self._repeat(
+                    conn,
+                    existing,
+                    context,
+                    request,
+                    str(reference),
+                    handle,
+                )
+                return _created(repeated, handle), await _write(
+                    conn, 'secret_resolution_allowed', repeated
+                )
             decision = await evaluate(
                 conn,
                 context.organization_id,
@@ -996,6 +1002,7 @@ class Broker:
                     credential_class=decision.binding['credential_class'],
                     binding_id=decision.binding['id'],
                     repository=row.get('repository'),
+                    agent_id=row['agent_id'],
                 ),
             )
             now = datetime.datetime.now(datetime.UTC)

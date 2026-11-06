@@ -244,6 +244,7 @@ tasks:
       - 'scripts/docs_*.py'
       - 'apps/*/src/**/*.py'
       - 'libraries/common/src/**/*'
+      - 'plugins/*/src/**/*.py'
       - 'container/*'
 
   # Serve the docs locally with live reload.

@@ -11,6 +11,7 @@ export interface FormatRow {
   id: string
   label: string
   pattern: string
+  scheme?: null | string
 }
 
 // Built-in presets surfaced as toggleable rows in the version-format editor.
@@ -105,6 +106,7 @@ export function buildRows(formats: TagFormat[]): FormatRow[] {
         id: nextRowId(),
         label: f.label,
         pattern: f.pattern,
+        scheme: f.scheme,
       })
     }
   }
@@ -178,7 +180,9 @@ export function tagFormatHint(formats: TagFormat[]): string {
 export function toFormats(rows: FormatRow[]): TagFormat[] {
   return rows
     .filter((r) => r.enabled)
-    .map(({ label, pattern }) => ({ label, pattern }))
+    .map(({ label, pattern, scheme }) =>
+      scheme ? { label, pattern, scheme } : { label, pattern },
+    )
 }
 
 export function toggleAriaLabel(row: FormatRow): string {

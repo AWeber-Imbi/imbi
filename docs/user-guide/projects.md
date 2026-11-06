@@ -57,7 +57,7 @@ to share the list as you see it.
 |---|---|
 | **Project** | The name, the team, and the type. Click to sort by name |
 | **PRs** | Open pull requests. See [PR badges](#pr-badges). Click to sort |
-| **Drift** | One `Δ` badge for each kind of drift |
+| **Drift** | One `Δ` badge for each kind of drift. Click to sort by the oldest waiting change |
 | **Current Deployments & Releases** | For a deployable project: the version in each environment. For a release-only project: **Latest Commit** and **Current Release** |
 | **Score** | The project score, or **—** when it has no score. Click to sort |
 
@@ -84,6 +84,17 @@ See [Pull requests and dependencies](pull-requests-and-dependencies.md).
   to the **Deployments** tab, with the target environment selected.
 - `Δ C → R`: the project has commits after its latest release. Click it to
   go to the tab where you cut a release.
+
+Each badge also shows how long its oldest waiting change has waited, for
+example `Δ T → S 12d`. That is the oldest commit in the range that still
+needs action, counted from when it reached the default branch. For a
+merged pull request that is the merge, not the commits made on the
+branch. Commits that CI marked as not needing a deploy or a release do
+not count. Hover over the age to see the date. A badge with no age has
+no commit date, for example because Imbi could not read the commits.
+
+Sort by **Drift** to list the projects with the oldest waiting change first.
+Projects with no age come last in both directions.
 
 See [Drift](drift.md) for the rules.
 
@@ -144,8 +155,8 @@ that the tab needs.
 | **Overview** | Always | Details, attributes, environments, health score, and recent activity |
 | **Configuration** | The project has a configuration plugin | Configuration values from the plugin |
 | **Dependencies** | Always | The packages of the project. See [Pull requests and dependencies](pull-requests-and-dependencies.md) |
-| **Deployments** | A project type is deployable, the project has a deployment plugin, and at least one environment | Environments, promotion, and history. See [Releases and deployments](releases-and-deployments.md) |
-| **Releases** | A project type is releasable, none is deployable, and the project has a deployment plugin | Releases. See [Releases and deployments](releases-and-deployments.md) |
+| **Deployments** | The project is deployable (see [Delivery](#delivery)), has a deployment plugin, and at least one environment | Environments, promotion, and history. See [Releases and deployments](releases-and-deployments.md) |
+| **Releases** | The project is releasable (see [Delivery](#delivery)) and has a deployment plugin | Releases. See [Releases and deployments](releases-and-deployments.md) |
 | **Documents (N)** | Always | Project documents. See [Documents and reports](documents-and-reports.md) |
 | **Incidents** | The project has an incidents plugin | Incidents, for example from PagerDuty |
 | **Logs** | The project has a logs plugin | Logs, for example from Logz.io |
@@ -226,6 +237,25 @@ Links that an integration owns do not show here. The integration sets them.
 4. Click **Add**.
 
 To remove an environment, click its remove button and confirm.
+
+### Delivery
+
+**Releases and deployments** in the project settings says how Imbi ships
+the project. The default, **By project type**, follows the `deployable`
+or `releasable` flag of the project types: a deployable type gives the
+project the **Deployments** tab, otherwise a releasable type gives it the
+**Releases** tab. The other options override the project types for this
+one project:
+
+| Option | What it does |
+|---|---|
+| **By project type** | Follow the flags of the project types (default) |
+| **Deployable** | Deploy into environments and promote between them, whatever the types say |
+| **Releasable** | Cut tags and releases with no deploy step, whatever the types say |
+| **Disabled** | Turn release and deployment processing off. Neither tab shows, and the API refuses to deploy, promote, resync, draft release notes, or cut a release for the project |
+
+Use **Disabled** for a project whose releases are governed outside Imbi,
+for example a plugin with its own release process.
 
 ### Archive and restore
 

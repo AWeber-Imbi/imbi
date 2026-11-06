@@ -63,7 +63,7 @@ describe('NewTaskDialog', () => {
   it('says what is missing and lists enabled agents only', async () => {
     render(<NewTaskDialog isOpen onClose={vi.fn()} />)
     expect(
-      screen.getByText('Needs a description, an agent and a project.'),
+      screen.getByText('Needs a description and an agent.'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create task' })).toBeDisabled()
     expect(await screen.findAllByRole('radio')).toHaveLength(2)
@@ -107,6 +107,23 @@ describe('NewTaskDialog', () => {
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
       project_id: 'p-3',
       title: 'Fix the crash',
+    })
+  })
+
+  it('creates a task without a project', async () => {
+    const onClose = vi.fn()
+    render(<NewTaskDialog isOpen onClose={onClose} />)
+    fireEvent.change(screen.getByLabelText('What should the agent do?'), {
+      target: { value: 'Look for shell=True calls' },
+    })
+    fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+      agent_slug: 'forager',
+      description: 'Look for shell=True calls',
+      project_id: null,
+      title: 'Look for shell=True calls',
     })
   })
 })
