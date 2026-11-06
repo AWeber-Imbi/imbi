@@ -323,7 +323,10 @@ class SecretProviderHost(typing.Protocol):
         binding of the agent, never from a request.
 
         Raises:
-            identity.IdentityError: Core or the vendor refused.
+            BrokerError: Core or the vendor refused:
+                ``secret_provider_unavailable`` when a retry can work,
+                else ``secret_materialization_failed``. The reason is
+                the :class:`identity.IdentityError` reason.
 
         """
         ...

@@ -151,20 +151,12 @@ class AnthropicWif(secrets.SecretProvider):
             raise secrets.BrokerError('secret_field_not_allowed')
         if context.agent_id is None:
             raise secrets.BrokerError('secret_access_denied', 'no_agent')
-        try:
-            token = await self.host.vendor_token(
-                context.organization_id,
-                EXCHANGER,
-                locator,
-                agent_id=context.agent_id,
-            )
-        except identity.IdentityError as err:
-            raise secrets.BrokerError(
-                'secret_provider_unavailable'
-                if err.retryable
-                else 'secret_materialization_failed',
-                err.reason,
-            ) from None
+        token = await self.host.vendor_token(
+            context.organization_id,
+            EXCHANGER,
+            locator,
+            agent_id=context.agent_id,
+        )
         return secrets.Material(
             token.token.encode(),
             credential_expires_at=token.expires_at,

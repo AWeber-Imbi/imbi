@@ -96,6 +96,27 @@ class VendorTokenTestCase(secret_support.SecretCase):
             self.source.requests[-1].tags['imbi_agent'], self.agent
         )
 
+    async def test_broker_maps_refusals(self) -> None:
+        for fail, retryable, code in (
+            ('access_denied', False, 'secret_materialization_failed'),
+            ('throttled', True, 'secret_provider_unavailable'),
+        ):
+            error = contract.IdentityError(fail, retryable=retryable)
+            with (
+                self.subTest(code=code),
+                mock.patch.object(identity, 'vendor_token', side_effect=error),
+            ):
+                with self.assertRaises(providers.BrokerError) as ctx:
+                    await self.broker.vendor_token(
+                        self.db,
+                        self.org,
+                        self.exchanger,
+                        self.target,
+                        agent_id=self.agent,
+                    )
+                self.assertEqual(ctx.exception.code, code)
+                self.assertEqual(ctx.exception.reason, fail)
+
 
 class _Source(contract.IdentitySource):
     type = 'test_source'

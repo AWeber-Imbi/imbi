@@ -32,15 +32,25 @@ def use_plugin_providers(case: unittest.TestCase) -> None:
     from imbi.plugins.github.secret_provider import GitHubApp
 
     host = providers._Host()  # pyright: ignore[reportPrivateUsage]
-    patcher = mock.patch.dict(
-        providers.PROVIDERS,
-        {
-            'aws_secrets_manager': AwsSecretsManager(host),
-            'github_app': GitHubApp(host),
-        },
-    )
-    patcher.start()
-    case.addCleanup(patcher.stop)
+    # Start from these providers only: a registry that an earlier test
+    # loaded must not add more types.
+    for patcher in (
+        mock.patch.dict(
+            providers.PROVIDERS,
+            {
+                'fake': providers.PROVIDERS['fake'],
+                'aws_secrets_manager': AwsSecretsManager(host),
+                'github_app': GitHubApp(host),
+            },
+            clear=True,
+        ),
+        mock.patch.dict(providers._LOADED, clear=True),  # pyright: ignore[reportPrivateUsage]
+        mock.patch.object(
+            providers.plugin_registry, 'list_plugins', return_value=[]
+        ),
+    ):
+        patcher.start()
+        case.addCleanup(patcher.stop)
 
 
 class SecretCase(unittest.IsolatedAsyncioTestCase):

@@ -219,11 +219,9 @@ class _Host:
         agent_id: str,
     ) -> AccessToken:
         from imbi.api import secret_broker
-        from imbi.api.secret_broker import identity, store
 
-        return await identity.vendor_token(
+        return await secret_broker.get_broker().vendor_token(
             self.graph(),
-            store.SecretStore(secret_broker.get_broker().pool),
             organization_id,
             exchanger,
             target,

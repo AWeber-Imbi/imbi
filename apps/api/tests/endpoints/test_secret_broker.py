@@ -160,10 +160,9 @@ class SecretEndpointTestCase(
             {p['name'] for p in response.json()}, {'fake', 'aws-prod'}
         )
         response = await self.client.get(self.base + '/secret-providers/types')
-        # A loaded plugin registry adds more types (anthropic_wif).
-        self.assertLessEqual(
-            {'fake', 'aws_secrets_manager', 'github_app'},
+        self.assertEqual(
             {t['type'] for t in response.json()},
+            {'fake', 'aws_secrets_manager', 'github_app'},
         )
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)

@@ -160,22 +160,7 @@ class ProviderTestCase(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(secrets.BrokerError) as ctx:
                     await self._resolve(**kwargs)
                 self.assertEqual(ctx.exception.code, code)
-        for error, code in (
-            (
-                identity.IdentityError('exchange_refused'),
-                'secret_materialization_failed',
-            ),
-            (
-                identity.IdentityError('throttled', retryable=True),
-                'secret_provider_unavailable',
-            ),
-        ):
-            with self.subTest(code=code):
-                self.host.vendor_token.side_effect = error
-                with self.assertRaises(secrets.BrokerError) as ctx:
-                    await self._resolve()
-                self.assertEqual(ctx.exception.code, code)
-                self.assertEqual(ctx.exception.reason, error.reason)
+        self.host.vendor_token.assert_not_awaited()
 
     def test_config_and_locator(self) -> None:
         self.assertEqual(self.provider.validate_config({}), {})
