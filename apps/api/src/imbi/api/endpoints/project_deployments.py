@@ -979,9 +979,11 @@ async def _compare_refs(
 ) -> CompareResult:
     """``handler.compare`` with the source host's failures mapped to HTTP.
 
-    A ref the host does not have is the caller's input, so it answers
-    422 (GitHub: 404, or 422 for a ref it cannot parse).  Any other host
-    or transport failure is the host failing to answer: 503.
+    The host refusing this comparison is a 422, because a retry gets the
+    same answer: GitHub's 404 (a ref, or the repo, it cannot find) or 422
+    (a comparison it will not compute).  Any other host or transport
+    failure is the host failing to answer: 503, with the host's
+    ``Retry-After`` when it sends one.
     """
     try:
         return await call_with_timeout(
@@ -990,12 +992,16 @@ async def _compare_refs(
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status in (404, 422):
+            # GitHub's 404 body is the same "Not Found" for a missing ref,
+            # a malformed ref, and an unreachable repo.
+            reason = (
+                'the source host does not have one of these refs'
+                if status == 404
+                else 'the source host rejected the comparison'
+            )
             raise fastapi.HTTPException(
                 status_code=422,
-                detail=(
-                    f'Cannot compare {base}...{head}: the source host '
-                    'does not have one of these refs'
-                ),
+                detail=f'Cannot compare {base}...{head}: {reason}',
             ) from exc
         LOGGER.warning(
             'compare %s...%s for project=%s failed with %s',
@@ -1004,11 +1010,14 @@ async def _compare_refs(
             ctx.project_id,
             status,
         )
+        retry_after = exc.response.headers.get('retry-after', '')
         raise fastapi.HTTPException(
             status_code=503,
             detail=f'Could not reach the source host to compare {base}...'
             f'{head}',
-            headers={'Retry-After': '5'},
+            headers={
+                'Retry-After': retry_after if retry_after.isdigit() else '5'
+            },
         ) from exc
     except httpx.HTTPError as exc:
         LOGGER.warning(

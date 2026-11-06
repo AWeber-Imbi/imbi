@@ -520,8 +520,12 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             _FailingCompare
         )
 
-    def test_compare_unknown_ref_is_422(self) -> None:
-        for status in (404, 422):
+    def test_compare_refused_by_source_host_is_422(self) -> None:
+        reasons = {
+            404: 'does not have one of these refs',
+            422: 'rejected the comparison',
+        }
+        for status, reason in reasons.items():
             with self.subTest(status=status):
                 self._fail_compare(_http_status_error(status))
                 with testclient.TestClient(self.test_app) as client:
@@ -530,7 +534,28 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                         'compare?base=9.9.9&head=v2'
                     )
                 self.assertEqual(response.status_code, 422)
-                self.assertIn('9.9.9...v2', response.json()['detail'])
+                detail = response.json()['detail']
+                self.assertIn('9.9.9...v2', detail)
+                self.assertIn(reason, detail)
+
+    def test_compare_forwards_source_host_retry_after(self) -> None:
+        request = httpx.Request('GET', 'https://api.github.test/compare/x')
+        self._fail_compare(
+            httpx.HTTPStatusError(
+                'HTTP 403',
+                request=request,
+                response=httpx.Response(
+                    403, request=request, headers={'Retry-After': '60'}
+                ),
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'compare?base=v1&head=v2'
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.headers['retry-after'], '60')
 
     def test_compare_source_host_failure_is_503(self) -> None:
         failures: tuple[BaseException, ...] = (
