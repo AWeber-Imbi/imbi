@@ -518,10 +518,10 @@ class TaskRun:
         self.control = 'run'
         self.closed = False
         self.remaining: decimal.Decimal | None = None
-        #: Usage reports sent and the newest one applied. A late reply
-        #: from an older report must not restore a spent budget.
-        self.reports_sent = 0
-        self.report_applied = 0
+        #: ``last_seq`` of the newest task state applied. Each usage
+        #: report writes an event, so ``last_seq`` gives server order. A
+        #: late reply with an older state must not restore a spent budget.
+        self.state_seq = 0
         self.failure: str | None = None
         self.client: sdk.ClaudeSDKClient | None = None
         self.stopping: asyncio.Task[None] | None = None
@@ -674,7 +674,14 @@ class TaskRun:
         LOGGER.info('Task %s ended: %s %s', self.api.short_id, kind, reason)
 
     def _state(self, state: Body) -> None:
-        """Apply a task state from a heartbeat or a usage report."""
+        """Apply a task state from a heartbeat or a usage report. Ignore
+        a state that is older (by ``last_seq``) than one already applied.
+        """
+        if 'last_seq' in state:
+            seq = int(state['last_seq'] or 0)
+            if seq < self.state_seq:
+                return
+            self.state_seq = seq
         self.state = {**self.state, **state}
         control = str(state.get('control') or self.control)
         if control != self.control or state.get('status') == 'closed':
@@ -767,8 +774,6 @@ class TaskRun:
             'cache_write_tokens': count('cache_creation_input_tokens'),
             'session_id': self.session_id,
         }
-        self.reports_sent += 1
-        generation = self.reports_sent
         for attempt in range(3):
             try:
                 reply = await self.api.report_usage(body)
@@ -780,9 +785,7 @@ class TaskRun:
                     self._state({'status': 'closed'})
                     return
                 raise
-            if generation > self.report_applied:
-                self.report_applied = generation
-                self._state(reply['task'])
+            self._state(reply['task'])
             return
         raise RuntimeError('usage report failed')
 

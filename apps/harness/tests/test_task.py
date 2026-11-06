@@ -719,10 +719,13 @@ class UsageTestCase(TaskTestCase):
         await self.run_task.stopping
         self.run_task.client.interrupt.assert_awaited_once()
 
-    async def test_late_reply_does_not_restore_the_budget(self) -> None:
+    async def late_reply(
+        self, first: dict[str, typing.Any], second: dict[str, typing.Any]
+    ) -> None:
+        """Send two reports. The reply to the first arrives last."""
         first_sent = asyncio.Event()
         release_first = asyncio.Event()
-        replies = [self.reply(), self.reply(budget_remaining='0')]
+        replies = [first, second]
 
         async def post(*_args: typing.Any, **_kwargs: typing.Any) -> mock.Mock:
             reply = replies.pop(0)
@@ -735,9 +738,22 @@ class UsageTestCase(TaskTestCase):
         older = asyncio.create_task(self.run_task.report('m', {}))
         await first_sent.wait()
         await self.run_task.report('m', {})
-        self.assertFalse(self.run_task.allowed())
         release_first.set()
         await older
+
+    async def test_late_reply_does_not_restore_the_budget(self) -> None:
+        await self.late_reply(
+            self.reply(last_seq=1),
+            self.reply(last_seq=2, budget_remaining='0'),
+        )
+        self.assertFalse(self.run_task.allowed())
+
+    async def test_late_reply_with_newer_state_is_applied(self) -> None:
+        # The server did the first report last: its state is the newest.
+        await self.late_reply(
+            self.reply(last_seq=2, budget_remaining='0'),
+            self.reply(last_seq=1),
+        )
         self.assertFalse(self.run_task.allowed())
 
     async def test_closed_task(self) -> None:
