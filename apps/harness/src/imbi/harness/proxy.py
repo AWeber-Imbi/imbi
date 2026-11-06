@@ -78,6 +78,9 @@ _DROP = frozenset(
         'x-api-key',
     }
 )
+_BETA = 'anthropic-beta'
+#: The API beta that enables ``Authorization: Bearer`` access tokens.
+_OAUTH_BETA = 'oauth-2025-04-20'
 #: The largest request body. The Anthropic Messages API takes requests
 #: of up to 32 MB, which images and long contexts can reach; a larger
 #: body cannot succeed upstream.
@@ -313,6 +316,17 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             headers['x-api-key'] = key.value
         if key.bearer or server.litellm:
             headers['Authorization'] = f'Bearer {key.value}'
+        if key.bearer:
+            # The API accepts a bearer access token only with this beta.
+            flags = [
+                flag.strip()
+                for name in [n for n in headers if n.lower() == _BETA]
+                for flag in headers.pop(name).split(',')
+                if flag.strip()
+            ]
+            if _OAUTH_BETA not in flags:
+                flags.append(_OAUTH_BETA)
+            headers[_BETA] = ','.join(flags)
         connection_class = (
             http.client.HTTPSConnection
             if server.upstream.scheme == 'https'

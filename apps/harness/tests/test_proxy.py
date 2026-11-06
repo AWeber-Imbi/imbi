@@ -346,6 +346,28 @@ class MeterTestCase(unittest.TestCase):
         (headers,) = _Model.calls
         self.assertEqual(headers['authorization'], 'Bearer sk-ant-oat01-t')
         self.assertNotIn('x-api-key', headers)
+        self.assertEqual(headers['anthropic-beta'], 'oauth-2025-04-20')
+
+    def test_access_token_keeps_the_client_betas(self) -> None:
+        token = proxy.Credential('t', None, bearer=True)
+        url = self.start(key=lambda: token)
+        for path in ('/v1/messages', '/v1/messages/count_tokens'):
+            request = urllib.request.Request(
+                url + path,
+                data=b'{"model": "m"}',
+                headers={'anthropic-beta': 'a-1, oauth-2025-04-20,b-2'},
+            )
+            with urllib.request.urlopen(request) as response:
+                response.read()
+        self.assertEqual(
+            [headers['anthropic-beta'] for headers in _Model.calls],
+            ['a-1,oauth-2025-04-20,b-2'] * 2,
+        )
+
+    def test_api_key_gets_no_beta(self) -> None:
+        self.post(self.start(), {'model': 'm'})
+        (headers,) = _Model.calls
+        self.assertNotIn('anthropic-beta', headers)
 
     def test_401_refreshes_and_sends_again_once(self) -> None:
         expires = datetime.datetime.now(datetime.UTC)
