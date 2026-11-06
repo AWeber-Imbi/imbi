@@ -12,6 +12,7 @@ __all__ = [
     'aclose',
     'as_utc',
     'as_utc_or_none',
+    'command',
     'initialize',
     'iso_utc',
     'query',
@@ -144,6 +145,27 @@ async def setup_schema() -> None:
 async def aclose() -> None:
     """Close any open connections to Clickhouse."""
     await client.Clickhouse.get_instance().aclose()
+
+
+async def command(
+    sql: str, parameters: dict[str, typing.Any] | None = None
+) -> None:
+    """Execute a DDL or DML statement against the Clickhouse database.
+
+    Use this rather than :func:`query` for DDL and DML such as a
+    lightweight ``DELETE``: the response body is ignored, so a statement
+    that returns no rows (or a per-host status row) does not break the
+    row mapping :func:`query` applies.
+
+    Args:
+       sql: SQL statement string, possibly with parameter placeholders
+       parameters: Optional dictionary of parameter values
+
+    Raises:
+       DatabaseError: If there's an error executing the statement
+    """
+    clickhouse = client.Clickhouse.get_instance()
+    await clickhouse.command(sql, parameters=parameters)
 
 
 async def query(
