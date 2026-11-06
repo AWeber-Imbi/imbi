@@ -421,6 +421,23 @@ Defines the agent harness that runs agent tasks, and a secrets broker in imbi-ap
 
 ---
 
+#### [ADR 0023: Realtime Channel Between the UI and the Services](adr/0023-realtime-channel.md)
+
+*Date: 2026-10-23 | Status: Proposed*
+
+Adds one WebSocket per browser tab so open pages learn about changes made by other people, agents, webhooks, and jobs, and so the UI can show presence.
+
+**Key Decisions:**
+
+- Browsers subscribe to topics scoped by organization; each topic type names the permission its REST read needs
+- Events carry identifiers only; the browser refetches through REST, so every existing query can become live
+- Writers in any service publish through `imbi.common.realtime` to Valkey pub/sub; each imbi-api process holds one subscriber
+- No sticky sessions; reconnects resubscribe and refetch, and sockets close at token expiry and with `1012` on shutdown
+- Presence moves from the HTTP heartbeat onto the socket; one 30-second refresh replaces per-feature polling while the socket is down
+- External state such as GitHub deploy runs is watched once on the server, not by each browser
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
