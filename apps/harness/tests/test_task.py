@@ -585,6 +585,32 @@ class KeyRefreshTestCase(TaskTestCase):
         self.assertTrue(420 <= sleeps[1] <= 481, sleeps[1])
         self.assertEqual(sleeps[2], 1.0)
 
+    async def test_waits_after_renewal_to_expired_token(self) -> None:
+        self.call.side_effect = [
+            ValueError('partial reply'),
+            self.token('t2', 0),
+        ]
+        self.run_task.credential = proxy.Credential(
+            't1', datetime.datetime.now(datetime.UTC)
+        )
+        sleeps: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) > 2:
+                raise asyncio.CancelledError
+
+        with (
+            mock.patch.object(task.asyncio, 'sleep', sleep),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+        self.assertEqual(self.run_task.credential.value, 't2')
+        # Expired: at once. A decode error: 1 second. The new token
+        # is expired too: wait the minimum.
+        self.assertEqual(sleeps, [0.0, 1.0, task.KEY_RENEW_MIN])
+
     async def test_static_key_is_not_renewed(self) -> None:
         self.run_task.credential = proxy.Credential(KEY)
         await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]

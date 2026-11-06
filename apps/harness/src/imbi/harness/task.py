@@ -63,6 +63,8 @@ RESOLUTION_TTL = 300
 KEY_REFRESH_LEAD = 300.0
 #: The longest wait between two failed refreshes.
 KEY_RETRY_MAX = 30.0
+#: The shortest wait between two successful refreshes.
+KEY_RENEW_MIN = 30.0
 ANTHROPIC_API = 'https://api.anthropic.com'
 #: The built-in tools when the organization allows all of them. The
 #: runner uses ``dontAsk``, so a tool must be listed to run: the CLI's
@@ -717,20 +719,28 @@ class TaskRun:
     def meter(self, model: str, usage: Body) -> None:
         """Report one model call (proxy thread). Wait for the reply, so
         the next call sees the new budget."""
-        self._wait_on_loop(self.report(model, usage), 'Usage report')
+        self._wait_on_loop(
+            self.report(model, usage), 'Usage report', cancel=False
+        )
 
     def _wait_on_loop(
-        self, coro: abc.Coroutine[typing.Any, typing.Any, None], what: str
+        self,
+        coro: abc.Coroutine[typing.Any, typing.Any, None],
+        what: str,
+        *,
+        cancel: bool = True,
     ) -> None:
         """Run ``coro`` on the task loop from a proxy thread and wait
         for it. A failure or a timeout is only logged: the proxy thread
-        must go on."""
+        must go on. Without ``cancel``, a timed-out ``coro`` continues
+        on the loop (a usage report must not be lost)."""
         assert self.loop is not None  # noqa: S101 - set by run()
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         try:
             future.result(timeout=60)
         except Exception:  # noqa: BLE001 - the proxy thread must go on
-            future.cancel()
+            if cancel:
+                future.cancel()
             LOGGER.warning('%s of %s failed', what, self.api.short_id)
 
     async def report(self, model: str, usage: Body) -> None:
@@ -813,20 +823,24 @@ class TaskRun:
         4.6): at the lesser of :data:`KEY_REFRESH_LEAD` and 20 percent
         of its lifetime before the expiry, with a jitter of at most
         half of that lead. Retry a failed renewal with bounded backoff.
-        Task cancellation stops it."""
+        Wait at least :data:`KEY_RENEW_MIN` after a renewal, also when
+        the new token is near its expiry. Task cancellation stops it."""
+        floor = 0.0
         while (expires_at := self.credential.expires_at) is not None:
             lifetime = (
                 expires_at - datetime.datetime.now(datetime.UTC)
             ).total_seconds()
             lead = min(KEY_REFRESH_LEAD, 0.2 * max(lifetime, 0.0))
             await asyncio.sleep(
-                max(lifetime - lead - random.uniform(0, lead / 2), 0.0)  # noqa: S311 - jitter, not a secret
+                max(lifetime - lead - random.uniform(0, lead / 2), floor)  # noqa: S311 - jitter, not a secret
             )
+            floor = KEY_RENEW_MIN
             delay = 1.0
             while self.credential.expires_at == expires_at:
                 try:
                     await self.renew_key()
-                except (Failed, httpx.HTTPError) as err:
+                # ValueError: a partial JSON reply from the executor.
+                except (Failed, httpx.HTTPError, ValueError) as err:
                     LOGGER.warning(
                         'Model key renewal of %s failed: %s',
                         self.api.short_id,
