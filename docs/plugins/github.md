@@ -31,6 +31,12 @@ It can do these things:
 | `pr-sync` | Pull request sync | On | Project-scoped |
 | `analysis` | Project doctor | On | Project-scoped |
 
+An on-demand pull request sync also removes the project's open pull
+requests that the repository no longer lists, such as one filed under the
+project from another repository. Closed and merged pull requests are kept.
+It only does this when the project's repository link names the repository
+and the listing was complete, and it logs each pull request it removes.
+
 ## Configuration
 
 ### Options

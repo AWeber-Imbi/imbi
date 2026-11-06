@@ -30,7 +30,7 @@ import httpx
 import jsonpointer
 import pydantic
 
-from imbi.common import iggy
+from imbi.common import clickhouse, iggy
 from imbi.common.json_pointer import JsonPointer
 from imbi.common.models import PullRequestRecord
 from imbi.common.plugins.base import (
@@ -40,7 +40,12 @@ from imbi.common.plugins.base import (
 )
 from imbi.plugins.github._app_auth import AppNotInstalledError
 from imbi.plugins.github._hosts import host_to_api_base
-from imbi.plugins.github._repos import resolve_owner_repo
+from imbi.plugins.github._repos import (
+    RepositoryTarget,
+    parse_owner_repo,
+    resolve_owner_repo,
+    resolve_repository_target,
+)
 from imbi.plugins.github.commits import (
     _BACKFILL_MAX_WAIT_SECONDS,  # pyright: ignore[reportPrivateUsage]
     _client,  # pyright: ignore[reportPrivateUsage]
@@ -66,6 +71,38 @@ _MAX_HISTORY_PAGES = 100
 # fires when new commits are pushed to the PR branch (title/state may
 # also change).
 _SYNC_ACTIONS = frozenset({'opened', 'closed', 'reopened', 'synchronize'})
+# Stale rows: the project's ``open`` rows on the synced host that a
+# complete listing didn't return.  Only ``open`` rows, because that is
+# the symptom (a PR stuck open forever); closed and merged history
+# stays even when the listing no longer has it, e.g. after the project
+# moves to a new repository.  The ``url`` prefix limits it to the synced
+# host: a project can bind more than one pr-sync Integration.
+# ``cutoff`` spares rows recorded during (or just before) the sync.
+_SELECT_STALE_SQL = (
+    'SELECT pr_id, url FROM pull_requests FINAL '
+    'WHERE project_id = {project_id:String} '
+    "AND state = 'open' "
+    'AND startsWith(url, {url_prefix:String}) '
+    "AND recorded_at < {cutoff:DateTime64(3, 'UTC')}"
+)
+_DELETE_STALE_SQL = (
+    'DELETE FROM pull_requests '
+    'WHERE project_id = {project_id:String} '
+    'AND startsWith(url, {url_prefix:String}) '
+    "AND recorded_at < {cutoff:DateTime64(3, 'UTC')}"
+)
+# ``cutoff`` is typed ``DateTime64(3, 'UTC')``: clickhouse-connect formats
+# a bound datetime in the zone its placeholder type names, so the text and
+# the type agree on any server.  Without the zone the text is server-local
+# wall time, which is ambiguous for an hour when DST falls back.
+# ``recorded_at`` is stamped by whichever host wrote the row (this
+# worker, or the gateway for webhook rows), so back the cutoff off to
+# absorb clock skew and GitHub's listing lag.  Stale rows are old.
+_PRUNE_MARGIN = datetime.timedelta(minutes=5)
+# Each bound array goes to ClickHouse as one HTTP field, capped at
+# 128 KiB by default.  A full 10k-PR listing in one array overruns it,
+# so the listed IDs are split across arrays of at most this many.
+_PRUNE_CHUNK_SIZE = 1000
 
 
 def _parse_pr_datetime(value: object) -> datetime.datetime | None:
@@ -124,13 +161,18 @@ async def _fetch_all_prs(
     client: httpx.AsyncClient,
     *,
     max_wait: float,
-) -> list[dict[str, typing.Any]]:
-    """Walk ``GET /pulls?state=all`` and return every PR object.
+) -> tuple[list[dict[str, typing.Any]], bool]:
+    """Walk ``GET /pulls?state=all`` and return ``(prs, complete)``.
 
     GitHub's list-PRs endpoint omits ``additions``, ``deletions``, and
     ``changed_files``; backfill rows store ``0`` for those fields.
     Caps at ``_MAX_HISTORY_PAGES`` pages (10k PRs) so a repo with a very
     large PR history can't pin the worker indefinitely.
+
+    ``complete`` is ``False`` when any page returns 404, a next-page
+    link can't be followed, or the page cap is reached, so the caller
+    knows the listing may be missing PRs.  Only a page with no next
+    link (or an empty page) ends the listing as complete.
     """
     out: list[dict[str, typing.Any]] = []
     params: dict[str, str] = {'state': 'all', 'per_page': '100'}
@@ -152,7 +194,7 @@ async def _fetch_all_prs(
                     'or removed); nothing to sync',
                     str(client.base_url).rstrip('/'),
                 )
-            return out
+            return out, False
         resp.raise_for_status()
         page: list[dict[str, typing.Any]] = resp.json()
         if not page:
@@ -163,7 +205,13 @@ async def _fetch_all_prs(
             break
         next_page = _query_param(next_url, 'page')
         if next_page is None:
-            break
+            LOGGER.warning(
+                'github-pr-sync: next-page link without a page param '
+                '(%s); stopping after %d PRs',
+                next_url,
+                len(out),
+            )
+            return out, False
         params['page'] = next_page
     else:
         LOGGER.warning(
@@ -171,7 +219,102 @@ async def _fetch_all_prs(
             'history may be truncated',
             _MAX_HISTORY_PAGES,
         )
-    return out
+        return out, False
+    return out, True
+
+
+def _is_repository_link(
+    ctx: PluginContext, host: str, target: RepositoryTarget
+) -> bool:
+    """Whether ``target`` came from the project's repository link.
+
+    ``resolve_repository_target`` also accepts any other same-host
+    link, which may name some other repo.  Only the Integration's own
+    link key or ``github-repository`` says which repo this project is.
+    """
+    for key in (ctx.integration_slug, 'github-repository'):
+        url = ctx.project_links.get(key) if key else None
+        if url is None:
+            continue
+        if parse_owner_repo(url, host.lower()) == (target.owner, target.repo):
+            return True
+    return False
+
+
+def _id_arrays(
+    parameters: dict[str, typing.Any], prefix: str, ids: list[str]
+) -> list[str]:
+    """Bind ``ids`` as arrays of at most ``_PRUNE_CHUNK_SIZE``.
+
+    Returns the placeholder for each array, e.g.
+    ``{prefix_0:Array(String)}``.
+    """
+    placeholders: list[str] = []
+    for offset in range(0, len(ids), _PRUNE_CHUNK_SIZE):
+        name = f'{prefix}_{offset // _PRUNE_CHUNK_SIZE}'
+        parameters[name] = ids[offset : offset + _PRUNE_CHUNK_SIZE]
+        placeholders.append(f'{{{name}:Array(String)}}')
+    return placeholders
+
+
+async def _prune_stale_prs(
+    project_id: str,
+    host: str,
+    started_at: datetime.datetime,
+    pr_ids: list[str],
+) -> int:
+    """Delete ``project_id``'s stale ``open`` rows on ``host``.
+
+    A row is stale when its ``pr_id`` is not in ``pr_ids`` (the complete
+    listing) and it was recorded before ``started_at`` less
+    ``_PRUNE_MARGIN``.  The stale rows are selected and logged first,
+    and only those ``pr_id``s are deleted, so the log says exactly what
+    was removed and a sync with nothing stale issues no mutation.
+
+    Returns the number of PRs deleted.  Best-effort: a failure is logged
+    and swallowed so a ClickHouse problem never fails the sync.
+    """
+    parameters: dict[str, typing.Any] = {
+        'project_id': project_id,
+        'url_prefix': f'https://{host.lower()}/',
+        # clickhouse-connect formats a plain ``datetime`` to whole
+        # seconds; the ``_64`` suffix binds it as ``cutoff`` with its
+        # fractional seconds kept.
+        'cutoff_64': started_at - _PRUNE_MARGIN,
+    }
+    select = _SELECT_STALE_SQL + ''.join(
+        f' AND pr_id NOT IN {placeholder}'
+        for placeholder in _id_arrays(parameters, 'listed', pr_ids)
+    )
+    try:
+        rows = await clickhouse.query(select, parameters)
+        if not rows:
+            return 0
+        stale = sorted(str(row['pr_id']) for row in rows)
+        LOGGER.warning(
+            'github-pr-sync: removing %d stale open PR row(s) for project '
+            '%s that %s no longer lists: %s',
+            len(stale),
+            project_id,
+            host,
+            ', '.join(sorted(str(row['url']) for row in rows)),
+        )
+        delete = _DELETE_STALE_SQL + (
+            ' AND ('
+            + ' OR '.join(
+                f'pr_id IN {placeholder}'
+                for placeholder in _id_arrays(parameters, 'stale', stale)
+            )
+            + ')'
+        )
+        await clickhouse.command(delete, parameters)
+    except Exception:
+        LOGGER.exception(
+            'github-pr-sync: failed to remove stale PR rows for project %s',
+            project_id,
+        )
+        return 0
+    return len(stale)
 
 
 class SyncPRsConfig(pydantic.BaseModel):
@@ -310,9 +453,23 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         PAT-or-App resolution the webhook actions use.
 
         Walks every PR in the repo (``state=all``, paginated) and upserts
-        into the ClickHouse ``pull_requests`` table.
-        ``ReplacingMergeTree`` dedupes against rows the webhook already
-        recorded, so re-running is safe.
+        into the ClickHouse ``pull_requests`` table, then reconciles: it
+        deletes the project's ``open`` rows on this host whose ``pr_id``
+        GitHub did not return, so a PR filed under the project from
+        another repository doesn't stay open forever.  Closed and merged
+        rows are never deleted, and neither are rows from another host
+        (a second pr-sync Integration) or rows recorded less than
+        ``_PRUNE_MARGIN`` before the sync started.  A PR GitHub returned
+        with an ``id`` keeps its row even when it is too malformed to
+        record.  The rows deleted are logged.
+
+        The reconcile is skipped when the listing may be incomplete (a
+        404 on any page, a next link it can't follow, or the page cap),
+        when the GitHub App is not installed, and when the repo did not
+        come from the project's repository link (the Integration's link
+        key or ``github-repository``).  It runs whether or not the
+        publish succeeded, and a ClickHouse failure is logged and
+        swallowed.
 
         ``additions``, ``deletions``, and ``changed_files`` are ``0`` for
         backfill rows (GitHub's list-PRs API omits them); they are
@@ -338,7 +495,8 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
                 'on-demand sync: set the Integration flavor/host'
             )
         base = host_to_api_base(host)
-        owner, repo = resolve_owner_repo(ctx, host, _SELF_SLUG)
+        target = resolve_repository_target(ctx, host, _SELF_SLUG)
+        owner, repo = target.owner, target.repo
         try:
             token = await _resolve_bearer(credentials, base, owner, repo)
         except AppNotInstalledError as exc:
@@ -348,8 +506,9 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
                 ctx.project_id,
             )
             return 0
+        started_at = datetime.datetime.now(datetime.UTC)
         async with _client(base, owner, repo, token) as client:
-            raw_prs = await _fetch_all_prs(
+            raw_prs, complete = await _fetch_all_prs(
                 client, max_wait=_BACKFILL_MAX_WAIT_SECONDS
             )
         records: list[pydantic.BaseModel] = []
@@ -357,6 +516,13 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
             record = _pr_record(pr, project_id=ctx.project_id)
             if record is not None:
                 records.append(record)
-        return await _publish_best_effort(
+        recorded = await _publish_best_effort(
             'pull_requests', records, ctx.project_id
         )
+        # Only the project's repository link is authoritative enough to
+        # delete against; another same-host link or a project-type/slug
+        # guess may name some other repo entirely.
+        if complete and _is_repository_link(ctx, host, target):
+            pr_ids = [str(pr['id']) for pr in raw_prs if pr.get('id')]
+            await _prune_stale_prs(ctx.project_id, host, started_at, pr_ids)
+        return recorded

@@ -273,6 +273,41 @@ class QueryTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class CommandTestCase(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        clickhouse.client.Clickhouse._instance = None
+
+    async def test_command_success(self) -> None:
+        """Test command forwards the statement and parameters."""
+        mock_ch = mock.AsyncMock()
+
+        with mock.patch.object(
+            clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=mock_ch,
+        ):
+            result = await clickhouse.command('DELETE ...', {'a': 1})
+
+        self.assertIsNone(result)
+        mock_ch.command.assert_called_once_with(
+            'DELETE ...', parameters={'a': 1}
+        )
+
+    async def test_command_without_parameters(self) -> None:
+        """Test command without parameters forwards ``None``."""
+        mock_ch = mock.AsyncMock()
+
+        with mock.patch.object(
+            clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=mock_ch,
+        ):
+            await clickhouse.command('DELETE ...')
+
+        mock_ch.command.assert_called_once_with('DELETE ...', parameters=None)
+
+
 class SchemataQueryModelTestCase(unittest.TestCase):
     def test_schemata_query_model(self) -> None:
         """Test SchemataQuery model is accessible from module."""

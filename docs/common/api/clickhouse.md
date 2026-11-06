@@ -12,6 +12,8 @@ GDPR-compliant data handling.
 The client does not write rows. Every analytics row is published to Apache
 Iggy and written to ClickHouse by the sink, as
 [ADR 0019](../../api/adr/0019-apache-iggy-message-streaming.md) describes.
+`command()` runs DDL and deletes, such as a lightweight `DELETE`, not row
+inserts.
 
 ## Basic Usage
 
@@ -225,6 +227,8 @@ hashed = privacy.hash_ip_address("192.168.1.100")
 ### Query Operations
 
 ::: imbi.common.clickhouse.query
+
+::: imbi.common.clickhouse.command
 
 ### Client
 

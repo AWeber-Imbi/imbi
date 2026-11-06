@@ -88,6 +88,35 @@ credential in one of two modes, resolved per call:
   from the pushed repository (`GET /repos/{owner}/{repo}/installation`).
   The App needs **Contents: Read-only**.
 
+### Pull request history sync
+
+`GitHubPullRequestSync.sync_all_history` is the on-demand `pr-sync`
+backfill. It walks `GET /repos/{owner}/{repo}/pulls?state=all` (up to 100
+pages of 100) and publishes a `pull_requests` row for every PR.
+
+After a complete walk it reconciles: it deletes the project's `open` rows
+on the synced host whose `pr_id` GitHub did not list, so a PR filed under
+the project from another repository does not stay `open` forever. It
+selects those rows first, logs their URLs, and deletes exactly those
+`pr_id`s; a sync with nothing stale issues no delete.
+
+It never deletes:
+
+- closed or merged rows, so PR history survives a move to a new
+  repository;
+- rows on another host, from a second `pr-sync` Integration;
+- rows recorded less than five minutes before the sync started, which
+  covers webhook rows written during the sync and clock skew between
+  hosts;
+- the row of a PR GitHub lists but is too malformed to record.
+
+The reconcile is skipped when the listing may be incomplete (a 404 on any
+page, a next link it cannot follow, or the page cap), when the GitHub App
+is not installed for the repository, and when the repository did not come
+from the project's repository link (the Integration's link key or
+`github-repository`). It runs even if the publish failed, and a
+ClickHouse failure is logged and does not fail the sync.
+
 ## Integration options
 
 Asked once per Integration and delivered to every capability on
