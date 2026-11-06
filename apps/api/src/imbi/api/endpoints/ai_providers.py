@@ -177,7 +177,7 @@ class DiscoveryResponse(pydantic.BaseModel):
 
 
 def auth_kind(
-    driver: str, has_credentials: bool, workload_identity: bool = False
+    driver: str, has_credentials: bool, workload_identity: bool
 ) -> AuthKind:
     """Derive how a provider authenticates.
 
@@ -752,22 +752,19 @@ async def _discover_with_token(
     node: models.AIProvider,
     base_url: str | None,
 ) -> list[discovery.DiscoveredModel]:
-    """List models with a workload identity token.
-
-    After a ``401`` the token is dropped from the cache and the call
-    runs one more time with a new token.
-    """
-    for attempt in (1, 2):
-        token = await tokens.CACHE.get(secrets, node)
-        try:
-            return await discovery.list_models(
-                node.driver, token, base_url, bearer=True
-            )
-        except discovery.DiscoveryError as exc:
-            if exc.status != http.HTTPStatus.UNAUTHORIZED or attempt == 2:
-                raise
-            tokens.CACHE.invalidate(node.id, token)
-    raise AssertionError('unreachable')
+    """List models with a workload identity token (one retry after a
+    ``401``)."""
+    return await tokens.CACHE.call(
+        secrets,
+        node,
+        lambda token: discovery.list_models(
+            node.driver, token, base_url, bearer=True
+        ),
+        lambda exc: (
+            isinstance(exc, discovery.DiscoveryError)
+            and exc.status == http.HTTPStatus.UNAUTHORIZED
+        ),
+    )
 
 
 @ai_providers_router.put(
@@ -866,6 +863,7 @@ async def delete_ai_provider_workload_identity(
     _ = auth
     node = await fetch_provider(db, id)
     node.workload_identity = None
+    tokens.CACHE.forget(id)
     LOGGER.info('Removed workload identity for AI provider %s', id)
     counts = await model_counts(db)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))

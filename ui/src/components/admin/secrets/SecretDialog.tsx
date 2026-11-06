@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { parseObject } from '@/lib/utils'
 
 /**
  * One form field. `list` is comma separated text sent as a string
@@ -226,20 +227,6 @@ function initialValue(
   if (field.kind === 'list') return (value as string[]).join(', ')
   if (field.kind === 'json') return JSON.stringify(value, null, 2)
   return String(value as number | string)
-}
-
-/** A JSON field must hold a plain object, e.g. a provider config. */
-function parseObject(label: string, value: string): Record<string, unknown> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw new Error(`${label} is not valid JSON`)
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${label} must be a JSON object`)
-  }
-  return parsed as Record<string, unknown>
 }
 
 /** The request body. In an edit, only the fields that changed. */

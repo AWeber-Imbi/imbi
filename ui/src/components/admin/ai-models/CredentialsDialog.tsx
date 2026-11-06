@@ -14,6 +14,7 @@ import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { parseObject } from '@/lib/utils'
 import type { AIProvider } from '@/types'
 
 interface CredentialsDialogProps {
@@ -61,7 +62,15 @@ export function CredentialsDialog({
     WIF_DRIVERS.has(provider.driver) &&
     !provider.base_url &&
     !provider.has_credentials
-  const target = parseTarget(targetText)
+  let target: null | Record<string, unknown> = null
+  let targetError: null | string = null
+  if (targetText.trim()) {
+    try {
+      target = parseObject('The target', targetText)
+    } catch (err) {
+      targetError = (err as Error).message
+    }
+  }
   const wifOrg = wif
     ? (organizations.find((o) => o.id === wif.organization_id)?.name ??
       wif.organization_id)
@@ -140,8 +149,10 @@ export function CredentialsDialog({
           {canUseWif && !wif && selectedOrganization && (
             <FormField
               description={`Instead of a key: a short-lived token from the identity source of ${selectedOrganization.name} (Admin, Secrets, Identity). The vendor ids: ${TARGET_HELP[provider.driver] ?? ''}`}
+              error={targetError ?? undefined}
               htmlFor="ai-provider-wif-target"
               label="Workload identity target"
+              touched
             >
               <Textarea
                 className="font-mono"
@@ -224,15 +235,4 @@ export function CredentialsDialog({
       />
     </Dialog>
   )
-}
-
-function parseTarget(text: string): null | Record<string, unknown> {
-  try {
-    const value: unknown = JSON.parse(text)
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
 }

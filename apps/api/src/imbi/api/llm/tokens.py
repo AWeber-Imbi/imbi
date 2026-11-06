@@ -10,9 +10,9 @@ Provider that uses the ``workload_identity`` auth kind:
    wait for it.
 3. While the old token is valid, a failed renewal returns the old token
    and the next attempt waits (1 to 30 seconds, doubled each time).
-4. After a ``401``, :meth:`TokenCache.invalidate` drops the entry only
-   when the failed token is still the current one. The caller retries
-   one time.
+4. After a ``401``, :meth:`TokenCache.call` drops the entry only when
+   the failed token is still the current one, and calls one more time
+   with a new token.
 5. The key holds the provider, its organization, driver, and target,
    and the identity source of the organization. A change to one of them
    makes a new entry.
@@ -21,6 +21,7 @@ The token is never logged.
 """
 
 import asyncio
+import collections.abc
 import dataclasses
 import json
 import random
@@ -53,13 +54,14 @@ def _renew_at(now: float, lifetime: float) -> float:
 
 
 def _key(
-    provider: models.AIProvider, setting: dict[str, typing.Any] | None
+    provider: models.AIProvider,
+    wif: models.AIProviderWorkloadIdentity,
+    setting: dict[str, typing.Any] | None,
 ) -> str:
-    wif = provider.workload_identity
     return json.dumps(
         [
             provider.driver,
-            wif.model_dump() if wif else None,
+            wif.model_dump(),
             setting
             and [setting['type'], setting['config'], setting['updated_at']],
         ],
@@ -79,15 +81,15 @@ class TokenCache:
         """Return a valid access token for ``provider``.
 
         Raises:
-            IdentityError: No token could be minted and no valid token
-                is cached.
+            IdentityError: The provider has no workload identity, or no
+                token could be minted and no valid token is cached.
 
         """
         wif = provider.workload_identity
-        setting = (
-            await secrets.identity_source(wif.organization_id) if wif else None
-        )
-        key = _key(provider, setting)
+        if wif is None:
+            raise IdentityError('workload_identity_not_configured')
+        setting = await secrets.identity_source(wif.organization_id)
+        key = _key(provider, wif, setting)
         entry = self._fresh(provider.id, key)
         if entry is not None:
             return entry.token
@@ -120,11 +122,36 @@ class TokenCache:
             )
             return token.token
 
+    async def call[T](
+        self,
+        secrets: store.SecretStore,
+        provider: models.AIProvider,
+        fn: collections.abc.Callable[[str], collections.abc.Awaitable[T]],
+        unauthorized: collections.abc.Callable[[Exception], bool],
+    ) -> T:
+        """Return ``fn(token)``; after a ``401``, one retry with a new token.
+
+        ``unauthorized(exc)`` tells if an exception of ``fn`` is a ``401``.
+        """
+        token = await self.get(secrets, provider)
+        try:
+            return await fn(token)
+        except Exception as exc:
+            if not unauthorized(exc):
+                raise
+        self.invalidate(provider.id, token)
+        return await fn(await self.get(secrets, provider))
+
     def invalidate(self, provider_id: str, failed: str) -> None:
         """Drop the entry after a ``401`` when ``failed`` is current."""
         entry = self._entries.get(provider_id)
         if entry is not None and entry.token == failed:
             del self._entries[provider_id]
+
+    def forget(self, provider_id: str) -> None:
+        """Drop the entry of a provider that no longer uses WIF."""
+        self._entries.pop(provider_id, None)
+        self._locks.pop(provider_id, None)
 
     def _fresh(self, provider_id: str, key: str) -> _Entry | None:
         """The entry when it needs no renewal attempt now."""
@@ -134,9 +161,7 @@ class TokenCache:
         now = time.monotonic()
         if now >= entry.expires:
             return None
-        if now < entry.renew_at or now < entry.retry_at:
-            return entry
-        return None
+        return entry if now < max(entry.renew_at, entry.retry_at) else None
 
 
 #: The cache of this process.
