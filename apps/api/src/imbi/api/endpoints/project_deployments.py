@@ -969,6 +969,24 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
+def _host_retry_after(response: httpx.Response) -> str:
+    """Seconds the source host asks a caller to wait, for ``Retry-After``.
+
+    The host's ``Retry-After``, else the wait until ``x-ratelimit-reset``
+    once ``x-ratelimit-remaining`` is 0 (GitHub's primary rate limit),
+    else 5.
+    """
+    headers = response.headers
+    retry_after = str(headers.get('retry-after', ''))
+    if retry_after.isdigit():
+        return retry_after
+    reset = str(headers.get('x-ratelimit-reset', ''))
+    if headers.get('x-ratelimit-remaining') == '0' and reset.isdigit():
+        now = int(datetime.datetime.now(datetime.UTC).timestamp())
+        return str(max(1, int(reset) - now))
+    return '5'
+
+
 async def _compare_refs(
     handler: DeploymentCapability,
     ctx: PluginContext,
@@ -982,8 +1000,8 @@ async def _compare_refs(
     The host refusing this comparison is a 422, because a retry gets the
     same answer: GitHub's 404 (a ref, or the repo, it cannot find) or 422
     (a comparison it will not compute).  Any other host or transport
-    failure is the host failing to answer: 503, with the host's
-    ``Retry-After`` when it sends one.
+    failure is the host failing to answer: 503, with the host's own wait
+    as ``Retry-After`` (see :func:`_host_retry_after`).
     """
     try:
         return await call_with_timeout(
@@ -1010,14 +1028,11 @@ async def _compare_refs(
             ctx.project_id,
             status,
         )
-        retry_after = exc.response.headers.get('retry-after', '')
         raise fastapi.HTTPException(
             status_code=503,
             detail=f'Could not reach the source host to compare {base}...'
             f'{head}',
-            headers={
-                'Retry-After': retry_after if retry_after.isdigit() else '5'
-            },
+            headers={'Retry-After': _host_retry_after(exc.response)},
         ) from exc
     except httpx.HTTPError as exc:
         LOGGER.warning(

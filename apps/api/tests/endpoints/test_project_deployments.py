@@ -557,6 +557,36 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.headers['retry-after'], '60')
 
+    def test_compare_waits_for_primary_rate_limit_reset(self) -> None:
+        """No Retry-After: the 503 waits until GitHub's quota resets."""
+        reset = int(datetime.datetime.now(datetime.UTC).timestamp()) + 120
+        request = httpx.Request('GET', 'https://api.github.test/compare/x')
+        self._fail_compare(
+            httpx.HTTPStatusError(
+                'HTTP 403',
+                request=request,
+                response=httpx.Response(
+                    403,
+                    request=request,
+                    headers={
+                        'x-ratelimit-remaining': '0',
+                        'x-ratelimit-reset': str(reset),
+                    },
+                ),
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'compare?base=v1&head=v2'
+            )
+        now = int(datetime.datetime.now(datetime.UTC).timestamp())
+        self.assertEqual(response.status_code, 503)
+        self.assertGreaterEqual(
+            int(response.headers['retry-after']), reset - now
+        )
+        self.assertLessEqual(int(response.headers['retry-after']), 120)
+
     def test_compare_source_host_failure_is_503(self) -> None:
         failures: tuple[BaseException, ...] = (
             _http_status_error(502),
