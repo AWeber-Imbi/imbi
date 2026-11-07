@@ -110,6 +110,13 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
                 'provider_error',
                 False,
             ),
+            (
+                httpx.Response(
+                    200, json={'access_token': 't', 'expires_in': 1e20}
+                ),
+                'provider_error',
+                False,
+            ),
         ):
             with self.subTest(reason=reason, reply=reply):
                 self.reply = reply

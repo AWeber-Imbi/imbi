@@ -235,16 +235,14 @@ async def post_exchange(
         payload = response.json()
         token = payload['access_token']
         expires_in = int(payload['expires_in'])
-    except (ValueError, KeyError, TypeError):
+        expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            seconds=expires_in
+        )
+    except (ValueError, KeyError, TypeError, OverflowError):
         raise IdentityError('provider_error') from None
     if not isinstance(token, str) or not token or expires_in <= 0:
         raise IdentityError('provider_error')
-    return AccessToken(
-        token,
-        datetime.datetime.now(datetime.UTC)
-        + datetime.timedelta(seconds=expires_in),
-        payload.get('scope'),
-    )
+    return AccessToken(token, expires_at, payload.get('scope'))
 
 
 class WifSecretProvider(secrets.SecretProvider):
