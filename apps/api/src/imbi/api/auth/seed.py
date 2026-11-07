@@ -148,6 +148,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'credentials',
         'Set or remove AI provider credentials',
     ),
+    (
+        'ai_provider:token',
+        'ai_provider',
+        'token',
+        'Get the AI provider token of the calling service',
+    ),
     # Prompt CMS. ``promote`` is separate from ``update``: moving a
     # label changes what every consumer of that label runs, without
     # any change to a prompt body.
@@ -1044,6 +1050,24 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.
         ],
+        False,
+    ),
+    (
+        'imbi-assistant',
+        'Imbi Assistant',
+        'Service role for imbi-assistant: get the token of its AI '
+        'provider (WIF plan 4.6)',
+        900,
+        ['ai_provider:token'],
+        False,
+    ),
+    (
+        'imbi-slackbot',
+        'Imbi Slackbot',
+        'Service role for imbi-slackbot: get the token of its AI '
+        'provider (WIF plan 4.6)',
+        900,
+        ['ai_provider:token'],
         False,
     ),
 ]

@@ -39,6 +39,10 @@ class Assistant(pydantic_settings.BaseSettings):
     system_prompt: str | None = None
     #: The prompt CMS reference the assistant reads its prompt from.
     prompt_ref: str = 'imbi-assistant/system@stable'
+    #: The API key of the ``imbi-assistant`` service account. When set,
+    #: the assistant uses the token of its AI Provider from imbi-api
+    #: (WIF plan 4.6) instead of ``ANTHROPIC_API_KEY``.
+    api_token: str = ''
     # Where the assistant reaches the Imbi REST API. Distinct from
     # ``IMBI_API_URL`` (which carries the API's *public* URL for OAuth
     # redirect URIs and hypermedia links) — this is the in-cluster /
@@ -108,8 +112,8 @@ class Assistant(pydantic_settings.BaseSettings):
 
     @pydantic.model_validator(mode='after')
     def auto_enable(self) -> 'Assistant':
-        """Auto-enable when an API key is available."""
-        if self.api_key and not self.enabled:
+        """Auto-enable when an API key or an API token is available."""
+        if (self.api_key or self.api_token) and not self.enabled:
             self.enabled = True
         return self
 

@@ -40,6 +40,7 @@ Mode connection runs as a background task alongside it.
 | `SLACK_BOT_TOKEN` | Slack bot token (`xoxb-…`) |
 | `SLACK_APP_TOKEN` | Slack app-level token for Socket Mode (`xapp-…`) |
 | `ANTHROPIC_API_KEY` | Anthropic API key (enables the bot when set) |
+| `IMBI_SLACKBOT_API_TOKEN` | API key of the `imbi-slackbot` service account; the bot then uses its AI Provider token (workload identity) instead of `ANTHROPIC_API_KEY` |
 | `IMBI_AUTH_JWT_SECRET` | Shared HS256 secret used to mint per-user tokens |
 | `IMBI_INTERNAL_API_URL` | In-cluster base URL of the Imbi API |
 | `IMBI_UI_URL` | Public base URL of the Imbi UI, used to build deep links |

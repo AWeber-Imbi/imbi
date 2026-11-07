@@ -95,6 +95,7 @@ auto-enables when `ANTHROPIC_API_KEY` is present.
 | Variable                                | Default                 | Description                                                       |
 | --------------------------------------- | ----------------------- | ----------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`                     | _(none)_                | Anthropic API key; enables the assistant when set                 |
+| `IMBI_ASSISTANT_API_TOKEN`              | _(none)_                | API key of the `imbi-assistant` service account; the assistant then uses its AI Provider token (workload identity) instead of `ANTHROPIC_API_KEY` |
 | `IMBI_ASSISTANT_ENABLED`                | `false`                 | Force-enable/disable independent of the API key                   |
 | `IMBI_ASSISTANT_MODEL`                  | `claude-sonnet-4-6`     | Default model for new conversations                               |
 | `IMBI_ASSISTANT_MAX_TOKENS`             | `16384`                 | Max output tokens per response                                    |

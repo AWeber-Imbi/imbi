@@ -280,12 +280,39 @@ class InternalServices(pydantic_settings.BaseSettings):
         return value.rstrip('/')
 
 
+class AIProviders(pydantic_settings.BaseSettings):
+    """The AI Provider of each Imbi service (WIF plan 4.6).
+
+    The UUID of an Anthropic AI Provider that uses workload identity.
+    ``api`` is the client of imbi-api itself. imbi-api gives the token
+    of ``assistant`` or ``slackbot`` only to the service account of that
+    service (``POST /ai-providers/token``). Empty: the service uses
+    ``ANTHROPIC_API_KEY``.
+    """
+
+    model_config = settings.base_settings_config(
+        env_prefix='IMBI_AI_PROVIDER_'
+    )
+
+    api: str = ''
+    assistant: str = ''
+    slackbot: str = ''
+
+    def for_service(self, slug: str) -> str:
+        """The provider of the service account ``slug``, or ``''``."""
+        return {
+            'imbi-assistant': self.assistant,
+            'imbi-slackbot': self.slackbot,
+        }.get(slug, '')
+
+
 # Module-level singletons for extended settings
 _auth_settings: Auth | None = None
 _server_config: ServerConfig | None = None
 _storage_settings: Storage | None = None
 _internal_services: InternalServices | None = None
 _iggy_connectors: IggyConnectors | None = None
+_ai_providers: AIProviders | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -340,6 +367,14 @@ def get_iggy_connectors_settings() -> IggyConnectors:
     return _iggy_connectors
 
 
+def get_ai_providers() -> AIProviders:
+    """Get the singleton AIProviders settings instance."""
+    global _ai_providers
+    if _ai_providers is None:
+        _ai_providers = AIProviders()
+    return _ai_providers
+
+
 def clear_caches() -> None:
     """Reset the module-level singletons.
 
@@ -347,12 +382,13 @@ def clear_caches() -> None:
     which lazily initialize once per process.
     """
     global _auth_settings, _server_config, _storage_settings
-    global _internal_services, _iggy_connectors
+    global _internal_services, _iggy_connectors, _ai_providers
     _auth_settings = None
     _server_config = None
     _storage_settings = None
     _internal_services = None
     _iggy_connectors = None
+    _ai_providers = None
 
 
 def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:

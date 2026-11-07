@@ -49,7 +49,10 @@ require_slackbot_vars() {
     require_common_vars
     require_var SLACK_APP_TOKEN "Slack app-level token for socket mode"
     require_var SLACK_BOT_TOKEN "Slack bot OAuth token"
-    require_var ANTHROPIC_API_KEY "Anthropic API key (bot stays disabled without it)"
+    # IMBI_SLACKBOT_API_TOKEN: the bot uses its AI Provider token instead.
+    if [ -z "${IMBI_SLACKBOT_API_TOKEN:-}" ]; then
+        require_var ANTHROPIC_API_KEY "Anthropic API key, or IMBI_SLACKBOT_API_TOKEN (bot stays disabled without one)"
+    fi
     require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
 }
 
@@ -403,10 +406,11 @@ case "$IMBI_SERVICE" in
         # container.
         if [ -n "${SLACK_APP_TOKEN:-}" ] && \
            [ -n "${SLACK_BOT_TOKEN:-}" ] && \
-           [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+           { [ -n "${ANTHROPIC_API_KEY:-}" ] || \
+             [ -n "${IMBI_SLACKBOT_API_TOKEN:-}" ]; }; then
             start_slackbot
         else
-            echo "imbi-slackbot disabled (needs SLACK_APP_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY)"
+            echo "imbi-slackbot disabled (needs SLACK_APP_TOKEN, SLACK_BOT_TOKEN, and ANTHROPIC_API_KEY or IMBI_SLACKBOT_API_TOKEN)"
         fi
         # `provision_internal_credentials` above seeds or adopts the
         # scheduler's service-account credential, so the only case left is

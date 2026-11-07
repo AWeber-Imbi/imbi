@@ -250,11 +250,16 @@ unset.
 | `IMBI_INTERNAL_SCHEDULER_URL` | str | `''` | Internal URL of imbi-scheduler, for the status dashboard |
 | `IMBI_INTERNAL_SLACKBOT_URL` | str | `''` | Internal URL of imbi-slackbot, for the status dashboard |
 | `IMBI_INTERNAL_WORKFLOWS_URL` | str | `''` | Internal URL of imbi-workflows, for the status dashboard |
+| `IMBI_AI_PROVIDER_API` | str | `''` | Id of the Anthropic AI provider (workload identity) of the imbi-api client. Empty: `ANTHROPIC_API_KEY`. |
+| `IMBI_AI_PROVIDER_ASSISTANT` | str | `''` | Id of the AI provider whose token imbi-assistant gets |
+| `IMBI_AI_PROVIDER_SLACKBOT` | str | `''` | Id of the AI provider whose token imbi-slackbot gets |
 | `IMBI_GATEWAY_API_TOKEN` | str | none | `imbi-api setup` and `setup-service-accounts` store this value as the API key of the `imbi-gateway` service account. Unset, they generate one and print it. |
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | `setup` stores this pair as the client credential of the `imbi-scheduler` service account. Unset, it generates a pair and prints it. |
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | str | none | See `IMBI_SCHEDULER_SA_CLIENT_ID`. |
 | `IMBI_WORKFLOWS_SA_CLIENT_ID` | str | none | The same, for the `imbi-workflows` service account. |
 | `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | str | none | See `IMBI_WORKFLOWS_SA_CLIENT_ID`. |
+| `IMBI_ASSISTANT_API_TOKEN` | str | none | The same as `IMBI_GATEWAY_API_TOKEN`, for the `imbi-assistant` service account. |
+| `IMBI_SLACKBOT_API_TOKEN` | str | none | The same as `IMBI_GATEWAY_API_TOKEN`, for the `imbi-slackbot` service account. |
 | `IMBI_PLUGIN_CACHE_TTL` | int | `60` | Seconds that Valkey keeps the configuration key list of a project |
 | `IMBI_PLUGIN_TIMEOUT_SECONDS` | int | `10` | Timeout of one plugin call in seconds |
 | `IMBI_PLUGINS_INDEX_URL` | str | `https://pypi.org/simple` | Package index for plugin installs |
@@ -276,6 +281,7 @@ unset.
 | `IMBI_ASSISTANT_MAX_TOOL_RESULT_CHARS` | int | `120000` | Longer tool results are cut |
 | `IMBI_ASSISTANT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
 | `IMBI_ASSISTANT_PROMPT_REF` | str | `imbi-assistant/system@stable` | Prompt CMS reference of the system prompt |
+| `IMBI_ASSISTANT_API_TOKEN` | str | `''` | API key of the `imbi-assistant` service account. Set: the assistant uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_ASSISTANT_URL` | str | `''` | Public assistant URL. Its path is the route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
@@ -329,6 +335,7 @@ unset.
 | `IMBI_SLACKBOT_IDENTITY_CACHE_TTL` | int | `900` | Seconds to cache a Slack user to Imbi user match |
 | `IMBI_SLACKBOT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
 | `IMBI_SLACKBOT_PROMPT_REF` | str | `imbi-slackbot/system@stable` | Prompt CMS reference of the system prompt |
+| `IMBI_SLACKBOT_API_TOKEN` | str | `''` | API key of the `imbi-slackbot` service account. Set: the bot uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
 | `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`) |
 | `SLACK_APP_TOKEN` | str | `''` | Slack app-level token for Socket Mode (`xapp-`) |
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |

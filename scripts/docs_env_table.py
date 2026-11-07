@@ -73,6 +73,7 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
             api_settings.Storage,
             api_settings.IggyConnectors,
             api_settings.InternalServices,
+            api_settings.AIProviders,
         ],
         # The secret providers of the plugins run in imbi-api.
         ['apps/api/src', 'plugins/aws/src', 'plugins/github/src'],
@@ -110,6 +111,20 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
                 'str',
                 'none',
                 'See `IMBI_WORKFLOWS_SA_CLIENT_ID`.',
+            ),
+            (
+                'IMBI_ASSISTANT_API_TOKEN',
+                'str',
+                'none',
+                'The same as `IMBI_GATEWAY_API_TOKEN`, for the '
+                '`imbi-assistant` service account.',
+            ),
+            (
+                'IMBI_SLACKBOT_API_TOKEN',
+                'str',
+                'none',
+                'The same as `IMBI_GATEWAY_API_TOKEN`, for the '
+                '`imbi-slackbot` service account.',
             ),
         ],
     ),
@@ -355,6 +370,12 @@ DESCRIPTIONS: dict[str, str] = {
     'runtime',
     'IMBI_PLUGINS_INSTALL_TIMEOUT': 'Timeout of one plugin install in seconds',
     'IMBI_PLUGINS_INDEX_URL': 'Package index for plugin installs',
+    'IMBI_AI_PROVIDER_API': 'Id of the Anthropic AI provider (workload '
+    'identity) of the imbi-api client. Empty: `ANTHROPIC_API_KEY`.',
+    'IMBI_AI_PROVIDER_ASSISTANT': 'Id of the AI provider whose token '
+    'imbi-assistant gets',
+    'IMBI_AI_PROVIDER_SLACKBOT': 'Id of the AI provider whose token '
+    'imbi-slackbot gets',
     # Other services
     'IMBI_INTERNAL_API_URL': 'In-cluster origin of imbi-api',
     'IMBI_INTERNAL_UI_URL': 'In-cluster UI URL for `llms.txt`. Unset: '
@@ -372,6 +393,9 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_ASSISTANT_SYSTEM_PROMPT': 'Jinja system prompt that replaces the '
     'CMS and packaged prompts',
     'IMBI_ASSISTANT_PROMPT_REF': 'Prompt CMS reference of the system prompt',
+    'IMBI_ASSISTANT_API_TOKEN': 'API key of the `imbi-assistant` service '
+    'account. Set: the assistant uses the token of its AI provider from '
+    'imbi-api instead of `ANTHROPIC_API_KEY`.',
     'IMBI_GATEWAY_API_TOKEN': 'API key of the `imbi-gateway` service '
     'account. Required.',
     'IMBI_SCHEDULER_SCHEMA': 'Postgres schema of the task tables',
@@ -404,6 +428,9 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_SLACKBOT_SYSTEM_PROMPT': 'Jinja system prompt that replaces the '
     'CMS and packaged prompts',
     'IMBI_SLACKBOT_PROMPT_REF': 'Prompt CMS reference of the system prompt',
+    'IMBI_SLACKBOT_API_TOKEN': 'API key of the `imbi-slackbot` service '
+    'account. Set: the bot uses the token of its AI provider from imbi-api '
+    'instead of `ANTHROPIC_API_KEY`.',
     'SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-`)',
     'SLACK_APP_TOKEN': 'Slack app-level token for Socket Mode (`xapp-`)',
     'IMBI_WORKFLOWS_SA_CLIENT_ID': 'Client ID of the `imbi-workflows` '

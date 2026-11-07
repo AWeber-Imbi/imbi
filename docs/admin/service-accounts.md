@@ -187,18 +187,22 @@ credentials of that account.
 
 ## Imbi service accounts
 
-Three Imbi services call imbi-api as their own service account:
+Five Imbi services call imbi-api as their own service account:
 
 | Service account | Role | Credential | Environment variables |
 |---|---|---|---|
 | `imbi-scheduler` | `imbi-scheduler` | Client credential | `IMBI_SCHEDULER_SA_CLIENT_ID`, `IMBI_SCHEDULER_SA_CLIENT_SECRET` |
 | `imbi-gateway` | `imbi-gateway` | API key | `IMBI_GATEWAY_API_TOKEN` |
 | `imbi-workflows` | `imbi-workflows` | Client credential | `IMBI_WORKFLOWS_SA_CLIENT_ID`, `IMBI_WORKFLOWS_SA_CLIENT_SECRET` |
+| `imbi-assistant` | `imbi-assistant` | API key | `IMBI_ASSISTANT_API_TOKEN` |
+| `imbi-slackbot` | `imbi-slackbot` | API key | `IMBI_SLACKBOT_API_TOKEN` |
 
-imbi-assistant, imbi-mcp, and imbi-slackbot have no service account. They
-send the token of the caller to imbi-api.
+The assistant and the Slack bot use their accounts only to get the token
+of their AI provider ([workload identity](ai-models.md#imbi-services)).
+For tool calls, they send the token of the caller to imbi-api. imbi-mcp
+has no service account.
 
-`imbi-api setup` creates the three accounts in the organization that it
+`imbi-api setup` creates the accounts in the organization that it
 creates. For an install that already exists, or for another organization,
 run this command:
 

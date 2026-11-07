@@ -151,156 +151,157 @@ it.
 
 <!-- BEGIN GENERATED: scripts/docs_permissions_table.py -->
 
-| Permission | Description | `admin` | `developer` | `default` | `readonly` | `imbi-scheduler` | `imbi-gateway` | `imbi-workflows` |
-|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `user:create` | Create new users | yes |  |  |  |  |  |  |
-| `user:read` | View user information | yes | yes | yes | yes | yes | yes |  |
-| `user:update` | Update user information | yes |  |  |  |  |  |  |
-| `user:delete` | Delete users | yes |  |  |  |  |  |  |
-| `role:create` | Create new roles | yes |  |  |  |  |  |  |
-| `role:read` | View role information | yes |  | yes | yes | yes |  |  |
-| `role:update` | Update role information | yes |  |  |  |  |  |  |
-| `role:delete` | Delete roles | yes |  |  |  |  |  |  |
-| `organization:create` | Create organizations | yes |  |  |  |  |  |  |
-| `organization:read` | View organizations | yes | yes | yes | yes | yes |  |  |
-| `organization:update` | Update organizations | yes | yes |  |  |  |  |  |
-| `organization:delete` | Delete organizations | yes |  |  |  |  |  |  |
-| `team:create` | Create teams | yes |  |  |  |  |  |  |
-| `team:read` | View teams | yes | yes | yes | yes | yes |  |  |
-| `team:update` | Update teams | yes | yes |  |  |  |  |  |
-| `team:delete` | Delete teams | yes |  |  |  |  |  |  |
-| `blueprint:read` | View blueprints | yes | yes | yes | yes | yes |  |  |
-| `blueprint:write` | Create/update blueprints | yes | yes |  |  |  |  |  |
-| `blueprint:delete` | Delete blueprints | yes |  |  |  |  |  |  |
-| `project:create` | Create projects | yes | yes |  |  |  |  |  |
-| `project:read` | View projects | yes | yes | yes | yes | yes | yes | yes |
-| `project:write` | Update projects | yes | yes |  |  |  | yes |  |
-| `project:delete` | Delete projects | yes |  |  |  |  |  |  |
-| `link_definition:create` | Create link definitions | yes |  |  |  |  |  |  |
-| `link_definition:read` | View link definitions | yes | yes | yes | yes | yes |  |  |
-| `link_definition:write` | Update link definitions | yes | yes |  |  |  |  |  |
-| `link_definition:delete` | Delete link definitions | yes |  |  |  |  |  |  |
-| `mcp_server:create` | Create MCP servers | yes |  |  |  |  |  |  |
-| `mcp_server:read` | View MCP servers | yes |  |  |  |  |  |  |
-| `mcp_server:update` | Update MCP servers | yes |  |  |  |  |  |  |
-| `mcp_server:delete` | Delete MCP servers | yes |  |  |  |  |  |  |
-| `ai_model:create` | Create AI providers and models | yes |  |  |  |  |  |  |
-| `ai_model:read` | View AI providers and models | yes | yes | yes | yes | yes |  |  |
-| `ai_model:update` | Update AI providers and models | yes |  |  |  |  |  |  |
-| `ai_model:delete` | Delete AI providers and models | yes |  |  |  |  |  |  |
-| `ai_model:credentials` | Set or remove AI provider credentials | yes |  |  |  |  |  |  |
-| `prompt:create` | Create prompts | yes | yes |  |  |  |  |  |
-| `prompt:read` | View prompts and their versions | yes | yes | yes | yes |  |  |  |
-| `prompt:update` | Edit prompts and save new versions | yes | yes |  |  |  |  |  |
-| `prompt:promote` | Move prompt labels and set the default label | yes |  |  |  |  |  |  |
-| `prompt:delete` | Delete prompts | yes |  |  |  |  |  |  |
-| `prompt:evaluate` | Record evaluation results against prompt versions | yes |  |  |  |  |  |  |
-| `environment:create` | Create environments | yes |  |  |  |  |  |  |
-| `environment:read` | View environments | yes | yes | yes | yes | yes |  |  |
-| `environment:update` | Update environments | yes |  |  |  |  |  |  |
-| `environment:delete` | Delete environments | yes |  |  |  |  |  |  |
-| `project_type:create` | Create project types | yes |  |  |  |  |  |  |
-| `project_type:read` | View project types | yes | yes | yes | yes | yes |  |  |
-| `project_type:update` | Update project types | yes |  |  |  |  |  |  |
-| `project_type:delete` | Delete project types | yes |  |  |  |  |  |  |
-| `integration:create` | Create integrations | yes |  |  |  |  |  |  |
-| `integration:read` | View integrations | yes | yes | yes | yes | yes |  |  |
-| `integration:update` | Update integrations | yes | yes |  |  |  |  |  |
-| `integration:delete` | Delete integrations | yes |  |  |  |  |  |  |
-| `webhook:create` | Create webhooks | yes |  |  |  |  |  |  |
-| `webhook:read` | View webhooks | yes | yes | yes | yes | yes |  |  |
-| `webhook:update` | Update webhooks | yes | yes |  |  |  |  |  |
-| `webhook:delete` | Delete webhooks | yes |  |  |  |  |  |  |
-| `upload:create` | Upload files | yes | yes |  |  |  |  |  |
-| `upload:read` | View and download uploads | yes | yes | yes | yes | yes |  |  |
-| `upload:delete` | Delete uploads | yes |  |  |  |  |  |  |
-| `service_account:create` | Create service accounts | yes |  |  |  |  |  |  |
-| `service_account:read` | View service accounts | yes |  |  |  |  |  |  |
-| `service_account:update` | Update service accounts | yes |  |  |  |  |  |  |
-| `service_account:delete` | Delete service accounts | yes |  |  |  |  |  |  |
-| `operations_log:create` | Create operations log entries | yes |  |  |  |  |  |  |
-| `operations_log:read` | View operations log entries | yes | yes | yes | yes | yes |  |  |
-| `operations_log:update` | Update operations log entries | yes |  |  |  |  |  |  |
-| `operations_log:delete` | Delete operations log entries | yes |  |  |  |  |  |  |
-| `component:read` | View package governance and the package reports | yes | yes | yes | yes |  |  |  |
-| `component:write` | Mark packages, record advisories, and add package notes | yes |  |  |  |  |  |  |
-| `tag:create` | Create tags | yes | yes |  |  |  |  |  |
-| `tag:read` | View tags | yes | yes | yes | yes | yes |  |  |
-| `tag:write` | Update tags | yes | yes |  |  |  |  |  |
-| `tag:delete` | Delete tags | yes |  |  |  |  |  |  |
-| `document:create` | Create project documents | yes | yes |  |  |  |  |  |
-| `document:read` | View project documents | yes | yes | yes | yes | yes |  |  |
-| `document:write` | Update project documents | yes | yes |  |  |  |  |  |
-| `document:delete` | Delete project documents | yes | yes |  |  |  |  |  |
-| `document:analytics:read` | View aggregate document read analytics | yes | yes | yes | yes |  |  |  |
-| `document:analytics:read_identities` | View which people read a document | yes |  |  |  |  |  |  |
-| `comment:create` | Create document comments | yes | yes |  |  |  |  |  |
-| `comment:write` | Update document comments | yes | yes |  |  |  |  |  |
-| `comment:delete` | Delete document comments | yes | yes |  |  |  |  |  |
-| `auth_providers:read` | View login auth provider configuration | yes |  |  |  |  |  |  |
-| `auth_providers:write` | Create, update, and delete login auth provider configuration | yes |  |  |  |  |  |  |
-| `scoring_policy:read` | View scoring policies | yes |  |  |  |  |  |  |
-| `scoring_policy:write` | Create/update scoring policies | yes |  |  |  |  |  |  |
-| `scoring_policy:delete` | Delete scoring policies | yes |  |  |  |  |  |  |
-| `scoring_policy:rescore` | Trigger rescore for a single project | yes | yes | yes |  |  |  |  |
-| `scoring_policy:rescore_all` | Trigger bulk project rescore | yes |  |  |  |  |  |  |
-| `document_template:create` | Create document templates | yes |  |  |  |  |  |  |
-| `document_template:read` | View document templates | yes | yes | yes | yes | yes |  |  |
-| `document_template:write` | Update document templates | yes |  |  |  |  |  |  |
-| `document_template:delete` | Delete document templates | yes |  |  |  |  |  |  |
-| `agent:create` | Create agents | yes | yes |  |  |  |  |  |
-| `agent:read` | View agents and their versions | yes | yes | yes | yes | yes |  |  |
-| `agent:write` | Update and restore agents | yes | yes |  |  |  |  |  |
-| `agent:delete` | Delete agents | yes |  |  |  |  |  |  |
-| `agent_task:read` | View agent tasks and their events | yes | yes | yes | yes | yes |  |  |
-| `agent_task:create` | Create agent tasks | yes | yes |  |  | yes | yes |  |
-| `agent_task:manage` | Pause, resume, cancel, and reassign agent tasks | yes | yes |  |  |  |  |  |
-| `agent_task:resolve` | Answer feedback requests and resolve approvals of agent tasks | yes | yes |  |  |  |  |  |
-| `agent_task:delete` | Delete closed agent tasks | yes |  |  |  |  |  |  |
-| `workflow:read` | View workflows, their versions, and their runs | yes | yes | yes | yes |  |  |  |
-| `workflow:create` | Create workflows | yes | yes |  |  |  |  |  |
-| `workflow:write` | Edit, activate, and pause workflows | yes | yes |  |  |  |  |  |
-| `workflow:delete` | Delete workflows | yes |  |  |  |  |  |  |
-| `workflow:run` | Start manual and test runs of workflows, and cancel runs | yes | yes |  |  | yes | yes |  |
-| `harness_pool:read` | View the runner pools and runners that serve the organization | yes |  |  |  |  |  |  |
-| `agent_platform_config:write` | Change the base agent configuration and the plugin marketplaces | yes |  |  |  |  |  |  |
-| `secret_provider:read` | View secret providers | yes |  |  |  |  |  |  |
-| `secret_provider:write` | Create, change, delete, and test secret providers | yes |  |  |  |  |  |  |
-| `secret_binding:read` | View secret bindings | yes |  |  |  |  |  |  |
-| `secret_binding:write` | Create, change, delete, and validate secret bindings | yes |  |  |  |  |  |  |
-| `secret_grant:read` | View secret grants and evaluate them | yes |  |  |  |  |  |  |
-| `secret_grant:write` | Create, change, and delete secret grants | yes |  |  |  |  |  |  |
-| `secret_resolution:read` | View secret resolutions | yes |  |  |  |  |  |  |
-| `secret_resolution:manage` | Release secret resolutions and revoke provider leases | yes |  |  |  |  |  |  |
-| `secret_audit:read` | View secret audit events | yes |  |  |  |  |  |  |
-| `admin:plugins:read` | View installed plugins | yes |  |  |  |  |  |  |
-| `admin:plugins:manage` | Install and uninstall plugins | yes |  |  |  |  |  |  |
-| `admin:maintenance:read` | View global maintenance operations | yes |  |  |  |  |  |  |
-| `admin:maintenance:manage` | Run and cancel global maintenance operations | yes |  |  |  |  |  |  |
-| `project:configuration:read` | Read project configuration via plugins | yes |  |  |  |  |  |  |
-| `project:configuration:read_secrets` | Read secret configuration values via plugins | yes |  |  |  |  |  |  |
-| `project:configuration:write` | Write project configuration via plugins | yes |  |  |  |  |  |  |
-| `project:logs:read` | Read project logs via plugins | yes |  |  |  |  |  |  |
-| `project:deployment:read` | Read project deployment state via plugins | yes | yes | yes | yes |  |  | yes |
-| `project:deployment:write` | Trigger deployments and promotions via plugins | yes | yes |  |  |  |  | yes |
-| `project:commits:read` | Read commit history synced via plugins | yes | yes | yes | yes |  |  |  |
-| `project:commits:write` | Trigger commit-history sync via plugins | yes | yes |  |  |  |  |  |
-| `project:pull-requests:read` | Read pull request history synced via plugins | yes | yes | yes | yes |  |  |  |
-| `project:pull-requests:write` | Trigger pull-request sync via plugins | yes | yes |  |  |  |  |  |
-| `search:read` | Search nodes by semantic similarity | yes | yes | yes | yes | yes |  |  |
-| `me:identities:manage` | Connect, refresh, and disconnect own third-party identities | yes | yes | yes | yes |  |  |  |
-| `admin:identities:read` | List identity connections across users (audit / support) | yes |  |  |  |  |  |  |
-| `admin:identities:revoke` | Force-revoke another user's identity connection | yes |  |  |  |  |  |  |
-| `admin:events:read` | List events across every organization (audit / support) | yes |  |  |  |  |  |  |
-| `admin:dashboard:read` | View the admin system-health dashboard | yes |  |  |  |  |  |  |
-| `scheduled_task:read` | View scheduled tasks and their run history | yes | yes | yes | yes | yes |  | yes |
-| `scheduled_task:create` | Create scheduled tasks | yes | yes |  |  | yes |  | yes |
-| `scheduled_task:write` | Update, pause, and resume scheduled tasks | yes | yes |  |  | yes |  | yes |
-| `scheduled_task:delete` | Delete scheduled tasks | yes | yes |  |  | yes |  | yes |
-| `scheduled_task:run` | Run scheduled tasks on demand and cancel in-flight runs | yes | yes |  |  | yes |  |  |
-| `scheduled_task:admin` | Manage other principals' and system scheduled tasks | yes |  |  |  | yes |  |  |
-| `scheduler:impersonate` | Schedule tasks that run as another user | yes |  |  |  |  |  |  |
-| `integration:act-as-service` | Use an Integration's own credential instead of the principal's identity | yes |  |  |  |  |  |  |
+| Permission | Description | `admin` | `developer` | `default` | `readonly` | `imbi-scheduler` | `imbi-gateway` | `imbi-workflows` | `imbi-assistant` | `imbi-slackbot` |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `user:create` | Create new users | yes |  |  |  |  |  |  |  |  |
+| `user:read` | View user information | yes | yes | yes | yes | yes | yes |  |  |  |
+| `user:update` | Update user information | yes |  |  |  |  |  |  |  |  |
+| `user:delete` | Delete users | yes |  |  |  |  |  |  |  |  |
+| `role:create` | Create new roles | yes |  |  |  |  |  |  |  |  |
+| `role:read` | View role information | yes |  | yes | yes | yes |  |  |  |  |
+| `role:update` | Update role information | yes |  |  |  |  |  |  |  |  |
+| `role:delete` | Delete roles | yes |  |  |  |  |  |  |  |  |
+| `organization:create` | Create organizations | yes |  |  |  |  |  |  |  |  |
+| `organization:read` | View organizations | yes | yes | yes | yes | yes |  |  |  |  |
+| `organization:update` | Update organizations | yes | yes |  |  |  |  |  |  |  |
+| `organization:delete` | Delete organizations | yes |  |  |  |  |  |  |  |  |
+| `team:create` | Create teams | yes |  |  |  |  |  |  |  |  |
+| `team:read` | View teams | yes | yes | yes | yes | yes |  |  |  |  |
+| `team:update` | Update teams | yes | yes |  |  |  |  |  |  |  |
+| `team:delete` | Delete teams | yes |  |  |  |  |  |  |  |  |
+| `blueprint:read` | View blueprints | yes | yes | yes | yes | yes |  |  |  |  |
+| `blueprint:write` | Create/update blueprints | yes | yes |  |  |  |  |  |  |  |
+| `blueprint:delete` | Delete blueprints | yes |  |  |  |  |  |  |  |  |
+| `project:create` | Create projects | yes | yes |  |  |  |  |  |  |  |
+| `project:read` | View projects | yes | yes | yes | yes | yes | yes | yes |  |  |
+| `project:write` | Update projects | yes | yes |  |  |  | yes |  |  |  |
+| `project:delete` | Delete projects | yes |  |  |  |  |  |  |  |  |
+| `link_definition:create` | Create link definitions | yes |  |  |  |  |  |  |  |  |
+| `link_definition:read` | View link definitions | yes | yes | yes | yes | yes |  |  |  |  |
+| `link_definition:write` | Update link definitions | yes | yes |  |  |  |  |  |  |  |
+| `link_definition:delete` | Delete link definitions | yes |  |  |  |  |  |  |  |  |
+| `mcp_server:create` | Create MCP servers | yes |  |  |  |  |  |  |  |  |
+| `mcp_server:read` | View MCP servers | yes |  |  |  |  |  |  |  |  |
+| `mcp_server:update` | Update MCP servers | yes |  |  |  |  |  |  |  |  |
+| `mcp_server:delete` | Delete MCP servers | yes |  |  |  |  |  |  |  |  |
+| `ai_model:create` | Create AI providers and models | yes |  |  |  |  |  |  |  |  |
+| `ai_model:read` | View AI providers and models | yes | yes | yes | yes | yes |  |  |  |  |
+| `ai_model:update` | Update AI providers and models | yes |  |  |  |  |  |  |  |  |
+| `ai_model:delete` | Delete AI providers and models | yes |  |  |  |  |  |  |  |  |
+| `ai_model:credentials` | Set or remove AI provider credentials | yes |  |  |  |  |  |  |  |  |
+| `ai_provider:token` | Get the AI provider token of the calling service | yes |  |  |  |  |  |  | yes | yes |
+| `prompt:create` | Create prompts | yes | yes |  |  |  |  |  |  |  |
+| `prompt:read` | View prompts and their versions | yes | yes | yes | yes |  |  |  |  |  |
+| `prompt:update` | Edit prompts and save new versions | yes | yes |  |  |  |  |  |  |  |
+| `prompt:promote` | Move prompt labels and set the default label | yes |  |  |  |  |  |  |  |  |
+| `prompt:delete` | Delete prompts | yes |  |  |  |  |  |  |  |  |
+| `prompt:evaluate` | Record evaluation results against prompt versions | yes |  |  |  |  |  |  |  |  |
+| `environment:create` | Create environments | yes |  |  |  |  |  |  |  |  |
+| `environment:read` | View environments | yes | yes | yes | yes | yes |  |  |  |  |
+| `environment:update` | Update environments | yes |  |  |  |  |  |  |  |  |
+| `environment:delete` | Delete environments | yes |  |  |  |  |  |  |  |  |
+| `project_type:create` | Create project types | yes |  |  |  |  |  |  |  |  |
+| `project_type:read` | View project types | yes | yes | yes | yes | yes |  |  |  |  |
+| `project_type:update` | Update project types | yes |  |  |  |  |  |  |  |  |
+| `project_type:delete` | Delete project types | yes |  |  |  |  |  |  |  |  |
+| `integration:create` | Create integrations | yes |  |  |  |  |  |  |  |  |
+| `integration:read` | View integrations | yes | yes | yes | yes | yes |  |  |  |  |
+| `integration:update` | Update integrations | yes | yes |  |  |  |  |  |  |  |
+| `integration:delete` | Delete integrations | yes |  |  |  |  |  |  |  |  |
+| `webhook:create` | Create webhooks | yes |  |  |  |  |  |  |  |  |
+| `webhook:read` | View webhooks | yes | yes | yes | yes | yes |  |  |  |  |
+| `webhook:update` | Update webhooks | yes | yes |  |  |  |  |  |  |  |
+| `webhook:delete` | Delete webhooks | yes |  |  |  |  |  |  |  |  |
+| `upload:create` | Upload files | yes | yes |  |  |  |  |  |  |  |
+| `upload:read` | View and download uploads | yes | yes | yes | yes | yes |  |  |  |  |
+| `upload:delete` | Delete uploads | yes |  |  |  |  |  |  |  |  |
+| `service_account:create` | Create service accounts | yes |  |  |  |  |  |  |  |  |
+| `service_account:read` | View service accounts | yes |  |  |  |  |  |  |  |  |
+| `service_account:update` | Update service accounts | yes |  |  |  |  |  |  |  |  |
+| `service_account:delete` | Delete service accounts | yes |  |  |  |  |  |  |  |  |
+| `operations_log:create` | Create operations log entries | yes |  |  |  |  |  |  |  |  |
+| `operations_log:read` | View operations log entries | yes | yes | yes | yes | yes |  |  |  |  |
+| `operations_log:update` | Update operations log entries | yes |  |  |  |  |  |  |  |  |
+| `operations_log:delete` | Delete operations log entries | yes |  |  |  |  |  |  |  |  |
+| `component:read` | View package governance and the package reports | yes | yes | yes | yes |  |  |  |  |  |
+| `component:write` | Mark packages, record advisories, and add package notes | yes |  |  |  |  |  |  |  |  |
+| `tag:create` | Create tags | yes | yes |  |  |  |  |  |  |  |
+| `tag:read` | View tags | yes | yes | yes | yes | yes |  |  |  |  |
+| `tag:write` | Update tags | yes | yes |  |  |  |  |  |  |  |
+| `tag:delete` | Delete tags | yes |  |  |  |  |  |  |  |  |
+| `document:create` | Create project documents | yes | yes |  |  |  |  |  |  |  |
+| `document:read` | View project documents | yes | yes | yes | yes | yes |  |  |  |  |
+| `document:write` | Update project documents | yes | yes |  |  |  |  |  |  |  |
+| `document:delete` | Delete project documents | yes | yes |  |  |  |  |  |  |  |
+| `document:analytics:read` | View aggregate document read analytics | yes | yes | yes | yes |  |  |  |  |  |
+| `document:analytics:read_identities` | View which people read a document | yes |  |  |  |  |  |  |  |  |
+| `comment:create` | Create document comments | yes | yes |  |  |  |  |  |  |  |
+| `comment:write` | Update document comments | yes | yes |  |  |  |  |  |  |  |
+| `comment:delete` | Delete document comments | yes | yes |  |  |  |  |  |  |  |
+| `auth_providers:read` | View login auth provider configuration | yes |  |  |  |  |  |  |  |  |
+| `auth_providers:write` | Create, update, and delete login auth provider configuration | yes |  |  |  |  |  |  |  |  |
+| `scoring_policy:read` | View scoring policies | yes |  |  |  |  |  |  |  |  |
+| `scoring_policy:write` | Create/update scoring policies | yes |  |  |  |  |  |  |  |  |
+| `scoring_policy:delete` | Delete scoring policies | yes |  |  |  |  |  |  |  |  |
+| `scoring_policy:rescore` | Trigger rescore for a single project | yes | yes | yes |  |  |  |  |  |  |
+| `scoring_policy:rescore_all` | Trigger bulk project rescore | yes |  |  |  |  |  |  |  |  |
+| `document_template:create` | Create document templates | yes |  |  |  |  |  |  |  |  |
+| `document_template:read` | View document templates | yes | yes | yes | yes | yes |  |  |  |  |
+| `document_template:write` | Update document templates | yes |  |  |  |  |  |  |  |  |
+| `document_template:delete` | Delete document templates | yes |  |  |  |  |  |  |  |  |
+| `agent:create` | Create agents | yes | yes |  |  |  |  |  |  |  |
+| `agent:read` | View agents and their versions | yes | yes | yes | yes | yes |  |  |  |  |
+| `agent:write` | Update and restore agents | yes | yes |  |  |  |  |  |  |  |
+| `agent:delete` | Delete agents | yes |  |  |  |  |  |  |  |  |
+| `agent_task:read` | View agent tasks and their events | yes | yes | yes | yes | yes |  |  |  |  |
+| `agent_task:create` | Create agent tasks | yes | yes |  |  | yes | yes |  |  |  |
+| `agent_task:manage` | Pause, resume, cancel, and reassign agent tasks | yes | yes |  |  |  |  |  |  |  |
+| `agent_task:resolve` | Answer feedback requests and resolve approvals of agent tasks | yes | yes |  |  |  |  |  |  |  |
+| `agent_task:delete` | Delete closed agent tasks | yes |  |  |  |  |  |  |  |  |
+| `workflow:read` | View workflows, their versions, and their runs | yes | yes | yes | yes |  |  |  |  |  |
+| `workflow:create` | Create workflows | yes | yes |  |  |  |  |  |  |  |
+| `workflow:write` | Edit, activate, and pause workflows | yes | yes |  |  |  |  |  |  |  |
+| `workflow:delete` | Delete workflows | yes |  |  |  |  |  |  |  |  |
+| `workflow:run` | Start manual and test runs of workflows, and cancel runs | yes | yes |  |  | yes | yes |  |  |  |
+| `harness_pool:read` | View the runner pools and runners that serve the organization | yes |  |  |  |  |  |  |  |  |
+| `agent_platform_config:write` | Change the base agent configuration and the plugin marketplaces | yes |  |  |  |  |  |  |  |  |
+| `secret_provider:read` | View secret providers | yes |  |  |  |  |  |  |  |  |
+| `secret_provider:write` | Create, change, delete, and test secret providers | yes |  |  |  |  |  |  |  |  |
+| `secret_binding:read` | View secret bindings | yes |  |  |  |  |  |  |  |  |
+| `secret_binding:write` | Create, change, delete, and validate secret bindings | yes |  |  |  |  |  |  |  |  |
+| `secret_grant:read` | View secret grants and evaluate them | yes |  |  |  |  |  |  |  |  |
+| `secret_grant:write` | Create, change, and delete secret grants | yes |  |  |  |  |  |  |  |  |
+| `secret_resolution:read` | View secret resolutions | yes |  |  |  |  |  |  |  |  |
+| `secret_resolution:manage` | Release secret resolutions and revoke provider leases | yes |  |  |  |  |  |  |  |  |
+| `secret_audit:read` | View secret audit events | yes |  |  |  |  |  |  |  |  |
+| `admin:plugins:read` | View installed plugins | yes |  |  |  |  |  |  |  |  |
+| `admin:plugins:manage` | Install and uninstall plugins | yes |  |  |  |  |  |  |  |  |
+| `admin:maintenance:read` | View global maintenance operations | yes |  |  |  |  |  |  |  |  |
+| `admin:maintenance:manage` | Run and cancel global maintenance operations | yes |  |  |  |  |  |  |  |  |
+| `project:configuration:read` | Read project configuration via plugins | yes |  |  |  |  |  |  |  |  |
+| `project:configuration:read_secrets` | Read secret configuration values via plugins | yes |  |  |  |  |  |  |  |  |
+| `project:configuration:write` | Write project configuration via plugins | yes |  |  |  |  |  |  |  |  |
+| `project:logs:read` | Read project logs via plugins | yes |  |  |  |  |  |  |  |  |
+| `project:deployment:read` | Read project deployment state via plugins | yes | yes | yes | yes |  |  | yes |  |  |
+| `project:deployment:write` | Trigger deployments and promotions via plugins | yes | yes |  |  |  |  | yes |  |  |
+| `project:commits:read` | Read commit history synced via plugins | yes | yes | yes | yes |  |  |  |  |  |
+| `project:commits:write` | Trigger commit-history sync via plugins | yes | yes |  |  |  |  |  |  |  |
+| `project:pull-requests:read` | Read pull request history synced via plugins | yes | yes | yes | yes |  |  |  |  |  |
+| `project:pull-requests:write` | Trigger pull-request sync via plugins | yes | yes |  |  |  |  |  |  |  |
+| `search:read` | Search nodes by semantic similarity | yes | yes | yes | yes | yes |  |  |  |  |
+| `me:identities:manage` | Connect, refresh, and disconnect own third-party identities | yes | yes | yes | yes |  |  |  |  |  |
+| `admin:identities:read` | List identity connections across users (audit / support) | yes |  |  |  |  |  |  |  |  |
+| `admin:identities:revoke` | Force-revoke another user's identity connection | yes |  |  |  |  |  |  |  |  |
+| `admin:events:read` | List events across every organization (audit / support) | yes |  |  |  |  |  |  |  |  |
+| `admin:dashboard:read` | View the admin system-health dashboard | yes |  |  |  |  |  |  |  |  |
+| `scheduled_task:read` | View scheduled tasks and their run history | yes | yes | yes | yes | yes |  | yes |  |  |
+| `scheduled_task:create` | Create scheduled tasks | yes | yes |  |  | yes |  | yes |  |  |
+| `scheduled_task:write` | Update, pause, and resume scheduled tasks | yes | yes |  |  | yes |  | yes |  |  |
+| `scheduled_task:delete` | Delete scheduled tasks | yes | yes |  |  | yes |  | yes |  |  |
+| `scheduled_task:run` | Run scheduled tasks on demand and cancel in-flight runs | yes | yes |  |  | yes |  |  |  |  |
+| `scheduled_task:admin` | Manage other principals' and system scheduled tasks | yes |  |  |  | yes |  |  |  |  |
+| `scheduler:impersonate` | Schedule tasks that run as another user | yes |  |  |  |  |  |  |  |  |
+| `integration:act-as-service` | Use an Integration's own credential instead of the principal's identity | yes |  |  |  |  |  |  |  |  |
 
 <!-- END GENERATED -->
 

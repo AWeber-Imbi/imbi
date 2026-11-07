@@ -9,9 +9,9 @@ patch projects and record releases. Neither is created by hand any more:
 existing install up to date. ``imbi-workflows`` calls imbi-api as its
 own account for the deploy and rollback steps of a workflow (ADR 0021).
 
-imbi-assistant, imbi-mcp, and imbi-slackbot deliberately have no entry
-here. Each forwards the *caller's* token to imbi-api rather than acting
-as itself, so an account for them would carry privileges nothing uses.
+imbi-assistant and imbi-slackbot forward the *caller's* token for
+their tool calls. Their own accounts only get the token of their AI
+Provider (WIF plan 4.6, ``ai_provider:token``). imbi-mcp has no entry.
 
 Credentials come from the environment when it supplies them, so a
 deployment whose secret already lives in a Helm values file or an
@@ -56,6 +56,10 @@ class InternalService(typing.NamedTuple):
     #: ``secret_var``.
     client_id_var: str | None
     secret_var: str
+    #: Skip this service, with a warning, when its role is not seeded.
+    #: Set for services added after release: an upgrade that has not
+    #: run ``setup-permissions`` yet must not stop the existing ones.
+    optional: bool = False
 
 
 INTERNAL_SERVICES: tuple[InternalService, ...] = (
@@ -90,6 +94,26 @@ INTERNAL_SERVICES: tuple[InternalService, ...] = (
         credential='client_credential',
         client_id_var='IMBI_WORKFLOWS_SA_CLIENT_ID',
         secret_var='IMBI_WORKFLOWS_SA_CLIENT_SECRET',
+    ),
+    InternalService(
+        slug='imbi-assistant',
+        display_name='Imbi Assistant',
+        description='Gets the token of its AI provider (WIF plan 4.6)',
+        role_slug='imbi-assistant',
+        credential='api_key',
+        client_id_var=None,
+        secret_var='IMBI_ASSISTANT_API_TOKEN',
+        optional=True,
+    ),
+    InternalService(
+        slug='imbi-slackbot',
+        display_name='Imbi Slackbot',
+        description='Gets the token of its AI provider (WIF plan 4.6)',
+        role_slug='imbi-slackbot',
+        credential='api_key',
+        client_id_var=None,
+        secret_var='IMBI_SLACKBOT_API_TOKEN',
+        optional=True,
     ),
 )
 
@@ -136,7 +160,8 @@ async def seed_internal_services(
 
     Returns:
         One :class:`SeededService` per :data:`INTERNAL_SERVICES`, in
-        declaration order.
+        declaration order, less any optional service whose role is
+        missing.
 
     Raises:
         SeedError: A role or the organization is missing, or a supplied
@@ -146,6 +171,14 @@ async def seed_internal_services(
     env = os.environ if environ is None else environ
     results: list[SeededService] = []
     for service in INTERNAL_SERVICES:
+        if service.optional and not await _role_exists(db, service):
+            LOGGER.warning(
+                'Skipping service account %s: role %s not found. '
+                'Run imbi-api setup-permissions to seed it.',
+                service.slug,
+                service.role_slug,
+            )
+            continue
         created = await _ensure_account(db, service, org_slug)
         if service.credential == 'client_credential':
             outcome, emit = await _ensure_client_credential(db, service, env)
@@ -159,6 +192,17 @@ async def seed_internal_services(
         )
         results.append(SeededService(service, created, outcome, emit))
     return results
+
+
+async def _role_exists(db: graph.Graph, service: InternalService) -> bool:
+    """Report whether the role of *service* is seeded."""
+    return bool(
+        await db.execute(
+            'MATCH (r:Role {{slug: {role_slug}}}) RETURN r.slug AS slug',
+            {'role_slug': service.role_slug},
+            ['slug'],
+        )
+    )
 
 
 async def _ensure_account(

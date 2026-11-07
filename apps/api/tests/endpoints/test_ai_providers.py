@@ -9,13 +9,14 @@ import fastapi.testclient
 import psycopg.errors
 
 from apps.api.tests import support
-from imbi.api import models, secret_broker
+from imbi.api import models, secret_broker, settings
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers
 from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph
 from imbi.common.llm import discovery
+from imbi.common.llm import tokens as common_tokens
 
 #: Organization slug for tests that still need one (prompt render).
 ORG = 'acme'
@@ -143,7 +144,7 @@ class AIProviderTestBase(support.SharedAppTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        cache = mock.patch.object(tokens, 'CACHE', tokens.TokenCache())
+        cache = mock.patch.object(tokens, 'CACHE', common_tokens.TokenCache())
         cache.start()
         self.addCleanup(cache.stop)
 
@@ -977,3 +978,83 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         self.assertIn(
             'workload_identity_not_configured', response.json()['detail']
         )
+
+
+class ServiceTokenTestCase(AIProviderTestBase):
+    """``POST /ai-providers/token``: the token of the caller's provider."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.exchanger = identity.FakeExchanger()
+        patcher = mock.patch.dict(
+            identity.EXCHANGERS, {'anthropic': self.exchanger}
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.auth_context = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-assistant', display_name='Imbi Assistant'
+            ),
+            auth_method='api_key',
+            permissions={'ai_provider:token'},
+        )
+        configured = mock.patch.object(
+            settings,
+            'get_ai_providers',
+            return_value=settings.AIProviders(assistant='prv-1'),
+        )
+        configured.start()
+        self.addCleanup(configured.stop)
+        self.mock_store.identity_source.return_value = SOURCE
+
+    def post(self, failed: str | None = None) -> typing.Any:
+        return self.client.post(f'{BASE}/token', json={'failed': failed})
+
+    def test_returns_the_token_of_the_provider(self) -> None:
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        response = self.post()
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertTrue(body['token'])
+        self.assertIn('expires_at', body)
+        self.assertEqual(router.params_for(GET_PROVIDER)['id'], 'prv-1')
+        # Cached: a second call mints nothing.
+        self.assertEqual(self.post().json()['token'], body['token'])
+        self.assertEqual(len(self.exchanger.seen), 1)
+        # A failed token that is current is renewed.
+        renewed = self.post(failed=body['token']).json()['token']
+        self.assertNotEqual(renewed, body['token'])
+        self.assertEqual(len(self.exchanger.seen), 2)
+
+    def test_not_in_the_openapi_document(self) -> None:
+        self.assertNotIn(f'{BASE}/token', self.test_app.openapi()['paths'])
+
+    def test_a_caller_without_a_provider_is_404(self) -> None:
+        for slug in ('imbi-slackbot', 'imbi-gateway'):
+            with self.subTest(slug=slug):
+                self.auth_context.service_account = models.ServiceAccount(
+                    slug=slug, display_name=slug
+                )
+                self.assertEqual(self.post().status_code, 404)
+        # A user (even an admin) is not a service.
+        self.auth_context = permissions.AuthContext(
+            user=self.user, auth_method='jwt'
+        )
+        self.assertEqual(self.post().status_code, 404)
+
+    def test_needs_the_permission(self) -> None:
+        self.auth_context.permissions = set()
+        self.assertEqual(self.post().status_code, 403)
+
+    def test_a_provider_without_workload_identity_is_409(self) -> None:
+        self.route((GET_PROVIDER, [{'p': provider_props()}]))
+        self.assertEqual(self.post().status_code, 409)
+
+    def test_no_identity_source_is_502(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        self.mock_store.identity_source.return_value = None
+        self.assertEqual(self.post().status_code, 502)

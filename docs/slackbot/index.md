@@ -94,6 +94,7 @@ The full list is in [Configuration](../api/configuration.md).
 | `SLACK_BOT_TOKEN` | none | The bot token (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | none | The app-level token (`xapp-...`) for Socket Mode |
 | `ANTHROPIC_API_KEY` | none | The Anthropic API key |
+| `IMBI_SLACKBOT_API_TOKEN` | none | The API key of the `imbi-slackbot` service account. When it is set, the bot uses the token of its AI provider ([workload identity](../admin/ai-models.md#imbi-services)) instead of `ANTHROPIC_API_KEY` |
 | `IMBI_SLACKBOT_ENABLED` | `false` | Turns the bot on. When the three variables above are set, the bot turns on |
 | `IMBI_SLACKBOT_MODEL` | `claude-sonnet-4-6` | The model when the prompt names none |
 | `IMBI_SLACKBOT_MAX_TOKENS` | `16384` | The maximum output tokens of one answer |
