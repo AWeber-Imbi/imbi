@@ -253,6 +253,11 @@ from the organization's identity source and exchanges it with the vendor.
 An agent cannot use the binding of another agent. Removing the identity
 source stops all token exchanges for the organization.
 
+The **OpenAI workload identity** provider (`openai_wif`) works the same
+way, with the locator `{"identity_provider_id": "...",
+"service_account_id": "..."}`. The harness does not use it yet, because
+agents call only the Anthropic API.
+
 An AI Provider can also use the identity source of an organization; see
 [AI Models](ai-models.md#use-workload-identity-instead-of-a-key).
 

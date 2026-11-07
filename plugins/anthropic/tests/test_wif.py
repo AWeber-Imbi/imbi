@@ -46,7 +46,7 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
             },
         )
         patcher = mock.patch.object(
-            wif.httpx,
+            identity.httpx,
             'AsyncClient',
             functools.partial(
                 httpx.AsyncClient, transport=httpx.MockTransport(self._handle)

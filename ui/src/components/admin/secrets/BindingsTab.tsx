@@ -264,7 +264,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
             },
             {
               description:
-                'For AWS: {"secret_id": "prod/app", "version_stage": "AWSCURRENT"}. For a GitHub App: {"app_id": "123", "private_key": "secret://<scope>/<key>", "repositories": ["owner/name"]}. For Anthropic workload identity (dynamic): {"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, the ids from the Anthropic Console; workspace_id only when the rule has more than one workspace.',
+                'For AWS: {"secret_id": "prod/app", "version_stage": "AWSCURRENT"}. For a GitHub App: {"app_id": "123", "private_key": "secret://<scope>/<key>", "repositories": ["owner/name"]}. For Anthropic workload identity (dynamic): {"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, the ids from the Anthropic Console; workspace_id only when the rule has more than one workspace. For OpenAI workload identity (dynamic): {"identity_provider_id": "...", "service_account_id": "..."}, the ids from the OpenAI dashboard.',
               initial: '{}',
               kind: 'json',
               label: 'Locator',
