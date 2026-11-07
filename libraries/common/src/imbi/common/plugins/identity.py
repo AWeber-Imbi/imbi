@@ -26,8 +26,12 @@ and cannot be pickled. Audit rows use :attr:`AccessToken.fingerprint`.
 import dataclasses
 import datetime
 import hashlib
+import logging
 import typing
 
+import httpx
+
+from imbi.common.plugins import secrets
 from imbi.common.plugins.secrets import InvalidConfiguration, validate_model
 
 __all__ = [
@@ -37,8 +41,15 @@ __all__ = [
     'IdentitySource',
     'InvalidConfiguration',
     'TokenExchanger',
+    'WifSecretProvider',
+    'post_exchange',
     'validate_model',
 ]
+
+LOGGER = logging.getLogger(__name__)
+
+#: The timeout of one exchange request.
+EXCHANGE_TIMEOUT_SECONDS = 10
 
 
 class IdentityError(Exception):
@@ -182,3 +193,107 @@ class TokenExchanger:
 
         """
         raise NotImplementedError
+
+
+async def post_exchange(
+    vendor: str,
+    url: str,
+    body: dict[str, typing.Any],
+    headers: dict[str, str] | None = None,
+) -> AccessToken:
+    """POST a JSON token exchange to a fixed endpoint, one time.
+
+    Redirects are not followed. The body and the token are never logged.
+    The response must hold ``access_token`` and ``expires_in``.
+
+    Raises:
+        IdentityError: ``unreachable`` and ``unavailable`` (retryable),
+            ``exchange_refused``, or ``provider_error``.
+
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=EXCHANGE_TIMEOUT_SECONDS, follow_redirects=False
+        ) as client:
+            response = await client.post(url, headers=headers, json=body)
+    except httpx.HTTPError as err:
+        LOGGER.warning(
+            '%s token exchange failed: %s', vendor, type(err).__name__
+        )
+        raise IdentityError('unreachable', retryable=True) from None
+    if response.status_code == 429 or response.status_code >= 500:
+        LOGGER.warning(
+            '%s token exchange failed: HTTP %s', vendor, response.status_code
+        )
+        raise IdentityError('unavailable', retryable=True)
+    if response.status_code != 200:
+        LOGGER.warning(
+            '%s token exchange refused: HTTP %s', vendor, response.status_code
+        )
+        raise IdentityError('exchange_refused')
+    try:
+        payload = response.json()
+        token = payload['access_token']
+        expires_in = int(payload['expires_in'])
+        expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            seconds=expires_in
+        )
+    except (ValueError, KeyError, TypeError, OverflowError):
+        raise IdentityError('provider_error') from None
+    if not isinstance(token, str) or not token or expires_in <= 0:
+        raise IdentityError('provider_error')
+    return AccessToken(token, expires_at, payload.get('scope'))
+
+
+class WifSecretProvider(secrets.SecretProvider):
+    """A vendor WIF secret provider (``anthropic_wif``, ``openai_wif``).
+
+    Subclasses set :attr:`type`, :attr:`label`, and :attr:`exchanger`. A
+    dynamic binding holds the exchanger target. Each resolution mints a
+    new token for the agent of the task through core (``vendor_token``).
+    The provider takes no configuration.
+    """
+
+    exchanger: typing.ClassVar[TokenExchanger]
+    capabilities = frozenset[secrets.SecretCapability]({'dynamic_issuance'})
+
+    def validate_config(
+        self, config: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        if config:
+            raise InvalidConfiguration(
+                f'The {self.type} provider takes no configuration'
+            )
+        return {}
+
+    def validate_locator(
+        self,
+        locator: dict[str, typing.Any],
+        credential_class: secrets.CredentialClass,
+    ) -> dict[str, typing.Any]:
+        if credential_class != 'dynamic':
+            raise InvalidConfiguration(f'An {self.type} binding is dynamic')
+        return self.exchanger.validate_target(locator)
+
+    async def resolve(
+        self,
+        config: dict[str, typing.Any],
+        locator: dict[str, typing.Any],
+        field: str | None,
+        context: secrets.ResolveContext,
+    ) -> secrets.Material:
+        if field is not None:
+            raise secrets.BrokerError('secret_field_not_allowed')
+        if context.agent_id is None:
+            raise secrets.BrokerError('secret_access_denied', 'no_agent')
+        token = await self.host.vendor_token(
+            context.organization_id,
+            self.exchanger,
+            locator,
+            agent_id=context.agent_id,
+        )
+        return secrets.Material(
+            token.token.encode(),
+            bearer=True,
+            credential_expires_at=token.expires_at,
+        )

@@ -46,7 +46,7 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
             },
         )
         patcher = mock.patch.object(
-            wif.httpx,
+            identity.httpx,
             'AsyncClient',
             functools.partial(
                 httpx.AsyncClient, transport=httpx.MockTransport(self._handle)
@@ -107,6 +107,13 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
             (httpx.Response(200, text='not json'), 'provider_error', False),
             (
                 httpx.Response(200, json={'access_token': ''}),
+                'provider_error',
+                False,
+            ),
+            (
+                httpx.Response(
+                    200, json={'access_token': 't', 'expires_in': 1e20}
+                ),
                 'provider_error',
                 False,
             ),

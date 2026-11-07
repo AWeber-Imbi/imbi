@@ -26,6 +26,7 @@ members = [
     "imbi-plugin-google",
     "imbi-plugin-logzio",
     "imbi-plugin-oidc",
+    "imbi-plugin-openai",
     "imbi-plugin-pagerduty",
     "imbi-plugin-sonarqube",
     "imbi-scheduler",
@@ -1257,6 +1258,7 @@ dependencies = [
     { name = "imbi-plugin-google" },
     { name = "imbi-plugin-logzio" },
     { name = "imbi-plugin-oidc" },
+    { name = "imbi-plugin-openai" },
     { name = "imbi-plugin-pagerduty" },
     { name = "imbi-plugin-sonarqube" },
     { name = "imbi-scheduler" },
@@ -1310,6 +1312,7 @@ requires-dist = [
     { name = "imbi-plugin-google", editable = "plugins/google" },
     { name = "imbi-plugin-logzio", editable = "plugins/logzio" },
     { name = "imbi-plugin-oidc", editable = "plugins/oidc" },
+    { name = "imbi-plugin-openai", editable = "plugins/openai" },
     { name = "imbi-plugin-pagerduty", editable = "plugins/pagerduty" },
     { name = "imbi-plugin-sonarqube", editable = "plugins/sonarqube" },
     { name = "imbi-scheduler", editable = "apps/scheduler" },
@@ -1637,14 +1640,12 @@ name = "imbi-plugin-anthropic"
 version = "2.43.1"
 source = { editable = "plugins/anthropic" }
 dependencies = [
-    { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", specifier = ">=0.27" },
     { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
 ]
@@ -1734,6 +1735,21 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "imbi-common", editable = "libraries/common" },
+    { name = "pydantic", specifier = ">=2" },
+]
+
+[[package]]
+name = "imbi-plugin-openai"
+version = "2.43.1"
+source = { editable = "plugins/openai" }
+dependencies = [
+    { name = "imbi-common" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
     { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
 ]
