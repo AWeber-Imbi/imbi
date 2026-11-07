@@ -233,6 +233,8 @@ value from the command output before the agent sees it.
 With workload identity federation, an agent gets a short-lived vendor
 access token instead of a static API key. imbi-api gets an identity JWT
 from the organization's identity source and exchanges it with the vendor.
+The [Workload Identity Runbook](workload-identity.md) gives the AWS,
+Anthropic Console, and OpenAI setup that these steps need.
 
 1. On the **Identity** tab, select **Set identity source**. Select
    **AWS STS** and enter the configuration, for example

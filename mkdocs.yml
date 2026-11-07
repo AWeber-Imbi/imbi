@@ -71,6 +71,7 @@ nav:
           - Prompts: admin/prompts.md
           - Assistant and MCP Servers: admin/assistant-and-mcp-servers.md
           - Secrets: admin/secrets.md
+          - Workload Identity Runbook: admin/workload-identity.md
           - Agents: admin/agents.md
           - Agent Tasks: admin/agent-tasks.md
           - Workflows: admin/workflows.md
