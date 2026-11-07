@@ -261,10 +261,14 @@ is no cascade, so a provider cannot take its models with it.
 | `ai_model:update` | Change a provider or a model, including the enabled flag. |
 | `ai_model:delete` | Delete providers and models. |
 | `ai_model:credentials` | Set and remove provider credentials. |
-| `ai_provider:token` | Get the token of the AI provider of the calling service. Only the `imbi-assistant` and `imbi-slackbot` roles have it. |
+| `ai_provider:token` | Get the token of the AI provider of the calling service. The `imbi-assistant`, `imbi-slackbot`, and `admin` roles have it. |
 
-Administrators hold all five. The Developer, Default, and Read Only roles hold
+Administrators hold all six. The Developer, Default, and Read Only roles hold
 `ai_model:read`.
+
+`POST /ai-providers/token` needs a service account with a configured
+provider. A human administrator passes the permission check but gets `404`.
+This is expected, not a fault.
 
 `ai_model:credentials` is deliberately separate from `ai_model:update`.
 Changing a model's temperature must not imply the right to replace the

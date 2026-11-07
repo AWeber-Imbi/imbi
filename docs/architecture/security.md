@@ -75,10 +75,14 @@ Imbi services:
 | imbi-scheduler | Client credential | `IMBI_SCHEDULER_SA_CLIENT_ID`, `IMBI_SCHEDULER_SA_CLIENT_SECRET` |
 | imbi-gateway | API key | `IMBI_GATEWAY_API_TOKEN` |
 | imbi-workflows | Client credential | `IMBI_WORKFLOWS_SA_CLIENT_ID`, `IMBI_WORKFLOWS_SA_CLIENT_SECRET` |
+| imbi-assistant | API key | `IMBI_ASSISTANT_API_TOKEN` |
+| imbi-slackbot | API key | `IMBI_SLACKBOT_API_TOKEN` |
 
-imbi-assistant, imbi-mcp, and imbi-slackbot have no service account. They
-send the token of the caller to imbi-api, so imbi-api applies the
-permissions of the caller.
+imbi-mcp has no service account. imbi-assistant, imbi-mcp, and
+imbi-slackbot send the token of the caller to imbi-api for tool calls, so
+imbi-api applies the permissions of the caller. imbi-assistant and
+imbi-slackbot use their own accounts only to get the token of their AI
+provider.
 
 Imbi also makes a service account for each agent, and you make one for
 each runner pool. A background worker inside imbi-api (for example the

@@ -119,7 +119,12 @@ class InternalServiceSeedTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_accounts_and_memberships_created(self) -> None:
         """A fresh install creates every account and membership."""
-        db = FakeGraph({'MERGE (s)-[m:MEMBER_OF]->(o)': [{'m': 'edge'}]})
+        db = FakeGraph(
+            {
+                'MERGE (s)-[m:MEMBER_OF]->(o)': [{'m': 'edge'}],
+                'MATCH (r:Role': [{'slug': 'role'}],
+            }
+        )
 
         results = await internal_services.seed_internal_services(
             db, 'aweber', {}
@@ -159,6 +164,20 @@ class InternalServiceSeedTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('imbi-scheduler', str(ctx.exception))
         self.assertIn('role or organization not found', str(ctx.exception))
+
+    async def test_optional_service_without_role_is_skipped(self) -> None:
+        """An upgrade without the new roles still seeds the others."""
+        db = FakeGraph({'MERGE (s)-[m:MEMBER_OF]->(o)': [{'m': 'edge'}]})
+
+        with self.assertLogs(internal_services.LOGGER, 'WARNING'):
+            results = await internal_services.seed_internal_services(
+                db, 'aweber', {}
+            )
+
+        self.assertEqual(
+            [result.service.slug for result in results],
+            ['imbi-scheduler', 'imbi-gateway', 'imbi-workflows'],
+        )
 
     async def test_existing_account_is_not_recreated(self) -> None:
         """An account already present is not written again."""
