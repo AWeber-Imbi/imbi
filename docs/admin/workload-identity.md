@@ -5,14 +5,8 @@ the end: AWS, the Anthropic Console, the OpenAI dashboard, and Imbi. After
 the setup, Imbi stores no Anthropic or OpenAI API key. Each agent and each
 AI Provider gets a short-lived vendor token.
 
-The Imbi screens have their own pages. This page tells you the order and
-the values to put on each side:
-
-- [Secrets, Workload identity](secrets.md#workload-identity): the identity
-  source, the bindings, and the grants of the agents.
-- [AI Models, Use workload identity instead of a key](ai-models.md#use-workload-identity-instead-of-a-key):
-  the AI Providers, and the providers of imbi-api, the assistant, and the
-  Slack bot.
+This page gives the order and the values for each side. The Imbi screens
+have their own pages, linked from each step.
 
 ## How a token is made
 
@@ -28,15 +22,10 @@ sequenceDiagram
     V-->>I: access token (short-lived)
 ```
 
-1. imbi-api assumes the organization's identity role.
-2. imbi-api asks STS for an identity JWT. AWS signs the JWT. Its `sub` is
-   the role ARN. Its request tags are `imbi_org` (the Imbi organization
-   id) and one of `imbi_agent` (an agent id) or `imbi_ai_provider` (an AI
-   Provider id).
-3. The vendor checks the JWT against a federation rule (Anthropic) or a
-   mapping (OpenAI), and returns an access token.
-
-Each JWT is used one time. Imbi never logs the JWT or the token.
+The JWT `sub` is the role ARN. Its request tags are `imbi_org` (the Imbi
+organization id) and one of `imbi_agent` (an agent id) or
+`imbi_ai_provider` (an AI Provider id). Each JWT is used one time. Imbi
+never logs the JWT or the token.
 
 | Vendor | Audience | JWT lifetime | Token lifetime |
 |---|---|---|---|
@@ -48,15 +37,17 @@ Imbi sets the audience, the tags, the lifetime, and the signing algorithm
 
 ## Before you start
 
-Collect these values. You need them on more than one side.
+Get the id of each agent and each AI Provider. The vendor rules and
+mappings need them.
 
 | Value | Where to find it |
 |---|---|
-| Imbi organization id | Save the identity source with any role (step 2): the error message shows `imbi:<organization id>` |
-| Agent id (one for each agent) | `GET /organizations/{org_slug}/agents/{agent_slug}`, field `id` |
-| AI Provider id (one for each provider) | `GET /ai-providers`, field `id` |
-| Identity role ARN | You create it in step 1 |
-| Issuer URL | AWS shows it when you turn on outbound federation (step 1) |
+| Agent id | `GET /organizations/{org_slug}/agents/{agent_slug}`, field `id` |
+| AI Provider id | `GET /ai-providers`, field `id` |
+
+You also need the Imbi organization id. If you do not know it, save the
+identity source with any role first (step 2): the error message shows
+`imbi:<organization id>`.
 
 Use a separate setup for each Imbi organization: one identity role, and
 rules or mappings that match that organization's id.
@@ -81,25 +72,9 @@ the identity role, as for the Secrets Manager role (see
 
 ### The identity role
 
-Create a new role. Do not use the Secrets Manager role.
-
-Trust policy. Replace the principal and the organization id:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {"AWS": "arn:aws:iam::111111111111:role/imbi-api"},
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {"sts:ExternalId": "imbi:<organization id>"}
-      }
-    }
-  ]
-}
-```
+Create a new role. Do not use the Secrets Manager role. Use the same
+trust policy as the Secrets Manager role, with the `sts:ExternalId`
+condition (see [Secrets, The role](secrets.md#the-role)).
 
 Only imbi-api must be able to assume this role. Any principal that can
 assume it can set any `imbi_agent` tag, and so can act as any agent of the
@@ -139,10 +114,8 @@ Permission policy. Replace the organization id:
 - `aws:TagKeys` refuses all other tag keys.
 - Remove the audience of a vendor that you do not use.
 
-Session lifetime: for each JWT, imbi-api assumes the role for the JWT
-lifetime plus 300 seconds, and at least 900 seconds. Anthropic needs 900
-seconds, which every role allows. OpenAI needs 3900 seconds, so set the
-role's **Maximum session duration** to 2 hours.
+For OpenAI, set the role's **Maximum session duration** to 2 hours. The
+OpenAI JWT lasts 1 hour, and the role session must last longer.
 
 !!! warning "OpenAI and role chaining"
     When imbi-api has role credentials (IRSA, EKS Pod Identity, or another
@@ -155,11 +128,9 @@ role's **Maximum session duration** to 2 hours.
 
 In **Admin, Secrets, Identity**, set the identity source to **AWS STS**
 with the region and the identity role ARN. See
-[Secrets, Workload identity](secrets.md#workload-identity), step 1.
-
-When you save, Imbi checks two things. The role must refuse a wrong
-ExternalId, and it must accept `imbi:<organization id>`. This check does
-not call `GetWebIdentityToken`. Step 6 tests the full path.
+[Secrets, Workload identity](secrets.md#workload-identity), step 1. If the
+save fails, the error message shows the exact `imbi:<organization id>`
+for the trust policy.
 
 ## Step 3: Anthropic Console
 
@@ -179,7 +150,7 @@ Console labels can be different.
 | `audience` | `https://api.anthropic.com` |
 | `condition` (CEL) | See below |
 | `oauth_scope` | `workspace:inference` |
-| `token_lifetime_seconds` | `600` (a 300-second JWT limits the token to 600 seconds) |
+| `token_lifetime_seconds` | `600` |
 | Workspaces | The workspace of the agent or provider |
 
 `subject_prefix` is a prefix match: `role/imbi` also matches
@@ -264,8 +235,7 @@ The Imbi reason tells you where the problem is.
 |---|---|---|
 | `federation_disabled` | Outbound web identity federation is off | Turn it on (step 1) |
 | `access_denied` | The trust policy or the permission policy refuses the call | Check the principal, the ExternalId, and the policy conditions (step 1) |
-| `session_duration_escalation` | The JWT outlives the role session | Raise the role's maximum session duration |
-| `invalid_request` | AWS refused a parameter, for example a session over 1 hour with role chaining | See the warning in step 1 |
+| `invalid_request` | AWS refused a parameter, for example a role session longer than the role's maximum session duration, or longer than 1 hour with role chaining | Raise the maximum session duration, and see the warning in step 1 |
 | `credentials_expired` | The imbi-api AWS credentials expired | Check the imbi-api identity (IRSA or Pod Identity) |
 | `throttled`, `unreachable`, `unavailable` | AWS or the vendor did not answer | Imbi tries again on the next request |
 | `exchange_refused` | The vendor refused the JWT | See below |

@@ -240,8 +240,9 @@ Anthropic Console, and OpenAI setup that these steps need.
    **AWS STS** and enter the configuration, for example
    `{"region": "us-east-1", "role_arn": "arn:aws:iam::123456789012:role/imbi-identity"}`.
    Use a separate role, not the Secrets Manager role. Its trust policy must
-   require `sts:ExternalId` `imbi:<organization id>`. Imbi checks the
-   configuration with one call to AWS STS when you save.
+   require `sts:ExternalId` `imbi:<organization id>`. When you save, Imbi
+   assumes the role two times: the role must refuse a wrong ExternalId and
+   accept the organization's own. This check does not get an identity JWT.
 2. On the **Providers** tab, add a provider of the type **Anthropic
    workload identity** with the configuration `{}`.
 3. For each agent, add a `dynamic` binding to that provider. The locator
