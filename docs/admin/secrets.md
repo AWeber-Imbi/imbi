@@ -253,6 +253,9 @@ from the organization's identity source and exchanges it with the vendor.
 An agent cannot use the binding of another agent. Removing the identity
 source stops all token exchanges for the organization.
 
+An AI Provider can also use the identity source of an organization; see
+[AI Models](ai-models.md#use-workload-identity-instead-of-a-key).
+
 ## Check what happened
 
 - **Resolutions** lists the secret reads that are active now.

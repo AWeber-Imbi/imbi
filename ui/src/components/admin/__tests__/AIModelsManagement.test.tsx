@@ -25,7 +25,10 @@ vi.mock('@/api/endpoints', () => ({
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
+  useOrganization: () => ({
+    organizations: [],
+    selectedOrganization: { slug: 'acme' },
+  }),
 }))
 
 const drivers: AIProviderDriver[] = [

@@ -12,12 +12,14 @@ import {
   deleteAIModel,
   deleteAIProvider,
   deleteAIProviderCredentials,
+  deleteAIProviderWorkloadIdentity,
   importAIModels,
   listAIModels,
   listAIProviderDrivers,
   listAIProviders,
   listTeams,
   setAIProviderCredentials,
+  setAIProviderWorkloadIdentity,
   updateAIModel,
   updateAIProvider,
 } from '@/api/endpoints'
@@ -186,6 +188,31 @@ export function AIModelsManagement() {
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
+  const setWorkloadIdentityMutation = useMutation({
+    mutationFn: ({
+      body,
+      id,
+    }: {
+      body: { organization: string; target: Record<string, unknown> }
+      id: string
+    }) => setAIProviderWorkloadIdentity(id, body),
+    onError: onMutationError,
+    onSuccess: closeAndRefresh,
+  })
+  const removeWorkloadIdentityMutation = useMutation({
+    mutationFn: (id: string) => deleteAIProviderWorkloadIdentity(id),
+    onError: onMutationError,
+    onSuccess: closeAndRefresh,
+  })
+  // Clear every credential error before a new action, so the banner
+  // shows only the result of the latest action.
+  const resetCredentialErrors = () => {
+    setCredentialsMutation.reset()
+    removeCredentialsMutation.reset()
+    setWorkloadIdentityMutation.reset()
+    removeWorkloadIdentityMutation.reset()
+  }
+
   const createModelMutation = useMutation({
     mutationFn: (values: ModelFormValues) =>
       createAIModel({
@@ -473,22 +500,40 @@ export function AIModelsManagement() {
       {credentialsProvider && (
         <CredentialsDialog
           error={
-            setCredentialsMutation.error ?? removeCredentialsMutation.error
+            setCredentialsMutation.error ??
+            removeCredentialsMutation.error ??
+            setWorkloadIdentityMutation.error ??
+            removeWorkloadIdentityMutation.error
           }
           isPending={
             setCredentialsMutation.isPending ||
-            removeCredentialsMutation.isPending
+            removeCredentialsMutation.isPending ||
+            setWorkloadIdentityMutation.isPending ||
+            removeWorkloadIdentityMutation.isPending
           }
           onClose={goToList}
-          onRemove={() =>
+          onRemove={() => {
+            resetCredentialErrors()
             removeCredentialsMutation.mutate(credentialsProvider.id)
-          }
-          onSave={(apiKey) =>
+          }}
+          onRemoveWorkloadIdentity={() => {
+            resetCredentialErrors()
+            removeWorkloadIdentityMutation.mutate(credentialsProvider.id)
+          }}
+          onSave={(apiKey) => {
+            resetCredentialErrors()
             setCredentialsMutation.mutate({
               apiKey,
               id: credentialsProvider.id,
             })
-          }
+          }}
+          onSaveWorkloadIdentity={(body) => {
+            resetCredentialErrors()
+            setWorkloadIdentityMutation.mutate({
+              body,
+              id: credentialsProvider.id,
+            })
+          }}
           open
           provider={credentialsProvider}
         />
@@ -599,7 +644,7 @@ function matchesFilter(row: ProviderRow, filter: ProviderFilter): boolean {
   }
   if (filter === 'missing-credentials') {
     if (!row.provider) return true
-    return !row.provider.has_credentials && row.provider.auth_kind !== 'iam'
+    return row.provider.auth_kind === 'none'
   }
   return true
 }

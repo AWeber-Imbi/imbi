@@ -31,8 +31,20 @@ TIMEOUT = 10.0
 MAX_MODELS = 1000
 
 
+#: A Bearer token on the Anthropic API needs this beta (anthropic SDK
+#: ``lib/credentials``).
+OAUTH_BETA = 'oauth-2025-04-20'
+
+
 class DiscoveryError(Exception):
-    """A provider's model list could not be retrieved."""
+    """A provider's model list could not be retrieved.
+
+    ``status`` is the HTTP status of the provider, when it answered.
+    """
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -47,7 +59,7 @@ class DiscoveredModel:
 
 
 async def list_models(
-    driver: str, api_key: str, base_url: str | None
+    driver: str, api_key: str, base_url: str | None, *, bearer: bool = False
 ) -> list[DiscoveredModel]:
     """Return the models ``driver`` reports for ``api_key``.
 
@@ -56,6 +68,7 @@ async def list_models(
         api_key: Decrypted credential for the provider.
         base_url: Endpoint to call, already resolved against the
             driver's default.
+        bearer: ``api_key`` is a workload identity access token.
 
     Returns:
         The provider's models, in the order the provider returned them.
@@ -66,7 +79,7 @@ async def list_models(
 
     """
     if driver == 'anthropic':
-        return await _list_anthropic(api_key, base_url)
+        return await _list_anthropic(api_key, base_url, bearer=bearer)
     if driver in ('openai', 'openai_compatible'):
         if not base_url:
             raise DiscoveryError(
@@ -84,7 +97,7 @@ def _as_int(value: object) -> int | None:
 
 
 async def _list_anthropic(
-    api_key: str, base_url: str | None
+    api_key: str, base_url: str | None, *, bearer: bool = False
 ) -> list[DiscoveredModel]:
     """List Anthropic models through the ``anthropic`` SDK.
 
@@ -97,8 +110,18 @@ async def _list_anthropic(
     """
     found: list[DiscoveredModel] = []
     try:
+        # An explicit credential stops the SDK from reading
+        # ANTHROPIC_API_KEY, so a token is never sent with a key.
+        auth: dict[str, typing.Any] = (
+            {
+                'auth_token': api_key,
+                'default_headers': {'anthropic-beta': OAUTH_BETA},
+            }
+            if bearer
+            else {'api_key': api_key}
+        )
         async with anthropic.AsyncAnthropic(
-            api_key=api_key,
+            **auth,
             base_url=base_url,
             timeout=TIMEOUT,
             max_retries=1,
@@ -121,7 +144,8 @@ async def _list_anthropic(
             exc.status_code,
         )
         raise DiscoveryError(
-            f'The anthropic endpoint returned HTTP {exc.status_code}'
+            f'The anthropic endpoint returned HTTP {exc.status_code}',
+            exc.status_code,
         ) from exc
     except anthropic.AnthropicError as exc:
         LOGGER.warning(
@@ -218,7 +242,8 @@ async def _get_json(url: str, headers: dict[str, str], driver: str) -> object:
             response.status_code,
         )
         raise DiscoveryError(
-            f'The {driver} endpoint returned HTTP {response.status_code}'
+            f'The {driver} endpoint returned HTTP {response.status_code}',
+            response.status_code,
         )
     try:
         return response.json()

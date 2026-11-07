@@ -47,6 +47,23 @@ export function parseFilterFromBlueprint(
   return null
 }
 
+/** Parse JSON that must hold a plain object, e.g. a provider config. */
+export function parseObject(
+  label: string,
+  value: string,
+): Record<string, unknown> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw new Error(`${label} is not valid JSON`)
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object`)
+  }
+  return parsed as Record<string, unknown>
+}
+
 /**
  * Parse an arbitrary value as an http(s) URL. Returns the canonical URL
  * string if valid, else null. Guards against javascript:/data:/etc schemes

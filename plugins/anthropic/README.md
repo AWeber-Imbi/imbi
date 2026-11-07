@@ -5,6 +5,9 @@ Anthropic workload identity federation (WIF) for Imbi. The plugin adds the
 no API key. Each resolution mints a short-lived `sk-ant-oat01` token for
 that agent.
 
+The plugin also declares its token exchanger, so an Anthropic AI Provider
+can use workload identity instead of a stored key (Admin, AI Models).
+
 ## How it works
 
 1. The organization selects an identity source (for example `aws_sts`) in
@@ -26,9 +29,12 @@ that agent.
    `https://api.anthropic.com/v1/oauth/token`, and gives the token to
    the runner.
 
-The runner does not yet send this token as `Authorization: Bearer`
-(WIF plan phase P4). Until then, the runner cannot use an
-`anthropic_wif` token for model calls.
+The runner sends the token as `Authorization: Bearer` and renews it
+before it expires.
+
+For an AI Provider, the federation rule matches the `imbi_ai_provider`
+request tag instead of `imbi_agent`. The provider record holds the same
+ids as a binding locator.
 
 ## Binding locator
 

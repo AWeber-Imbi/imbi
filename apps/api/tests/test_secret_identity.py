@@ -11,6 +11,7 @@ from unittest import mock
 
 from apps.api.tests import secret_support
 from imbi.api.secret_broker import identity, providers
+from imbi.common import models
 from imbi.common.plugins import base
 from imbi.common.plugins import identity as contract
 
@@ -96,6 +97,32 @@ class VendorTokenTestCase(secret_support.SecretCase):
             self.source.requests[-1].tags['imbi_agent'], self.agent
         )
 
+    async def test_ai_provider_token(self) -> None:
+        await self.store.put_identity_source(self.org, 'fake', {}, 'test')
+        provider = models.AIProvider(
+            id='prv-1',
+            name='Anthropic',
+            slug='anthropic',
+            driver='anthropic',
+            workload_identity=models.AIProviderWorkloadIdentity(
+                organization_id=self.org, target=self.target
+            ),
+        )
+        setting = await self.store.identity_source(self.org)
+        with mock.patch.dict(identity.EXCHANGERS, anthropic=self.exchanger):
+            token = await identity.ai_provider_token(provider, setting)
+            self.assertTrue(token.token.startswith('fake-token-'))
+            self.assertEqual(
+                self.source.requests[-1].tags,
+                {'imbi_org': self.org, 'imbi_ai_provider': 'prv-1'},
+            )
+            provider.workload_identity = None
+            with self.assertRaises(contract.IdentityError) as ctx:
+                await identity.ai_provider_token(provider, setting)
+            self.assertEqual(
+                ctx.exception.reason, 'workload_identity_not_configured'
+            )
+
     async def test_broker_maps_refusals(self) -> None:
         for fail, retryable, code in (
             ('access_denied', False, 'secret_materialization_failed'),
@@ -177,6 +204,48 @@ class RegistryTestCase(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, 'at least one'):
             base.PluginManifest(slug='x', name='x', capabilities=[])
+
+
+class _Exchanger(contract.TokenExchanger):
+    vendor = 'test_vendor'
+    audience = 'https://test.example.com'
+    jwt_seconds = 300
+
+
+class ExchangerRegistryTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        for target in (identity.EXCHANGERS, identity._LOADED_EXCHANGERS):  # pyright: ignore[reportPrivateUsage]
+            patcher = mock.patch.dict(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_by_vendor(self) -> None:
+        entry = mock.Mock(
+            **{'manifest.slug': 'a', 'manifest.token_exchangers': [_Exchanger]}
+        )
+        with mock.patch.object(
+            providers.plugin_registry, 'list_plugins', return_value=[entry]
+        ):
+            self.assertIsInstance(
+                identity.exchanger('test_vendor'), _Exchanger
+            )
+        with (
+            mock.patch.object(
+                providers.plugin_registry, 'list_plugins', return_value=[]
+            ),
+            self.assertRaises(contract.IdentityError) as ctx,
+        ):
+            identity.exchanger('test_vendor')
+        self.assertEqual(ctx.exception.reason, 'unknown_exchanger')
+
+    def test_manifest_refuses_a_duplicate_vendor(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'token exchanger type'):
+            base.PluginManifest(
+                slug='x',
+                name='x',
+                capabilities=[],
+                token_exchangers=[_Exchanger, _Exchanger],
+            )
 
 
 class AccessTokenTestCase(unittest.TestCase):

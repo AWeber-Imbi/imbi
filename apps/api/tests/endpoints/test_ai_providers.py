@@ -1,6 +1,7 @@
 """Tests for the global AI provider endpoints."""
 
 import datetime
+import json
 import typing
 from unittest import mock
 
@@ -8,15 +9,19 @@ import fastapi.testclient
 import psycopg.errors
 
 from apps.api.tests import support
-from imbi.api import models
-from imbi.api.auth import permissions
+from imbi.api import models, secret_broker
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers
+from imbi.api.llm import tokens
+from imbi.api.secret_broker import identity
 from imbi.common import graph
 from imbi.common.llm import discovery
 
 #: Organization slug for tests that still need one (prompt render).
 ORG = 'acme'
 BASE = '/ai-providers'
+#: The real lookup, kept before a test patches it.
+CHECK_MEMBER = organizations.check_member
 
 
 class QueryRouter:
@@ -128,12 +133,19 @@ class AIProviderTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        self.mock_store = mock.AsyncMock()
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.mock_store
+        )
         self.client = fastapi.testclient.TestClient(self.test_app)
         patcher = mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        cache = mock.patch.object(tokens, 'CACHE', tokens.TokenCache())
+        cache.start()
+        self.addCleanup(cache.stop)
 
     def route(self, *rules: tuple[str, typing.Any]) -> QueryRouter:
         """Install a :class:`QueryRouter` as the mocked ``execute``."""
@@ -785,3 +797,183 @@ class ProviderPermissionTestCase(AIProviderTestBase):
         self.route((GET_PROVIDER, [{'p': provider_props()}]))
         response = self.client.post(f'{BASE}/prv-1/discover')
         self.assertEqual(response.status_code, 403)
+
+
+TARGET = {'service_account_id': 'svc-1'}
+WIF = {'organization_id': 'org-1', 'target': TARGET}
+SOURCE = {
+    'type': 'fake',
+    'config': {},
+    'updated_at': '2026-11-06T00:00:00Z',
+}
+
+
+class WorkloadIdentityTestCase(AIProviderTestBase):
+    """``PUT`` / ``DELETE`` ``/{id}/workload-identity`` and its effects."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.exchanger = identity.FakeExchanger()
+        patcher = mock.patch.dict(
+            identity.EXCHANGERS, {'anthropic': self.exchanger}
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        member = mock.patch(
+            'imbi.api.auth.organizations.check_member',
+            new_callable=mock.AsyncMock,
+            return_value='org-1',
+        )
+        self.check_member = member.start()
+        self.addCleanup(member.stop)
+
+    def put(self, **body: typing.Any) -> typing.Any:
+        return self.client.put(
+            f'{BASE}/prv-1/workload-identity',
+            json={'organization': 'acme', 'target': TARGET, **body},
+        )
+
+    def test_put_stores_the_organization_and_target(self) -> None:
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_props()}]),
+            (
+                UPDATE,
+                [{'p': provider_props(workload_identity=json.dumps(WIF))}],
+            ),
+        )
+        response = self.put()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['auth_kind'], 'workload_identity')
+        self.assertEqual(response.json()['workload_identity'], WIF)
+        self.assertEqual(router.params_for(UPDATE)['workload_identity'], WIF)
+        self.assertEqual(self.check_member.await_args.args[0], 'acme')
+
+    def test_put_checks_the_permission_in_the_bound_organization(
+        self,
+    ) -> None:
+        # secret_provider:write in another organization.
+        self.user.is_admin = False
+        self.auth_context.permissions = {
+            'ai_model:credentials',
+            'secret_provider:write',
+        }
+        self.check_member.side_effect = CHECK_MEMBER
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props()}]),
+            (
+                organizations._ORG_MEMBER_QUERY,
+                [{'id': 'org-1', 'member': True}],
+            ),
+        )
+        # The role of the caller in acme does not grant it.
+        with mock.patch.object(
+            organizations,
+            'org_permissions',
+            new_callable=mock.AsyncMock,
+            return_value={'ai_model:credentials'},
+        ):
+            self.assertEqual(self.put().status_code, 403)
+
+    def test_put_refuses_a_provider_with_a_key(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(credentials_encrypted='e')}])
+        )
+        self.assertEqual(self.put().status_code, 409)
+
+    def test_put_validates_the_target(self) -> None:
+        self.route((GET_PROVIDER, [{'p': provider_props()}]))
+        response = self.put(target={'unknown': 'x'})
+        self.assertEqual(response.status_code, 422)
+
+    def test_put_refuses_a_driver_without_an_exchanger(self) -> None:
+        self.route((GET_PROVIDER, [{'p': provider_props(driver='bedrock')}]))
+        self.assertEqual(self.put().status_code, 422)
+
+    def test_put_refuses_a_custom_base_url(self) -> None:
+        props = provider_props(base_url='https://proxy.example.com')
+        self.route((GET_PROVIDER, [{'p': props}]))
+        self.assertEqual(self.put().status_code, 422)
+
+    def test_put_needs_secret_provider_write_in_the_organization(
+        self,
+    ) -> None:
+        self.user.is_admin = False
+        self.auth_context.permissions = {'ai_model:credentials'}
+        self.route((GET_PROVIDER, [{'p': provider_props()}]))
+        self.assertEqual(self.put().status_code, 403)
+
+    def test_patch_cannot_set_a_base_url(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        response = self.client.patch(
+            f'{BASE}/prv-1',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/base_url',
+                    'value': 'https://proxy.example.com',
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_patch_cannot_change_the_driver(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        response = self.client.patch(
+            f'{BASE}/prv-1',
+            json=[{'op': 'replace', 'path': '/driver', 'value': 'openai'}],
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_key_is_refused_while_workload_identity_is_set(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        response = self.client.put(
+            f'{BASE}/prv-1/credentials', json={'api_key': 'sk-1234'}
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_delete_clears_it(self) -> None:
+        # The graph returns the stored dict as a JSON string.
+        stored = provider_props(workload_identity=json.dumps(WIF))
+        router = self.route(
+            (GET_PROVIDER, [{'p': stored}]),
+            (UPDATE, [{'p': provider_props()}]),
+        )
+        response = self.client.delete(f'{BASE}/prv-1/workload-identity')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(router.params_for(UPDATE)['workload_identity'])
+
+    def test_discovery_uses_a_token_and_retries_after_a_401(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        self.mock_store.identity_source.return_value = SOURCE
+        found = [discovery.DiscoveredModel('claude-opus-5', 'Claude Opus 5')]
+        with mock.patch(
+            'imbi.common.llm.discovery.list_models',
+            new_callable=mock.AsyncMock,
+            side_effect=[discovery.DiscoveryError('HTTP 401', 401), found],
+        ) as list_models:
+            response = self.client.post(f'{BASE}/prv-1/discover')
+        self.assertEqual(response.status_code, 200, response.text)
+        first, second = list_models.await_args_list
+        self.assertTrue(first.kwargs['bearer'])
+        # The second call has a new token: the first was dropped.
+        self.assertNotEqual(first.args[1], second.args[1])
+        self.assertEqual(len(self.exchanger.seen), 2)
+
+    def test_discovery_without_an_identity_source_is_502(self) -> None:
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+        )
+        self.mock_store.identity_source.return_value = None
+        response = self.client.post(f'{BASE}/prv-1/discover')
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(
+            'workload_identity_not_configured', response.json()['detail']
+        )

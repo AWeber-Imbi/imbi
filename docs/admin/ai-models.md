@@ -94,6 +94,32 @@ The dialog and the provider row show three things instead of the key:
 Setting or removing a credential requires the `ai_model:credentials`
 permission. Editing a model does not grant it.
 
+## Use workload identity instead of a key
+
+An Anthropic provider can get a short-lived token through workload identity
+federation, so that Imbi stores no key. The provider must use the default
+base URL and have no stored key. (OpenAI follows in a later release.)
+
+1. Select the organization whose identity source signs the tokens. The
+   organization needs an identity source; see
+   [Workload identity](secrets.md#workload-identity).
+2. Click the key icon on the provider row.
+3. In **Workload identity target**, enter the Anthropic Console ids of the
+   provider's service account and federation rule:
+   `{"organization_id": "...", "federation_rule_id": "...",
+   "service_account_id": "...", "workspace_id": "..."}`. `workspace_id` is
+   necessary only when the rule has more than one workspace.
+4. Click **Use workload identity**. The provider row shows
+   **Workload identity**.
+
+Imbi mints a new token for each identity JWT and renews it before it
+expires. Each token carries the tags `imbi_org` and `imbi_ai_provider`, so
+the vendor can track cost for each provider. Model discovery uses the
+token. To stop, click **Stop using workload identity**.
+
+You need `ai_model:credentials`, membership of the organization, and
+`secret_provider:write` in that organization.
+
 ## Add a model manually
 
 Click **Add model**, or click the plus icon on a provider row. The dialog has

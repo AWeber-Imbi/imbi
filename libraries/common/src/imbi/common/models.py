@@ -18,6 +18,7 @@ __all__ = [
     'AIModel',
     'AIModelType',
     'AIProvider',
+    'AIProviderWorkloadIdentity',
     'Advisory',
     'Agent',
     'AgentSettings',
@@ -714,6 +715,25 @@ def validate_provider_base_url(value: str) -> str:
     return value.strip()
 
 
+#: The drivers that can use workload identity federation (WIF plan
+#: 4.6). The vendor of each is the key of its token exchanger.
+WIF_DRIVERS: frozenset[str] = frozenset({'anthropic', 'openai'})
+
+
+class AIProviderWorkloadIdentity(pydantic.BaseModel):
+    """How an AI Provider gets a vendor token (WIF plan 4.6, O7).
+
+    ``organization_id`` names the organization whose identity source
+    signs the JWT. ``target`` holds the vendor ids, validated by the
+    token exchanger of the vendor.
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    organization_id: str = pydantic.Field(min_length=1)
+    target: dict[str, typing.Any]
+
+
 class AIProvider(Node):
     """A configured instance of an LLM provider.
 
@@ -739,6 +759,17 @@ class AIProvider(Node):
     region: str | None = None
     #: vertex
     project_id: str | None = None
+    #: Set for the ``workload_identity`` auth kind. Exclusive with a
+    #: stored key.
+    workload_identity: AIProviderWorkloadIdentity | None = None
+
+    @pydantic.field_validator('workload_identity', mode='before')
+    @classmethod
+    def _parse_workload_identity(cls, value: object) -> object:
+        # The graph stores a dict property as a JSON string.
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
     @pydantic.field_validator('base_url')
     @classmethod
@@ -752,6 +783,17 @@ class AIProvider(Node):
         """``openai_compatible`` has no default endpoint to fall back on."""
         if self.driver == 'openai_compatible' and not self.base_url:
             raise ValueError("driver 'openai_compatible' requires a base_url")
+        if self.workload_identity is not None:
+            # D8: the token goes only to the default vendor endpoint.
+            if self.driver not in WIF_DRIVERS:
+                raise ValueError(
+                    f'driver {self.driver!r} cannot use workload identity'
+                )
+            if self.base_url:
+                raise ValueError(
+                    'a workload identity provider uses the default endpoint;'
+                    ' remove base_url'
+                )
         return self
 
 
