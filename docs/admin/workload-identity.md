@@ -88,7 +88,7 @@ Permission policy. Replace the organization id:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["sts:GetWebIdentityToken", "sts:TagGetWebIdentityToken"],
+      "Action": "sts:GetWebIdentityToken",
       "Resource": "*",
       "Condition": {
         "ForAllValues:StringEquals": {
@@ -104,11 +104,24 @@ Permission policy. Replace the organization id:
         },
         "NumericLessThanEquals": {"sts:DurationSeconds": "3600"}
       }
+    },
+    {
+      "Effect": "Allow",
+      "Action": "sts:TagGetWebIdentityToken",
+      "Resource": "*",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": ["imbi_org", "imbi_agent", "imbi_ai_provider"]
+        },
+        "StringEquals": {"aws:RequestTag/imbi_org": "<organization id>"}
+      }
     }
   ]
 }
 ```
 
+- `sts:TagGetWebIdentityToken` is necessary because Imbi sends tags. It
+  supports only the tag conditions, so it has its own statement.
 - The `aws:RequestTag/imbi_org` condition makes the tag necessary, and
   stops the role from minting a JWT for a different organization.
 - `aws:TagKeys` refuses all other tag keys.
@@ -184,17 +197,20 @@ API.
    - Audience: `https://api.openai.com/v1`.
    - AWS request tags are nested in the JWT, and mappings match only
      scalar claims. Add a CEL transformation for each tag that a mapping
-     uses, for example:
+     uses. Use these attribute names and expressions:
 
-     ```text
-     assertion["https://sts.amazonaws.com/"]["request_tags"]["imbi_org"]
-     assertion["https://sts.amazonaws.com/"]["request_tags"]["imbi_ai_provider"]
-     ```
+     | Attribute name | CEL expression |
+     |---|---|
+     | `imbi_org` | `assertion["https://sts.amazonaws.com/"]["request_tags"]["imbi_org"]` |
+     | `imbi_ai_provider` | `assertion["https://sts.amazonaws.com/"]["request_tags"]["imbi_ai_provider"]` |
+
+     OpenAI stores each attribute with the `openai.` prefix, for example
+     `openai.imbi_org`.
 
 2. For each OpenAI AI Provider, create a service account and a mapping.
-   The mapping matches `sub` to the identity role ARN exactly, and the
-   transformed `imbi_org` and `imbi_ai_provider` claims to the organization
-   id and the AI Provider id.
+   The mapping matches `sub` to the identity role ARN exactly,
+   `openai.imbi_org` to the organization id, and `openai.imbi_ai_provider`
+   to the AI Provider id.
 
 Write down `identity_provider_id` and `service_account_id`.
 
