@@ -77,6 +77,18 @@ class ClientInitializeTestCase(
         )
         self.assertEqual(source._api_token, 'ik_1_secret')
 
+    @mock.patch('imbi.common.llm.tokens.bearer_client')
+    @mock.patch.dict(
+        os.environ, {'IMBI_ASSISTANT_API_TOKEN': 'ik_1_secret'}, clear=True
+    )
+    async def test_initialize_with_only_the_ai_provider_token(
+        self, bearer_client: mock.MagicMock
+    ) -> None:
+        """The service token alone enables the client."""
+        await client.initialize()
+        bearer_client.assert_called_once()
+        self.assertIs(client._client, bearer_client.return_value)
+
     @mock.patch('anthropic.AsyncAnthropic')
     @mock.patch.dict(
         os.environ,
