@@ -96,19 +96,23 @@ permission. Editing a model does not grant it.
 
 ## Use workload identity instead of a key
 
-An Anthropic provider can get a short-lived token through workload identity
-federation, so that Imbi stores no key. The provider must use the default
-base URL and have no stored key. (OpenAI follows in a later release.)
+An Anthropic or OpenAI provider can get a short-lived token through
+workload identity federation, so that Imbi stores no key. The provider must
+use the default base URL and have no stored key.
 
 1. Select the organization whose identity source signs the tokens. The
    organization needs an identity source; see
    [Workload identity](secrets.md#workload-identity).
 2. Click the key icon on the provider row.
-3. In **Workload identity target**, enter the Anthropic Console ids of the
-   provider's service account and federation rule:
-   `{"organization_id": "...", "federation_rule_id": "...",
-   "service_account_id": "...", "workspace_id": "..."}`. `workspace_id` is
-   necessary only when the rule has more than one workspace.
+3. In **Workload identity target**, enter the vendor ids of the provider:
+   - Anthropic, from the Anthropic Console: `{"organization_id": "...",
+     "federation_rule_id": "...", "service_account_id": "...",
+     "workspace_id": "..."}`. `workspace_id` is necessary only when the
+     rule has more than one workspace.
+   - OpenAI, from the OpenAI dashboard: `{"identity_provider_id": "...",
+     "service_account_id": "..."}`. The OpenAI identity provider must use
+     the audience `https://api.openai.com/v1`. See the
+     [plugin README](https://github.com/AWeber-Imbi/imbi/tree/main/plugins/openai).
 4. Click **Use workload identity**. The provider row shows
    **Workload identity**.
 
