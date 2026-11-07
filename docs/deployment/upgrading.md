@@ -74,6 +74,26 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+imbi-api, imbi-assistant, and imbi-slackbot can use the short-lived token
+of an AI provider (workload identity) to call Anthropic. All of these steps
+are optional. If you do not do them, each service continues to use
+`ANTHROPIC_API_KEY`.
+
+1. Run `imbi-api setup-permissions`. It adds the `ai_provider:token`
+   permission and the `imbi-assistant` and `imbi-slackbot` roles.
+2. Make an API key for the `imbi-assistant` and `imbi-slackbot` service
+   accounts. Set `IMBI_ASSISTANT_API_TOKEN` and `IMBI_SLACKBOT_API_TOKEN`
+   on imbi-api, then run `imbi-api setup-service-accounts`. It creates the
+   two accounts and stores each value as the API key. If a value is not
+   set, the command makes a key and prints it. Set the same values on
+   imbi-assistant (`IMBI_ASSISTANT_API_TOKEN`) and imbi-slackbot
+   (`IMBI_SLACKBOT_API_TOKEN`).
+3. Set `IMBI_AI_PROVIDER_API`, `IMBI_AI_PROVIDER_ASSISTANT`, and
+   `IMBI_AI_PROVIDER_SLACKBOT` on imbi-api to the AI provider IDs. See
+   [AI Models](../admin/ai-models.md#imbi-services).
+
 ## 2.43.0
 
 1. Run `imbi-api setup-permissions`. It gives the `admin` role
