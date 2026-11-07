@@ -1,56 +1,24 @@
 """The vendor token cache of the AI Providers (WIF plan 4.6).
 
-One cache for each process. An entry holds the access token of one AI
-Provider that uses the ``workload_identity`` auth kind:
-
-1. Time is monotonic. The entry renews at the lesser of 5 minutes or 20
-   percent of the issued lifetime before expiry, less a jitter of at
-   most half of that threshold.
-2. One renewal at a time for each provider (a lock); concurrent calls
-   wait for it.
-3. While the old token is valid, a failed renewal returns the old token
-   and the next attempt waits (1 to 30 seconds, doubled each time).
-4. After a ``401``, :meth:`TokenCache.call` drops the entry only when
-   the failed token is still the current one, and calls one more time
-   with a new token.
-5. The key holds the provider, its organization, driver, and target,
-   and the identity source of the organization. A change to one of them
-   makes a new entry.
+One :class:`imbi.common.llm.tokens.TokenCache` for each process, with
+one slot for each AI Provider that uses the ``workload_identity`` auth
+kind. The key holds the provider driver and target, and the identity
+source of its organization. A change to one of them makes a new entry.
 
 The token is never logged.
 """
 
-import asyncio
 import collections.abc
-import dataclasses
 import json
-import random
-import time
 import typing
 
 from imbi.api.secret_broker import identity, store
-from imbi.common import models
-from imbi.common.plugins.identity import IdentityError
+from imbi.common import graph, models
+from imbi.common.llm import tokens
+from imbi.common.plugins.identity import AccessToken, IdentityError
 
-RENEW_MAX = 300.0
-RENEW_FRACTION = 0.2
-BACKOFF_MIN = 1.0
-BACKOFF_MAX = 30.0
-
-
-@dataclasses.dataclass(slots=True)
-class _Entry:
-    key: str
-    token: str
-    expires: float
-    renew_at: float
-    retry_at: float = 0.0
-    backoff: float = 0.0
-
-
-def _renew_at(now: float, lifetime: float) -> float:
-    threshold = min(RENEW_MAX, RENEW_FRACTION * lifetime)
-    return now + lifetime - threshold - random.uniform(0, threshold / 2)  # noqa: S311
+#: The cache of this process.
+CACHE = tokens.TokenCache()
 
 
 def _key(
@@ -70,99 +38,72 @@ def _key(
     )
 
 
-class TokenCache:
-    def __init__(self) -> None:
-        self._entries: dict[str, _Entry] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+async def get(
+    secrets: store.SecretStore, provider: models.AIProvider
+) -> AccessToken:
+    """Return a valid access token for ``provider``.
 
-    async def get(
-        self, secrets: store.SecretStore, provider: models.AIProvider
-    ) -> str:
-        """Return a valid access token for ``provider``.
+    Raises:
+        IdentityError: The provider has no workload identity, or no
+            token could be minted and no valid token is cached.
 
-        Raises:
-            IdentityError: The provider has no workload identity, or no
-                token could be minted and no valid token is cached.
+    """
+    wif = provider.workload_identity
+    if wif is None:
+        raise IdentityError('workload_identity_not_configured')
+    setting = await secrets.identity_source(wif.organization_id)
+    return await CACHE.get(
+        provider.id,
+        _key(provider, wif, setting),
+        lambda: identity.ai_provider_token(provider, setting),
+    )
 
-        """
-        wif = provider.workload_identity
-        if wif is None:
-            raise IdentityError('workload_identity_not_configured')
-        setting = await secrets.identity_source(wif.organization_id)
-        key = _key(provider, wif, setting)
-        entry = self._fresh(provider.id, key)
-        if entry is not None:
-            return entry.token
-        lock = self._locks.setdefault(provider.id, asyncio.Lock())
-        async with lock:
-            entry = self._fresh(provider.id, key)
-            if entry is not None:
-                return entry.token
-            current = self._entries.get(provider.id)
-            if current is not None and current.key != key:
-                current = None
-            try:
-                token = await identity.ai_provider_token(provider, setting)
-            except IdentityError:
-                now = time.monotonic()
-                if current is None or now >= current.expires:
-                    raise
-                current.backoff = min(
-                    BACKOFF_MAX, max(BACKOFF_MIN, current.backoff * 2)
-                )
-                current.retry_at = now + current.backoff
-                return current.token
-            now = time.monotonic()
-            lifetime = max(0.0, token.expires_at.timestamp() - time.time())
-            self._entries[provider.id] = _Entry(
-                key=key,
-                token=token.token,
-                expires=now + lifetime,
-                renew_at=_renew_at(now, lifetime),
-            )
-            return token.token
 
-    async def call[T](
+async def call[T](
+    secrets: store.SecretStore,
+    provider: models.AIProvider,
+    fn: collections.abc.Callable[[str], collections.abc.Awaitable[T]],
+    unauthorized: collections.abc.Callable[[Exception], bool],
+) -> T:
+    """Return ``fn(token)``; after a ``401``, one retry with a new token.
+
+    ``unauthorized(exc)`` tells if an exception of ``fn`` is a ``401``.
+    """
+    token = (await get(secrets, provider)).token
+    try:
+        return await fn(token)
+    except Exception as exc:
+        if not unauthorized(exc):
+            raise
+    CACHE.invalidate(provider.id, token)
+    return await fn((await get(secrets, provider)).token)
+
+
+class ProviderToken:
+    """The token of one fixed AI Provider, for an SDK client of imbi-api.
+
+    Each :meth:`get` reads the provider again, so a change to it takes
+    effect at the next call.
+    """
+
+    def __init__(
         self,
-        secrets: store.SecretStore,
-        provider: models.AIProvider,
-        fn: collections.abc.Callable[[str], collections.abc.Awaitable[T]],
-        unauthorized: collections.abc.Callable[[Exception], bool],
-    ) -> T:
-        """Return ``fn(token)``; after a ``401``, one retry with a new token.
+        provider_id: str,
+        db: collections.abc.Callable[[], graph.Graph | None],
+        secrets: collections.abc.Callable[[], store.SecretStore],
+    ) -> None:
+        self._id = provider_id
+        self._db = db
+        self._secrets = secrets
 
-        ``unauthorized(exc)`` tells if an exception of ``fn`` is a ``401``.
-        """
-        token = await self.get(secrets, provider)
-        try:
-            return await fn(token)
-        except Exception as exc:
-            if not unauthorized(exc):
-                raise
-        self.invalidate(provider.id, token)
-        return await fn(await self.get(secrets, provider))
+    async def get(self) -> str:
+        from imbi.api.endpoints import ai_providers
 
-    def invalidate(self, provider_id: str, failed: str) -> None:
-        """Drop the entry after a ``401`` when ``failed`` is current."""
-        entry = self._entries.get(provider_id)
-        if entry is not None and entry.token == failed:
-            del self._entries[provider_id]
+        db = self._db()
+        if db is None:
+            raise IdentityError('unavailable', retryable=True)
+        provider = await ai_providers.fetch_provider(db, self._id)
+        return (await get(self._secrets(), provider)).token
 
-    def forget(self, provider_id: str) -> None:
-        """Drop the entry of a provider that no longer uses WIF."""
-        self._entries.pop(provider_id, None)
-        self._locks.pop(provider_id, None)
-
-    def _fresh(self, provider_id: str, key: str) -> _Entry | None:
-        """The entry when it needs no renewal attempt now."""
-        entry = self._entries.get(provider_id)
-        if entry is None or entry.key != key:
-            return None
-        now = time.monotonic()
-        if now >= entry.expires:
-            return None
-        return entry if now < max(entry.renew_at, entry.retry_at) else None
-
-
-#: The cache of this process.
-CACHE = TokenCache()
+    def invalidate(self, failed: str) -> None:
+        CACHE.invalidate(self._id, failed)

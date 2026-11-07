@@ -20,6 +20,8 @@ A provider of a WIF driver can use workload identity instead of a key
 (WIF plan 4.6, O7): it names an organization, and imbi-api mints a
 short-lived token with the identity source of that organization
 (:mod:`imbi.api.llm.tokens`). A key and workload identity are exclusive.
+``POST /ai-providers/token`` gives the assistant and the slackbot the
+token of their fixed provider.
 """
 
 import datetime
@@ -31,7 +33,7 @@ import fastapi
 import pydantic
 import slugify
 
-from imbi.api import secret_broker
+from imbi.api import secret_broker, settings
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
@@ -763,7 +765,7 @@ async def _discover_with_token(
 ) -> list[discovery.DiscoveredModel]:
     """List models with a workload identity token (one retry after a
     ``401``)."""
-    return await tokens.CACHE.call(
+    return await tokens.call(
         secrets,
         node,
         lambda token: discovery.list_models(
@@ -876,6 +878,71 @@ async def delete_ai_provider_workload_identity(
     LOGGER.info('Removed workload identity for AI provider %s', id)
     counts = await model_counts(db)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+
+
+class ServiceTokenRequest(pydantic.BaseModel):
+    """``failed``: the token that got a ``401``, so it is renewed."""
+
+    failed: str | None = None
+
+
+class ServiceToken(pydantic.BaseModel):
+    token: str
+    expires_at: datetime.datetime
+
+
+@ai_providers_router.post(
+    '/token', response_model=ServiceToken, include_in_schema=False
+)
+async def service_token(
+    data: ServiceTokenRequest,
+    db: graph.Pool,
+    secrets: secret_broker.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ai_provider:token')),
+    ],
+) -> ServiceToken:
+    """The access token of the AI Provider of the calling service.
+
+    For the assistant and the slackbot (WIF plan 4.6). The provider
+    comes from ``IMBI_AI_PROVIDER_<SERVICE>`` for the authenticated
+    service account; the request names no provider. Not in the OpenAPI
+    document, so it is not an MCP tool.
+
+    Raises:
+        404: The caller is not a service with an AI Provider.
+        409: The provider does not use workload identity.
+        502: No token could be minted.
+        503: No token could be minted now; try again.
+
+    """
+    provider_id = (
+        auth.service_account
+        and settings.get_ai_providers().for_service(auth.service_account.slug)
+    )
+    if not provider_id:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No AI provider is set for this caller'
+        )
+    node = await fetch_provider(db, provider_id)
+    if node.workload_identity is None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'AI provider {provider_id!r} does not use workload identity'
+            ),
+        )
+    if data.failed:
+        tokens.CACHE.invalidate(node.id, data.failed)
+    try:
+        token = await tokens.get(secrets, node)
+    except plugin_identity.IdentityError as exc:
+        raise fastapi.HTTPException(
+            status_code=503 if exc.retryable else 502,
+            detail=f'No workload identity token: {exc.reason}',
+        ) from None
+    return ServiceToken(token=token.token, expires_at=token.expires_at)
 
 
 _CONFIGURED_QUERY: typing.LiteralString = """

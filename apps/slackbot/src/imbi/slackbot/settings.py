@@ -40,6 +40,10 @@ class Slackbot(pydantic_settings.BaseSettings):
     system_prompt: str | None = None
     #: The prompt CMS reference the bot reads its prompt from.
     prompt_ref: str = 'imbi-slackbot/system@stable'
+    #: The API key of the ``imbi-slackbot`` service account. When set,
+    #: the bot uses the token of its AI Provider from imbi-api (WIF
+    #: plan 4.6) instead of ``ANTHROPIC_API_KEY``.
+    api_token: str = ''
 
     # Slack credentials. These use the conventional ``SLACK_`` env names
     # rather than the ``IMBI_SLACKBOT_`` prefix.
@@ -96,9 +100,9 @@ class Slackbot(pydantic_settings.BaseSettings):
 
     @pydantic.model_validator(mode='after')
     def auto_enable(self) -> 'Slackbot':
-        """Auto-enable when an API key and Slack tokens are available."""
+        """Auto-enable when an API key or token and Slack tokens are set."""
         if (
-            self.api_key
+            (self.api_key or self.api_token)
             and self.slack_bot_token
             and self.slack_app_token
             and not self.enabled

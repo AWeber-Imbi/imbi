@@ -78,6 +78,7 @@ The full list is in [Configuration](../api/configuration.md).
 | Variable | Default | What it is |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | none | The Anthropic API key. When it is set, the assistant turns on |
+| `IMBI_ASSISTANT_API_TOKEN` | none | The API key of the `imbi-assistant` service account. When it is set, the assistant uses the token of its AI provider ([workload identity](../admin/ai-models.md#imbi-services)) instead of `ANTHROPIC_API_KEY`, and turns on |
 | `IMBI_ASSISTANT_ENABLED` | `false` | Turns the assistant on. A set `ANTHROPIC_API_KEY` also turns it on |
 | `IMBI_ASSISTANT_MODEL` | `claude-sonnet-4-6` | The model when the prompt names none |
 | `IMBI_ASSISTANT_MAX_TOKENS` | `16384` | The maximum output tokens of one answer |

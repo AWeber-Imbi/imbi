@@ -1,3 +1,5 @@
+from unittest import mock
+
 from apps.slackbot.tests import helpers
 from imbi.slackbot import client, settings
 
@@ -47,3 +49,22 @@ class ClientTests(helpers.TestCase):
     async def test_get_client_raises_when_unset(self) -> None:
         with self.assertRaises(RuntimeError):
             client.get_client()
+
+    async def test_enabled_with_the_ai_provider_token(self) -> None:
+        with (
+            self.override_environment(
+                ANTHROPIC_API_KEY=None,
+                IMBI_SLACKBOT_API_TOKEN='ik_1_secret',
+                SLACK_BOT_TOKEN='xoxb',
+                SLACK_APP_TOKEN='xapp',
+                IMBI_SLACKBOT_ENABLED=None,
+            ),
+            mock.patch('imbi.common.llm.tokens.bearer_client') as bearer,
+        ):
+            await client.initialize()
+        self.assertIs(client.get_client(), bearer.return_value)
+        self.assertEqual(
+            bearer.call_args.args[0]._api_token,
+            'ik_1_secret',
+        )
+        client._client = None

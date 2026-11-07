@@ -9,9 +9,9 @@ patch projects and record releases. Neither is created by hand any more:
 existing install up to date. ``imbi-workflows`` calls imbi-api as its
 own account for the deploy and rollback steps of a workflow (ADR 0021).
 
-imbi-assistant, imbi-mcp, and imbi-slackbot deliberately have no entry
-here. Each forwards the *caller's* token to imbi-api rather than acting
-as itself, so an account for them would carry privileges nothing uses.
+imbi-assistant and imbi-slackbot forward the *caller's* token for
+their tool calls. Their own accounts only get the token of their AI
+Provider (WIF plan 4.6, ``ai_provider:token``). imbi-mcp has no entry.
 
 Credentials come from the environment when it supplies them, so a
 deployment whose secret already lives in a Helm values file or an
@@ -90,6 +90,24 @@ INTERNAL_SERVICES: tuple[InternalService, ...] = (
         credential='client_credential',
         client_id_var='IMBI_WORKFLOWS_SA_CLIENT_ID',
         secret_var='IMBI_WORKFLOWS_SA_CLIENT_SECRET',
+    ),
+    InternalService(
+        slug='imbi-assistant',
+        display_name='Imbi Assistant',
+        description='Gets the token of its AI provider (WIF plan 4.6)',
+        role_slug='imbi-assistant',
+        credential='api_key',
+        client_id_var=None,
+        secret_var='IMBI_ASSISTANT_API_TOKEN',
+    ),
+    InternalService(
+        slug='imbi-slackbot',
+        display_name='Imbi Slackbot',
+        description='Gets the token of its AI provider (WIF plan 4.6)',
+        role_slug='imbi-slackbot',
+        credential='api_key',
+        client_id_var=None,
+        secret_var='IMBI_SLACKBOT_API_TOKEN',
     ),
 )
 

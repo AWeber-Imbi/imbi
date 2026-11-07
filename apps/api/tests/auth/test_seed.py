@@ -158,6 +158,8 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
                 'imbi-scheduler',
                 'imbi-gateway',
                 'imbi-workflows',
+                'imbi-assistant',
+                'imbi-slackbot',
             },
         )
 

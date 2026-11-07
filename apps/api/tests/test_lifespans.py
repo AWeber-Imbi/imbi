@@ -1,10 +1,12 @@
 import asyncio
+import typing
 import unittest
 import unittest.mock
 
 from fastapi import testclient
 
-from imbi.api import app, lifespans
+from imbi.api import app, lifespans, settings
+from imbi.common.llm import tokens as llm_tokens
 
 
 class ApplicationLifespanTestCase(unittest.TestCase):
@@ -124,6 +126,28 @@ class ApplicationLifespanTestCase(unittest.TestCase):
         self.assertFalse(
             any('Anthropic client initialized' in line for line in cm.output)
         )
+
+    def test_anthropic_hook_uses_the_ai_provider_token(self) -> None:
+        """With IMBI_AI_PROVIDER_API, the client sends the WIF token."""
+        loop = asyncio.new_event_loop()
+        captured: list[typing.Any] = []
+        try:
+            with unittest.mock.patch.object(
+                settings,
+                'get_ai_providers',
+                return_value=settings.AIProviders(api='prv-1'),
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.anthropic_hook() as client:
+                        # The hook closes the client on exit.
+                        captured.append(client._client)
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertIsInstance(captured[0]._client.auth, llm_tokens.BearerAuth)
 
     def test_openapi_refresh_blueprint_failure(self) -> None:
         failure = RuntimeError('blueprint refresh failed')

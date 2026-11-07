@@ -34,6 +34,7 @@ SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
 SWEEP_INTERVAL_SECONDS = 30
 
 _broker: broker.Broker | None = None
+_store: store.SecretStore | None = None
 
 
 async def initialize() -> None:
@@ -68,7 +69,7 @@ async def run_sweeper(service: broker.Broker, *, stop: asyncio.Event) -> None:
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[store.SecretStore]:
     """Initialize the schema, hold the store open, and sweep."""
-    global _broker
+    global _broker, _store
     await initialize()
     pool = create_pool()
     try:
@@ -80,8 +81,9 @@ async def store_lifespan() -> abc.AsyncGenerator[store.SecretStore]:
         task_store.register_close_hook(close_hook)
         stop = asyncio.Event()
         sweep = asyncio.create_task(run_sweeper(_broker, stop=stop))
+        _store = store.SecretStore(pool)
         try:
-            yield store.SecretStore(pool)
+            yield _store
         finally:
             sweeper.unregister_fencer(fencer)
             task_store.unregister_close_hook(close_hook)
@@ -91,7 +93,15 @@ async def store_lifespan() -> abc.AsyncGenerator[store.SecretStore]:
                 await sweep
     finally:
         _broker = None
+        _store = None
         await pool.close()
+
+
+def get_store() -> store.SecretStore:
+    """Return the store that :func:`store_lifespan` opened."""
+    if _store is None:
+        raise RuntimeError('store_lifespan has not opened the store')
+    return _store
 
 
 def get_broker() -> broker.Broker:

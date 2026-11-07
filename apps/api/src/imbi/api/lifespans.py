@@ -10,13 +10,21 @@ import contextlib
 import logging
 from collections import abc
 
-from imbi.api import graph_ids, iggy_metrics, openapi, user_document_orgs
+from imbi.api import (
+    graph_ids,
+    iggy_metrics,
+    openapi,
+    secret_broker,
+    settings,
+    user_document_orgs,
+)
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.documents import read_sweeper as document_read_sweeper
 from imbi.api.email.client import EmailClient
 from imbi.api.email.templates import TemplateManager
 from imbi.api.identity import sweeper as identity_sweeper
+from imbi.api.llm import tokens
 from imbi.api.maintenance import worker as maintenance_worker
 from imbi.api.plugins import lifecycle as plugin_lifecycle
 from imbi.api.pr_sync import queue as pr_sync_queue
@@ -24,7 +32,8 @@ from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.scoring import queue as score_queue
 from imbi.api.storage.client import StorageClient
 from imbi.common import clickhouse, graph, iggy, valkey
-from imbi.common.llm import AnthropicClient
+from imbi.common.llm import AnthropicClient, AnthropicSettings
+from imbi.common.llm import tokens as llm_tokens
 
 LOGGER = logging.getLogger(__name__)
 
@@ -122,17 +131,33 @@ async def storage_hook() -> abc.AsyncGenerator[StorageClient]:
 async def anthropic_hook() -> abc.AsyncGenerator[AnthropicClient]:
     """Initialize the shared Anthropic client.
 
-    Falls back to a disabled client when ``ANTHROPIC_API_KEY`` is
-    absent — endpoints that depend on this still resolve but their
-    completions return ``degraded=True`` with a fallback payload.
+    With ``IMBI_AI_PROVIDER_API``, the client sends the workload identity
+    token of that AI Provider (WIF plan 4.6). Else it uses
+    ``ANTHROPIC_API_KEY``. Without either it is a disabled client —
+    endpoints that depend on this still resolve but their completions
+    return ``degraded=True`` with a fallback payload.
     """
-    client = AnthropicClient()
+    provider_id = settings.get_ai_providers().api
+    if provider_id:
+        anthropic_settings = AnthropicSettings()
+        client = AnthropicClient(
+            anthropic_settings,
+            client=llm_tokens.bearer_client(
+                tokens.ProviderToken(
+                    provider_id, lambda: _graph, secret_broker.get_store
+                ),
+                timeout=anthropic_settings.timeout,
+                max_retries=anthropic_settings.max_retries,
+            ),
+        )
+    else:
+        client = AnthropicClient()
     if client.available:
         LOGGER.info(
             'Anthropic client initialized (model=%s)', client.default_model
         )
     else:
-        LOGGER.info('Anthropic client disabled — ANTHROPIC_API_KEY not set')
+        LOGGER.info('Anthropic client disabled — no AI provider or API key')
     try:
         yield client
     finally:

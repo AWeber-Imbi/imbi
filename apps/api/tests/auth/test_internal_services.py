@@ -125,14 +125,22 @@ class InternalServiceSeedTestCase(unittest.IsolatedAsyncioTestCase):
             db, 'aweber', {}
         )
 
-        slugs = ['imbi-scheduler', 'imbi-gateway', 'imbi-workflows']
+        slugs = [
+            'imbi-scheduler',
+            'imbi-gateway',
+            'imbi-workflows',
+            'imbi-assistant',
+            'imbi-slackbot',
+        ]
         self.assertEqual([result.service.slug for result in results], slugs)
         self.assertTrue(all(result.account_created for result in results))
         self.assertEqual(
             [node.slug for node in db.created],  # pyright: ignore[reportAttributeAccessIssue]
             slugs,
         )
-        self.assertEqual(len(db.issued('MERGE (s)-[m:MEMBER_OF]->(o)')), 3)
+        self.assertEqual(
+            len(db.issued('MERGE (s)-[m:MEMBER_OF]->(o)')), len(slugs)
+        )
 
     async def test_existing_membership_is_left_alone(self) -> None:
         """A role an operator widened is not reset to the seeded one."""

@@ -5,6 +5,7 @@ import logging
 import anthropic
 
 from imbi.assistant import settings
+from imbi.common.llm import tokens
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,10 +32,19 @@ async def initialize() -> None:
         LOGGER.info('AI assistant is disabled')
         return
 
+    if assistant_settings.api_token:
+        _client = tokens.bearer_client(
+            tokens.ServiceToken(
+                assistant_settings.api_url, assistant_settings.api_token
+            )
+        )
+        LOGGER.info('AI assistant client uses the AI provider token')
+        return
+
     if not assistant_settings.api_key:
         LOGGER.warning(
             'AI assistant enabled but no API key configured '
-            '(set ANTHROPIC_API_KEY)'
+            '(set IMBI_ASSISTANT_API_TOKEN or ANTHROPIC_API_KEY)'
         )
         return
 
@@ -67,7 +77,7 @@ def get_client() -> anthropic.AsyncAnthropic:
         raise RuntimeError(
             'AI assistant client not initialized. '
             'Check that IMBI_ASSISTANT_ENABLED=true '
-            'and ANTHROPIC_API_KEY is set.'
+            'and IMBI_ASSISTANT_API_TOKEN or ANTHROPIC_API_KEY is set.'
         )
     return _client
 

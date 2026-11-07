@@ -124,6 +124,29 @@ token. To stop, click **Stop using workload identity**.
 You need `ai_model:credentials`, membership of the organization, and
 `secret_provider:write` in that organization.
 
+### Imbi services
+
+imbi-api, the assistant, and the Slack bot can use an Anthropic provider
+with workload identity instead of `ANTHROPIC_API_KEY`. Set these
+variables on imbi-api to the id of the provider:
+
+| Variable | Service |
+|---|---|
+| `IMBI_AI_PROVIDER_API` | imbi-api (release notes and other completions) |
+| `IMBI_AI_PROVIDER_ASSISTANT` | imbi-assistant |
+| `IMBI_AI_PROVIDER_SLACKBOT` | imbi-slackbot |
+
+The assistant and the Slack bot get the token from imbi-api as their own
+service account (`imbi-assistant`, `imbi-slackbot`). Set
+`IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN` on the service to
+the API key of that account; see
+[Imbi service accounts](service-accounts.md#imbi-service-accounts). With
+the API key set, the service ignores `ANTHROPIC_API_KEY`. Without it, the
+service uses `ANTHROPIC_API_KEY` as before.
+
+imbi-api gives a service only the token of its own provider. The request
+names no provider.
+
 ## Add a model manually
 
 Click **Add model**, or click the plus icon on a provider row. The dialog has
@@ -238,6 +261,7 @@ is no cascade, so a provider cannot take its models with it.
 | `ai_model:update` | Change a provider or a model, including the enabled flag. |
 | `ai_model:delete` | Delete providers and models. |
 | `ai_model:credentials` | Set and remove provider credentials. |
+| `ai_provider:token` | Get the token of the AI provider of the calling service. Only the `imbi-assistant` and `imbi-slackbot` roles have it. |
 
 Administrators hold all five. The Developer, Default, and Read Only roles hold
 `ai_model:read`.

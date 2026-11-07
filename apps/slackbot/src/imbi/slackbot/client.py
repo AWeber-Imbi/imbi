@@ -4,6 +4,7 @@ import logging
 
 import anthropic
 
+from imbi.common.llm import tokens
 from imbi.slackbot import settings
 
 LOGGER = logging.getLogger(__name__)
@@ -27,10 +28,19 @@ async def initialize() -> None:
         LOGGER.info('Slack bot is disabled')
         return
 
+    if slackbot_settings.api_token:
+        _client = tokens.bearer_client(
+            tokens.ServiceToken(
+                slackbot_settings.api_url, slackbot_settings.api_token
+            )
+        )
+        LOGGER.info('Slack bot client uses the AI provider token')
+        return
+
     if not slackbot_settings.api_key:
         LOGGER.warning(
             'Slack bot enabled but no API key configured '
-            '(set ANTHROPIC_API_KEY)'
+            '(set IMBI_SLACKBOT_API_TOKEN or ANTHROPIC_API_KEY)'
         )
         return
 
@@ -62,7 +72,8 @@ def get_client() -> anthropic.AsyncAnthropic:
     if _client is None:
         raise RuntimeError(
             'Slack bot Anthropic client not initialized. '
-            'Check that ANTHROPIC_API_KEY, SLACK_BOT_TOKEN, and '
+            'Check that IMBI_SLACKBOT_API_TOKEN or ANTHROPIC_API_KEY, '
+            'SLACK_BOT_TOKEN, and '
             'SLACK_APP_TOKEN are set.'
         )
     return _client
