@@ -15754,6 +15754,11 @@ export interface components {
             kind: "anthropic" | "litellm";
             /** Base Url */
             base_url?: string | null;
+            /**
+             * Allow Insecure Http
+             * @default false
+             */
+            allow_insecure_http: boolean;
             /** Key Ref */
             key_ref?: string | null;
         };

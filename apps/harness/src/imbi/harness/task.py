@@ -801,6 +801,11 @@ class TaskRun:
         reference = upstream.get('key_ref')
         if not reference:
             raise Failed('model_key_missing')
+        # imbi-api refuses this on write, but an older stored version
+        # can still have it. Do not send the key without TLS.
+        url = urllib.parse.urlsplit(str(upstream.get('base_url') or ''))
+        if url.scheme == 'http' and not upstream.get('allow_insecure_http'):
+            raise Failed('model_upstream_insecure')
         reply = await self.fetch(
             str(reference), 'model_inference', 'model_key'
         )

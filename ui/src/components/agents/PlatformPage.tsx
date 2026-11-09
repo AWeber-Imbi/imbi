@@ -294,7 +294,10 @@ function ConfigCard({
   const config = form.config
   const setConfig = (patch: Partial<AgentPlatformConfig>) =>
     setForm((f) => ({ ...f, config: { ...f.config, ...patch } }))
-  const upstream = config.model_upstream ?? { kind: 'anthropic' as const }
+  const upstream = config.model_upstream ?? {
+    allow_insecure_http: false,
+    kind: 'anthropic' as const,
+  }
   const sandbox = {
     allow_unsandboxed_commands:
       config.sandbox?.allow_unsandboxed_commands ?? true,
@@ -399,6 +402,17 @@ function ConfigCard({
             placeholder="The Anthropic API"
             value={upstream.base_url ?? ''}
           />
+          <label className="flex items-center gap-2 pt-2 text-sm">
+            <Switch
+              checked={!!upstream.allow_insecure_http}
+              onCheckedChange={(on) =>
+                setConfig({
+                  model_upstream: { ...upstream, allow_insecure_http: on },
+                })
+              }
+            />
+            Allow http:// (protected in-cluster upstream only)
+          </label>
         </Field>
         <Field help="A secret:// reference." htmlFor="upstream-key" label="Key">
           <Input

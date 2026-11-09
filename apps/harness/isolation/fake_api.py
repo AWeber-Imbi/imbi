@@ -468,6 +468,8 @@ def _bundle(task: Row) -> Row:
             'model_upstream': {
                 'kind': 'anthropic',
                 'base_url': PUBLIC_URL,
+                # The fake model API is in the same kind cluster.
+                'allow_insecure_http': True,
                 'key_ref': MODEL_REFERENCE,
             },
             'plugins': plugins,

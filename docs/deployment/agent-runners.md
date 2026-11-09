@@ -142,7 +142,10 @@ that the pool serves.
 3. Open **Agents > Settings > Platform**.
 4. In **Model upstream**, select `anthropic` or `litellm`.
 5. Optional: enter the **Base URL** of the upstream. Empty is the Anthropic
-   API.
+   API. The URL must use `https://`, because the model proxy sends the model
+   key to it. For a protected in-cluster upstream only, for example a
+   LiteLLM gateway in the same cluster, you can use `http://`. To do this,
+   turn on **Allow http://** (`model_upstream.allow_insecure_http`).
 6. In **Key**, enter the `secret://` reference of the binding. This is
    `model_upstream.key_ref` in the platform configuration.
 7. Click **Save version**.
@@ -525,6 +528,7 @@ Find the error code first:
 | Reason | Cause | Fix |
 |---|---|---|
 | `model_key_missing` | The platform configuration has no `model_upstream.key_ref` | Do [step 5](#5-configure-the-model-key) |
+| `model_upstream_insecure` | The model upstream URL uses `http://` and `model_upstream.allow_insecure_http` is off. The runner does not send the key without TLS | Change the **Base URL** to `https://`. For a protected in-cluster upstream only, turn on **Allow http://**. See [step 5](#5-configure-the-model-key) |
 | `model_key_refused` | The broker refused the `model_inference` request | Check the grant: the agent, the binding, the purpose `model_inference`, and the delivery mode `file_descriptor`. The binding is the agent's **Model key**, or the organization's key when the agent has none |
 | `model_key_unavailable` | The executor could not get the key value | Validate the binding. Check the provider |
 | `mcp_credential_refused` | The broker refused the `mcp_server` request | Check the `mcp_server` grant for the agent |

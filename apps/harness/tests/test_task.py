@@ -507,6 +507,10 @@ class ModelKeyTestCase(TaskTestCase):
     async def test_failures(self) -> None:
         cases: list[tuple[task.TaskRun, str]] = []
         cases.append((self.make(model_upstream={}), 'model_key_missing'))
+        insecure = {'base_url': 'http://llm:4000', 'key_ref': 'secret://a/b'}
+        cases.append(
+            (self.make(model_upstream=insecure), 'model_upstream_insecure')
+        )
         refused = self.make()
         cases.append((refused, 'model_key_refused'))
         unavailable = self.make()
@@ -522,6 +526,17 @@ class ModelKeyTestCase(TaskTestCase):
                 with self.assertRaises(task.Failed) as ctx:
                     await subject.model_key()
                 self.assertEqual(ctx.exception.reason, reason)
+
+    async def test_http_upstream_with_the_flag(self) -> None:
+        self.call.return_value = {'material': KEY}
+        subject = self.make(
+            model_upstream={
+                'base_url': 'http://llm:4000',
+                'allow_insecure_http': True,
+                'key_ref': 'secret://a/b',
+            }
+        )
+        self.assertEqual(await subject.model_key(), proxy.Credential(KEY))
 
     async def test_executor_gone(self) -> None:
         self.call.side_effect = ConnectionRefusedError()
