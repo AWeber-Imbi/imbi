@@ -97,6 +97,16 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self._resolve_patcher.start()
         self.addCleanup(self._resolve_patcher.stop)
 
+        # The slim list reads deployment plugin bindings with extra
+        # ``db.execute`` calls; stub them so list tests keep one call.
+        self._deploy_plugins = mock.AsyncMock(return_value=set())
+        self._deploy_patcher = mock.patch(
+            'imbi.api.endpoints.projects._deployment_plugin_projects',
+            new=self._deploy_plugins,
+        )
+        self._deploy_patcher.start()
+        self.addCleanup(self._deploy_patcher.stop)
+
         self.client = TestClient(self.test_app)
 
     def _project_data(self, **overrides: typing.Any) -> dict:
@@ -600,6 +610,53 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(item['slug'], 'bare-project')
         self.assertEqual(item['project_types'], [])
         self.assertEqual(item['environments'], [])
+
+    def test_list_slim_has_deployment_plugin(self) -> None:
+        """Slim items say which projects have a deployment plugin."""
+
+        def _item(pid: str) -> dict:
+            return {
+                'project': {
+                    'id': pid,
+                    'name': pid,
+                    'slug': pid,
+                    'team': {'name': 'Platform', 'slug': 'platform'},
+                    'project_types': [],
+                    'environments': [],
+                }
+            }
+
+        self.mock_db.execute.return_value = [_item('a'), _item('b')]
+        self._deploy_plugins.return_value = {'b'}
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/?slim=true'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        flags = {p['id']: p['has_deployment_plugin'] for p in response.json()}
+        self.assertEqual(flags, {'a': False, 'b': True})
+        self._deploy_plugins.assert_awaited_once_with(
+            self.mock_db, 'engineering', ['a', 'b']
+        )
+
+    def test_list_full_omits_has_deployment_plugin(self) -> None:
+        """The full list does not read deployment plugins."""
+        self.mock_db.execute.return_value = [
+            {
+                'project': self._project_data(),
+                'outbound_count': 0,
+                'inbound_count': 0,
+            },
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get('/organizations/engineering/projects/')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertNotIn('has_deployment_plugin', response.json()[0])
+        self._deploy_plugins.assert_not_awaited()
 
     # -- Get -----------------------------------------------------------
 

@@ -69,6 +69,7 @@ import { Sk } from './ui/skeleton'
 
 // The dropdown filters, each backed by its own URL search param.
 type DriftCellProject = DriftProject & {
+  has_deployment_plugin: boolean
   id: string
   project_types?: null | object[]
 }
@@ -888,7 +889,13 @@ function BehindTab({ tone }: { tone: DriftTone }) {
 }
 
 // fallow-ignore-next-line complexity
-function DeploymentCards({ project }: { project: ProjectListItem }) {
+function DeploymentCards({
+  deployments,
+  project,
+}: {
+  deployments: string | undefined
+  project: ProjectListItem
+}) {
   const environments = project.environments ?? []
   const releases = project.current_releases ?? {}
   const latest = project.latest_deployments ?? {}
@@ -903,7 +910,7 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
           <DriftPill
             label="Cut a release"
             since={releaseSince}
-            to={`/projects/${project.id}/deployments`}
+            to={deployments}
             tone={driftTone(releaseSince)}
           />
         </span>
@@ -948,18 +955,24 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
                   <DriftPill
                     label={`Deploy ${pair.from} to ${pair.to}`}
                     since={since}
-                    to={`/projects/${project.id}/deployments?env=${encodeURIComponent(pair.toSlug)}`}
+                    to={
+                      deployments &&
+                      `${deployments}?env=${encodeURIComponent(pair.toSlug)}`
+                    }
                     tone={tone}
                   />
                 </PipelineConnector>
               ) : (
                 <PipelineConnector />
               ))}
-            <Link
-              aria-label={`View ${project.name} ${env.name} deployments: ${release ? (release.tag ?? release.committish ?? 'unknown release') : 'not deployed'}`}
+            <LinkOrDiv
+              aria-label={`${deployments ? 'View ' : ''}${project.name} ${env.name} deployments: ${release ? (release.tag ?? release.committish ?? 'unknown release') : 'not deployed'}`}
               className={`${cardClass}${behind ? ` ${DRIFT_TONE[tone].card}` : ''}`}
               style={cardStyle}
-              to={`/projects/${project.id}/deployments?env=${encodeURIComponent(env.slug)}`}
+              to={
+                deployments &&
+                `${deployments}?env=${encodeURIComponent(env.slug)}`
+              }
             >
               {behind && <BehindTab tone={tone} />}
               {release ? (
@@ -992,12 +1005,23 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
                   no {env.name.toLowerCase()}
                 </span>
               )}
-            </Link>
+            </LinkOrDiv>
           </React.Fragment>
         )
       })}
     </div>
   )
+}
+
+// The Deployments tab (and its Releases pane) exists only with a
+// deployment plugin, so without one the list links nowhere.
+function deploymentsHref(project: {
+  has_deployment_plugin: boolean
+  id: string
+}): string | undefined {
+  return project.has_deployment_plugin
+    ? `/projects/${project.id}/deployments`
+    : undefined
 }
 
 // The badges a project shows. Same predicate the count and the filter
@@ -1033,6 +1057,7 @@ function DriftCell({ project }: { project: DriftCellProject }) {
   if (deployDrifted.length === 0 && !releaseDrifted) return null
 
   const releaseSince = project.release_summary?.oldest_actionable_at
+  const deployments = deploymentsHref(project)
 
   return (
     <div className="relative z-10 flex flex-row flex-wrap items-center gap-1">
@@ -1044,7 +1069,7 @@ function DriftCell({ project }: { project: DriftCellProject }) {
             ? deriveChipColors(p.toLabelColor, isDarkMode)
             : null
         return (
-          <Link
+          <LinkOrDiv
             aria-label={
               since
                 ? `Deploy ${p.from} to ${p.to}, waiting since ${absTime(since)}`
@@ -1067,32 +1092,35 @@ function DriftCell({ project }: { project: DriftCellProject }) {
                   }
                 : undefined
             }
-            to={`/projects/${project.id}/deployments?env=${encodeURIComponent(p.toSlug)}`}
+            to={
+              deployments &&
+              `${deployments}?env=${encodeURIComponent(p.toSlug)}`
+            }
           >
             <span className="font-medium">Δ</span>
             <span>{abbreviateEnvName(p.from)}</span>
             <span>→</span>
             <span>{abbreviateEnvName(p.to)}</span>
             <WaitingAge since={since} />
-          </Link>
+          </LinkOrDiv>
         )
       })}
       {releaseDrifted && (
-        <Link
+        <LinkOrDiv
           aria-label={
             releaseSince
               ? `Cut a release, waiting since ${absTime(releaseSince)}`
               : 'Cut a release'
           }
           className={`${badgeBaseCls} ${driftIsStale(releaseSince) ? staleCls : fallbackCls}`}
-          to={`/projects/${project.id}/deployments`}
+          to={deployments}
         >
           <span className="font-medium">Δ</span>
           <span>C</span>
           <span>→</span>
           <span>R</span>
           <WaitingAge since={releaseSince} />
-        </Link>
+        </LinkOrDiv>
       )}
     </div>
   )
@@ -1113,18 +1141,18 @@ function DriftPill({
 }: {
   label: string
   since: null | string | undefined
-  to: string
+  to: string | undefined
   tone: DriftTone
 }) {
   return (
-    <Link
+    <LinkOrDiv
       aria-label={since ? `${label}, waiting since ${absTime(since)}` : label}
       className={`relative z-10 mx-1 inline-flex items-center rounded-full border px-1.5 py-0.5 font-mono text-xs whitespace-nowrap ${DRIFT_TONE[tone].pill}`}
       to={to}
     >
       <span className="font-medium">Δ</span>
       <WaitingAge since={since} />
-    </Link>
+    </LinkOrDiv>
   )
 }
 
@@ -1301,6 +1329,21 @@ function isProjectReleasable(project: DeliveryProject): boolean {
   return resolveDelivery(project).releasable
 }
 
+// A link when there is a target, else the same box without one (a
+// project without a deployment plugin has no Deployments tab).
+function LinkOrDiv({
+  to,
+  ...props
+}: {
+  'aria-label': string
+  children: React.ReactNode
+  className: string
+  style?: React.CSSProperties
+  to: string | undefined
+}) {
+  return to ? <Link to={to} {...props} /> : <div role="group" {...props} />
+}
+
 // fallow-ignore-next-line complexity
 function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   const next = new URLSearchParams(prev)
@@ -1360,10 +1403,12 @@ function PipelineConnector({
 
 // fallow-ignore-next-line complexity
 function ReleaseCards({
+  deployments,
   projectId,
   projectName,
   release_summary,
 }: {
+  deployments: string | undefined
   projectId: string
   projectName: string
   release_summary: NonNullable<ProjectListItem['release_summary']>
@@ -1375,12 +1420,14 @@ function ReleaseCards({
   const behind = projectReleaseDrifted({ release_summary })
   const since = release_summary.oldest_actionable_at
   const tone = driftTone(since)
+  const releases = deployments && `/projects/${projectId}/releases`
+  const viewSuffix = releases ? ': view releases' : ''
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
-      <Link
-        aria-label={`${projectName} latest commit ${headSha ?? 'unknown'}: view releases`}
+      <LinkOrDiv
+        aria-label={`${projectName} latest commit ${headSha ?? 'unknown'}${viewSuffix}`}
         className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere"
-        to={`/projects/${projectId}/releases`}
+        to={releases}
       >
         <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
           <GitCommit className="size-3 shrink-0" />
@@ -1394,13 +1441,13 @@ function ReleaseCards({
             <RelativeTime value={release_summary.head_authored_at} />
           )}
         </p>
-      </Link>
+      </LinkOrDiv>
       {behind ? (
         <PipelineConnector tone={tone}>
           <DriftPill
             label="Cut a release"
             since={since}
-            to={`/projects/${projectId}/deployments`}
+            to={deployments}
             tone={tone}
           />
         </PipelineConnector>
@@ -1409,10 +1456,10 @@ function ReleaseCards({
       ) : (
         <PipelineConnector />
       )}
-      <Link
-        aria-label={`${projectName} current release ${release_summary.latest_tag ?? 'none'}${behind ? `, waiting on ${headSha ?? 'a new release'}` : ''}: view releases`}
+      <LinkOrDiv
+        aria-label={`${projectName} current release ${release_summary.latest_tag ?? 'none'}${behind ? `, waiting on ${headSha ?? 'a new release'}` : ''}${viewSuffix}`}
         className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
-        to={`/projects/${projectId}/releases`}
+        to={releases}
       >
         {behind && <BehindTab tone={tone} />}
         <p className="text-amber-text mb-1.5 flex items-center gap-1.5 text-sm font-medium">
@@ -1435,7 +1482,7 @@ function ReleaseCards({
           )}
         </p>
         {behind && <WaitingLine tone={tone} version={headSha} />}
-      </Link>
+      </LinkOrDiv>
     </div>
   )
 }
@@ -1759,6 +1806,7 @@ function withCounts(
 const ProjectListRow = React.memo(function ProjectListRow({
   project,
 }: ProjectListRowProps) {
+  const deployments = deploymentsHref(project)
   return (
     <div className="hover:bg-secondary relative flex cursor-pointer items-center transition-colors">
       <Link
@@ -1807,7 +1855,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
           project.environments &&
           project.environments.length > 0 && (
             <ScrollableDeployments environments={project.environments}>
-              <DeploymentCards project={project} />
+              <DeploymentCards deployments={deployments} project={project} />
             </ScrollableDeployments>
           )}
         {!isProjectDeployable(project) &&
@@ -1815,6 +1863,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
           project.release_summary && (
             <div className="min-w-0 overflow-x-auto">
               <ReleaseCards
+                deployments={deployments}
                 projectId={project.id}
                 projectName={project.name}
                 release_summary={project.release_summary}

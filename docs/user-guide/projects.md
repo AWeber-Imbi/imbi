@@ -85,6 +85,10 @@ See [Pull requests and dependencies](pull-requests-and-dependencies.md).
 - `Δ C → R`: the project has commits after its latest release. Click it to
   go to the tab where you cut a release.
 
+When the project has no deployment plugin, it has no **Deployments** or
+**Releases** tab. The badges, the environment cards, and the release cards
+then show without a link.
+
 Each badge also shows how long its oldest waiting change has waited, for
 example `Δ T → S 12d`. That is the oldest commit in the range that still
 needs action, counted from when it reached the default branch. For a

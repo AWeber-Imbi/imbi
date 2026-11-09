@@ -30,6 +30,7 @@ from imbi.api.endpoints._json_fields import (
     serialize_json_fields,
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
+from imbi.api.plugins import assignments as plugin_assignments
 from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
     build_lifecycle_context_bundle,
@@ -321,6 +322,10 @@ class ProjectListItem(pydantic.BaseModel):
     drift_range_oldest: dict[str, datetime.datetime] = pydantic.Field(
         default_factory=dict
     )
+    #: Whether a deployment plugin serves the project.  The project page
+    #: shows its Deployments tab only then, so the list links to it only
+    #: then.
+    has_deployment_plugin: bool = False
 
 
 class ProjectResponse(pydantic.BaseModel):
@@ -1893,6 +1898,22 @@ _SLIM_RETURN_FRAGMENT: typing.LiteralString = """
 """
 
 
+async def _deployment_plugin_projects(
+    db: graph.Graph, org_slug: str, project_ids: list[str]
+) -> set[str]:
+    """Return the ids in ``project_ids`` with a deployment plugin.
+
+    Errors give an empty set, so the list shows no deployment links.
+    """
+    try:
+        return await plugin_assignments.bound_project_ids(
+            db, org_slug, project_ids, 'deployment'
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Failed to read deployment plugins', exc_info=True)
+        return set()
+
+
 # -- Endpoints ----------------------------------------------------------
 
 
@@ -2535,10 +2556,19 @@ async def list_projects(
         if p.get('id') and _delivery_of(p).releasable
     ]
     viewer = auth.identity_for('github-enterprise-cloud')
-    pr_counts, releases, release_summaries = await asyncio.gather(
+    (
+        pr_counts,
+        releases,
+        release_summaries,
+        deployment_ids,
+    ) = await asyncio.gather(
         _fetch_pr_counts(project_ids, viewer=viewer),
         _fetch_current_releases(db, project_ids),
         _fetch_release_summaries(releasable_ids),
+        # Only ``ProjectListItem`` carries ``has_deployment_plugin``.
+        _deployment_plugin_projects(db, org_slug, project_ids)
+        if slim
+        else asyncio.sleep(0, set[str]()),
     )
 
     await _resolve_release_display_names(db, releases.current)
@@ -2574,6 +2604,10 @@ async def list_projects(
             project_data['release_summary'] = summary.model_dump()
 
     if slim:
+        for project_data in project_data_list:
+            project_data['has_deployment_plugin'] = (
+                str(project_data.get('id', '')) in deployment_ids
+            )
         return [ProjectListItem.model_validate(p) for p in project_data_list]
     return [ProjectResponse.model_validate(p) for p in project_data_list]
 

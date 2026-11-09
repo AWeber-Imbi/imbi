@@ -16,6 +16,7 @@ import fastapi
 from imbi.api.plugins.assignments import (
     CapabilityBinding,
     effective_bindings,
+    plugin_declares,
 )
 from imbi.common import graph
 from imbi.common.plugins.base import CapabilityHandler, PluginContext
@@ -76,13 +77,7 @@ async def _loaded_and_enabled(
     from imbi.api.plugins.lifecycle import is_plugin_enabled
 
     plugin_slug = binding.integration.get('plugin')
-    if not plugin_slug:
-        return False
-    try:
-        entry = get_plugin(str(plugin_slug))
-    except PluginNotFoundError:
-        return False
-    if entry.manifest.get_capability(kind) is None:
+    if not plugin_slug or not plugin_declares(str(plugin_slug), kind):
         return False
     return await is_plugin_enabled(db, str(plugin_slug))
 

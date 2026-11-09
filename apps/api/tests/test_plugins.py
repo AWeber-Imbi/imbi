@@ -430,6 +430,9 @@ class ResolutionTestCase(unittest.TestCase):
                 'imbi.api.plugins.resolution.get_plugin', return_value=entry
             ),
             mock.patch(
+                'imbi.api.plugins.assignments.get_plugin', return_value=entry
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
@@ -462,6 +465,10 @@ class ResolutionTestCase(unittest.TestCase):
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=False),
             ),
@@ -487,6 +494,10 @@ class ResolutionTestCase(unittest.TestCase):
                 ),
                 mock.patch(
                     'imbi.api.plugins.resolution.get_plugin',
+                    return_value=_make_registry_entry('ssm'),
+                ),
+                mock.patch(
+                    'imbi.api.plugins.assignments.get_plugin',
                     return_value=_make_registry_entry('ssm'),
                 ),
                 mock.patch(
@@ -521,6 +532,10 @@ class ResolutionTestCase(unittest.TestCase):
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
@@ -547,6 +562,10 @@ class ResolutionTestCase(unittest.TestCase):
             ),
             mock.patch(
                 'imbi.api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
@@ -577,6 +596,10 @@ class ResolutionTestCase(unittest.TestCase):
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
@@ -599,6 +622,10 @@ class ResolutionTestCase(unittest.TestCase):
             ),
             mock.patch(
                 'imbi.api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
@@ -653,6 +680,10 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
                 side_effect=lambda slug: entries[slug],
             ),
             mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
+                side_effect=lambda slug: entries[slug],
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
@@ -677,6 +708,12 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
             ),
             mock.patch(
                 'imbi.api.plugins.resolution.get_plugin',
+                side_effect=lambda slug: _make_registry_entry(
+                    slug, kind='lifecycle'
+                ),
+            ),
+            mock.patch(
+                'imbi.api.plugins.assignments.get_plugin',
                 side_effect=lambda slug: _make_registry_entry(
                     slug, kind='lifecycle'
                 ),
@@ -714,6 +751,9 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
             ),
             mock.patch(
                 'imbi.api.plugins.resolution.get_plugin', side_effect=_get
+            ),
+            mock.patch(
+                'imbi.api.plugins.assignments.get_plugin', side_effect=_get
             ),
             mock.patch(
                 'imbi.api.plugins.lifecycle.is_plugin_enabled',

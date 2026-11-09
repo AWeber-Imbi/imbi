@@ -318,6 +318,9 @@ export interface ProjectListItem {
     slug: string
     sort_order: number
   }[]
+  // A deployment plugin serves the project, so its Deployments tab
+  // exists. Without one, the list shows no links to that tab.
+  has_deployment_plugin: boolean
   id: string
   // Newer attempt than `current_releases` in the same environment, when
   // one exists; see `LatestDeployment`.

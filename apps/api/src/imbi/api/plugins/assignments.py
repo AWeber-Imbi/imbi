@@ -15,11 +15,15 @@ resolution. A capability is bound to a project through:
   that capability narrows it back to the assigned types.
 """
 
+import asyncio
 import json
 import typing
 
 from imbi.api.plugins import parse_options
+from imbi.api.plugins.lifecycle import get_enabled_map
 from imbi.common import graph
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import get_plugin
 
 #: Enumerated capability kinds that participate in ``USES`` assignment.
 CapabilityKind = str
@@ -72,6 +76,16 @@ def capability_state(
 def capability_enabled(integration: dict[str, typing.Any], kind: str) -> bool:
     """Whether ``kind`` is enabled on a hydrated Integration."""
     return bool(capability_state(integration, kind).get('enabled'))
+
+
+def plugin_declares(plugin_slug: str, kind: str) -> bool:
+    """Whether the plugin ``plugin_slug`` is loaded and declares
+    ``kind``.  The caller checks the ``PluginRegistration`` flag."""
+    try:
+        entry = get_plugin(plugin_slug)
+    except PluginNotFoundError:
+        return False
+    return entry.manifest.get_capability(kind) is not None
 
 
 def merge_env_payloads(
@@ -209,6 +223,64 @@ async def effective_bindings(
             )
         )
     return bindings
+
+
+_PROJECTS_USES: typing.LiteralString = """
+MATCH (p:Project)
+WHERE p.id IN {project_ids}
+OPTIONAL MATCH (p)-[pe:USES]->(pi:Integration)
+  WHERE pe.capability = {kind}
+OPTIONAL MATCH (p)-[:TYPE]->(:ProjectType)-[pte:USES]->(pti:Integration)
+  WHERE pte.capability = {kind}
+RETURN p.id AS project_id,
+       collect(DISTINCT pi.id) AS project_ids,
+       collect(DISTINCT pti.id) AS type_ids
+"""
+
+
+async def bound_project_ids(
+    db: graph.Graph, org_slug: str, project_ids: list[str], kind: str
+) -> set[str]:
+    """Return the ids in ``project_ids`` that ``kind`` is bound to.
+
+    The batch form of :func:`effective_bindings`, for lists: the same
+    rules, plus the loaded-and-enabled plugin check, with the org-level
+    reads done once and one query for the edges of all projects.
+    """
+    if not project_ids:
+        return set()
+    integrations, enabled, assigned = await asyncio.gather(
+        org_integrations(db, org_slug),
+        get_enabled_map(db),
+        _assigned_type_ids(db, org_slug, kind),
+    )
+    live: set[str] = set()
+    for iid, integration in integrations.items():
+        slug = str(integration.get('plugin') or '')
+        if (
+            capability_enabled(integration, kind)
+            and enabled.get(slug)
+            and plugin_declares(slug, kind)
+        ):
+            live.add(iid)
+    if not live:
+        return set()
+    if live - assigned:  # the default-all rule
+        return set(project_ids)
+    rows = await db.execute(
+        _PROJECTS_USES,
+        {'project_ids': project_ids, 'kind': kind},
+        ['project_id', 'project_ids', 'type_ids'],
+    )
+    out: set[str] = set()
+    for row in rows:
+        bound: list[typing.Any] = [
+            *(graph.parse_agtype(row['project_ids']) or []),
+            *(graph.parse_agtype(row['type_ids']) or []),
+        ]
+        if live.intersection(str(i) for i in bound if i):
+            out.add(str(graph.parse_agtype(row['project_id'])))
+    return out
 
 
 def _edges_by_id(raw: typing.Any) -> dict[str, dict[str, typing.Any]]:

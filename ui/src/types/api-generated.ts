@@ -16883,6 +16883,11 @@ export interface components {
             drift_range_oldest?: {
                 [key: string]: string;
             };
+            /**
+             * Has Deployment Plugin
+             * @default false
+             */
+            has_deployment_plugin: boolean;
         };
         /**
          * ProjectListProjectTypeRef
