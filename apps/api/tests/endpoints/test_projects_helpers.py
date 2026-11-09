@@ -39,7 +39,8 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
             result = await projects._fetch_pr_counts(['p1'])
         self.assertEqual(result, {'p1': (3, 1, 0, 0)})
         # No viewer param when viewer is None
-        called_sql, called_params = ch.query.call_args.args
+        called_sql = ch.query.call_args.args[0]
+        called_params = ch.query.call_args.kwargs['parameters']
         self.assertNotIn('viewer', called_params)
         self.assertIn('0 AS viewer_open_count', called_sql)
         self.assertIn('AND NOT draft', called_sql)
@@ -64,7 +65,8 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
                 ['p1'], viewer='alice@example.com'
             )
         self.assertEqual(result, {'p1': (5, 4, 2, 1)})
-        called_sql, called_params = ch.query.call_args.args
+        called_sql = ch.query.call_args.args[0]
+        called_params = ch.query.call_args.kwargs['parameters']
         self.assertEqual(called_params['viewer'], 'alice@example.com')
         self.assertIn('viewer_open_count', called_sql)
         self.assertIn('AND NOT draft', called_sql)
@@ -89,7 +91,7 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
 
     @staticmethod
     def _echo(
-        sql: str, params: dict[str, typing.Any]
+        sql: str, parameters: dict[str, typing.Any]
     ) -> list[dict[str, typing.Any]]:
         if 'pull_requests' in sql:
             return [
@@ -100,12 +102,12 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
                     'viewer_open_count': 0,
                     'viewer_closed_count': 0,
                 }
-                for pid in params['project_ids']
+                for pid in parameters['project_ids']
             ]
         if 'FROM commits FINAL' in sql and 'LIMIT 1 BY' in sql:
             return [
                 {'project_id': pid, 'sha': 'a' * 40}
-                for pid in params['project_ids']
+                for pid in parameters['project_ids']
             ]
         return []
 
@@ -124,12 +126,12 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
         calls = {'n': 0}
 
         def query(
-            sql: str, params: dict[str, typing.Any]
+            sql: str, parameters: dict[str, typing.Any]
         ) -> list[dict[str, typing.Any]]:
             calls['n'] += 1
             if calls['n'] == 1:
                 raise RuntimeError('Field value too long')
-            return self._echo(sql, params)
+            return self._echo(sql, parameters)
 
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(side_effect=query)
@@ -165,7 +167,7 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
         tagged = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
         def query(
-            sql: str, params: dict[str, typing.Any]
+            sql: str, parameters: dict[str, typing.Any]
         ) -> list[dict[str, typing.Any]]:
             if 'FROM tags FINAL' in sql:
                 return [
@@ -177,10 +179,12 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
                         'recorded_at': None,
                         'tagger_name': None,
                     }
-                    for pid in params['project_ids']
+                    for pid in parameters['project_ids']
                 ]
             if 'count() AS c' in sql:
-                self.assertEqual(len(params['cuts']), len(params['pids']))
+                self.assertEqual(
+                    len(parameters['cuts']), len(parameters['pids'])
+                )
                 return [
                     {
                         'project_id': pid,
@@ -190,9 +194,9 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
                         'actionable': 0,
                         'oldest_actionable_at': None,
                     }
-                    for pid in params['pids']
+                    for pid in parameters['pids']
                 ]
-            return self._echo(sql, params)
+            return self._echo(sql, parameters)
 
         mock_query = mock.AsyncMock(side_effect=query)
         with mock.patch(
