@@ -29,6 +29,7 @@ export function SecretsManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const tab = TABS.some(([id]) => id === slug) ? slug : 'providers'
+  const orgId = selectedOrganization?.id
   if (!orgSlug) return null
 
   return (
@@ -60,7 +61,7 @@ export function SecretsManagement() {
         <ResolutionsTab orgSlug={orgSlug} />
       </TabsContent>
       <TabsContent value="identity">
-        <IdentityTab orgSlug={orgSlug} />
+        <IdentityTab orgId={orgId} orgSlug={orgSlug} />
       </TabsContent>
       <TabsContent value="audit">
         <AuditTab orgSlug={orgSlug} />

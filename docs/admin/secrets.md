@@ -63,9 +63,8 @@ imbi-api identity and the organization id with your own:
 ```
 
 The `sts:ExternalId` condition is required. Without it, Imbi refuses the
-provider, because another organization could use the role. If you do not
-know your organization id, save the provider first: the error message shows
-the exact value to put in the trust policy.
+provider, because another organization could use the role. The
+**Identity** tab shows the exact ExternalId under **Vendor setup**.
 
 Give the role this permission policy. Limit the resources to the secrets
 that Imbi may read:
@@ -243,6 +242,8 @@ Anthropic Console, and OpenAI setup that these steps need.
    require `sts:ExternalId` `imbi:<organization id>`. When you save, Imbi
    assumes the role two times: the role must refuse a wrong ExternalId and
    accept the organization's own. This check does not get an identity JWT.
+   The **Vendor setup** section below shows the values for the vendor
+   setup (see the [runbook](workload-identity.md#before-you-start)).
 2. On the **Providers** tab, add a provider of the type **Anthropic
    workload identity** with the configuration `{}`.
 3. For each agent, add a `dynamic` binding to that provider. The locator

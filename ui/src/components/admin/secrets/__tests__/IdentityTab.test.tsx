@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import {
   deleteWorkloadIdentity,
   getWorkloadIdentity,
+  listAgents,
+  listAIProviders,
   listIdentitySourceTypes,
   putWorkloadIdentity,
 } from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import type { Agent, AIProvider } from '@/types'
 
 import { IdentityTab } from '../IdentityTab'
 
@@ -14,8 +18,15 @@ import { IdentityTab } from '../IdentityTab'
 vi.mock('@/api/endpoints', () => ({
   deleteWorkloadIdentity: vi.fn(),
   getWorkloadIdentity: vi.fn(),
+  listAgents: vi.fn(),
+  listAIProviders: vi.fn(),
   listIdentitySourceTypes: vi.fn(),
   putWorkloadIdentity: vi.fn(),
+}))
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/hooks/useHasPermission', () => ({
+  useHasPermission: () => true,
 }))
 
 const CONFIG = {
@@ -36,11 +47,18 @@ describe('IdentityTab', () => {
     ])
     vi.mocked(putWorkloadIdentity).mockResolvedValue(SOURCE)
     vi.mocked(deleteWorkloadIdentity).mockResolvedValue(undefined)
+    vi.mocked(listAgents).mockResolvedValue([
+      { id: 'agent-1', name: 'Ops helper' } as Agent,
+    ])
+    vi.mocked(listAIProviders).mockResolvedValue([
+      { driver: 'openai', id: 'prov-1', name: 'OpenAI' } as AIProvider,
+      { driver: 'bedrock', id: 'prov-2', name: 'Bedrock' } as AIProvider,
+    ])
   })
 
   it('sets an identity source', async () => {
     vi.mocked(getWorkloadIdentity).mockResolvedValue(null)
-    render(<IdentityTab orgSlug="acme" />)
+    render(<IdentityTab orgId="org-1" orgSlug="acme" />)
     expect(
       await screen.findByText(/Workload identity federation is off/),
     ).toBeInTheDocument()
@@ -61,7 +79,7 @@ describe('IdentityTab', () => {
 
   it('edits and removes the current source', async () => {
     vi.mocked(getWorkloadIdentity).mockResolvedValue(SOURCE)
-    render(<IdentityTab orgSlug="acme" />)
+    render(<IdentityTab orgId="org-1" orgSlug="acme" />)
     expect(await screen.findByText('aws_sts')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Set identity source' }),
@@ -88,5 +106,46 @@ describe('IdentityTab', () => {
     )
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(deleteWorkloadIdentity).toHaveBeenCalled())
+  })
+
+  it('shows the ids and the vendor values', async () => {
+    vi.mocked(getWorkloadIdentity).mockResolvedValue(SOURCE)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(<IdentityTab orgId="org-1" orgSlug="acme" />)
+    expect(await screen.findByText('imbi:org-1')).toBeInTheDocument()
+    expect(await screen.findByText('Ops helper')).toBeInTheDocument()
+    expect(await screen.findByText('OpenAI')).toBeInTheDocument()
+    expect(screen.queryByText('Bedrock')).toBeNull()
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Copy the vendor values of Ops helper',
+      }),
+    )
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining('request_tags.imbi_agent == "agent-1"'),
+      ),
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Copy the vendor values of OpenAI' }),
+    )
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining('openai.imbi_ai_provider = prov-1'),
+      ),
+    )
+  })
+
+  it('reports a failed list but not a forbidden one', async () => {
+    vi.mocked(getWorkloadIdentity).mockResolvedValue(SOURCE)
+    vi.mocked(listAgents).mockRejectedValue(new ApiError(500, 'Error'))
+    vi.mocked(listAIProviders).mockRejectedValue(new ApiError(403, 'Forbidden'))
+    render(<IdentityTab orgId="org-1" orgSlug="acme" />)
+    expect(
+      await screen.findByText('Could not load the agents.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Could not load the AI Providers.')).toBeNull()
   })
 })
