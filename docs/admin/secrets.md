@@ -242,8 +242,8 @@ Anthropic Console, and OpenAI setup that these steps need.
    require `sts:ExternalId` `imbi:<organization id>`. When you save, Imbi
    assumes the role two times: the role must refuse a wrong ExternalId and
    accept the organization's own. This check does not get an identity JWT.
-   The **Vendor setup** section below shows the ExternalId, the agent and
-   AI Provider ids, and the ready vendor values.
+   The **Vendor setup** section below shows the values for the vendor
+   setup (see the [runbook](workload-identity.md#before-you-start)).
 2. On the **Providers** tab, add a provider of the type **Anthropic
    workload identity** with the configuration `{}`.
 3. For each agent, add a `dynamic` binding to that provider. The locator

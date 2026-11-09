@@ -1,7 +1,7 @@
 /** The AWS STS claim that holds the request tags of the identity JWT. */
 const TAGS = 'claims["https://sts.amazonaws.com/"].request_tags'
 
-export type WifSubjectTag = 'imbi_agent' | 'imbi_ai_provider'
+type WifSubjectTag = 'imbi_agent' | 'imbi_ai_provider'
 
 /**
  * The CEL condition of an Anthropic federation rule for one agent or AI

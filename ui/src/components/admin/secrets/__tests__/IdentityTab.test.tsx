@@ -23,6 +23,11 @@ vi.mock('@/api/endpoints', () => ({
   putWorkloadIdentity: vi.fn(),
 }))
 
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/hooks/useHasPermission', () => ({
+  useHasPermission: () => true,
+}))
+
 const CONFIG = {
   region: 'us-east-1',
   role_arn: 'arn:aws:iam::123456789012:role/imbi-identity',

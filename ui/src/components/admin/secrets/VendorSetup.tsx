@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, Copy } from 'lucide-react'
 
-import { listAgents, listAIProviders } from '@/api/endpoints'
+import { listAIProviders } from '@/api/endpoints'
+import { useAgentList } from '@/components/agents/agentQueries'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import { useClipboard } from '@/hooks/useClipboard'
@@ -31,10 +32,7 @@ interface Subject {
  */
 export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
   const { copied, copy } = useClipboard()
-  const agentsQuery = useQuery({
-    queryFn: ({ signal }) => listAgents(orgSlug, signal),
-    queryKey: ['agents', orgSlug],
-  })
+  const agentsQuery = useAgentList(orgSlug)
   // AI Providers are global; a caller without read access sees none.
   const providersQuery = useQuery({
     queryFn: ({ signal }) => listAIProviders(signal),
@@ -127,7 +125,7 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
         ]}
         emptyMessage="No agents or Anthropic or OpenAI AI Providers."
         getRowKey={(row) => row.id}
-        loading={agentsQuery.isLoading}
+        loading={agentsQuery.isLoading || providersQuery.isLoading}
         rows={subjects}
       />
     </section>
