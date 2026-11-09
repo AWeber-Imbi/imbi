@@ -813,6 +813,9 @@ class TaskRun:
             bearer=bool(reply.get('bearer')),
         )
 
+    # The renewal rules here are a copy of TokenCache in
+    # imbi/common/llm/tokens.py. The harness must not depend on
+    # imbi-common (see pyproject.toml), so keep the two in step.
     async def renew_key(self, failed: str | None = None) -> None:
         """Replace the model access token. With ``failed``, only when
         that token is still the current one (another caller can have

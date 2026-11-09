@@ -62,6 +62,9 @@ def _renew_at(now: float, lifetime: float) -> float:
 
 
 class TokenCache:
+    # The harness has a copy of these rules (renew_key and _refresh_key
+    # in imbi/harness/task.py). It must not depend on imbi-common, so
+    # keep the two in step.
     def __init__(self) -> None:
         self._entries: dict[str, _Entry] = {}
         self._locks: dict[str, asyncio.Lock] = {}
