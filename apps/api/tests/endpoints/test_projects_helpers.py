@@ -7,6 +7,7 @@ Covers the private helpers added in the release-committish work:
 
 import datetime
 import json
+import typing
 import unittest
 from unittest import mock
 
@@ -77,6 +78,96 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await projects._fetch_pr_counts(['p1'])
         self.assertEqual(result, {})
+
+
+class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
+    """Large orgs split project IDs across queries (#529)."""
+
+    #: 25 bytes per 21-character nanoid, so 4000 IDs is ~100 KB, over
+    #: the 64 KB budget.
+    PIDS: typing.ClassVar[list[str]] = [f'{n:021d}' for n in range(4000)]
+
+    @staticmethod
+    def _echo(
+        sql: str, params: dict[str, typing.Any]
+    ) -> list[dict[str, typing.Any]]:
+        if 'pull_requests' in sql:
+            return [
+                {
+                    'project_id': pid,
+                    'open_count': 1,
+                    'closed_count': 0,
+                    'viewer_open_count': 0,
+                    'viewer_closed_count': 0,
+                }
+                for pid in params['project_ids']
+            ]
+        if 'FROM commits FINAL' in sql and 'LIMIT 1 BY' in sql:
+            return [
+                {'project_id': pid, 'sha': 'a' * 40}
+                for pid in params['project_ids']
+            ]
+        return []
+
+    async def test_pr_counts_batch_and_merge(self) -> None:
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(side_effect=self._echo)
+        with mock.patch(
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            return_value=ch,
+        ):
+            result = await projects._fetch_pr_counts(self.PIDS)
+        self.assertGreater(ch.query.await_count, 1)
+        self.assertEqual(set(result), set(self.PIDS))
+
+    async def test_pr_counts_failed_batch_degrades_only_itself(self) -> None:
+        calls = {'n': 0}
+
+        def query(
+            sql: str, params: dict[str, typing.Any]
+        ) -> list[dict[str, typing.Any]]:
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise RuntimeError('Field value too long')
+            return self._echo(sql, params)
+
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(side_effect=query)
+        with mock.patch(
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            return_value=ch,
+        ):
+            result = await projects._fetch_pr_counts(self.PIDS)
+        self.assertTrue(result)
+        self.assertLess(len(result), len(self.PIDS))
+
+    async def test_small_org_makes_one_pr_count_query(self) -> None:
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(side_effect=self._echo)
+        with mock.patch(
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            return_value=ch,
+        ):
+            await projects._fetch_pr_counts(self.PIDS[:10])
+        self.assertEqual(ch.query.await_count, 1)
+
+    async def test_release_summaries_batch_and_merge(self) -> None:
+        query = mock.AsyncMock(side_effect=self._echo)
+        with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
+            result = await projects._fetch_release_summaries(self.PIDS)
+        head_calls = [
+            c for c in query.await_args_list if 'LIMIT 1 BY' in c.args[0]
+        ]
+        self.assertGreater(len(head_calls), 1)
+        self.assertEqual(set(result), set(self.PIDS))
+
+    async def test_small_org_makes_one_query_per_release_kind(self) -> None:
+        query = mock.AsyncMock(side_effect=self._echo)
+        with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
+            await projects._fetch_release_summaries(self.PIDS[:10])
+        sqls = [c.args[0] for c in query.await_args_list]
+        self.assertEqual(sum('FROM tags FINAL' in s for s in sqls), 1)
+        self.assertEqual(sum('LIMIT 1 BY' in s for s in sqls), 1)
 
 
 class ResolveDisplayNamesTestCase(unittest.IsolatedAsyncioTestCase):

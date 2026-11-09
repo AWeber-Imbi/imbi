@@ -577,7 +577,7 @@ async def _fetch_pr_counts(
     """
     if not project_ids:
         return {}
-    params: dict[str, typing.Any] = {'project_ids': project_ids}
+    params: dict[str, typing.Any] = {}
     if viewer:
         sql = (
             'SELECT project_id,'
@@ -605,20 +605,31 @@ async def _fetch_pr_counts(
             ' AND NOT draft'
             ' GROUP BY project_id'
         )
-    try:
-        rows = await ch_client.Clickhouse.get_instance().query(sql, params)
-    except Exception:  # noqa: BLE001
-        LOGGER.warning('Failed to fetch PR counts for projects', exc_info=True)
-        return {}
-    return {
-        str(r['project_id']): (
-            int(r['open_count']),
-            int(r['closed_count']),
-            int(r['viewer_open_count']),
-            int(r['viewer_closed_count']),
+    counts: dict[str, tuple[int, int, int, int]] = {}
+    for batch in _project_id_batches(project_ids):
+        try:
+            rows = await ch_client.Clickhouse.get_instance().query(
+                sql, {**params, 'project_ids': batch}
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Failed to fetch PR counts for %d projects',
+                len(batch),
+                exc_info=True,
+            )
+            continue
+        counts.update(
+            {
+                str(r['project_id']): (
+                    int(r['open_count']),
+                    int(r['closed_count']),
+                    int(r['viewer_open_count']),
+                    int(r['viewer_closed_count']),
+                )
+                for r in rows
+            }
         )
-        for r in rows
-    }
+    return counts
 
 
 async def _resolve_display_names(
@@ -1367,6 +1378,16 @@ def _param_batches(
     return batches
 
 
+def _project_id_batches(project_ids: list[str]) -> list[list[str]]:
+    """Split project IDs into batches that fit one form field.
+
+    Uses :func:`_param_batches` with each ID as its own single entry, so
+    both of its arrays carry the same bytes and the ID array stays
+    within :data:`_PARAM_BYTE_BUDGET`.
+    """
+    return [pids for pids, _ in _param_batches({p: [p] for p in project_ids})]
+
+
 async def _fetch_authored_times(
     shas_by_project: dict[str, list[str]],
 ) -> dict[str, dict[str, datetime.datetime]]:
@@ -1450,8 +1471,9 @@ async def _fetch_release_summaries(
 ) -> dict[str, ReleaseSummary]:
     """Return {project_id: ReleaseSummary} for releasable projects.
 
-    ClickHouse queries: one for tags, one for each project's latest
-    commit, and one *per batch* for the authored time of the commits
+    ClickHouse queries: one for tags and one for each project's latest
+    commit per batch of project IDs, and one *per batch* for the
+    authored time of the commits
     those tags point at (see :func:`_param_batches` -- a single query
     carrying the whole org's shas exceeds the form-field limit).  That
     third query is what lets this rank tags with the shared
@@ -1466,31 +1488,39 @@ async def _fetch_release_summaries(
     """
     if not project_ids:
         return {}
-    try:
-        tag_rows, head_rows = await asyncio.gather(
-            clickhouse.query(
-                'SELECT project_id, name, sha, tagged_at, recorded_at,'
-                ' tagger_name'
-                ' FROM tags FINAL'
-                ' WHERE project_id IN {project_ids:Array(String)}',
-                {'project_ids': project_ids},
-            ),
-            clickhouse.query(
-                'SELECT project_id, sha, short_sha,'
-                ' author_name, author_user, authored_at'
-                ' FROM commits FINAL'
-                ' WHERE project_id IN {project_ids:Array(String)}'
-                ' ORDER BY pushed_at DESC, authored_at DESC'
-                ' LIMIT 1 BY project_id',
-                {'project_ids': project_ids},
-            ),
-        )
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'Failed to fetch release summaries for projects',
-            exc_info=True,
-        )
-        return {}
+    # Batched for the same form-field limit as :func:`_fetch_authored_times`.
+    # A failed batch drops both result sets for its projects only.
+    tag_rows: list[dict[str, typing.Any]] = []
+    head_rows: list[dict[str, typing.Any]] = []
+    for batch in _project_id_batches(project_ids):
+        try:
+            batch_tags, batch_heads = await asyncio.gather(
+                clickhouse.query(
+                    'SELECT project_id, name, sha, tagged_at, recorded_at,'
+                    ' tagger_name'
+                    ' FROM tags FINAL'
+                    ' WHERE project_id IN {project_ids:Array(String)}',
+                    {'project_ids': batch},
+                ),
+                clickhouse.query(
+                    'SELECT project_id, sha, short_sha,'
+                    ' author_name, author_user, authored_at'
+                    ' FROM commits FINAL'
+                    ' WHERE project_id IN {project_ids:Array(String)}'
+                    ' ORDER BY pushed_at DESC, authored_at DESC'
+                    ' LIMIT 1 BY project_id',
+                    {'project_ids': batch},
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Failed to fetch release summaries for %d projects',
+                len(batch),
+                exc_info=True,
+            )
+            continue
+        tag_rows.extend(batch_tags)
+        head_rows.extend(batch_heads)
 
     tags_by_project: dict[str, list[dict[str, typing.Any]]] = {}
     for row in tag_rows:
