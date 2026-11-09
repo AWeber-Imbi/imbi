@@ -1553,8 +1553,8 @@ async def _fetch_release_summaries(
         for pid in all_pids
     }
 
-    # Batch-fetch commit counts since each project's latest tag, so a
-    # single ClickHouse query covers every project's unreleased range.
+    # Batch-fetch commit counts since each project's latest tag, so one
+    # ClickHouse query per ID batch covers every unreleased range.
     tagged_pids = [
         pid for pid, tag in latest_by_pid.items() if tag is not None
     ]
@@ -1583,36 +1583,56 @@ async def _fetch_release_summaries(
                 # commit date: a merged pull request's commits keep
                 # their branch-era dates, and the push that merged
                 # them is when they started waiting for a release.
-                count_rows = await clickhouse.query(
-                    'SELECT c.project_id AS project_id,'
-                    ' count() AS c,'
-                    ' countIf(d.answered = 1 AND d.drift_detected)'
-                    ' AS drifted,'
-                    ' countIf(d.answered = 1) AS answered,'
-                    ' countIf(d.answered = 0 OR d.drift_detected)'
-                    ' AS actionable,'
-                    ' minIf(c.pushed_at,'
-                    ' d.answered = 0 OR d.drift_detected)'
-                    ' AS oldest_actionable_at'
-                    ' FROM commits AS c FINAL'
-                    ' LEFT JOIN (SELECT project_id, sha, drift_detected,'
-                    ' toUInt8(1) AS answered FROM commit_drift FINAL'
-                    ' WHERE project_id IN {pids:Array(String)}) AS d'
-                    ' ON d.project_id = c.project_id AND d.sha = c.sha'
-                    ' WHERE c.project_id IN {pids:Array(String)}'
-                    ' AND if(mapFromArrays({pids:Array(String)},'
-                    ' {modes:Array(UInt8)})[c.project_id] = 1,'
-                    ' c.authored_at,'
-                    ' COALESCE(c.committed_at, c.authored_at)) >'
-                    ' mapFromArrays({pids:Array(String)},'
-                    ' {cuts:Array(DateTime64(3))})[c.project_id]'
-                    ' GROUP BY c.project_id',
-                    {
-                        'pids': list(cutoff_map.keys()),
-                        'cuts': list(cutoff_map.values()),
-                        'modes': [mode_map[pid] for pid in cutoff_map],
-                    },
-                )
+                # Batched on the project IDs.  A cutoff serializes to
+                # about the same bytes as an ID, so ``cuts`` stays
+                # inside the field limit too.  A failed batch drops
+                # only its own projects.
+                count_rows: list[dict[str, typing.Any]] = []
+                for batch in _project_id_batches(list(cutoff_map)):
+                    try:
+                        count_rows.extend(
+                            await clickhouse.query(
+                                'SELECT c.project_id AS project_id,'
+                                ' count() AS c,'
+                                ' countIf(d.answered = 1'
+                                ' AND d.drift_detected) AS drifted,'
+                                ' countIf(d.answered = 1) AS answered,'
+                                ' countIf(d.answered = 0'
+                                ' OR d.drift_detected) AS actionable,'
+                                ' minIf(c.pushed_at,'
+                                ' d.answered = 0 OR d.drift_detected)'
+                                ' AS oldest_actionable_at'
+                                ' FROM commits AS c FINAL'
+                                ' LEFT JOIN (SELECT project_id, sha,'
+                                ' drift_detected, toUInt8(1) AS answered'
+                                ' FROM commit_drift FINAL'
+                                ' WHERE project_id IN {pids:Array(String)})'
+                                ' AS d'
+                                ' ON d.project_id = c.project_id'
+                                ' AND d.sha = c.sha'
+                                ' WHERE c.project_id IN {pids:Array(String)}'
+                                ' AND if(mapFromArrays({pids:Array(String)},'
+                                ' {modes:Array(UInt8)})[c.project_id] = 1,'
+                                ' c.authored_at,'
+                                ' COALESCE(c.committed_at, c.authored_at))'
+                                ' > mapFromArrays({pids:Array(String)},'
+                                ' {cuts:Array(DateTime64(3))})'
+                                '[c.project_id]'
+                                ' GROUP BY c.project_id',
+                                {
+                                    'pids': batch,
+                                    'cuts': [cutoff_map[p] for p in batch],
+                                    'modes': [mode_map[p] for p in batch],
+                                },
+                            )
+                        )
+                    except Exception:  # noqa: BLE001
+                        LOGGER.warning(
+                            'Failed to fetch commit counts since tag'
+                            ' for %d projects',
+                            len(batch),
+                            exc_info=True,
+                        )
                 # Projects whose range is empty drop out of the result
                 # rather than returning a zero row; both callers below
                 # default to "nothing there".

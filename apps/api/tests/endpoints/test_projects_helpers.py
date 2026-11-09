@@ -161,6 +161,55 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(head_calls), 1)
         self.assertEqual(set(result), set(self.PIDS))
 
+    async def test_commits_since_tag_batch_and_merge(self) -> None:
+        tagged = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+        def query(
+            sql: str, params: dict[str, typing.Any]
+        ) -> list[dict[str, typing.Any]]:
+            if 'FROM tags FINAL' in sql:
+                return [
+                    {
+                        'project_id': pid,
+                        'name': '1.0.0',
+                        'sha': 'b' * 40,
+                        'tagged_at': tagged,
+                        'recorded_at': None,
+                        'tagger_name': None,
+                    }
+                    for pid in params['project_ids']
+                ]
+            if 'count() AS c' in sql:
+                self.assertEqual(len(params['cuts']), len(params['pids']))
+                return [
+                    {
+                        'project_id': pid,
+                        'c': 2,
+                        'drifted': 0,
+                        'answered': 2,
+                        'actionable': 0,
+                        'oldest_actionable_at': None,
+                    }
+                    for pid in params['pids']
+                ]
+            return self._echo(sql, params)
+
+        mock_query = mock.AsyncMock(side_effect=query)
+        with mock.patch(
+            'imbi.api.endpoints.projects.clickhouse.query', mock_query
+        ):
+            result = await projects._fetch_release_summaries(self.PIDS)
+        count_calls = [
+            c
+            for c in mock_query.await_args_list
+            if 'count() AS c' in c.args[0]
+        ]
+        self.assertGreater(len(count_calls), 1)
+        self.assertEqual(
+            {pid for pid, s in result.items() if s.commits_since_tag == 2},
+            set(self.PIDS),
+        )
+
     async def test_small_org_makes_one_query_per_release_kind(self) -> None:
         query = mock.AsyncMock(side_effect=self._echo)
         with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
