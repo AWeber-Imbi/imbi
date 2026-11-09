@@ -106,6 +106,22 @@ protected in-cluster upstream only, turn on **Allow http://** instead. Then
 click **Save version**. See
 [Agent runners](agent-runners.md#5-configure-the-model-key).
 
+The **Opened** and **Reviewers** columns of the Open Pull Requests report
+need these steps:
+
+1. Run `imbi-api setup-clickhouse`. It adds the
+   `pull_request_review_requests` and `pull_request_reviews` tables.
+2. Restart iggy-connect, so that the sink reads the two new streams.
+3. Subscribe the GitHub webhook or App to **Pull request reviews** events,
+   and add a webhook rule that runs `github#sync_pull_request_reviews`. If
+   an existing `pull_request` rule filters actions, add
+   `review_requested` and `review_request_removed`.
+4. Optional: click **Sync Pull Requests** on a project to fill in the
+   reviewers of its open pull requests.
+
+Optional: to remove pull request rows that GitHub no longer lists, resync
+the pull request history of the affected projects.
+
 ## 2.43.0
 
 1. Run `imbi-api setup-permissions`. It gives the `admin` role
