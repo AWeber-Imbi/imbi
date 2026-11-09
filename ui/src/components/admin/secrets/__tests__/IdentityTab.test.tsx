@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import {
   deleteWorkloadIdentity,
   getWorkloadIdentity,
@@ -135,5 +136,16 @@ describe('IdentityTab', () => {
         expect.stringContaining('openai.imbi_ai_provider = prov-1'),
       ),
     )
+  })
+
+  it('reports a failed list but not a forbidden one', async () => {
+    vi.mocked(getWorkloadIdentity).mockResolvedValue(SOURCE)
+    vi.mocked(listAgents).mockRejectedValue(new ApiError(500, 'Error'))
+    vi.mocked(listAIProviders).mockRejectedValue(new ApiError(403, 'Forbidden'))
+    render(<IdentityTab orgId="org-1" orgSlug="acme" />)
+    expect(
+      await screen.findByText('Could not load the agents.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Could not load the AI Providers.')).toBeNull()
   })
 })

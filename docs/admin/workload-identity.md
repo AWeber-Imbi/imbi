@@ -209,8 +209,10 @@ API.
 2. For each OpenAI AI Provider, create a service account and a mapping.
    The mapping matches `sub` to the identity role ARN exactly,
    `openai.imbi_org` to the organization id, and `openai.imbi_ai_provider`
-   to the AI Provider id. **Vendor setup** shows these claims for each
-   provider.
+   to the AI Provider id. In **Vendor setup**, the copy button for each
+   provider copies the three claims as `key = value` lines. The OpenAI
+   dashboard has separate Key and Value fields, so add one mapping row
+   for each line.
 
 Write down `identity_provider_id` and `service_account_id`.
 

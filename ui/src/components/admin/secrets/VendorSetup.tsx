@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, Copy } from 'lucide-react'
+import { toast } from 'sonner'
 
+import { ApiError } from '@/api/client'
 import { listAIProviders } from '@/api/endpoints'
 import { useAgentList } from '@/components/agents/agentQueries'
 import { AdminTable } from '@/components/ui/admin-table'
@@ -31,7 +33,11 @@ interface Subject {
  * OpenAI mapping claims.
  */
 export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
-  const { copied, copy } = useClipboard()
+  const { copied, copy: writeClipboard } = useClipboard()
+  const copy = (text: string, key?: string) =>
+    void writeClipboard(text, key).then(
+      (ok) => ok || toast.error('Could not copy to the clipboard'),
+    )
   const agentsQuery = useAgentList(orgSlug)
   // AI Providers are global; a caller without read access sees none.
   const providersQuery = useQuery({
@@ -39,6 +45,15 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
     queryKey: ['ai-providers'],
     retry: false,
   })
+  // A 403 means no read access, which is expected; other errors are not.
+  const failures = [
+    { label: 'agents', query: agentsQuery },
+    { label: 'AI Providers', query: providersQuery },
+  ].filter(
+    ({ query }) =>
+      query.isError &&
+      !(query.error instanceof ApiError && query.error.status === 403),
+  )
 
   const subjects: Subject[] = [
     ...(agentsQuery.data ?? []).map((a) => ({
@@ -80,7 +95,7 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
               <CopyButton
                 copied={copied === value}
                 label={`Copy ${label}`}
-                onCopy={() => void copy(value)}
+                onCopy={() => copy(value)}
               />
             </dd>
           </div>
@@ -105,7 +120,7 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
                 <CopyButton
                   copied={copied === `id:${row.id}`}
                   label={`Copy the id of ${row.name}`}
-                  onCopy={() => void copy(row.id, `id:${row.id}`)}
+                  onCopy={() => copy(row.id, `id:${row.id}`)}
                 />
               </span>
             ),
@@ -118,7 +133,7 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
                 <CopyButton
                   copied={copied === `value:${id}`}
                   label={`Copy the vendor values of ${name}`}
-                  onCopy={() => void copy(value, `value:${id}`)}
+                  onCopy={() => copy(value, `value:${id}`)}
                 />
               ),
           },
@@ -128,6 +143,18 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
         loading={agentsQuery.isLoading || providersQuery.isLoading}
         rows={subjects}
       />
+      {failures.map(({ label, query }) => (
+        <p className="text-danger flex items-center gap-2 text-xs" key={label}>
+          Could not load the {label}.
+          <Button
+            onClick={() => void query.refetch()}
+            size="sm"
+            variant="ghost"
+          >
+            Retry
+          </Button>
+        </p>
+      ))}
     </section>
   )
 }
