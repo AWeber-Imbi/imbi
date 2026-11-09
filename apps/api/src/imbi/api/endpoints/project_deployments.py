@@ -5986,6 +5986,11 @@ def _component_changes(
     test, ...) in brackets, so a move from ``dev`` to required shows.
     Required (ungrouped) changes come first, so the prompt cap drops
     grouped ones before them.
+
+    The CycloneDX ``scope`` does not decide "required".  cdxgen sets
+    ``optional`` on every package in a dependency group.  Only its
+    ``--deep`` import scan sets ``required`` on a grouped package, and
+    that scan also reads test files, so ``pytest`` becomes "required".
     """
     usage: tuple[dict[str, tuple[set[str], set[str]]], ...] = ({}, {})
     for index, rows in enumerate((base_rows, head_rows)):

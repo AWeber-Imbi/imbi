@@ -2776,6 +2776,47 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
             ],
         )
 
+    def test_component_changes_groups_decide_required(self) -> None:
+        # cdxgen --deep sets scope "required" on any imported package,
+        # test-only imports included, so scope must not make it required.
+        # An ungrouped "optional" package (an extra, or a non-CPython
+        # marker) is still a runtime dependency, so it stays required.
+        from imbi.api.endpoints.project_deployments import _component_changes
+
+        base = [
+            {
+                'purl_name': 'pkg:pypi/pytest',
+                'version': '8.0.0',
+                'scope': 'required',
+                'groups': ['dev'],
+            },
+            {
+                'purl_name': 'pkg:pypi/httpx',
+                'version': '0.27.0',
+                'scope': 'optional',
+            },
+        ]
+        head = [
+            {
+                'purl_name': 'pkg:pypi/pytest',
+                'version': '9.0.0',
+                'scope': 'required',
+                'groups': ['dev'],
+            },
+            {
+                'purl_name': 'pkg:pypi/httpx',
+                'version': '0.28.0',
+                'scope': 'optional',
+            },
+        ]
+        self.assertEqual(
+            _component_changes(base, head),
+            [
+                '~ pkg:pypi/httpx 0.27.0 → 0.28.0',
+                '~ pkg:pypi/pytest 8.0.0 [dev] → 9.0.0 [dev]',
+            ],
+        )
+
     def test_prompt_dependency_changes(self) -> None:
         from imbi.api.endpoints.project_deployments import (
             _PROMPT_DEPENDENCY_CAP,
