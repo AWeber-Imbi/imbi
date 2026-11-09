@@ -7,12 +7,10 @@ Covers the private helpers added in the release-committish work:
 
 import datetime
 import json
-import typing
 import unittest
 from unittest import mock
 
 from imbi.api.endpoints import projects
-from imbi.common import clickhouse
 
 
 class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -43,6 +41,7 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         called_sql = ch.query.call_args.args[0]
         called_params = ch.query.call_args.kwargs['parameters']
         self.assertNotIn('viewer', called_params)
+        self.assertEqual(ch.query.call_args.kwargs['project_ids'], ['p1'])
         self.assertIn('0 AS viewer_open_count', called_sql)
         self.assertIn('AND NOT draft', called_sql)
 
@@ -81,209 +80,6 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await projects._fetch_pr_counts(['p1'])
         self.assertEqual(result, {})
-
-
-class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
-    """Large orgs split project IDs across queries (#529)."""
-
-    #: 25 bytes per 21-character nanoid, so 4000 IDs is ~100 KB, over
-    #: the 64 KB budget.
-    PIDS: typing.ClassVar[list[str]] = [f'{n:021d}' for n in range(4000)]
-
-    @staticmethod
-    def _echo(
-        sql: str, parameters: dict[str, typing.Any]
-    ) -> list[dict[str, typing.Any]]:
-        if 'pull_requests' in sql:
-            return [
-                {
-                    'project_id': pid,
-                    'open_count': 1,
-                    'closed_count': 0,
-                    'viewer_open_count': 0,
-                    'viewer_closed_count': 0,
-                }
-                for pid in parameters['project_ids']
-            ]
-        if 'FROM commits FINAL' in sql and 'LIMIT 1 BY' in sql:
-            return [
-                {'project_id': pid, 'sha': 'a' * 40}
-                for pid in parameters['project_ids']
-            ]
-        return []
-
-    def test_empty_project_ids_make_no_batches(self) -> None:
-        self.assertEqual(clickhouse.project_id_batches([]), [])
-
-    async def test_pr_counts_batch_and_merge(self) -> None:
-        ch = mock.MagicMock()
-        ch.query = mock.AsyncMock(side_effect=self._echo)
-        with mock.patch(
-            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
-            return_value=ch,
-        ):
-            result = await projects._fetch_pr_counts(self.PIDS)
-        self.assertGreater(ch.query.await_count, 1)
-        self.assertEqual(set(result), set(self.PIDS))
-
-    async def test_pr_counts_failed_batch_degrades_only_itself(self) -> None:
-        calls = {'n': 0}
-
-        def query(
-            sql: str, parameters: dict[str, typing.Any]
-        ) -> list[dict[str, typing.Any]]:
-            calls['n'] += 1
-            if calls['n'] == 1:
-                raise RuntimeError('Field value too long')
-            return self._echo(sql, parameters)
-
-        ch = mock.MagicMock()
-        ch.query = mock.AsyncMock(side_effect=query)
-        with mock.patch(
-            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
-            return_value=ch,
-        ):
-            result = await projects._fetch_pr_counts(self.PIDS)
-        self.assertTrue(result)
-        self.assertLess(len(result), len(self.PIDS))
-
-    async def test_small_org_makes_one_pr_count_query(self) -> None:
-        ch = mock.MagicMock()
-        ch.query = mock.AsyncMock(side_effect=self._echo)
-        with mock.patch(
-            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
-            return_value=ch,
-        ):
-            await projects._fetch_pr_counts(self.PIDS[:10])
-        self.assertEqual(ch.query.await_count, 1)
-
-    async def test_release_summaries_batch_and_merge(self) -> None:
-        query = mock.AsyncMock(side_effect=self._echo)
-        with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
-            result = await projects._fetch_release_summaries(self.PIDS)
-        head_calls = [
-            c for c in query.await_args_list if 'LIMIT 1 BY' in c.args[0]
-        ]
-        self.assertGreater(len(head_calls), 1)
-        self.assertEqual(set(result), set(self.PIDS))
-
-    async def test_commits_since_tag_batch_and_merge(self) -> None:
-        tagged = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-
-        def query(
-            sql: str, parameters: dict[str, typing.Any]
-        ) -> list[dict[str, typing.Any]]:
-            if 'FROM tags FINAL' in sql:
-                return [
-                    {
-                        'project_id': pid,
-                        'name': '1.0.0',
-                        'sha': 'b' * 40,
-                        'tagged_at': tagged,
-                        'recorded_at': None,
-                        'tagger_name': None,
-                    }
-                    for pid in parameters['project_ids']
-                ]
-            if 'count() AS c' in sql:
-                self.assertEqual(
-                    len(parameters['cuts']), len(parameters['pids'])
-                )
-                return [
-                    {
-                        'project_id': pid,
-                        'c': 2,
-                        'drifted': 0,
-                        'answered': 2,
-                        'actionable': 0,
-                        'oldest_actionable_at': None,
-                    }
-                    for pid in parameters['pids']
-                ]
-            return self._echo(sql, parameters)
-
-        mock_query = mock.AsyncMock(side_effect=query)
-        with mock.patch(
-            'imbi.api.endpoints.projects.clickhouse.query', mock_query
-        ):
-            result = await projects._fetch_release_summaries(self.PIDS)
-        count_calls = [
-            c
-            for c in mock_query.await_args_list
-            if 'count() AS c' in c.args[0]
-        ]
-        self.assertGreater(len(count_calls), 1)
-        self.assertEqual(
-            {pid for pid, s in result.items() if s.commits_since_tag == 2},
-            set(self.PIDS),
-        )
-
-    async def test_failed_tag_batch_drops_its_head_rows_too(self) -> None:
-        calls = {'tags': 0}
-
-        def query(
-            sql: str, parameters: dict[str, typing.Any]
-        ) -> list[dict[str, typing.Any]]:
-            if 'FROM tags FINAL' in sql:
-                calls['tags'] += 1
-                if calls['tags'] == 1:
-                    raise RuntimeError('Field value too long')
-                return []
-            return self._echo(sql, parameters)
-
-        mock_query = mock.AsyncMock(side_effect=query)
-        with mock.patch(
-            'imbi.api.endpoints.projects.clickhouse.query', mock_query
-        ):
-            result = await projects._fetch_release_summaries(self.PIDS)
-        first_batch = clickhouse.project_id_batches(self.PIDS)[0]
-        self.assertTrue(result)
-        self.assertFalse(set(first_batch) & set(result))
-        self.assertEqual(set(result), set(self.PIDS) - set(first_batch))
-
-    async def test_failed_count_batch_drops_its_summaries(self) -> None:
-        tagged = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-        failed_pids: list[str] = []
-
-        def query(
-            sql: str, parameters: dict[str, typing.Any]
-        ) -> list[dict[str, typing.Any]]:
-            if 'FROM tags FINAL' in sql:
-                return [
-                    {
-                        'project_id': pid,
-                        'name': '1.0.0',
-                        'sha': 'b' * 40,
-                        'tagged_at': tagged,
-                        'recorded_at': None,
-                        'tagger_name': None,
-                    }
-                    for pid in parameters['project_ids']
-                ]
-            if 'count() AS c' in sql:
-                if not failed_pids:
-                    failed_pids.extend(parameters['pids'])
-                    raise RuntimeError('Field value too long')
-                # An empty range gives no row, so these stay at zero.
-                return []
-            return self._echo(sql, parameters)
-
-        mock_query = mock.AsyncMock(side_effect=query)
-        with mock.patch(
-            'imbi.api.endpoints.projects.clickhouse.query', mock_query
-        ):
-            result = await projects._fetch_release_summaries(self.PIDS)
-        self.assertTrue(failed_pids)
-        self.assertEqual(set(result), set(self.PIDS) - set(failed_pids))
-        self.assertTrue(all(s.commits_since_tag == 0 for s in result.values()))
-
-    async def test_small_org_makes_one_query_per_release_kind(self) -> None:
-        query = mock.AsyncMock(side_effect=self._echo)
-        with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
-            await projects._fetch_release_summaries(self.PIDS[:10])
-        sqls = [c.args[0] for c in query.await_args_list]
-        self.assertEqual(sum('FROM tags FINAL' in s for s in sqls), 1)
-        self.assertEqual(sum('LIMIT 1 BY' in s for s in sqls), 1)
 
 
 class ResolveDisplayNamesTestCase(unittest.IsolatedAsyncioTestCase):

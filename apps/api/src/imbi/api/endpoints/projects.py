@@ -599,7 +599,7 @@ async def _fetch_pr_counts(
     """
     if not project_ids:
         return {}
-    params = clickhouse.project_ids_param
+    params: dict[str, typing.Any] = {}
     if viewer:
         sql = (
             'SELECT project_id,'
@@ -610,14 +610,11 @@ async def _fetch_pr_counts(
             " countIf(state = 'closed' AND author = {viewer:String})"
             ' AS viewer_closed_count'
             ' FROM pull_requests FINAL'
-            ' WHERE project_id IN {project_ids:Array(String)}'
+            ' WHERE project_id IN (SELECT project_id FROM project_ids)'
             ' AND NOT draft'
             ' GROUP BY project_id'
         )
-
-        def params(batch: list[str]) -> dict[str, typing.Any]:
-            return {'project_ids': batch, 'viewer': viewer}
-
+        params['viewer'] = viewer
     else:
         sql = (
             'SELECT project_id,'
@@ -626,13 +623,15 @@ async def _fetch_pr_counts(
             ' 0 AS viewer_open_count,'
             ' 0 AS viewer_closed_count'
             ' FROM pull_requests FINAL'
-            ' WHERE project_id IN {project_ids:Array(String)}'
+            ' WHERE project_id IN (SELECT project_id FROM project_ids)'
             ' AND NOT draft'
             ' GROUP BY project_id'
         )
-    rows = await clickhouse.query_project_batches(
-        sql, project_ids, 'PR counts', params
-    )
+    try:
+        rows = await clickhouse.query(sql, params, project_ids=project_ids)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Failed to fetch PR counts for projects', exc_info=True)
+        return {}
     return {
         str(r['project_id']): (
             int(r['open_count']),
@@ -1302,57 +1301,6 @@ def _release_range_cutoffs(
     return cutoffs
 
 
-def _param_batches(
-    shas_by_project: dict[str, list[str]],
-) -> list[tuple[list[str], list[str]]]:
-    """Split project shas into ``(project_ids, shas)`` query batches.
-
-    Both parameters of the authored-times query are unbounded arrays --
-    one entry per project, one per tagged commit -- and each rides in its
-    own form field, so each is bounded separately against
-    :data:`clickhouse.PARAM_BYTE_BUDGET`.
-
-    Batching on *bytes* rather than a project count is deliberate: tag
-    counts per project vary by two orders of magnitude, so any fixed
-    project count is a proxy that drifts toward the limit as tags
-    accumulate.  A single project whose own shas exceed the budget is
-    split across several batches; results merge by ``(project_id, sha)``,
-    so a project spanning batches resolves exactly as one that fits.
-    """
-
-    cost = clickhouse.param_entry_cost
-
-    batches: list[tuple[list[str], list[str]]] = []
-    pids: list[str] = []
-    shas: list[str] = []
-    pid_bytes = sha_bytes = 0
-
-    def flush() -> None:
-        nonlocal pids, shas, pid_bytes, sha_bytes
-        if pids and shas:
-            batches.append((pids, shas))
-        pids, shas = [], []
-        pid_bytes = sha_bytes = 0
-
-    for pid in sorted(shas_by_project):
-        for sha in sorted(set(shas_by_project[pid])):
-            # Flush before the addition that would breach either budget,
-            # then re-attach the project so its remaining shas stay
-            # scoped to it.
-            if (
-                sha_bytes + cost(sha) > clickhouse.PARAM_BYTE_BUDGET
-                or pid_bytes + cost(pid) > clickhouse.PARAM_BYTE_BUDGET
-            ):
-                flush()
-            if pid not in pids:
-                pids.append(pid)
-                pid_bytes += cost(pid)
-            shas.append(sha)
-            sha_bytes += cost(sha)
-    flush()
-    return batches
-
-
 async def _fetch_authored_times(
     shas_by_project: dict[str, list[str]],
 ) -> dict[str, dict[str, datetime.datetime]]:
@@ -1364,58 +1312,46 @@ async def _fetch_authored_times(
     the two views came to disagree.  Grouped by project then sha since
     one sha can appear under several projects.
 
-    Issued in size-bounded batches (see :func:`_param_batches`).  A
-    single query carrying every tagged sha in the org exceeds the
-    form-field limit, and because the caller degrades a missing authored
-    time to highest-version ordering, that one failure silently took
-    *every* project's ranking back to the behaviour #274/#280 replaced
-    (#281).  Batching also narrows the blast radius: a batch that fails
-    degrades only its own projects.
+    One query: the project IDs and shas go as the ``project_ids``
+    external table, which the form-field limit does not cover.  A bound
+    array of every tagged sha in the org exceeded that limit, and
+    because the caller degrades a missing authored time to
+    highest-version ordering, that one failure silently took *every*
+    project's ranking back to the behaviour #274/#280 replaced (#281).
     """
-    authored_by_project: dict[str, dict[str, datetime.datetime]] = {}
-    degraded: set[str] = set()
-    failure: Exception | None = None
-    for batch_pids, batch_shas in _param_batches(shas_by_project):
-        try:
-            rows = await clickhouse.query(
-                'SELECT project_id, sha, authored_at'
-                ' FROM commits FINAL'
-                ' WHERE project_id IN {project_ids:Array(String)}'
-                ' AND lower(sha) IN {shas:Array(String)}',
-                {'project_ids': batch_pids, 'shas': batch_shas},
-            )
-        except Exception as exc:  # noqa: BLE001 -- best-effort, see below
-            degraded.update(batch_pids)
-            failure = failure or exc
-            continue
-        for row in rows:
-            at = clickhouse.as_utc_or_none(row.get('authored_at'))
-            if not (row.get('project_id') and row.get('sha') and at):
-                continue
-            by_sha = authored_by_project.setdefault(str(row['project_id']), {})
-            by_sha[str(row['sha']).lower()] = at
-    if degraded:
-        # A project straddling a batch boundary keeps whatever its
-        # surviving batches returned, and ranking from a *partial* tag
-        # set is worse than not ranking at all: the tags that resolved
-        # outrank the ones that didn't regardless of their commits, which
-        # is neither the right answer nor the documented fallback.  Drop
-        # them so these projects take the highest-version fallback whole.
-        for pid in degraded:
-            authored_by_project.pop(pid, None)
+    pairs = sorted(
+        {(pid, sha) for pid, shas in shas_by_project.items() for sha in shas}
+    )
+    if not pairs:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            'SELECT project_id, sha, authored_at'
+            ' FROM commits FINAL'
+            ' WHERE project_id IN (SELECT project_id FROM project_ids)'
+            ' AND (project_id, lower(sha)) IN'
+            ' (SELECT project_id, sha FROM project_ids)',
+            project_ids=pairs,
+            columns=('project_id String', 'sha String'),
+        )
+    except Exception:
         # Not merely a failed query: these projects fall back to
         # highest-version ranking.  Say so, so a silent regression to the
         # pre-#280 behaviour is visible rather than reading like ordinary
-        # missing tag data.  ``exc_info`` takes the captured exception --
-        # this runs outside the ``except`` block, where a bare ``True``
-        # would find no active exception and log no traceback.
-        LOGGER.error(
-            'Failed to fetch authored times for %d of %d tagged projects; '
+        # missing tag data.
+        LOGGER.exception(
+            'Failed to fetch authored times for %d tagged projects; '
             'their release tags fall back to highest-version ranking',
-            len(degraded),
             len(shas_by_project),
-            exc_info=failure,
         )
+        return {}
+    authored_by_project: dict[str, dict[str, datetime.datetime]] = {}
+    for row in rows:
+        at = clickhouse.as_utc_or_none(row.get('authored_at'))
+        if not (row.get('project_id') and row.get('sha') and at):
+            continue
+        by_sha = authored_by_project.setdefault(str(row['project_id']), {})
+        by_sha[str(row['sha']).lower()] = at
     return authored_by_project
 
 
@@ -1436,12 +1372,9 @@ async def _fetch_release_summaries(
 ) -> dict[str, ReleaseSummary]:
     """Return {project_id: ReleaseSummary} for releasable projects.
 
-    Every ClickHouse query here runs in size-bounded batches, because one
-    query carrying the whole org's IDs or shas exceeds the form-field
-    limit (see :data:`clickhouse.PARAM_BYTE_BUDGET`).  It reads the tags, each
-    project's latest commit, and the authored time of the commits those
-    tags point at.  The authored times are what let this rank tags with
-    the shared
+    ClickHouse queries: one for tags, one for each project's latest
+    commit, and one for the authored time of the commits those tags
+    point at.  That third query is what lets this rank tags with the shared
     :func:`~imbi.common.versioning.latest_release_tag`, the same way the
     per-project release-drift and release-history endpoints do -- so the
     projects list and a project's Releases tab name the same current
@@ -1453,39 +1386,31 @@ async def _fetch_release_summaries(
     """
     if not project_ids:
         return {}
-    failed: set[str] = set()
-    tag_rows, head_rows = await asyncio.gather(
-        clickhouse.query_project_batches(
-            'SELECT project_id, name, sha, tagged_at, recorded_at,'
-            ' tagger_name'
-            ' FROM tags FINAL'
-            ' WHERE project_id IN {project_ids:Array(String)}',
-            project_ids,
-            'release tags',
-            failed=failed,
-        ),
-        clickhouse.query_project_batches(
-            'SELECT project_id, sha, short_sha,'
-            ' author_name, author_user, authored_at'
-            ' FROM commits FINAL'
-            ' WHERE project_id IN {project_ids:Array(String)}'
-            ' ORDER BY pushed_at DESC, authored_at DESC'
-            ' LIMIT 1 BY project_id',
-            project_ids,
-            'head commits',
-            failed=failed,
-        ),
-    )
-    # A summary made from only one of the two reads is incorrect: with
-    # no tags it shows no release drift, and with no head it hides the
-    # drift.  Drop the projects of a failed batch from both reads.
-    if failed:
-        tag_rows = [
-            r for r in tag_rows if str(r.get('project_id')) not in failed
-        ]
-        head_rows = [
-            r for r in head_rows if str(r.get('project_id')) not in failed
-        ]
+    try:
+        tag_rows, head_rows = await asyncio.gather(
+            clickhouse.query(
+                'SELECT project_id, name, sha, tagged_at, recorded_at,'
+                ' tagger_name'
+                ' FROM tags FINAL'
+                ' WHERE project_id IN (SELECT project_id FROM project_ids)',
+                project_ids=project_ids,
+            ),
+            clickhouse.query(
+                'SELECT project_id, sha, short_sha,'
+                ' author_name, author_user, authored_at'
+                ' FROM commits FINAL'
+                ' WHERE project_id IN (SELECT project_id FROM project_ids)'
+                ' ORDER BY pushed_at DESC, authored_at DESC'
+                ' LIMIT 1 BY project_id',
+                project_ids=project_ids,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to fetch release summaries for projects',
+            exc_info=True,
+        )
+        return {}
 
     tags_by_project: dict[str, list[dict[str, typing.Any]]] = {}
     for row in tag_rows:
@@ -1518,8 +1443,8 @@ async def _fetch_release_summaries(
         for pid in all_pids
     }
 
-    # Batch-fetch commit counts since each project's latest tag, so one
-    # ClickHouse query per ID batch covers every unreleased range.
+    # Batch-fetch commit counts since each project's latest tag, so a
+    # single ClickHouse query covers every project's unreleased range.
     tagged_pids = [
         pid for pid, tag in latest_by_pid.items() if tag is not None
     ]
@@ -1532,14 +1457,8 @@ async def _fetch_release_summaries(
                 latest_by_pid, authored_by_project, tagged_pids
             )
             if pid_cutoff:
-                cutoff_map = {pid: cut for pid, cut, _ in pid_cutoff}
-                mode_map = {pid: mode for pid, _, mode in pid_cutoff}
-                # Build the per-project cutoff map server-side from two
-                # parallel arrays.  Passing a dict for a Map(...) parameter
-                # trips a clickhouse-connect binding bug: dicts serialize as
-                # JSON (double-quoted), but ClickHouse's Map text parser
-                # requires single-quoted strings (CANNOT_PARSE_QUOTED_STRING).
-                # Arrays serialize correctly, so mapFromArrays sidesteps it.
+                # Each project's cutoff and mode go as columns of the
+                # ``project_ids`` external table, joined on project_id.
                 # The verdict join rides along on the same scan.  A
                 # LEFT JOIN cannot distinguish "no verdict row" from a
                 # real ``false`` -- Bool defaults to 0 -- so the
@@ -1548,10 +1467,7 @@ async def _fetch_release_summaries(
                 # commit date: a merged pull request's commits keep
                 # their branch-era dates, and the push that merged
                 # them is when they started waiting for a release.
-                # A cutoff serializes to about the same bytes as a
-                # project ID, so ``cuts`` stays inside the field limit
-                # of each project-ID batch too.
-                count_rows = await clickhouse.query_project_batches(
+                count_rows = await clickhouse.query(
                     'SELECT c.project_id AS project_id,'
                     ' count() AS c,'
                     ' countIf(d.answered = 1 AND d.drift_detected)'
@@ -1563,26 +1479,33 @@ async def _fetch_release_summaries(
                     ' d.answered = 0 OR d.drift_detected)'
                     ' AS oldest_actionable_at'
                     ' FROM commits AS c FINAL'
+                    ' INNER JOIN project_ids AS r'
+                    ' ON r.project_id = c.project_id'
                     ' LEFT JOIN (SELECT project_id, sha, drift_detected,'
                     ' toUInt8(1) AS answered FROM commit_drift FINAL'
-                    ' WHERE project_id IN {pids:Array(String)}) AS d'
+                    ' WHERE project_id IN'
+                    ' (SELECT project_id FROM project_ids)) AS d'
                     ' ON d.project_id = c.project_id AND d.sha = c.sha'
-                    ' WHERE c.project_id IN {pids:Array(String)}'
-                    ' AND if(mapFromArrays({pids:Array(String)},'
-                    ' {modes:Array(UInt8)})[c.project_id] = 1,'
-                    ' c.authored_at,'
-                    ' COALESCE(c.committed_at, c.authored_at)) >'
-                    ' mapFromArrays({pids:Array(String)},'
-                    ' {cuts:Array(DateTime64(3))})[c.project_id]'
+                    ' WHERE c.project_id IN'
+                    ' (SELECT project_id FROM project_ids)'
+                    ' AND if(r.mode = 1, c.authored_at,'
+                    ' COALESCE(c.committed_at, c.authored_at)) > r.cut'
                     ' GROUP BY c.project_id',
-                    list(cutoff_map),
-                    'commit counts since tag',
-                    lambda batch: {
-                        'pids': batch,
-                        'cuts': [cutoff_map[pid] for pid in batch],
-                        'modes': [mode_map[pid] for pid in batch],
-                    },
-                    failed=failed,
+                    project_ids=[
+                        (
+                            pid,
+                            cut.astimezone(datetime.UTC).strftime(
+                                '%Y-%m-%d %H:%M:%S.%f'
+                            )[:-3],
+                            str(mode),
+                        )
+                        for pid, cut, mode in pid_cutoff
+                    ],
+                    columns=(
+                        'project_id String',
+                        "cut DateTime64(3, 'UTC')",
+                        'mode UInt8',
+                    ),
                 )
                 # Projects whose range is empty drop out of the result
                 # rather than returning a zero row; both callers below
@@ -1628,10 +1551,6 @@ async def _fetch_release_summaries(
 
     release_result: dict[str, ReleaseSummary] = {}
     for pid in all_pids:
-        # A failed count batch is not an empty range.  Do not show
-        # zero unreleased commits for its projects.
-        if pid in failed:
-            continue
         latest = latest_by_pid.get(pid)
         head_row = head_by_project.get(pid)
         head_sha = str(head_row['sha']) if head_row else None

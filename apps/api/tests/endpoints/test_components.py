@@ -233,12 +233,12 @@ class SearchComponentsTestCase(_ComponentsTestBase):
             [
                 {
                     'component_id': 'cmp-a',
-                    'versions': ['v1'],
+                    'version_count': 1,
                     'project_count': 9,
                 },
                 {
                     'component_id': 'cmp-b',
-                    'versions': ['v1', 'v2', 'v3', 'v4'],
+                    'version_count': 4,
                     'project_count': 2,
                 },
             ],
@@ -297,7 +297,8 @@ class SearchComponentsTestCase(_ComponentsTestBase):
             ['cmp-express', 'cmp-expressive'],
         )
         self.assertEqual(
-            self._ch_params(0)['project_ids'], ['proj-1', 'proj-2']
+            self.mock_ch.await_args_list[0].kwargs['project_ids'],
+            ['proj-1', 'proj-2'],
         )
 
     def test_counts_are_gathered_only_for_the_returned_page(self) -> None:
@@ -339,12 +340,12 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.mock_db.execute.side_effect = [self._projects('proj-1')]
         self._ch_results(
             [
-                {'ecosystem': 'npm', 'components': ['a', 'b', 'c']},
-                {'ecosystem': 'pypi', 'components': ['d', 'e']},
+                {'ecosystem': 'npm', 'total': 120},
+                {'ecosystem': 'pypi', 'total': 45},
             ],
         )
         body = self.client.get(self._components('/')).json()
-        self.assertEqual(body['ecosystem_totals'], {'npm': 3, 'pypi': 2})
+        self.assertEqual(body['ecosystem_totals'], {'npm': 120, 'pypi': 45})
         self.assertEqual(body['data'], [])
         self.assertEqual(self.mock_db.execute.await_count, 1)
 
@@ -360,7 +361,8 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self._ch_results([])
         self.client.get(self._components('/'))
         self.assertEqual(
-            self._ch_params(0)['project_ids'], ['proj-1', 'proj-2']
+            self.mock_ch.await_args_list[0].kwargs['project_ids'],
+            ['proj-1', 'proj-2'],
         )
 
     def test_ecosystem_filter_keeps_the_catalog_totals(self) -> None:
@@ -372,14 +374,14 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.mock_db.execute.side_effect = [self._projects('proj-1')]
         self._ch_results(
             [
-                {'ecosystem': 'npm', 'components': ['a', 'b', 'c']},
-                {'ecosystem': 'pypi', 'components': ['d', 'e']},
+                {'ecosystem': 'npm', 'total': 120},
+                {'ecosystem': 'pypi', 'total': 45},
             ],
         )
         body = self.client.get(
             self._components('/'), params={'ecosystem': 'npm'}
         ).json()
-        self.assertEqual(body['ecosystem_totals'], {'npm': 3, 'pypi': 2})
+        self.assertEqual(body['ecosystem_totals'], {'npm': 120, 'pypi': 45})
         self.assertEqual(body['data'], [])
 
     def test_filtered_search_skips_the_catalog_scan(self) -> None:

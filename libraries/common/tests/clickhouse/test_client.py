@@ -394,6 +394,28 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             'SELECT * FROM test WHERE id = {id}', parameters={'id': 123}
         )
 
+    async def test_query_sends_project_ids_as_external_table(self) -> None:
+        """Project IDs go as a file part, not as a bound form field."""
+        ch = client.Clickhouse.get_instance()
+        mock_result = mock.MagicMock()
+        mock_result.result_rows = []
+        mock_result.column_names = []
+        self.mock_client.query.return_value = mock_result
+        with mock.patch.object(
+            ch, '_execute_schemata_queries', return_value=None
+        ):
+            await ch.initialize()
+
+        await ch.query('SELECT 1', {'x': 'y'}, project_ids=['p1', 'a\tb\\c'])
+
+        kwargs = self.mock_client.query.call_args.kwargs
+        self.assertEqual(kwargs['parameters'], {'x': 'y'})
+        (table,) = kwargs['external_data'].files
+        self.assertEqual(table.name, 'project_ids')
+        self.assertEqual(table.structure, 'project_id String')
+        self.assertEqual(table.fmt, 'TSV')
+        self.assertEqual(table.data, b'p1\na\\tb\\\\c')
+
     async def test_query_without_parameters(self) -> None:
         """Test query without parameters."""
         ch = client.Clickhouse.get_instance()

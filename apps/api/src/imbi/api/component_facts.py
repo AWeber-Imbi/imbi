@@ -78,7 +78,7 @@ _BATCHES_BY_PROJECT = (
     'SELECT release_id,'
     "       argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id"
     '  FROM imbi.release_component_batches'
-    ' WHERE project_id IN {project_ids:Array(String)}'
+    ' WHERE project_id IN (SELECT project_id FROM project_ids)'
     ' GROUP BY release_id'
 )
 
@@ -101,9 +101,9 @@ _JOIN = (
 def _by_project(select: str, where: str = '') -> str:
     """Compose a project-scoped read against the winning batches."""
     return (
-        f'{select} FROM imbi.release_components AS c'
+        f'{select} FROM imbi.release_components AS c'  # noqa: S608
         + _JOIN.format(batches=_BATCHES_BY_PROJECT)
-        + ' WHERE c.project_id IN {project_ids:Array(String)}'
+        + ' WHERE c.project_id IN (SELECT project_id FROM project_ids)'
         + where
     )
 
@@ -152,10 +152,10 @@ async def component_ids_in_org(
     if component_ids is not None:
         where = ' AND c.component_id IN {component_ids:Array(String)}'
         params['component_ids'] = component_ids
-    rows = await clickhouse.query_batched(
+    rows = await clickhouse.query(
         _by_project('SELECT DISTINCT c.component_id AS component_id', where),
-        project_ids,
         params,
+        project_ids=project_ids,
     )
     return {str(row['component_id']) for row in rows}
 
@@ -168,13 +168,13 @@ async def component_in_org(project_ids: list[str], component_id: str) -> bool:
     """
     if not project_ids:
         return False
-    rows = await clickhouse.query_batched(
+    rows = await clickhouse.query(
         _by_project(
             'SELECT 1 AS hit',
             ' AND c.component_id = {component_id:String} LIMIT 1',
         ),
-        project_ids,
         {'component_id': component_id},
+        project_ids=project_ids,
     )
     return bool(rows)
 
@@ -194,18 +194,18 @@ async def component_release_in_org(
     """
     if not project_ids:
         return False
-    rows = await clickhouse.query_batched(
+    rows = await clickhouse.query(
         _by_project(
             'SELECT 1 AS hit',
             ' AND c.component_id = {component_id:String}'
             ' AND c.component_release_id = {component_release_id:String}'
             ' LIMIT 1',
         ),
-        project_ids,
         {
             'component_id': component_id,
             'component_release_id': component_release_id,
         },
+        project_ids=project_ids,
     )
     return bool(rows)
 
@@ -221,27 +221,24 @@ async def search_counts(
     """
     if not project_ids or not component_ids:
         return {}
-    # The query runs once per project-ID batch.  Batches hold disjoint
-    # projects, so project counts add up; a version can be in more than
-    # one batch, so the versions are collected and counted here.
-    rows = await clickhouse.query_batched(
+    rows = await clickhouse.query(
         _by_project(
             'SELECT c.component_id AS component_id,'
-            ' groupUniqArray(c.component_release_id) AS versions,'
+            ' uniqExact(c.component_release_id) AS version_count,'
             ' uniqExact(c.project_id) AS project_count',
             ' AND c.component_id IN {component_ids:Array(String)}'
             ' GROUP BY c.component_id',
         ),
-        project_ids,
         {'component_ids': component_ids},
+        project_ids=project_ids,
     )
-    versions: dict[str, set[str]] = {}
-    projects: dict[str, int] = {}
-    for row in rows:
-        key = str(row['component_id'])
-        versions.setdefault(key, set()).update(row['versions'])
-        projects[key] = projects.get(key, 0) + int(row['project_count'])
-    return {key: (len(versions[key]), projects[key]) for key in versions}
+    return {
+        str(row['component_id']): (
+            int(row['version_count']),
+            int(row['project_count']),
+        )
+        for row in rows
+    }
 
 
 async def ecosystem_totals(project_ids: list[str]) -> dict[str, int]:
@@ -255,22 +252,15 @@ async def ecosystem_totals(project_ids: list[str]) -> dict[str, int]:
     """
     if not project_ids:
         return {}
-    # A component can be in more than one project-ID batch, so the
-    # components are collected and counted here.
-    rows = await clickhouse.query_batched(
+    rows = await clickhouse.query(
         _by_project(
             'SELECT c.ecosystem AS ecosystem,'
-            ' groupUniqArray(c.component_id) AS components',
+            ' uniqExact(c.component_id) AS total',
             " AND c.ecosystem != '' GROUP BY c.ecosystem",
         ),
-        project_ids,
+        project_ids=project_ids,
     )
-    components: dict[str, set[str]] = {}
-    for row in rows:
-        components.setdefault(str(row['ecosystem']), set()).update(
-            row['components']
-        )
-    return {key: len(ids) for key, ids in components.items()}
+    return {str(row['ecosystem']): int(row['total']) for row in rows}
 
 
 async def component_usage(

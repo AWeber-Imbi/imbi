@@ -22,11 +22,13 @@ import logging
 import pathlib
 import tomllib
 import typing
+from collections import abc
 
 import clickhouse_connect.driver
 import pydantic
 from clickhouse_connect.datatypes import format
 from clickhouse_connect.driver import asyncclient, exceptions
+from clickhouse_connect.driver.external import ExternalData
 
 from imbi.common import helpers, settings
 
@@ -73,6 +75,41 @@ def _render_cluster_placeholders(
     replicated = 'Replicated' if cluster_name else ''
     return statement.replace(ON_CLUSTER_PLACEHOLDER, on_cluster).replace(
         REPLICATED_PLACEHOLDER, replicated
+    )
+
+
+#: Rows for the external table: a project ID, or one value per column.
+ProjectRows = abc.Sequence[str | abc.Sequence[str]]
+
+
+def _tsv(value: str) -> str:
+    return (
+        value.replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n')
+    )
+
+
+def external_table(
+    rows: ProjectRows, columns: abc.Sequence[str]
+) -> ExternalData:
+    """Make the ``project_ids`` external table for a query.
+
+    A bound ``Array(String)`` parameter goes to ClickHouse as one HTML
+    form field, and ClickHouse rejects a field longer than
+    ``http_max_field_value_size`` (131072 bytes).  An organization with
+    about 5000 projects is longer than that, and a session setting does
+    not raise the limit.  An external table goes as a file part of the
+    request, which that setting does not limit.  Read it in SQL as
+    ``project_id IN (SELECT project_id FROM project_ids)``.
+    """
+    lines = (
+        '\t'.join(_tsv(v) for v in ((row,) if isinstance(row, str) else row))
+        for row in rows
+    )
+    return ExternalData(
+        file_name='project_ids',
+        data='\n'.join(lines).encode(),
+        fmt='TSV',
+        structure=list(columns),
     )
 
 
@@ -165,13 +202,20 @@ class Clickhouse:
             )
 
     async def query(
-        self, statement: str, parameters: dict[str, typing.Any] | None = None
+        self,
+        statement: str,
+        parameters: dict[str, typing.Any] | None = None,
+        project_ids: ProjectRows | None = None,
+        columns: abc.Sequence[str] = ('project_id String',),
     ) -> list[dict[str, typing.Any]]:
         """Query the Clickhouse database and return results as a list of dicts.
 
         Args:
            statement: SQL query string, possibly with parameter placeholders
            parameters: Optional dictionary of parameter values
+           project_ids: Optional rows for the ``project_ids`` external
+              table (see :func:`external_table`)
+           columns: The ``name Type`` of each external table column
 
         Returns:
            List of dictionaries mapping column names to values
@@ -185,9 +229,12 @@ class Clickhouse:
             raise RuntimeError('Failed to initialize ClickHouse client')
         LOGGER.debug('Clickhouse QUERY: %s', statement)
         LOGGER.debug('Clickhouse QUERY Parameters: %r', parameters)
+        extra: dict[str, typing.Any] = {}
+        if project_ids is not None:
+            extra['external_data'] = external_table(project_ids, columns)
         with _translate_errors('query'):
             result = await self._clickhouse.query(
-                statement, parameters=parameters or {}
+                statement, parameters=parameters or {}, **extra
             )
         results = []
         for row in result.result_rows:

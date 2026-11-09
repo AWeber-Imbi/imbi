@@ -366,9 +366,7 @@ def _build_series(
     """Align ``{day, c}`` ClickHouse rows onto the *days* grid."""
     counts: dict[str, int] = {}
     for row in rows:
-        # Batched queries can return one row per day for each batch.
-        day = str(row.get('day'))[:10]
-        counts[day] = counts.get(day, 0) + int(row.get('c') or 0)
+        counts[str(row.get('day'))[:10]] = int(row.get('c') or 0)
     daily = [counts.get(day, 0) for day in days]
     return MetricSeries(total=sum(daily), daily=daily)
 
@@ -438,15 +436,15 @@ async def get_dashboard_metrics(
             ' GROUP BY day',
             params,
         ),
-        clickhouse.query_batched(
+        clickhouse.query(
             'SELECT toDate(created_at) AS day, count() AS c'
             ' FROM pull_requests FINAL'
             ' WHERE created_at >= {since:DateTime64(3)}'
             ' AND NOT draft'
-            ' AND project_id IN {project_ids:Array(String)}'
+            ' AND project_id IN (SELECT project_id FROM project_ids)'
             ' GROUP BY day',
-            await _active_project_ids(db),
             params,
+            project_ids=await _active_project_ids(db),
         ),
     )
     releases_by_day: dict[str, int] = {}

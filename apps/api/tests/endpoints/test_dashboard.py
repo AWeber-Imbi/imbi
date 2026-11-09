@@ -393,11 +393,15 @@ class DashboardMetricsEndpointTestCase(support.SharedAppTestCase):
         with mock.patch.object(dashboard.clickhouse, 'query', query):
             response = self.client.get('/admin/dashboard/metrics')
         self.assertEqual(200, response.status_code, response.text)
-        pr_sql, pr_params = query.call_args_list[3].args
+        pr_sql = query.call_args_list[3].args[0]
         self.assertIn('FROM pull_requests FINAL', pr_sql)
         self.assertIn('AND NOT draft', pr_sql)
-        self.assertIn('project_id IN {project_ids:Array(String)}', pr_sql)
-        self.assertEqual(['proj-1'], pr_params['project_ids'])
+        self.assertIn(
+            'project_id IN (SELECT project_id FROM project_ids)', pr_sql
+        )
+        self.assertEqual(
+            ['proj-1'], query.call_args_list[3].kwargs['project_ids']
+        )
         cypher = self.mock_db.execute.call_args.args[0]
         self.assertIn('coalesce(p.archived, false) = false', cypher)
 
