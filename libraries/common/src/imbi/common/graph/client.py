@@ -33,11 +33,20 @@ GraphModelT = typing.TypeVar(
 )
 RunResultT = typing.TypeVar('RunResultT')
 
-#: The ``execute`` function that :meth:`Graph.locked` gives its work.
-#: It has the same arguments as :meth:`Graph.execute`.
-CypherExecute = collections.abc.Callable[
-    ..., collections.abc.Awaitable[list[dict[str, typing.Any]]]
-]
+
+class CypherExecute(typing.Protocol):
+    """The ``execute`` function that :meth:`Graph.locked` gives its work.
+
+    It has the signature of :meth:`Graph.execute`.
+    """
+
+    async def __call__(
+        self,
+        query_template: str,
+        params: dict[str, typing.Any] | None = None,
+        columns: list[str] | None = None,
+        raw: bool = False,
+    ) -> list[dict[str, typing.Any]]: ...
 
 
 _IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')

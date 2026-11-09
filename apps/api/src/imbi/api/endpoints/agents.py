@@ -516,6 +516,8 @@ async def ensure_service_account(
     async def ensure(
         execute: graph.CypherExecute,
     ) -> list[dict[str, typing.Any]]:
+        # Read again under the lock: a concurrent call can have made
+        # the account after the fast path read.
         records = await execute(
             _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
         )
@@ -527,22 +529,25 @@ async def ensure_service_account(
             _ENSURE_SERVICE_ACCOUNT_QUERY, {'id': agent_id, **params}, ['id']
         )
 
-    attempts = 3
-    while True:
-        attempts -= 1
-        try:
-            records = await db.locked(
-                f'agent-service-account:{agent_id}', ensure
-            )
-            break
-        except psycopg.errors.UniqueViolation as exc:
-            # A concurrent request for another agent took the slug
-            # first. Try again.
-            if not attempts:
-                raise fastapi.HTTPException(
-                    status_code=409,
-                    detail=f'Service account slug for {name!r} is in use',
-                ) from exc
+    # Fast path without the lock: most agents have an account.
+    records = await db.execute(
+        _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
+    )
+    if not records:
+        for attempt in range(3):
+            try:
+                records = await db.locked(
+                    f'agent-service-account:{agent_id}', ensure
+                )
+                break
+            except psycopg.errors.UniqueViolation as exc:
+                # A concurrent request for another agent took the slug
+                # first. Try again.
+                if attempt == 2:
+                    raise fastapi.HTTPException(
+                        status_code=409,
+                        detail=f'Service account slug for {name!r} is in use',
+                    ) from exc
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Agent {name!r} not found'
