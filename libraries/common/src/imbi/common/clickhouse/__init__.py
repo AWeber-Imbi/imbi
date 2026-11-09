@@ -1,4 +1,5 @@
 import datetime
+import logging
 import typing
 
 import orjson
@@ -7,7 +8,10 @@ import pydantic
 from . import client
 from .client import SchemataQuery
 
+LOGGER = logging.getLogger(__name__)
+
 __all__ = [
+    'PARAM_BYTE_BUDGET',
     'SchemataQuery',
     'aclose',
     'as_utc',
@@ -15,7 +19,12 @@ __all__ = [
     'command',
     'initialize',
     'iso_utc',
+    'param_entry_cost',
+    'project_id_batches',
+    'project_ids_param',
     'query',
+    'query_batched',
+    'query_project_batches',
     'setup_schema',
 ]
 
@@ -185,3 +194,107 @@ async def query(
     """
     clickhouse = client.Clickhouse.get_instance()
     return await clickhouse.query(sql, parameters=parameters)
+
+
+#: Byte budget for a single ``Array(String)`` query parameter.
+#:
+#: ``clickhouse.query()`` binds parameters through clickhouse-connect,
+#: which sends each one as an HTTP *form field*.  ClickHouse caps a field
+#: value at ``http_max_field_value_size`` -- 131072 bytes by default --
+#: and rejects anything longer with ``HTML Form Exception: Field value
+#: too long``.  Note this is *half* of ``max_query_size``, so a payload
+#: that looks safe against the query limit still fails here: measured
+#: against production, 2978 forty-character shas (~131032 bytes) pass and
+#: 2979 fail.  The budget is set to half the server default so a cluster
+#: configured below the default, or one org's tag count growing between
+#: releases, still leaves headroom.
+PARAM_BYTE_BUDGET = 65536
+
+
+def param_entry_cost(value: str) -> int:
+    """Bytes one array entry adds to a bound query parameter.
+
+    clickhouse-connect serializes an array as ``['a', 'b']``, so an
+    entry costs its own bytes plus two quotes and the ``", "``
+    separator.  Measured in UTF-8 bytes because the server counts the
+    *decoded* field value: the observed failure threshold was 2979
+    forty-character shas (2979 * 44 = 131076 > 131072), which matches
+    the decoded length and rules out percent-encoding counting toward
+    the limit.  Counting the separator for the final entry too, and
+    ignoring the enclosing brackets, keeps the estimate on the safe side
+    of the encoder.
+    """
+    return len(value.encode()) + 4
+
+
+def project_id_batches(project_ids: list[str]) -> list[list[str]]:
+    """Split project IDs into batches within :data:`PARAM_BYTE_BUDGET`."""
+    if not project_ids:
+        return []
+    batches: list[list[str]] = [[]]
+    size = 0
+    for pid in project_ids:
+        if batches[-1] and size + param_entry_cost(pid) > PARAM_BYTE_BUDGET:
+            batches.append([])
+            size = 0
+        batches[-1].append(pid)
+        size += param_entry_cost(pid)
+    return batches
+
+
+def project_ids_param(batch: list[str]) -> dict[str, typing.Any]:
+    return {'project_ids': batch}
+
+
+async def query_project_batches(
+    sql: str,
+    project_ids: list[str],
+    what: str,
+    params: typing.Callable[[list[str]], dict[str, typing.Any]] = (
+        project_ids_param
+    ),
+    failed: set[str] | None = None,
+) -> list[dict[str, typing.Any]]:
+    """Run ``sql`` once per project-ID batch and return all rows.
+
+    One query that carries every project ID in the organization exceeds
+    the ClickHouse form-field limit (see :data:`PARAM_BYTE_BUDGET`).
+    ``params`` builds the bound parameters for one batch.  A failed
+    batch logs a warning and drops only its own projects.  When you
+    give ``failed``, it gets the IDs of the failed batches.
+    """
+    rows: list[dict[str, typing.Any]] = []
+    for batch in project_id_batches(project_ids):
+        try:
+            rows.extend(await query(sql, params(batch)))
+        except Exception:  # noqa: BLE001 -- best-effort enrichment
+            if failed is not None:
+                failed.update(batch)
+            LOGGER.warning(
+                'Failed to fetch %s for %d projects',
+                what,
+                len(batch),
+                exc_info=True,
+            )
+    return rows
+
+
+async def query_batched(
+    sql: str,
+    project_ids: list[str],
+    parameters: dict[str, typing.Any] | None = None,
+) -> list[dict[str, typing.Any]]:
+    """Run ``sql`` once per project-ID batch and return all rows.
+
+    Binds each batch as ``project_ids``; ``parameters`` holds the other
+    bound values.  Unlike :func:`query_project_batches`, an error is
+    not caught.  Rows that aggregate across projects (sums, distinct
+    counts, ``LIMIT``) come back once per batch, so the caller must
+    merge them.
+    """
+    rows: list[dict[str, typing.Any]] = []
+    for batch in project_id_batches(project_ids):
+        rows.extend(
+            await query(sql, {**(parameters or {}), 'project_ids': batch})
+        )
+    return rows

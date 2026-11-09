@@ -148,12 +148,13 @@ async def component_ids_in_org(
     if not project_ids or component_ids == []:
         return set()
     where = ''
-    params: dict[str, typing.Any] = {'project_ids': project_ids}
+    params: dict[str, typing.Any] = {}
     if component_ids is not None:
         where = ' AND c.component_id IN {component_ids:Array(String)}'
         params['component_ids'] = component_ids
-    rows = await clickhouse.query(
+    rows = await clickhouse.query_batched(
         _by_project('SELECT DISTINCT c.component_id AS component_id', where),
+        project_ids,
         params,
     )
     return {str(row['component_id']) for row in rows}
@@ -167,12 +168,13 @@ async def component_in_org(project_ids: list[str], component_id: str) -> bool:
     """
     if not project_ids:
         return False
-    rows = await clickhouse.query(
+    rows = await clickhouse.query_batched(
         _by_project(
             'SELECT 1 AS hit',
             ' AND c.component_id = {component_id:String} LIMIT 1',
         ),
-        {'project_ids': project_ids, 'component_id': component_id},
+        project_ids,
+        {'component_id': component_id},
     )
     return bool(rows)
 
@@ -192,15 +194,15 @@ async def component_release_in_org(
     """
     if not project_ids:
         return False
-    rows = await clickhouse.query(
+    rows = await clickhouse.query_batched(
         _by_project(
             'SELECT 1 AS hit',
             ' AND c.component_id = {component_id:String}'
             ' AND c.component_release_id = {component_release_id:String}'
             ' LIMIT 1',
         ),
+        project_ids,
         {
-            'project_ids': project_ids,
             'component_id': component_id,
             'component_release_id': component_release_id,
         },
@@ -219,23 +221,27 @@ async def search_counts(
     """
     if not project_ids or not component_ids:
         return {}
-    rows = await clickhouse.query(
+    # The query runs once per project-ID batch.  Batches hold disjoint
+    # projects, so project counts add up; a version can be in more than
+    # one batch, so the versions are collected and counted here.
+    rows = await clickhouse.query_batched(
         _by_project(
             'SELECT c.component_id AS component_id,'
-            ' uniqExact(c.component_release_id) AS version_count,'
+            ' groupUniqArray(c.component_release_id) AS versions,'
             ' uniqExact(c.project_id) AS project_count',
             ' AND c.component_id IN {component_ids:Array(String)}'
             ' GROUP BY c.component_id',
         ),
-        {'project_ids': project_ids, 'component_ids': component_ids},
+        project_ids,
+        {'component_ids': component_ids},
     )
-    return {
-        str(row['component_id']): (
-            int(row['version_count']),
-            int(row['project_count']),
-        )
-        for row in rows
-    }
+    versions: dict[str, set[str]] = {}
+    projects: dict[str, int] = {}
+    for row in rows:
+        key = str(row['component_id'])
+        versions.setdefault(key, set()).update(row['versions'])
+        projects[key] = projects.get(key, 0) + int(row['project_count'])
+    return {key: (len(versions[key]), projects[key]) for key in versions}
 
 
 async def ecosystem_totals(project_ids: list[str]) -> dict[str, int]:
@@ -249,15 +255,22 @@ async def ecosystem_totals(project_ids: list[str]) -> dict[str, int]:
     """
     if not project_ids:
         return {}
-    rows = await clickhouse.query(
+    # A component can be in more than one project-ID batch, so the
+    # components are collected and counted here.
+    rows = await clickhouse.query_batched(
         _by_project(
             'SELECT c.ecosystem AS ecosystem,'
-            ' uniqExact(c.component_id) AS total',
+            ' groupUniqArray(c.component_id) AS components',
             " AND c.ecosystem != '' GROUP BY c.ecosystem",
         ),
-        {'project_ids': project_ids},
+        project_ids,
     )
-    return {str(row['ecosystem']): int(row['total']) for row in rows}
+    components: dict[str, set[str]] = {}
+    for row in rows:
+        components.setdefault(str(row['ecosystem']), set()).update(
+            row['components']
+        )
+    return {key: len(ids) for key, ids in components.items()}
 
 
 async def component_usage(

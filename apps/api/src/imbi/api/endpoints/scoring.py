@@ -231,7 +231,7 @@ async def score_rollup(
         ' FROM score_latest'
         ' WHERE project_id IN {project_ids:Array(String)}'
     )
-    ch_rows = await clickhouse.query(sql, {'project_ids': list(project_dim)})
+    ch_rows = await clickhouse.query_batched(sql, list(project_dim))
 
     # Aggregate by dimension key in Python
     scores_by_key: dict[str, list[float]] = {}
@@ -311,23 +311,25 @@ async def score_monthly_improvement(
     pid_list = list(project_dim)
 
     cur_rows, prev_rows = await asyncio.gather(
-        clickhouse.query(
+        clickhouse.query_batched(
             'SELECT project_id, argMax(score, timestamp) AS score'
             ' FROM score_history'
-            ' WHERE project_id IN {pids:Array(String)}'
+            ' WHERE project_id IN {project_ids:Array(String)}'
             ' AND timestamp >= {t0:DateTime64(3)}'
             ' AND timestamp < {t1:DateTime64(3)}'
             ' GROUP BY project_id',
-            {'pids': pid_list, 't0': cur_start, 't1': nxt_start},
+            pid_list,
+            {'t0': cur_start, 't1': nxt_start},
         ),
-        clickhouse.query(
+        clickhouse.query_batched(
             'SELECT project_id, argMax(score, timestamp) AS score'
             ' FROM score_history'
-            ' WHERE project_id IN {pids:Array(String)}'
+            ' WHERE project_id IN {project_ids:Array(String)}'
             ' AND timestamp >= {t0:DateTime64(3)}'
             ' AND timestamp < {t1:DateTime64(3)}'
             ' GROUP BY project_id',
-            {'pids': pid_list, 't0': prev_start, 't1': cur_start},
+            pid_list,
+            {'t0': prev_start, 't1': cur_start},
         ),
     )
 
@@ -405,7 +407,7 @@ async def score_history_by_team(
         )
     bucket = _GRANULARITY_EXPR[granularity]
     where: list[str] = ['project_id IN {project_ids:Array(String)}']
-    params: dict[str, typing.Any] = {'project_ids': list(project_team)}
+    params: dict[str, typing.Any] = {}
     if from_ is not None:
         where.append('timestamp >= {from_ts:DateTime64(3)}')
         params['from_ts'] = from_
@@ -420,7 +422,7 @@ async def score_history_by_team(
         + where_sql
         + ' GROUP BY ts, project_id ORDER BY ts'
     )
-    rows = await clickhouse.query(sql, params)
+    rows = await clickhouse.query_batched(sql, list(project_team), params)
     team_ts_scores: dict[str, dict[str, list[float]]] = {}
     for row in rows:
         pid = str(row['project_id'])
@@ -483,7 +485,7 @@ async def score_history_feed(
     where: list[str] = [
         'project_id IN {project_ids:Array(String)}',
     ]
-    params: dict[str, typing.Any] = {'project_ids': list(project_info)}
+    params: dict[str, typing.Any] = {}
     if from_ is not None:
         where.append('timestamp >= {from_ts:DateTime64(3)}')
         params['from_ts'] = from_
@@ -498,7 +500,13 @@ async def score_history_feed(
         + where_sql
         + ' ORDER BY timestamp DESC LIMIT {limit:UInt32}'
     )
-    rows = await clickhouse.query(sql, params)
+    # Each batch returns its own newest ``limit`` rows; keep the newest
+    # ``limit`` of all of them.
+    rows = sorted(
+        await clickhouse.query_batched(sql, list(project_info), params),
+        key=lambda row: row['timestamp'],
+        reverse=True,
+    )[:limit]
     out: list[scoring_models.GlobalScoreEvent] = []
     for row in rows:
         pid = str(row['project_id'])

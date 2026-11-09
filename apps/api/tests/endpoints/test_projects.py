@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.tests import support
 from imbi.api import models
-from imbi.common import graph, iggy
+from imbi.common import clickhouse, graph, iggy
 
 PROJECT_ID = 'abc123nanoid'
 
@@ -3247,9 +3247,7 @@ class ParamBatchTestCase(unittest.TestCase):
     """
 
     def _budget(self) -> int:
-        from imbi.api.endpoints import projects
-
-        return projects._PARAM_BYTE_BUDGET
+        return clickhouse.PARAM_BYTE_BUDGET
 
     def _batches(
         self, shas_by_project: dict[str, list[str]]
@@ -3326,13 +3324,11 @@ class ParamBatchTestCase(unittest.TestCase):
         # so a regression there fails here.
         from clickhouse_connect.driver.binding import format_query_value
 
-        from imbi.api.endpoints import projects
-
         shas = [f'{n:040d}' for n in range(1000)]
         batches = self._batches({'p1': shas})
         for _, batch_shas in batches:
             estimated = sum(
-                projects._param_entry_cost(sha) for sha in batch_shas
+                clickhouse.param_entry_cost(sha) for sha in batch_shas
             )
             actual = len(format_query_value(batch_shas).encode())
             self.assertGreaterEqual(estimated, actual)
@@ -3340,10 +3336,8 @@ class ParamBatchTestCase(unittest.TestCase):
     def test_cost_counts_multibyte_values_in_bytes(self) -> None:
         # len() would undercount a non-ASCII value; the server counts
         # bytes.
-        from imbi.api.endpoints import projects
-
-        self.assertEqual(projects._param_entry_cost('abc'), 7)
-        self.assertEqual(projects._param_entry_cost('é'), 6)
+        self.assertEqual(clickhouse.param_entry_cost('abc'), 7)
+        self.assertEqual(clickhouse.param_entry_cost('é'), 6)
 
     def test_single_oversized_project_is_split(self) -> None:
         # One project can exceed the budget on its own; it must not be

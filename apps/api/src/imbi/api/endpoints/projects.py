@@ -599,7 +599,7 @@ async def _fetch_pr_counts(
     """
     if not project_ids:
         return {}
-    params = _project_ids_param
+    params = clickhouse.project_ids_param
     if viewer:
         sql = (
             'SELECT project_id,'
@@ -630,7 +630,9 @@ async def _fetch_pr_counts(
             ' AND NOT draft'
             ' GROUP BY project_id'
         )
-    rows = await _query_project_batches(sql, project_ids, 'PR counts', params)
+    rows = await clickhouse.query_project_batches(
+        sql, project_ids, 'PR counts', params
+    )
     return {
         str(r['project_id']): (
             int(r['open_count']),
@@ -1300,37 +1302,6 @@ def _release_range_cutoffs(
     return cutoffs
 
 
-#: Byte budget for a single ``Array(String)`` query parameter.
-#:
-#: ``clickhouse.query()`` binds parameters through clickhouse-connect,
-#: which sends each one as an HTTP *form field*.  ClickHouse caps a field
-#: value at ``http_max_field_value_size`` -- 131072 bytes by default --
-#: and rejects anything longer with ``HTML Form Exception: Field value
-#: too long``.  Note this is *half* of ``max_query_size``, so a payload
-#: that looks safe against the query limit still fails here: measured
-#: against production, 2978 forty-character shas (~131032 bytes) pass and
-#: 2979 fail.  The budget is set to half the server default so a cluster
-#: configured below the default, or one org's tag count growing between
-#: releases, still leaves headroom.
-_PARAM_BYTE_BUDGET = 65536
-
-
-def _param_entry_cost(value: str) -> int:
-    """Bytes one array entry adds to a bound query parameter.
-
-    clickhouse-connect serializes an array as ``['a', 'b']``, so an
-    entry costs its own bytes plus two quotes and the ``", "``
-    separator.  Measured in UTF-8 bytes because the server counts the
-    *decoded* field value: the observed failure threshold was 2979
-    forty-character shas (2979 * 44 = 131076 > 131072), which matches
-    the decoded length and rules out percent-encoding counting toward
-    the limit.  Counting the separator for the final entry too, and
-    ignoring the enclosing brackets, keeps the estimate on the safe side
-    of the encoder.
-    """
-    return len(value.encode()) + 4
-
-
 def _param_batches(
     shas_by_project: dict[str, list[str]],
 ) -> list[tuple[list[str], list[str]]]:
@@ -1339,7 +1310,7 @@ def _param_batches(
     Both parameters of the authored-times query are unbounded arrays --
     one entry per project, one per tagged commit -- and each rides in its
     own form field, so each is bounded separately against
-    :data:`_PARAM_BYTE_BUDGET`.
+    :data:`clickhouse.PARAM_BYTE_BUDGET`.
 
     Batching on *bytes* rather than a project count is deliberate: tag
     counts per project vary by two orders of magnitude, so any fixed
@@ -1349,7 +1320,7 @@ def _param_batches(
     so a project spanning batches resolves exactly as one that fits.
     """
 
-    cost = _param_entry_cost
+    cost = clickhouse.param_entry_cost
 
     batches: list[tuple[list[str], list[str]]] = []
     pids: list[str] = []
@@ -1369,8 +1340,8 @@ def _param_batches(
             # then re-attach the project so its remaining shas stay
             # scoped to it.
             if (
-                sha_bytes + cost(sha) > _PARAM_BYTE_BUDGET
-                or pid_bytes + cost(pid) > _PARAM_BYTE_BUDGET
+                sha_bytes + cost(sha) > clickhouse.PARAM_BYTE_BUDGET
+                or pid_bytes + cost(pid) > clickhouse.PARAM_BYTE_BUDGET
             ):
                 flush()
             if pid not in pids:
@@ -1380,58 +1351,6 @@ def _param_batches(
             sha_bytes += cost(sha)
     flush()
     return batches
-
-
-def _project_id_batches(project_ids: list[str]) -> list[list[str]]:
-    """Split project IDs into batches within :data:`_PARAM_BYTE_BUDGET`."""
-    if not project_ids:
-        return []
-    batches: list[list[str]] = [[]]
-    size = 0
-    for pid in project_ids:
-        if batches[-1] and size + _param_entry_cost(pid) > _PARAM_BYTE_BUDGET:
-            batches.append([])
-            size = 0
-        batches[-1].append(pid)
-        size += _param_entry_cost(pid)
-    return batches
-
-
-def _project_ids_param(batch: list[str]) -> dict[str, typing.Any]:
-    return {'project_ids': batch}
-
-
-async def _query_project_batches(
-    sql: str,
-    project_ids: list[str],
-    what: str,
-    params: typing.Callable[[list[str]], dict[str, typing.Any]] = (
-        _project_ids_param
-    ),
-    failed: set[str] | None = None,
-) -> list[dict[str, typing.Any]]:
-    """Run ``sql`` once per project-ID batch and return all rows.
-
-    One query that carries every project ID in the organization exceeds
-    the ClickHouse form-field limit (see :data:`_PARAM_BYTE_BUDGET`).
-    ``params`` builds the bound parameters for one batch.  A failed
-    batch logs a warning and drops only its own projects.  When you
-    give ``failed``, it gets the IDs of the failed batches.
-    """
-    rows: list[dict[str, typing.Any]] = []
-    for batch in _project_id_batches(project_ids):
-        try:
-            rows.extend(await clickhouse.query(sql, params(batch)))
-        except Exception:  # noqa: BLE001 -- best-effort enrichment
-            if failed is not None:
-                failed.update(batch)
-            LOGGER.warning(
-                'Failed to fetch %s for %d projects',
-                what,
-                len(batch),
-                exc_info=True,
-            )
-    return rows
 
 
 async def _fetch_authored_times(
@@ -1519,7 +1438,7 @@ async def _fetch_release_summaries(
 
     Every ClickHouse query here runs in size-bounded batches, because one
     query carrying the whole org's IDs or shas exceeds the form-field
-    limit (see :data:`_PARAM_BYTE_BUDGET`).  It reads the tags, each
+    limit (see :data:`clickhouse.PARAM_BYTE_BUDGET`).  It reads the tags, each
     project's latest commit, and the authored time of the commits those
     tags point at.  The authored times are what let this rank tags with
     the shared
@@ -1536,7 +1455,7 @@ async def _fetch_release_summaries(
         return {}
     failed: set[str] = set()
     tag_rows, head_rows = await asyncio.gather(
-        _query_project_batches(
+        clickhouse.query_project_batches(
             'SELECT project_id, name, sha, tagged_at, recorded_at,'
             ' tagger_name'
             ' FROM tags FINAL'
@@ -1545,7 +1464,7 @@ async def _fetch_release_summaries(
             'release tags',
             failed=failed,
         ),
-        _query_project_batches(
+        clickhouse.query_project_batches(
             'SELECT project_id, sha, short_sha,'
             ' author_name, author_user, authored_at'
             ' FROM commits FINAL'
@@ -1632,7 +1551,7 @@ async def _fetch_release_summaries(
                 # A cutoff serializes to about the same bytes as a
                 # project ID, so ``cuts`` stays inside the field limit
                 # of each project-ID batch too.
-                count_rows = await _query_project_batches(
+                count_rows = await clickhouse.query_project_batches(
                     'SELECT c.project_id AS project_id,'
                     ' count() AS c,'
                     ' countIf(d.answered = 1 AND d.drift_detected)'

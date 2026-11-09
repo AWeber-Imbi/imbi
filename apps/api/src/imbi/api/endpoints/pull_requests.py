@@ -228,7 +228,7 @@ async def _list_prs(
         return PullRequestListResponse(data=[], project_count=0, total=0)
 
     clauses: list[str] = ['project_id IN {project_ids:Array(String)}']
-    params: dict[str, typing.Any] = {'project_ids': project_ids}
+    params: dict[str, typing.Any] = {}
 
     if state is not None:
         clauses.append('state = {state:String}')
@@ -247,20 +247,27 @@ async def _list_prs(
         ' count(DISTINCT project_id) AS project_count'
         ' FROM pull_requests FINAL WHERE ' + where
     )
-    params['limit'] = limit
-    params['offset'] = offset
+    # The query runs once per project-ID batch.  Batches hold disjoint
+    # projects, so the counts add up, and the page is cut from the
+    # first ``offset + limit`` rows of every batch.
     data_sql = (
         'SELECT * FROM pull_requests FINAL WHERE '  # noqa: S608
         + where
         + ' ORDER BY created_at DESC, pr_id DESC'
-        + ' LIMIT {limit:UInt32} OFFSET {offset:UInt32}'
+        + ' LIMIT {limit:UInt32}'
     )
 
-    count_rows = await clickhouse.query(count_sql, params)
-    total = int(count_rows[0]['total']) if count_rows else 0
-    project_count = int(count_rows[0]['project_count']) if count_rows else 0
+    count_rows = await clickhouse.query_batched(count_sql, project_ids, params)
+    total = sum(int(row['total']) for row in count_rows)
+    project_count = sum(int(row['project_count']) for row in count_rows)
 
-    data_rows = await clickhouse.query(data_sql, params)
+    data_rows = sorted(
+        await clickhouse.query_batched(
+            data_sql, project_ids, {**params, 'limit': offset + limit}
+        ),
+        key=lambda row: (row['created_at'], row['pr_id']),
+        reverse=True,
+    )[offset : offset + limit]
     data = [
         PullRequestResponse.model_validate(_row_to_response(r))
         for r in data_rows
@@ -268,7 +275,7 @@ async def _list_prs(
     # Only open PRs have reviewers worth showing; closed and merged
     # listings skip the extra queries.
     if state == 'open':
-        await _attach_reviewers(project_ids, data)
+        await _attach_reviewers(sorted({pr.project_id for pr in data}), data)
     return PullRequestListResponse(
         data=data,
         project_count=project_count,
@@ -552,7 +559,6 @@ async def _list_pending_deploy(
     if not project_ids or not environment_slugs:
         return []
     params: dict[str, typing.Any] = {
-        'project_ids': project_ids,
         'environments': environment_slugs,
         'since': since,
         'limit': PENDING_DEPLOY_LIMIT,
@@ -588,7 +594,12 @@ async def _list_pending_deploy(
         + ' ORDER BY pr.merged_at ASC, pr.pr_id ASC'
         ' LIMIT {limit:UInt32}'
     )
-    rows = await clickhouse.query(sql, params)
+    # Each project-ID batch returns its own oldest ``limit`` rows; keep
+    # the oldest ``limit`` of all of them.
+    rows = sorted(
+        await clickhouse.query_batched(sql, project_ids, params),
+        key=lambda row: (row['merged_at'], row['pr_id']),
+    )[:PENDING_DEPLOY_LIMIT]
     return [
         PendingDeployPullRequest.model_validate(_row_to_response(row))
         for row in rows
@@ -728,6 +739,14 @@ async def _fetch_login_users(
     return out
 
 
+_ACTIVITY_COUNTS = (
+    'created_count',
+    'open_count',
+    'closed_count',
+    'merged_count',
+)
+
+
 async def _fetch_pr_activity(
     project_ids: list[str],
     since: datetime.datetime,
@@ -762,9 +781,18 @@ async def _fetch_pr_activity(
         ' AND created_at >= {since:DateTime64(3)}'
         ' GROUP BY author'
     )
-    return await clickhouse.query(
-        sql, {'project_ids': project_ids, 'since': since}
-    )
+    # Counts per author add up across the disjoint project-ID batches.
+    totals: dict[str, dict[str, typing.Any]] = {}
+    for row in await clickhouse.query_batched(
+        sql, project_ids, {'since': since}
+    ):
+        seen = totals.get(row['author'])
+        if seen is None:
+            totals[row['author']] = dict(row)
+            continue
+        for key in _ACTIVITY_COUNTS:
+            seen[key] += row[key]
+    return list(totals.values())
 
 
 @pull_requests_router.get('/activity', response_model=PRActivityResponse)

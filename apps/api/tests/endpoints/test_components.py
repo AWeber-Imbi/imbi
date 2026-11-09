@@ -233,12 +233,12 @@ class SearchComponentsTestCase(_ComponentsTestBase):
             [
                 {
                     'component_id': 'cmp-a',
-                    'version_count': 1,
+                    'versions': ['v1'],
                     'project_count': 9,
                 },
                 {
                     'component_id': 'cmp-b',
-                    'version_count': 4,
+                    'versions': ['v1', 'v2', 'v3', 'v4'],
                     'project_count': 2,
                 },
             ],
@@ -339,12 +339,12 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.mock_db.execute.side_effect = [self._projects('proj-1')]
         self._ch_results(
             [
-                {'ecosystem': 'npm', 'total': 120},
-                {'ecosystem': 'pypi', 'total': 45},
+                {'ecosystem': 'npm', 'components': ['a', 'b', 'c']},
+                {'ecosystem': 'pypi', 'components': ['d', 'e']},
             ],
         )
         body = self.client.get(self._components('/')).json()
-        self.assertEqual(body['ecosystem_totals'], {'npm': 120, 'pypi': 45})
+        self.assertEqual(body['ecosystem_totals'], {'npm': 3, 'pypi': 2})
         self.assertEqual(body['data'], [])
         self.assertEqual(self.mock_db.execute.await_count, 1)
 
@@ -372,14 +372,14 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.mock_db.execute.side_effect = [self._projects('proj-1')]
         self._ch_results(
             [
-                {'ecosystem': 'npm', 'total': 120},
-                {'ecosystem': 'pypi', 'total': 45},
+                {'ecosystem': 'npm', 'components': ['a', 'b', 'c']},
+                {'ecosystem': 'pypi', 'components': ['d', 'e']},
             ],
         )
         body = self.client.get(
             self._components('/'), params={'ecosystem': 'npm'}
         ).json()
-        self.assertEqual(body['ecosystem_totals'], {'npm': 120, 'pypi': 45})
+        self.assertEqual(body['ecosystem_totals'], {'npm': 3, 'pypi': 2})
         self.assertEqual(body['data'], [])
 
     def test_filtered_search_skips_the_catalog_scan(self) -> None:

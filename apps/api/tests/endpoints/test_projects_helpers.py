@@ -12,6 +12,7 @@ import unittest
 from unittest import mock
 
 from imbi.api.endpoints import projects
+from imbi.common import clickhouse
 
 
 class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -112,7 +113,7 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
         return []
 
     def test_empty_project_ids_make_no_batches(self) -> None:
-        self.assertEqual(projects._project_id_batches([]), [])
+        self.assertEqual(clickhouse.project_id_batches([]), [])
 
     async def test_pr_counts_batch_and_merge(self) -> None:
         ch = mock.MagicMock()
@@ -235,7 +236,7 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi.api.endpoints.projects.clickhouse.query', mock_query
         ):
             result = await projects._fetch_release_summaries(self.PIDS)
-        first_batch = projects._project_id_batches(self.PIDS)[0]
+        first_batch = clickhouse.project_id_batches(self.PIDS)[0]
         self.assertTrue(result)
         self.assertFalse(set(first_batch) & set(result))
         self.assertEqual(set(result), set(self.PIDS) - set(first_batch))

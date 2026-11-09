@@ -366,7 +366,9 @@ def _build_series(
     """Align ``{day, c}`` ClickHouse rows onto the *days* grid."""
     counts: dict[str, int] = {}
     for row in rows:
-        counts[str(row.get('day'))[:10]] = int(row.get('c') or 0)
+        # Batched queries can return one row per day for each batch.
+        day = str(row.get('day'))[:10]
+        counts[day] = counts.get(day, 0) + int(row.get('c') or 0)
     daily = [counts.get(day, 0) for day in days]
     return MetricSeries(total=sum(daily), daily=daily)
 
@@ -409,10 +411,7 @@ async def get_dashboard_metrics(
         (start_date + datetime.timedelta(days=offset)).isoformat()
         for offset in range(_METRICS_WINDOW_DAYS)
     ]
-    params: dict[str, typing.Any] = {
-        'since': since,
-        'project_ids': await _active_project_ids(db),
-    }
+    params: dict[str, typing.Any] = {'since': since}
     # One scan of the (FINAL, merge-on-read) deploy rows yields both the
     # per-day series and the per-environment rollup.
     deploys, events, ops, prs = await asyncio.gather(
@@ -439,13 +438,14 @@ async def get_dashboard_metrics(
             ' GROUP BY day',
             params,
         ),
-        clickhouse.query(
+        clickhouse.query_batched(
             'SELECT toDate(created_at) AS day, count() AS c'
             ' FROM pull_requests FINAL'
             ' WHERE created_at >= {since:DateTime64(3)}'
             ' AND NOT draft'
             ' AND project_id IN {project_ids:Array(String)}'
             ' GROUP BY day',
+            await _active_project_ids(db),
             params,
         ),
     )
