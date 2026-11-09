@@ -713,7 +713,7 @@ async def _check_consumers(
         if (
             provider is None
             or provider['type'] != 'github_app'
-            or provider['config'].get('host') != usage['host']
+            or provider['config'].get('host', 'github.com') != usage['host']
             or consumer['locator'].get('app_id') != usage['app_id']
         ):
             raise _invalid(
