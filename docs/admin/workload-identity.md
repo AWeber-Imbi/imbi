@@ -128,8 +128,10 @@ Permission policy. Replace the organization id:
 - Remove the audience of a vendor that you do not use.
 
 Keep the role's **Maximum session duration** at 1 hour or more. The role
-session lasts 5 minutes longer than the JWT: at most 1 hour, which is
-also the AWS limit when imbi-api has role credentials (role chaining).
+session lasts 5 minutes longer than the JWT, with a minimum of 15
+minutes: `max(900, jwt_seconds + 300)` seconds. A 300-second JWT thus
+gives a 900-second session. The maximum is 1 hour, which is also the AWS
+limit when imbi-api has role credentials (role chaining).
 
 ## Step 2: the Imbi identity source
 
