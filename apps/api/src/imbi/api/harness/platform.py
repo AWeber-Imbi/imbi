@@ -27,6 +27,10 @@ class ModelUpstream(pydantic.BaseModel):
     kind: typing.Literal['anthropic', 'litellm'] = 'anthropic'
     #: The upstream base URL. ``None`` is the Anthropic API.
     base_url: pydantic.HttpUrl | None = None
+    #: Accept an ``http://`` base URL. The proxy sends the model key to
+    #: the upstream, so use this only for a protected in-cluster
+    #: upstream, for example a LiteLLM gateway in the same cluster.
+    allow_insecure_http: bool = False
     #: The ``secret://`` reference of the upstream key.
     key_ref: str | None = None
 
@@ -36,6 +40,20 @@ class ModelUpstream(pydantic.BaseModel):
         if value is not None:
             check_reference(value)
         return value
+
+    def insecure(self) -> bool:
+        """Return true when the proxy would send the key without TLS
+        and ``allow_insecure_http`` does not permit it.
+
+        The write endpoint checks this, not a validator: a validator
+        also runs when a stored version is read, and an older version
+        with an ``http://`` URL must still load.
+        """
+        return (
+            self.base_url is not None
+            and self.base_url.scheme != 'https'
+            and not self.allow_insecure_http
+        )
 
 
 class AgentPlatformConfig(pydantic.BaseModel):

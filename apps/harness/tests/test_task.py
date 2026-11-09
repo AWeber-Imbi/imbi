@@ -1196,6 +1196,24 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'failed_external', 'reason': 'model_key_missing'}],
         )
 
+    async def test_http_upstream_needs_the_flag(self) -> None:
+        upstream = {'base_url': 'http://llm:4000', 'key_ref': 'secret://a/b'}
+        await self.make(model_upstream=upstream).run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [
+                {
+                    'outcome': 'failed_external',
+                    'reason': 'model_upstream_insecure',
+                }
+            ],
+        )
+        self.client.create_resolution.assert_not_called()
+        await self.make(
+            model_upstream={**upstream, 'allow_insecure_http': True}
+        ).run()
+        self.assertEqual(self.proxy.call_args.args[0], 'http://llm:4000')
+
     async def test_unexpected_error(self) -> None:
         self.call.side_effect = RuntimeError('boom')
         with self.assertLogs('imbi.harness.task', 'ERROR'):

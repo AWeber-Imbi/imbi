@@ -181,6 +181,13 @@ class ConfigTests(PlatformTestCase):
             model_upstream={'kind': 'litellm', 'key_ref': 'not a ref'}
         )
         self.assertEqual(response.status_code, 422, response.text)
+        insecure = {'kind': 'litellm', 'base_url': 'http://llm:4000'}
+        response = await self.put_config(model_upstream=insecure)
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.put_config(
+            model_upstream={**insecure, 'allow_insecure_http': True}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
 
     async def test_default_plugins_are_pinned(self) -> None:
         await self.add_marketplace()

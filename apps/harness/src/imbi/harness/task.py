@@ -619,12 +619,19 @@ class TaskRun:
             await self.build_workspace()
         self.cwd = self._cwd()
         self.layout.make_task(str(self.task['id']))
+        upstream: Body = self.config.get('model_upstream') or {}
+        base_url = str(upstream.get('base_url') or ANTHROPIC_API)
+        # imbi-api refuses this on write, but an older stored version
+        # can still have it. Do not send the key without TLS.
+        if urllib.parse.urlsplit(
+            base_url
+        ).scheme != 'https' and not upstream.get('allow_insecure_http'):
+            raise Failed('model_upstream_insecure')
         self.credential = await self.model_key()
         if self.credential.expires_at is not None:
             self.refresher = asyncio.create_task(self._refresh_key())
-        upstream: Body = self.config.get('model_upstream') or {}
         url = proxy.start(
-            str(upstream.get('base_url') or ANTHROPIC_API),
+            base_url,
             lambda: self.credential,
             litellm=upstream.get('kind') == 'litellm',
             meter=self.meter,

@@ -553,6 +553,18 @@ class NarrowingTests(unittest.TestCase):
         )
 
 
+class ModelUpstreamTests(unittest.TestCase):
+    def test_http_base_url_needs_the_flag(self) -> None:
+        def insecure(**data: typing.Any) -> bool:
+            return platform.ModelUpstream.model_validate(data).insecure()
+
+        url = 'http://litellm.imbi:4000'
+        self.assertTrue(insecure(base_url=url))
+        self.assertFalse(insecure(base_url=url, allow_insecure_http=True))
+        self.assertFalse(insecure(base_url='https://llm.example.com'))
+        self.assertFalse(insecure())
+
+
 class PinTests(unittest.TestCase):
     def test_pins_to_the_catalog_head(self) -> None:
         (plugin,) = platform.pin_plugins(

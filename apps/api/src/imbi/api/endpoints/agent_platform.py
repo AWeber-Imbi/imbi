@@ -127,10 +127,17 @@ async def put_agent_platform_config(
 
     Raises:
         409: A concurrent write took the version.
-        422: An allowed marketplace is not registered, or a default
-            plugin is not in an allowed marketplace's catalog.
+        422: An allowed marketplace is not registered, a default
+            plugin is not in an allowed marketplace's catalog, or the
+            model upstream URL is ``http://`` without
+            ``allow_insecure_http``.
 
     """
+    if data.model_upstream.insecure():
+        raise _unprocessable(
+            'model_upstream.base_url must use https:// unless '
+            'allow_insecure_http is true'
+        )
     found = {row['slug']: row for row in await store.marketplaces(org_id)}
     missing = sorted(set(data.allowed_marketplaces) - set(found))
     if missing:
