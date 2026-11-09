@@ -217,6 +217,29 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
             set(self.PIDS),
         )
 
+    async def test_failed_tag_batch_drops_its_head_rows_too(self) -> None:
+        calls = {'tags': 0}
+
+        def query(
+            sql: str, parameters: dict[str, typing.Any]
+        ) -> list[dict[str, typing.Any]]:
+            if 'FROM tags FINAL' in sql:
+                calls['tags'] += 1
+                if calls['tags'] == 1:
+                    raise RuntimeError('Field value too long')
+                return []
+            return self._echo(sql, parameters)
+
+        mock_query = mock.AsyncMock(side_effect=query)
+        with mock.patch(
+            'imbi.api.endpoints.projects.clickhouse.query', mock_query
+        ):
+            result = await projects._fetch_release_summaries(self.PIDS)
+        first_batch = projects._project_id_batches(self.PIDS)[0]
+        self.assertTrue(result)
+        self.assertFalse(set(first_batch) & set(result))
+        self.assertEqual(set(result), set(self.PIDS) - set(first_batch))
+
     async def test_small_org_makes_one_query_per_release_kind(self) -> None:
         query = mock.AsyncMock(side_effect=self._echo)
         with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):

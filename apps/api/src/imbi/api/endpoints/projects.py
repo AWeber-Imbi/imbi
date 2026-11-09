@@ -1392,19 +1392,23 @@ async def _query_project_batches(
     params: typing.Callable[[list[str]], dict[str, typing.Any]] = (
         _project_ids_param
     ),
+    failed: set[str] | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Run ``sql`` once per project-ID batch and return all rows.
 
     One query that carries every project ID in the organization exceeds
     the ClickHouse form-field limit (see :data:`_PARAM_BYTE_BUDGET`).
     ``params`` builds the bound parameters for one batch.  A failed
-    batch logs a warning and drops only its own projects.
+    batch logs a warning and drops only its own projects.  When you
+    give ``failed``, it gets the IDs of the failed batches.
     """
     rows: list[dict[str, typing.Any]] = []
     for batch in _project_id_batches(project_ids):
         try:
             rows.extend(await clickhouse.query(sql, params(batch)))
         except Exception:  # noqa: BLE001 -- best-effort enrichment
+            if failed is not None:
+                failed.update(batch)
             LOGGER.warning(
                 'Failed to fetch %s for %d projects',
                 what,
@@ -1514,6 +1518,7 @@ async def _fetch_release_summaries(
     """
     if not project_ids:
         return {}
+    failed: set[str] = set()
     tag_rows, head_rows = await asyncio.gather(
         _query_project_batches(
             'SELECT project_id, name, sha, tagged_at, recorded_at,'
@@ -1522,6 +1527,7 @@ async def _fetch_release_summaries(
             ' WHERE project_id IN {project_ids:Array(String)}',
             project_ids,
             'release tags',
+            failed=failed,
         ),
         _query_project_batches(
             'SELECT project_id, sha, short_sha,'
@@ -1532,8 +1538,19 @@ async def _fetch_release_summaries(
             ' LIMIT 1 BY project_id',
             project_ids,
             'head commits',
+            failed=failed,
         ),
     )
+    # A summary made from only one of the two reads is incorrect: with
+    # no tags it shows no release drift, and with no head it hides the
+    # drift.  Drop the projects of a failed batch from both reads.
+    if failed:
+        tag_rows = [
+            r for r in tag_rows if str(r.get('project_id')) not in failed
+        ]
+        head_rows = [
+            r for r in head_rows if str(r.get('project_id')) not in failed
+        ]
 
     tags_by_project: dict[str, list[dict[str, typing.Any]]] = {}
     for row in tag_rows:
