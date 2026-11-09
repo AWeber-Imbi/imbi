@@ -575,16 +575,21 @@ export function ProjectDetail({
     )
     if (!run && !row) return null
     const latest = row?.latest_deployment
+    const runUrl = sanitizeHttpUrl(run?.runUrl)
+    const latestUrl = sanitizeHttpUrl(latest?.run_url)
+    // Show the details of the attempt that the link opens. A local run
+    // without a URL gives way to the row, which can be another attempt.
+    const shown = run && (runUrl || !latestUrl) ? run : undefined
     return {
       ...RELEASE_IDLE,
       blocked: true,
       envName: row?.environment.name ?? run?.envName ?? null,
       phase: 'deploying',
-      runUrl: sanitizeHttpUrl(run?.runUrl) ?? sanitizeHttpUrl(latest?.run_url),
-      startedAt: run
-        ? new Date(run.startedMs).toISOString()
+      runUrl: shown ? runUrl : latestUrl,
+      startedAt: shown
+        ? new Date(shown.startedMs).toISOString()
         : (latest?.started_at ?? latest?.deployed_at ?? null),
-      tag: run
+      tag: shown
         ? null
         : (latest?.tag ?? latest?.committish?.slice(0, 7) ?? null),
     }
