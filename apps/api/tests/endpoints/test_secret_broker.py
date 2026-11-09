@@ -378,6 +378,7 @@ class SecretEndpointTestCase(
             response.json()['provider_key_usage'],
             {'host': 'github.com', 'app_id': '7', 'consumers': []},
         )
+        key_url = self.base + f'/secret-bindings/{response.json()["id"]}'
         app: dict[str, typing.Any] = {
             'reference': 'secret://production/gh/app',
             'provider_id': provider_id,
@@ -406,6 +407,28 @@ class SecretEndpointTestCase(
                 self.assertEqual(response.json()['detail']['error'], error)
         response = await self._post('/secret-bindings/', app)
         self.assertEqual(response.status_code, 201, response.text)
+        usage = {'host': 'github.com', 'app_id': '7'}
+        consumers = {'consumers': [response.json()['id']]}
+        # A consumer must stay on the key's host and App id.
+        for change in (
+            {'host': 'aweber.ghe.com'},
+            {'app_id': '8'},
+            {'consumers': [str(self.binding['id'])]},
+        ):
+            with self.subTest(change=change):
+                response = await self.client.patch(
+                    key_url,
+                    json={'provider_key_usage': usage | consumers | change},
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(
+                    response.json()['detail']['error'],
+                    'provider_key_mismatch',
+                )
+        response = await self.client.patch(
+            key_url, json={'provider_key_usage': usage | consumers}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
         # The key's host is github.com: the provider cannot move.
         response = await self.client.patch(
             self.base + f'/secret-providers/{provider_id}',

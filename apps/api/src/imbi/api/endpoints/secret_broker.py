@@ -689,6 +689,40 @@ def _key_usage(
     return usage.model_dump(mode='json')
 
 
+async def _check_consumers(
+    secrets: store.SecretStore,
+    org_id: str,
+    usage: dict[str, typing.Any] | None,
+) -> None:
+    """Each consumer of a provider key must be a ``github_app`` binding
+    for the key's host and App id. Else the consumer loses the key, and
+    the failure shows only when it asks for a token. A consumer that is
+    not in the organization any more is ignored: it cannot use the key.
+    """
+    if not usage:
+        return
+    for consumer_id in usage['consumers']:
+        consumer = await secrets.get(
+            'bindings', org_id, uuid.UUID(consumer_id)
+        )
+        if consumer is None:
+            continue
+        provider = await secrets.get(
+            'providers', org_id, consumer['provider_id']
+        )
+        if (
+            provider is None
+            or provider['type'] != 'github_app'
+            or provider['config'].get('host', 'github.com') != usage['host']
+            or consumer['locator'].get('app_id') != usage['app_id']
+        ):
+            raise _invalid(
+                f'Consumer {consumer["reference"]} is not a github_app '
+                f'binding for host {usage["host"]} and App {usage["app_id"]}',
+                'provider_key_mismatch',
+            )
+
+
 @bindings_router.get('/', response_model=list[SecretBinding])
 async def list_bindings(
     org_id: OrgId, secrets: secret_broker.Store, _: BindingRead
@@ -722,6 +756,7 @@ async def create_binding(
     values['provider_key_usage'] = _key_usage(
         data.provider_key_usage, data.credential_class
     )
+    await _check_consumers(secrets, org_id, values['provider_key_usage'])
     values['created_by'] = auth.principal_name
     with conflict_on_unique_violation(f'{reference} is bound already'):
         row = await secrets.create(
@@ -788,6 +823,7 @@ async def update_binding(
         changes['provider_key_usage'] = _key_usage(
             data.provider_key_usage, credential_class
         )
+        await _check_consumers(secrets, org_id, changes['provider_key_usage'])
     elif current['provider_key_usage'] and credential_class == 'dynamic':
         raise _invalid('A provider key binding cannot be dynamic')
     if not changes:
