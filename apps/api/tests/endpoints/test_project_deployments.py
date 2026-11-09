@@ -2791,7 +2791,7 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
                 'groups': ['dev'],
             },
             {
-                'purl_name': 'pkg:pypi/httpx',
+                'purl_name': 'pkg:pypi/requests',
                 'version': '0.27.0',
                 'scope': 'optional',
             },
@@ -2804,7 +2804,7 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
                 'groups': ['dev'],
             },
             {
-                'purl_name': 'pkg:pypi/httpx',
+                'purl_name': 'pkg:pypi/requests',
                 'version': '0.28.0',
                 'scope': 'optional',
             },
@@ -2812,7 +2812,7 @@ class ReleaseNotesPromptTestCase(unittest.TestCase):
         self.assertEqual(
             _component_changes(base, head),
             [
-                '~ pkg:pypi/httpx 0.27.0 → 0.28.0',
+                '~ pkg:pypi/requests 0.27.0 → 0.28.0',
                 '~ pkg:pypi/pytest 8.0.0 [dev] → 9.0.0 [dev]',
             ],
         )
