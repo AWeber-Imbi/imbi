@@ -28,7 +28,9 @@ vi.mock('@/api/endpoints', () => ({
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
+  useOrganization: () => ({
+    selectedOrganization: { id: 'org-1', slug: 'acme' },
+  }),
 }))
 
 const renderAt = (path: string) => {

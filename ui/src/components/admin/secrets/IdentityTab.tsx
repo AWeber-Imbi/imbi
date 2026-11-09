@@ -16,6 +16,7 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 
 import { SecretDialog } from './SecretDialog'
 import type { WorkloadIdentity, WorkloadIdentityPut } from './types'
+import { VendorSetup } from './VendorSetup'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
 
@@ -24,7 +25,13 @@ const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
  * an identity JWT from it for each vendor token exchange. One source for
  * each organization: saving replaces it.
  */
-export function IdentityTab({ orgSlug }: { orgSlug: string }) {
+export function IdentityTab({
+  orgId,
+  orgSlug,
+}: {
+  orgId: string
+  orgSlug: string
+}) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const queryKey = ['workload-identity', orgSlug]
@@ -101,9 +108,18 @@ export function IdentityTab({ orgSlug }: { orgSlug: string }) {
         onDelete={() => deleteMutation.mutate()}
         rows={current ? [current] : []}
       />
+      <VendorSetup
+        orgId={orgId}
+        orgSlug={orgSlug}
+        roleArn={
+          current?.type === 'aws_sts'
+            ? (current.config.role_arn as string | undefined)
+            : undefined
+        }
+      />
       {editing && (
         <SecretDialog
-          description="Where imbi-api gets the identity JWT that it exchanges for a vendor access token. Saving checks the configuration with one call to the source."
+          description="Where imbi-api gets the identity JWT that it exchanges for a vendor access token. Saving checks the configuration with the source; it does not get an identity JWT."
           error={saveMutation.error}
           fields={[
             {
@@ -118,7 +134,7 @@ export function IdentityTab({ orgSlug }: { orgSlug: string }) {
             },
             {
               description:
-                'For AWS STS: {"region": "us-east-1", "role_arn": "arn:aws:iam::<account>:role/<identity role>"}. The trust policy of the role must require sts:ExternalId "imbi:<organization id>". No access keys.',
+                'For AWS STS: {"region": "us-east-1", "role_arn": "arn:aws:iam::<account>:role/<identity role>"}. The trust policy of the role must require the sts:ExternalId shown under Vendor setup. No access keys.',
               initial: '{}',
               kind: 'json',
               label: 'Configuration',

@@ -37,17 +37,15 @@ Imbi sets the audience, the tags, the lifetime, and the signing algorithm
 
 ## Before you start
 
-Get the id of each agent and each AI Provider. The vendor rules and
-mappings need them.
+Open **Admin, Secrets, Identity**. The **Vendor setup** section shows
+the values that the other steps need, each with a copy button:
 
-| Value | Where to find it |
-|---|---|
-| Agent id | `GET /organizations/{org_slug}/agents/{agent_slug}`, field `id` |
-| AI Provider id | `GET /ai-providers`, field `id` |
-
-You also need the Imbi organization id. If you do not know it, save the
-identity source with any role first (step 2): the error message shows
-`imbi:<organization id>`.
+- The organization id, and the ExternalId `imbi:<organization id>` for
+  the trust policy of the role.
+- The id of each agent of the organization, and of each Anthropic and
+  OpenAI AI Provider.
+- After step 2: for each agent and AI Provider, the ready Anthropic rule
+  condition or OpenAI mapping claims (steps 3 and 4).
 
 Use a separate setup for each Imbi organization: one identity role, and
 rules or mappings that match that organization's id.
@@ -168,7 +166,8 @@ Console labels can be different.
 
 `subject_prefix` is a prefix match: `role/imbi` also matches
 `role/imbi-other`. So the condition also checks `sub` exactly, and checks
-the tag of one agent:
+the tag of one agent. Copy the condition from **Vendor setup** (see
+[Before you start](#before-you-start)). It has this form:
 
 ```text
 claims.sub == "arn:aws:iam::123456789012:role/imbi-identity" &&
@@ -210,7 +209,8 @@ API.
 2. For each OpenAI AI Provider, create a service account and a mapping.
    The mapping matches `sub` to the identity role ARN exactly,
    `openai.imbi_org` to the organization id, and `openai.imbi_ai_provider`
-   to the AI Provider id.
+   to the AI Provider id. **Vendor setup** shows these claims for each
+   provider.
 
 Write down `identity_provider_id` and `service_account_id`.
 
