@@ -111,6 +111,9 @@ class ProjectIdBatchingTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         return []
 
+    def test_empty_project_ids_make_no_batches(self) -> None:
+        self.assertEqual(projects._project_id_batches([]), [])
+
     async def test_pr_counts_batch_and_merge(self) -> None:
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(side_effect=self._echo)

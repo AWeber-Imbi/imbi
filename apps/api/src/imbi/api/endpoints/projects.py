@@ -1368,6 +1368,8 @@ def _param_batches(
 
 def _project_id_batches(project_ids: list[str]) -> list[list[str]]:
     """Split project IDs into batches within :data:`_PARAM_BYTE_BUDGET`."""
+    if not project_ids:
+        return []
     batches: list[list[str]] = [[]]
     size = 0
     for pid in project_ids:
