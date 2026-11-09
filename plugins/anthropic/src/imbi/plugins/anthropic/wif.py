@@ -49,10 +49,9 @@ class AnthropicExchanger(identity.TokenExchanger):
     vendor = 'anthropic'
     label = 'Anthropic'
     target_help = (
-        '{"organization_id": "...", "federation_rule_id": "...",'
-        ' "service_account_id": "...", "workspace_id": "..."}, the ids'
-        ' from the Anthropic Console; workspace_id only when the rule has'
-        ' more than one workspace.'
+        f'{identity.target_keys(_Target)}, the ids from the Anthropic'
+        ' Console; workspace_id only when the rule has more than one'
+        ' workspace.'
     )
     audience = 'https://api.anthropic.com'
     #: The JWT is used once, for the exchange. The rule sets the

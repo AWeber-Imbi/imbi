@@ -42,8 +42,7 @@ class OpenAIExchanger(identity.TokenExchanger):
     vendor = 'openai'
     label = 'OpenAI'
     target_help = (
-        '{"identity_provider_id": "...", "service_account_id": "..."},'
-        ' the ids from the OpenAI dashboard.'
+        f'{identity.target_keys(_Target)}, the ids from the OpenAI dashboard.'
     )
     #: The audience of the OpenAI workload identity provider. The
     #: provider in the OpenAI dashboard must use this value.

@@ -3,13 +3,13 @@ import { Check, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
-import { listAIProviders } from '@/api/endpoints'
+import { listAIProviders, listTokenExchangers } from '@/api/endpoints'
 import { useAgentList } from '@/components/agents/agentQueries'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import { useClipboard } from '@/hooks/useClipboard'
 
-import { anthropicCondition, openaiMapping } from './wifVendorValues'
+import { anthropicCondition, PROVIDER_VALUES } from './wifVendorValues'
 
 interface Props {
   orgId: string
@@ -45,6 +45,11 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
     queryKey: ['ai-providers'],
     retry: false,
   })
+  const exchangersQuery = useQuery({
+    queryFn: ({ signal }) => listTokenExchangers(orgSlug, signal),
+    queryKey: ['token-exchangers', orgSlug],
+  })
+  const installed = new Set((exchangersQuery.data ?? []).map((e) => e.vendor))
   // A 403 means no read access, which is expected; other errors are not.
   const failures = [
     { label: 'agents', query: agentsQuery },
@@ -62,21 +67,20 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
       name: a.name,
       value: roleArn && anthropicCondition(roleArn, orgId, 'imbi_agent', a.id),
     })),
-    ...(providersQuery.data ?? [])
-      .filter((p) => p.driver === 'anthropic' || p.driver === 'openai')
-      .map((p) => ({
-        id: p.id,
-        kind:
-          p.driver === 'anthropic'
-            ? 'AI Provider (Anthropic rule)'
-            : 'AI Provider (OpenAI mapping)',
-        name: p.name,
-        value:
-          roleArn &&
-          (p.driver === 'anthropic'
-            ? anthropicCondition(roleArn, orgId, 'imbi_ai_provider', p.id)
-            : openaiMapping(roleArn, orgId, p.id)),
-      })),
+    // Only a driver with an installed exchanger and a value builder.
+    ...(providersQuery.data ?? []).flatMap((p) => {
+      const values = installed.has(p.driver) && PROVIDER_VALUES[p.driver]
+      return values
+        ? [
+            {
+              id: p.id,
+              kind: values.kind,
+              name: p.name,
+              value: roleArn && values.value(roleArn, orgId, p.id),
+            },
+          ]
+        : []
+    }),
   ]
   const externalId = `imbi:${orgId}`
 
@@ -138,7 +142,7 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
               ),
           },
         ]}
-        emptyMessage="No agents or Anthropic or OpenAI AI Providers."
+        emptyMessage="No agents or workload identity AI Providers."
         getRowKey={(row) => row.id}
         loading={agentsQuery.isLoading || providersQuery.isLoading}
         rows={subjects}

@@ -26,10 +26,12 @@ and cannot be pickled. Audit rows use :attr:`AccessToken.fingerprint`.
 import dataclasses
 import datetime
 import hashlib
+import json
 import logging
 import typing
 
 import httpx
+import pydantic
 
 from imbi.common.plugins import secrets
 from imbi.common.plugins.secrets import InvalidConfiguration, validate_model
@@ -43,6 +45,7 @@ __all__ = [
     'TokenExchanger',
     'WifSecretProvider',
     'post_exchange',
+    'target_keys',
     'validate_model',
 ]
 
@@ -198,6 +201,12 @@ class TokenExchanger:
 
         """
         raise NotImplementedError
+
+
+def target_keys(model: type[pydantic.BaseModel]) -> str:
+    """Return the fields of a target model as a JSON example for
+    :attr:`TokenExchanger.target_help`: ``{"key": "...", ...}``."""
+    return json.dumps(dict.fromkeys(model.model_fields, '...'))
 
 
 async def post_exchange(
