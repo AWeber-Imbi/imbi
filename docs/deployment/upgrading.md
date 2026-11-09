@@ -97,7 +97,8 @@ are optional. If you do not do them, each service continues to use
    `IMBI_AI_PROVIDER_SLACKBOT` on imbi-api to the AI provider IDs. See
    [AI Models](../admin/ai-models.md#imbi-services).
 
-Agent runners do not send the model key to an `http://` model upstream.
+By default, agent runners do not send the model key to an `http://` model
+upstream.
 If the **Base URL** in **Agents > Settings > Platform** of an organization
 uses `http://`, its tasks fail with `model_upstream_insecure` after the
 upgrade. In each such organization, change the URL to `https://`. For a
