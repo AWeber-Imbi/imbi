@@ -24,7 +24,9 @@ export function anthropicCondition(
 /**
  * The claims of an OpenAI mapping for one AI Provider. The identity
  * provider stores each CEL attribute with the `openai.` prefix
- * (docs/admin/workload-identity.md, step 4).
+ * (docs/admin/workload-identity.md, step 4). The values are raw, not
+ * quoted: the OpenAI console takes each claim as `key = value`, and an
+ * ARN or an id has no whitespace.
  */
 export function openaiMapping(
   roleArn: string,

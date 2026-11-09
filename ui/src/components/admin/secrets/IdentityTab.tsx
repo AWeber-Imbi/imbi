@@ -29,7 +29,7 @@ export function IdentityTab({
   orgId,
   orgSlug,
 }: {
-  orgId: string
+  orgId: string | undefined
   orgSlug: string
 }) {
   const queryClient = useQueryClient()
@@ -108,15 +108,17 @@ export function IdentityTab({
         onDelete={() => deleteMutation.mutate()}
         rows={current ? [current] : []}
       />
-      <VendorSetup
-        orgId={orgId}
-        orgSlug={orgSlug}
-        roleArn={
-          current?.type === 'aws_sts'
-            ? (current.config.role_arn as string | undefined)
-            : undefined
-        }
-      />
+      {orgId && (
+        <VendorSetup
+          orgId={orgId}
+          orgSlug={orgSlug}
+          roleArn={
+            current?.type === 'aws_sts'
+              ? (current.config.role_arn as string | undefined)
+              : undefined
+          }
+        />
+      )}
       {editing && (
         <SecretDialog
           description="Where imbi-api gets the identity JWT that it exchanges for a vendor access token. Saving checks the configuration with the source; it does not get an identity JWT."

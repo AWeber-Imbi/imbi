@@ -30,7 +30,7 @@ export function SecretsManagement() {
   const orgSlug = selectedOrganization?.slug
   const tab = TABS.some(([id]) => id === slug) ? slug : 'providers'
   const orgId = selectedOrganization?.id
-  if (!orgSlug || !orgId) return null
+  if (!orgSlug) return null
 
   return (
     <Tabs
