@@ -1,5 +1,6 @@
 import datetime
 import typing
+from collections import abc
 
 import orjson
 import pydantic
@@ -169,13 +170,24 @@ async def command(
 
 
 async def query(
-    sql: str, parameters: dict[str, typing.Any] | None = None
+    sql: str,
+    parameters: dict[str, typing.Any] | None = None,
+    project_ids: client.ProjectRows | None = None,
+    columns: abc.Sequence[str] = ('project_id String',),
 ) -> list[dict[str, typing.Any]]:
     """Query the Clickhouse database and return results as a list of dicts.
+
+    Give a list of project IDs as ``project_ids``, not as a bound
+    ``Array(String)`` parameter: ClickHouse rejects a bound parameter
+    longer than 131072 bytes.  The IDs go as the ``project_ids``
+    external table; read them with
+    ``project_id IN (SELECT project_id FROM project_ids)``.
 
     Args:
        sql: SQL query string, possibly with parameter placeholders
        parameters: Optional dictionary of parameter values
+       project_ids: Optional rows for the ``project_ids`` external table
+       columns: The ``name Type`` of each external table column
 
     Returns:
        List of dictionaries mapping column names to values
@@ -184,4 +196,8 @@ async def query(
        DatabaseError: If there's an error executing the query
     """
     clickhouse = client.Clickhouse.get_instance()
-    return await clickhouse.query(sql, parameters=parameters)
+    if project_ids is None:
+        return await clickhouse.query(sql, parameters=parameters)
+    return await clickhouse.query(
+        sql, parameters=parameters, project_ids=project_ids, columns=columns
+    )

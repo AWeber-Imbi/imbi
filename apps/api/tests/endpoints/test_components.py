@@ -297,7 +297,8 @@ class SearchComponentsTestCase(_ComponentsTestBase):
             ['cmp-express', 'cmp-expressive'],
         )
         self.assertEqual(
-            self._ch_params(0)['project_ids'], ['proj-1', 'proj-2']
+            self.mock_ch.await_args_list[0].kwargs['project_ids'],
+            ['proj-1', 'proj-2'],
         )
 
     def test_counts_are_gathered_only_for_the_returned_page(self) -> None:
@@ -360,7 +361,8 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self._ch_results([])
         self.client.get(self._components('/'))
         self.assertEqual(
-            self._ch_params(0)['project_ids'], ['proj-1', 'proj-2']
+            self.mock_ch.await_args_list[0].kwargs['project_ids'],
+            ['proj-1', 'proj-2'],
         )
 
     def test_ecosystem_filter_keeps_the_catalog_totals(self) -> None:

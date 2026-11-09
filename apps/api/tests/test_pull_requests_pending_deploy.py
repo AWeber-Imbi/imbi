@@ -96,7 +96,12 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('pr.merged_at >= {since:DateTime64(3)}', sql)
         self.assertIn('pr.author = {author:String}', sql)
         self.assertIn('NOT pr.draft', sql)
-        self.assertEqual(['p1', 'p2'], params['project_ids'])
+        self.assertIn(
+            'project_id IN (SELECT project_id FROM project_ids)', sql
+        )
+        self.assertEqual(
+            ['p1', 'p2'], self.query.await_args.kwargs['project_ids']
+        )
         self.assertEqual(['production'], params['environments'])
         self.assertEqual('gmr', params['author'])
         self.assertEqual(self.since, params['since'])

@@ -3177,6 +3177,27 @@ class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
         # Still a summary, ranked without commit context.
         self.assertEqual(result['p1'].latest_tag, '1.0.0')
 
+    async def test_count_query_failure_drops_summaries(self) -> None:
+        from imbi.api.endpoints import projects
+
+        with (
+            mock.patch(
+                'imbi.api.endpoints.projects.clickhouse.query',
+                mock.AsyncMock(
+                    side_effect=[
+                        self._tags(),
+                        [],
+                        [],
+                        RuntimeError('clickhouse down'),
+                    ]
+                ),
+            ),
+            self.assertLogs('imbi.api.endpoints.projects', level='WARNING'),
+        ):
+            result = await projects._fetch_release_summaries(['p1'])
+        # A summary without counts would show 0 unreleased commits.
+        self.assertEqual(result, {})
+
     async def _with_counts(
         self, count_row: dict[str, typing.Any]
     ) -> typing.Any:
@@ -3234,132 +3255,8 @@ class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(summary.oldest_actionable_at)
 
 
-class ParamBatchTestCase(unittest.TestCase):
-    """The authored-times parameters must stay under the form-field cap.
-
-    ``clickhouse.query`` sends each bound parameter as an HTTP form
-    field, which ClickHouse caps at ``http_max_field_value_size``
-    (131072 bytes).  One query carrying every tagged sha in the org
-    breached it -- measured at 2979 shas against production -- and the
-    swallowed failure took the *whole* org's ranking back to
-    highest-version order, so the projects list named 1.0.0 while the
-    Releases tab named 0.17.0-2 (#281).
-    """
-
-    def _budget(self) -> int:
-        from imbi.api.endpoints import projects
-
-        return projects._PARAM_BYTE_BUDGET
-
-    def _batches(
-        self, shas_by_project: dict[str, list[str]]
-    ) -> list[tuple[list[str], list[str]]]:
-        from imbi.api.endpoints import projects
-
-        return projects._param_batches(shas_by_project)
-
-    def _assert_within_budget(
-        self, batches: list[tuple[list[str], list[str]]]
-    ) -> None:
-        budget = self._budget()
-        for pids, shas in batches:
-            for values in (pids, shas):
-                size = sum(len(value) + 3 for value in values)
-                self.assertLessEqual(size, budget)
-
-    def test_small_input_is_a_single_batch(self) -> None:
-        # The common case must not pay for extra round trips.
-        batches = self._batches({'p1': ['a' * 40, 'b' * 40]})
-        self.assertEqual(len(batches), 1)
-        self.assertEqual(batches[0][0], ['p1'])
-        self.assertEqual(batches[0][1], ['a' * 40, 'b' * 40])
-
-    def test_org_scale_splits_and_covers_every_sha(self) -> None:
-        # 200 projects x 30 tags ~= the production shape that failed.
-        shas_by_project = {
-            f'p{pid:03d}': [
-                f'{pid:03d}{tag:03d}'.ljust(40, 'f') for tag in range(30)
-            ]
-            for pid in range(200)
-        }
-        batches = self._batches(shas_by_project)
-        self.assertGreater(len(batches), 1)
-        self._assert_within_budget(batches)
-
-        expected = {
-            (pid, sha) for pid, shas in shas_by_project.items() for sha in shas
-        }
-        seen = {
-            (pid, sha)
-            for pids, shas in batches
-            for pid in pids
-            for sha in shas
-        }
-        # Every pair is queryable; the batch it lands in doesn't matter
-        # because results merge by (project_id, sha).
-        self.assertTrue(expected <= seen)
-
-    def test_batches_fit_the_server_field_limit(self) -> None:
-        # Boundary check against the real encoder and the real limit
-        # rather than against our own estimate: cost() is only useful if
-        # it bounds what clickhouse-connect actually puts on the wire.
-        from clickhouse_connect.driver.binding import format_query_value
-
-        # http_max_field_value_size, as read from production.
-        limit = 131072
-        shas_by_project = {
-            f'p{pid:03d}': [
-                f'{pid:03d}{tag:04d}'.ljust(40, 'f') for tag in range(40)
-            ]
-            for pid in range(250)
-        }
-        batches = self._batches(shas_by_project)
-        self.assertGreater(len(batches), 1)
-        for pids, shas in batches:
-            for values in (pids, shas):
-                encoded = format_query_value(values)
-                self.assertLessEqual(len(encoded.encode()), limit)
-
-    def test_cost_bounds_the_encoded_payload(self) -> None:
-        # The estimate must never come in under the encoder, or the
-        # budget's headroom is imaginary.  Uses the production estimator
-        # so a regression there fails here.
-        from clickhouse_connect.driver.binding import format_query_value
-
-        from imbi.api.endpoints import projects
-
-        shas = [f'{n:040d}' for n in range(1000)]
-        batches = self._batches({'p1': shas})
-        for _, batch_shas in batches:
-            estimated = sum(
-                projects._param_entry_cost(sha) for sha in batch_shas
-            )
-            actual = len(format_query_value(batch_shas).encode())
-            self.assertGreaterEqual(estimated, actual)
-
-    def test_cost_counts_multibyte_values_in_bytes(self) -> None:
-        # len() would undercount a non-ASCII value; the server counts
-        # bytes.
-        from imbi.api.endpoints import projects
-
-        self.assertEqual(projects._param_entry_cost('abc'), 7)
-        self.assertEqual(projects._param_entry_cost('é'), 6)
-
-    def test_single_oversized_project_is_split(self) -> None:
-        # One project can exceed the budget on its own; it must not be
-        # emitted as an unsendable batch.
-        shas = [f'{n:040d}' for n in range(5000)]
-        batches = self._batches({'p1': shas})
-        self.assertGreater(len(batches), 1)
-        self._assert_within_budget(batches)
-        self.assertEqual(
-            {sha for _, batch_shas in batches for sha in batch_shas},
-            set(shas),
-        )
-
-
-class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
-    """Batching must not change the ranking, and must fail narrowly."""
+class ReleaseSummaryOrgScaleAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
+    """Org-scale authored times rank in one query, and fail loudly."""
 
     def setUp(self) -> None:
         self.authored_calls: dict[str, int] = {'n': 0}
@@ -3393,9 +3290,9 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
             )
         return rows
 
-    #: Enough projects that the tagged shas exceed the byte budget and
-    #: must split -- ~2000 x 2 x 43 bytes vs a 65536 budget, the same
-    #: shape as the 4710 shas production carries.
+    #: Enough tagged shas (~2000 x 2 x 43 bytes) to exceed the 131072
+    #: byte form-field limit as a bound array -- the same shape as the
+    #: 4710 shas production carries.
     SCALE = 2000
 
     def _query(
@@ -3404,16 +3301,18 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
         authored_calls = self.authored_calls
 
         async def dispatch(
-            sql: str, params: dict[str, typing.Any] | None = None
+            sql: str,
+            params: dict[str, typing.Any] | None = None,
+            project_ids: typing.Any = None,
+            columns: typing.Any = None,
         ) -> list[dict[str, typing.Any]]:
-            params = params or {}
             if 'FROM tags FINAL' in sql:
                 return tag_rows
             if 'SELECT project_id, sha, authored_at' in sql:
                 authored_calls['n'] += 1
                 if fail_after is not None and authored_calls['n'] > fail_after:
                     raise RuntimeError('Field value too long')
-                wanted = set(params.get('shas') or [])
+                wanted = set(project_ids or [])
                 return [
                     {
                         'project_id': row['project_id'],
@@ -3425,9 +3324,7 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
                         ),
                     }
                     for row in tag_rows
-                    if row['sha'] in wanted
-                    and row['project_id']
-                    in set(params.get('project_ids') or [])
+                    if (row['project_id'], row['sha']) in wanted
                 ]
             return []
 
@@ -3443,16 +3340,14 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
             self._query(tag_rows, fail_after=None),
         ):
             result = await projects._fetch_release_summaries(pids)
-        # The batching is the point of the test, so assert it happened
-        # rather than trusting the payload stayed oversized.
-        self.assertGreater(self.authored_calls['n'], 1)
+        self.assertEqual(self.authored_calls['n'], 1)
         # Before #281 this returned 1.0.0 for every project, because the
         # one oversized query failed and the map came back empty.
         self.assertEqual(len(result), self.SCALE)
         for pid in pids:
             self.assertEqual(result[pid].latest_tag, '0.17.0-2')
 
-    async def test_one_failed_batch_degrades_only_its_projects(self) -> None:
+    async def test_failed_query_falls_back_and_logs(self) -> None:
         from imbi.api.endpoints import projects
 
         tag_rows = self._tags(self.SCALE)
@@ -3460,61 +3355,16 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch(
                 'imbi.api.endpoints.projects.clickhouse.query',
-                self._query(tag_rows, fail_after=1),
+                self._query(tag_rows, fail_after=0),
             ),
             self.assertLogs(
                 'imbi.api.endpoints.projects', level='ERROR'
             ) as logs,
         ):
             result = await projects._fetch_release_summaries(pids)
-        ranked = [s.latest_tag for s in result.values()]
-        # The first batch still ranks correctly; the rest fall back.
-        self.assertIn('0.17.0-2', ranked)
-        self.assertIn('1.0.0', ranked)
+        ranked = {s.latest_tag for s in result.values()}
+        self.assertEqual(ranked, {'1.0.0'})
         self.assertIn('fall back to highest-version', logs.output[0])
-
-    async def test_partial_project_takes_the_fallback_whole(self) -> None:
-        # A project straddling a batch boundary must not rank from the
-        # half of its tags that happened to survive: the resolved tags
-        # would outrank the unresolved ones whatever their commits, which
-        # is neither correct nor the documented fallback.
-        from imbi.api.endpoints import projects
-
-        # One project big enough to span batches on its own.
-        shas = [f'{n:040d}' for n in range(4000)]
-        batches = projects._param_batches({'p1': shas})
-        self.assertGreater(len(batches), 1, 'expected a split project')
-
-        calls = {'n': 0}
-
-        async def dispatch(
-            sql: str, params: dict[str, typing.Any] | None = None
-        ) -> list[dict[str, typing.Any]]:
-            calls['n'] += 1
-            if calls['n'] > 1:
-                raise RuntimeError('Field value too long')
-            return [
-                {
-                    'project_id': 'p1',
-                    'sha': sha,
-                    'authored_at': (
-                        datetime.datetime(2026, 8, 19)  # noqa: DTZ001
-                    ),
-                }
-                for sha in (params or {}).get('shas', [])
-            ]
-
-        with (
-            mock.patch(
-                'imbi.api.endpoints.projects.clickhouse.query',
-                mock.AsyncMock(side_effect=dispatch),
-            ),
-            self.assertLogs('imbi.api.endpoints.projects', level='ERROR'),
-        ):
-            authored = await projects._fetch_authored_times({'p1': shas})
-        # The first batch succeeded, but p1 is degraded overall, so it
-        # must carry no authored times at all rather than a partial set.
-        self.assertNotIn('p1', authored)
 
 
 class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
@@ -3536,7 +3386,7 @@ class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def _count_params(
         self, authored_rows: list[dict[str, typing.Any]]
-    ) -> dict[str, typing.Any]:
+    ) -> list[tuple[str, str, str]]:
         from imbi.api.endpoints import projects
 
         tag_rows = [
@@ -3554,7 +3404,7 @@ class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
         query = mock.AsyncMock(side_effect=[tag_rows, [], authored_rows, []])
         with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
             await projects._fetch_release_summaries(['p1'])
-        return query.await_args_list[-1].args[1]
+        return query.await_args_list[-1].kwargs['project_ids']
 
     async def test_cutoff_is_the_tagged_commits_authored_time(self) -> None:
         params = await self._count_params(
@@ -3566,16 +3416,12 @@ class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ]
         )
-        self.assertEqual(params['cuts'], [self.COMMIT_AUTHORED])
         # Mode 1 compares ``authored_at``, the column release-drift
         # filters on, so both views bound the range identically.
-        self.assertEqual(params['modes'], [1])
+        self.assertEqual(params, [('p1', '2026-01-01 00:00:00.000', '1')])
 
     async def test_cutoff_falls_back_when_tagged_commit_unsynced(self) -> None:
         # No authored time to measure from, so the tag timestamp stands
         # in and mode 0 keeps the committer-date comparison.
         params = await self._count_params([])
-        self.assertEqual(
-            params['cuts'], [self.TAG_PUSHED.replace(tzinfo=datetime.UTC)]
-        )
-        self.assertEqual(params['modes'], [0])
+        self.assertEqual(params, [('p1', '2026-02-01 00:00:00.000', '0')])

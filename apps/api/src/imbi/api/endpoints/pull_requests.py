@@ -227,8 +227,8 @@ async def _list_prs(
     if not project_ids:
         return PullRequestListResponse(data=[], project_count=0, total=0)
 
-    clauses: list[str] = ['project_id IN {project_ids:Array(String)}']
-    params: dict[str, typing.Any] = {'project_ids': project_ids}
+    clauses: list[str] = ['project_id IN (SELECT project_id FROM project_ids)']
+    params: dict[str, typing.Any] = {}
 
     if state is not None:
         clauses.append('state = {state:String}')
@@ -256,11 +256,15 @@ async def _list_prs(
         + ' LIMIT {limit:UInt32} OFFSET {offset:UInt32}'
     )
 
-    count_rows = await clickhouse.query(count_sql, params)
+    count_rows = await clickhouse.query(
+        count_sql, params, project_ids=project_ids
+    )
     total = int(count_rows[0]['total']) if count_rows else 0
     project_count = int(count_rows[0]['project_count']) if count_rows else 0
 
-    data_rows = await clickhouse.query(data_sql, params)
+    data_rows = await clickhouse.query(
+        data_sql, params, project_ids=project_ids
+    )
     data = [
         PullRequestResponse.model_validate(_row_to_response(r))
         for r in data_rows
@@ -311,11 +315,11 @@ async def _fetch_review_requests(
     sql = (
         'SELECT pr_id, requested_reviewers, requested_teams'
         ' FROM pull_request_review_requests FINAL'
-        ' WHERE project_id IN {project_ids:Array(String)}'
+        ' WHERE project_id IN (SELECT project_id FROM project_ids)'
         ' AND pr_id IN {pr_ids:Array(String)}'
     )
     rows = await clickhouse.query(
-        sql, {'project_ids': project_ids, 'pr_ids': pr_ids}
+        sql, {'pr_ids': pr_ids}, project_ids=project_ids
     )
     return {
         str(row['pr_id']): (
@@ -352,13 +356,13 @@ async def _fetch_reviews(
         " 'commented') AS review_state,"
         ' max(submitted_at) AS last_submitted_at'
         ' FROM pull_request_reviews FINAL'
-        ' WHERE project_id IN {project_ids:Array(String)}'
+        ' WHERE project_id IN (SELECT project_id FROM project_ids)'
         ' AND pr_id IN {pr_ids:Array(String)}'
         ' GROUP BY pr_id, reviewer'
         ' ORDER BY last_submitted_at ASC'
     )
     rows = await clickhouse.query(
-        sql, {'project_ids': project_ids, 'pr_ids': pr_ids}
+        sql, {'pr_ids': pr_ids}, project_ids=project_ids
     )
     out: dict[str, list[dict[str, typing.Any]]] = {}
     for row in rows:
@@ -552,7 +556,6 @@ async def _list_pending_deploy(
     if not project_ids or not environment_slugs:
         return []
     params: dict[str, typing.Any] = {
-        'project_ids': project_ids,
         'environments': environment_slugs,
         'since': since,
         'limit': PENDING_DEPLOY_LIMIT,
@@ -571,7 +574,7 @@ async def _list_pending_deploy(
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed' AND is_deleted = 0"
         ' AND environment_slug IN {environments:Array(String)}'
-        ' AND project_id IN {project_ids:Array(String)}'
+        ' AND project_id IN (SELECT project_id FROM project_ids)'
         ' GROUP BY project_id)'
         ' SELECT pr.project_id AS project_id, pr.pr_id AS pr_id,'
         ' pr.pr_number AS pr_number, pr.title AS title, pr.url AS url,'
@@ -580,7 +583,7 @@ async def _list_pending_deploy(
         ' d.last_deployed_at AS last_deployed_at'
         ' FROM pull_requests AS pr FINAL'
         ' INNER JOIN deployed AS d ON d.project_id = pr.project_id'
-        ' WHERE pr.project_id IN {project_ids:Array(String)}'
+        ' WHERE pr.project_id IN (SELECT project_id FROM project_ids)'
         ' AND pr.merged AND NOT pr.draft'
         ' AND pr.merged_at >= {since:DateTime64(3)}'
         ' AND d.last_deployed_at <= pr.merged_at'
@@ -588,7 +591,7 @@ async def _list_pending_deploy(
         + ' ORDER BY pr.merged_at ASC, pr.pr_id ASC'
         ' LIMIT {limit:UInt32}'
     )
-    rows = await clickhouse.query(sql, params)
+    rows = await clickhouse.query(sql, params, project_ids=project_ids)
     return [
         PendingDeployPullRequest.model_validate(_row_to_response(row))
         for row in rows
@@ -757,13 +760,13 @@ async def _fetch_pr_activity(
         ' countIf(merged AND created_at >= {since:DateTime64(3)})'
         ' AS merged_count'
         ' FROM pull_requests FINAL'
-        ' WHERE project_id IN {project_ids:Array(String)}'
+        ' WHERE project_id IN (SELECT project_id FROM project_ids)'
         ' AND NOT draft'
         ' AND created_at >= {since:DateTime64(3)}'
         ' GROUP BY author'
     )
     return await clickhouse.query(
-        sql, {'project_ids': project_ids, 'since': since}
+        sql, {'since': since}, project_ids=project_ids
     )
 
 

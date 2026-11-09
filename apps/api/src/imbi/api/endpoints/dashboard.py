@@ -409,10 +409,7 @@ async def get_dashboard_metrics(
         (start_date + datetime.timedelta(days=offset)).isoformat()
         for offset in range(_METRICS_WINDOW_DAYS)
     ]
-    params: dict[str, typing.Any] = {
-        'since': since,
-        'project_ids': await _active_project_ids(db),
-    }
+    params: dict[str, typing.Any] = {'since': since}
     # One scan of the (FINAL, merge-on-read) deploy rows yields both the
     # per-day series and the per-environment rollup.
     deploys, events, ops, prs = await asyncio.gather(
@@ -444,9 +441,10 @@ async def get_dashboard_metrics(
             ' FROM pull_requests FINAL'
             ' WHERE created_at >= {since:DateTime64(3)}'
             ' AND NOT draft'
-            ' AND project_id IN {project_ids:Array(String)}'
+            ' AND project_id IN (SELECT project_id FROM project_ids)'
             ' GROUP BY day',
             params,
+            project_ids=await _active_project_ids(db),
         ),
     )
     releases_by_day: dict[str, int] = {}

@@ -78,7 +78,7 @@ _BATCHES_BY_PROJECT = (
     'SELECT release_id,'
     "       argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id"
     '  FROM imbi.release_component_batches'
-    ' WHERE project_id IN {project_ids:Array(String)}'
+    ' WHERE project_id IN (SELECT project_id FROM project_ids)'
     ' GROUP BY release_id'
 )
 
@@ -101,9 +101,9 @@ _JOIN = (
 def _by_project(select: str, where: str = '') -> str:
     """Compose a project-scoped read against the winning batches."""
     return (
-        f'{select} FROM imbi.release_components AS c'
+        f'{select} FROM imbi.release_components AS c'  # noqa: S608
         + _JOIN.format(batches=_BATCHES_BY_PROJECT)
-        + ' WHERE c.project_id IN {project_ids:Array(String)}'
+        + ' WHERE c.project_id IN (SELECT project_id FROM project_ids)'
         + where
     )
 
@@ -148,13 +148,14 @@ async def component_ids_in_org(
     if not project_ids or component_ids == []:
         return set()
     where = ''
-    params: dict[str, typing.Any] = {'project_ids': project_ids}
+    params: dict[str, typing.Any] = {}
     if component_ids is not None:
         where = ' AND c.component_id IN {component_ids:Array(String)}'
         params['component_ids'] = component_ids
     rows = await clickhouse.query(
         _by_project('SELECT DISTINCT c.component_id AS component_id', where),
         params,
+        project_ids=project_ids,
     )
     return {str(row['component_id']) for row in rows}
 
@@ -172,7 +173,8 @@ async def component_in_org(project_ids: list[str], component_id: str) -> bool:
             'SELECT 1 AS hit',
             ' AND c.component_id = {component_id:String} LIMIT 1',
         ),
-        {'project_ids': project_ids, 'component_id': component_id},
+        {'component_id': component_id},
+        project_ids=project_ids,
     )
     return bool(rows)
 
@@ -200,10 +202,10 @@ async def component_release_in_org(
             ' LIMIT 1',
         ),
         {
-            'project_ids': project_ids,
             'component_id': component_id,
             'component_release_id': component_release_id,
         },
+        project_ids=project_ids,
     )
     return bool(rows)
 
@@ -227,7 +229,8 @@ async def search_counts(
             ' AND c.component_id IN {component_ids:Array(String)}'
             ' GROUP BY c.component_id',
         ),
-        {'project_ids': project_ids, 'component_ids': component_ids},
+        {'component_ids': component_ids},
+        project_ids=project_ids,
     )
     return {
         str(row['component_id']): (
@@ -255,7 +258,7 @@ async def ecosystem_totals(project_ids: list[str]) -> dict[str, int]:
             ' uniqExact(c.component_id) AS total',
             " AND c.ecosystem != '' GROUP BY c.ecosystem",
         ),
-        {'project_ids': project_ids},
+        project_ids=project_ids,
     )
     return {str(row['ecosystem']): int(row['total']) for row in rows}
 
