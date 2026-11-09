@@ -8,6 +8,7 @@ import fastapi
 
 from imbi.common import lifespan
 from imbi.common.graph.client import (
+    CypherExecute,
     Graph,
     SearchResult,
     StatementMatchedNothing,
@@ -53,6 +54,7 @@ Pool = typing.Annotated[
 
 
 __all__ = [
+    'CypherExecute',
     'Graph',
     'OnStartup',
     'Pool',
