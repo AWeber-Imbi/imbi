@@ -597,6 +597,53 @@ async def current_and_latest_by_project(
     return out
 
 
+#: The newest in-flight ``Deployment`` per environment that has no
+#: ``Release``.  ``release`` is not a node: it is the tag and committish
+#: the writer could not resolve, read off the deployment itself.  It has
+#: no ``id``, so no caller can mistake it for a release to poll or serve.
+_IN_FLIGHT_UNRELEASED_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
+WHERE p.id IN {project_ids}
+      AND d.status IN ['pending', 'in_progress']
+      AND NOT EXISTS((:Release)-[:HAS_DEPLOYMENT]->(d))
+WITH p, e, max(COALESCE(d.created_at, d.updated_at)) AS ts
+MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
+WHERE COALESCE(d2.created_at, d2.updated_at) = ts
+      AND d2.status IN ['pending', 'in_progress']
+      AND NOT EXISTS((:Release)-[:HAS_DEPLOYMENT]->(d2))
+RETURN p.id AS project_id,
+       e{{.slug, .name, .sort_order}} AS env,
+       {{tag: d2.release_tag, committish: d2.release_committish}}
+           AS release,
+       d2 AS deployment
+"""
+
+
+async def in_flight_unreleased_by_project(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+) -> list[ProjectDeployment]:
+    """Newest in-flight ``Deployment`` per environment with no Release.
+
+    :func:`current_and_latest_by_project` reads only deployments with a
+    ``Release``, so a rollout whose tag did not resolve is invisible to
+    it while it runs.  This read finds those rollouts.  "In flight" is
+    ``pending`` or ``in_progress``, the same test as
+    :func:`stuck_deployments`.
+
+    ``release`` on each result holds only the node's ``release_tag``
+    and ``release_committish``; see :data:`_IN_FLIGHT_UNRELEASED_QUERY`.
+    """
+    if not project_ids:
+        return []
+    rows = await db.execute(
+        _IN_FLIGHT_UNRELEASED_QUERY,
+        {'project_ids': list(project_ids)},
+        ['project_id', 'env', 'release', 'deployment'],
+    )
+    return _to_project_deployments(_newest_per_environment(rows))
+
+
 def started_at(deployment: ProjectDeployment) -> datetime.datetime:
     """When *deployment* started, or its last change if that is unknown."""
     return as_utc(deployment.started_at or deployment.event.timestamp)

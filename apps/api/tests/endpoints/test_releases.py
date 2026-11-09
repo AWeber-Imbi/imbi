@@ -116,6 +116,16 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         )
         self._notes_patch.start()
         self.addCleanup(self._notes_patch.stop)
+        # GET /current also reads in-flight deployments with no release.
+        # Keep that read off ``mock_db`` so the query sequences the tests
+        # script stay as they are; tests of that read replace this mock.
+        self.orphan_reader = mock.AsyncMock(return_value=[])
+        orphan_patch = mock.patch(
+            'imbi.common.deployments.in_flight_unreleased_by_project',
+            new=self.orphan_reader,
+        )
+        orphan_patch.start()
+        self.addCleanup(orphan_patch.stop)
         self.client = fastapi.testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
 
@@ -2080,8 +2090,9 @@ def _project_deployment(
     *,
     status: str,
     timestamp: str,
-    release: dict[str, typing.Any],
+    release: dict[str, typing.Any] | None,
     external_run_id: str,
+    external_run_url: str | None = None,
 ) -> deployment_nodes.ProjectDeployment:
     """One row of what the shared current/latest reader answers with."""
     return deployment_nodes.ProjectDeployment(
@@ -2092,6 +2103,7 @@ def _project_deployment(
             timestamp=datetime.datetime.fromisoformat(timestamp),
             status=typing.cast('typing.Any', status),
             external_run_id=external_run_id,
+            external_run_url=external_run_url,
         ),
     )
 
@@ -2121,6 +2133,7 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
                 timestamp='2026-04-22T10:00:00+00:00',
                 release=_release_row(tag='1.1.0', committish='9999999'),
                 external_run_id='2',
+                external_run_url='https://gh/runs/2',
             ),
         )
 
@@ -2173,6 +2186,10 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual(latest.tag, detail['latest_deployment']['tag'])
         self.assertEqual(
             latest.committish, detail['latest_deployment']['committish']
+        )
+        self.assertEqual('https://gh/runs/2', latest.run_url)
+        self.assertEqual(
+            latest.run_url, detail['latest_deployment']['run_url']
         )
 
     def test_newer_attempt_survives_a_serving_node_that_closed_later(
@@ -2280,6 +2297,50 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         detail = response.json()[0]
         self.assertEqual('2.0.0', detail['release']['tag'])
         self.assertIsNone(detail['latest_deployment'])
+
+    def _detail_with_orphan(self, started: str) -> dict[str, typing.Any]:
+        """GET while an in-flight deployment with no release runs."""
+        self.orphan_reader.return_value = [
+            _project_deployment(
+                status='in_progress',
+                timestamp=started,
+                release={'tag': '1.2.0', 'committish': None},
+                external_run_id='3',
+                external_run_url='https://gh/runs/3',
+            )._replace(started_at=datetime.datetime.fromisoformat(started))
+        ]
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'env': _PRODUCTION, 'release': None, 'deployments': None}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[self.state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()[0]
+
+    def test_in_flight_orphan_is_the_latest_deployment(self) -> None:
+        detail = self._detail_with_orphan('2026-04-23T10:00:00+00:00')
+        # The serving release stays; the orphan is reported apart.
+        self.assertEqual('1.0.0', detail['release']['tag'])
+        latest = detail['latest_deployment']
+        self.assertEqual('in_progress', latest['status'])
+        self.assertEqual('1.2.0', latest['tag'])
+        self.assertIsNone(latest['committish'])
+        self.assertEqual('https://gh/runs/3', latest['run_url'])
+
+    def test_orphan_older_than_the_reported_attempt_is_ignored(self) -> None:
+        detail = self._detail_with_orphan('2026-04-21T10:00:00+00:00')
+        self.assertEqual('failed', detail['latest_deployment']['status'])
+        self.assertEqual('1.1.0', detail['latest_deployment']['tag'])
 
 
 class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
@@ -2853,6 +2914,10 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
         self.assertEqual('1.0.0', body['release']['tag'])
         self.assertEqual('pass', body['ci_status'])
         self.assertEqual('in_progress', body['latest_deployment']['status'])
+        # The poll found the run URL the stored event did not have.
+        self.assertEqual(
+            'https://gh/runs/2', body['latest_deployment']['run_url']
+        )
 
 
 def _tiny_sbom() -> dict[str, typing.Any]:

@@ -330,6 +330,8 @@ export * from './integrations'
 export interface LatestDeployment {
   committish?: null | string
   deployed_at: string
+  // The attempt's provider run, when the node records one.
+  run_url?: null | string
   // When the attempt started; `deployed_at` is its last status change.
   started_at?: null | string
   status: DeploymentStatus

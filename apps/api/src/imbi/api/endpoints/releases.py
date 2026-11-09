@@ -537,6 +537,57 @@ def _predates_serving_legacy(
     )
 
 
+async def _add_in_flight_orphans(
+    db: graph.Graph,
+    project_id: str,
+    by_env: dict[
+        str,
+        tuple[
+            dict[str, typing.Any],
+            dict[str, typing.Any] | None,
+            models.DeploymentEvent | None,
+        ],
+    ],
+    latest_by_slug: dict[str, LatestDeployment],
+) -> None:
+    """Report in-flight deployments that have no ``Release``.
+
+    The shared reader sees only deployments with a ``Release``.  An
+    in-flight rollout whose tag did not resolve has none, but it still
+    runs and still has to gate a new deploy.  Report it when it started
+    after both the serving release and the attempt already reported.
+    It never becomes the serving release, and it is not polled: there
+    is no release id to poll with.  The sweeper chases it instead.
+    """
+    for orphan in await deployment_nodes.in_flight_unreleased_by_project(
+        db, [project_id]
+    ):
+        slug = str(orphan.environment.get('slug') or '')
+        if slug not in by_env:
+            continue
+        begun = deployment_nodes.started_at(orphan)
+        serving = by_env[slug][2]
+        shown = latest_by_slug.get(slug)
+        if (
+            serving is not None
+            and begun <= deployment_nodes.as_utc(serving.timestamp)
+        ) or (
+            shown is not None
+            and begun
+            <= deployment_nodes.as_utc(shown.started_at or shown.deployed_at)
+        ):
+            continue
+        release = orphan.release or {}
+        latest_by_slug[slug] = LatestDeployment(
+            status=orphan.event.status,
+            deployed_at=orphan.event.timestamp,
+            started_at=orphan.started_at,
+            tag=release.get('tag') or None,
+            committish=release.get('committish') or None,
+            run_url=orphan.event.external_run_url,
+        )
+
+
 async def _reconcile_in_flight_run(
     db: graph.Graph,
     *,
@@ -787,7 +838,12 @@ def _fold_attempt(
         return True
     if latest_by_slug is not None and slug in latest_by_slug:
         latest_by_slug[slug] = latest_by_slug[slug].model_copy(
-            update={'status': event.status, 'deployed_at': event.timestamp}
+            update={
+                'status': event.status,
+                'deployed_at': event.timestamp,
+                'run_url': event.external_run_url
+                or latest_by_slug[slug].run_url,
+            }
         )
     return False
 
@@ -1197,6 +1253,7 @@ async def list_current_releases(
                 started_at=newest.started_at,
                 tag=newest.release.get('tag') or None,
                 committish=newest.release.get('committish') or None,
+                run_url=newest.event.external_run_url,
             )
             if (
                 newest.event.status in ('pending', 'in_progress')
@@ -1205,6 +1262,8 @@ async def list_current_releases(
                 and newest.release.get('committish')
             ):
                 in_flight_nodes.append((slug, newest.release, newest.event))
+
+    await _add_in_flight_orphans(db, project_id, by_env, latest_by_slug)
 
     ci_status_by_slug = await _hydrate_release_train(
         db,

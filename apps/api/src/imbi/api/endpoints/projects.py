@@ -186,6 +186,8 @@ class LatestDeployment(pydantic.BaseModel):
     started_at: datetime.datetime | None = None
     tag: str | None = None
     committish: str | None = None
+    #: The attempt's provider run, when the node records one.
+    run_url: str | None = None
 
 
 class ReleaseSummary(pydantic.BaseModel):
@@ -844,6 +846,7 @@ async def _apply_deployment_nodes(
                 started_at=entry.latest.started_at,
                 tag=entry.latest.release.get('tag') or None,
                 committish=entry.latest.release.get('committish') or None,
+                run_url=entry.latest.event.external_run_url,
             )
     return latest_deployments
 

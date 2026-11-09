@@ -580,7 +580,7 @@ export function ProjectDetail({
       blocked: true,
       envName: row?.environment.name ?? run?.envName ?? null,
       phase: 'deploying',
-      runUrl: sanitizeHttpUrl(run?.runUrl) ?? null,
+      runUrl: sanitizeHttpUrl(run?.runUrl) ?? sanitizeHttpUrl(latest?.run_url),
       startedAt: run
         ? new Date(run.startedMs).toISOString()
         : (latest?.started_at ?? latest?.deployed_at ?? null),
