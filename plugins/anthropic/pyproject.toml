@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-anthropic"
-version = "2.43.1"
+version = "2.44.0"
 description = "Anthropic workload identity federation for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -17,7 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "imbi-common==2.43.1",
+  "imbi-common==2.44.0",
   "pydantic>=2",
 ]
 
