@@ -516,8 +516,11 @@ async def ensure_service_account(
     async def ensure(
         execute: graph.CypherExecute,
     ) -> list[dict[str, typing.Any]]:
-        # Read again under the lock: a concurrent call can have made
-        # the account after the fast path read.
+        """Read or make the service account under the lock.
+
+        Read again first: a concurrent call can have made the account
+        after the fast path read.
+        """
         records = await execute(
             _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
         )
