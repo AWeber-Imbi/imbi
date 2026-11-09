@@ -770,6 +770,77 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         self.assertEqual(OTHER_RELEASE_ID, state.current.release['id'])
         self.assertEqual(state.current, state.latest)
 
+    async def test_in_flight_orphan_is_the_latest_attempt(self) -> None:
+        """An in-flight rollout with no Release still gates a deploy.
+
+        The newest in-flight orphan is *latest* with the tag from the
+        node.  A terminal orphan is not a candidate, even when newer.
+        """
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            external_run_id='orphan-old',
+            release_tag='1.0.0',
+            timestamp=NOW,
+        )
+        await self.upsert(
+            status='pending',
+            release_id=None,
+            external_run_id='orphan-new',
+            external_run_url='https://example.com/runs/2',
+            release_tag='1.1.0',
+            release_committish='abc1234',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='failed',
+            release_id=None,
+            external_run_id='orphan-done',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        state = await self._state()
+        self.assertIsNone(state.current)
+        self.assertEqual('orphan-new', state.latest.event.external_run_id)
+        self.assertEqual(
+            'https://example.com/runs/2', state.latest.event.external_run_url
+        )
+        self.assertEqual(
+            {'tag': '1.1.0', 'committish': 'abc1234'}, state.latest.release
+        )
+
+    async def test_orphan_after_a_success_is_latest_not_current(
+        self,
+    ) -> None:
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            external_run_id='2',
+            release_tag='1.1.0',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('1', state.current.event.external_run_id)
+        self.assertEqual('2', state.latest.event.external_run_id)
+
+    async def test_orphan_older_than_a_released_attempt_is_not_latest(
+        self,
+    ) -> None:
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            external_run_id='1',
+            timestamp=NOW,
+        )
+        await self.upsert(
+            status='failed',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        state = await self._state()
+        self.assertEqual('2', state.latest.event.external_run_id)
+
     async def test_no_success_leaves_current_unset(self) -> None:
         await self.upsert(status='failed', external_run_id='1', timestamp=NOW)
         state = await self._state()

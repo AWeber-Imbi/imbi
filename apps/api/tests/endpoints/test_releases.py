@@ -1789,6 +1789,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1826,6 +1827,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1867,6 +1869,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1901,6 +1904,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1930,6 +1934,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1960,6 +1965,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         lookup = mock.AsyncMock(
             return_value={(PROJECT_ID, 'production'): 'deployer'}
@@ -2007,6 +2013,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         kevin = models.User(
             email='kevin@example.com',
@@ -2056,6 +2063,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2080,8 +2088,9 @@ def _project_deployment(
     *,
     status: str,
     timestamp: str,
-    release: dict[str, typing.Any],
+    release: dict[str, typing.Any] | None,
     external_run_id: str,
+    external_run_url: str | None = None,
 ) -> deployment_nodes.ProjectDeployment:
     """One row of what the shared current/latest reader answers with."""
     return deployment_nodes.ProjectDeployment(
@@ -2092,6 +2101,7 @@ def _project_deployment(
             timestamp=datetime.datetime.fromisoformat(timestamp),
             status=typing.cast('typing.Any', status),
             external_run_id=external_run_id,
+            external_run_url=external_run_url,
         ),
     )
 
@@ -2121,6 +2131,7 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
                 timestamp='2026-04-22T10:00:00+00:00',
                 release=_release_row(tag='1.1.0', committish='9999999'),
                 external_run_id='2',
+                external_run_url='https://gh/runs/2',
             ),
         )
 
@@ -2173,6 +2184,10 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual(latest.tag, detail['latest_deployment']['tag'])
         self.assertEqual(
             latest.committish, detail['latest_deployment']['committish']
+        )
+        self.assertEqual('https://gh/runs/2', latest.run_url)
+        self.assertEqual(
+            latest.run_url, detail['latest_deployment']['run_url']
         )
 
     def test_newer_attempt_survives_a_serving_node_that_closed_later(
@@ -2281,6 +2296,41 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual('2.0.0', detail['release']['tag'])
         self.assertIsNone(detail['latest_deployment'])
 
+    def test_in_flight_orphan_is_the_latest_deployment(self) -> None:
+        """An in-flight rollout with no Release is reported, not served."""
+        orphan = _project_deployment(
+            status='in_progress',
+            timestamp='2026-04-23T10:00:00+00:00',
+            release={'tag': '1.2.0', 'committish': None},
+            external_run_id='3',
+            external_run_url='https://gh/runs/3',
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'env': _PRODUCTION, 'release': None, 'deployments': None}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(
+                    return_value=[self.state._replace(latest=orphan)]
+                ),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = response.json()[0]
+        self.assertEqual('1.0.0', detail['release']['tag'])
+        latest = detail['latest_deployment']
+        self.assertEqual('in_progress', latest['status'])
+        self.assertEqual('1.2.0', latest['tag'])
+        self.assertIsNone(latest['committish'])
+        self.assertEqual('https://gh/runs/3', latest['run_url'])
+
 
 class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
     """GET /releases/current — deployment-plugin hydration pass.
@@ -2373,6 +2423,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
             [],  # resolve_plugin → no plugin → HTTPException(404)
         ]
         with mock.patch(
@@ -2414,6 +2465,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
             # The persistence path does additional db.execute calls
             # (re-fetch release, edge MATCH, SET).  Provide enough
             # truthy results so append_deployment_event can land.
@@ -2472,6 +2524,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2528,6 +2581,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2584,6 +2638,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2640,6 +2695,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2692,6 +2748,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2725,6 +2782,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2759,6 +2817,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2853,6 +2912,10 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
         self.assertEqual('1.0.0', body['release']['tag'])
         self.assertEqual('pass', body['ci_status'])
         self.assertEqual('in_progress', body['latest_deployment']['status'])
+        # The poll found the run URL the stored event did not have.
+        self.assertEqual(
+            'https://gh/runs/2', body['latest_deployment']['run_url']
+        )
 
 
 def _tiny_sbom() -> dict[str, typing.Any]:

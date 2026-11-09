@@ -14827,6 +14827,8 @@ export interface components {
             tag?: string | null;
             /** Committish */
             committish?: string | null;
+            /** Run Url */
+            run_url?: string | null;
         };
         /**
          * LifecycleInvocation

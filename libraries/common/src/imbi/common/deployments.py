@@ -25,6 +25,7 @@ the array any more.
 
 """
 
+import asyncio
 import collections.abc as abc
 import datetime
 import logging
@@ -441,6 +442,13 @@ _SERVING_STATUSES: typing.Final[typing.LiteralString] = (
     "['pending', 'in_progress', 'success']"
 )
 
+#: Statuses of a rollout that has not finished.  Queries take it as the
+#: ``{in_flight}`` parameter.
+IN_FLIGHT_STATUSES: typing.Final[tuple[DeploymentStatus, ...]] = (
+    'pending',
+    'in_progress',
+)
+
 #: Which deployments may answer a released-deployment read.
 #:
 #: * ``any`` -- every attempt, failures included.  For "what last
@@ -545,6 +553,28 @@ class EnvironmentReleaseState(typing.NamedTuple):
     latest: ProjectDeployment
 
 
+#: The newest in-flight ``Deployment`` per environment that has no
+#: ``Release``.  ``release`` is not a node: it is the tag and committish
+#: the writer could not resolve, read off the deployment itself.  It has
+#: no ``id``, so no caller can mistake it for a release to poll or serve.
+_IN_FLIGHT_UNRELEASED_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
+WHERE p.id IN {project_ids}
+      AND d.status IN {in_flight}
+      AND NOT EXISTS((:Release)-[:HAS_DEPLOYMENT]->(d))
+WITH p, e, max(COALESCE(d.created_at, d.updated_at)) AS ts
+MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
+WHERE COALESCE(d2.created_at, d2.updated_at) = ts
+      AND d2.status IN {in_flight}
+      AND NOT EXISTS((:Release)-[:HAS_DEPLOYMENT]->(d2))
+RETURN p.id AS project_id,
+       e{{.slug, .name, .sort_order}} AS env,
+       {{tag: d2.release_tag, committish: d2.release_committish}}
+           AS release,
+       d2 AS deployment
+"""
+
+
 async def current_and_latest_by_project(
     db: graph.Graph,
     project_ids: abc.Sequence[str],
@@ -566,26 +596,49 @@ async def current_and_latest_by_project(
     Ordering is by the provider timestamps the node records, never by
     when Imbi ingested them, with the provider run id breaking a tie
     (see :func:`_newest_per_environment`).
+
+    *latest* can also be an in-flight rollout with no ``Release`` -- one
+    whose tag did not resolve.  It still runs and still has to gate a
+    new deploy, so it is the latest attempt when it started after the
+    released one.  It is never *current*.  Its ``release`` holds only
+    the ``tag`` and ``committish`` the node records, with no ``id``
+    (see :data:`_IN_FLIGHT_UNRELEASED_QUERY`).
     """
     if not project_ids:
         return []
-    params = {'project_ids': list(project_ids)}
+    params: dict[str, typing.Any] = {
+        'project_ids': list(project_ids),
+        'in_flight': list(IN_FLIGHT_STATUSES),
+    }
     columns = ['project_id', 'env', 'release', 'deployment']
-    latest = _by_environment(
-        await db.execute(_released_query('any'), params, columns)
-    )
-    current = _by_environment(
-        await db.execute(_released_query('success'), params, columns)
+    latest, current, orphans = (
+        _by_environment(rows)
+        for rows in await asyncio.gather(
+            db.execute(_released_query('any'), params, columns),
+            db.execute(_released_query('success'), params, columns),
+            db.execute(_IN_FLIGHT_UNRELEASED_QUERY, params, columns),
+        )
     )
     out: list[EnvironmentReleaseState] = []
-    for key, entry in latest.items():
+    for key in latest.keys() | orphans.keys():
         serving = current.get(key)
+        entry = latest.get(key)
         # Only an attempt that started after the serving one can be
         # news.  An older attempt that changed status late (a stuck
         # rollout closed as failed long after a newer release went out)
         # says nothing about the environment now.
-        if serving is not None and started_at(entry) < started_at(serving):
+        if (
+            entry is not None
+            and serving is not None
+            and started_at(entry) < started_at(serving)
+        ):
             entry = serving
+        # An orphan wins only when it started later; ``max`` keeps the
+        # first of a tie, so the released attempt wins a tie.
+        entry = max(
+            (e for e in (entry, orphans.get(key)) if e is not None),
+            key=started_at,
+        )
         out.append(
             EnvironmentReleaseState(
                 entry.project_id,
@@ -815,7 +868,7 @@ MATCH (:Project {{id: {project_id}}})
       -[:HAS_RELEASE]->(:Release {{id: {release_id}}})
       -[:HAS_DEPLOYMENT]->(d:Deployment)
       -[:TARGETS]->(:Environment {{slug: {env_slug}}})
-WHERE d.status IN ['pending', 'in_progress']
+WHERE d.status IN {in_flight}
 SET d.status = {status},
     d.note = {note},
     d.updated_at = {timestamp},
@@ -851,6 +904,7 @@ async def close_in_flight(
             'project_id': project_id,
             'release_id': release_id,
             'env_slug': env_slug,
+            'in_flight': list(IN_FLIGHT_STATUSES),
             'status': status,
             'note': note,
             'source': source,
@@ -882,7 +936,7 @@ class StuckDeployment(typing.NamedTuple):
 _STUCK_QUERY: typing.Final[typing.LiteralString] = """
 MATCH (p:Project {{id: {project_id}}})<-[:BELONGS_TO]-(d:Deployment)
       -[:TARGETS]->(e:Environment)-[:BELONGS_TO]->(o:Organization)
-WHERE d.status IN ['pending', 'in_progress']
+WHERE d.status IN {in_flight}
       AND d.external_run_id IS NOT NULL
       AND COALESCE(d.updated_at, d.created_at) < {cutoff}
 OPTIONAL MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d)
@@ -909,6 +963,7 @@ async def stuck_deployments(
         _STUCK_QUERY,
         {
             'project_id': project_id,
+            'in_flight': list(IN_FLIGHT_STATUSES),
             'cutoff': cutoff.astimezone(datetime.UTC).isoformat(),
         },
         ['deployment', 'env_slug', 'org_slug', 'release_id'],

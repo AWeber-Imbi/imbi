@@ -665,7 +665,7 @@ async def _hydrate_release_train(
         # land.
         if (
             event is not None
-            and event.status in ('in_progress', 'pending')
+            and event.status in deployment_nodes.IN_FLIGHT_STATUSES
             and event.external_run_id
         ):
             in_flight.append((slug, release_id, committish, event))
@@ -787,7 +787,12 @@ def _fold_attempt(
         return True
     if latest_by_slug is not None and slug in latest_by_slug:
         latest_by_slug[slug] = latest_by_slug[slug].model_copy(
-            update={'status': event.status, 'deployed_at': event.timestamp}
+            update={
+                'status': event.status,
+                'deployed_at': event.timestamp,
+                'run_url': event.external_run_url
+                or latest_by_slug[slug].run_url,
+            }
         )
     return False
 
@@ -1191,15 +1196,11 @@ async def list_current_releases(
                 newest, legacy_event, by_env[slug][2]
             )
         ):
-            latest_by_slug[slug] = LatestDeployment(
-                status=newest.event.status,
-                deployed_at=newest.event.timestamp,
-                started_at=newest.started_at,
-                tag=newest.release.get('tag') or None,
-                committish=newest.release.get('committish') or None,
-            )
+            latest_by_slug[slug] = LatestDeployment.from_node(newest)
+            # An in-flight rollout with no Release has no release ``id``,
+            # so it is never polled; the deployment sweeper chases it.
             if (
-                newest.event.status in ('pending', 'in_progress')
+                newest.event.status in deployment_nodes.IN_FLIGHT_STATUSES
                 and newest.event.external_run_id
                 and newest.release.get('id')
                 and newest.release.get('committish')
