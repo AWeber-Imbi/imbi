@@ -715,11 +715,6 @@ def validate_provider_base_url(value: str) -> str:
     return value.strip()
 
 
-#: The drivers that can use workload identity federation (WIF plan
-#: 4.6). The vendor of each is the key of its token exchanger.
-WIF_DRIVERS: frozenset[str] = frozenset({'anthropic', 'openai'})
-
-
 class AIProviderWorkloadIdentity(pydantic.BaseModel):
     """How an AI Provider gets a vendor token (WIF plan 4.6, O7).
 
@@ -785,10 +780,8 @@ class AIProvider(Node):
             raise ValueError("driver 'openai_compatible' requires a base_url")
         if self.workload_identity is not None:
             # D8: the token goes only to the default vendor endpoint.
-            if self.driver not in WIF_DRIVERS:
-                raise ValueError(
-                    f'driver {self.driver!r} cannot use workload identity'
-                )
+            # The driver check is in imbi-api: it needs the installed
+            # token exchangers.
             if self.base_url:
                 raise ValueError(
                     'a workload identity provider uses the default endpoint;'

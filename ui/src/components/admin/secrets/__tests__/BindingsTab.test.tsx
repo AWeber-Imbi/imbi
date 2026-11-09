@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   listSecretBindings,
   listSecretProviders,
+  listTokenExchangers,
   updateSecretBinding,
 } from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
@@ -15,6 +16,7 @@ vi.mock('@/api/endpoints', () => ({
   deleteSecretBinding: vi.fn(),
   listSecretBindings: vi.fn(),
   listSecretProviders: vi.fn(),
+  listTokenExchangers: vi.fn(),
   updateSecretBinding: vi.fn(),
   validateSecretBinding: vi.fn(),
 }))
@@ -51,7 +53,20 @@ describe('BindingsTab', () => {
       { config: {}, id: 'aws', name: 'aws', type: 'aws_secrets_manager' },
       { config: {}, id: 'gh', name: 'github', type: 'github_app' },
     ] as never)
+    vi.mocked(listTokenExchangers).mockResolvedValue([
+      { label: 'Acme AI', target_help: '{"acme_id": "..."}', vendor: 'acme' },
+    ])
     vi.mocked(updateSecretBinding).mockResolvedValue({} as never)
+  })
+
+  it('shows the target help of each installed exchanger', async () => {
+    render(<BindingsTab orgSlug="acme" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'New binding' }))
+    expect(
+      await screen.findByText(
+        /For Acme AI workload identity \(dynamic\): \{"acme_id": "\.\.\."\}/,
+      ),
+    ).toBeInTheDocument()
   })
 
   it('adds an App binding to the consumers of its key', async () => {

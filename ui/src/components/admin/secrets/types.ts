@@ -15,6 +15,7 @@ export type SecretProviderPatch = Schemas['SecretProviderPatch']
 export type SecretProviderTest = Schemas['SecretProviderTest']
 export type SecretProviderType = Schemas['SecretProviderType']
 export type SecretResolution = Schemas['SecretResolution']
+export type TokenExchangerType = Schemas['TokenExchangerType']
 export type WorkloadIdentity = Schemas['WorkloadIdentity']
 export type WorkloadIdentityPut = Schemas['WorkloadIdentityPut']
 

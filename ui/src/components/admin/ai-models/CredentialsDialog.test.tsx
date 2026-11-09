@@ -1,9 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen } from '@/test/utils'
+import { listTokenExchangers } from '@/api/endpoints'
+import { fireEvent, render, screen, waitFor } from '@/test/utils'
 import type { AIProvider } from '@/types'
 
 import { CredentialsDialog } from './CredentialsDialog'
+
+vi.mock('@/api/endpoints', () => ({
+  listTokenExchangers: vi.fn().mockResolvedValue([
+    {
+      label: 'Anthropic',
+      target_help: '{"service_account_id": "..."}, from the Console.',
+      vendor: 'anthropic',
+    },
+  ]),
+}))
 
 vi.mock('@/contexts/OrganizationContext', () => ({
   useOrganization: () => ({
@@ -40,13 +51,16 @@ const handlers = () => ({
 })
 
 describe('CredentialsDialog workload identity', () => {
-  it('sets workload identity for the selected organization', () => {
+  it('sets workload identity for the selected organization', async () => {
     const on = handlers()
     render(
       <CredentialsDialog {...on} isPending={false} open provider={provider} />,
     )
-    const use = screen.getByRole('button', { name: 'Use workload identity' })
+    const use = await screen.findByRole('button', {
+      name: 'Use workload identity',
+    })
     expect(use).toBeDisabled()
+    expect(screen.getByText(/from the Console\./)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Workload identity target'), {
       target: { value: '{"service_account_id": "svc-1"}' },
     })
@@ -80,6 +94,21 @@ describe('CredentialsDialog workload identity', () => {
       screen.getByRole('button', { name: 'Stop using workload identity' }),
     )
     expect(on.onRemoveWorkloadIdentity).toHaveBeenCalled()
+  })
+
+  it('offers no workload identity without an installed exchanger', async () => {
+    render(
+      <CredentialsDialog
+        {...handlers()}
+        isPending={false}
+        open
+        provider={{ ...provider, driver: 'openai' }}
+      />,
+    )
+    await waitFor(() => expect(listTokenExchangers).toHaveBeenCalled())
+    expect(
+      screen.queryByRole('button', { name: 'Use workload identity' }),
+    ).toBeNull()
   })
 
   it('offers no workload identity for a provider with a key', () => {

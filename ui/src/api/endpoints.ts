@@ -14,6 +14,7 @@ import type {
   SecretProviderTest,
   SecretProviderType,
   SecretResolution,
+  TokenExchangerType,
   WorkloadIdentity,
   WorkloadIdentityPut,
 } from '@/components/admin/secrets/types'
@@ -4164,6 +4165,15 @@ export const listIdentitySourceTypes = (
 ) =>
   apiClient.get<IdentitySourceType[]>(
     `${secretsPath(orgSlug, 'workload-identity')}/types`,
+    undefined,
+    signal,
+  )
+
+/** The installed token exchangers: the vendors that can use workload
+ * identity. */
+export const listTokenExchangers = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<TokenExchangerType[]>(
+    `${secretsPath(orgSlug, 'workload-identity')}/exchangers`,
     undefined,
     signal,
   )

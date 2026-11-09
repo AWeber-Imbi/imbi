@@ -166,6 +166,11 @@ class TokenExchanger:
     """
 
     vendor: typing.ClassVar[str]
+    #: The vendor name that the UI shows.
+    label: typing.ClassVar[str]
+    #: The target that :meth:`validate_target` accepts, as help text for
+    #: an admin: the JSON keys and where to find the values.
+    target_help: typing.ClassVar[str]
     #: The ``aud`` claim that the vendor accepts.
     audience: typing.ClassVar[str]
     #: The lifetime of the identity JWT (STS ``DurationSeconds``).

@@ -1,5 +1,8 @@
 import { useState } from 'react'
 
+import { useQuery } from '@tanstack/react-query'
+
+import { listTokenExchangers } from '@/api/endpoints'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
@@ -32,16 +35,6 @@ interface CredentialsDialogProps {
   provider: AIProvider
 }
 
-// WIF plan 4.6 and D8: only drivers with a token exchanger (models.
-// WIF_DRIVERS), on the default endpoint.
-const WIF_DRIVERS = new Set(['anthropic', 'openai'])
-const TARGET_HELP: Record<string, string> = {
-  anthropic:
-    '{"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, from the Anthropic Console.',
-  openai:
-    '{"identity_provider_id": "...", "service_account_id": "..."}, from the OpenAI dashboard.',
-}
-
 export function CredentialsDialog({
   error,
   isPending,
@@ -59,10 +52,19 @@ export function CredentialsDialog({
   const { organizations, selectedOrganization } = useOrganization()
   const usesIam = provider.auth_kind === 'iam'
   const wif = provider.workload_identity ?? null
+  const orgSlug = selectedOrganization?.slug
+  // WIF plan 4.6 and D8: only a driver with an installed token
+  // exchanger, on the default endpoint.
+  const exchangersQuery = useQuery({
+    enabled: open && !!orgSlug,
+    queryFn: ({ signal }) => listTokenExchangers(orgSlug ?? '', signal),
+    queryKey: ['token-exchangers', orgSlug],
+  })
+  const exchanger = exchangersQuery.data?.find(
+    (e) => e.vendor === provider.driver,
+  )
   const canUseWif =
-    WIF_DRIVERS.has(provider.driver) &&
-    !provider.base_url &&
-    !provider.has_credentials
+    !!exchanger && !provider.base_url && !provider.has_credentials
   let target: null | Record<string, unknown> = null
   let targetError: null | string = null
   if (targetText.trim()) {
@@ -149,7 +151,7 @@ export function CredentialsDialog({
           )}
           {canUseWif && !wif && selectedOrganization && (
             <FormField
-              description={`Instead of a key: a short-lived token from the identity source of ${selectedOrganization.name} (Admin, Secrets, Identity). The vendor ids: ${TARGET_HELP[provider.driver] ?? ''}`}
+              description={`Instead of a key: a short-lived token from the identity source of ${selectedOrganization.name} (Admin, Secrets, Identity). The vendor ids: ${exchanger?.target_help ?? ''}`}
               error={targetError ?? undefined}
               htmlFor="ai-provider-wif-target"
               label="Workload identity target"
