@@ -3,6 +3,7 @@
 import datetime
 import typing
 import unittest
+import uuid
 from unittest import mock
 
 import psycopg.errors
@@ -3051,6 +3052,106 @@ class DeploymentPluginProjectsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_capability_serves_nothing(self) -> None:
         self.integrations['i1']['capabilities'] = {}
         self.assertEqual(await self._run(), set())
+
+
+class DeploymentPluginProjectsGraphTestCase(unittest.IsolatedAsyncioTestCase):
+    """``_deployment_plugin_projects`` against a real AGE graph.
+
+    Project ``a`` binds the Integration with a project edge, ``b``
+    through its project type, and ``c`` not at all.
+    """
+
+    async def asyncSetUp(self) -> None:
+        from imbi.api.endpoints import projects
+
+        self.projects = projects
+        suffix = uuid.uuid4().hex[:10]
+        self.org = f'dp-{suffix}'
+        self.plugin = f'dp-plugin-{suffix}'
+        self.ids = {
+            name: f'dp-{name}-{suffix}'
+            for name in ('team', 'type', 'integration', 'reg', 'a', 'b', 'c')
+        }
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            """
+            CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})
+            CREATE (t:Team {{id: {team}, slug: {team}, name: 'Ops'}})
+            CREATE (t)-[:BELONGS_TO]->(o)
+            CREATE (pt:ProjectType {{id: {type}, slug: {type}}})
+            CREATE (pt)-[:BELONGS_TO]->(o)
+            CREATE (i:Integration {{id: {integration}, slug: {integration},
+                                    plugin: {plugin},
+                                    capabilities: {capabilities}}})
+            CREATE (i)-[:BELONGS_TO]->(o)
+            CREATE (r:PluginRegistration {{id: {reg}, slug: {plugin},
+                                           enabled: true}})
+            CREATE (a:Project {{id: {a}, slug: {a}, name: {a}}})
+            CREATE (b:Project {{id: {b}, slug: {b}, name: {b}}})
+            CREATE (c:Project {{id: {c}, slug: {c}, name: {c}}})
+            CREATE (a)-[:OWNED_BY]->(t)
+            CREATE (b)-[:OWNED_BY]->(t)
+            CREATE (c)-[:OWNED_BY]->(t)
+            CREATE (b)-[:TYPE]->(pt)
+            CREATE (a)-[:USES {{capability: 'deployment'}}]->(i)
+            CREATE (pt)-[:USES {{capability: 'deployment'}}]->(i)
+            RETURN o.id AS id
+            """,
+            {
+                'org': self.org,
+                'plugin': self.plugin,
+                'capabilities': '{"deployment": {"enabled": true}}',
+                **self.ids,
+            },
+            ['id'],
+        )
+        entry = mock.MagicMock()
+        entry.manifest.get_capability.return_value = object()
+        patcher = mock.patch(
+            'imbi.api.endpoints.projects.get_plugin', return_value=entry
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def _cleanup(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids}
+            DETACH DELETE n
+            RETURN 1 AS ok
+            """,
+            {'ids': [self.org, *self.ids.values()]},
+            ['ok'],
+        )
+        await self.graph.close()
+
+    async def _run(self) -> set[str]:
+        return await self.projects._deployment_plugin_projects(
+            self.graph,
+            self.org,
+            [self.ids['a'], self.ids['b'], self.ids['c']],
+        )
+
+    async def test_project_and_type_edges(self) -> None:
+        self.assertEqual(await self._run(), {self.ids['a'], self.ids['b']})
+
+    async def test_default_all_without_type_edges(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (:ProjectType {{id: {type}}})-[e:USES]->(:Integration)
+            DELETE e
+            RETURN 1 AS ok
+            """,
+            {'type': self.ids['type']},
+            ['ok'],
+        )
+        self.assertEqual(
+            await self._run(),
+            {self.ids['a'], self.ids['b'], self.ids['c']},
+        )
 
 
 class ReleaseSummaryTimestampTestCase(unittest.IsolatedAsyncioTestCase):
