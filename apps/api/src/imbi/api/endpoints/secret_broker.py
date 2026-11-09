@@ -1144,8 +1144,14 @@ async def list_identity_source_types(
 async def list_token_exchangers(_: ProviderRead) -> list[dict[str, str]]:
     """The installed token exchangers: the vendors that can use
     workload identity, with help text for the target."""
+    # An exchanger from before the label and target_help class variables
+    # gets defaults, so that it does not break the list.
     return [
-        {'vendor': e.vendor, 'label': e.label, 'target_help': e.target_help}
+        {
+            'vendor': e.vendor,
+            'label': getattr(e, 'label', e.vendor),
+            'target_help': getattr(e, 'target_help', ''),
+        }
         for e in identity.all_exchangers()
     ]
 

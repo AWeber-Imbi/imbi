@@ -54,6 +54,7 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
   const failures = [
     { label: 'agents', query: agentsQuery },
     { label: 'AI Providers', query: providersQuery },
+    { label: 'workload identity vendors', query: exchangersQuery },
   ].filter(
     ({ query }) =>
       query.isError &&
@@ -144,7 +145,11 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
         ]}
         emptyMessage="No agents or workload identity AI Providers."
         getRowKey={(row) => row.id}
-        loading={agentsQuery.isLoading || providersQuery.isLoading}
+        loading={
+          agentsQuery.isLoading ||
+          providersQuery.isLoading ||
+          exchangersQuery.isLoading
+        }
         rows={subjects}
       />
       {failures.map(({ label, query }) => (

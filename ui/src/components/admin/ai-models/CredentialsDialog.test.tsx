@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
 import { listTokenExchangers } from '@/api/endpoints'
@@ -97,18 +98,45 @@ describe('CredentialsDialog workload identity', () => {
   })
 
   it('offers no workload identity without an installed exchanger', async () => {
+    const client = new QueryClient()
+    render(
+      <QueryClientProvider client={client}>
+        <CredentialsDialog
+          {...handlers()}
+          isPending={false}
+          open
+          provider={{ ...provider, driver: 'openai' }}
+        />
+      </QueryClientProvider>,
+    )
+    await waitFor(() =>
+      expect(client.getQueryState(['token-exchangers', 'acme'])?.status).toBe(
+        'success',
+      ),
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Use workload identity' }),
+    ).toBeNull()
+  })
+
+  it('reports a failed exchanger lookup and retries it', async () => {
+    vi.mocked(listTokenExchangers).mockRejectedValueOnce(new Error('down'))
     render(
       <CredentialsDialog
         {...handlers()}
         isPending={false}
         open
-        provider={{ ...provider, driver: 'openai' }}
+        provider={provider}
       />,
     )
-    await waitFor(() => expect(listTokenExchangers).toHaveBeenCalled())
+    await screen.findByText(/Could not load the workload identity vendors/)
     expect(
       screen.queryByRole('button', { name: 'Use workload identity' }),
     ).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(
+      await screen.findByRole('button', { name: 'Use workload identity' }),
+    ).toBeInTheDocument()
   })
 
   it('offers no workload identity for a provider with a key', () => {
