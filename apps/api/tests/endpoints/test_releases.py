@@ -116,16 +116,6 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         )
         self._notes_patch.start()
         self.addCleanup(self._notes_patch.stop)
-        # GET /current also reads in-flight deployments with no release.
-        # Keep that read off ``mock_db`` so the query sequences the tests
-        # script stay as they are; tests of that read replace this mock.
-        self.orphan_reader = mock.AsyncMock(return_value=[])
-        orphan_patch = mock.patch(
-            'imbi.common.deployments.in_flight_unreleased_by_project',
-            new=self.orphan_reader,
-        )
-        orphan_patch.start()
-        self.addCleanup(orphan_patch.stop)
         self.client = fastapi.testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
 
@@ -1799,6 +1789,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1836,6 +1827,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1877,6 +1869,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1911,6 +1904,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1940,6 +1934,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1970,6 +1965,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         lookup = mock.AsyncMock(
             return_value={(PROJECT_ID, 'production'): 'deployer'}
@@ -2017,6 +2013,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         kevin = models.User(
             email='kevin@example.com',
@@ -2066,6 +2063,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2298,17 +2296,15 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         self.assertEqual('2.0.0', detail['release']['tag'])
         self.assertIsNone(detail['latest_deployment'])
 
-    def _detail_with_orphan(self, started: str) -> dict[str, typing.Any]:
-        """GET while an in-flight deployment with no release runs."""
-        self.orphan_reader.return_value = [
-            _project_deployment(
-                status='in_progress',
-                timestamp=started,
-                release={'tag': '1.2.0', 'committish': None},
-                external_run_id='3',
-                external_run_url='https://gh/runs/3',
-            )._replace(started_at=datetime.datetime.fromisoformat(started))
-        ]
+    def test_in_flight_orphan_is_the_latest_deployment(self) -> None:
+        """An in-flight rollout with no Release is reported, not served."""
+        orphan = _project_deployment(
+            status='in_progress',
+            timestamp='2026-04-23T10:00:00+00:00',
+            release={'tag': '1.2.0', 'committish': None},
+            external_run_id='3',
+            external_run_url='https://gh/runs/3',
+        )
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
             [{'env': _PRODUCTION, 'release': None, 'deployments': None}],
@@ -2316,7 +2312,9 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         with (
             mock.patch(
                 'imbi.common.deployments.current_and_latest_by_project',
-                mock.AsyncMock(return_value=[self.state]),
+                mock.AsyncMock(
+                    return_value=[self.state._replace(latest=orphan)]
+                ),
             ),
             mock.patch(
                 'imbi.common.graph.parse_agtype',
@@ -2325,22 +2323,13 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         ):
             response = self.client.get(self._url('/current'))
         self.assertEqual(response.status_code, 200, response.text)
-        return response.json()[0]
-
-    def test_in_flight_orphan_is_the_latest_deployment(self) -> None:
-        detail = self._detail_with_orphan('2026-04-23T10:00:00+00:00')
-        # The serving release stays; the orphan is reported apart.
+        detail = response.json()[0]
         self.assertEqual('1.0.0', detail['release']['tag'])
         latest = detail['latest_deployment']
         self.assertEqual('in_progress', latest['status'])
         self.assertEqual('1.2.0', latest['tag'])
         self.assertIsNone(latest['committish'])
         self.assertEqual('https://gh/runs/3', latest['run_url'])
-
-    def test_orphan_older_than_the_reported_attempt_is_ignored(self) -> None:
-        detail = self._detail_with_orphan('2026-04-21T10:00:00+00:00')
-        self.assertEqual('failed', detail['latest_deployment']['status'])
-        self.assertEqual('1.1.0', detail['latest_deployment']['tag'])
 
 
 class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
@@ -2434,6 +2423,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
             [],  # resolve_plugin → no plugin → HTTPException(404)
         ]
         with mock.patch(
@@ -2475,6 +2465,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
             # The persistence path does additional db.execute calls
             # (re-fetch release, edge MATCH, SET).  Provide enough
             # truthy results so append_deployment_event can land.
@@ -2533,6 +2524,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2589,6 +2581,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2645,6 +2638,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2701,6 +2695,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2753,6 +2748,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2786,6 +2782,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2820,6 +2817,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
             [],  # current_and_latest_by_project: no latest nodes
             [],  # current_and_latest_by_project: no current nodes
+            [],  # current_and_latest_by_project: no orphan nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',

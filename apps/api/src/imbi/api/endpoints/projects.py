@@ -189,6 +189,21 @@ class LatestDeployment(pydantic.BaseModel):
     #: The attempt's provider run, when the node records one.
     run_url: str | None = None
 
+    @classmethod
+    def from_node(
+        cls, deployment: deployment_nodes.ProjectDeployment
+    ) -> LatestDeployment:
+        """Report one ``Deployment`` node as the latest attempt."""
+        release = deployment.release or {}
+        return cls(
+            status=deployment.event.status,
+            deployed_at=deployment.event.timestamp,
+            started_at=deployment.started_at,
+            tag=release.get('tag') or None,
+            committish=release.get('committish') or None,
+            run_url=deployment.event.external_run_url,
+        )
+
 
 class ReleaseSummary(pydantic.BaseModel):
     """Minimal release-drift summary for the projects-list view.
@@ -840,14 +855,7 @@ async def _apply_deployment_nodes(
                 entry.latest
             ) <= deployment_nodes.as_utc(legacy[2]):
                 continue
-            latest_deployments[key] = LatestDeployment(
-                status=entry.latest.event.status,
-                deployed_at=entry.latest.event.timestamp,
-                started_at=entry.latest.started_at,
-                tag=entry.latest.release.get('tag') or None,
-                committish=entry.latest.release.get('committish') or None,
-                run_url=entry.latest.event.external_run_url,
-            )
+            latest_deployments[key] = LatestDeployment.from_node(entry.latest)
     return latest_deployments
 
 
