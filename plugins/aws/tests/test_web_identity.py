@@ -134,9 +134,9 @@ class AwsStsIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.headers['X-Amz-Security-Token'], 'token')
 
     async def test_session_outlives_the_jwt(self) -> None:
-        await self.source.identity_token(CONFIG, _request(3600))
+        await self.source.identity_token(CONFIG, _request(3300))
         self.assertEqual(
-            self.sts.assume_role.call_args.kwargs['DurationSeconds'], 3900
+            self.sts.assume_role.call_args.kwargs['DurationSeconds'], 3600
         )
 
     async def test_sts_errors_are_reason_codes(self) -> None:

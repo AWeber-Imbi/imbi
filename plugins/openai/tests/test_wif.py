@@ -90,7 +90,7 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
 
     def test_claims(self) -> None:
         self.assertEqual(wif.EXCHANGER.audience, 'https://api.openai.com/v1')
-        self.assertEqual(wif.EXCHANGER.jwt_seconds, 3600)
+        self.assertEqual(wif.EXCHANGER.jwt_seconds, 3300)
 
 
 class ProviderTestCase(unittest.IsolatedAsyncioTestCase):

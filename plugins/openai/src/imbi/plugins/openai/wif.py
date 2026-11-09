@@ -43,9 +43,10 @@ class OpenAIExchanger(identity.TokenExchanger):
     #: The audience of the OpenAI workload identity provider. The
     #: provider in the OpenAI dashboard must use this value.
     audience = 'https://api.openai.com/v1'
-    #: An OpenAI token never outlives its subject token, and lasts one
-    #: hour at most.
-    jwt_seconds = 3600
+    #: An OpenAI token never outlives its subject token. 3300 seconds
+    #: keeps the ``aws_sts`` role session at 3600 seconds, the AWS
+    #: limit for role chaining (imbi-api on IRSA or EKS Pod Identity).
+    jwt_seconds = 3300
 
     def validate_target(
         self, target: dict[str, typing.Any]
