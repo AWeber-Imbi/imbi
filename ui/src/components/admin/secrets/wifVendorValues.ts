@@ -39,3 +39,22 @@ export function openaiMapping(
     `openai.imbi_ai_provider = ${providerId}`,
   ].join('\n')
 }
+
+/**
+ * The AI Provider values, by driver. A driver without an entry here has
+ * no value builder, so the setup table does not list it.
+ */
+export const PROVIDER_VALUES: Record<
+  string,
+  {
+    kind: string
+    value: (roleArn: string, orgId: string, providerId: string) => string
+  }
+> = {
+  anthropic: {
+    kind: 'AI Provider (Anthropic rule)',
+    value: (roleArn, orgId, providerId) =>
+      anthropicCondition(roleArn, orgId, 'imbi_ai_provider', providerId),
+  },
+  openai: { kind: 'AI Provider (OpenAI mapping)', value: openaiMapping },
+}

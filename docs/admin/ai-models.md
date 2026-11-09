@@ -98,7 +98,9 @@ permission. Editing a model does not grant it.
 
 An Anthropic or OpenAI provider can get a short-lived token through
 workload identity federation, so that Imbi stores no key. The provider must
-use the default base URL and have no stored key. The
+use the default base URL and have no stored key. The dialog shows the
+workload identity target only when the plugin of the vendor (`anthropic` or
+`openai`) is installed and enabled. The
 [Workload Identity Runbook](workload-identity.md) gives the vendor setup.
 
 1. Select the organization whose identity source signs the tokens. The

@@ -1150,6 +1150,12 @@ class IdentitySourceType(pydantic.BaseModel):
     label: str
 
 
+class TokenExchangerType(pydantic.BaseModel):
+    vendor: str
+    label: str
+    target_help: str
+
+
 class WorkloadIdentityPut(pydantic.BaseModel):
     type: str
     config: dict[str, typing.Any] = {}
@@ -1167,6 +1173,22 @@ async def list_identity_source_types(
     return [
         {'type': source.type, 'label': source.label}
         for source in identity.all_sources()
+    ]
+
+
+@identity_router.get('/exchangers', response_model=list[TokenExchangerType])
+async def list_token_exchangers(_: ProviderRead) -> list[dict[str, str]]:
+    """The installed token exchangers: the vendors that can use
+    workload identity, with help text for the target."""
+    # An exchanger from before the label and target_help class variables
+    # gets defaults, so that it does not break the list.
+    return [
+        {
+            'vendor': e.vendor,
+            'label': getattr(e, 'label', e.vendor),
+            'target_help': getattr(e, 'target_help', ''),
+        }
+        for e in identity.all_exchangers()
     ]
 
 

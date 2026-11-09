@@ -1,5 +1,10 @@
 import { useState } from 'react'
 
+import { useQuery } from '@tanstack/react-query'
+
+import { ApiError } from '@/api/client'
+import { listTokenExchangers } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
@@ -32,16 +37,6 @@ interface CredentialsDialogProps {
   provider: AIProvider
 }
 
-// WIF plan 4.6 and D8: only drivers with a token exchanger (models.
-// WIF_DRIVERS), on the default endpoint.
-const WIF_DRIVERS = new Set(['anthropic', 'openai'])
-const TARGET_HELP: Record<string, string> = {
-  anthropic:
-    '{"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, from the Anthropic Console.',
-  openai:
-    '{"identity_provider_id": "...", "service_account_id": "..."}, from the OpenAI dashboard.',
-}
-
 export function CredentialsDialog({
   error,
   isPending,
@@ -59,10 +54,27 @@ export function CredentialsDialog({
   const { organizations, selectedOrganization } = useOrganization()
   const usesIam = provider.auth_kind === 'iam'
   const wif = provider.workload_identity ?? null
-  const canUseWif =
-    WIF_DRIVERS.has(provider.driver) &&
-    !provider.base_url &&
-    !provider.has_credentials
+  const orgSlug = selectedOrganization?.slug
+  // WIF plan 4.6 and D8: only a driver with an installed token
+  // exchanger, on the default endpoint.
+  const exchangersQuery = useQuery({
+    enabled: open && !!orgSlug,
+    queryFn: ({ signal }) => listTokenExchangers(orgSlug ?? '', signal),
+    queryKey: ['token-exchangers', orgSlug],
+  })
+  const exchanger = exchangersQuery.data?.find(
+    (e) => e.vendor === provider.driver,
+  )
+  const wifEligible = !wif && !provider.base_url && !provider.has_credentials
+  const canUseWif = !!exchanger && wifEligible
+  // A 403 means no read access to the exchangers, which is expected.
+  const exchangersFailed =
+    wifEligible &&
+    exchangersQuery.isError &&
+    !(
+      exchangersQuery.error instanceof ApiError &&
+      exchangersQuery.error.status === 403
+    )
   let target: null | Record<string, unknown> = null
   let targetError: null | string = null
   if (targetText.trim()) {
@@ -147,9 +159,21 @@ export function CredentialsDialog({
               Current key ends in ••••{provider.credential_hint}
             </p>
           )}
-          {canUseWif && !wif && selectedOrganization && (
+          {exchangersFailed && (
+            <p className="text-danger flex items-center gap-2 text-xs">
+              Could not load the workload identity vendors.
+              <Button
+                onClick={() => void exchangersQuery.refetch()}
+                size="sm"
+                variant="ghost"
+              >
+                Retry
+              </Button>
+            </p>
+          )}
+          {canUseWif && selectedOrganization && (
             <FormField
-              description={`Instead of a key: a short-lived token from the identity source of ${selectedOrganization.name} (Admin, Secrets, Identity). The vendor ids: ${TARGET_HELP[provider.driver] ?? ''}`}
+              description={`Instead of a key: a short-lived token from the identity source of ${selectedOrganization.name} (Admin, Secrets, Identity). The vendor ids: ${exchanger?.target_help ?? ''}`}
               error={targetError ?? undefined}
               htmlFor="ai-provider-wif-target"
               label="Workload identity target"
@@ -194,7 +218,7 @@ export function CredentialsDialog({
           >
             Cancel
           </button>
-          {canUseWif && !wif && selectedOrganization && (
+          {canUseWif && selectedOrganization && (
             <button
               className="border-tertiary text-primary rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
               disabled={isPending || target === null}

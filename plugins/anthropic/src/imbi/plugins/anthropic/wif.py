@@ -47,6 +47,12 @@ class _Target(pydantic.BaseModel):
 
 class AnthropicExchanger(identity.TokenExchanger):
     vendor = 'anthropic'
+    label = 'Anthropic'
+    target_help = (
+        f'{identity.target_keys(_Target)}, the ids from the Anthropic'
+        ' Console; workspace_id only when the rule has more than one'
+        ' workspace.'
+    )
     audience = 'https://api.anthropic.com'
     #: The JWT is used once, for the exchange. The rule sets the
     #: lifetime of the access token.

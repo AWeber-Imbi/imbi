@@ -87,6 +87,12 @@ class ExchangerTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(identity.InvalidConfiguration):
                 wif.EXCHANGER.validate_target(bad)
+        # The help lists the keys of the target model.
+        self.assertTrue(
+            wif.EXCHANGER.target_help.startswith(
+                json.dumps(dict.fromkeys(TARGET, '...'))
+            )
+        )
 
     def test_claims(self) -> None:
         self.assertEqual(wif.EXCHANGER.audience, 'https://api.openai.com/v1')

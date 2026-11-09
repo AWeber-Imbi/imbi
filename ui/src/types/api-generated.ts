@@ -20593,6 +20593,15 @@ export interface components {
             /** Port Name */
             port_name: string;
         };
+        /** TokenExchangerType */
+        TokenExchangerType: {
+            /** Vendor */
+            vendor: string;
+            /** Label */
+            label: string;
+            /** Target Help */
+            target_help: string;
+        };
         /**
          * TokenRefreshRequest
          * @description Request to refresh an access token.

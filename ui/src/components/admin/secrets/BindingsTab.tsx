@@ -8,6 +8,7 @@ import {
   deleteSecretBinding,
   listSecretBindings,
   listSecretProviders,
+  listTokenExchangers,
   updateSecretBinding,
   validateSecretBinding,
 } from '@/api/endpoints'
@@ -55,6 +56,10 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   const providersQuery = useQuery({
     queryFn: ({ signal }) => listSecretProviders(orgSlug, signal),
     queryKey: ['secret-providers', orgSlug],
+  })
+  const exchangersQuery = useQuery({
+    queryFn: ({ signal }) => listTokenExchangers(orgSlug, signal),
+    queryKey: ['token-exchangers', orgSlug],
   })
   const providerNames = new Map(
     (providersQuery.data ?? []).map((p) => [p.id, p.name]),
@@ -264,7 +269,13 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
             },
             {
               description:
-                'For AWS: {"secret_id": "prod/app", "version_stage": "AWSCURRENT"}. For a GitHub App: {"app_id": "123", "private_key": "secret://<scope>/<key>", "repositories": ["owner/name"]}. For Anthropic workload identity (dynamic): {"organization_id": "...", "federation_rule_id": "...", "service_account_id": "...", "workspace_id": "..."}, the ids from the Anthropic Console; workspace_id only when the rule has more than one workspace. For OpenAI workload identity (dynamic): {"identity_provider_id": "...", "service_account_id": "..."}, the ids from the OpenAI dashboard.',
+                'For AWS: {"secret_id": "prod/app", "version_stage": "AWSCURRENT"}. For a GitHub App: {"app_id": "123", "private_key": "secret://<scope>/<key>", "repositories": ["owner/name"]}.' +
+                (exchangersQuery.data ?? [])
+                  .map(
+                    (e) =>
+                      ` For ${e.label} workload identity (dynamic): ${e.target_help}`,
+                  )
+                  .join(''),
               initial: '{}',
               kind: 'json',
               label: 'Locator',

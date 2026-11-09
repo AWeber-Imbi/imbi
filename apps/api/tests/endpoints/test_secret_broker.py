@@ -15,7 +15,7 @@ import httpx
 from apps.api.tests import secret_support, support
 from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
-from imbi.api.secret_broker import audit, providers, store
+from imbi.api.secret_broker import audit, identity, providers, store
 from imbi.common import clickhouse, graph
 from imbi.common.clickhouse import client as ch_client
 
@@ -266,6 +266,26 @@ class SecretEndpointTestCase(
         path = self.base + '/workload-identity/'
         response = await self.client.get(path + 'types')
         self.assertIn('fake', [t['type'] for t in response.json()])
+        # An exchanger without label and target_help gets defaults.
+        legacy = mock.Mock(spec=['vendor'], vendor='legacy')
+        with mock.patch.dict(
+            identity.EXCHANGERS,
+            {'fake': identity.FakeExchanger(), 'legacy': legacy},
+        ):
+            response = await self.client.get(path + 'exchangers')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn(
+            {
+                'vendor': 'fake',
+                'label': 'Fake (tests only)',
+                'target_help': '{"service_account_id": "..."}',
+            },
+            response.json(),
+        )
+        self.assertIn(
+            {'vendor': 'legacy', 'label': 'legacy', 'target_help': ''},
+            response.json(),
+        )
         self.assertEqual((await self.client.get(path)).status_code, 404)
         for body in (
             {'type': 'unknown'},

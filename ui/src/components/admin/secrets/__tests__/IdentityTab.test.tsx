@@ -7,6 +7,7 @@ import {
   listAgents,
   listAIProviders,
   listIdentitySourceTypes,
+  listTokenExchangers,
   putWorkloadIdentity,
 } from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
@@ -21,6 +22,7 @@ vi.mock('@/api/endpoints', () => ({
   listAgents: vi.fn(),
   listAIProviders: vi.fn(),
   listIdentitySourceTypes: vi.fn(),
+  listTokenExchangers: vi.fn(),
   putWorkloadIdentity: vi.fn(),
 }))
 
@@ -53,6 +55,11 @@ describe('IdentityTab', () => {
     vi.mocked(listAIProviders).mockResolvedValue([
       { driver: 'openai', id: 'prov-1', name: 'OpenAI' } as AIProvider,
       { driver: 'bedrock', id: 'prov-2', name: 'Bedrock' } as AIProvider,
+      { driver: 'anthropic', id: 'prov-3', name: 'Claude' } as AIProvider,
+    ])
+    // The anthropic plugin is not installed.
+    vi.mocked(listTokenExchangers).mockResolvedValue([
+      { label: 'OpenAI', target_help: '{}', vendor: 'openai' },
     ])
   })
 
@@ -117,6 +124,7 @@ describe('IdentityTab', () => {
     expect(await screen.findByText('Ops helper')).toBeInTheDocument()
     expect(await screen.findByText('OpenAI')).toBeInTheDocument()
     expect(screen.queryByText('Bedrock')).toBeNull()
+    expect(screen.queryByText('Claude')).toBeNull()
 
     fireEvent.click(
       screen.getByRole('button', {

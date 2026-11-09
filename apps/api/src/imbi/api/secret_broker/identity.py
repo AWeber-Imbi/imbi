@@ -79,6 +79,8 @@ class FakeExchanger(TokenExchanger):
     """An exchanger for tests. It refuses a JWT that it saw before."""
 
     vendor = 'fake'
+    label = 'Fake (tests only)'
+    target_help = '{"service_account_id": "..."}'
     audience = 'https://fake.example.com'
     jwt_seconds = 300
 
@@ -129,13 +131,7 @@ _LOADED_EXCHANGERS: dict[str, TokenExchanger] = {}
 _REPORTED_EXCHANGERS: set[tuple[str, str]] = set()
 
 
-def exchanger(vendor: str) -> TokenExchanger:
-    """Return the token exchanger of a vendor.
-
-    Raises:
-        IdentityError: ``unknown_exchanger``.
-
-    """
+def _load_exchangers() -> None:
     providers.reconcile(
         'token_exchangers',
         'token exchanger',
@@ -145,6 +141,21 @@ def exchanger(vendor: str) -> TokenExchanger:
         lambda cls: cls(),
         key=lambda cls: cls.vendor,
     )
+
+
+def all_exchangers() -> list[TokenExchanger]:
+    _load_exchangers()
+    return list(EXCHANGERS.values())
+
+
+def exchanger(vendor: str) -> TokenExchanger:
+    """Return the token exchanger of a vendor.
+
+    Raises:
+        IdentityError: ``unknown_exchanger``.
+
+    """
+    _load_exchangers()
     found = EXCHANGERS.get(vendor)
     if found is None:
         raise IdentityError('unknown_exchanger')
@@ -239,7 +250,7 @@ async def ai_provider_token(
     wif = provider.workload_identity
     if wif is None:
         raise IdentityError('workload_identity_not_configured')
-    # The driver name is the vendor (models.WIF_DRIVERS).
+    # The driver name is the vendor of its token exchanger.
     vendor = exchanger(provider.driver)
     try:
         target = vendor.validate_target(wif.target)
