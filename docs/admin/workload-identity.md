@@ -30,7 +30,7 @@ never logs the JWT or the token.
 | Vendor | Audience | JWT lifetime | Token lifetime |
 |---|---|---|---|
 | Anthropic | `https://api.anthropic.com` | 300 seconds | The rule's `token_lifetime_seconds`, at most 600 seconds (twice the JWT) |
-| OpenAI | `https://api.openai.com/v1` | 3600 seconds | At most 1 hour, never longer than the JWT |
+| OpenAI | `https://api.openai.com/v1` | 3300 seconds | Never longer than the JWT |
 
 Imbi sets the audience, the tags, the lifetime, and the signing algorithm
 (`RS256`). No setting can change them.
@@ -127,15 +127,11 @@ Permission policy. Replace the organization id:
 - `aws:TagKeys` refuses all other tag keys.
 - Remove the audience of a vendor that you do not use.
 
-For OpenAI, set the role's **Maximum session duration** to 2 hours. The
-OpenAI JWT lasts 1 hour, and the role session must last longer.
-
-!!! warning "OpenAI and role chaining"
-    When imbi-api has role credentials (IRSA, EKS Pod Identity, or another
-    assumed role), the AssumeRole call is role chaining, and AWS limits the
-    session to 1 hour. The 3900-second session for OpenAI then fails with
-    `invalid_request`. Anthropic is not affected. See
-    [issue #583](https://github.com/AWeber-Imbi/imbi/issues/583).
+Keep the role's **Maximum session duration** at 1 hour or more. The role
+session lasts 5 minutes longer than the JWT, with a minimum of 15
+minutes: `max(900, jwt_seconds + 300)` seconds. A 300-second JWT thus
+gives a 900-second session. The maximum is 1 hour, which is also the AWS
+limit when imbi-api has role credentials (role chaining).
 
 ## Step 2: the Imbi identity source
 
@@ -251,7 +247,7 @@ The Imbi reason tells you where the problem is.
 |---|---|---|
 | `federation_disabled` | Outbound web identity federation is off | Turn it on (step 1) |
 | `access_denied` | The trust policy or the permission policy refuses the call | Check the principal, the ExternalId, and the policy conditions (step 1) |
-| `invalid_request` | AWS refused a parameter, for example a role session longer than the role's maximum session duration, or longer than 1 hour with role chaining | Raise the maximum session duration, and see the warning in step 1 |
+| `invalid_request` | AWS refused a parameter, for example a role session longer than the role's maximum session duration | Set the maximum session duration to 1 hour or more (step 1) |
 | `credentials_expired` | The imbi-api AWS credentials expired | Check the imbi-api identity (IRSA or Pod Identity) |
 | `throttled`, `unreachable`, `unavailable` | AWS or the vendor did not answer | Imbi tries again on the next request |
 | `exchange_refused` | The vendor refused the JWT | See below |

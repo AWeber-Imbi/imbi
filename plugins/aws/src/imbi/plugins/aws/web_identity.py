@@ -6,10 +6,8 @@ imbi-api assumes the organization's identity role (with
 ARN. Core sets the audience, tags, lifetime, and signing algorithm.
 
 The role needs ``sts:GetWebIdentityToken`` and
-``sts:TagGetWebIdentityToken``, and a ``MaxSessionDuration`` of at least
-:func:`session_seconds` of the longest JWT (3900 seconds for a 3600
-second JWT). The AWS account must have outbound web identity
-federation turned on.
+``sts:TagGetWebIdentityToken``. The AWS account must have outbound web
+identity federation turned on.
 """
 
 import logging
@@ -50,7 +48,9 @@ def session_seconds(jwt_seconds: int) -> int:
 
     STS refuses a JWT that would outlive the session
     (``SessionDurationEscalation``), so the session lasts 5 minutes
-    longer. AssumeRole needs at least 900 seconds.
+    longer. AssumeRole needs at least 900 seconds. A chained role
+    session (imbi-api on role credentials) lasts at most 3600 seconds,
+    so an exchanger's ``jwt_seconds`` must be 3300 or less.
     """
     return max(900, jwt_seconds + 300)
 

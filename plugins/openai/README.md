@@ -23,9 +23,9 @@ OpenAI workload identity federation (WIF) for Imbi. The plugin adds:
    `assertion["https://sts.amazonaws.com/"]["request_tags"]["imbi_ai_provider"]`.
 4. Give Imbi the ids: on the AI Provider (Admin, AI Models, the key icon)
    or in a dynamic `openai_wif` binding.
-5. At use time, Imbi gets a new identity JWT that lasts one hour, and
+5. At use time, Imbi gets a new identity JWT that lasts 55 minutes, and
    exchanges it at `https://auth.openai.com/oauth/token` (RFC 8693). The
-   token lasts one hour at most and never outlives the JWT.
+   token never outlives the JWT.
 
 ## Target
 
