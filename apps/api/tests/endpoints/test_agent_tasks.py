@@ -9,6 +9,7 @@ The caller is a member of ``org`` and ``other_org``, and not of
 ``foreign_org``.
 """
 
+import asyncio
 import datetime
 import decimal
 import json
@@ -22,6 +23,7 @@ from psycopg import sql
 from apps.api.tests import support
 from imbi.api import agent_tasks, harness, models, workflows
 from imbi.api.auth import permissions
+from imbi.api.endpoints import agents
 from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
 from imbi.common import graph
@@ -1310,6 +1312,23 @@ class ServiceAccountTests(AgentTaskTestCase):
         second = (await self.create_task()).json()
         self.assertEqual(second['service_account_id'], account['id'])
         self.assertEqual(len(await self.service_accounts(agent_id)), 1)
+
+    async def test_concurrent_ensure_makes_one_service_account(
+        self,
+    ) -> None:
+        agent_id = await self.make_agent()
+        # Other names, as when a start races a rename: the slugs do
+        # not collide, so only the lock stops a second account.
+        ids = await asyncio.gather(
+            *(
+                agents.ensure_service_account(
+                    self.graph, agent_id, f'Triage {i}'
+                )
+                for i in range(5)
+            )
+        )
+        (account,) = await self.service_accounts(agent_id)
+        self.assertEqual(set(ids), {account['id']})
 
     async def test_task_keeps_service_account_of_agent(self) -> None:
         agent = await self.create_agent('triage')

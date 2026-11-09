@@ -468,7 +468,7 @@ def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
 
 
 async def _service_account_params(
-    db: graph.Graph, agent_id: str, name: str
+    execute: graph.CypherExecute, agent_id: str, name: str
 ) -> dict[str, typing.Any]:
     """Return the parameters of :data:`_CREATE_SERVICE_ACCOUNT`.
 
@@ -485,7 +485,7 @@ async def _service_account_params(
     if (
         not slug
         or slug.startswith('imbi-')
-        or await db.execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
+        or await execute(_SA_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
     ):
         slug = slugify.slugify(f'{name} {agent_id}')
     if slug.startswith('imbi-'):
@@ -506,39 +506,51 @@ async def ensure_service_account(
 
     Make the service account when the agent has none. Agents made before
     service accounts existed get one here, so no backfill is necessary.
+
+    The read, the slug check, and the create run in one transaction
+    under an advisory lock on the agent id. Thus two concurrent calls
+    for one agent cannot both make an account: the second call waits,
+    then reads the account of the first.
     """
-    records = await db.execute(
-        _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
-    )
-    attempts = 3
-    while not records and attempts:
-        attempts -= 1
-        params = await _service_account_params(db, agent_id, name)
-        # Read again after the slug check. When a concurrent request
-        # made the account of this agent first, its slug looks taken,
-        # and this read finds that account. Thus the agent does not
-        # get a second account.
-        records = await db.execute(
+
+    async def ensure(
+        execute: graph.CypherExecute,
+    ) -> list[dict[str, typing.Any]]:
+        """Read or make the service account under the lock.
+
+        Read again first: a concurrent call can have made the account
+        after the fast path read.
+        """
+        records = await execute(
             _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
         )
         if records:
-            break
-        try:
-            # Empty when the agent does not exist.
-            records = await db.execute(
-                _ENSURE_SERVICE_ACCOUNT_QUERY,
-                {'id': agent_id, **params},
-                ['id'],
-            )
-            break
-        except psycopg.errors.UniqueViolation as exc:
-            if not attempts:
-                raise fastapi.HTTPException(
-                    status_code=409,
-                    detail=f'Service account slug for {name!r} is in use',
-                ) from exc
-            # A concurrent request took the slug first. Try again.
-            continue
+            return records
+        params = await _service_account_params(execute, agent_id, name)
+        # Empty when the agent does not exist.
+        return await execute(
+            _ENSURE_SERVICE_ACCOUNT_QUERY, {'id': agent_id, **params}, ['id']
+        )
+
+    # Fast path without the lock: most agents have an account.
+    records = await db.execute(
+        _SERVICE_ACCOUNT_QUERY, {'id': agent_id}, ['id']
+    )
+    if not records:
+        for attempt in range(3):
+            try:
+                records = await db.locked(
+                    f'agent-service-account:{agent_id}', ensure
+                )
+                break
+            except psycopg.errors.UniqueViolation as exc:
+                # A concurrent request for another agent took the slug
+                # first. Try again.
+                if attempt == 2:
+                    raise fastapi.HTTPException(
+                        status_code=409,
+                        detail=f'Service account slug for {name!r} is in use',
+                    ) from exc
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Agent {name!r} not found'
@@ -1214,7 +1226,7 @@ async def create_agent(
                 {
                     **props,
                     **await _service_account_params(
-                        db, agent_id, snapshot.name
+                        db.execute, agent_id, snapshot.name
                     ),
                     'org_slug': org_slug,
                     'team_id': team_id,

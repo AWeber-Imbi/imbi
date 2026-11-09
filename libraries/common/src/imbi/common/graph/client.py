@@ -34,6 +34,21 @@ GraphModelT = typing.TypeVar(
 RunResultT = typing.TypeVar('RunResultT')
 
 
+class CypherExecute(typing.Protocol):
+    """The ``execute`` function that :meth:`Graph.locked` gives its work.
+
+    It has the signature of :meth:`Graph.execute`.
+    """
+
+    async def __call__(
+        self,
+        query_template: str,
+        params: dict[str, typing.Any] | None = None,
+        columns: list[str] | None = None,
+        raw: bool = False,
+    ) -> list[dict[str, typing.Any]]: ...
+
+
 _IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 #: AGE's message when the vertex or edge a statement is updating was
@@ -959,6 +974,35 @@ class Graph:
                         raise StatementMatchedNothing(stmt.cypher)
 
         await self._run_retrying_poisoned(run)
+
+    async def locked(
+        self,
+        key: str,
+        work: collections.abc.Callable[
+            [CypherExecute], collections.abc.Awaitable[RunResultT]
+        ],
+    ) -> RunResultT:
+        """Run *work* in one transaction under an advisory lock on *key*.
+
+        *work* gets an ``execute`` function with the arguments of
+        :meth:`execute`. Its queries run in the transaction. The lock
+        is transaction-scoped (``pg_advisory_xact_lock``), so calls with
+        the same *key* run one at a time. Each statement after the lock
+        sees the commits of the calls before it. An exception in *work*
+        rolls the transaction back and releases the lock.
+
+        """
+        self._require_open()
+
+        async def run(conn: psycopg.AsyncConnection[typing.Any]) -> RunResultT:
+            async with conn.transaction():
+                await conn.execute(
+                    'SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
+                    (key,),
+                )
+                return await work(functools.partial(self._execute_on, conn))
+
+        return await self._run_retrying_poisoned(run)
 
     @staticmethod
     def _cypher_param(value: typing.Any) -> sql.Composable:

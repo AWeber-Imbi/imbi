@@ -2040,12 +2040,17 @@ class EnsureServiceAccountTests(unittest.IsolatedAsyncioTestCase):
     async def test_slug_conflict_on_every_attempt_is_409(self) -> None:
         db = mock.AsyncMock()
         conflict = psycopg.errors.UniqueViolation()
-        # No account, then per attempt: slug check, re-read, create.
+        # Fast path read, then per attempt: read, slug check, create.
         db.execute.side_effect = [[]] + [
-            [{'id': 'other'}],
             [],
+            [{'id': 'other'}],
             conflict,
         ] * 3
+
+        async def locked(_key: str, work: typing.Any) -> typing.Any:
+            return await work(db.execute)
+
+        db.locked.side_effect = locked
         with self.assertRaises(fastapi.HTTPException) as ctx:
             await agents.ensure_service_account(db, 'agent-1', 'Triage')
         self.assertEqual(ctx.exception.status_code, 409)
