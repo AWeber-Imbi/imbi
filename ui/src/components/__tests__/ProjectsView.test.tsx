@@ -58,6 +58,7 @@ function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
     current_releases: {},
     description: null,
     environments: [],
+    has_deployment_plugin: true,
     id: 'p1',
     name: 'Project One',
     open_pr_count: 0,
@@ -398,6 +399,25 @@ describe('ProjectsView waiting age', () => {
     // waiting line names Staging's version.
     expect(screen.getByText('Behind')).toBeInTheDocument()
     expect(screen.getByText('↑ v1 waiting')).toBeInTheDocument()
+  })
+
+  it('links nothing without a deployment plugin', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      { ...waiting('p26', 'Lima', daysAgo(1)), has_deployment_plugin: false },
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Lima')).toBeInTheDocument())
+    expect(
+      screen.getByRole('group', {
+        name: /Deploy Staging to Production, waiting since/,
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: /Cut a release/ }),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('a[href*="/deployments"]'),
+    ).not.toBeInTheDocument()
   })
 
   it('shows no age when the server has no date', async () => {

@@ -154,7 +154,7 @@ async def effective_bindings(
     ptype_edges = _edges_by_id(records[0]['ptype_edges'])
 
     integrations = await org_integrations(db, str(org_slug))
-    assigned_ids = await _assigned_type_ids(db, str(org_slug), kind)
+    assigned_ids = await assigned_type_ids(db, str(org_slug), kind)
 
     bindings: list[CapabilityBinding] = []
     for iid, integration in integrations.items():
@@ -241,7 +241,7 @@ async def org_integrations(
     return out
 
 
-async def _assigned_type_ids(
+async def assigned_type_ids(
     db: graph.Graph, org_slug: str, kind: str
 ) -> set[str]:
     records = await db.execute(

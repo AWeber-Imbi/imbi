@@ -97,6 +97,16 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self._resolve_patcher.start()
         self.addCleanup(self._resolve_patcher.stop)
 
+        # The slim list reads deployment plugin bindings with extra
+        # ``db.execute`` calls; stub them so list tests keep one call.
+        self._deploy_plugins = mock.AsyncMock(return_value=set())
+        self._deploy_patcher = mock.patch(
+            'imbi.api.endpoints.projects._deployment_plugin_projects',
+            new=self._deploy_plugins,
+        )
+        self._deploy_patcher.start()
+        self.addCleanup(self._deploy_patcher.stop)
+
         self.client = TestClient(self.test_app)
 
     def _project_data(self, **overrides: typing.Any) -> dict:
@@ -600,6 +610,53 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(item['slug'], 'bare-project')
         self.assertEqual(item['project_types'], [])
         self.assertEqual(item['environments'], [])
+
+    def test_list_slim_has_deployment_plugin(self) -> None:
+        """Slim items say which projects have a deployment plugin."""
+
+        def _item(pid: str) -> dict:
+            return {
+                'project': {
+                    'id': pid,
+                    'name': pid,
+                    'slug': pid,
+                    'team': {'name': 'Platform', 'slug': 'platform'},
+                    'project_types': [],
+                    'environments': [],
+                }
+            }
+
+        self.mock_db.execute.return_value = [_item('a'), _item('b')]
+        self._deploy_plugins.return_value = {'b'}
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/?slim=true'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        flags = {p['id']: p['has_deployment_plugin'] for p in response.json()}
+        self.assertEqual(flags, {'a': False, 'b': True})
+        self._deploy_plugins.assert_awaited_once_with(
+            self.mock_db, 'engineering', ['a', 'b']
+        )
+
+    def test_list_full_omits_has_deployment_plugin(self) -> None:
+        """The full list does not read deployment plugins."""
+        self.mock_db.execute.return_value = [
+            {
+                'project': self._project_data(),
+                'outbound_count': 0,
+                'inbound_count': 0,
+            },
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get('/organizations/engineering/projects/')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertNotIn('has_deployment_plugin', response.json()[0])
+        self._deploy_plugins.assert_not_awaited()
 
     # -- Get -----------------------------------------------------------
 
@@ -2926,6 +2983,74 @@ class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
             await projects._emit_change_events(
                 'p1', 'alice', {'name': 'A'}, {'name': 'B'}
             )
+
+
+class DeploymentPluginProjectsTestCase(unittest.IsolatedAsyncioTestCase):
+    """``_deployment_plugin_projects`` matches the project plugins view."""
+
+    def setUp(self) -> None:
+        from imbi.api.endpoints import projects
+
+        self.projects = projects
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        self.integrations = {
+            'i1': {
+                'id': 'i1',
+                'plugin': 'argocd',
+                'capabilities': {'deployment': {'enabled': True}},
+            },
+        }
+        self.enabled = {'argocd': True}
+        self.assigned: set[str] = {'i1'}
+        entry = mock.MagicMock()
+        entry.manifest.get_capability.return_value = object()
+        for target, value in (
+            ('plugin_assignments.org_integrations', self.integrations),
+            ('get_enabled_map', self.enabled),
+            ('plugin_assignments.assigned_type_ids', self.assigned),
+        ):
+            patcher = mock.patch(
+                f'imbi.api.endpoints.projects.{target}',
+                new=mock.AsyncMock(return_value=value),
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = mock.patch(
+            'imbi.api.endpoints.projects.get_plugin', return_value=entry
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def _run(self) -> set[str]:
+        return await self.projects._deployment_plugin_projects(
+            self.db, 'engineering', ['a', 'b', 'c']
+        )
+
+    async def test_bound_projects_only(self) -> None:
+        self.db.execute.return_value = [
+            {'project_id': 'a', 'project_ids': [], 'type_ids': ['i1']},
+            {'project_id': 'b', 'project_ids': ['i1'], 'type_ids': []},
+            {'project_id': 'c', 'project_ids': ['other'], 'type_ids': []},
+        ]
+        self.assertEqual(await self._run(), {'a', 'b'})
+
+    async def test_default_all_applies_to_every_project(self) -> None:
+        self.assigned.clear()
+        self.assertEqual(await self._run(), {'a', 'b', 'c'})
+        self.db.execute.assert_not_awaited()
+
+    async def test_disabled_plugin_serves_nothing(self) -> None:
+        self.enabled['argocd'] = False
+        self.assertEqual(await self._run(), set())
+
+    async def test_disabled_capability_serves_nothing(self) -> None:
+        self.integrations['i1']['capabilities'] = {}
+        self.assertEqual(await self._run(), set())
 
 
 class ReleaseSummaryTimestampTestCase(unittest.IsolatedAsyncioTestCase):
