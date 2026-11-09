@@ -1647,6 +1647,7 @@ async def _fetch_release_summaries(
                         'cuts': [cutoff_map[pid] for pid in batch],
                         'modes': [mode_map[pid] for pid in batch],
                     },
+                    failed=failed,
                 )
                 # Projects whose range is empty drop out of the result
                 # rather than returning a zero row; both callers below
@@ -1692,6 +1693,10 @@ async def _fetch_release_summaries(
 
     release_result: dict[str, ReleaseSummary] = {}
     for pid in all_pids:
+        # A failed count batch is not an empty range.  Do not show
+        # zero unreleased commits for its projects.
+        if pid in failed:
+            continue
         latest = latest_by_pid.get(pid)
         head_row = head_by_project.get(pid)
         head_sha = str(head_row['sha']) if head_row else None
