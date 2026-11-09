@@ -3177,6 +3177,27 @@ class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
         # Still a summary, ranked without commit context.
         self.assertEqual(result['p1'].latest_tag, '1.0.0')
 
+    async def test_count_query_failure_drops_summaries(self) -> None:
+        from imbi.api.endpoints import projects
+
+        with (
+            mock.patch(
+                'imbi.api.endpoints.projects.clickhouse.query',
+                mock.AsyncMock(
+                    side_effect=[
+                        self._tags(),
+                        [],
+                        [],
+                        RuntimeError('clickhouse down'),
+                    ]
+                ),
+            ),
+            self.assertLogs('imbi.api.endpoints.projects', level='WARNING'),
+        ):
+            result = await projects._fetch_release_summaries(['p1'])
+        # A summary without counts would show 0 unreleased commits.
+        self.assertEqual(result, {})
+
     async def _with_counts(
         self, count_row: dict[str, typing.Any]
     ) -> typing.Any:

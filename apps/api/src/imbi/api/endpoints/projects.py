@@ -1544,10 +1544,13 @@ async def _fetch_release_summaries(
                     is not None
                 }
         except Exception:  # noqa: BLE001
+            # Without counts a summary shows 0 unreleased commits and
+            # hides "Cut a release", so drop the summaries instead.
             LOGGER.warning(
                 'Failed to fetch commit counts since tag',
                 exc_info=True,
             )
+            return {}
 
     release_result: dict[str, ReleaseSummary] = {}
     for pid in all_pids:
