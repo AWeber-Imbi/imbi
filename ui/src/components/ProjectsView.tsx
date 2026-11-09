@@ -69,7 +69,7 @@ import { Sk } from './ui/skeleton'
 
 // The dropdown filters, each backed by its own URL search param.
 type DriftCellProject = DriftProject & {
-  has_deployment_plugin?: boolean
+  has_deployment_plugin: boolean
   id: string
   project_types?: null | object[]
 }
@@ -889,7 +889,13 @@ function BehindTab({ tone }: { tone: DriftTone }) {
 }
 
 // fallow-ignore-next-line complexity
-function DeploymentCards({ project }: { project: ProjectListItem }) {
+function DeploymentCards({
+  deployments,
+  project,
+}: {
+  deployments: string | undefined
+  project: ProjectListItem
+}) {
   const environments = project.environments ?? []
   const releases = project.current_releases ?? {}
   const latest = project.latest_deployments ?? {}
@@ -897,10 +903,6 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
   const pairs = computeDriftPairs(environments, releases)
   const { releaseDrifted } = driftBadges(project)
   const releaseSince = project.release_summary?.oldest_actionable_at
-  // The Deployments tab exists only with a deployment plugin.
-  const deployments = project.has_deployment_plugin
-    ? `/projects/${project.id}/deployments`
-    : undefined
   return (
     <div className="flex w-full items-stretch justify-center-safe pt-2">
       {releaseDrifted && (
@@ -1011,6 +1013,17 @@ function DeploymentCards({ project }: { project: ProjectListItem }) {
   )
 }
 
+// The Deployments tab (and its Releases pane) exists only with a
+// deployment plugin, so without one the list links nowhere.
+function deploymentsHref(project: {
+  has_deployment_plugin: boolean
+  id: string
+}): string | undefined {
+  return project.has_deployment_plugin
+    ? `/projects/${project.id}/deployments`
+    : undefined
+}
+
 // The badges a project shows. Same predicate the count and the filter
 // use, so a badge never appears for a project the "Drifted" tally does
 // not include.
@@ -1044,9 +1057,7 @@ function DriftCell({ project }: { project: DriftCellProject }) {
   if (deployDrifted.length === 0 && !releaseDrifted) return null
 
   const releaseSince = project.release_summary?.oldest_actionable_at
-  const deployments = project.has_deployment_plugin
-    ? `/projects/${project.id}/deployments`
-    : undefined
+  const deployments = deploymentsHref(project)
 
   return (
     <div className="relative z-10 flex flex-row flex-wrap items-center gap-1">
@@ -1392,12 +1403,12 @@ function PipelineConnector({
 
 // fallow-ignore-next-line complexity
 function ReleaseCards({
-  hasDeploymentPlugin,
+  deployments,
   projectId,
   projectName,
   release_summary,
 }: {
-  hasDeploymentPlugin: boolean
+  deployments: string | undefined
   projectId: string
   projectName: string
   release_summary: NonNullable<ProjectListItem['release_summary']>
@@ -1409,10 +1420,7 @@ function ReleaseCards({
   const behind = projectReleaseDrifted({ release_summary })
   const since = release_summary.oldest_actionable_at
   const tone = driftTone(since)
-  // The Releases pane exists only with a deployment plugin.
-  const releases = hasDeploymentPlugin
-    ? `/projects/${projectId}/releases`
-    : undefined
+  const releases = deployments && `/projects/${projectId}/releases`
   const viewSuffix = releases ? ': view releases' : ''
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
@@ -1439,11 +1447,7 @@ function ReleaseCards({
           <DriftPill
             label="Cut a release"
             since={since}
-            to={
-              hasDeploymentPlugin
-                ? `/projects/${projectId}/deployments`
-                : undefined
-            }
+            to={deployments}
             tone={tone}
           />
         </PipelineConnector>
@@ -1802,6 +1806,7 @@ function withCounts(
 const ProjectListRow = React.memo(function ProjectListRow({
   project,
 }: ProjectListRowProps) {
+  const deployments = deploymentsHref(project)
   return (
     <div className="hover:bg-secondary relative flex cursor-pointer items-center transition-colors">
       <Link
@@ -1850,7 +1855,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
           project.environments &&
           project.environments.length > 0 && (
             <ScrollableDeployments environments={project.environments}>
-              <DeploymentCards project={project} />
+              <DeploymentCards deployments={deployments} project={project} />
             </ScrollableDeployments>
           )}
         {!isProjectDeployable(project) &&
@@ -1858,7 +1863,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
           project.release_summary && (
             <div className="min-w-0 overflow-x-auto">
               <ReleaseCards
-                hasDeploymentPlugin={project.has_deployment_plugin}
+                deployments={deployments}
                 projectId={project.id}
                 projectName={project.name}
                 release_summary={project.release_summary}

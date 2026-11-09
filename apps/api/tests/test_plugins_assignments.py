@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+import uuid
 from unittest import mock
 
 from imbi.api.plugins import assignments
+from imbi.common import graph
 
 
 def _run(coro):  # type: ignore[no-untyped-def]
@@ -197,3 +199,162 @@ class EffectiveBindingsTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BoundProjectIdsTestCase(unittest.IsolatedAsyncioTestCase):
+    """``bound_project_ids`` follows the ``effective_bindings`` rules."""
+
+    def setUp(self) -> None:
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        self.integrations = {
+            'i1': {
+                'id': 'i1',
+                'plugin': 'argocd',
+                'capabilities': {'deployment': {'enabled': True}},
+            },
+        }
+        self.enabled = {'argocd': True}
+        self.assigned: set[str] = {'i1'}
+        for target, value in (
+            ('org_integrations', self.integrations),
+            ('get_enabled_map', self.enabled),
+            ('_assigned_type_ids', self.assigned),
+        ):
+            patcher = mock.patch.object(
+                assignments, target, mock.AsyncMock(return_value=value)
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(
+            assignments, 'plugin_declares', return_value=True
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def _run(self) -> set[str]:
+        return await assignments.bound_project_ids(
+            self.db, 'engineering', ['a', 'b', 'c'], 'deployment'
+        )
+
+    async def test_bound_projects_only(self) -> None:
+        self.db.execute.return_value = [
+            {'project_id': 'a', 'project_ids': [], 'type_ids': ['i1']},
+            {'project_id': 'b', 'project_ids': ['i1'], 'type_ids': []},
+            {'project_id': 'c', 'project_ids': ['other'], 'type_ids': []},
+        ]
+        self.assertEqual(await self._run(), {'a', 'b'})
+
+    async def test_default_all_applies_to_every_project(self) -> None:
+        self.assigned.clear()
+        self.assertEqual(await self._run(), {'a', 'b', 'c'})
+        self.db.execute.assert_not_awaited()
+
+    async def test_disabled_plugin_serves_nothing(self) -> None:
+        self.enabled['argocd'] = False
+        self.assertEqual(await self._run(), set())
+
+    async def test_disabled_capability_serves_nothing(self) -> None:
+        self.integrations['i1']['capabilities'] = {}
+        self.assertEqual(await self._run(), set())
+
+
+class BoundProjectIdsGraphTestCase(unittest.IsolatedAsyncioTestCase):
+    """``bound_project_ids`` against a real AGE graph.
+
+    Project ``a`` binds the Integration with a project edge, ``b``
+    through its project type, and ``c`` not at all.
+    """
+
+    async def asyncSetUp(self) -> None:
+        suffix = uuid.uuid4().hex[:10]
+        self.org = f'dp-{suffix}'
+        self.plugin = f'dp-plugin-{suffix}'
+        self.ids = {
+            name: f'dp-{name}-{suffix}'
+            for name in ('team', 'type', 'integration', 'reg', 'a', 'b', 'c')
+        }
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            """
+            CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})
+            CREATE (t:Team {{id: {team}, slug: {team}, name: 'Ops'}})
+            CREATE (t)-[:BELONGS_TO]->(o)
+            CREATE (pt:ProjectType {{id: {type}, slug: {type}}})
+            CREATE (pt)-[:BELONGS_TO]->(o)
+            CREATE (i:Integration {{id: {integration}, slug: {integration},
+                                    plugin: {plugin},
+                                    capabilities: {capabilities}}})
+            CREATE (i)-[:BELONGS_TO]->(o)
+            CREATE (r:PluginRegistration {{id: {reg}, slug: {plugin},
+                                           enabled: true}})
+            CREATE (a:Project {{id: {a}, slug: {a}, name: {a}}})
+            CREATE (b:Project {{id: {b}, slug: {b}, name: {b}}})
+            CREATE (c:Project {{id: {c}, slug: {c}, name: {c}}})
+            CREATE (a)-[:OWNED_BY]->(t)
+            CREATE (b)-[:OWNED_BY]->(t)
+            CREATE (c)-[:OWNED_BY]->(t)
+            CREATE (b)-[:TYPE]->(pt)
+            CREATE (a)-[:USES {{capability: 'deployment'}}]->(i)
+            CREATE (pt)-[:USES {{capability: 'deployment'}}]->(i)
+            RETURN o.id AS id
+            """,
+            {
+                'org': self.org,
+                'plugin': self.plugin,
+                'capabilities': '{"deployment": {"enabled": true}}',
+                **self.ids,
+            },
+            ['id'],
+        )
+        # Only the plugin registry is faked; every graph read is real.
+        patcher = mock.patch.object(
+            assignments, 'plugin_declares', return_value=True
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def _cleanup(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids}
+            DETACH DELETE n
+            RETURN 1 AS ok
+            """,
+            {'ids': [self.org, *self.ids.values()]},
+            ['ok'],
+        )
+        await self.graph.close()
+
+    async def _run(self) -> set[str]:
+        return await assignments.bound_project_ids(
+            self.graph,
+            self.org,
+            [self.ids['a'], self.ids['b'], self.ids['c']],
+            'deployment',
+        )
+
+    async def test_project_and_type_edges(self) -> None:
+        self.assertEqual(await self._run(), {self.ids['a'], self.ids['b']})
+
+    async def test_default_all_without_type_edges(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (:ProjectType {{id: {type}}})-[e:USES]->(:Integration)
+            DELETE e
+            RETURN 1 AS ok
+            """,
+            {'type': self.ids['type']},
+            ['ok'],
+        )
+        self.assertEqual(
+            await self._run(),
+            {self.ids['a'], self.ids['b'], self.ids['c']},
+        )

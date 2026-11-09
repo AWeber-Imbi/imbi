@@ -31,7 +31,6 @@ from imbi.api.endpoints._json_fields import (
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.plugins import assignments as plugin_assignments
-from imbi.api.plugins.lifecycle import get_enabled_map
 from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
     build_lifecycle_context_bundle,
@@ -52,8 +51,6 @@ from imbi.common.plugins.base import (
     PluginContext,
     RelocationTarget,
 )
-from imbi.common.plugins.errors import PluginNotFoundError
-from imbi.common.plugins.registry import get_plugin
 from imbi.common.scoring import compute_score
 
 LOGGER = logging.getLogger(__name__)
@@ -1889,73 +1886,21 @@ _SLIM_RETURN_FRAGMENT: typing.LiteralString = """
               environments: envs}} AS project
 """
 
-_DEPLOYMENT_USES: typing.LiteralString = """
-MATCH (p:Project)
-WHERE p.id IN {project_ids}
-OPTIONAL MATCH (p)-[pe:USES]->(pi:Integration)
-  WHERE pe.capability = 'deployment'
-OPTIONAL MATCH (p)-[:TYPE]->(:ProjectType)-[pte:USES]->(pti:Integration)
-  WHERE pte.capability = 'deployment'
-RETURN p.id AS project_id,
-       collect(DISTINCT pi.id) AS project_ids,
-       collect(DISTINCT pti.id) AS type_ids
-"""
-
 
 async def _deployment_plugin_projects(
     db: graph.Graph, org_slug: str, project_ids: list[str]
 ) -> set[str]:
     """Return the ids in ``project_ids`` with a deployment plugin.
 
-    Applies the rules of ``GET /projects/{id}/plugins/`` (which sets the
-    Deployments tab) to all projects in one pass: a bound Integration
-    that is active, has ``deployment`` enabled, and whose plugin is
-    loaded and enabled.  The org-level reads run once, not per project.
     Errors give an empty set, so the list shows no deployment links.
     """
-    if not project_ids:
-        return set()
     try:
-        integrations = await plugin_assignments.org_integrations(db, org_slug)
-        enabled = await get_enabled_map(db)
-        live: set[str] = set()
-        for iid, integration in integrations.items():
-            slug = str(integration.get('plugin') or '')
-            if not plugin_assignments.capability_enabled(
-                integration, 'deployment'
-            ) or not enabled.get(slug):
-                continue
-            try:
-                entry = get_plugin(slug)
-            except PluginNotFoundError:
-                continue
-            if entry.manifest.get_capability('deployment') is not None:
-                live.add(iid)
-        if not live:
-            return set()
-        # The default-all rule: no project type has a ``USES`` edge to
-        # the Integration, so it applies to every project in the org.
-        if live - await plugin_assignments.assigned_type_ids(
-            db, org_slug, 'deployment'
-        ):
-            return set(project_ids)
-        rows = await db.execute(
-            _DEPLOYMENT_USES,
-            {'project_ids': project_ids},
-            ['project_id', 'project_ids', 'type_ids'],
+        return await plugin_assignments.bound_project_ids(
+            db, org_slug, project_ids, 'deployment'
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to read deployment plugins', exc_info=True)
         return set()
-    out: set[str] = set()
-    for row in rows:
-        bound: list[typing.Any] = [
-            *(graph.parse_agtype(row['project_ids']) or []),
-            *(graph.parse_agtype(row['type_ids']) or []),
-        ]
-        if live.intersection(str(i) for i in bound if i):
-            out.add(str(graph.parse_agtype(row['project_id'])))
-    return out
 
 
 # -- Endpoints ----------------------------------------------------------
@@ -2600,10 +2545,19 @@ async def list_projects(
         if p.get('id') and _delivery_of(p).releasable
     ]
     viewer = auth.identity_for('github-enterprise-cloud')
-    pr_counts, releases, release_summaries = await asyncio.gather(
+    (
+        pr_counts,
+        releases,
+        release_summaries,
+        deployment_ids,
+    ) = await asyncio.gather(
         _fetch_pr_counts(project_ids, viewer=viewer),
         _fetch_current_releases(db, project_ids),
         _fetch_release_summaries(releasable_ids),
+        # Only ``ProjectListItem`` carries ``has_deployment_plugin``.
+        _deployment_plugin_projects(db, org_slug, project_ids)
+        if slim
+        else asyncio.sleep(0, set[str]()),
     )
 
     await _resolve_release_display_names(db, releases.current)
@@ -2639,9 +2593,6 @@ async def list_projects(
             project_data['release_summary'] = summary.model_dump()
 
     if slim:
-        deployment_ids = await _deployment_plugin_projects(
-            db, org_slug, project_ids
-        )
         for project_data in project_data_list:
             project_data['has_deployment_plugin'] = (
                 str(project_data.get('id', '')) in deployment_ids
