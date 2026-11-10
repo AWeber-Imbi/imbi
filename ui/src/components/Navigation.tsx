@@ -33,7 +33,7 @@ import { useAssistantStore } from '@/stores/assistantStore'
 import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
 
-import { AGENTS_NAV, agentsPath } from './agents/agentsNav'
+import { agentsPath, useAgentsNav } from './agents/agentsNav'
 import { NewTaskDialog } from './agents/NewTaskDialog'
 import { useWaitingTaskCount } from './agents/taskQueries'
 import { AssistantPanel } from './assistant/AssistantPanel'
@@ -71,6 +71,10 @@ export function Navigation({ currentView }: NavigationProps) {
   const isAdmin = (user as null | UserResponse)?.is_admin === true
   const canReadAgents = useHasPermission(
     'agent:read',
+    selectedOrganization?.slug,
+  )
+  const canReadRunners = useHasPermission(
+    'harness_pool:read',
     selectedOrganization?.slug,
   )
   // The dialog lists agents, so it needs agent:read too.
@@ -146,7 +150,9 @@ export function Navigation({ currentView }: NavigationProps) {
 
             {/* Navigation Items */}
             <div className="hidden items-center gap-1 md:flex">
-              {canReadAgents && (
+              {/* Admins reach Egress Destinations without membership.
+                  Runner readers reach Runners without agent:read. */}
+              {(canReadAgents || canReadRunners || isAdmin) && (
                 <AgentsMenu isActive={activeView === 'agents'} />
               )}
               {navItems.map((item) => {
@@ -374,6 +380,7 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
   const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
+  const agentsNav = useAgentsNav()
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
@@ -391,9 +398,9 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        {AGENTS_NAV.map((item, i) => {
+        {agentsNav.map((item, i) => {
           const Icon = item.icon
-          const newGroup = i > 0 && AGENTS_NAV[i - 1].group !== item.group
+          const newGroup = i > 0 && agentsNav[i - 1].group !== item.group
           return (
             <div key={item.id}>
               {newGroup && <DropdownMenuSeparator />}

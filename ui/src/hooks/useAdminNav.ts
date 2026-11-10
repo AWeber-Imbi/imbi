@@ -17,7 +17,11 @@ interface AdminNavState {
   viewMode: ViewMode
 }
 
-export function useAdminNav(): AdminNavState {
+/**
+ * List, detail, create, and edit routes for one admin page. The page is
+ * `/admin/<section>` unless `basePath` names a different list path.
+ */
+export function useAdminNav(basePath?: string): AdminNavState {
   const { action, section, slug } = useParams<{
     action?: string
     section?: string
@@ -35,7 +39,7 @@ export function useAdminNav(): AdminNavState {
     viewMode = action === 'edit' ? 'edit' : 'detail'
   }
 
-  const base = section ? `/admin/${section}` : '/admin'
+  const base = basePath ?? (section ? `/admin/${section}` : '/admin')
 
   const listPath = base
   const createPath = `${base}/new`

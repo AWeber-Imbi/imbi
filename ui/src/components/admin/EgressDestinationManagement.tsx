@@ -9,6 +9,7 @@ import {
   listEgressDestinations,
   updateEgressDestination,
 } from '@/api/endpoints'
+import { agentsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
@@ -27,7 +28,9 @@ import { formatPorts } from './egress-destinations/ports'
  * makes the network policy of its current generation.
  */
 export function EgressDestinationManagement() {
-  const { editPath, goToCreate, goToList, slug, viewMode } = useAdminNav()
+  const { editPath, goToCreate, goToList, slug, viewMode } = useAdminNav(
+    agentsPath('egress'),
+  )
   const [search, setSearch] = useState('')
   const sync = useQuery({
     queryFn: ({ signal }) => getEgressSyncStatus(signal),
