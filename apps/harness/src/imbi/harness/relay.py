@@ -23,11 +23,6 @@ relayed tools as an in-process MCP server, ``imbi_api``. So:
 Each call opens its own MCP session, so a renewed token (each runner
 heartbeat) applies at once, a restart of ``apps/mcp`` costs one call,
 and nothing stays open when the runner fences and exits.
-
-A third-party MCP server of the agent uses the same relay, with its
-own CLI name (:func:`server_name`), its credential from the secrets
-broker, and the outbound checks of :mod:`imbi.harness.outbound`. Its
-tool descriptions are untrusted too.
 """
 
 import asyncio
@@ -65,7 +60,6 @@ KEY = 'imbi'
 CALL_TIMEOUT = 120.0
 #: The CLI's limit on an MCP tool name.
 _TOOL_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}')
-_NOT_NAME = re.compile(r'[^a-z0-9_-]+')
 #: The most result text, in characters, that the model gets.
 RESULT_LIMIT = 256 * 1024
 _IDEMPOTENCY_KEYS = ('Idempotency-Key', 'idempotency_key')
@@ -83,25 +77,18 @@ def untrusted(text: str, source: str) -> str:
     return f'<untrusted source="{source}">\n{text}\n</untrusted>'
 
 
-def mapped(tool_map: Body, key: str = KEY) -> set[str]:
-    """The tools of one server in a tool map: ``<key>.<tool>`` keys.
-    The Imbi tools never include the harness's own tools."""
+def mapped(tool_map: Body) -> set[str]:
+    """The Imbi tools in a tool map: ``imbi.<tool>`` keys. They never
+    include the harness's own tools."""
     return {
         name
         for name in (
-            k.removeprefix(f'{key}.')
+            k.removeprefix(f'{KEY}.')
             for k in tool_map
-            if k.startswith(f'{key}.')
+            if k.startswith(f'{KEY}.')
         )
-        if key != KEY or name not in policy.HARNESS_TOOLS
+        if name not in policy.HARNESS_TOOLS
     }
-
-
-def server_name(slug: str) -> str:
-    """The CLI name of a third-party server: the slug in lower case,
-    with each run of other characters as one ``_``. Never ``__``, which
-    divides the server and the tool in a CLI tool name."""
-    return re.sub('_{2,}', '_', _NOT_NAME.sub('_', slug.lower())).strip('_')
 
 
 def digest(arguments: typing.Any) -> str:
@@ -143,24 +130,17 @@ class _Tool:
 class Relay:
     """Relays the agent's mapped tools of one MCP server."""
 
-    def __init__(  # noqa: PLR0913 - keyword-only options
+    def __init__(
         self,
         url: str,
         auth: httpx.Auth | None,
         tool_map: Body,
         *,
-        server: str = SERVER,
-        key: str = KEY,
-        ignored: abc.Iterable[str] = (),
-        transport: httpx.AsyncBaseTransport | None = None,
         stopped: abc.Callable[[], bool] = lambda: False,
     ) -> None:
         self.url = url
         self.auth = auth
-        self.server = server
-        self.key = key
-        self.mapped = mapped(tool_map, key) - set(ignored)
-        self.transport = transport
+        self.mapped = mapped(tool_map)
         self.stopped = stopped
         self.tools: dict[str, _Tool] = {}
         self.audits: dict[tuple[str, str], collections.deque[Body]] = (
@@ -175,7 +155,6 @@ class Relay:
         async with (
             httpx.AsyncClient(
                 auth=self.auth,
-                transport=self.transport,
                 follow_redirects=False,
                 # Past the call deadline, so that the deadline decides.
                 timeout=httpx.Timeout(CALL_TIMEOUT + 10, connect=10),
@@ -208,8 +187,6 @@ class Relay:
             properties: Body = tool.inputSchema.get('properties') or {}
             annotations = tool.annotations
             description = tool.description or tool.name
-            if self.server != SERVER:
-                description = untrusted(description, f'mcp:{self.server}')
             self.tools[tool.name] = _Tool(
                 name=tool.name,
                 description=description,
@@ -222,12 +199,12 @@ class Relay:
         return sorted(self.tools)
 
     def allowed_tools(self) -> list[str]:
-        return [f'mcp__{self.server}__{name}' for name in sorted(self.tools)]
+        return [f'mcp__{SERVER}__{name}' for name in sorted(self.tools)]
 
     def writes(self) -> set[str]:
         """The CLI names of the tools that are not read only."""
         return {
-            f'mcp__{self.server}__{tool.name}'
+            f'mcp__{SERVER}__{tool.name}'
             for tool in self.tools.values()
             if not tool.read_only
         }
@@ -245,7 +222,7 @@ class Relay:
     def take_audit(self, name: str, arguments: typing.Any) -> Body | None:
         """The audit fields of a relayed call, for its tool.called
         event (plan P7): one per call, in call order."""
-        prefix = f'mcp__{self.server}__'
+        prefix = f'mcp__{SERVER}__'
         if not name.startswith(prefix):
             return None
         queue = self.audits.get((name.removeprefix(prefix), digest(arguments)))
@@ -287,7 +264,7 @@ class Relay:
                     if attempt == retries:
                         raise
         except Unavailable:
-            text = f'The MCP server {self.server} is not available'
+            text = f'The MCP server {SERVER} is not available'
         except TimeoutError:
             status, text = 'timeout', 'The Imbi call timed out'
         except Stopped:
@@ -299,7 +276,7 @@ class Relay:
             text = text[:RESULT_LIMIT] + '\n[result truncated]'
         self.audits[(name, input_digest)].append(
             {
-                'server': self.server,
+                'server': SERVER,
                 'input_digest': input_digest,
                 'token_jti': jti,
                 'status': status,
@@ -312,7 +289,7 @@ class Relay:
             'content': [
                 {
                     'type': 'text',
-                    'text': untrusted(text, f'mcp:{self.server}'),
+                    'text': untrusted(text, f'mcp:{SERVER}'),
                 }
             ]
         }
@@ -370,14 +347,12 @@ def imbi(
 
 
 def _reason(err: BaseException) -> str:
-    """A safe reason: an outbound check's code, or the error type. An
-    error group (from the MCP client's task group) gives its first
-    error."""
+    """A safe reason: the error type. An error group (from the MCP
+    client's task group) gives its first error."""
     inner: tuple[BaseException, ...] = getattr(err, 'exceptions', ())
     if inner:
         return _reason(inner[0])
-    reason: object = getattr(err, 'reason', None)
-    return reason if isinstance(reason, str) else type(err).__name__
+    return type(err).__name__
 
 
 def _text(result: types.CallToolResult | None) -> str:

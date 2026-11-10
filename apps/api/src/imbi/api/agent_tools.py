@@ -1,19 +1,15 @@
 """The catalog of tools that an agent can use.
 
-The catalog has one group for each tool server:
+The catalog has one group, ``imbi``: the tools that imbi-mcp and
+imbi-assistant make from the OpenAPI document of this API. This module
+makes them in the same way, in this process, so the names are the
+same. The MCP servers in Admin > Assistant are for the assistant only.
+An agent gets other MCP servers from the plugins of its marketplaces.
 
-* ``imbi``: the tools that imbi-mcp and imbi-assistant make from the
-  OpenAPI document of this API. This module makes them in the same
-  way, in this process, so the names are the same.
-* One group for each enabled :class:`~imbi.common.models.MCPServer`.
-  The tools are listed live, with the client code of the connection
-  test. ``ignored_tools`` is applied.
-
-A server that fails gives its group with an :data:`ErrorCode` in
-``error`` and no tools. The other groups are not affected. The error
-text can show internal hosts, URLs, or parts of credentials, so it
-goes only to the log, never to the response or to the cache. The
-catalog is kept in Valkey for :data:`CACHE_TTL_SECONDS`.
+When the tools cannot be made, the group has an :data:`ErrorCode` in
+``error`` and no tools. The error text goes only to the log, never to
+the response or to the cache. The catalog is kept in Valkey for
+:data:`CACHE_TTL_SECONDS`.
 
 A tool key is ``<server slug>.<tool name>``. An agent stores its tool
 configuration by this key.
@@ -31,18 +27,12 @@ import pydantic
 from mcp import types as mcp_types
 from valkey import asyncio as valkey
 
-from imbi.api import mcp_test
-from imbi.common import graph, models
 from imbi.common import mcp as common_mcp
 
 LOGGER = logging.getLogger(__name__)
 
 CACHE_KEY = 'imbi:agents:tool-catalog'
 CACHE_TTL_SECONDS = 300
-
-#: The limit for one MCP server, in seconds. A server with a smaller
-#: ``timeout`` uses its own value.
-SERVER_TIMEOUT_SECONDS = 10.0
 
 #: The server slug of the Imbi tools.
 IMBI_SERVER_SLUG = 'imbi'
@@ -51,7 +41,7 @@ IMBI_SERVER_SLUG = 'imbi'
 DESCRIPTION_LENGTH = 300
 
 Capability = typing.Literal['read', 'write', 'destructive', 'unknown']
-Transport = typing.Literal['internal', 'mcp/http']
+Transport = typing.Literal['internal']
 
 #: Why the tools of a server could not be listed. ``auth_failed`` is
 #: an HTTP 401 or 403 response. ``unreachable`` is each other failure.
@@ -151,45 +141,6 @@ def _error_code(err: BaseException) -> ErrorCode:
     return 'unreachable'
 
 
-async def _mcp_group(server: models.MCPServer) -> AgentToolGroup:
-    """List the tools of one MCP server. Never raises."""
-    group = AgentToolGroup(
-        server=AgentToolServer(
-            slug=server.slug, name=server.name, transport='mcp/http'
-        )
-    )
-    timeout_s = min(float(server.timeout), SERVER_TIMEOUT_SECONDS)
-    try:
-        async with asyncio.timeout(timeout_s):
-            tools = await mcp_test.list_tools(server, timeout_s)
-    except asyncio.CancelledError:
-        raise
-    except TimeoutError:
-        LOGGER.warning(
-            'Cannot list the tools of %r: timed out after %gs',
-            server.slug,
-            timeout_s,
-        )
-        group.error = 'timeout'
-        return group
-    except Exception as err:  # noqa: BLE001 - one server must not fail all
-        LOGGER.warning(
-            'Cannot list the tools of %r: %s', server.slug, err, exc_info=err
-        )
-        group.error = _error_code(err)
-        return group
-    ignored = set(server.ignored_tools)
-    group.tools = sorted(
-        (
-            _tool(server.slug, t.name, t.description, t.annotations)
-            for t in tools
-            if t.name not in ignored
-        ),
-        key=lambda t: t.name,
-    )
-    return group
-
-
 def _imbi_server(
     spec: dict[str, typing.Any], client: httpx.AsyncClient
 ) -> fastmcp.FastMCP[typing.Any]:
@@ -234,24 +185,15 @@ async def _imbi_group(spec: dict[str, typing.Any]) -> AgentToolGroup:
     return group
 
 
-async def build_catalog(
-    db: graph.Pool, spec: dict[str, typing.Any]
-) -> AgentToolCatalog:
-    """List every group now, at the same time."""
-    servers = await db.match(
-        models.MCPServer, {'enabled': True}, order_by='name'
-    )
-    groups = await asyncio.gather(
-        _imbi_group(spec), *(_mcp_group(server) for server in servers)
-    )
+async def build_catalog(spec: dict[str, typing.Any]) -> AgentToolCatalog:
+    """List the catalog now."""
     return AgentToolCatalog(
-        groups=list(groups),
+        groups=[await _imbi_group(spec)],
         generated_at=datetime.datetime.now(datetime.UTC),
     )
 
 
 async def get_catalog(
-    db: graph.Pool,
     client: valkey.Valkey | None,
     spec: collections.abc.Callable[[], dict[str, typing.Any]],
     *,
@@ -275,7 +217,7 @@ async def get_catalog(
                 return AgentToolCatalog.model_validate_json(cached)
             except pydantic.ValidationError:
                 LOGGER.debug('discarding malformed tool catalog cache entry')
-    catalog = await build_catalog(db, spec())
+    catalog = await build_catalog(spec())
     if client is not None:
         try:
             await client.set(

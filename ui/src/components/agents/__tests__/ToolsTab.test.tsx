@@ -80,7 +80,7 @@ describe('ToolsTab', () => {
     render(<Harness initial={{ 'github.read_file': {} as never }} />)
     expect(await screen.findByText('1 of 4 enabled')).toBeInTheDocument()
     expect(
-      screen.getByText(/Admin › Assistant › MCP servers/),
+      screen.getByText(/come with the plugins in the Plugins section/),
     ).toBeInTheDocument()
     expect(
       within(group('GitHub')).getByText('1 of 2 enabled'),

@@ -27,8 +27,9 @@ Two more requests are for the runner's own setup secrets (H22):
   it (plan section 6.2). A project repository also gets a push helper
   that reads ``GH_TOKEN`` (#422).
 - ``fetch`` returns the material of a ``model_inference`` resolution to
-  the runner, for its model proxy (plan section 6.4), or of an
-  ``mcp_server`` resolution, for its MCP relay (plan P7). The reply
+  the runner, for its model proxy (plan section 6.4). ``mcp_server``
+  stays a setup purpose until the broker drops it, so ``run`` never
+  delivers it. The reply
   also has ``expires_at`` for a dynamic credential, and ``bearer`` for
   an OAuth access token (WIF plan 4.7).
 

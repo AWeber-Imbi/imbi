@@ -11144,9 +11144,9 @@ export interface components {
             name: string;
             /**
              * Transport
-             * @enum {string}
+             * @constant
              */
-            transport: "internal" | "mcp/http";
+            transport: "internal";
         };
         /**
          * AgentUpdate
