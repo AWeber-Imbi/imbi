@@ -478,14 +478,18 @@ A network policy cannot match a host name. Thus runner pods reach a host
 name destination only through the **egress proxy**:
 
 1. At claim, imbi-api signs a **proxy token**. The token holds the host
-   names of the chain and the uid of the runner pod.
+   names of the chain, the CIDRs of the chain with their TCP ports, and
+   the uid of the runner pod.
 2. The runner puts the proxy URL, with the token, in the environment of
    the agent's commands.
-3. A client sends `CONNECT <host>:443` to the proxy. The proxy resolves the
-   host. When every address is public, it allows the connection with no
-   token. When an address is internal, it allows the connection only when
-   the token holds the host, the port is 443, and the connection comes from
-   the address of the live pod with the token's pod uid.
+3. A client sends `CONNECT <host>:<port>` to the proxy. The proxy resolves
+   the host. When every address is public, it allows the connection with
+   no token. When an address is internal, it allows the connection only
+   when the connection comes from the address of the live pod with the
+   token's pod uid, and one of these is true:
+    - The token holds the host, and the port is 443.
+    - The internal address is in a CIDR of the token, and the port is
+      a TCP port of that CIDR.
 4. TLS is end to end between the client and the host. The proxy does not
    decrypt traffic.
 
@@ -511,8 +515,19 @@ for these:
 | `ssh` (for example `git` over SSH) | No |
 | Database drivers and other clients that are not HTTP | No |
 
-`NO_PROXY` holds `localhost`, `127.0.0.1`, `::1`, the imbi-api host, and the
-imbi-mcp host. The local model proxy of the runner is on `127.0.0.1`.
+`NO_PROXY` holds `localhost`, `127.0.0.1`, `::1`, the imbi-api host, the
+imbi-mcp host, and the CIDRs of the chain's CIDR destinations. The local
+model proxy of the runner is on `127.0.0.1`.
+
+CIDR destinations also work when the proxy is on:
+
+- A URL with an IP literal in a CIDR of the chain (for example
+  `https://10.20.1.5:8443/`) matches `NO_PROXY` and goes direct, through
+  the network policy. `curl` 7.86 and later, `git`, and Python `requests`
+  accept CIDRs in `NO_PROXY`.
+- A URL with a host name goes through the proxy. The proxy allows it when
+  the internal addresses of the name are in a CIDR of the token, on a TCP
+  port of that CIDR. UDP ports are not in the token.
 
 Public HTTPS of these clients also goes through the proxy, because
 `NO_PROXY` cannot list every public host. This is a default, not a
@@ -568,7 +583,9 @@ To rotate the key:
 5. Upgrade the `manageGlobal` release first, then the other releases.
 6. Add a host name destination for a test host. Assign it to a test agent.
    Run a task that calls `curl https://<host>/`. Run the same task with an
-   agent that does not have it: the proxy refuses it with `403`.
+   agent that does not have it. The proxy refuses it with `407` when the
+   agent has no egress destination (the claim has no token), and with
+   `403` when the agent has other destinations.
 7. Watch the proxy log and the task failures for 2 days.
 
 #### Turn off the proxy
@@ -581,8 +598,8 @@ closed). CIDR destinations do not change.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `407` from the proxy (`curl: (56) CONNECT tunnel failed, response 407`) | The host is internal and the token is missing, not valid, or expired, or the connection does not come from the token's live pod. A token from another pod is refused | Check that imbi-api and the proxy have the same key. Check that the runner pod has `POD_UID`. A command that changed `HTTPS_PROXY` sends no token |
-| `403` from the proxy | The host is internal and the chain does not hold it, the port is not 443, or the host resolves to a special address (loopback, link-local, IMDS, and others) | Assign the host name destination to the root agent of the chain. Check the DNS answer of the host |
+| `407` from the proxy (`curl: (56) CONNECT tunnel failed, response 407`) | The host is internal and the token is missing, not valid, or expired, or the connection does not come from the token's live pod. A token from another pod is refused. A chain with no egress destination (or only UDP CIDRs) gets no token | Check that imbi-api and the proxy have the same key. Check that the runner pod has `POD_UID`. A command that changed `HTTPS_PROXY` sends no token. Assign a destination to the root agent of the chain |
+| `403` from the proxy | The host is internal and the chain holds neither the host name on port 443 nor a CIDR of each address with that TCP port, or the host resolves to a special address (loopback, link-local, IMDS, and others) | Assign the host name destination, or a CIDR destination with the port, to the root agent of the chain. Check the DNS answer of the host |
 | `503` from the proxy | The proxy has its maximum number of tunnels (512 for each replica) | Add replicas (`egressProxy.replicas`) |
 | `405` from the proxy | The client sent a plain HTTP request, not `CONNECT` | Use HTTPS |
 | A connection times out | The client does not use the proxy, and the network policy drops the connection | Use a client that reads `HTTPS_PROXY` (see the table above) |

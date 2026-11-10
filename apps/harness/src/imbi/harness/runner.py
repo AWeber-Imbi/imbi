@@ -335,8 +335,9 @@ class Runner:
             LOGGER.error('The pod has no egress labels')
 
     def egress_proxy(self, claim: Body) -> dict[str, str]:
-        """The proxy environment, with the proxy token of the claim.
-        :meth:`_start` gives the token to the redactor."""
+        """The proxy environment, with the proxy token of the claim and
+        the CIDRs of its egress in ``NO_PROXY``. :meth:`_start` gives the
+        token to the redactor."""
         if not self.settings.egress_proxy_url:
             return {}
         token = str(claim.get('proxy_token') or '')
@@ -344,6 +345,7 @@ class Runner:
             outbound.proxy_url(self.settings.egress_proxy_url, token),
             self.settings.api_url,
             self.settings.mcp_url,
+            egress=typing.cast('list[Body]', api.items(claim, 'egress')),
         )
 
     def remove_old_workspaces(self) -> None:
