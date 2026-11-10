@@ -1,0 +1,37 @@
+[package]
+name = "imbi-egress-proxy"
+# Lockstep with the monorepo; scripts/bump-version.sh sets it.
+version = "2.44.0"
+edition = "2024"
+description = "CONNECT proxy for host name egress destinations of the Imbi agent harness"
+license = "BSD-3-Clause"
+publish = false
+
+[[bin]]
+name = "imbi-egress-proxy"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+futures = { version = "0.3", default-features = false, features = ["std"] }
+hickory-resolver = { version = "0.26", default-features = false, features = ["system-config", "tokio"] }
+httparse = "1"
+idna = "1"
+ipnet = "2"
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
+k8s-openapi = { version = "0.29", features = ["earliest"] }
+kube = { version = "5", default-features = false, features = ["client", "ring", "runtime", "rustls-tls"] }
+prometheus = { version = "0.14", default-features = false }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["test-util"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
