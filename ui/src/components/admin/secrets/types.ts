@@ -43,12 +43,31 @@ export const SETUP_PURPOSES = [
 /** The purpose slug format that the broker accepts. */
 export const PURPOSE_PATTERN = /^[a-z][a-z0-9_]{0,63}$/
 
-/** Select options for slugs, labelled in title case. */
-export const titleOptions = (values: readonly string[]) =>
-  values.map((value) => ({ label: toTitleCase(value), value }))
-
 /** A list of slugs in title case, for a table cell. */
 export const titleList = (values: readonly string[]) =>
   values.map(toTitleCase).join(', ')
+
+/** Seconds as the largest whole unit, for example 900 as 15 min. */
+export const duration = (seconds: number) =>
+  seconds % 3600 === 0
+    ? `${seconds / 3600} h`
+    : seconds % 60 === 0
+      ? `${seconds / 60} min`
+      : `${seconds} s`
+
+/**
+ * JSON with sorted object keys, and without empty-list properties, so that
+ * key order and an absent list do not count as a change.
+ */
+export const canonical = (value: unknown): string =>
+  JSON.stringify(value, (_key, val: unknown) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.entries(val)
+            .filter(([, v]) => !(Array.isArray(v) && !v.length))
+            .sort(([a], [b]) => a.localeCompare(b)),
+        )
+      : val,
+  )
 
 type Schemas = components['schemas']

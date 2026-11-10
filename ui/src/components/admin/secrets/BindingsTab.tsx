@@ -4,11 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
-  checkSecretLocator,
   createSecretBinding,
   deleteSecretBinding,
   listSecretBindings,
   listSecretProviders,
+  listSecretProviderTypes,
   listTokenExchangers,
   updateSecretBinding,
   validateSecretBinding,
@@ -17,35 +17,24 @@ import { AdminTable } from '@/components/ui/admin-table'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
+import { BindingDialog } from './BindingDialog'
 import { CopyId } from './CopyId'
-import { SecretDialog, type Values } from './SecretDialog'
 import {
-  CREDENTIAL_CLASSES,
-  DELIVERY_MODES,
   type SecretBinding,
   type SecretBindingCreate,
   type SecretBindingPatch,
   titleList,
-  titleOptions,
 } from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
-
-const asOptions = (values: readonly string[]) =>
-  values.map((value) => ({ label: value, value }))
 
 interface KeyUsage {
   app_id: string
   consumers?: string[]
   host: string
 }
-
-/** A key binding can hold a provider key; a dynamic binding cannot. */
-const keyClass = (values: Record<string, string | string[]>) =>
-  values.credential_class !== 'dynamic'
 
 // fallow-ignore-next-line complexity
 export function BindingsTab({ orgSlug }: { orgSlug: string }) {
@@ -60,6 +49,10 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   const providersQuery = useQuery({
     queryFn: ({ signal }) => listSecretProviders(orgSlug, signal),
     queryKey: ['secret-providers', orgSlug],
+  })
+  const typesQuery = useQuery({
+    queryFn: ({ signal }) => listSecretProviderTypes(orgSlug, signal),
+    queryKey: ['secret-provider-types', orgSlug],
   })
   const exchangersQuery = useQuery({
     queryFn: ({ signal }) => listTokenExchangers(orgSlug, signal),
@@ -76,9 +69,6 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   )
   const bindings = bindingsQuery.data ?? []
   const refresh = () => queryClient.invalidateQueries({ queryKey })
-  // The dialog values, to check the locator while the admin types it.
-  const [formValues, setFormValues] = useState<null | Values>(null)
-  const locator = useLocatorCheck(orgSlug, formValues)
 
   const saveMutation = useMutation({
     mutationFn: ({
@@ -95,7 +85,6 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   })
   const open = (target: 'new' | SecretBinding) => {
     saveMutation.reset()
-    setFormValues(null)
     setEditing(target)
   }
   const row = editing === 'new' ? undefined : (editing ?? undefined)
@@ -244,129 +233,29 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
         rows={bindings}
       />
       {editing && (
-        <SecretDialog
-          description="Map a logical reference to a location in a provider. A binding holds no secret value."
+        <BindingDialog
+          consumers={bindings
+            .filter((b) => {
+              const usage = row?.provider_key_usage as KeyUsage | undefined
+              // Keep current consumers so the admin can remove them.
+              if (usage?.consumers?.includes(b.id)) return true
+              if (
+                b.credential_class !== 'dynamic' ||
+                !appProviders.has(b.provider_id)
+              )
+                return false
+              // A key with no saved host and App id offers each App.
+              // Otherwise offer only the Apps that the broker accepts.
+              return (
+                !usage?.host ||
+                (usage.host === appProviders.get(b.provider_id) &&
+                  usage.app_id === String(b.locator.app_id))
+              )
+            })
+            .map((b) => ({ label: b.reference, value: b.id }))}
           error={saveMutation.error}
-          fieldErrors={{ locator: locator.error }}
-          fields={[
-            {
-              createOnly: true,
-              description: 'secret://<scope>/<path>, lower case, no field',
-              kind: 'text',
-              label: 'Reference',
-              name: 'reference',
-              required: true,
-            },
-            {
-              createOnly: true,
-              kind: 'select',
-              label: 'Provider',
-              name: 'provider_id',
-              options: (providersQuery.data ?? []).map((p) => ({
-                label: p.name,
-                value: p.id,
-              })),
-              required: true,
-            },
-            {
-              initial: 'static',
-              kind: 'select',
-              label: 'Credential class',
-              name: 'credential_class',
-              options: asOptions(CREDENTIAL_CLASSES),
-              required: true,
-            },
-            {
-              description:
-                'For AWS: {"secret_id": "prod/app", "version_stage": "AWSCURRENT"}. For a GitHub App: {"app_id": "123", "private_key": "secret://<scope>/<key>", "repositories": ["owner/name"]}.' +
-                (exchangersQuery.data ?? [])
-                  .map(
-                    (e) =>
-                      ` For ${e.label} workload identity (dynamic): ${e.target_help}`,
-                  )
-                  .join(''),
-              initial: '{}',
-              kind: 'json',
-              label: 'Locator',
-              name: 'locator',
-              required: true,
-            },
-            {
-              description:
-                'Comma separated. Empty: only the whole value is allowed.',
-              kind: 'list',
-              label: 'Allowed fields',
-              name: 'allowed_fields',
-            },
-            {
-              kind: 'multi',
-              label: 'Allowed delivery modes',
-              name: 'allowed_delivery_modes',
-              options: titleOptions(DELIVERY_MODES),
-              required: true,
-            },
-            {
-              description:
-                'Comma separated, e.g. GH_TOKEN. Empty allows any safe target.',
-              kind: 'list',
-              label: 'Allowed delivery targets',
-              name: 'allowed_delivery_targets',
-            },
-            {
-              initial: '900',
-              kind: 'number',
-              label: 'Maximum TTL (seconds)',
-              name: 'max_ttl_seconds',
-            },
-            { kind: 'text', label: 'Description', name: 'description' },
-            {
-              description:
-                'Only for a provider key, such as a GitHub App private key: github.com, <tenant>.ghe.com, or a GHES host.',
-              group: 'provider_key_usage',
-              kind: 'text',
-              label: 'Provider key host',
-              name: 'host',
-              required: true,
-              show: keyClass,
-            },
-            {
-              group: 'provider_key_usage',
-              kind: 'text',
-              label: 'Provider key App id',
-              name: 'app_id',
-              required: true,
-              show: keyClass,
-            },
-            {
-              description: 'The github_app bindings that can sign with the key',
-              group: 'provider_key_usage',
-              kind: 'multi',
-              label: 'Provider key consumers',
-              name: 'consumers',
-              options: bindings
-                .filter((b) => {
-                  const usage = row?.provider_key_usage as KeyUsage | undefined
-                  // Keep current consumers so the admin can remove them.
-                  if (usage?.consumers?.includes(b.id)) return true
-                  if (
-                    b.credential_class !== 'dynamic' ||
-                    !appProviders.has(b.provider_id)
-                  )
-                    return false
-                  // A key with no saved host and App id offers each App.
-                  // Otherwise offer only the Apps that the broker accepts.
-                  return (
-                    !usage?.host ||
-                    (usage.host === appProviders.get(b.provider_id) &&
-                      usage.app_id === String(b.locator.app_id))
-                  )
-                })
-                .map((b) => ({ label: b.reference, value: b.id })),
-              show: keyClass,
-            },
-          ]}
+          exchangers={exchangersQuery.data ?? []}
           isPending={saveMutation.isPending}
-          onChange={setFormValues}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>
             // Close in a per-call callback: open() resets the mutation,
@@ -376,9 +265,10 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               { onSuccess: () => setEditing(null) },
             )
           }
+          orgSlug={orgSlug}
           original={row}
-          title={row ? `Edit binding ${row.reference}` : 'New binding'}
-          validating={locator.checking}
+          providers={providersQuery.data ?? []}
+          providerTypes={typesQuery.data ?? []}
         />
       )}
     </div>
@@ -412,56 +302,4 @@ function unlinkedKeys(
       return []
     return [{ app, key, usage }]
   })
-}
-
-/**
- * Check the locator in the dialog with the rules of a save, a moment
- * after the admin stops typing. Return the reason it is not valid, and
- * whether a check is still to come.
- */
-// fallow-ignore-next-line complexity
-function useLocatorCheck(orgSlug: string, values: null | Values) {
-  const text = typeof values?.locator === 'string' ? values.locator : ''
-  const providerId = String(values?.provider_id ?? '')
-  const credentialClass = String(values?.credential_class ?? '')
-  let parsed: null | Record<string, unknown> = null
-  let parseError: string | undefined
-  if (text.trim()) {
-    try {
-      const value: unknown = JSON.parse(text)
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        parsed = value as Record<string, unknown>
-      } else {
-        parseError = 'The locator must be a JSON object'
-      }
-    } catch {
-      parseError = 'The locator is not valid JSON'
-    }
-  }
-  const request =
-    parsed && providerId && credentialClass
-      ? JSON.stringify({
-          credential_class: credentialClass,
-          locator: parsed,
-          provider_id: providerId,
-        })
-      : ''
-  const debounced = useDebouncedValue(request, 400)
-  const check = useQuery({
-    enabled: !!debounced,
-    // A query cannot hold undefined, and the 204 has no body.
-    queryFn: async () => {
-      await checkSecretLocator(orgSlug, JSON.parse(debounced))
-      return true
-    },
-    queryKey: ['secret-locator-check', orgSlug, debounced],
-    retry: false,
-    staleTime: Infinity,
-  })
-  if (parseError) return { checking: false, error: parseError }
-  if (!request) return { checking: false, error: undefined }
-  return {
-    checking: request !== debounced || check.isFetching,
-    error: check.error ? extractApiErrorDetail(check.error) : undefined,
-  }
 }

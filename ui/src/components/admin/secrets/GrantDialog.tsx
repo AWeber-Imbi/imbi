@@ -15,8 +15,10 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
+import { Chip, ChipGroup } from './controls'
 import {
   DELIVERY_MODES,
+  duration,
   PURPOSE_PATTERN,
   type SecretBinding,
   type SecretGrant,
@@ -357,70 +359,7 @@ const blockers = (chosen: SecretBinding[], mode: string) =>
 const toggle = (list: string[], value: string, on: boolean) =>
   on ? [...list, value] : list.filter((v) => v !== value)
 
-const duration = (seconds: number) =>
-  seconds % 3600 === 0
-    ? `${seconds / 3600} h`
-    : seconds % 60 === 0
-      ? `${seconds / 60} min`
-      : `${seconds} s`
-
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-
-/** A toggle button made from a hidden checkbox, so a label finds it. */
-function Chip({
-  checked,
-  disabled,
-  label,
-  mono,
-  onChange,
-  title,
-}: {
-  checked: boolean
-  disabled?: boolean
-  label: string
-  mono?: boolean
-  onChange: (checked: boolean) => void
-  title?: string
-}) {
-  return (
-    <label
-      className={cn(
-        'flex h-8 cursor-pointer items-center rounded-full border border-secondary px-3 text-sm has-checked:border-action has-checked:bg-action has-checked:text-action-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring has-disabled:cursor-not-allowed has-disabled:opacity-50',
-        mono && 'font-mono text-xs',
-      )}
-      title={title}
-    >
-      <input
-        checked={checked}
-        className="sr-only"
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        type="checkbox"
-      />
-      {label}
-    </label>
-  )
-}
-
-function ChipGroup({
-  children,
-  hint,
-  label,
-}: {
-  children: ReactNode
-  hint?: string
-  label: string
-}) {
-  return (
-    <fieldset>
-      <legend className="mb-2 text-sm font-medium">
-        {label} <span className="text-destructive">*</span>
-        {hint && <span className="text-tertiary ml-2 font-normal">{hint}</span>}
-      </legend>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
-    </fieldset>
-  )
-}
 
 /** A filtered checkbox list, with a count, "Selected only", and Clear. */
 // fallow-ignore-next-line complexity

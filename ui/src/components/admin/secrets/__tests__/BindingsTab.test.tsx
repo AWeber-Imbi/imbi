@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import {
   checkSecretLocator,
+  createSecretBinding,
   listSecretBindings,
   listSecretProviders,
+  listSecretProviderTypes,
   listTokenExchangers,
   updateSecretBinding,
 } from '@/api/endpoints'
@@ -19,6 +21,7 @@ vi.mock('@/api/endpoints', () => ({
   deleteSecretBinding: vi.fn(),
   listSecretBindings: vi.fn(),
   listSecretProviders: vi.fn(),
+  listSecretProviderTypes: vi.fn(),
   listTokenExchangers: vi.fn(),
   updateSecretBinding: vi.fn(),
   validateSecretBinding: vi.fn(),
@@ -61,6 +64,7 @@ describe('BindingsTab', () => {
     ])
     vi.mocked(updateSecretBinding).mockResolvedValue({} as never)
     vi.mocked(checkSecretLocator).mockResolvedValue(undefined)
+    vi.mocked(listSecretProviderTypes).mockResolvedValue([])
   })
 
   /** Save waits for the locator check. */
@@ -97,14 +101,53 @@ describe('BindingsTab', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows the target help of each installed exchanger', async () => {
+  it('draws the locator fields from the provider schema', async () => {
+    vi.mocked(listSecretProviderTypes).mockResolvedValue([
+      {
+        capabilities: [],
+        credential_classes: ['static', 'rotated'],
+        label: 'AWS Secrets Manager',
+        locator_schema: {
+          properties: {
+            secret_id: {
+              description: 'Name or ARN.',
+              title: 'Secret ID',
+              type: 'string',
+            },
+            version_stage: {
+              anyOf: [{ type: 'string' }, { type: 'null' }],
+              title: 'Version stage',
+            },
+          },
+          required: ['secret_id'],
+        },
+        type: 'aws_secrets_manager',
+      },
+    ])
     render(<BindingsTab orgSlug="acme" />)
-    fireEvent.click(await screen.findByRole('button', { name: 'New binding' }))
-    expect(
-      await screen.findByText(
-        /For Acme AI workload identity \(dynamic\): \{"acme_id": "\.\.\."\}/,
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    const secretId = await screen.findByLabelText(/Secret ID/)
+    expect(secretId).toHaveValue('imbi/key')
+    expect(screen.getByRole('radio', { name: 'Dynamic' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/Version stage/), {
+      target: { value: 'AWSPREVIOUS' },
+    })
+    await waitFor(() =>
+      expect(checkSecretLocator).toHaveBeenCalledWith('acme', {
+        credential_class: 'static',
+        locator: { secret_id: 'imbi/key', version_stage: 'AWSPREVIOUS' },
+        provider_id: 'aws',
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit as JSON' }))
+    expect(screen.getByLabelText(/Locator/)).toHaveValue(
+      JSON.stringify(
+        { secret_id: 'imbi/key', version_stage: 'AWSPREVIOUS' },
+        null,
+        2,
       ),
-    ).toBeInTheDocument()
+    )
   })
 
   it('adds an App binding to the consumers of its key', async () => {
@@ -166,7 +209,7 @@ describe('BindingsTab', () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    fireEvent.change(screen.getByLabelText('Description'), {
+    fireEvent.change(screen.getByLabelText(/Description/), {
       target: { value: 'new' },
     })
     await save()
@@ -213,5 +256,40 @@ describe('BindingsTab', () => {
     fireEvent.click(edits[0])
     expect(screen.getByLabelText('secret://dev/github_app')).toBeInTheDocument()
     expect(screen.queryByLabelText('secret://dev/other_app')).toBeNull()
+  })
+
+  it('creates a binding from the reference path and tags', async () => {
+    vi.mocked(createSecretBinding).mockResolvedValue({} as never)
+    render(<BindingsTab orgSlug="acme" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'New binding' }))
+    fireEvent.change(screen.getByLabelText(/Reference/), {
+      target: { value: 'dev/app_db' },
+    })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Provider' }))
+    fireEvent.click(await screen.findByRole('option', { name: /aws/ }))
+    fireEvent.change(screen.getByLabelText(/Locator/), {
+      target: { value: '{"secret_id": "dev/app_db"}' },
+    })
+    const fields = screen.getByLabelText(/Allowed fields/)
+    fireEvent.change(fields, { target: { value: 'username' } })
+    fireEvent.keyDown(fields, { key: 'Enter' })
+    fireEvent.click(screen.getByLabelText('Environment'))
+    expect(
+      screen.getByText(/reads from aws, fields username/),
+    ).toBeInTheDocument()
+    const create = screen.getByRole('button', { name: 'Create binding' })
+    await waitFor(() => expect(create).toBeEnabled())
+    fireEvent.click(create)
+    await waitFor(() =>
+      expect(createSecretBinding).toHaveBeenCalledWith('acme', {
+        allowed_delivery_modes: ['environment'],
+        allowed_fields: ['username'],
+        credential_class: 'static',
+        locator: { secret_id: 'dev/app_db' },
+        max_ttl_seconds: 900,
+        provider_id: 'aws',
+        reference: 'secret://dev/app_db',
+      }),
+    )
   })
 })

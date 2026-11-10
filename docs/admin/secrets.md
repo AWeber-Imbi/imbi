@@ -125,22 +125,22 @@ Click **Test** on the provider row to check it again later.
 A binding gives one AWS secret a reference in Imbi.
 
 1. Open the **Bindings** tab and click **New binding**.
-2. Enter the **Reference**, for example `secret://grafana/api`.
-    - Use `secret://<scope>/<path>`.
+2. Enter the **Reference** after `secret://`, for example `grafana/api`.
+    - The reference is `secret://<scope>/<path>`.
     - Use only lower case letters, digits, and `_` in each part.
     - Do not add `#field` here. The request adds the field.
 3. Select the provider.
 4. Keep the **Credential class** at `static` for a secret that you change by
    hand. Use `rotated` for a secret that AWS rotates.
-5. Enter the **Locator**, which names the AWS secret:
+5. In the **Locator** box, enter the **Secret ID**: the AWS secret name
+   or ARN, for example `imbi/grafana`. To pin a version, enter a
+   **Version stage** (for example `AWSCURRENT`) or a **Version ID**, not
+   both. With neither, Imbi reads `AWSCURRENT`.
 
-    ```json
-    {"secret_id": "imbi/grafana"}
-    ```
-
-    `secret_id` is the secret name or ARN. To pin a version, add
-    `version_stage` (for example `AWSCURRENT`) or `version_id`, not both.
-    With neither, Imbi reads `AWSCURRENT`.
+    The provider type sets the locator fields. Click **Edit as JSON** to
+    enter the locator as JSON, for example `{"secret_id": "imbi/grafana"}`.
+    Imbi checks the locator while you type, and **Create binding** stays
+    disabled until it is valid.
 
 6. In **Allowed fields**, list the JSON members that requests may select,
    for example `token`. Leave it empty to allow only the whole value.
