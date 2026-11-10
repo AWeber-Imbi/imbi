@@ -35,6 +35,7 @@ from imbi.harness import (
     egress,
     ipc,
     kube,
+    outbound,
     privilege,
     redact,
     task,
@@ -80,6 +81,11 @@ class Settings:
     egress_enforced: bool = False
     #: An internal ``(host, port)`` that the pod must not reach.
     egress_canary: tuple[str, int] | None = None
+    #: ``http://host:port`` of the egress proxy (egress proxy plan 5.3).
+    #: ``None``: no proxy.
+    egress_proxy_url: str | None = None
+    #: The uid of the pod (downward API), for the proxy token.
+    pod_uid: str | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -93,6 +99,10 @@ class Settings:
             idle_exit_seconds=_seconds('IMBI_HARNESS_IDLE_EXIT_SECONDS'),
             egress_enforced=_egress_enforced(),
             egress_canary=_canary(),
+            egress_proxy_url=(
+                os.environ.get('IMBI_HARNESS_EGRESS_PROXY_URL') or None
+            ),
+            pod_uid=os.environ.get('POD_UID') or None,
         )
 
 
@@ -184,6 +194,8 @@ class Runner:
         self.idle_expired = False
         #: The egress destinations of the chain (from the root claim).
         self.egress: list[Body] = []
+        #: The egress proxy environment of the chain's commands.
+        self.proxy_env: dict[str, str] = {}
 
     async def serve(self) -> None:
         self.remove_old_workspaces()
@@ -271,6 +283,7 @@ class Runner:
                     await self.api.finish(self.runner_id, self.runner_token)
                     return
             self.claimed = True
+            self.proxy_env = self.egress_proxy(claim)
             await self.label_pod(claim)
             layout = task.Layout(WORK / str(claim['chain_id']))
             try:
@@ -321,6 +334,20 @@ class Runner:
         ):
             LOGGER.error('The pod has no egress labels')
 
+    def egress_proxy(self, claim: Body) -> dict[str, str]:
+        """The proxy environment, with the proxy token of the claim and
+        the CIDRs of its egress in ``NO_PROXY``. :meth:`_start` gives the
+        token to the redactor."""
+        if not self.settings.egress_proxy_url:
+            return {}
+        token = str(claim.get('proxy_token') or '')
+        return outbound.proxy_env(
+            outbound.proxy_url(self.settings.egress_proxy_url, token),
+            self.settings.api_url,
+            self.settings.mcp_url,
+            egress=typing.cast('list[Body]', api.items(claim, 'egress')),
+        )
+
     def remove_old_workspaces(self) -> None:
         """Remove the workspace of a chain that a crash left behind."""
         for path in WORK.iterdir():
@@ -346,9 +373,18 @@ class Runner:
         if workspace.exists():
             LOGGER.error('Could not remove %s', workspace)
 
+    @property
+    def claim_pod(self) -> str | None:
+        """The pod uid for a claim, only with the egress proxy: without
+        it, the claim gets no proxy token, so it cannot fail on its
+        size."""
+        return (
+            self.settings.pod_uid if self.settings.egress_proxy_url else None
+        )
+
     async def _claim(self) -> Body | None:
         return await self.api.claim(
-            self.runner_id, self.runner_token, CLAIM_WAIT
+            self.runner_id, self.runner_token, CLAIM_WAIT, self.claim_pod
         )
 
     def _write_credential(self, name: str, value: str) -> None:
@@ -424,7 +460,9 @@ class Runner:
     def _start(self, claim: Body, *, build: bool) -> asyncio.Task[Body]:
         assert self.layout is not None  # noqa: S101 - set by run_chain
         self.redactor.add(
-            str(claim['agent_token']), str(claim.get('api_token') or '')
+            str(claim['agent_token']),
+            str(claim.get('api_token') or ''),
+            str(claim.get('proxy_token') or ''),
         )
         task_run = task.TaskRun(
             self.api,
@@ -438,6 +476,7 @@ class Runner:
             children=self.run_child,
             mcp_url=self.settings.mcp_url,
             egress=self.egress,
+            proxy_env=self.proxy_env,
         )
         self.task_runs.append(task_run)
         run = asyncio.create_task(task_run.run())
@@ -457,7 +496,7 @@ class Runner:
         async with self.claiming:
             while short_id not in self.runs:
                 claim = await self.api.chain_claim(
-                    self.runner_id, self.runner_token
+                    self.runner_id, self.runner_token, self.claim_pod
                 )
                 if claim is None:
                     return {'short_id': short_id, 'status': 'not_claimed'}

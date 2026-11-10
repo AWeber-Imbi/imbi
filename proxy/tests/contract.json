@@ -1,0 +1,655 @@
+{
+  "_comment": "C4 contract fixture of the egress proxy plan. imbi-api tests mint the \"valid\" token from its claims and compare the bytes; the proxy tests verify every token and target. Regenerate the tokens only together with both sides.",
+  "keys": {
+    "current": "contract-current-key-0123456789abcdef0123456789abcdef",
+    "previous": "contract-previous-key-0123456789abcdef0123456789abcd",
+    "other": "contract-other-key-0123456789abcdef0123456789abcdef0"
+  },
+  "leeway_seconds": 30,
+  "tokens": [
+    {
+      "name": "valid",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "ok",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.8TTX_RwEs2FxGKegSDXLSKZbs9mLHe9an6RfGlVyFPw"
+    },
+    {
+      "name": "previous_key",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "previous",
+      "expect": "ok",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.e-3GLXaxrp2MSUpHSXB8TWTLeyWNkgNAVlqz44pjIjY"
+    },
+    {
+      "name": "other_key",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "other",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.Qg1iU0qMNxWhn7oPpsvs_ujV6GxX8tH5VYS9qQoZo_Q"
+    },
+    {
+      "name": "expired",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 1800000060,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjE4MDAwMDAwNjAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.n0F84DSxrfX4PHskfPNAXhHbn-qLezCmtO2Cav7xGHc"
+    },
+    {
+      "name": "wrong_iss",
+      "claims": {
+        "iss": "someone",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzb21lb25lIiwiYXVkIjoiaW1iaS1lZ3Jlc3MtcHJveHkiLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6NDEwMjQ0NDgwMCwiY2hhaW4iOiIwYjlmNWEyZS02YTRmLTRjMWQtOWE1MS0zZjFmMmQ3YzhlMTAiLCJhdHRlbXB0IjoxLCJwb2QiOiI2YzFlMmYwYS04YjdkLTRlM2MtYTVmNC0yZDliMWMwZTdhNjYiLCJob3N0cyI6WyJnaXQuZXhhbXBsZS5jb20iLCJ6b2VrdC5wc2UuZXhhbXBsZS5jbG91ZCJdLCJjaWRycyI6W3sibmV0cyI6WyIxMC4zMC4xLjAvMjQiXSwicG9ydHMiOlsyMl19LHsibmV0cyI6WyIxMC4yMC4wLjAvMTYiLCIxMC40MC4wLjAvMTYiXSwicG9ydHMiOls0NDMsODQ0M119XX0.93_aFp38nuXVEHs9O-1tJZf_OlFLKfFUHPGWFYuVMgg"
+    },
+    {
+      "name": "wrong_aud",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-harness",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktaGFybmVzcyIsImlhdCI6MTgwMDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwLCJjaGFpbiI6IjBiOWY1YTJlLTZhNGYtNGMxZC05YTUxLTNmMWYyZDdjOGUxMCIsImF0dGVtcHQiOjEsInBvZCI6IjZjMWUyZjBhLThiN2QtNGUzYy1hNWY0LTJkOWIxYzBlN2E2NiIsImhvc3RzIjpbImdpdC5leGFtcGxlLmNvbSIsInpvZWt0LnBzZS5leGFtcGxlLmNsb3VkIl0sImNpZHJzIjpbeyJuZXRzIjpbIjEwLjMwLjEuMC8yNCJdLCJwb3J0cyI6WzIyXX0seyJuZXRzIjpbIjEwLjIwLjAuMC8xNiIsIjEwLjQwLjAuMC8xNiJdLCJwb3J0cyI6WzQ0Myw4NDQzXX1dfQ.cQrXgqsz6L8W_c1drmMDwfpEY0L2TAgGGuAII_ais34"
+    },
+    {
+      "name": "missing_pod",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.2Fz4Si0Ex4pwQFvs91lQaMPviH89mqPADBJs8GCyjzQ"
+    },
+    {
+      "name": "missing_hosts",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.36MXCmnDfR4rY1gCJZrFAaOCefktgIdjqo-yoJulgIA"
+    },
+    {
+      "name": "hosts_only",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": []
+      },
+      "key": "current",
+      "expect": "ok",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOltdfQ.EOWgf3Ad5nXIgEKiE1MMS5oruK9jtDjGP6MI7Wu9DrM"
+    },
+    {
+      "name": "cidrs_only",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "ok",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOltdLCJjaWRycyI6W3sibmV0cyI6WyIxMC4zMC4xLjAvMjQiXSwicG9ydHMiOlsyMl19LHsibmV0cyI6WyIxMC4yMC4wLjAvMTYiLCIxMC40MC4wLjAvMTYiXSwicG9ydHMiOls0NDMsODQ0M119XX0.vwc5Jc5sf7PAvue5nWCYGiTwRqHt5Cq48PbRsxs9_Po"
+    },
+    {
+      "name": "empty_hosts_and_cidrs",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [],
+        "cidrs": []
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOltdLCJjaWRycyI6W119.kYP3R-V9uwP6GSZMAExVU4ujKHJSLeFoAw1yR4iaBso"
+    },
+    {
+      "name": "missing_cidrs",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXX0.i_B721m57SIbIjsKKxrjov6LWZkwCXNk3Q08Zk96fCg"
+    },
+    {
+      "name": "bad_cidr",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.20.0.0/33"
+            ],
+            "ports": [
+              443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMjAuMC4wLzMzIl0sInBvcnRzIjpbNDQzXX1dfQ.Of8DB_0YX58X-zRm333g5zDs0lcDTr36QzT-ETQanow"
+    },
+    {
+      "name": "cidr_without_ports",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.20.0.0/16"
+            ],
+            "ports": []
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMjAuMC4wLzE2Il0sInBvcnRzIjpbXX1dfQ.pjHDbmeKh6CE6E-xYSzORCE5pitWrsfVc-R7ifWsyT0"
+    },
+    {
+      "name": "cidr_group_without_nets",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [],
+            "ports": [
+              443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOltdLCJwb3J0cyI6WzQ0M119XX0.HCGmqel5bElsl7Y_UyX1_9Rq-DEQ-YRlbCO_ZqMNgtQ"
+    },
+    {
+      "name": "attempt_not_int",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": "1",
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6IjEiLCJwb2QiOiI2YzFlMmYwYS04YjdkLTRlM2MtYTVmNC0yZDliMWMwZTdhNjYiLCJob3N0cyI6WyJnaXQuZXhhbXBsZS5jb20iLCJ6b2VrdC5wc2UuZXhhbXBsZS5jbG91ZCJdLCJjaWRycyI6W3sibmV0cyI6WyIxMC4zMC4xLjAvMjQiXSwicG9ydHMiOlsyMl19LHsibmV0cyI6WyIxMC4yMC4wLjAvMTYiLCIxMC40MC4wLjAvMTYiXSwicG9ydHMiOls0NDMsODQ0M119XX0.LT0ReHVyTJ92Z4XknP_PGVv0kWpw58--ojPrwTfYWwQ"
+    },
+    {
+      "name": "alg_hs512",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [
+              "10.30.1.0/24"
+            ],
+            "ports": [
+              22
+            ]
+          },
+          {
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
+            "ports": [
+              443,
+              8443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.oGxfmoqQCZD5IkAvDEeG2uVsdZ_0mKvyVN6MBrFD-hA4a10tmiGIletNxsRPT5av8KqmqCitRBrniM9S82ABVQ"
+    }
+  ],
+  "targets": [
+    {
+      "target": "zoekt.pse.example.cloud:443",
+      "expect": "ok",
+      "host": "zoekt.pse.example.cloud",
+      "port": 443
+    },
+    {
+      "target": "Zoekt.PSE.Example.Cloud:443",
+      "expect": "ok",
+      "host": "zoekt.pse.example.cloud",
+      "port": 443
+    },
+    {
+      "target": "zoekt.pse.example.cloud.:443",
+      "expect": "ok",
+      "host": "zoekt.pse.example.cloud",
+      "port": 443
+    },
+    {
+      "target": "bücher.example.com:443",
+      "expect": "ok",
+      "host": "xn--bcher-kva.example.com",
+      "port": 443
+    },
+    {
+      "target": "git.example.com:8443",
+      "expect": "ok",
+      "host": "git.example.com",
+      "port": 8443
+    },
+    {
+      "target": "10.1.2.3:443",
+      "expect": "invalid"
+    },
+    {
+      "target": "[::1]:443",
+      "expect": "invalid"
+    },
+    {
+      "target": "::1:443",
+      "expect": "invalid"
+    },
+    {
+      "target": "user@git.example.com:443",
+      "expect": "invalid"
+    },
+    {
+      "target": "git.example.com",
+      "expect": "invalid"
+    },
+    {
+      "target": "git.example.com:0",
+      "expect": "invalid"
+    },
+    {
+      "target": "git.example.com:65536",
+      "expect": "invalid"
+    },
+    {
+      "target": "git.example.com:+443",
+      "expect": "invalid"
+    },
+    {
+      "target": "git.example.com:0443x",
+      "expect": "invalid"
+    },
+    {
+      "target": "localhost:443",
+      "expect": "invalid"
+    },
+    {
+      "target": "*.example.com:443",
+      "expect": "invalid"
+    },
+    {
+      "target": "git.example.com/path:443",
+      "expect": "invalid"
+    },
+    {
+      "target": ":443",
+      "expect": "invalid"
+    }
+  ]
+}

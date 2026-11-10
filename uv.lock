@@ -1366,6 +1366,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx" },
+    { name = "idna" },
     { name = "imbi-common", extra = ["databases", "llm", "mcp", "sentry", "server"] },
     { name = "jinja2" },
     { name = "jsonpatch" },
@@ -1407,6 +1408,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
+    { name = "idna", specifier = ">=3.18" },
     { name = "imbi-common", extras = ["databases", "llm", "mcp", "sentry", "server"], editable = "libraries/common" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
@@ -1600,6 +1602,7 @@ source = { editable = "apps/harness" }
 dependencies = [
     { name = "claude-agent-sdk" },
     { name = "httpx" },
+    { name = "idna" },
     { name = "mcp" },
     { name = "pyjwt" },
 ]
@@ -1608,6 +1611,7 @@ dependencies = [
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.2.150" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "idna", specifier = ">=3.18" },
     { name = "mcp", specifier = ">=1.23.0" },
     { name = "pyjwt", specifier = ">=2.10.1" },
 ]

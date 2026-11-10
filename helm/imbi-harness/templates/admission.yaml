@@ -1,9 +1,54 @@
 {{- /*
-Admission policies of the egress allowlists (egress allowlist PRD 5.6,
-5.7). Both fail closed and deny.
+Admission policies. All fail closed and deny. The first limits the pod
+delete of the runner (rbac.yaml); the others are of the egress allowlists
+(egress allowlist PRD 5.6, 5.7).
 */ -}}
+{{- if ne (include "imbi-harness.mode" .) "scaledJob" }}
+{{- $delete := printf "imbi-harness-%s-%s-pod-delete" .Release.Namespace (include "imbi-harness.pool" .) }}
+# The runner can delete only its own pod: the pod of its token. Other pods
+# share the namespace (the egress proxy).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $delete }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["DELETE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: runner
+      expression: >-
+        request.userInfo.username ==
+        'system:serviceaccount:{{ .Release.Namespace }}:{{ include "imbi-harness.pool" . }}'
+  validations:
+    - expression: >-
+        'authentication.kubernetes.io/pod-name' in request.userInfo.extra &&
+        oldObject.metadata.name in
+        request.userInfo.extra['authentication.kubernetes.io/pod-name'] &&
+        'authentication.kubernetes.io/pod-uid' in request.userInfo.extra &&
+        oldObject.metadata.uid in
+        request.userInfo.extra['authentication.kubernetes.io/pod-uid']
+      message: The runner can delete only its own pod.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $delete }}
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  policyName: {{ $delete }}
+  validationActions: ["Deny"]
+{{- end }}
 {{- $np := .Values.networkPolicy }}
 {{- if $np.enabled }}
+---
 {{- $runner := printf "imbi-harness-%s-%s-pod-labels" .Release.Namespace (include "imbi-harness.pool" .) }}
 # The runner can change only the egress labels of its own pod: the pod of
 # its token, the same spec and annotations, and no other label.

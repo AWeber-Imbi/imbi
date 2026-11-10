@@ -391,9 +391,9 @@ generation. Public egress does not change.
   (`enableNetworkPolicy: "true"` on the addon). Before you turn it on,
   check every existing `NetworkPolicy` in the cluster: it starts to apply.
 - The chart values in [Egress chart values](#egress-chart-values).
-- A destination is a list of IPv4 CIDRs and ports. Host names are not
-  supported. A host whose addresses change, for example an internal load
-  balancer, must be listed by its subnet CIDR.
+- A destination is a list of IPv4 CIDRs and ports, or a list of host
+  names on port 443. Host names need the egress proxy: see
+  [Host name destinations](#host-name-destinations).
 
 ### Destinations
 
@@ -403,7 +403,8 @@ Open **Admin > Global Admin > Egress Destinations** (platform administrators onl
 |---|---|
 | Slug | Part of a pod label key and a policy name. Lower case letters, digits, and `-`, at most 63 characters |
 | CIDRs | 1 to 25 IPv4 CIDRs inside `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or `100.64.0.0/10`. No loopback or link-local |
-| Ports | Port and protocol (TCP or UDP). One CIDR can have at most 24 port/protocol pairs across all destinations |
+| Host names | Instead of CIDRs: 1 to 25 DNS names, for example `zoekt.example.internal`. No wildcards and no IP addresses. Imbi stores each in lower case IDNA form |
+| Ports | Port and protocol (TCP or UDP). One CIDR can have at most 24 port/protocol pairs across all destinations. Always `443/TCP` for host names |
 | Global | Every chain gets the destination |
 | Organizations | The organizations whose agents may get it. Empty means all. Not used for a global destination |
 
@@ -411,7 +412,7 @@ Assign a destination that is not global to an agent in the agent editor,
 in **Egress destinations**. Anyone who can edit the agent can assign the
 destinations of the agent's organization.
 
-Each change to the CIDRs or ports makes a new **generation**. The page
+Each change to the CIDRs, host names, or ports makes a new **generation**. The page
 shows a destination as **pending** until `egress-sync` makes the policy of
 its current generation. A claim gives only applied generations, so a new
 or narrowed destination never gives more access than its policy. A
@@ -457,10 +458,159 @@ administrators must be able to create one there.
 | `networkPolicy.required.kubeApi` | The Kubernetes API Service ClusterIP as a `/32`, and port 443 |
 | `networkPolicy.required.litellm` | Optional. An in-cluster model upstream by Service ClusterIP `/32` and Service port |
 | `networkPolicy.required.kubeDns` | Defaults to `kube-system`, `k8s-app: kube-dns` |
+| `egressProxy.enabled` | Turns on the egress proxy for the release. Needs `networkPolicy.enabled`. Default `false` |
+| `egressProxy.host`, `.port` | The proxy address that the runners use. Defaults: the `imbi-egress-proxy` Service, port `3128` |
+| `egressProxy.secret.existingSecret` | The Secret with the token key (key `current`) and the optional old key (key `previous`). Required in the `manageGlobal` release |
+| `egressProxy.replicas`, `.adminPort`, `.image`, `.resources` | The proxy Deployment (`manageGlobal` release only). Defaults: 2 replicas, admin port `9090` |
 
 The render fails when a required value is missing. See the
 [chart README](https://github.com/AWeber-Imbi/imbi/tree/main/helm/imbi-harness#egress-allowlists)
 for the tiers and rollback.
+
+### Host name destinations
+
+A CIDR destination allows every host in its CIDRs. A host whose
+addresses change, for example an internal load balancer, needs a CIDR
+for each subnet that it can use. A host name destination allows only its
+names, on TCP port 443.
+
+A network policy cannot match a host name. Thus runner pods reach a host
+name destination only through the **egress proxy**:
+
+1. At claim, imbi-api signs a **proxy token**. The token holds the host
+   names of the chain, the CIDRs of the chain grouped by their TCP ports,
+   and the uid of the runner pod. The runner sends its pod uid only when
+   the egress proxy is on, so a pool with the proxy off gets no token.
+2. The runner puts the proxy URL, with the token, in the environment of
+   the agent's commands.
+3. A client sends `CONNECT <host>:<port>` to the proxy. The proxy resolves
+   the host. When every address is public, it allows the connection with
+   no token. When an address is internal, it allows the connection only
+   when the connection comes from the address of the live pod with the
+   token's pod uid, and one of these is true:
+    - The token holds the host, and the port is 443.
+    - Every internal address of the host is in a CIDR of the token, and
+      the port is a TCP port of that CIDR.
+4. TLS is end to end between the client and the host. The proxy does not
+   decrypt traffic.
+
+The network policies still block every other internal address for runner
+pods. A client that does not use the proxy cannot reach a host name
+destination.
+
+Host name destinations need egress allowlists (`networkPolicy.enabled`).
+Without them, the proxy adds no control.
+
+#### Clients that use the proxy
+
+The runner sets `HTTPS_PROXY`, `https_proxy`, `NO_PROXY`, and `no_proxy`
+for these:
+
+| Client | Uses the proxy |
+|---|---|
+| The agent CLI and its `Bash` tool (`curl`, `git`, `pip`, `uv`, `npm`, `gh`) | Yes |
+| `run_with_secret` commands | Yes |
+| The repository and plugin clones of the runner | Yes |
+| The runner's third-party MCP client and its OAuth token requests | Only for a host on a host name destination of the chain, on port 443 |
+| Node.js `fetch` without `NODE_USE_ENV_PROXY=1` | No |
+| `ssh` (for example `git` over SSH) | No |
+| Database drivers and other clients that are not HTTP | No |
+
+`NO_PROXY` holds `localhost`, `127.0.0.1`, `::1`, the imbi-api host, the
+imbi-mcp host, and the CIDRs of the chain's CIDR destinations. The local
+model proxy of the runner is on `127.0.0.1`.
+
+CIDR destinations also work when the proxy is on:
+
+- A URL with an IP literal in a CIDR of the chain (for example
+  `https://10.20.1.5:8443/`) matches `NO_PROXY` and goes direct, through
+  the network policy. `curl` 7.86 and later, `git`, and Python `requests`
+  accept CIDRs in `NO_PROXY`.
+- A URL with a host name goes through the proxy. The proxy allows it when
+  the internal addresses of the name are in a CIDR of the token, on a TCP
+  port of that CIDR. UDP ports are not in the token.
+
+Public HTTPS of these clients also goes through the proxy, because
+`NO_PROXY` cannot list every public host. This is a default, not a
+control. A command can unset `HTTPS_PROXY` and connect to a public host
+directly. It cannot connect to an internal host directly. Do not use the
+proxy log as an audit of public egress.
+
+Plain HTTP does not go through the proxy, and the proxy accepts only
+`CONNECT`.
+
+#### DNS trust
+
+A host name allows every internal address that its DNS answer gives, on
+port 443. When you add a host name, you trust the owner of its DNS zone. A
+changed DNS record changes the target. If you do not trust a zone, use a
+CIDR destination for it.
+
+#### Proxy token and key rotation
+
+The token is a JWT signed with HS256. imbi-api signs it with
+`IMBI_HARNESS_EGRESS_PROXY_SECRET`. The proxy checks it with the key in
+`egressProxy.secret` of the chart. Use the same value in both. This key is
+not the imbi-api JWT key: do not use the same value.
+
+The token is valid for 7 days, and only while its pod is live. The model
+can read the token, because it is in the environment of its commands. The
+token gives nothing that the chain does not already have, and it works only
+from its own pod.
+
+To rotate the key:
+
+1. Put the old key in the `previous` key of the proxy Secret, and the new
+   key in `current`. Restart the proxy Deployment.
+2. Set `IMBI_HARNESS_EGRESS_PROXY_SECRET` of imbi-api to the new key.
+   Restart imbi-api.
+3. After 7 days, remove the `previous` key. Restart the proxy Deployment.
+
+#### Turn on the proxy
+
+1. Turn on egress allowlists first. Check that a destination becomes
+   applied.
+2. Make a random key and store it in a Secret in the runner namespace:
+
+    ```sh
+    kubectl create secret generic imbi-egress-proxy-key -n imbi-runners \
+      --from-literal=current="$(openssl rand -base64 48)"
+    ```
+
+3. Give imbi-api the same value as `IMBI_HARNESS_EGRESS_PROXY_SECRET`. With
+   the `imbi` chart, add it to `extraEnv` with a `secretKeyRef`.
+4. In every harness release, set `egressProxy.enabled: true`. In the
+   `manageGlobal` release, also set `egressProxy.secret.existingSecret`.
+5. Upgrade the `manageGlobal` release first, then the other releases.
+6. Add a host name destination for a test host. Assign it to a test agent.
+   Run a task that calls `curl https://<host>/`. Run the same task with an
+   agent that does not have it. The proxy refuses it with `407` when the
+   agent has no egress destination (the claim has no token), and with
+   `403` when the agent has other destinations.
+7. Watch the proxy log and the task failures for 2 days.
+
+#### Turn off the proxy
+
+Set `egressProxy.enabled: false` in every release and upgrade. The runners
+lose the proxy settings, so host name destinations stop working (fail
+closed). CIDR destinations do not change.
+
+#### Proxy troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `407` from the proxy (`curl: (56) CONNECT tunnel failed, response 407`) | The host is internal and the token is missing, not valid, or expired, or the connection does not come from the token's live pod. A token from another pod is refused. A chain with no egress destination (or only UDP CIDRs) gets no token | Check that imbi-api and the proxy have the same key. Check that the runner pod has `POD_UID`. A command that changed `HTTPS_PROXY` sends no token. Assign a destination to the root agent of the chain |
+| `403` from the proxy | The host is internal and the chain holds neither the host name on port 443 nor a CIDR of each address with that TCP port, or the host resolves to a special address (loopback, link-local, IMDS, and others) | Assign the host name destination, or a CIDR destination with the port, to the root agent of the chain. Check the DNS answer of the host |
+| `503` from the proxy | The proxy has its maximum number of tunnels (512 for each replica) | Add replicas (`egressProxy.replicas`) |
+| `405` from the proxy | The client sent a plain HTTP request, not `CONNECT` | Use HTTPS |
+| A connection times out | The client does not use the proxy, and the network policy drops the connection | Use a client that reads `HTTPS_PROXY` (see the table above) |
+| A third-party MCP server is refused with `address_not_allowed` | The host is not on a host name destination of the chain, and its addresses are not on a CIDR destination | Add the host name, or its CIDRs, to a destination of the agent |
+| All held hosts get `407` for a short time after a proxy start | The proxy refuses held hosts until its first pod list is done, and while its pod watch is down for more than 30 seconds | Check the proxy log and `/readyz`. Check the proxy Role |
+
+The proxy serves `/healthz`, `/readyz`, and `/metrics` on
+`egressProxy.adminPort`. Its ingress policy accepts the runner pods on the
+proxy port and every pod on the admin port, so Prometheus can scrape
+`/metrics`. It refuses all other ingress.
 
 ## The Agent Runners page
 
@@ -585,8 +735,9 @@ not run it.
   page shows the error. Imbi tries again on each sweep.
 - **A third-party MCP server is refused with `address_not_allowed`.** Its
   host name resolves to a private or cluster address that is not in an
-  egress destination of the chain, with the port and TCP. Without egress
-  allowlists, the runner connects only to global addresses.
+  egress destination of the chain, with the port and TCP. A host on a host
+  name destination of the chain goes through the egress proxy instead.
+  Without egress allowlists, the runner connects only to global addresses.
 - **KEDA starts no Jobs.** Call the queue endpoint with the pool credential.
   Check that `scaledJob.apiUrl` resolves from the `keda` namespace.
 

@@ -16,3 +16,7 @@ javascript: {}
 node: {}
 
 npm: {}
+
+# Rust builds and tests the egress proxy (proxy/). The version is pinned
+# in proxy/rust-toolchain.toml, which rustup reads.
+rust: {}

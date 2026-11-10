@@ -22,10 +22,20 @@ export function extractApiErrorDetail(
           detail?:
             | string
             | { [k: string]: unknown; error?: string; message?: string }
+            | { msg?: string }[]
           message?: string
         }
     const detail = data?.detail
     if (typeof detail === 'string' && detail) return detail
+    // A FastAPI 422 has a list of validation errors.
+    if (Array.isArray(detail)) {
+      return (
+        detail
+          .map((d) => d?.msg)
+          .filter(Boolean)
+          .join('; ') || error.message
+      )
+    }
     if (detail && typeof detail === 'object') {
       // ``{error, message}`` details (e.g. invalid_configuration): the
       // message explains the problem, the error is only a code.

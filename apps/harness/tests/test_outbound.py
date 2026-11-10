@@ -1,5 +1,9 @@
 """The outbound checks of third-party MCP servers (plan P7)."""
 
+import asyncio
+import base64
+import json
+import pathlib
 import socket
 import typing
 import unittest
@@ -217,7 +221,7 @@ class ClientCredentialsTestCase(unittest.IsolatedAsyncioTestCase):
         self.transports: list[tuple[str, outbound.Egress]] = []
 
         def transport(
-            url: str, egress: outbound.Egress = ()
+            url: str, egress: outbound.Egress = (), _proxy: str | None = None
         ) -> httpx.MockTransport:
             self.transports.append((url, egress))
             return httpx.MockTransport(token_endpoint)
@@ -292,7 +296,7 @@ class TwoDestinationsTestCase(unittest.IsolatedAsyncioTestCase):
         real = outbound.Transport
 
         def transport(
-            url: str, egress: outbound.Egress = ()
+            url: str, egress: outbound.Egress = (), _proxy: str | None = None
         ) -> outbound.Transport:
             made = real(url, egress)
             made.inner = mock.Mock(
@@ -314,3 +318,172 @@ class TwoDestinationsTestCase(unittest.IsolatedAsyncioTestCase):
                 response = await client.post('https://mcp.internal/mcp')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(sent, ['10.3.0.5', '10.1.0.5'])
+
+
+ZOEKT = {
+    'slug': 'zoekt',
+    'generation': 1,
+    'cidrs': [],
+    'hostnames': ['zoekt.internal.example', 'login.internal.example'],
+    'ports': [{'port': 443, 'protocol': 'TCP'}],
+}
+PROXY = 'http://chain:tok.en@proxy.example:3128'
+
+
+class ProxyHelpersTestCase(unittest.TestCase):
+    """The egress proxy environment (egress proxy plan 5.3)."""
+
+    def test_canonical(self) -> None:
+        for name, expected in (
+            ('Zoekt.Internal.Example.', 'zoekt.internal.example'),
+            ('bücher.example', 'xn--bcher-kva.example'),
+            ('a..b', None),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(outbound.canonical(name), expected)
+
+    def test_proxy_url(self) -> None:
+        self.assertEqual(
+            outbound.proxy_url('http://proxy.example:3128', 'tok.en'), PROXY
+        )
+        self.assertEqual(
+            outbound.proxy_url('http://proxy.example:3128', None),
+            'http://proxy.example:3128',
+        )
+
+    def test_no_proxy_has_the_configured_services(self) -> None:
+        env = outbound.proxy_env(
+            PROXY,
+            'http://imbi-api.imbi.svc:8000/api',
+            'http://imbi-mcp.imbi.svc:8001/mcp',
+            None,
+        )
+        self.assertEqual(env['HTTPS_PROXY'], PROXY)
+        self.assertEqual(env['https_proxy'], PROXY)
+        self.assertEqual(env['NO_PROXY'], env['no_proxy'])
+        excluded = env['NO_PROXY'].split(',')
+        # The API, the MCP server, the local model proxy (127.0.0.1),
+        # and the IPv6 loopback do not go through the proxy.
+        for host in (
+            'imbi-api.imbi.svc',
+            'imbi-mcp.imbi.svc',
+            '127.0.0.1',
+            '::1',
+            'localhost',
+        ):
+            with self.subTest(host=host):
+                self.assertIn(host, excluded)
+        self.assertEqual(outbound.proxy_token(env), 'tok.en')
+        self.assertIsNone(outbound.proxy_token({}))
+
+
+class TunnelTestCase(unittest.IsolatedAsyncioTestCase):
+    """A host name destination goes through the egress proxy."""
+
+    def test_tunnel_only_for_a_held_host_name_on_443(self) -> None:
+        for url, egress, proxy, tunnel in (
+            ('https://zoekt.internal.example/mcp', [ZOEKT], PROXY, True),
+            ('https://ZOEKT.internal.example./mcp', [ZOEKT], PROXY, True),
+            ('https://zoekt.internal.example:8443/', [ZOEKT], PROXY, False),
+            ('https://other.internal.example/mcp', [ZOEKT], PROXY, False),
+            ('https://zoekt.internal.example/mcp', [DB], PROXY, False),
+            ('https://zoekt.internal.example/mcp', [ZOEKT], None, False),
+        ):
+            with self.subTest(url=url, proxy=proxy):
+                made = outbound.Transport(url, egress, proxy)
+                self.assertEqual(made.tunneled, tunnel)
+
+    async def test_direct_path_is_unchanged(self) -> None:
+        made = outbound.Transport(
+            'https://mcp.internal/mcp', [DB, ZOEKT], PROXY
+        )
+        made.inner = mock.Mock(
+            handle_async_request=mock.AsyncMock(
+                return_value=httpx.Response(200)
+            ),
+            aclose=mock.AsyncMock(),
+        )
+        with mock.patch(
+            'asyncio.BaseEventLoop.getaddrinfo',
+            mock.AsyncMock(return_value=_infos('10.1.0.5')),
+        ):
+            async with httpx.AsyncClient(transport=made) as client:
+                await client.get('https://mcp.internal/mcp')
+        sent = made.inner.handle_async_request.await_args.args[0]
+        self.assertEqual(sent.url.host, '10.1.0.5')
+
+    async def proxy_server(
+        self,
+    ) -> tuple[str, list[bytes]]:
+        """A fake proxy that records each request head and answers 403."""
+        heads: list[bytes] = []
+
+        async def handle(
+            reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+        ) -> None:
+            heads.append(await reader.readuntil(b'\r\n\r\n'))
+            writer.write(
+                b'HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\n\r\n'
+            )
+            await writer.drain()
+            writer.close()
+
+        server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        self.addAsyncCleanup(server.wait_closed)
+        self.addCleanup(server.close)
+        port = server.sockets[0].getsockname()[1]
+        return f'http://chain:tok.en@127.0.0.1:{port}', heads
+
+    async def test_connect_tunnel_with_the_proxy_token(self) -> None:
+        proxy, heads = await self.proxy_server()
+        getaddrinfo = mock.AsyncMock()
+        with mock.patch('asyncio.BaseEventLoop.getaddrinfo', getaddrinfo):
+            async with httpx.AsyncClient(
+                transport=outbound.Transport(
+                    'https://zoekt.internal.example/mcp', [ZOEKT], proxy
+                )
+            ) as client:
+                with self.assertRaises(httpx.ProxyError):
+                    await client.post('https://zoekt.internal.example/mcp')
+        # The runner does not resolve the name: the proxy does.
+        getaddrinfo.assert_not_awaited()
+        head = heads[0].decode()
+        self.assertTrue(
+            head.startswith('CONNECT zoekt.internal.example:443 HTTP/1.1')
+        )
+        self.assertIn(
+            'Basic ' + base64.b64encode(b'chain:tok.en').decode(), head
+        )
+
+    async def test_oauth_token_url_on_a_host_name_destination(self) -> None:
+        proxy, heads = await self.proxy_server()
+        auth = outbound.ClientCredentials(
+            'https://login.internal.example/token',
+            'c',
+            's',
+            egress=[ZOEKT],
+            proxy=proxy,
+        )
+        async with httpx.AsyncClient(
+            auth=auth,
+            transport=httpx.MockTransport(lambda _: httpx.Response(200)),
+        ) as client:
+            with self.assertRaises(httpx.ProxyError):
+                await client.post('https://zoekt.internal.example/mcp')
+        self.assertTrue(
+            heads[0].startswith(b'CONNECT login.internal.example:443 ')
+        )
+
+
+class ContractTestCase(unittest.TestCase):
+    """The canonical host name form matches the proxy contract (C3)."""
+
+    def test_ok_targets(self) -> None:
+        path = pathlib.Path(__file__).parents[3] / 'proxy/tests/contract.json'
+        targets = json.loads(path.read_text())['targets']
+        ok = [t for t in targets if t['expect'] == 'ok']
+        self.assertTrue(ok)
+        for target in ok:
+            with self.subTest(target=target['target']):
+                host = target['target'].rpartition(':')[0]
+                self.assertEqual(outbound.canonical(host), target['host'])

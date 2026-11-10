@@ -17,6 +17,11 @@ def _body(response: httpx.Response) -> Body:
     return typing.cast('Body', response.json())
 
 
+def _pod(pod: str | None) -> dict[str, str]:
+    """The ``pod`` query parameter of a claim, when the uid is known."""
+    return {'pod': pod} if pod else {}
+
+
 class Refused(Exception):
     """imbi-api refused a request. ``code`` is its error code."""
 
@@ -113,12 +118,13 @@ class Api:
             return {}
 
     async def claim(
-        self, runner_id: str, token: str, wait: int
+        self, runner_id: str, token: str, wait: int, pod: str | None = None
     ) -> Body | None:
+        """Claim a chain. ``pod`` is the pod uid, for the proxy token."""
         response = await self.post(
             f'/harness/runners/{runner_id}/claim',
             token,
-            params={'wait': wait},
+            params={'wait': wait, **_pod(pod)},
             timeout=wait + 10,
         )
         return (
@@ -127,10 +133,14 @@ class Api:
             else _body(response)
         )
 
-    async def chain_claim(self, runner_id: str, token: str) -> Body | None:
+    async def chain_claim(
+        self, runner_id: str, token: str, pod: str | None = None
+    ) -> Body | None:
         """Claim the oldest queued child task of the runner's chain."""
         response = await self.post(
-            f'/harness/runners/{runner_id}/chain/claim', token
+            f'/harness/runners/{runner_id}/chain/claim',
+            token,
+            params=_pod(pod),
         )
         return (
             None

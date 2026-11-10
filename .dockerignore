@@ -29,3 +29,6 @@ backups
 **/*.egg-info
 **/dist
 **/build
+
+# Rust build output of the egress proxy
+proxy/target

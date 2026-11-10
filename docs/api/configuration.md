@@ -253,6 +253,7 @@ unset.
 | `IMBI_AI_PROVIDER_API` | str | `''` | Id of the Anthropic AI provider (workload identity) of the imbi-api client. Empty: `ANTHROPIC_API_KEY`. |
 | `IMBI_AI_PROVIDER_ASSISTANT` | str | `''` | Id of the AI provider whose token imbi-assistant gets |
 | `IMBI_AI_PROVIDER_SLACKBOT` | str | `''` | Id of the AI provider whose token imbi-slackbot gets |
+| `IMBI_HARNESS_EGRESS_PROXY_SECRET` | SecretStr | `''` | HS256 key that signs the proxy token of a runner claim. The egress proxy has the same key. Unset: no claim gets a proxy token, so host name egress destinations do not work. See [Agent runners](../deployment/agent-runners.md#host-name-destinations). |
 | `IMBI_GATEWAY_API_TOKEN` | str | none | `imbi-api setup` and `setup-service-accounts` store this value as the API key of the `imbi-gateway` service account. Unset, they generate one and print it. |
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | `setup` stores this pair as the client credential of the `imbi-scheduler` service account. Unset, it generates a pair and prints it. |
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | str | none | See `IMBI_SCHEDULER_SA_CLIENT_ID`. |
@@ -375,6 +376,8 @@ unset.
 | `IMBI_HARNESS_IDLE_EXIT_SECONDS` | str | none | Exit after this many idle seconds. Empty or `0`: never. |
 | `IMBI_HARNESS_MODEL` | str | none | Model override for the runner |
 | `IMBI_HARNESS_MCP_URL` | str | none | imbi-mcp URL that agents use |
+| `IMBI_HARNESS_EGRESS_PROXY_URL` | str | none | `http://host:port` of the egress proxy. Set: the agent CLI, `run_with_secret`, and `git clone` use the proxy for HTTPS, and the MCP client uses it for host name destinations. Unset: no proxy. |
+| `POD_UID` | str | none | Pod uid, from the Kubernetes downward API. The runner sends it with each claim; the proxy token holds it. |
 | `IMBI_HARNESS_EXTRA_CA` | str | none | PEM file of extra CA certificates |
 
 ### Container (entrypoint, Caddy, UI)
