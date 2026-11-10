@@ -181,7 +181,9 @@ export function ConfigurationTab({
 
   // Fit the editor to the space below its top edge, so Save stays on
   // screen however tall the project header is. Measure after every
-  // render (the header can change) and on window resize.
+  // render, on window resize, and when the page body changes size (the
+  // header can grow, for example an inline description edit, without a
+  // render here).
   const groupEl = useRef<HTMLDivElement>(null)
   const [groupHeight, setGroupHeight] = useState<number>()
   const fitGroup = () => {
@@ -193,8 +195,13 @@ export function ConfigurationTab({
   }
   useLayoutEffect(fitGroup)
   useEffect(() => {
+    const observer = new ResizeObserver(fitGroup)
+    observer.observe(document.body)
     window.addEventListener('resize', fitGroup)
-    return () => window.removeEventListener('resize', fitGroup)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', fitGroup)
+    }
     // fitGroup only reads refs and window, so the first one is enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
