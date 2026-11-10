@@ -1600,6 +1600,7 @@ source = { editable = "apps/harness" }
 dependencies = [
     { name = "claude-agent-sdk" },
     { name = "httpx" },
+    { name = "idna" },
     { name = "mcp" },
     { name = "pyjwt" },
 ]
@@ -1608,6 +1609,7 @@ dependencies = [
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.2.150" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "idna", specifier = ">=3.18" },
     { name = "mcp", specifier = ">=1.23.0" },
     { name = "pyjwt", specifier = ">=2.10.1" },
 ]
