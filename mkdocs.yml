@@ -100,7 +100,6 @@ nav:
       - Delivery Model: architecture/delivery.md
       - Security: architecture/security.md
       - Agent Runtime: architecture/agent-runtime.md
-      - Work Items: architecture/work-items.md
   - Services:
       - API:
           - Overview: api/index.md

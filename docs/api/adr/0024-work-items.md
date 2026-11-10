@@ -14,9 +14,7 @@ Related: [ADR 0008](0008-plugin-system-architecture.md) (plugins),
 
 Requirement ids such as [F1][req-f-tasks] and [G9][req-g-delegation] refer to
 [`docs/agentic-platform-requirements.md`][req] in the
-dev-environment repository, as in ADR 0020. The architecture page
-[Work Items](../../architecture/work-items.md) shows the parts and flows
-this ADR decides.
+dev-environment repository, as in ADR 0020.
 
 ## Context
 
