@@ -59,11 +59,11 @@ spec:
   replicas: {{ int $p.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: imbi-egress-proxy
+      {{- include "imbi-harness.proxySelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: imbi-egress-proxy
+        {{- include "imbi-harness.proxySelectorLabels" . | nindent 8 }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       serviceAccountName: imbi-egress-proxy
@@ -131,7 +131,7 @@ metadata:
     {{- include "imbi-harness.labels" . | nindent 4 }}
 spec:
   selector:
-    app.kubernetes.io/name: imbi-egress-proxy
+    {{- include "imbi-harness.proxySelectorLabels" . | nindent 4 }}
   ports:
     - name: proxy
       port: {{ int $p.port }}
@@ -148,7 +148,7 @@ spec:
   maxUnavailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: imbi-egress-proxy
+      {{- include "imbi-harness.proxySelectorLabels" . | nindent 6 }}
 ---
 # The proxy reaches DNS, the Kubernetes API (pod watch), and internal
 # addresses on 443 only. The proxy decides which internal host is allowed.

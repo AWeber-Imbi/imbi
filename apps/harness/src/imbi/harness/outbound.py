@@ -46,7 +46,13 @@ PROXY_ENV = frozenset({'HTTPS_PROXY', 'https_proxy', 'NO_PROXY', 'no_proxy'})
 def canonical(name: str) -> str | None:
     """The host name in the canonical form of the egress proxy (IDNA
     UTS46 A-labels, lower case, no trailing dot); ``None`` when it is
-    not a valid name."""
+    not a valid name.
+
+    The same encoding as ``canonical_hostname`` in
+    ``apps/api/src/imbi/api/harness/egress.py``: keep the two identical
+    (the harness does not depend on imbi-common). A test checks it
+    against ``proxy/tests/contract.json``.
+    """
     try:
         return idna.encode(name.removesuffix('.'), uts46=True).decode()
     except idna.IDNAError:
@@ -187,14 +193,15 @@ class Transport(httpx.AsyncBaseTransport):
         origin = check_url(url)
         self.origin = (origin.scheme, origin.host, origin.port or 443)
         self.egress = egress
-        self.inner = httpx.AsyncHTTPTransport()
-        #: The CONNECT tunnel: TLS to the host name, through the proxy.
-        self.tunnel = (
-            httpx.AsyncHTTPTransport(proxy=proxy)
-            if proxy
+        #: Through a CONNECT tunnel of the proxy, with TLS to the host
+        #: name; else direct, to a checked address.
+        self.tunneled = bool(
+            proxy
             and self.origin[2] == 443  # noqa: PLR2004
             and canonical(origin.host) in hostnames(egress)
-            else None
+        )
+        self.inner = httpx.AsyncHTTPTransport(
+            proxy=proxy if self.tunneled else None
         )
 
     async def handle_async_request(
@@ -203,8 +210,8 @@ class Transport(httpx.AsyncBaseTransport):
         url = request.url
         if (url.scheme, url.host, url.port or 443) != self.origin:
             raise Refused('cross_origin_request')
-        if self.tunnel is not None:
-            return await self.tunnel.handle_async_request(request)
+        if self.tunneled:
+            return await self.inner.handle_async_request(request)
         addresses = await resolve(url.host, self.origin[2], self.egress)
         # The Host header keeps the name; TLS checks the certificate
         # against the name too (SNI).
@@ -221,8 +228,6 @@ class Transport(httpx.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         await self.inner.aclose()
-        if self.tunnel is not None:
-            await self.tunnel.aclose()
 
 
 class Header(httpx.Auth):

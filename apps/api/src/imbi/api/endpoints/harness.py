@@ -1606,6 +1606,18 @@ async def _renew_api_tokens(
     return renewed
 
 
+#: The uid of the runner pod, sent by the runner on a claim.
+_PodQuery = typing.Annotated[
+    uuid.UUID | None,
+    fastapi.Query(
+        description=(
+            'The uid of the runner pod. With it, a claim whose egress '
+            'has host names gets a proxy token for that pod.'
+        )
+    ),
+]
+
+
 @harness_router.post(
     '/runners/{runner_id}/claim',
     response_model=Claim,
@@ -1625,15 +1637,7 @@ async def claim_harness_task(
             description='Seconds to wait for a task (long poll).',
         ),
     ] = 0,
-    pod: typing.Annotated[
-        uuid.UUID | None,
-        fastapi.Query(
-            description=(
-                'The uid of the runner pod. With it, a claim whose egress '
-                'has host names gets a proxy token for that pod.'
-            )
-        ),
-    ] = None,
+    pod: _PodQuery = None,
 ) -> Claim | fastapi.Response:
     """Claim the oldest task that the runner may run; pin its chain.
 
@@ -1693,15 +1697,7 @@ async def claim_harness_child_task(
     store: harness.Store,
     secrets: secret_broker.Store,
     tasks: agent_tasks.Store,
-    pod: typing.Annotated[
-        uuid.UUID | None,
-        fastapi.Query(
-            description=(
-                'The uid of the runner pod. With it, a claim whose egress '
-                'has host names gets a proxy token for that pod.'
-            )
-        ),
-    ] = None,
+    pod: _PodQuery = None,
 ) -> Claim | fastapi.Response:
     """Claim the oldest queued child task of the runner's chain.
 

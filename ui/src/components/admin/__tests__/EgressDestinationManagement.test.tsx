@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 import type { EgressDestination } from '@/types'
@@ -181,24 +182,6 @@ describe('EgressDestinationManagement', () => {
 
   it.each([
     ['', 'Add at least one host name'],
-    ['10.0.0.1', '10.0.0.1 is an IP address. Use a CIDR destination for it'],
-    ['::1', '::1 is an IP address. Use a CIDR destination for it'],
-    [
-      '*.example.com',
-      '*.example.com is not a host name. Do not use a scheme, path, port, or wildcard',
-    ],
-    [
-      'https://example.com',
-      'https://example.com is not a host name. Do not use a scheme, path, port, or wildcard',
-    ],
-    [
-      'example.com:8443',
-      'example.com:8443 is not a host name. Do not use a scheme, path, port, or wildcard',
-    ],
-    [
-      'localhost',
-      'localhost must have at least one dot, such as api.example.com',
-    ],
     [
       Array.from({ length: 26 }, (_, i) => `h${i}.example.com`).join('\n'),
       'Add at most 25 host names',
@@ -216,6 +199,33 @@ describe('EgressDestinationManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
     expect(await screen.findByText(message)).toBeInTheDocument()
     expect(endpoints.createEgressDestination).not.toHaveBeenCalled()
+  })
+
+  it('shows the API message when it refuses a host name', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([])
+    vi.mocked(endpoints.createEgressDestination).mockRejectedValue(
+      new ApiError(422, 'Unprocessable Entity', {
+        detail: [
+          {
+            loc: ['body', 'hostnames'],
+            msg: 'Value error, 10.0.0.1 is an IP address',
+            type: 'value_error',
+          },
+        ],
+      }),
+    )
+    mountAt('/admin/egress-destinations/new')
+    fireEvent.change(await screen.findByLabelText(/^Name/), {
+      target: { value: 'Git' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Host names' }))
+    fireEvent.change(screen.getByLabelText(/^Host names/), {
+      target: { value: '10.0.0.1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
+    expect(
+      await screen.findByText('Value error, 10.0.0.1 is an IP address'),
+    ).toBeInTheDocument()
   })
 
   it('opens a host name destination in its kind', async () => {

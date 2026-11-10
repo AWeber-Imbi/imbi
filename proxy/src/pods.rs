@@ -107,20 +107,12 @@ fn live(pod: &Pod) -> Option<(String, Vec<IpAddr>)> {
     if status.phase.as_deref() != Some("Running") {
         return None;
     }
-    let mut ips: Vec<IpAddr> = status
+    let ips: Vec<IpAddr> = status
         .pod_ips
         .iter()
         .flatten()
         .filter_map(|p| p.ip.parse().ok())
         .collect();
-    if ips.is_empty() {
-        ips.extend(
-            status
-                .pod_ip
-                .as_deref()
-                .and_then(|ip| ip.parse::<IpAddr>().ok()),
-        );
-    }
     let uid = pod.metadata.uid.clone()?;
     (!ips.is_empty()).then_some((uid, ips))
 }

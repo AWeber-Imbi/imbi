@@ -73,8 +73,26 @@ export function EgressDestinationForm({
   const [orgs, setOrgs] = useState<string[]>(destination?.organizations ?? [])
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const isHosts = kind === 'hostnames'
+  const target = isHosts
+    ? {
+        description: 'DNS names, one per line. The API checks them.',
+        id: 'egress-hostnames',
+        label: 'Host names',
+        onChange: setHostnames,
+        placeholder: 'api.example.com',
+        value: hostnames,
+      }
+    : {
+        description: 'IPv4 CIDRs, one per line.',
+        id: 'egress-cidrs',
+        label: 'CIDRs',
+        onChange: setCidrs,
+        placeholder: '10.20.0.0/16',
+        value: cidrs,
+      }
+
   const handleSave = () => {
-    const isHosts = kind === 'hostnames'
     const parsedPorts = isHosts ? HOSTNAME_PORTS : parsePorts(ports)
     const hosts = parseList(hostnames).map((h) => h.toLowerCase())
     const next: Record<string, string> = {}
@@ -83,11 +101,10 @@ export function EgressDestinationForm({
       next.slug =
         'Lowercase letters, numbers, and hyphens; starts and ends with a letter or number'
     }
-    if (isHosts) {
-      const hostError = hostnamesError(hosts)
-      if (hostError) next.hostnames = hostError
-    } else if (parseList(cidrs).length === 0) {
-      next.cidrs = 'Add at least one CIDR'
+    if (parseList(target.value).length === 0) {
+      next.target = `Add at least one ${isHosts ? 'host name' : 'CIDR'}`
+    } else if (isHosts && hosts.length > MAX_HOSTNAMES) {
+      next.target = `Add at most ${MAX_HOSTNAMES} host names`
     }
     if (!parsedPorts?.length) {
       next.ports = 'Add ports such as 443 or 53/udp, from 1 to 65535'
@@ -176,7 +193,7 @@ export function EgressDestinationForm({
                 Host names
               </SegmentedControlItem>
             </SegmentedControl>
-            {kind === 'hostnames' && (
+            {isHosts && (
               <p className="text-tertiary text-xs">
                 A host name destination works only for HTTPS clients that use
                 the egress proxy. The DNS owner of each name controls the
@@ -185,46 +202,26 @@ export function EgressDestinationForm({
             )}
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {kind === 'hostnames' ? (
-              <FormField
-                description="DNS names, one per line. A change starts a new generation."
-                error={errors.hostnames}
-                htmlFor="egress-hostnames"
-                label="Host names"
-                required
-                touched
-              >
-                <Textarea
-                  className="font-mono"
-                  id="egress-hostnames"
-                  onChange={(e) => setHostnames(e.target.value)}
-                  placeholder="api.example.com"
-                  rows={4}
-                  value={hostnames}
-                />
-              </FormField>
-            ) : (
-              <FormField
-                description="IPv4 CIDRs, one per line. A change starts a new generation."
-                error={errors.cidrs}
-                htmlFor="egress-cidrs"
-                label="CIDRs"
-                required
-                touched
-              >
-                <Textarea
-                  className="font-mono"
-                  id="egress-cidrs"
-                  onChange={(e) => setCidrs(e.target.value)}
-                  placeholder="10.20.0.0/16"
-                  rows={4}
-                  value={cidrs}
-                />
-              </FormField>
-            )}
+            <FormField
+              description={`${target.description} A change starts a new generation.`}
+              error={errors.target}
+              htmlFor={target.id}
+              label={target.label}
+              required
+              touched
+            >
+              <Textarea
+                className="font-mono"
+                id={target.id}
+                onChange={(e) => target.onChange(e.target.value)}
+                placeholder={target.placeholder}
+                rows={4}
+                value={target.value}
+              />
+            </FormField>
             <FormField
               description={
-                kind === 'hostnames'
+                isHosts
                   ? 'Host names always use 443/TCP.'
                   : 'Separate with commas. TCP when no protocol is given.'
               }
@@ -236,13 +233,11 @@ export function EgressDestinationForm({
             >
               <Input
                 className="font-mono"
-                disabled={kind === 'hostnames'}
+                disabled={isHosts}
                 id="egress-ports"
                 onChange={(e) => setPorts(e.target.value)}
                 placeholder="443, 5432/tcp, 53/udp"
-                value={
-                  kind === 'hostnames' ? formatPorts(HOSTNAME_PORTS) : ports
-                }
+                value={isHosts ? formatPorts(HOSTNAME_PORTS) : ports}
               />
             </FormField>
           </div>
@@ -332,29 +327,6 @@ function ChangeHistory({ slug }: { slug: string }) {
       </CardContent>
     </Card>
   )
-}
-
-/**
- * The first problem with the host names, or null. The API makes the
- * canonical form (IDNA) and does the full check.
- */
-function hostnamesError(hosts: string[]): null | string {
-  if (hosts.length === 0) return 'Add at least one host name'
-  if (hosts.length > MAX_HOSTNAMES) {
-    return `Add at most ${MAX_HOSTNAMES} host names`
-  }
-  for (const host of hosts) {
-    if (/^[\d.]+$/.test(host) || /^[\da-f.]*:[\da-f.:]*$/.test(host)) {
-      return `${host} is an IP address. Use a CIDR destination for it`
-    }
-    if (/[*/@:[\]]/.test(host)) {
-      return `${host} is not a host name. Do not use a scheme, path, port, or wildcard`
-    }
-    if (!host.replace(/\.$/, '').includes('.')) {
-      return `${host} must have at least one dot, such as api.example.com`
-    }
-  }
-  return null
 }
 
 function parseList(value: string): string[] {

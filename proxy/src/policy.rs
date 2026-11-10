@@ -64,6 +64,26 @@ static SPECIAL: LazyLock<Vec<IpNet>> = LazyLock::new(|| {
 /// public.
 static GLOBAL_V6: LazyLock<IpNet> = LazyLock::new(|| "2000::/3".parse().expect("valid range"));
 
+/// Ranges that are always refused, also when an internal range holds
+/// them: this, loopback, link-local and IMDS, multicast, broadcast.
+static NEVER: LazyLock<Vec<IpNet>> = LazyLock::new(|| {
+    [
+        "0.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "224.0.0.0/4",
+        "255.255.255.255/32",
+        "::/128",
+        "::1/128",
+        "fe80::/10",
+        "ff00::/8",
+        "fd00:ec2::/32",
+    ]
+    .iter()
+    .map(|net| net.parse().expect("valid never range"))
+    .collect()
+});
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Class {
     Public,
@@ -75,6 +95,9 @@ pub enum Class {
 
 pub fn classify(ip: IpAddr, internal: &[IpNet]) -> Class {
     let ip = ip.to_canonical();
+    if NEVER.iter().any(|net| net.contains(&ip)) {
+        return Class::Refused;
+    }
     if internal.iter().any(|net| net.contains(&ip)) {
         return Class::Internal;
     }
@@ -386,6 +409,26 @@ mod tests {
             let case = Case::new("git.example.com", &["10.1.2.3", addr]);
             assert_eq!(reason(case), (403, "special_address"), "{addr}");
         }
+    }
+
+    #[test]
+    fn never_ranges_win_over_internal_ranges() {
+        let internal: Vec<IpNet> = ["169.254.0.0/16", "127.0.0.0/8", "fd00::/8", "100.64.0.0/10"]
+            .iter()
+            .map(|n| n.parse().unwrap())
+            .collect();
+        for ip in ["169.254.169.254", "127.0.0.1", "fd00:ec2::254"] {
+            assert_eq!(
+                classify(ip.parse().unwrap(), &internal),
+                Class::Refused,
+                "{ip}"
+            );
+        }
+        // CGNAT is a valid internal range.
+        assert_eq!(
+            classify("100.64.1.2".parse().unwrap(), &internal),
+            Class::Internal
+        );
     }
 
     #[test]

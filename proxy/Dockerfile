@@ -8,7 +8,11 @@ WORKDIR /src
 # clippy and rustfmt.
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release --locked \
+# The registry and target are cache mounts, so a source change does not
+# compile every dependency again. The binary is copied out of the mount.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked \
     && cp target/release/imbi-egress-proxy /imbi-egress-proxy
 
 FROM scratch
