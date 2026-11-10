@@ -167,9 +167,10 @@ request, or Imbi denies it.
 There are two ways to add one:
 
 - **For one agent:** open the agent, then the **Access** tab, then click
-  **Add access**. Select the secret and enter a purpose. This makes an
-  `environment` grant for that agent. The same tab has buttons for the
-  GitHub purposes.
+  **Add access**. Select the secret and enter a purpose. When the agent
+  has its own `environment` grant for that secret, Imbi adds the purpose
+  to it. If not, Imbi makes a new `environment` grant for that agent. The
+  same tab has buttons for the GitHub purposes.
 - **For many agents, or for runner purposes:** open the **Grants** tab and
   click **New grant**.
 
@@ -183,6 +184,12 @@ The grant form has these fields:
 | Delivery modes | How the value may be delivered. See [Delivery modes](#delivery-modes) |
 | Maximum TTL (seconds) | How long one read stays valid. Default 900, maximum 3600 |
 | Projects | On the **Projects** tab: all projects, or only the selected projects |
+
+A grant with a runner purpose (`model_inference`, `mcp_server`,
+`workspace_checkout`, `marketplace_fetch`) must have the delivery mode
+`file_descriptor` and no other. Imbi refuses any other grant with a
+runner purpose, because the broker never gives such a secret in another
+mode.
 
 ### Delivery modes
 

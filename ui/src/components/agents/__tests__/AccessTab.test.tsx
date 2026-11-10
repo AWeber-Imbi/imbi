@@ -17,6 +17,7 @@ vi.mock('@/api/endpoints', () => ({
   listSecretBindings: vi.fn(),
   listSecretGrants: vi.fn(),
   listSecretProviders: vi.fn(),
+  updateSecretGrant: vi.fn(),
 }))
 
 const auth = vi.hoisted(() => ({
@@ -96,6 +97,7 @@ describe('AccessTab', () => {
       }),
     ])
     vi.mocked(endpoints.createSecretGrant).mockResolvedValue(grant({}) as never)
+    vi.mocked(endpoints.updateSecretGrant).mockResolvedValue(grant({}) as never)
   })
 
   function renderTab(modelKeyRef = '') {
@@ -136,6 +138,24 @@ describe('AccessTab', () => {
         purposes: ['github_write'],
       }),
     )
+  })
+
+  it('adds a purpose to the agent grant of the same secret', async () => {
+    renderTab()
+    const fetch = (
+      await screen.findByText('Fetch plugins from private marketplaces')
+    ).closest('li')!
+    fireEvent.click(within(fetch).getByRole('button', { name: 'Grant' }))
+    // The agent's own file_descriptor grant of the GitHub App binding
+    // gets the purpose; no second grant for the same secret.
+    await waitFor(() =>
+      expect(endpoints.updateSecretGrant).toHaveBeenCalledWith(
+        'acme',
+        expect.any(String),
+        { purposes: ['workspace_checkout', 'marketplace_fetch'] },
+      ),
+    )
+    expect(endpoints.createSecretGrant).not.toHaveBeenCalled()
   })
 
   it('grants the model key that the agent uses', async () => {

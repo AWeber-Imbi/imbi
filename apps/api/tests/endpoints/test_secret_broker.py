@@ -689,6 +689,52 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.json()['error'], 'invalid_secret_reference')
 
+    async def test_setup_purpose_grant_is_file_descriptor_only(self) -> None:
+        # The broker refuses these requests, so the grant could never
+        # be used.
+        body = {
+            'agent_ids': ['agent-x'],
+            'binding_ids': [str(self.binding['id'])],
+            'purposes': ['model_inference'],
+            'delivery_modes': ['environment'],
+        }
+        for change in (
+            {},
+            {'delivery_modes': ['file_descriptor', 'environment']},
+            {'purposes': ['github_write', 'mcp_server']},
+        ):
+            with self.subTest(change=change):
+                response = await self._post('/secret-grants/', body | change)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(
+                    response.json()['detail']['error'],
+                    'setup_purpose_file_descriptor_only',
+                )
+        response = await self._post(
+            '/secret-grants/', body | {'delivery_modes': ['file_descriptor']}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        url = self.base + f'/secret-grants/{response.json()["id"]}'
+        response = await self.client.patch(
+            url, json={'delivery_modes': ['environment']}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
+        response = await self._post(
+            '/secret-grants/',
+            body | {'purposes': ['github_write']},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        url = self.base + f'/secret-grants/{response.json()["id"]}'
+        response = await self.client.patch(
+            url, json={'purposes': ['github_write', 'workspace_checkout']}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.client.patch(
+            url, json={'purposes': ['github_write', 'npm']}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
     async def test_resolutions_never_show_handles_or_lease_ids(self) -> None:
         await self.store.update(
             'bindings',

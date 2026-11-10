@@ -95,3 +95,23 @@ export function grantFor(
     purposes: [purpose],
   }
 }
+
+/**
+ * The grant of one agent, one binding, and one mode, for any project:
+ * in the agent's grants, the one that a new purpose goes on.
+ */
+export function ownGrant(
+  grants: SecretGrant[],
+  bindingId: string,
+  mode: string,
+): SecretGrant | undefined {
+  return grants.find(
+    (g) =>
+      g.agent_ids.length === 1 &&
+      g.binding_ids.length === 1 &&
+      g.binding_ids[0] === bindingId &&
+      g.delivery_modes.length === 1 &&
+      g.delivery_modes[0] === mode &&
+      g.project_ids.length === 0,
+  )
+}

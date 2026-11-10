@@ -10,12 +10,15 @@ import {
   createSecretGrant,
   listSecretBindings,
   listSecretGrants,
+  updateSecretGrant,
 } from '@/api/endpoints'
 import { GitHubAppBindingSelect } from '@/components/admin/secrets/GitHubAppBindingSelect'
 import { SecretDialog } from '@/components/admin/secrets/SecretDialog'
-import type {
-  SecretBinding,
-  SecretGrantCreate,
+import {
+  type SecretBinding,
+  type SecretGrant,
+  type SecretGrantCreate,
+  SETUP_PURPOSES,
 } from '@/components/admin/secrets/types'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -36,6 +39,7 @@ import {
   covers,
   GITHUB_PURPOSES,
   grantFor,
+  ownGrant,
 } from './access'
 import type { SettingsDraft } from './agentDraft'
 import { Field } from './OverviewTab'
@@ -82,12 +86,25 @@ export function AccessTab({
     queryFn: ({ signal }) => listSecretBindings(orgSlug, signal),
     queryKey: ['secret-bindings', orgSlug],
   })
-  const create = useMutation({
-    mutationFn: (body: SecretGrantCreate) => createSecretGrant(orgSlug, body),
+  // A new purpose goes on the agent's own grant of the binding, if it
+  // has one, not on a second grant for the same secret.
+  const save = useMutation({
+    mutationFn: ({
+      body,
+      own,
+    }: {
+      body: SecretGrantCreate
+      own?: SecretGrant
+    }) =>
+      own
+        ? updateSecretGrant(orgSlug, own.id, {
+            purposes: [...own.purposes, ...body.purposes],
+          })
+        : createSecretGrant(orgSlug, body),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Access granted')
-      void queryClient.invalidateQueries({
+      await queryClient.invalidateQueries({
         queryKey: ['secret-grants', orgSlug],
       })
     },
@@ -98,15 +115,19 @@ export function AccessTab({
     (b) => b.reference === value.githubAppBinding,
   )
   const rows = accessRows(mine, bindings.data ?? [], github?.id ?? null)
-  const grant = (binding: SecretBinding, purpose: string, mode: string) =>
+  const grant = (
+    binding: SecretBinding,
+    purpose: string,
+    mode: SecretGrantCreate['delivery_modes'][number],
+    done?: () => void,
+  ) =>
     agent &&
-    create.mutate(
-      grantFor(
-        agent,
-        binding,
-        purpose,
-        mode as SecretGrantCreate['delivery_modes'][number],
-      ),
+    save.mutate(
+      {
+        body: grantFor(agent, binding, purpose, mode),
+        own: ownGrant(mine, binding.id, mode),
+      },
+      { onSuccess: done },
     )
 
   return (
@@ -159,7 +180,7 @@ export function AccessTab({
                   </span>
                   {!ok && canWrite && (
                     <Button
-                      disabled={create.isPending}
+                      disabled={save.isPending}
                       onClick={() => grant(github, purpose, mode)}
                       size="sm"
                       variant="outline"
@@ -180,7 +201,7 @@ export function AccessTab({
         covered={(bindingId) =>
           covers(mine, bindingId, MODEL_PURPOSE, 'file_descriptor')
         }
-        isPending={create.isPending}
+        isPending={save.isPending}
         loaded={bindings.isSuccess}
         onChange={(reference) => onChange({ ...value, modelKeyRef: reference })}
         onGrant={(binding) => grant(binding, MODEL_PURPOSE, 'file_descriptor')}
@@ -195,9 +216,11 @@ export function AccessTab({
             (b) => b.enabled && b.id !== github?.id,
           )}
           canWrite={canWrite}
-          error={create.error}
-          isPending={create.isPending}
-          onGrant={(body, done) => create.mutate(body, { onSuccess: done })}
+          error={save.error}
+          isPending={save.isPending}
+          onGrant={(binding, purpose, done) =>
+            grant(binding, purpose, 'environment', done)
+          }
           rows={rows}
         />
       )}
@@ -219,7 +242,7 @@ function AgentSecrets({
   canWrite: boolean
   error: unknown
   isPending: boolean
-  onGrant: (body: SecretGrantCreate, done: () => void) => void
+  onGrant: (binding: SecretBinding, purpose: string, done: () => void) => void
   rows: AccessRow[]
 }) {
   const [adding, setAdding] = useState(false)
@@ -296,10 +319,26 @@ function AgentSecrets({
           onSubmit={(values) => {
             const binding = bindings.find((b) => b.id === values.binding)
             if (!binding) return
-            onGrant(
-              grantFor(agent, binding, String(values.purpose), 'environment'),
-              () => setAdding(false),
-            )
+            const purpose = String(values.purpose)
+            if ((SETUP_PURPOSES as readonly string[]).includes(purpose)) {
+              toast.error(`${purpose} is for the runner only`)
+              return
+            }
+            if (
+              covers(
+                rows.map((r) => r.grant),
+                binding.id,
+                purpose,
+                'environment',
+              )
+            ) {
+              toast.info(
+                `${binding.reference} is already granted for ${purpose}`,
+              )
+              setAdding(false)
+              return
+            }
+            onGrant(binding, purpose, () => setAdding(false))
           }}
           title="Add access"
         />
