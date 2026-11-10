@@ -488,8 +488,8 @@ name destination only through the **egress proxy**:
    when the connection comes from the address of the live pod with the
    token's pod uid, and one of these is true:
     - The token holds the host, and the port is 443.
-    - The internal address is in a CIDR of the token, and the port is
-      a TCP port of that CIDR.
+    - Every internal address of the host is in a CIDR of the token, and
+      the port is a TCP port of that CIDR.
 4. TLS is end to end between the client and the host. The proxy does not
    decrypt traffic.
 
