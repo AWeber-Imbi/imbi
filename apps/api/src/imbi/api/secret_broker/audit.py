@@ -19,6 +19,7 @@ import datetime
 import logging
 import typing
 import uuid
+from collections import abc
 
 import psycopg
 import psycopg_pool
@@ -161,7 +162,8 @@ SELECT *
 FROM imbi.secret_audit_events
 WHERE organization_id = {organization_id:String}
   AND ({resolution_id:String} = '' OR resolution_id = {resolution_id:String})
-  AND ({type:String} = '' OR type = {type:String})
+  AND (empty({types:Array(String)}) OR has({types:Array(String)}, type))
+  AND ({result:String} = '' OR result = {result:String})
   AND (at < {before:DateTime64(6, 'UTC')}
        OR ({before_event_id:String} != ''
            AND at = {before:DateTime64(6, 'UTC')}
@@ -175,7 +177,8 @@ async def search(
     organization_id: str,
     *,
     resolution_id: str = '',
-    event_type: str = '',
+    event_types: abc.Sequence[str] = (),
+    result: str = '',
     before: datetime.datetime | None = None,
     before_event_id: str = '',
     limit: int = 100,
@@ -184,14 +187,16 @@ async def search(
 
     The cursor is ``(before, before_event_id)``, in the order of the
     query (``at`` descending, then ``event_id``). Without an event id,
-    ``before`` is strict.
+    ``before`` is strict. Empty ``event_types`` or ``result`` match
+    every event.
     """
     rows = await clickhouse.query(
         _QUERY,
         {
             'organization_id': organization_id,
             'resolution_id': resolution_id,
-            'type': event_type,
+            'types': list(event_types),
+            'result': result,
             'before': before or datetime.datetime.now(datetime.UTC),
             'before_event_id': before_event_id,
             'limit': limit,

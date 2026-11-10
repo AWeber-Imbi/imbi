@@ -14,8 +14,8 @@ const TABS = [
   ['providers', 'Providers'],
   ['bindings', 'Bindings'],
   ['grants', 'Grants'],
-  ['resolutions', 'Resolutions'],
   ['identity', 'Identity'],
+  ['resolutions', 'Resolutions'],
   ['audit', 'Audit'],
 ] as const
 

@@ -74,6 +74,8 @@ class FakeProvider(secrets.SecretProvider):
     type = 'fake'
     label = 'Fake (tests only)'
     capabilities = ALL_CAPABILITIES
+    locator_model = _FakeLocator
+    config_model = secrets.NoConfig
 
     def __init__(self) -> None:
         self.values: dict[str, bytes] = {}

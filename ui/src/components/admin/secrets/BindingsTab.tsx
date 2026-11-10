@@ -8,7 +8,7 @@ import {
   deleteSecretBinding,
   listSecretBindings,
   listSecretProviders,
-  listTokenExchangers,
+  listSecretProviderTypes,
   updateSecretBinding,
   validateSecretBinding,
 } from '@/api/endpoints'
@@ -18,30 +18,22 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
+import { BindingDialog } from './BindingDialog'
 import { CopyId } from './CopyId'
-import { SecretDialog } from './SecretDialog'
 import {
-  CREDENTIAL_CLASSES,
-  DELIVERY_MODES,
   type SecretBinding,
   type SecretBindingCreate,
   type SecretBindingPatch,
+  titleList,
 } from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
-
-const asOptions = (values: readonly string[]) =>
-  values.map((value) => ({ label: value, value }))
 
 interface KeyUsage {
   app_id: string
   consumers?: string[]
   host: string
 }
-
-/** A key binding can hold a provider key; a dynamic binding cannot. */
-const keyClass = (values: Record<string, string | string[]>) =>
-  values.credential_class !== 'dynamic'
 
 // fallow-ignore-next-line complexity
 export function BindingsTab({ orgSlug }: { orgSlug: string }) {
@@ -57,9 +49,9 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
     queryFn: ({ signal }) => listSecretProviders(orgSlug, signal),
     queryKey: ['secret-providers', orgSlug],
   })
-  const exchangersQuery = useQuery({
-    queryFn: ({ signal }) => listTokenExchangers(orgSlug, signal),
-    queryKey: ['token-exchangers', orgSlug],
+  const typesQuery = useQuery({
+    queryFn: ({ signal }) => listSecretProviderTypes(orgSlug, signal),
+    queryKey: ['secret-provider-types', orgSlug],
   })
   const providerNames = new Map(
     (providersQuery.data ?? []).map((p) => [p.id, p.name]),
@@ -200,7 +192,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
             header: 'Delivery',
             key: 'delivery',
             render: (row) =>
-              row.allowed_delivery_modes.join(', ') +
+              titleList(row.allowed_delivery_modes) +
               (row.allowed_delivery_targets.length
                 ? ` (${row.allowed_delivery_targets.join(', ')})`
                 : ''),
@@ -236,126 +228,27 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
         rows={bindings}
       />
       {editing && (
-        <SecretDialog
-          description="Map a logical reference to a location in a provider. A binding holds no secret value."
+        <BindingDialog
+          consumers={bindings
+            .filter((b) => {
+              const usage = row?.provider_key_usage as KeyUsage | undefined
+              // Keep current consumers so the admin can remove them.
+              if (usage?.consumers?.includes(b.id)) return true
+              if (
+                b.credential_class !== 'dynamic' ||
+                !appProviders.has(b.provider_id)
+              )
+                return false
+              // A key with no saved host and App id offers each App.
+              // Otherwise offer only the Apps that the broker accepts.
+              return (
+                !usage?.host ||
+                (usage.host === appProviders.get(b.provider_id) &&
+                  usage.app_id === String(b.locator.app_id))
+              )
+            })
+            .map((b) => ({ label: b.reference, value: b.id }))}
           error={saveMutation.error}
-          fields={[
-            {
-              createOnly: true,
-              description: 'secret://<scope>/<path>, lower case, no field',
-              kind: 'text',
-              label: 'Reference',
-              name: 'reference',
-              required: true,
-            },
-            {
-              createOnly: true,
-              kind: 'select',
-              label: 'Provider',
-              name: 'provider_id',
-              options: (providersQuery.data ?? []).map((p) => ({
-                label: p.name,
-                value: p.id,
-              })),
-              required: true,
-            },
-            {
-              initial: 'static',
-              kind: 'select',
-              label: 'Credential class',
-              name: 'credential_class',
-              options: asOptions(CREDENTIAL_CLASSES),
-              required: true,
-            },
-            {
-              description:
-                'For AWS: {"secret_id": "prod/app", "version_stage": "AWSCURRENT"}. For a GitHub App: {"app_id": "123", "private_key": "secret://<scope>/<key>", "repositories": ["owner/name"]}.' +
-                (exchangersQuery.data ?? [])
-                  .map(
-                    (e) =>
-                      ` For ${e.label} workload identity (dynamic): ${e.target_help}`,
-                  )
-                  .join(''),
-              initial: '{}',
-              kind: 'json',
-              label: 'Locator',
-              name: 'locator',
-              required: true,
-            },
-            {
-              description:
-                'Comma separated. Empty: only the whole value is allowed.',
-              kind: 'list',
-              label: 'Allowed fields',
-              name: 'allowed_fields',
-            },
-            {
-              kind: 'multi',
-              label: 'Allowed delivery modes',
-              name: 'allowed_delivery_modes',
-              options: asOptions(DELIVERY_MODES),
-              required: true,
-            },
-            {
-              description:
-                'Comma separated, e.g. GH_TOKEN. Empty allows any safe target.',
-              kind: 'list',
-              label: 'Allowed delivery targets',
-              name: 'allowed_delivery_targets',
-            },
-            {
-              initial: '900',
-              kind: 'number',
-              label: 'Maximum TTL (seconds)',
-              name: 'max_ttl_seconds',
-            },
-            { kind: 'text', label: 'Description', name: 'description' },
-            {
-              description:
-                'Only for a provider key, such as a GitHub App private key: github.com, <tenant>.ghe.com, or a GHES host.',
-              group: 'provider_key_usage',
-              kind: 'text',
-              label: 'Provider key host',
-              name: 'host',
-              required: true,
-              show: keyClass,
-            },
-            {
-              group: 'provider_key_usage',
-              kind: 'text',
-              label: 'Provider key App id',
-              name: 'app_id',
-              required: true,
-              show: keyClass,
-            },
-            {
-              description: 'The github_app bindings that can sign with the key',
-              group: 'provider_key_usage',
-              kind: 'multi',
-              label: 'Provider key consumers',
-              name: 'consumers',
-              options: bindings
-                .filter((b) => {
-                  const usage = row?.provider_key_usage as KeyUsage | undefined
-                  // Keep current consumers so the admin can remove them.
-                  if (usage?.consumers?.includes(b.id)) return true
-                  if (
-                    b.credential_class !== 'dynamic' ||
-                    !appProviders.has(b.provider_id)
-                  )
-                    return false
-                  // A key with no saved host and App id offers each App.
-                  // Otherwise offer only the Apps that the broker accepts.
-                  return (
-                    !usage?.host ||
-                    (usage.host === appProviders.get(b.provider_id) &&
-                      usage.app_id === String(b.locator.app_id))
-                  )
-                })
-                .map((b) => ({ label: b.reference, value: b.id })),
-              show: keyClass,
-            },
-          ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>
@@ -366,8 +259,10 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               { onSuccess: () => setEditing(null) },
             )
           }
+          orgSlug={orgSlug}
           original={row}
-          title={row ? `Edit binding ${row.reference}` : 'New binding'}
+          providers={providersQuery.data ?? []}
+          providerTypes={typesQuery.data ?? []}
         />
       )}
     </div>

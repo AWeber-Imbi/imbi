@@ -103,15 +103,20 @@ binary secret.
 1. Open the **Providers** tab and click **New provider**.
 2. Enter a name: lower case letters, digits, `-`, and `_`.
 3. Select **AWS Secrets Manager**.
-4. Enter the configuration:
+4. In the **Configuration** box, enter the **Region** (for example
+   `us-east-1`) and the **Role ARN**. The **Account ID** is optional.
+   The dialog shows the ExternalId that the role trust policy must
+   require.
 
-    ```json
-    {"region": "us-east-1", "role_arn": "arn:aws:iam::123456789012:role/imbi-secrets"}
-    ```
+    Click **Edit as JSON** to enter the configuration as JSON, for
+    example
+    `{"region": "us-east-1", "role_arn": "arn:aws:iam::123456789012:role/imbi-secrets"}`.
+    Access keys and an endpoint URL are refused.
 
-    `account_id` is optional. Access keys and an endpoint URL are refused.
+5. Click **Create provider**.
 
-5. Click **Save**.
+A workload identity type, such as Anthropic, takes no configuration. Its
+credentials come from the identity source on the **Identity** tab.
 
 When you save, Imbi does two checks. It assumes the role with a random
 ExternalId, which must fail. Then it assumes the role with your
@@ -125,22 +130,22 @@ Click **Test** on the provider row to check it again later.
 A binding gives one AWS secret a reference in Imbi.
 
 1. Open the **Bindings** tab and click **New binding**.
-2. Enter the **Reference**, for example `secret://grafana/api`.
-    - Use `secret://<scope>/<path>`.
+2. Enter the **Reference** after `secret://`, for example `grafana/api`.
+    - The reference is `secret://<scope>/<path>`.
     - Use only lower case letters, digits, and `_` in each part.
     - Do not add `#field` here. The request adds the field.
 3. Select the provider.
 4. Keep the **Credential class** at `static` for a secret that you change by
    hand. Use `rotated` for a secret that AWS rotates.
-5. Enter the **Locator**, which names the AWS secret:
+5. In the **Locator** box, enter the **Secret ID**: the AWS secret name
+   or ARN, for example `imbi/grafana`. To pin a version, enter a
+   **Version stage** (for example `AWSCURRENT`) or a **Version ID**, not
+   both. With neither, Imbi reads `AWSCURRENT`.
 
-    ```json
-    {"secret_id": "imbi/grafana"}
-    ```
-
-    `secret_id` is the secret name or ARN. To pin a version, add
-    `version_stage` (for example `AWSCURRENT`) or `version_id`, not both.
-    With neither, Imbi reads `AWSCURRENT`.
+    The provider type sets the locator fields. Click **Edit as JSON** to
+    enter the locator as JSON, for example `{"secret_id": "imbi/grafana"}`.
+    Imbi checks the locator while you type, and **Create binding** stays
+    disabled until it is valid.
 
 6. In **Allowed fields**, list the JSON members that requests may select,
    for example `token`. Leave it empty to allow only the whole value.
@@ -149,7 +154,7 @@ A binding gives one AWS secret a reference in Imbi.
    runner uses (see [Purposes](#purposes)).
 8. Optional: in **Allowed delivery targets**, list the environment variable
    names that may receive the value, for example `GRAFANA_TOKEN`.
-9. Click **Save**.
+9. Click **Create binding**.
 
 Click **Validate** on the binding row to check that the role can see the
 AWS secret.
@@ -174,10 +179,34 @@ The grant form has these fields:
 |---|---|
 | Agents | The agents that may use the bindings |
 | Bindings | The bindings this grant covers |
-| Projects | Project ids. Leave empty for any project |
 | Purposes | The purposes this grant allows. See [Purposes](#purposes) |
-| Delivery modes | How the value may be delivered. Each mode must also be allowed on the binding |
+| Delivery modes | How the value may be delivered. See [Delivery modes](#delivery-modes) |
 | Maximum TTL (seconds) | How long one read stays valid. Default 900, maximum 3600 |
+| Projects | On the **Projects** tab: all projects, or only the selected projects |
+
+### Delivery modes
+
+A binding and a grant both have delivery modes. The broker delivers a
+value only in a mode that the binding **and** the grant allow. Neither
+one takes precedence.
+
+The two lists control different things:
+
+- **The binding** sets how the secret can ever leave the broker. The
+  person who connects the secret sets it, for all grants. For example, a
+  GitHub App key that only the runner uses allows only
+  `file_descriptor`. Then no grant can give the key to an agent as an
+  environment variable.
+- **The grant** sets how these agents receive the secret, for these
+  purposes. It can only remove modes from those of its bindings. For
+  example, one binding can allow `environment` and `file_descriptor`, one
+  grant can give agent A `environment`, and a second grant can give
+  agent B only `file_descriptor`.
+
+When you change the bindings in the grant form, Imbi keeps each selected
+mode that all of them allow. When no selected mode is left, Imbi selects
+each mode that all of them allow. A mode that a selected binding does not
+allow is disabled. Clear the modes that the agents do not use.
 
 ## Purposes
 
@@ -267,8 +296,15 @@ An AI Provider can also use the identity source of an organization; see
 
 ## Check what happened
 
-- **Resolutions** lists the secret reads that are active now.
-- **Audit** lists every request, allowed or denied, with the reason.
+- **Resolutions** shows the secret reads that are active now. Select a
+  state to see released, expired, or failed reads. **Release** and
+  **Revoke lease** act on one read. **History** opens its audit events.
+- **Audit** shows the history: every request, allowed or denied, with
+  the reason, and every change to providers, bindings, grants, and the
+  identity source. Filter by category and result. Click a resolution id
+  to open that read on the Resolutions tab.
+
+Audit also shows a denied request, which has no resolution.
 
 A denied request names the reason, for example `no_grant`. Check
 that the grant includes the agent, the binding, the purpose, and the

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import {
   createSecretGrant,
   deleteSecretGrant,
+  getProjectsSlim,
   listAgents,
   listSecretBindings,
   listSecretGrants,
@@ -18,12 +19,12 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 
 import { CopyId } from './CopyId'
-import { SecretDialog } from './SecretDialog'
+import { GrantDialog } from './GrantDialog'
 import {
-  DELIVERY_MODES,
   type SecretGrant,
   type SecretGrantCreate,
   type SecretGrantPatch,
+  titleList,
 } from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
@@ -46,6 +47,13 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
     queryFn: ({ signal }) => listAgents(orgSlug, signal),
     queryKey: queryKeys.agents(orgSlug),
   })
+  const projectsQuery = useQuery({
+    queryFn: ({ signal }) => getProjectsSlim(orgSlug, signal),
+    queryKey: ['projects', orgSlug, 'slim'],
+  })
+  const projectNames = new Map(
+    (projectsQuery.data ?? []).map((p) => [p.id, p.name]),
+  )
   const references = new Map(
     (bindingsQuery.data ?? []).map((b) => [b.id, b.reference]),
   )
@@ -122,17 +130,20 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
           {
             header: 'Projects',
             key: 'projects',
-            render: (row) => row.project_ids.join(', ') || 'Any',
+            render: (row) =>
+              row.project_ids
+                .map((id) => projectNames.get(id) ?? id)
+                .join(', ') || 'Any',
           },
           {
             header: 'Purposes',
             key: 'purposes',
-            render: (row) => row.purposes.join(', '),
+            render: (row) => titleList(row.purposes),
           },
           {
             header: 'Delivery',
             key: 'delivery',
-            render: (row) => row.delivery_modes.join(', '),
+            render: (row) => titleList(row.delivery_modes),
           },
           {
             cellAlign: 'right',
@@ -165,59 +176,13 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
         rows={grantsQuery.data ?? []}
       />
       {editing && (
-        <SecretDialog
-          description="Exactly one enabled grant must allow a request, or the broker denies it. Ids are exact."
+        <GrantDialog
+          agents={(agentsQuery.data ?? []).map((a) => ({
+            label: a.name,
+            value: a.id,
+          }))}
+          bindings={bindingsQuery.data ?? []}
           error={saveMutation.error}
-          fields={[
-            {
-              kind: 'multi',
-              label: 'Agents',
-              name: 'agent_ids',
-              options: (agentsQuery.data ?? []).map((a) => ({
-                label: a.name,
-                value: a.id,
-              })),
-              required: true,
-            },
-            {
-              kind: 'multi',
-              label: 'Bindings',
-              name: 'binding_ids',
-              options: (bindingsQuery.data ?? []).map((b) => ({
-                label: b.reference,
-                value: b.id,
-              })),
-              required: true,
-            },
-            {
-              description:
-                'Comma separated project ids. Empty allows any project.',
-              kind: 'list',
-              label: 'Projects',
-              name: 'project_ids',
-            },
-            {
-              description: 'Comma separated, e.g. npm, sentry',
-              kind: 'list',
-              label: 'Purposes',
-              name: 'purposes',
-              required: true,
-            },
-            {
-              kind: 'multi',
-              label: 'Delivery modes',
-              name: 'delivery_modes',
-              options: DELIVERY_MODES.map((m) => ({ label: m, value: m })),
-              required: true,
-            },
-            {
-              initial: '900',
-              kind: 'number',
-              label: 'Maximum TTL (seconds)',
-              name: 'max_ttl_seconds',
-            },
-            { kind: 'text', label: 'Description', name: 'description' },
-          ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>
@@ -229,7 +194,14 @@ export function GrantsTab({ orgSlug }: { orgSlug: string }) {
             )
           }
           original={row}
-          title={row ? 'Edit grant' : 'New grant'}
+          projects={(projectsQuery.data ?? [])
+            .map((p) => ({
+              hint: p.project_types.map((t) => t.name).join(', '),
+              label: p.name,
+              value: p.id,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label))}
+          purposes={(grantsQuery.data ?? []).flatMap((g) => g.purposes)}
         />
       )}
     </div>

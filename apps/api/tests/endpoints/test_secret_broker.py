@@ -164,6 +164,21 @@ class SecretEndpointTestCase(
             {t['type'] for t in response.json()},
             {'fake', 'aws_secrets_manager', 'github_app'},
         )
+        types = {t['type']: t for t in response.json()}
+        aws = types['aws_secrets_manager']
+        self.assertEqual(aws['credential_classes'], ['static', 'rotated'])
+        self.assertEqual(aws['locator_schema']['required'], ['secret_id'])
+        self.assertEqual(
+            aws['locator_schema']['properties']['secret_id']['title'],
+            'Secret ID',
+        )
+        self.assertEqual(
+            types['github_app']['credential_classes'], ['dynamic']
+        )
+        self.assertEqual(
+            aws['config_schema']['required'], ['region', 'role_arn']
+        )
+        self.assertEqual(types['fake']['config_schema']['properties'], {})
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)
 
@@ -355,6 +370,32 @@ class SecretEndpointTestCase(
             json={'max_ttl_seconds': 60},
         )
         self.assertEqual(response.json()['max_ttl_seconds'], 60)
+
+    async def test_locator_check(self) -> None:
+        """The check applies the save rules and stores no binding."""
+        body = {
+            'provider_id': str(self.provider['id']),
+            'credential_class': 'static',
+            'locator': {'key': 'json'},
+        }
+        bindings = self.base + '/secret-bindings/'
+        before = (await self.client.get(bindings)).json()
+        response = await self._post('/secret-bindings/locator-check', body)
+        self.assertEqual(response.status_code, 204, response.text)
+        for change in (
+            {'locator': {'key': 'x', 'arn': 'y'}},
+            {'provider_id': str(uuid.uuid4())},
+        ):
+            with self.subTest(change=change):
+                response = await self._post(
+                    '/secret-bindings/locator-check', body | change
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn('message', response.json()['detail'])
+        self.assertEqual((await self.client.get(bindings)).json(), before)
+        self.permissions.discard('secret_binding:write')
+        response = await self._post('/secret-bindings/locator-check', body)
+        self.assertEqual(response.status_code, 403)
 
     async def test_github_app_key_rules(self) -> None:
         """A github_app provider takes allowed hosts only, and its
@@ -834,6 +875,55 @@ class SecretEndpointTestCase(
             }
         self.assertEqual(found, sorted(e.event_id for e in events))
 
+    async def test_audit_type_and_result_filters(self) -> None:
+        """Repeated types match any of them; result matches one."""
+        previous = ch_client.Clickhouse._instance
+        ch_client.Clickhouse._instance = None
+
+        async def restore() -> None:
+            await clickhouse.aclose()
+            ch_client.Clickhouse._instance = previous
+
+        self.addAsyncCleanup(restore)
+        await clickhouse.initialize()
+        await clickhouse.setup_schema()
+        events = [
+            audit.Event(
+                at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+                organization_id=self.org,
+                result=result,
+                type=event_type,
+            )
+            for event_type, result in (
+                ('secret_resolution_allowed', 'allowed'),
+                ('secret_resolution_denied', 'denied'),
+                ('secret_lease_revoked', 'succeeded'),
+                ('secret_grant_created', 'succeeded'),
+            )
+        ]
+        await audit.record(self.pool, events)
+        with support.sink_to_clickhouse():
+            await self.broker.flush_audit()
+
+        async def types(params: dict[str, typing.Any]) -> set[str]:
+            response = await self.client.get(
+                self.base + '/secret-audit-events/', params=params
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            return {e['type'] for e in response.json()}
+
+        resolution = ['secret_resolution_allowed', 'secret_resolution_denied']
+        self.assertEqual(await types({'type': resolution}), set(resolution))
+        self.assertEqual(
+            await types({'type': resolution, 'result': 'denied'}),
+            {'secret_resolution_denied'},
+        )
+        self.assertEqual(len(await types({})), 4)
+        response = await self.client.get(
+            self.base + '/secret-audit-events/', params={'type': 'nope'}
+        )
+        self.assertEqual(response.status_code, 422)
+
     async def test_audit_events(self) -> None:
         event = audit.Event(
             organization_id=self.org, type='secret_materialized'
@@ -851,7 +941,8 @@ class SecretEndpointTestCase(
         self.assertEqual(response.json()[0]['event_id'], event.event_id)
         params = query.call_args.args[1]
         self.assertEqual(params['organization_id'], self.org)
-        self.assertEqual(params['type'], 'secret_materialized')
+        self.assertEqual(params['types'], ['secret_materialized'])
+        self.assertEqual(params['result'], '')
         self.assertEqual(params['limit'], 5)
         with mock.patch.object(
             clickhouse, 'query', mock.AsyncMock(side_effect=OSError)

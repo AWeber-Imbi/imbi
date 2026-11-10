@@ -7,7 +7,10 @@ the fake provider and captured audit events.
 import asyncio
 import base64
 import logging
+import pathlib
 import pickle
+import re
+import typing
 import unittest
 import uuid
 from unittest import mock
@@ -21,6 +24,25 @@ from imbi.api.agent_tasks import store as task_store
 from imbi.api.harness import sweeper
 from imbi.api.secret_broker import audit, broker, providers, store
 from imbi.common.auth import encryption
+
+
+class AuditCategoriesTestCase(unittest.TestCase):
+    def test_ui_categories_cover_each_event_type(self) -> None:
+        """The Audit tab filter lists each event type once.
+
+        The UI list is a copy of ``audit.EventType``: the generated
+        API types do not have the enum.
+        """
+        source = (
+            pathlib.Path(__file__).parents[3]
+            / 'ui/src/components/admin/secrets/types.ts'
+        ).read_text()
+        block = re.search(
+            r'AUDIT_CATEGORIES = \{(.*?)\} as const', source, re.DOTALL
+        )
+        assert block is not None
+        found = re.findall(r"'([a-z_]+)'", block.group(1))
+        self.assertCountEqual(found, typing.get_args(audit.EventType))
 
 
 class ReferenceTestCase(unittest.TestCase):

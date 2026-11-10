@@ -36,6 +36,7 @@ from imbi.api.secret_broker import (
     store,
 )
 from imbi.common.plugins import identity as plugin_identity
+from imbi.common.plugins import secrets as plugin_secrets
 
 OrgId = organizations.MemberOrgId
 
@@ -181,6 +182,13 @@ class SecretProviderType(pydantic.BaseModel):
     type: str
     label: str
     capabilities: list[str]
+    #: The credential classes that a binding of this type can use.
+    credential_classes: list[str]
+    #: The JSON Schema of the provider configuration, or ``None``.
+    config_schema: dict[str, typing.Any] | None
+    #: The JSON Schema of a binding locator, or ``None`` when the
+    #: provider has no model. The admin form draws its fields from it.
+    locator_schema: dict[str, typing.Any] | None
 
 
 class SecretProviderTest(pydantic.BaseModel):
@@ -220,6 +228,14 @@ class ProviderKeyUsage(pydantic.BaseModel):
                 'the github_app secret provider is not installed'
             ) from None
         return consumer.check_key_host(value)
+
+
+class SecretLocatorCheck(pydantic.BaseModel):
+    """A locator to check before a binding is saved."""
+
+    provider_id: uuid.UUID
+    credential_class: providers.CredentialClass
+    locator: dict[str, typing.Any]
 
 
 class SecretBindingCreate(pydantic.BaseModel):
@@ -455,6 +471,13 @@ async def list_provider_types(_: ProviderRead) -> list[dict[str, typing.Any]]:
             'type': plugin.type,
             'label': plugin.label,
             'capabilities': sorted(plugin.capabilities),
+            'credential_classes': [
+                c
+                for c in typing.get_args(plugin_secrets.CredentialClass)
+                if broker.required_capability(c) in plugin.capabilities
+            ],
+            'config_schema': plugin.config_schema(),
+            'locator_schema': plugin.locator_schema(),
         }
         for plugin in providers.all_providers()
     ]
@@ -871,6 +894,24 @@ async def delete_binding(
         )
 
 
+@bindings_router.post('/locator-check', status_code=204)
+async def check_locator(
+    org_id: OrgId,
+    data: SecretLocatorCheck,
+    secrets: secret_broker.Store,
+    _: BindingWrite,
+) -> None:
+    """Check a locator as a save does, and store nothing.
+
+    Raises:
+        422: The provider or the locator is not valid.
+
+    """
+    await _locator(
+        secrets, org_id, data.provider_id, data.locator, data.credential_class
+    )
+
+
 @bindings_router.post(
     '/{binding_id}/validate', response_model=SecretBindingValidation
 )
@@ -1261,12 +1302,18 @@ async def list_audit_events(
     org_id: OrgId,
     _: AuditRead,
     resolution_id: uuid.UUID | None = None,
-    event_type: typing.Annotated[str, fastapi.Query(alias='type')] = '',
+    event_types: typing.Annotated[
+        list[audit.EventType] | None, fastapi.Query(alias='type')
+    ] = None,
+    result: audit.Result | None = None,
     before: datetime.datetime | None = None,
     before_event_id: str = '',
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=500)] = 100,
 ) -> list[dict[str, typing.Any]]:
     """Return audit events, newest first.
+
+    Repeat ``type`` to match any of the types. ``result`` matches one
+    result.
 
     To page, send the ``at`` and ``event_id`` of the last event as
     ``before`` and ``before_event_id``. Events with the same ``at`` are
@@ -1280,7 +1327,8 @@ async def list_audit_events(
         return await audit.search(
             org_id,
             resolution_id=str(resolution_id) if resolution_id else '',
-            event_type=event_type,
+            event_types=event_types or (),
+            result=result or '',
             before=before,
             before_event_id=before_event_id,
             limit=limit,

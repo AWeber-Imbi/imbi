@@ -4233,6 +4233,20 @@ export const updateSecretBinding = (
 export const deleteSecretBinding = (orgSlug: string, id: string) =>
   apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-bindings')}/${id}`)
 
+// Applies the rules of a binding save to a locator, and stores nothing.
+export const checkSecretLocator = (
+  orgSlug: string,
+  body: {
+    credential_class: string
+    locator: Record<string, unknown>
+    provider_id: string
+  },
+) =>
+  apiClient.post<void>(
+    `${secretsPath(orgSlug, 'secret-bindings')}/locator-check`,
+    body,
+  )
+
 export const validateSecretBinding = (orgSlug: string, id: string) =>
   apiClient.post<SecretBindingValidation>(
     `${secretsPath(orgSlug, 'secret-bindings')}/${id}/validate`,
@@ -4269,6 +4283,17 @@ export const listSecretResolutions = (
     signal,
   )
 
+export const getSecretResolution = (
+  orgSlug: string,
+  id: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<SecretResolution>(
+    `${secretsPath(orgSlug, 'secret-resolutions')}/${encodeURIComponent(id)}`,
+    undefined,
+    signal,
+  )
+
 export const releaseSecretResolution = (orgSlug: string, id: string) =>
   apiClient.post<SecretResolution>(
     `${secretsPath(orgSlug, 'secret-resolutions')}/${id}/release`,
@@ -4279,5 +4304,15 @@ export const revokeSecretProviderLease = (orgSlug: string, id: string) =>
     `${secretsPath(orgSlug, 'secret-resolutions')}/${id}/revoke-provider-lease`,
   )
 
-export const listSecretAuditEvents = (orgSlug: string, signal?: AbortSignal) =>
-  listOf<SecretAuditEvent>(orgSlug, 'secret-audit-events', undefined, signal)
+/** Audit events. Each `type` matches; an empty filter matches all. */
+export const listSecretAuditEvents = (
+  orgSlug: string,
+  filter: { resolution_id?: string; result?: string; type?: string[] } = {},
+  signal?: AbortSignal,
+) =>
+  listOf<SecretAuditEvent>(
+    orgSlug,
+    'secret-audit-events',
+    Object.fromEntries(Object.entries(filter).filter(([, v]) => v && v.length)),
+    signal,
+  )

@@ -174,6 +174,8 @@ class TokenExchanger:
     #: The target that :meth:`validate_target` accepts, as help text for
     #: an admin: the JSON keys and where to find the values.
     target_help: typing.ClassVar[str]
+    #: The model of the target, for the admin form, or ``None``.
+    target_model: typing.ClassVar[type[pydantic.BaseModel] | None] = None
     #: The ``aud`` claim that the vendor accepts.
     audience: typing.ClassVar[str]
     #: The lifetime of the identity JWT (STS ``DurationSeconds``).
@@ -270,6 +272,10 @@ class WifSecretProvider(secrets.SecretProvider):
 
     exchanger: typing.ClassVar[TokenExchanger]
     capabilities = frozenset[secrets.SecretCapability]({'dynamic_issuance'})
+    config_model = secrets.NoConfig
+
+    def locator_schema(self) -> dict[str, typing.Any] | None:
+        return secrets.json_schema(self.exchanger.target_model)
 
     def validate_config(
         self, config: dict[str, typing.Any]

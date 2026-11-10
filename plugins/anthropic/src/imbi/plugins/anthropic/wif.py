@@ -38,16 +38,20 @@ class _Target(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    organization_id: _Id
-    federation_rule_id: _Id
-    service_account_id: _Id
-    #: Required when the rule names more than one workspace.
-    workspace_id: _Id | None = None
+    organization_id: _Id = pydantic.Field(title='Organization ID')
+    federation_rule_id: _Id = pydantic.Field(title='Federation rule ID')
+    service_account_id: _Id = pydantic.Field(title='Service account ID')
+    workspace_id: _Id | None = pydantic.Field(
+        default=None,
+        description='Only if the rule covers more than one workspace.',
+        title='Workspace ID',
+    )
 
 
 class AnthropicExchanger(identity.TokenExchanger):
     vendor = 'anthropic'
     label = 'Anthropic'
+    target_model = _Target
     target_help = (
         f'{identity.target_keys(_Target)}, the ids from the Anthropic'
         ' Console; workspace_id only when the rule has more than one'

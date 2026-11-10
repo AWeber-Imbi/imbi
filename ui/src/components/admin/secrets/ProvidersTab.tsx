@@ -11,6 +11,7 @@ import {
   testSecretProvider,
   updateSecretProvider,
 } from '@/api/endpoints'
+import { toTitleCase } from '@/components/admin/blueprints/blueprint-schema-utils'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,7 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import { CopyId } from './CopyId'
-import { SecretDialog } from './SecretDialog'
+import { ProviderDialog } from './ProviderDialog'
 import type {
   SecretProvider,
   SecretProviderCreate,
@@ -42,6 +43,9 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
     queryFn: ({ signal }) => listSecretProviderTypes(orgSlug, signal),
     queryKey: ['secret-provider-types', orgSlug],
   })
+  const typeLabels = new Map(
+    (typesQuery.data ?? []).map((t) => [t.type, t.label]),
+  )
   const refresh = () => queryClient.invalidateQueries({ queryKey })
 
   const saveMutation = useMutation({
@@ -98,9 +102,12 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
               Edit
             </Button>
             <Button
-              disabled={testMutation.isPending}
+              disabled={testMutation.isPending || !canTest(row)}
               onClick={() => testMutation.mutate(row.id)}
               size="sm"
+              title={
+                canTest(row) ? undefined : 'This provider type has no test'
+              }
               variant="outline"
             >
               Test
@@ -118,13 +125,15 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
           {
             header: 'Type',
             key: 'type',
-            render: (row) => <span className="font-mono">{row.type}</span>,
+            render: (row) => typeLabels.get(row.type) ?? toTitleCase(row.type),
           },
           {
             header: 'Health',
             key: 'health',
             render: (row) =>
-              row.health_status ? (
+              !canTest(row) ? (
+                <span className="text-tertiary">No test</span>
+              ) : row.health_status ? (
                 <Badge
                   variant={
                     row.health_status === 'healthy' ? 'success' : 'danger'
@@ -139,7 +148,12 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
           {
             header: 'Checked',
             key: 'checked',
-            render: (row) => <RelativeTime value={row.health_checked_at} />,
+            render: (row) =>
+              canTest(row) ? (
+                <RelativeTime value={row.health_checked_at} />
+              ) : (
+                <span className="text-tertiary">—</span>
+              ),
           },
           {
             header: 'Enabled',
@@ -165,37 +179,8 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
         rows={providersQuery.data ?? []}
       />
       {editing && (
-        <SecretDialog
-          description="An adapter to an external secret system. The configuration holds no credentials: imbi-api uses its workload identity."
+        <ProviderDialog
           error={saveMutation.error}
-          fields={[
-            {
-              description: 'Lower case letters, digits, - and _',
-              kind: 'text',
-              label: 'Name',
-              name: 'name',
-              required: true,
-            },
-            {
-              createOnly: true,
-              kind: 'select',
-              label: 'Type',
-              name: 'type',
-              options: (typesQuery.data ?? []).map((t) => ({
-                label: t.label,
-                value: t.type,
-              })),
-              required: true,
-            },
-            {
-              description:
-                'For AWS: {"region": "us-east-1", "role_arn": "..."}. role_arn is required; its trust policy must require sts:ExternalId "imbi:<organization id>". No access keys. A workload identity type: {}; it needs an identity source (the Identity tab).',
-              initial: '{}',
-              kind: 'json',
-              label: 'Configuration',
-              name: 'config',
-            },
-          ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>
@@ -207,9 +192,13 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
             )
           }
           original={row}
-          title={row ? `Edit provider ${row.name}` : 'New provider'}
+          types={typesQuery.data ?? []}
         />
       )}
     </div>
   )
 }
+
+/** Whether the provider type has a health check that Test can run. */
+const canTest = (row: SecretProvider) =>
+  row.capabilities.includes('health_check')

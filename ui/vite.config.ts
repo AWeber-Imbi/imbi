@@ -2,7 +2,13 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'child_process'
 import path from 'path'
-import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
+import {
+  defineConfig,
+  loadEnv,
+  type Plugin,
+  type UserConfig,
+  type ViteDevServer,
+} from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 function resolveBuildId(): string {
@@ -67,7 +73,7 @@ function versionManifest(): Plugin {
   }
 }
 
-export default defineConfig({
+const config: UserConfig = {
   build: {
     outDir: 'dist',
     rollupOptions: {
@@ -209,16 +215,32 @@ export default defineConfig({
     cors: true,
     host: '0.0.0.0',
     port: 5173,
-    proxy: {
-      '/api': {
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
-      },
-      '/uploads': {
-        changeOrigin: true,
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+  },
+}
+
+// API_PROXY_TARGET sends the proxy to a remote API (for example an Okteto
+// environment) while the browser keeps VITE_API_URL=/api, so requests stay
+// same-origin and need no CORS. Vite reads the config before the .env
+// files, so loadEnv reads them here. A relative VITE_API_URL is not a
+// proxy target.
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dirname, '')
+  const target =
+    [env.API_PROXY_TARGET, env.VITE_API_URL].find((url) =>
+      url?.startsWith('http'),
+    ) ?? 'http://localhost:8000'
+  return {
+    ...config,
+    server: {
+      ...config.server,
+      proxy: {
+        '/api': {
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+          target,
+        },
+        '/uploads': { changeOrigin: true, target },
       },
     },
-  },
+  }
 })

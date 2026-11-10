@@ -337,6 +337,21 @@ class SecretProviderHost(typing.Protocol):
         ...
 
 
+class NoConfig(pydantic.BaseModel):
+    """The configuration of a provider that takes none: ``{}``."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+
+#: A model class. ``type`` is a class variable in a provider body.
+_Model = type[pydantic.BaseModel]
+
+
+def json_schema(model: _Model | None) -> dict[str, typing.Any] | None:
+    """Return the JSON Schema of ``model``, or ``None`` without one."""
+    return None if model is None else model.model_json_schema()
+
+
 class SecretProvider:
     """The provider contract.
 
@@ -348,9 +363,26 @@ class SecretProvider:
     type: typing.ClassVar[str]
     label: typing.ClassVar[str]
     capabilities: typing.ClassVar[frozenset[SecretCapability]]
+    #: The model of a binding locator, for the admin form. A provider
+    #: without one gets a JSON editor. :meth:`validate_locator` still
+    #: makes the decision, for example on fields that depend on each
+    #: other.
+    locator_model: typing.ClassVar[_Model | None] = None
+    #: The model of the provider configuration, for the admin form. A
+    #: provider without one gets a JSON editor, or no fields when it
+    #: takes no configuration.
+    config_model: typing.ClassVar[_Model | None] = None
 
     def __init__(self, host: SecretProviderHost) -> None:
         self.host = host
+
+    def config_schema(self) -> dict[str, typing.Any] | None:
+        """Return the JSON Schema of the configuration, or ``None``."""
+        return json_schema(self.config_model)
+
+    def locator_schema(self) -> dict[str, typing.Any] | None:
+        """Return the JSON Schema of a locator, or ``None``."""
+        return json_schema(self.locator_model)
 
     def validate_config(
         self, config: dict[str, typing.Any]

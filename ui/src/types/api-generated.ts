@@ -20018,6 +20018,16 @@ export interface components {
             label: string;
             /** Capabilities */
             capabilities: string[];
+            /** Credential Classes */
+            credential_classes: string[];
+            /** Config Schema */
+            config_schema: {
+                [key: string]: unknown;
+            } | null;
+            /** Locator Schema */
+            locator_schema: {
+                [key: string]: unknown;
+            } | null;
         };
         /** SecretResolution */
         SecretResolution: {

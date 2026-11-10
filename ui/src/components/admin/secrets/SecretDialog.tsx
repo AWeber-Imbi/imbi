@@ -23,6 +23,8 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { parseObject } from '@/lib/utils'
 
+import { canonical } from './types'
+
 /**
  * One form field. `list` is comma separated text sent as a string
  * array; `json` is a JSON object; `multi` is a set of checkboxes.
@@ -31,7 +33,7 @@ import { parseObject } from '@/lib/utils'
  * only when a field of the group has a value. A `createOnly` field is
  * not shown in an edit, because the API does not change it.
  */
-export interface FieldSpec {
+interface FieldSpec {
   createOnly?: boolean
   description?: string
   group?: string
@@ -259,21 +261,6 @@ function toBody(
     ),
   )
 }
-
-/**
- * JSON with sorted object keys, and without empty-list properties, so that
- * key order and an absent list do not count as a change.
- */
-const canonical = (value: unknown): string =>
-  JSON.stringify(value, (_key, val: unknown) =>
-    val && typeof val === 'object' && !Array.isArray(val)
-      ? Object.fromEntries(
-          Object.entries(val)
-            .filter(([, v]) => !(Array.isArray(v) && !v.length))
-            .sort(([a], [b]) => a.localeCompare(b)),
-        )
-      : val,
-  )
 
 /**
  * The value to send for one field, or undefined to omit it. In an edit,

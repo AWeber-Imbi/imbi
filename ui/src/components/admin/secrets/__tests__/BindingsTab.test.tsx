@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import {
+  checkSecretLocator,
+  createSecretBinding,
   listSecretBindings,
   listSecretProviders,
-  listTokenExchangers,
+  listSecretProviderTypes,
   updateSecretBinding,
 } from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
@@ -12,11 +15,12 @@ import { BindingsTab } from '../BindingsTab'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
+  checkSecretLocator: vi.fn(),
   createSecretBinding: vi.fn(),
   deleteSecretBinding: vi.fn(),
   listSecretBindings: vi.fn(),
   listSecretProviders: vi.fn(),
-  listTokenExchangers: vi.fn(),
+  listSecretProviderTypes: vi.fn(),
   updateSecretBinding: vi.fn(),
   validateSecretBinding: vi.fn(),
 }))
@@ -53,20 +57,92 @@ describe('BindingsTab', () => {
       { config: {}, id: 'aws', name: 'aws', type: 'aws_secrets_manager' },
       { config: {}, id: 'gh', name: 'github', type: 'github_app' },
     ] as never)
-    vi.mocked(listTokenExchangers).mockResolvedValue([
-      { label: 'Acme AI', target_help: '{"acme_id": "..."}', vendor: 'acme' },
-    ])
     vi.mocked(updateSecretBinding).mockResolvedValue({} as never)
+    vi.mocked(checkSecretLocator).mockResolvedValue(undefined)
+    vi.mocked(listSecretProviderTypes).mockResolvedValue([])
   })
 
-  it('shows the target help of each installed exchanger', async () => {
+  /** Save waits for the locator check. */
+  const save = async () => {
+    const button = screen.getByRole('button', { name: 'Save' })
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+  }
+
+  it('shows why the locator is not valid and blocks the save', async () => {
+    vi.mocked(checkSecretLocator).mockRejectedValue(
+      new ApiError(422, 'Unprocessable', {
+        detail: {
+          error: 'invalid_configuration',
+          message: 'secret_id is required',
+        },
+      }),
+    )
     render(<BindingsTab orgSlug="acme" />)
-    fireEvent.click(await screen.findByRole('button', { name: 'New binding' }))
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    expect(await screen.findByText('secret_id is required')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(checkSecretLocator).toHaveBeenCalledWith('acme', {
+      credential_class: 'static',
+      locator: { secret_id: 'imbi/key' },
+      provider_id: 'aws',
+    })
+    fireEvent.change(screen.getByLabelText(/Locator/), {
+      target: { value: '{"secret_id": ' },
+    })
     expect(
-      await screen.findByText(
-        /For Acme AI workload identity \(dynamic\): \{"acme_id": "\.\.\."\}/,
-      ),
+      await screen.findByText('The locator is not valid JSON'),
     ).toBeInTheDocument()
+  })
+
+  it('draws the locator fields from the provider schema', async () => {
+    vi.mocked(listSecretProviderTypes).mockResolvedValue([
+      {
+        capabilities: [],
+        credential_classes: ['static', 'rotated'],
+        label: 'AWS Secrets Manager',
+        locator_schema: {
+          properties: {
+            secret_id: {
+              description: 'Name or ARN.',
+              title: 'Secret ID',
+              type: 'string',
+            },
+            version_stage: {
+              anyOf: [{ type: 'string' }, { type: 'null' }],
+              title: 'Version stage',
+            },
+          },
+          required: ['secret_id'],
+        },
+        type: 'aws_secrets_manager',
+      },
+    ])
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    const secretId = await screen.findByLabelText(/Secret ID/)
+    expect(secretId).toHaveValue('imbi/key')
+    expect(screen.getByRole('radio', { name: 'Dynamic' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/Version stage/), {
+      target: { value: 'AWSPREVIOUS' },
+    })
+    await waitFor(() =>
+      expect(checkSecretLocator).toHaveBeenCalledWith('acme', {
+        credential_class: 'static',
+        locator: { secret_id: 'imbi/key', version_stage: 'AWSPREVIOUS' },
+        provider_id: 'aws',
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit as JSON' }))
+    expect(screen.getByLabelText(/Locator/)).toHaveValue(
+      JSON.stringify(
+        { secret_id: 'imbi/key', version_stage: 'AWSPREVIOUS' },
+        null,
+        2,
+      ),
+    )
   })
 
   it('adds an App binding to the consumers of its key', async () => {
@@ -99,7 +175,9 @@ describe('BindingsTab', () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled(),
+    )
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
@@ -110,7 +188,7 @@ describe('BindingsTab', () => {
     fireEvent.click(edits[0])
     expect(screen.getByLabelText(/Provider key host/)).toHaveValue('github.com')
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await save()
     await waitFor(() =>
       expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
         provider_key_usage: { ...usage, consumers: ['app-1'] },
@@ -126,10 +204,10 @@ describe('BindingsTab', () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    fireEvent.change(screen.getByLabelText('Description'), {
+    fireEvent.change(screen.getByLabelText(/Description/), {
       target: { value: 'new' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await save()
     await waitFor(() =>
       expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
         description: 'new',
@@ -173,5 +251,40 @@ describe('BindingsTab', () => {
     fireEvent.click(edits[0])
     expect(screen.getByLabelText('secret://dev/github_app')).toBeInTheDocument()
     expect(screen.queryByLabelText('secret://dev/other_app')).toBeNull()
+  })
+
+  it('creates a binding from the reference path and tags', async () => {
+    vi.mocked(createSecretBinding).mockResolvedValue({} as never)
+    render(<BindingsTab orgSlug="acme" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'New binding' }))
+    fireEvent.change(screen.getByLabelText(/Reference/), {
+      target: { value: 'dev/app_db' },
+    })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Provider' }))
+    fireEvent.click(await screen.findByRole('option', { name: /aws/ }))
+    fireEvent.change(screen.getByLabelText(/Locator/), {
+      target: { value: '{"secret_id": "dev/app_db"}' },
+    })
+    const fields = screen.getByLabelText(/Allowed fields/)
+    fireEvent.change(fields, { target: { value: 'username' } })
+    fireEvent.keyDown(fields, { key: 'Enter' })
+    fireEvent.click(screen.getByLabelText('Environment'))
+    expect(
+      screen.getByText(/reads from aws, fields username/),
+    ).toBeInTheDocument()
+    const create = screen.getByRole('button', { name: 'Create binding' })
+    await waitFor(() => expect(create).toBeEnabled())
+    fireEvent.click(create)
+    await waitFor(() =>
+      expect(createSecretBinding).toHaveBeenCalledWith('acme', {
+        allowed_delivery_modes: ['environment'],
+        allowed_fields: ['username'],
+        credential_class: 'static',
+        locator: { secret_id: 'dev/app_db' },
+        max_ttl_seconds: 900,
+        provider_id: 'aws',
+        reference: 'secret://dev/app_db',
+      }),
+    )
   })
 })
