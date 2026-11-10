@@ -13,6 +13,9 @@ env:
   # apps/harness/Dockerfile, never the isolation target with its test
   # double. GHCR only.
   HARNESS_IMAGE: ghcr.io/aweber-imbi/imbi-harness
+  # The egress proxy of the runner pods (proxy/Dockerfile). The harness
+  # chart pins this tag. GHCR only.
+  PROXY_IMAGE: ghcr.io/aweber-imbi/imbi-egress-proxy
 
 jobs:
   build:
@@ -168,8 +171,92 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-proxy:
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'AWeber-Imbi/imbi'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Built and checked locally first, as the harness image is. One
+      # platform per job, so load works.
+      - name: Build for the check
+        uses: docker/build-push-action@v6
+        with:
+          context: ./proxy
+          file: ./proxy/Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: imbi-egress-proxy:check
+          cache-from: type=gha,scope=proxy-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=proxy-${{ env.PLATFORM_PAIR }}
+
+      # The image is `scratch`, so it has no `find`: read the modes from
+      # an export of its file system.
+      - name: Check the image has no setuid or setgid files
+        run: |
+          id=$(docker create imbi-egress-proxy:check)
+          found=$(docker export "$id" | tar -tvf - | awk '$1 ~ /[sS]/ { print $NF }')
+          docker rm "$id" >/dev/null
+          if [ -n "$found" ]; then
+            echo "::error::setuid or setgid files in the proxy image:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./proxy
+          file: ./proxy/Dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.PROXY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=proxy-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
   merge:
-    needs: [build, build-harness]
+    needs: [build, build-harness, build-proxy]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -209,6 +296,13 @@ jobs:
           pattern: harness-digests-*
           merge-multiple: true
 
+      - name: Download proxy digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/proxy-digests
+          pattern: proxy-digests-*
+          merge-multiple: true
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -225,10 +319,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # The harness tag first, then imbi: a failure here leaves no imbi
-      # release without its runner image. Each manifest step is
-      # idempotent (imagetools create sets the same tags to the same
-      # digests again), so re-running this job is the recovery.
+      # The proxy and harness tags first, then imbi: a failure here
+      # leaves no imbi release without its runner and proxy images. Each
+      # manifest step is idempotent (imagetools create sets the same
+      # tags to the same digests again), so re-running this job is the
+      # recovery.
+      - name: Create and push the proxy manifest to GHCR
+        working-directory: ${{ runner.temp }}/proxy-digests
+        run: |
+          tags="-t ${{ env.PROXY_IMAGE }}:${{ steps.version.outputs.tag }}"
+          if [ "${{ steps.version.outputs.is_latest }}" = "true" ]; then
+            tags="$tags -t ${{ env.PROXY_IMAGE }}:latest"
+          fi
+          docker buildx imagetools create $tags \
+            $(printf '${{ env.PROXY_IMAGE }}@sha256:%s ' *)
+
       - name: Create and push the harness manifest to GHCR
         working-directory: ${{ runner.temp }}/harness-digests
         run: |
