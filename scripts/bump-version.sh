@@ -3,8 +3,9 @@
 # Bump every workspace member's version in lockstep.
 #
 # Versions here are lockstep by design: the meta-package, every app,
-# libraries/common, every plugin, and the UI package all carry the same
-# version, and cross-member dependencies are exact pins on it. That is 15
+# libraries/common, every plugin, the UI package, and the egress proxy
+# (proxy/Cargo.toml and its Cargo.lock) all carry the same version, and
+# cross-member dependencies are exact pins on it. That is 15
 # `version =` lines plus 27 `imbi-*==<version>` pins plus ui/package.json --
 # too many to edit by hand without drift.
 #
@@ -25,6 +26,10 @@ cd "$(dirname "$0")/.."
 ROOT_PYPROJECT="pyproject.toml"
 UI_PACKAGE_JSON="ui/package.json"
 UV_LOCK="uv.lock"
+# The egress proxy (Rust) is in lockstep too: its own version and the
+# copy of it in its Cargo.lock.
+CARGO_TOML="proxy/Cargo.toml"
+CARGO_LOCK="proxy/Cargo.lock"
 
 # Every pyproject that carries a lockstep version and/or a member pin.
 # Kept as a whitespace-separated list rather than an array: this has to run
@@ -75,6 +80,12 @@ collect_versions() {
   ' $PYPROJECTS
   printf '%s: version %s\n' "$UI_PACKAGE_JSON" \
     "$(jq -r .version "$UI_PACKAGE_JSON")"
+  perl -ne 'if (/^version = "([^"]+)"$/) { print "$ARGV: version $1\n"; last }' \
+    "$CARGO_TOML"
+  perl -ne '
+    $pkg = 1 if /^name = "imbi-egress-proxy"$/;
+    if ($pkg && /^version = "([^"]+)"$/) { print "$ARGV: cargo-lock $1\n"; last }
+  ' "$CARGO_LOCK"
   # uv.lock keeps its own copy of every workspace member's version, and it is
   # not derived from the pyprojects at read time: a tree whose pyprojects were
   # bumped without a re-lock still reports the OLD version here, and
@@ -112,10 +123,14 @@ check() {
   # not notice. Every pyproject carries exactly one, plus package.json.
   covered=$(printf '%s\n' "$versions" | awk '$2 == "version"' | wc -l | tr -d ' ')
   # shellcheck disable=SC2086  # deliberate word split onto one file per line
-  expected=$(($(printf '%s\n' $PYPROJECTS | wc -l) + 1)) # +1 for package.json
+  # +2 for package.json and proxy/Cargo.toml
+  expected=$(($(printf '%s\n' $PYPROJECTS | wc -l) + 2))
   if [ "$covered" -ne "$expected" ]; then
     die "read a project version from $covered of $expected files;" \
       "has a 'version =' line been reformatted?"
+  fi
+  if ! printf '%s\n' "$versions" | grep -q ' cargo-lock '; then
+    die "found no imbi-egress-proxy version in $CARGO_LOCK"
   fi
   if ! printf '%s\n' "$versions" | grep -q ' pin '; then
     die "found no imbi-*== cross-member pins; has the pin format changed?"
@@ -179,6 +194,17 @@ bump() {
   (cd ui && npm version "$new" --no-git-tag-version >/dev/null)
 
   uv lock
+
+  # The proxy's own package entry in Cargo.lock has no checksum, so a
+  # text edit is enough and needs no cargo. In Cargo.toml, the package
+  # version is the only `version =` line at the start of a line.
+  OLD="$old" NEW="$new" perl -i -pe '
+    s/^version = "\Q$ENV{OLD}\E"$/version = "$ENV{NEW}"/;
+  ' "$CARGO_TOML"
+  OLD="$old" NEW="$new" perl -i -pe '
+    $pkg = 1 if /^name = "imbi-egress-proxy"$/;
+    $pkg = 0 if $pkg && s/^version = "\Q$ENV{OLD}\E"$/version = "$ENV{NEW}"/;
+  ' "$CARGO_LOCK"
 
   remaining=$(collect_versions | awk -v v="$old" '$3 == v')
   if [ -n "$remaining" ]; then
