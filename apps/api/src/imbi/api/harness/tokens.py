@@ -173,9 +173,9 @@ def mint_proxy_token(
 
     The claims and their order are a contract with the proxy (C1, the
     fixture ``proxy/tests/contract.json``). ``hosts`` are the held host
-    names (port 443). ``cidrs`` are ``{"net", "ports"}`` entries
+    names (port 443). ``cidrs`` are ``{"nets", "ports"}`` entries
     (:func:`imbi.api.harness.egress.proxy_cidrs`): the proxy allows an
-    internal address in ``net`` on one of ``ports``. ``now`` and
+    internal address in one of ``nets`` on one of ``ports``. ``now`` and
     ``ttl`` let a test make the fixture token again.
     """
     iat = int(time.time()) if now is None else now
