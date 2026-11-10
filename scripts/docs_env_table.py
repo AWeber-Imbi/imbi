@@ -448,6 +448,12 @@ DESCRIPTIONS: dict[str, str] = {
     'destinations of each chain and runs the startup self-test',
     'IMBI_HARNESS_EGRESS_CANARY': '`host:port` that the startup self-test '
     'must not reach. Required when egress is enforced.',
+    'IMBI_HARNESS_EGRESS_PROXY_URL': '`http://host:port` of the egress '
+    'proxy. Set: the agent CLI, `run_with_secret`, and `git clone` use the '
+    'proxy for HTTPS, and the MCP client uses it for host name destinations. '
+    'Unset: no proxy.',
+    'POD_UID': 'Pod uid, from the Kubernetes downward API. The runner sends '
+    'it with each claim; the proxy token holds it.',
     'IMBI_HARNESS_CLIENT_ID': 'Client ID of the runner service account '
     '(egress sync)',
     'IMBI_HARNESS_CLIENT_SECRET': 'Its client secret',

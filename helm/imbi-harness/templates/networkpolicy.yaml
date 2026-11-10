@@ -72,6 +72,15 @@ spec:
         - portNumber: {port: {{ int $target.port }}, protocol: TCP}
     {{- end }}
     {{- end }}
+    {{- if .Values.egressProxy.enabled }}
+    # The egress proxy (egress-proxy.yaml); the selector equals its Service's.
+    - name: egress-proxy
+      action: Accept
+      to:
+        - {{ include "imbi-harness.proxyPods" . | indent 10 | trim }}
+      ports:
+        - portNumber: {port: {{ int .Values.egressProxy.port }}, protocol: TCP}
+    {{- end }}
 ---
 # A NetworkPolicy in this namespace overrides Baseline (see README.md).
 apiVersion: networking.k8s.aws/v1alpha1

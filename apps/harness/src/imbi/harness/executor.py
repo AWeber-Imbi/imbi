@@ -56,7 +56,7 @@ import urllib.parse
 
 import httpx
 
-from imbi.harness import api, ipc, privilege, redact
+from imbi.harness import api, ipc, outbound, privilege, redact
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -231,6 +231,15 @@ def _material(body: Message) -> str:
     return material
 
 
+def _proxy(request: Message) -> tuple[dict[str, str], list[str]]:
+    """The egress proxy environment of the request (plan 5.3), and the
+    proxy token to redact from the output."""
+    given: Message = request.get('proxy_env') or {}
+    env = {k: str(v) for k, v in given.items() if k in outbound.PROXY_ENV}
+    token = outbound.proxy_token(env)
+    return env, [token] if token else []
+
+
 def _reply(
     exit_code: int, output: bytes, dropped: bool, values: list[str]
 ) -> Message:
@@ -352,14 +361,15 @@ class Executor:
             # resolution has, so this checks the real purpose.
             if any(s.get('purpose') in SETUP_PURPOSES for s in wanted):
                 raise Invalid('purpose_not_allowed')
-            env = {'PATH': PATH, 'HOME': home}
+            proxy, hidden = _proxy(request)
+            env = {'PATH': PATH, 'HOME': home, **proxy}
             for secret, target in zip(wanted, targets, strict=True):
                 env[target] = await self._materialize(secret, context)
             # gh reads GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server
             # host and GH_TOKEN for the others (#434).
             if 'GH_TOKEN' in env:
                 env.setdefault('GH_ENTERPRISE_TOKEN', env['GH_TOKEN'])
-            values = [env[target] for target in targets]
+            values = [env[target] for target in targets] + hidden
             exit_code, output, dropped = await self._spawn(
                 command, cwd, env, timeout
             )
@@ -390,13 +400,14 @@ class Executor:
         if secret is not None and self.token is None:
             return {'error': 'no_executor_credential'}
         config = [_push_helper(url)] if request.get('push_helper') else []
+        proxy, values = _proxy(request)
         env = {
             'PATH': PATH,
             'HOME': '/nonexistent',
             'GIT_CONFIG_NOSYSTEM': '1',
             'GIT_TERMINAL_PROMPT': '0',
+            **proxy,
         }
-        values: list[str] = []
         read = -1
         try:
             if secret is not None:

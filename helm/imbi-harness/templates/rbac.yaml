@@ -2,8 +2,9 @@
 # pod deletes itself at the end of its chain (plan section 4.2 step 5). A
 # Job pod exits instead, so the scaledJob mode does not delete. With egress
 # enforcement, it can also patch pods: an admission policy (admission.yaml)
-# lets it change only the egress labels of its own pod.
-# Runners are alone in the namespace (accepted risk, plan section 11).
+# lets it change only the egress labels of its own pod. The namespace also
+# holds the egress proxy pods, so another admission policy (admission.yaml)
+# lets the runner delete only its own pod.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

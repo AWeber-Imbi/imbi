@@ -274,6 +274,43 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class EgressProxyTestCase(unittest.IsolatedAsyncioTestCase):
+    """The proxy token of the claim (egress proxy plan 5.3)."""
+
+    TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJjaGFpbiI6ImMifQ.c2lnbmF0dXJlLXZhbHVl'
+
+    async def test_claim_sends_the_pod_uid(self) -> None:
+        subject = make_runner(pod_uid='0f6c-uid')
+        subject.api = mock.AsyncMock(spec=api.Api)
+        await subject._claim()
+        subject.api.claim.assert_awaited_once_with(
+            '', '', runner.CLAIM_WAIT, '0f6c-uid'
+        )
+
+    def test_proxy_env_with_the_token_redacted(self) -> None:
+        subject = make_runner(
+            egress_proxy_url='http://imbi-egress-proxy:3128',
+            mcp_url='http://imbi-mcp.imbi:8001/mcp',
+        )
+        env = subject.egress_proxy({'proxy_token': self.TOKEN})
+        url = f'http://chain:{self.TOKEN}@imbi-egress-proxy:3128'
+        self.assertEqual(env['HTTPS_PROXY'], url)
+        self.assertEqual(
+            env['NO_PROXY'],
+            'localhost,127.0.0.1,::1,imbi.test,imbi-mcp.imbi',
+        )
+        # A harness log line of a failed clone.
+        logged = subject.redactor.text(
+            f'Clone of x failed: proxy {url} refused CONNECT'
+        )
+        self.assertNotIn(self.TOKEN, logged)
+        self.assertIn('[REDACTED]', logged)
+
+    def test_no_proxy_settings_without_a_proxy(self) -> None:
+        subject = make_runner()
+        self.assertEqual(subject.egress_proxy({'proxy_token': 't'}), {})
+
+
 class ChildRunTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_claims_until_the_child_runs(self) -> None:
         subject = make_runner()

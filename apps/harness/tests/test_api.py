@@ -51,6 +51,17 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(await self.api.claim('r', 't', 5), {'chain_id': 'c'})
         self.assertEqual(route.calls.last.request.url.params['wait'], '5')
+        self.assertNotIn('pod', route.calls.last.request.url.params)
+
+    async def test_claims_send_the_pod_uid(self) -> None:
+        root = self.mock.post('/harness/runners/r/claim').respond(204)
+        child = self.mock.post('/harness/runners/r/chain/claim').respond(204)
+        await self.api.claim('r', 't', 0, 'pod-uid')
+        await self.api.chain_claim('r', 't', 'pod-uid')
+        for route in (root, child):
+            self.assertEqual(
+                route.calls.last.request.url.params['pod'], 'pod-uid'
+            )
 
     async def test_error_code_from_envelope(self) -> None:
         self.mock.post('/harness/executor/secret-materializations').respond(
