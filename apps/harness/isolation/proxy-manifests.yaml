@@ -1,0 +1,46 @@
+# The egress proxy test fixtures (test_proxy.py): the proxy token key,
+# and an internal HTTPS target. run-kind.sh renders the proxy from the
+# chart. One List, so that the file is one YAML document.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: imbi-egress-proxy
+      namespace: imbi-harness-test
+    stringData:
+      current: kind-test-key-0123456789abcdef0123456789abcdef
+  # The proxy does no TLS, so plain HTTP on 443 is enough to show the
+  # tunnel.
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: target
+      namespace: imbi-harness-test
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: target
+      template:
+        metadata:
+          labels:
+            app: target
+        spec:
+          containers:
+            - name: target
+              image: python:3.13-alpine
+              command: ["python3", "-m", "http.server", "443"]
+              ports:
+                - containerPort: 443
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: target
+      namespace: imbi-harness-test
+    spec:
+      selector:
+        app: target
+      ports:
+        - {port: 443, targetPort: 443}
