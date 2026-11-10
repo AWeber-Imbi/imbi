@@ -169,9 +169,12 @@ jobs:
       - uses: "taiki-e/install-action@v2"
         with:
           tool: "cargo-fuzz"
+      # The prebuilt cargo-fuzz is a musl binary, so its default target
+      # is musl, which ASan does not support. Set the gnu target.
       - run: |
           proxy/fuzz/seed.sh
           for target in parse target; do
-            cargo +nightly fuzz run --fuzz-dir proxy/fuzz "$target" -- \
+            cargo +nightly fuzz run --fuzz-dir proxy/fuzz \
+              --target x86_64-unknown-linux-gnu "$target" -- \
               -max_total_time=60
           done
