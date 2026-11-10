@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { Link } from 'react-router-dom'
 
@@ -57,6 +57,8 @@ const DATA_TYPE_LABELS: Record<DataType, string> = {
 }
 
 const COMMON_PREFIX_MIN_DEPTH = 3
+// ProjectDetail's `py-8` bottom padding, in pixels.
+const PAGE_BOTTOM_PADDING = 32
 
 interface AggregatedKey {
   data_type: DataType
@@ -176,6 +178,33 @@ export function ConfigurationTab({
     panelIds: ['list', 'detail'],
     storage: typeof window === 'undefined' ? undefined : window.localStorage,
   })
+
+  // Fit the editor to the space below its top edge, so Save stays on
+  // screen however tall the project header is. Measure after every
+  // render, on window resize, and when the page body changes size (the
+  // header can grow, for example an inline description edit, without a
+  // render here).
+  const groupEl = useRef<HTMLDivElement>(null)
+  const [groupHeight, setGroupHeight] = useState<number>()
+  const fitGroup = () => {
+    const el = groupEl.current
+    if (!el) return
+    const top = el.getBoundingClientRect().top + window.scrollY
+    const next = Math.floor(window.innerHeight - top - PAGE_BOTTOM_PADDING)
+    setGroupHeight((prev) => (prev === next ? prev : next))
+  }
+  useLayoutEffect(fitGroup)
+  useEffect(() => {
+    const observer = new ResizeObserver(fitGroup)
+    observer.observe(document.body)
+    window.addEventListener('resize', fitGroup)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', fitGroup)
+    }
+    // fitGroup only reads refs and window, so the first one is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const flashTimer = useRef<null | ReturnType<typeof setTimeout>>(null)
   const flashSaved = () => {
@@ -639,11 +668,15 @@ export function ConfigurationTab({
         </div>
       )}
 
+      {/* Group sets an inline `height: 100%`, which beats a height class,
+          so the measured height goes through `style`. */}
       <Group
-        className="border-primary bg-primary h-[calc(100dvh-460px)] min-h-80 overflow-hidden rounded-lg border"
+        className="border-primary bg-primary min-h-80 overflow-hidden rounded-lg border"
         defaultLayout={defaultLayout}
+        elementRef={groupEl}
         onLayoutChanged={onLayoutChanged}
         orientation="horizontal"
+        style={{ height: groupHeight }}
       >
         {/* LEFT pane: filter + key list */}
         <Panel
