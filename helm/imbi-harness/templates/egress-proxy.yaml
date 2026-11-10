@@ -237,6 +237,13 @@ spec:
         - {{ include "imbi-harness.runnerPods" . | indent 10 | trim }}
       ports:
         - portNumber: {port: {{ int $p.port }}, protocol: TCP}
+    # /healthz, /readyz, and /metrics only: Prometheus scrapes it.
+    - name: admin
+      action: Accept
+      from:
+        - namespaces: {}
+      ports:
+        - portNumber: {port: {{ int $p.adminPort }}, protocol: TCP}
     - name: others
       action: Deny
       from:
