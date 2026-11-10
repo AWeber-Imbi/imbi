@@ -511,7 +511,6 @@ for these:
 | The agent CLI and its `Bash` tool (`curl`, `git`, `pip`, `uv`, `npm`, `gh`) | Yes |
 | `run_with_secret` commands | Yes |
 | The repository and plugin clones of the runner | Yes |
-| The runner's third-party MCP client and its OAuth token requests | Only for a host on a host name destination of the chain, on port 443 |
 | Node.js `fetch` without `NODE_USE_ENV_PROXY=1` | No |
 | `ssh` (for example `git` over SSH) | No |
 | Database drivers and other clients that are not HTTP | No |
@@ -604,7 +603,6 @@ closed). CIDR destinations do not change.
 | `503` from the proxy | The proxy has its maximum number of tunnels (512 for each replica) | Add replicas (`egressProxy.replicas`) |
 | `405` from the proxy | The client sent a plain HTTP request, not `CONNECT` | Use HTTPS |
 | A connection times out | The client does not use the proxy, and the network policy drops the connection | Use a client that reads `HTTPS_PROXY` (see the table above) |
-| A third-party MCP server is refused with `address_not_allowed` | The host is not on a host name destination of the chain, and its addresses are not on a CIDR destination | Add the host name, or its CIDRs, to a destination of the agent |
 | All held hosts get `407` for a short time after a proxy start | The proxy refuses held hosts until its first pod list is done, and while its pod watch is down for more than 30 seconds | Check the proxy log and `/readyz`. Check the proxy Role |
 
 The proxy serves `/healthz`, `/readyz`, and `/metrics` on
@@ -681,7 +679,6 @@ Find the error code first:
 | `model_upstream_insecure` | The model upstream URL uses `http://` and `model_upstream.allow_insecure_http` is off. The runner does not send the key without TLS | Change the **Base URL** to `https://`. For a protected in-cluster upstream only, turn on **Allow http://**. See [step 5](#5-configure-the-model-key) |
 | `model_key_refused` | The broker refused the `model_inference` request | Check the grant: the agent, the binding, the purpose `model_inference`, and the delivery mode `file_descriptor`. The binding is the agent's **Model key**, or the organization's key when the agent has none |
 | `model_key_unavailable` | The executor could not get the key value | Validate the binding. Check the provider |
-| `mcp_credential_refused` | The broker refused the `mcp_server` request | Check the `mcp_server` grant for the agent |
 | `workspace_checkout_refused` | The broker refused the `workspace_checkout` token | Check the GitHub grants of [step 6](#6-configure-github-access) |
 | `workspace_checkout_failed` | The clone of a project repository failed | Check that the GitHub App can read the repository |
 | `marketplace_fetch_failed` | The clone of a plugin marketplace or plugin repository failed | Put each marketplace and external plugin repository in the binding's `repositories`. Install the App on each GitHub organization. A marketplace that is not on public github.com needs a token |
@@ -733,11 +730,6 @@ not run it.
   must be Baseline, not Restricted.
 - **A chain stays `stuck`.** A fencer failed. The badge on the Agent Runners
   page shows the error. Imbi tries again on each sweep.
-- **A third-party MCP server is refused with `address_not_allowed`.** Its
-  host name resolves to a private or cluster address that is not in an
-  egress destination of the chain, with the port and TCP. A host on a host
-  name destination of the chain goes through the egress proxy instead.
-  Without egress allowlists, the runner connects only to global addresses.
 - **KEDA starts no Jobs.** Call the queue endpoint with the pool credential.
   Check that `scaledJob.apiUrl` resolves from the `keda` namespace.
 

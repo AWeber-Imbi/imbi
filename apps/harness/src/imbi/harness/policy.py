@@ -42,19 +42,17 @@ class Check:
 
 #: CLI server names whose tool map key uses another server name: the
 #: Imbi relay is ``imbi_api`` for the CLI (the harness's own server is
-#: ``imbi``) and ``imbi`` in the agent tool catalog (plan P7). A task
-#: adds its third-party servers whose slug is not a CLI name.
+#: ``imbi``) and ``imbi`` in the agent tool catalog (plan P7).
 _KEY_SERVER = {'imbi_api': 'imbi'}
 
 
-def tool_key(name: str, servers: dict[str, str] | None = None) -> str | None:
+def tool_key(name: str) -> str | None:
     """``mcp__<server>__<tool>`` to ``<server>.<tool>``; ``None`` for a
-    built-in tool. ``servers`` maps a CLI server name to its key."""
+    built-in tool."""
     if not name.startswith('mcp__'):
         return None
     server, _, tool = name.removeprefix('mcp__').partition('__')
-    keys = _KEY_SERVER | (servers or {})
-    return f'{keys.get(server, server)}.{tool}'
+    return f'{_KEY_SERVER.get(server, server)}.{tool}'
 
 
 def _plugin_server(name: str, plugin_servers: list[str]) -> str | None:
@@ -73,12 +71,11 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     tool_map: dict[str, typing.Any],
     approval_tools: list[str],
     automation: bool,
-    servers: dict[str, str] | None = None,
     plugin_servers: list[str] | None = None,
 ) -> Check:
     if name == REPORT_OUTCOME:
         return Check()
-    key = tool_key(name, servers)
+    key = tool_key(name)
     # A plugin that is on allows its MCP servers' tools (#445); a tool
     # map entry, if one matches, still applies.
     plugin = _plugin_server(name, plugin_servers or [])

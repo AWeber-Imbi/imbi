@@ -91,8 +91,8 @@ Runners pull work. imbi-api does not push it.
 
 The identity bundle comes only from the pinned versions. It has the
 rendered system prompt, the model, the merged configuration, the
-repository to clone, the subagents, the third-party MCP servers, and the
-secret references that the grants allow.
+repository to clone, the subagents, and the secret references that the
+grants allow.
 
 When a lease expires, the lease sweep marks the runner lost and moves the
 chain to `fencing` with the next attempt. The agent tokens of the old
@@ -132,9 +132,9 @@ The runner has these parts:
   the Imbi tools that the agent's tool map has. imbi-api checks the
   permissions of the agent's service account on each call. See
   [Agent API tokens](security.md#agent-api-tokens).
-- **Third-party MCP relay.** The runner also calls the agent's other MCP
-  servers. It gets their credentials from the secrets broker. It connects
-  only over HTTPS, to the configured origin, at a public address.
+- **Other MCP servers.** An agent gets other MCP servers only from the
+  plugins of its marketplaces. The MCP servers in Admin › Assistant are
+  for the assistant only.
 - **PreToolUse policy.** A hook checks each tool call before the CLI runs
   it:
     1. A built-in tool must be in the allowed tools of the merged

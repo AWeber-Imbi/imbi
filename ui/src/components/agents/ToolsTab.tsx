@@ -79,7 +79,7 @@ interface ToolsTabProps {
  */
 export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const { query: catalog, refresh } = useAgentToolCatalog(orgSlug)
-  // A refresh connects to each MCP server, so the API needs agent:write.
+  // A refresh needs agent:write.
   const canRefresh = useHasPermission('agent:write', orgSlug)
   const environments = useOrgEnvironments(orgSlug)
   const [search, setSearch] = useState('')
@@ -124,10 +124,8 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
       <div>
         <div className="text-overline text-tertiary uppercase">Tools</div>
         <p className="text-tertiary mt-1 text-xs">
-          Switch on each tool the agent may call. Imbi tools come from the Imbi
-          API. The other groups are the MCP servers in Admin › Assistant › MCP
-          servers, which the assistant and the Slack bot also use. Plugin MCP
-          servers are not listed here: they come with their plugin.
+          Switch on each Imbi API tool the agent may call. Other MCP servers
+          come with the plugins in the Plugins section.
         </p>
       </div>
       <div className="flex items-center gap-3">

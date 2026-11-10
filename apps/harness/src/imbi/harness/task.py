@@ -40,7 +40,6 @@ from imbi.harness import (
     egress,
     events,
     ipc,
-    outbound,
     policy,
     privilege,
     proxy,
@@ -144,8 +143,6 @@ _RULES = """\
   description. For `git push` and `gh` with the GitHub token, use
   `github_write`.
 - The secret references that you may request: {secrets}.
-- These MCP servers are not available to this task; do not try
-  their tools: {mcp}.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
 - Before you stop, use `report_outcome` once: `done_acted` when you
@@ -539,17 +536,13 @@ class TaskRun:
         #: renews it.
         self.api_token = str(claim.get('api_token') or '')
         self.mcp_url = mcp_url
-        #: The egress destinations of the pod (PRD 5.8): the outbound
-        #: checks allow their addresses and ports.
+        #: The egress destinations of the pod (PRD 5.8), for the
+        #: readiness probe.
         self.egress: list[Body] = egress or []
         #: The egress proxy environment of the CLI and of the executor's
         #: commands (egress proxy plan 5.3); empty without a proxy.
         self.proxy_env: dict[str, str] = proxy_env or {}
         self.relay: relay.Relay | None = None
-        #: The third-party relays, by CLI server name (plan P7).
-        self.external: dict[str, relay.Relay] = {}
-        #: The servers that already have a warning with their reason.
-        self.noticed: set[str] = set()
         #: The newest task state from imbi-api.
         self.state: Body = {}
         self.seq = 0
@@ -559,11 +552,6 @@ class TaskRun:
         #: Set when the control or the status changes, so a wait for a
         #: person ends at once on a cancel.
         self.changed = asyncio.Event()
-
-    @property
-    def egress_proxy(self) -> str | None:
-        """The egress proxy URL, with the proxy token."""
-        return self.proxy_env.get('HTTPS_PROXY')
 
     @property
     def context(self) -> Body:
@@ -648,8 +636,6 @@ class TaskRun:
             refresh=self.refresh_after_401,
         )
         await self.start_relay()
-        await self.start_external()
-        self.warn_unavailable()
         self.write_config()
         return await self.run_sdk(url)
 
@@ -1160,109 +1146,6 @@ class TaskRun:
         self.recorder.audit = self.take_audit
         self.recorder.writes = candidate.writes()
 
-    async def start_external(self) -> None:
-        """Relay the agent's third-party MCP servers (plan P7): the
-        servers of the bundle that have tools in the tool map.
-
-        A server that this task cannot use is left out with a notice:
-        its name collides, a check refuses its URL, its credential is
-        refused, or it cannot be reached.
-        """
-        snapshot: Body = self.bundle.get('snapshot') or {}
-        tool_map: Body = snapshot.get('tools') or {}
-        # Imbi says why it left a server out, for example no_grant.
-        for entry in typing.cast(
-            'list[Body]', api.items(self.bundle, 'mcp_unavailable')
-        ):
-            slug = str(entry.get('slug') or '')
-            if relay.mapped(tool_map, slug):
-                self._not_available(slug, str(entry.get('reason') or ''))
-        servers = [
-            server
-            for server in typing.cast(
-                'list[Body]', api.items(self.bundle, 'mcp_servers')
-            )
-            if relay.mapped(tool_map, str(server.get('slug') or ''))
-        ]
-        names = [relay.server_name(str(s['slug'])) for s in servers]
-        for server, name in zip(servers, names, strict=True):
-            slug = str(server['slug'])
-            if (
-                not name
-                or name in {'imbi', relay.SERVER}
-                or names.count(name) > 1
-            ):
-                self._not_available(slug, 'name_collision')
-                continue
-            try:
-                candidate = relay.Relay(
-                    str(server['url']),
-                    await self._mcp_auth(server),
-                    tool_map,
-                    server=name,
-                    key=slug,
-                    ignored=server.get('ignored_tools') or (),
-                    transport=outbound.Transport(
-                        str(server['url']), self.egress, self.egress_proxy
-                    ),
-                    stopped=lambda: self.stopped,
-                )
-                tools = await candidate.start()
-            except outbound.Refused as err:
-                self._not_available(slug, err.reason)
-                continue
-            except relay.Unavailable as err:
-                self._not_available(slug, str(err))
-                continue
-            except Failed as err:
-                self._not_available(slug, err.reason)
-                continue
-            LOGGER.info('Relaying %d tools of %s', len(tools), slug)
-            self.external[name] = candidate
-            self.recorder.audit = self.take_audit
-
-    def warn_unavailable(self) -> None:
-        """One warning for the servers in the tool map that this task
-        cannot use."""
-        if servers := [s for s in self.mcp_servers() if s not in self.noticed]:
-            self.recorder.notice(
-                'The MCP servers '
-                + ', '.join(servers)
-                + ' of this agent are not available to this task.'
-            )
-
-    def _not_available(self, slug: str, reason: str) -> None:
-        self.noticed.add(slug)
-        LOGGER.warning('MCP server %s not available: %s', slug, reason)
-        self.recorder.notice(
-            f'The MCP server {slug} is not available to this task: {reason}.'
-        )
-
-    async def _mcp_auth(self, server: Body) -> httpx.Auth | None:
-        """The credential of a third-party server, from the secrets
-        broker into the runner's memory only."""
-        auth_type = server.get('auth_type') or 'none'
-        if auth_type == 'none':
-            return None
-        material = await self.fetch_secret(
-            str(server.get('credential_ref') or ''),
-            'mcp_server',
-            'mcp_credential',
-        )
-        if auth_type == 'static':
-            return outbound.Header(
-                str(server.get('static_header') or 'Authorization'), material
-            )
-        return outbound.ClientCredentials(
-            str(server.get('oauth_token_url') or ''),
-            str(server.get('oauth_client_id') or ''),
-            material,
-            server.get('oauth_scope'),
-            on_token=self.redactor.add,
-            egress=self.egress,
-            proxy=self.egress_proxy,
-        )
-
     async def probe_egress(self) -> None:
         """A warning for each TCP destination that does not connect
         (PRD 5.7). A readiness hint only: the chain continues."""
@@ -1274,26 +1157,8 @@ class TaskRun:
                 + ' did not connect. Their network policy can need more time.'
             )
 
-    def relays(self) -> list[relay.Relay]:
-        return [*([self.relay] if self.relay else []), *self.external.values()]
-
     def take_audit(self, name: str, arguments: typing.Any) -> Body | None:
-        for each in self.relays():
-            if (audit := each.take_audit(name, arguments)) is not None:
-                return audit
-        return None
-
-    def mcp_servers(self) -> list[str]:
-        """The external MCP servers in the agent's tool map. Rev 1 does
-        not connect them: their credentials need the secrets broker."""
-        snapshot: Body = self.bundle.get('snapshot') or {}
-        tools: Body = snapshot.get('tools') or {}
-        relayed = {each.key for each in self.external.values()}
-        return sorted(
-            {key.partition('.')[0] for key in tools}
-            - {'imbi', relay.SERVER}
-            - relayed
-        )
+        return self.relay.take_audit(name, arguments) if self.relay else None
 
     def _repo_dirs(self) -> list[pathlib.Path]:
         return [
@@ -1321,9 +1186,7 @@ class TaskRun:
             for tool in (BUILTIN_TOOLS if base is None else base)
             if tool not in denied
         ]
-        relayed = [
-            name for each in self.relays() for name in each.allowed_tools()
-        ]
+        relayed = self.relay.allowed_tools() if self.relay else []
         return [*allowed, *IMBI_TOOLS, *relayed, *self.plugin_servers], denied
 
     def write_config(self) -> None:
@@ -1342,7 +1205,6 @@ class TaskRun:
                 ),
             }
         rules = _RULES.format(
-            mcp=', '.join(self.mcp_servers()) or 'none',
             subagents=', '.join(
                 f'`{slug}`' + (f' ({text})' if text else '')
                 for slug, text in self.subagents().items()
@@ -1494,12 +1356,15 @@ class TaskRun:
             },
             mcp_servers={
                 'imbi': server,
-                **{
-                    each.server: sdk.create_sdk_mcp_server(
-                        each.server, tools=each.sdk_tools()
-                    )
-                    for each in self.relays()
-                },
+                **(
+                    {
+                        relay.SERVER: sdk.create_sdk_mcp_server(
+                            relay.SERVER, tools=self.relay.sdk_tools()
+                        )
+                    }
+                    if self.relay
+                    else {}
+                ),
             },
             allowed_tools=allowed,
             disallowed_tools=denied,
@@ -1641,7 +1506,6 @@ class TaskRun:
             tool_map=snapshot.get('tools') or {},
             approval_tools=list(api.items(self.config, 'approval_tools')),
             automation=origin.get('kind') != 'human',
-            servers={name: each.key for name, each in self.external.items()},
             plugin_servers=self.plugin_servers,
         )
         reason = checked.deny

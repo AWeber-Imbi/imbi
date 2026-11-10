@@ -64,7 +64,7 @@ export function catalog(): AgentToolCatalog {
         ],
       },
       {
-        server: { name: 'GitHub', slug: 'github', transport: 'mcp/http' },
+        server: { name: 'GitHub', slug: 'github', transport: 'internal' },
         tools: [
           {
             capability: 'write',
@@ -82,7 +82,7 @@ export function catalog(): AgentToolCatalog {
       },
       {
         error: 'timeout',
-        server: { name: 'Sentry', slug: 'sentry', transport: 'mcp/http' },
+        server: { name: 'Sentry', slug: 'sentry', transport: 'internal' },
         tools: [],
       },
     ],

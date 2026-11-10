@@ -18,7 +18,7 @@ import uvicorn
 from mcp import types as mcp_types
 from mcp.server import fastmcp
 
-from imbi.harness import outbound, relay
+from imbi.harness import relay
 
 SEEN: list[str] = []
 CALLS: list[tuple[str, dict[str, typing.Any]]] = []
@@ -307,55 +307,3 @@ class MappedTestCase(unittest.TestCase):
             ),
             {'list_projects'},
         )
-
-
-class ThirdPartyTestCase(_ServerTestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        self.relay = relay.Relay(
-            self.url,
-            outbound.Header('Authorization', 'Token static-1'),
-            {
-                'my-jira.list_projects': {},
-                'my-jira.update_project': {},
-                'my-jira.big': {},
-                'imbi.slow': {},
-            },
-            server='my-jira',
-            key='my-jira',
-            ignored=['big'],
-        )
-
-    async def test_tools_names_and_credential(self) -> None:
-        names = await self.relay.start()
-        self.assertEqual(names, ['list_projects', 'update_project'])
-        self.assertEqual(
-            self.relay.allowed_tools(),
-            ['mcp__my-jira__list_projects', 'mcp__my-jira__update_project'],
-        )
-        # A third-party tool description is untrusted text.
-        self.assertTrue(
-            self.relay.tools['list_projects'].description.startswith(
-                '<untrusted source="mcp:my-jira">'
-            )
-        )
-        reply = await self.relay.call('list_projects', {'org': 'o'})
-        self.assertIn('mcp:my-jira', reply['content'][0]['text'])
-        self.assertTrue(all(h == 'Token static-1' for h in SEEN))
-        audit = self.relay.take_audit(
-            'mcp__my-jira__list_projects', {'org': 'o'}
-        )
-        assert audit is not None
-        self.assertEqual(audit['server'], 'my-jira')
-        self.assertIsNone(audit['token_jti'])
-
-    def test_server_names(self) -> None:
-        self.assertEqual(relay.server_name('my-jira'), 'my-jira')
-        self.assertEqual(relay.server_name('My.Jira  Cloud'), 'my_jira_cloud')
-        self.assertEqual(relay.server_name('a__b'), 'a_b')
-        self.assertEqual(relay.server_name('..'), '')
-
-    def test_mapped_keeps_harness_names_for_other_servers(self) -> None:
-        tool_map = {'imbi.run_with_secret': {}, 'jira.run_with_secret': {}}
-        self.assertEqual(relay.mapped(tool_map), set())
-        self.assertEqual(relay.mapped(tool_map, 'jira'), {'run_with_secret'})

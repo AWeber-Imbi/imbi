@@ -1381,7 +1381,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             groups=[
                 agent_tools.AgentToolGroup(
                     server=agent_tools.AgentToolServer(
-                        slug='sentry', name='Sentry', transport='mcp/http'
+                        slug='imbi', name='Imbi', transport='internal'
                     ),
                     error='timeout',
                 )
@@ -1394,15 +1394,14 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.get(BASE + '/tool-catalog?refresh=true')
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
-        self.assertEqual(body['groups'][0]['server']['slug'], 'sentry')
+        self.assertEqual(body['groups'][0]['server']['slug'], 'imbi')
         self.assertEqual(body['groups'][0]['tools'], [])
         self.assertEqual(body['groups'][0]['error'], 'timeout')
         args = get_catalog.await_args
-        self.assertIs(args.args[0], self.mock_db)
-        self.assertIs(args.args[1], valkey_client)
+        self.assertIs(args.args[0], valkey_client)
         self.assertTrue(args.kwargs['refresh'])
         # The OpenAPI document of this app is the source of Imbi tools.
-        self.assertIn('paths', args.args[2]())
+        self.assertIn('paths', args.args[1]())
 
     def test_tool_catalog_requires_read(self) -> None:
         self.auth_context.permissions = set()
