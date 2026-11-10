@@ -38,3 +38,20 @@ pods:
     matchLabels:
       app.kubernetes.io/name: imbi-harness
 {{- end }}
+
+{{/* The egress proxy pods: the subject of the proxy policies. */}}
+{{- define "imbi-harness.proxyPods" -}}
+pods:
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ .Release.Namespace }}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: imbi-egress-proxy
+{{- end }}
+
+{{/* The runners' egress proxy URL, with no user info. */}}
+{{- define "imbi-harness.egressProxyUrl" -}}
+{{- $p := .Values.egressProxy -}}
+http://{{ default (printf "imbi-egress-proxy.%s.svc" .Release.Namespace) $p.host }}:{{ int $p.port }}
+{{- end }}
