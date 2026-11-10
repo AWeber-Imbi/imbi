@@ -13751,9 +13751,16 @@ export interface components {
             description?: string | null;
             /**
              * Cidrs
-             * @description 1 to 25 IPv4 CIDRs inside the internal ranges.
+             * @description 1 to 25 IPv4 CIDRs inside the internal ranges. Empty when hostnames is set.
+             * @default []
              */
             cidrs: string[];
+            /**
+             * Hostnames
+             * @description 1 to 25 DNS names, reached through the egress proxy on 443/TCP. Empty when cidrs is set.
+             * @default []
+             */
+            hostnames: string[];
             /** Ports */
             ports: components["schemas"]["EgressPort"][];
             /**
@@ -13779,6 +13786,11 @@ export interface components {
             description?: string | null;
             /** Cidrs */
             cidrs: string[];
+            /**
+             * Hostnames
+             * @default []
+             */
+            hostnames: string[];
             /** Ports */
             ports: components["schemas"]["EgressPort"][];
             /** Global */
@@ -13815,6 +13827,8 @@ export interface components {
             description?: string | null;
             /** Cidrs */
             cidrs?: string[] | null;
+            /** Hostnames */
+            hostnames?: string[] | null;
             /** Ports */
             ports?: components["schemas"]["EgressPort"][] | null;
             /** Global */
