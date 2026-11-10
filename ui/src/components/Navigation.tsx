@@ -146,7 +146,8 @@ export function Navigation({ currentView }: NavigationProps) {
 
             {/* Navigation Items */}
             <div className="hidden items-center gap-1 md:flex">
-              {canReadAgents && (
+              {/* Admins reach Egress Destinations without membership. */}
+              {(canReadAgents || isAdmin) && (
                 <AgentsMenu isActive={activeView === 'agents'} />
               )}
               {navItems.map((item) => {
