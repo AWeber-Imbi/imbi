@@ -73,6 +73,10 @@ export function Navigation({ currentView }: NavigationProps) {
     'agent:read',
     selectedOrganization?.slug,
   )
+  const canReadRunners = useHasPermission(
+    'harness_pool:read',
+    selectedOrganization?.slug,
+  )
   // The dialog lists agents, so it needs agent:read too.
   const canCreateTask =
     useHasPermission('agent_task:create', selectedOrganization?.slug) &&
@@ -146,8 +150,9 @@ export function Navigation({ currentView }: NavigationProps) {
 
             {/* Navigation Items */}
             <div className="hidden items-center gap-1 md:flex">
-              {/* Admins reach Egress Destinations without membership. */}
-              {(canReadAgents || isAdmin) && (
+              {/* Admins reach Egress Destinations without membership.
+                  Runner readers reach Runners without agent:read. */}
+              {(canReadAgents || canReadRunners || isAdmin) && (
                 <AgentsMenu isActive={activeView === 'agents'} />
               )}
               {navItems.map((item) => {
