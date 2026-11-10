@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createSecretGrant,
   getProjectsSlim,
+  getSecretResolution,
   listAgents,
+  listSecretAuditEvents,
   listSecretBindings,
   listSecretGrants,
   listSecretResolutions,
@@ -19,7 +21,9 @@ vi.mock('@/api/endpoints', () => ({
   createSecretGrant: vi.fn(),
   deleteSecretGrant: vi.fn(),
   getProjectsSlim: vi.fn(),
+  getSecretResolution: vi.fn(),
   listAgents: vi.fn(),
+  listSecretAuditEvents: vi.fn(),
   listSecretBindings: vi.fn(),
   listSecretGrants: vi.fn(),
   listSecretResolutions: vi.fn(),
@@ -134,5 +138,89 @@ describe('SecretsManagement', () => {
       screen.getByRole('button', { name: 'Revoke lease' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Release' })).toBeNull()
+  })
+
+  it('filters audit events and links to the resolution', async () => {
+    vi.mocked(listSecretAuditEvents).mockResolvedValue([
+      {
+        actor: 'runner:1',
+        at: '2026-10-13T00:00:00Z',
+        event_id: 'e-1',
+        purpose: 'github_write',
+        reason: '',
+        resolution_id: 'res-12345678',
+        result: 'succeeded',
+        type: 'secret_materialized',
+      } as never,
+    ])
+    vi.mocked(getSecretResolution).mockResolvedValue({
+      agent_id: 'agent-1',
+      created_at: '2026-10-13T00:00:00Z',
+      delivery_mode: 'environment',
+      delivery_target: null,
+      expires_at: '2026-10-13T00:15:00Z',
+      failure_reason: null,
+      id: 'res-12345678',
+      materialization_count: 0,
+      materialization_limit: 1,
+      provider_lease: { revocation_state: 'not_applicable' },
+      purpose: 'github_write',
+      reference: 'secret://production/github/token',
+      state: 'active',
+    } as never)
+    renderAt('/admin/secrets/audit')
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Category' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Resolutions' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Result' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Denied' }))
+    await waitFor(() =>
+      expect(listSecretAuditEvents).toHaveBeenLastCalledWith(
+        'acme',
+        {
+          resolution_id: '',
+          result: 'denied',
+          type: [
+            'secret_resolution_allowed',
+            'secret_resolution_denied',
+            'secret_resolution_released',
+            'secret_resolution_expired',
+            'secret_materialized',
+          ],
+        },
+        expect.anything(),
+      ),
+    )
+    fireEvent.click(await screen.findByRole('link', { name: 'res-1234' }))
+    await waitFor(() =>
+      expect(getSecretResolution).toHaveBeenCalledWith(
+        'acme',
+        'res-12345678',
+        expect.anything(),
+      ),
+    )
+    expect(
+      await screen.findByRole('link', { name: 'History' }),
+    ).toHaveAttribute('href', '/admin/secrets/audit?resolution=res-12345678')
+  })
+
+  it('lists active resolutions by default', async () => {
+    vi.mocked(listSecretResolutions).mockResolvedValue([])
+    renderAt('/admin/secrets/resolutions')
+    expect(
+      await screen.findByText('No active secret resolutions.'),
+    ).toBeInTheDocument()
+    expect(listSecretResolutions).toHaveBeenCalledWith(
+      'acme',
+      'active',
+      expect.anything(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }))
+    await waitFor(() =>
+      expect(listSecretResolutions).toHaveBeenLastCalledWith(
+        'acme',
+        undefined,
+        expect.anything(),
+      ),
+    )
   })
 })

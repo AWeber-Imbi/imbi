@@ -4283,6 +4283,17 @@ export const listSecretResolutions = (
     signal,
   )
 
+export const getSecretResolution = (
+  orgSlug: string,
+  id: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<SecretResolution>(
+    `${secretsPath(orgSlug, 'secret-resolutions')}/${encodeURIComponent(id)}`,
+    undefined,
+    signal,
+  )
+
 export const releaseSecretResolution = (orgSlug: string, id: string) =>
   apiClient.post<SecretResolution>(
     `${secretsPath(orgSlug, 'secret-resolutions')}/${id}/release`,
@@ -4293,5 +4304,15 @@ export const revokeSecretProviderLease = (orgSlug: string, id: string) =>
     `${secretsPath(orgSlug, 'secret-resolutions')}/${id}/revoke-provider-lease`,
   )
 
-export const listSecretAuditEvents = (orgSlug: string, signal?: AbortSignal) =>
-  listOf<SecretAuditEvent>(orgSlug, 'secret-audit-events', undefined, signal)
+/** Audit events. Each `type` matches; an empty filter matches all. */
+export const listSecretAuditEvents = (
+  orgSlug: string,
+  filter: { resolution_id?: string; result?: string; type?: string[] } = {},
+  signal?: AbortSignal,
+) =>
+  listOf<SecretAuditEvent>(
+    orgSlug,
+    'secret-audit-events',
+    Object.fromEntries(Object.entries(filter).filter(([, v]) => v && v.length)),
+    signal,
+  )

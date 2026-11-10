@@ -185,6 +185,62 @@ export function SchemaEditor({
   )
 }
 
+/** Values as removable tags. Enter or a comma adds the typed value. */
+export function TagInput({
+  id,
+  onChange,
+  placeholder,
+  values,
+}: {
+  id: string
+  onChange: (values: string[]) => void
+  placeholder: string
+  values: string[]
+}) {
+  const [text, setText] = useState('')
+  const add = () => {
+    const value = text.trim()
+    if (value && !values.includes(value)) onChange([...values, value])
+    setText('')
+  }
+  return (
+    <div className="border-input flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border px-1.5 py-1">
+      {values.map((v) => (
+        <span
+          className="bg-secondary flex h-6 items-center gap-1 rounded pr-1 pl-2 font-mono text-xs"
+          key={v}
+        >
+          {v}
+          <button
+            aria-label={`Remove ${v}`}
+            className="text-secondary hover:text-primary"
+            onClick={() => onChange(values.filter((x) => x !== v))}
+            type="button"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        className="h-6 min-w-40 flex-1 bg-transparent px-1 font-mono text-xs outline-none"
+        id={id}
+        onBlur={add}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault()
+            add()
+          } else if (e.key === 'Backspace' && !text && values.length) {
+            onChange(values.slice(0, -1))
+          }
+        }}
+        placeholder={placeholder}
+        value={text}
+      />
+    </div>
+  )
+}
+
 /**
  * Inputs for each field of a schema: text, or tags for a list of text.
  * An empty value removes the key, so optional fields stay absent.
@@ -242,62 +298,6 @@ function SchemaFields({
           </Field>
         )
       })}
-    </div>
-  )
-}
-
-/** Values as removable tags. Enter or a comma adds the typed value. */
-export function TagInput({
-  id,
-  onChange,
-  placeholder,
-  values,
-}: {
-  id: string
-  onChange: (values: string[]) => void
-  placeholder: string
-  values: string[]
-}) {
-  const [text, setText] = useState('')
-  const add = () => {
-    const value = text.trim()
-    if (value && !values.includes(value)) onChange([...values, value])
-    setText('')
-  }
-  return (
-    <div className="border-input flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border px-1.5 py-1">
-      {values.map((v) => (
-        <span
-          className="bg-secondary flex h-6 items-center gap-1 rounded pr-1 pl-2 font-mono text-xs"
-          key={v}
-        >
-          {v}
-          <button
-            aria-label={`Remove ${v}`}
-            className="text-secondary hover:text-primary"
-            onClick={() => onChange(values.filter((x) => x !== v))}
-            type="button"
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        className="h-6 min-w-40 flex-1 bg-transparent px-1 font-mono text-xs outline-none"
-        id={id}
-        onBlur={add}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault()
-            add()
-          } else if (e.key === 'Backspace' && !text && values.length) {
-            onChange(values.slice(0, -1))
-          }
-        }}
-        placeholder={placeholder}
-        value={text}
-      />
     </div>
   )
 }

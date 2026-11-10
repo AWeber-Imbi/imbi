@@ -295,8 +295,15 @@ An AI Provider can also use the identity source of an organization; see
 
 ## Check what happened
 
-- **Resolutions** lists the secret reads that are active now.
-- **Audit** lists every request, allowed or denied, with the reason.
+- **Resolutions** shows the secret reads that are active now. Select a
+  state to see released, expired, or failed reads. **Release** and
+  **Revoke lease** act on one read. **History** opens its audit events.
+- **Audit** shows the history: every request, allowed or denied, with
+  the reason, and every change to providers, bindings, grants, and the
+  identity source. Filter by category and result. Click a resolution id
+  to open that read on the Resolutions tab.
+
+Audit also shows a denied request, which has no resolution.
 
 A denied request names the reason, for example `no_grant`. Check
 that the grant includes the agent, the binding, the purpose, and the

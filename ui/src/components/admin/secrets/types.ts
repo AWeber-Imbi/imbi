@@ -70,4 +70,33 @@ export const canonical = (value: unknown): string =>
       : val,
   )
 
+/** The audit event types of each Audit filter category. */
+export const AUDIT_CATEGORIES = {
+  Configuration: [
+    'secret_provider_created',
+    'secret_provider_updated',
+    'secret_provider_deleted',
+    'secret_provider_tested',
+    'secret_binding_created',
+    'secret_binding_updated',
+    'secret_binding_deleted',
+    'secret_grant_created',
+    'secret_grant_updated',
+    'secret_grant_deleted',
+  ],
+  Identity: ['workload_identity_updated', 'workload_identity_deleted'],
+  Leases: [
+    'secret_lease_renewed',
+    'secret_lease_revoked',
+    'secret_lease_revocation_failed',
+  ],
+  Resolutions: [
+    'secret_resolution_allowed',
+    'secret_resolution_denied',
+    'secret_resolution_released',
+    'secret_resolution_expired',
+    'secret_materialized',
+  ],
+} as const
+
 type Schemas = components['schemas']

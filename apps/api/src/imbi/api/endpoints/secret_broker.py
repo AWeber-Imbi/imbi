@@ -1302,12 +1302,18 @@ async def list_audit_events(
     org_id: OrgId,
     _: AuditRead,
     resolution_id: uuid.UUID | None = None,
-    event_type: typing.Annotated[str, fastapi.Query(alias='type')] = '',
+    event_types: typing.Annotated[
+        list[audit.EventType] | None, fastapi.Query(alias='type')
+    ] = None,
+    result: audit.Result | None = None,
     before: datetime.datetime | None = None,
     before_event_id: str = '',
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=500)] = 100,
 ) -> list[dict[str, typing.Any]]:
     """Return audit events, newest first.
+
+    Repeat ``type`` to match any of the types. ``result`` matches one
+    result.
 
     To page, send the ``at`` and ``event_id`` of the last event as
     ``before`` and ``before_event_id``. Events with the same ``at`` are
@@ -1321,7 +1327,8 @@ async def list_audit_events(
         return await audit.search(
             org_id,
             resolution_id=str(resolution_id) if resolution_id else '',
-            event_type=event_type,
+            event_types=event_types or (),
+            result=result or '',
             before=before,
             before_event_id=before_event_id,
             limit=limit,

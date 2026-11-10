@@ -875,6 +875,55 @@ class SecretEndpointTestCase(
             }
         self.assertEqual(found, sorted(e.event_id for e in events))
 
+    async def test_audit_type_and_result_filters(self) -> None:
+        """Repeated types match any of them; result matches one."""
+        previous = ch_client.Clickhouse._instance
+        ch_client.Clickhouse._instance = None
+
+        async def restore() -> None:
+            await clickhouse.aclose()
+            ch_client.Clickhouse._instance = previous
+
+        self.addAsyncCleanup(restore)
+        await clickhouse.initialize()
+        await clickhouse.setup_schema()
+        events = [
+            audit.Event(
+                at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+                organization_id=self.org,
+                result=result,
+                type=event_type,
+            )
+            for event_type, result in (
+                ('secret_resolution_allowed', 'allowed'),
+                ('secret_resolution_denied', 'denied'),
+                ('secret_lease_revoked', 'succeeded'),
+                ('secret_grant_created', 'succeeded'),
+            )
+        ]
+        await audit.record(self.pool, events)
+        with support.sink_to_clickhouse():
+            await self.broker.flush_audit()
+
+        async def types(params: dict[str, typing.Any]) -> set[str]:
+            response = await self.client.get(
+                self.base + '/secret-audit-events/', params=params
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            return {e['type'] for e in response.json()}
+
+        resolution = ['secret_resolution_allowed', 'secret_resolution_denied']
+        self.assertEqual(await types({'type': resolution}), set(resolution))
+        self.assertEqual(
+            await types({'type': resolution, 'result': 'denied'}),
+            {'secret_resolution_denied'},
+        )
+        self.assertEqual(len(await types({})), 4)
+        response = await self.client.get(
+            self.base + '/secret-audit-events/', params={'type': 'nope'}
+        )
+        self.assertEqual(response.status_code, 422)
+
     async def test_audit_events(self) -> None:
         event = audit.Event(
             organization_id=self.org, type='secret_materialized'
@@ -892,7 +941,8 @@ class SecretEndpointTestCase(
         self.assertEqual(response.json()[0]['event_id'], event.event_id)
         params = query.call_args.args[1]
         self.assertEqual(params['organization_id'], self.org)
-        self.assertEqual(params['type'], 'secret_materialized')
+        self.assertEqual(params['types'], ['secret_materialized'])
+        self.assertEqual(params['result'], '')
         self.assertEqual(params['limit'], 5)
         with mock.patch.object(
             clickhouse, 'query', mock.AsyncMock(side_effect=OSError)
