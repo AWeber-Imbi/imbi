@@ -268,6 +268,7 @@ unset.
 | `MAILPIT_SMTP_PORT` | str | none | In development, with the default SMTP host and port, use this port and no TLS (Mailpit) |
 | `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
 | `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
+| `IMBI_HARNESS_EGRESS_PROXY_SECRET` | str | none | HS256 key that signs the proxy token of a runner claim. The egress proxy has the same key. Unset: no claim gets a proxy token, so host name egress destinations do not work. See [Agent runners](../deployment/agent-runners.md#host-name-destinations). |
 
 ### imbi-assistant
 
@@ -375,6 +376,8 @@ unset.
 | `IMBI_HARNESS_IDLE_EXIT_SECONDS` | str | none | Exit after this many idle seconds. Empty or `0`: never. |
 | `IMBI_HARNESS_MODEL` | str | none | Model override for the runner |
 | `IMBI_HARNESS_MCP_URL` | str | none | imbi-mcp URL that agents use |
+| `IMBI_HARNESS_EGRESS_PROXY_URL` | str | none | `http://host:port` of the egress proxy. Set: the agent CLI, `run_with_secret`, and `git clone` use the proxy for HTTPS, and the MCP client uses it for host name destinations. Unset: no proxy. |
+| `POD_UID` | str | none | Pod uid, from the Kubernetes downward API. The runner sends it with each claim; the proxy token holds it. |
 | `IMBI_HARNESS_EXTRA_CA` | str | none | PEM file of extra CA certificates |
 
 ### Container (entrypoint, Caddy, UI)
