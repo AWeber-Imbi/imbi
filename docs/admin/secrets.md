@@ -174,10 +174,33 @@ The grant form has these fields:
 |---|---|
 | Agents | The agents that may use the bindings |
 | Bindings | The bindings this grant covers |
-| Projects | Project ids. Leave empty for any project |
 | Purposes | The purposes this grant allows. See [Purposes](#purposes) |
-| Delivery modes | How the value may be delivered. Each mode must also be allowed on the binding |
+| Delivery modes | How the value may be delivered. See [Delivery modes](#delivery-modes) |
 | Maximum TTL (seconds) | How long one read stays valid. Default 900, maximum 3600 |
+| Projects | On the **Projects** tab: all projects, or only the selected projects |
+
+### Delivery modes
+
+A binding and a grant both have delivery modes. The broker delivers a
+value only in a mode that the binding **and** the grant allow. Neither
+one takes precedence.
+
+The two lists control different things:
+
+- **The binding** sets how the secret can ever leave the broker. The
+  person who connects the secret sets it, for all grants. For example, a
+  GitHub App key that only the runner uses allows only
+  `file_descriptor`. Then no grant can give the key to an agent as an
+  environment variable.
+- **The grant** sets how these agents receive the secret, for these
+  purposes. It can only remove modes from those of its bindings. For
+  example, one binding can allow `environment` and `file_descriptor`, one
+  grant can give agent A `environment`, and a second grant can give
+  agent B only `file_descriptor`.
+
+When you select bindings in the grant form, Imbi selects each mode that
+all of them allow. A mode that a selected binding does not allow is
+disabled. Clear the modes that the agents do not use.
 
 ## Purposes
 
