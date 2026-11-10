@@ -17,12 +17,18 @@ A claim is valid only while its chain is pinned to the runner in that
 attempt: :mod:`imbi.api.harness.auth` checks this on every call. So
 the lease sweep makes every token of a lost runner invalid at once,
 and the long :data:`AGENT_TOKEN_TTL_SECONDS` is only a ceiling.
+
+The **proxy token** also comes from a claim (egress proxy plan 5.1).
+It gives the pod of the chain the host names and the CIDRs (with their
+TCP ports) of its egress grants at the egress proxy. It is signed with
+its own key, not the API key, so the proxy cannot mint API tokens.
 """
 
 import dataclasses
 import datetime
 import hashlib
 import secrets
+import time
 import typing
 import uuid
 
@@ -37,6 +43,14 @@ AUDIENCE = 'imbi-harness'
 AGENT_TOKEN_TYPE = 'harness_agent'
 #: The ceiling of an agent token. A task can wait days on a person.
 AGENT_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
+
+#: The issuer and audience of a proxy token.
+PROXY_ISSUER = 'imbi-api'
+PROXY_AUDIENCE = 'imbi-egress-proxy'
+#: The longest proxy token. The runner sends it as a Basic credential
+#: (4/3 larger), and the proxy reads at most 8 KiB of request head
+#: (``MAX_HEAD_BYTES`` in ``proxy/src/request.rs``).
+MAX_PROXY_TOKEN_BYTES = 4096
 
 RUNNER_PREFIX = 'ihr_'
 EXECUTOR_PREFIX = 'ihe_'
@@ -142,6 +156,44 @@ def mint_agent_api_token(
         algorithm=settings.jwt_algorithm,
     )
     return token, expires
+
+
+def mint_proxy_token(
+    secret: str,
+    *,
+    chain_id: uuid.UUID | str,
+    attempt: int,
+    pod: uuid.UUID | str,
+    hosts: list[str],
+    cidrs: list[dict[str, typing.Any]],
+    now: int | None = None,
+    ttl: int = AGENT_TOKEN_TTL_SECONDS,
+) -> str:
+    """Return the proxy token of a claim: HS256, signed with ``secret``.
+
+    The claims and their order are a contract with the proxy (C1, the
+    fixture ``proxy/tests/contract.json``). ``hosts`` are the held host
+    names (port 443). ``cidrs`` are ``{"nets", "ports"}`` entries
+    (:func:`imbi.api.harness.egress.proxy_cidrs`): the proxy allows an
+    internal address in one of ``nets`` on one of ``ports``. ``now`` and
+    ``ttl`` let a test make the fixture token again.
+    """
+    iat = int(time.time()) if now is None else now
+    return jwt.encode(
+        {
+            'iss': PROXY_ISSUER,
+            'aud': PROXY_AUDIENCE,
+            'iat': iat,
+            'exp': iat + ttl,
+            'chain': str(chain_id),
+            'attempt': attempt,
+            'pod': str(pod),
+            'hosts': sorted(set(hosts)),
+            'cidrs': cidrs,
+        },
+        secret,
+        algorithm='HS256',
+    )
 
 
 def is_agent_token(token: str) -> bool:

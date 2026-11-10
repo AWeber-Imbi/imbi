@@ -237,6 +237,7 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
         claim = {
             'chain_id': 'c',
             'agent_token': 'iat_agent_token_0123456789',
+            'proxy_token': 'proxy_token_value_0123456789',
             'task': {'short_id': 'T-1'},
         }
         subject.api.claim.side_effect = [None, claim]
@@ -265,6 +266,7 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
             'ihr_runner_token_0123456789',
             'ihe_executor_token_0123456789',
             'iat_agent_token_0123456789',
+            'proxy_token_value_0123456789',
             'secret',
         ):
             self.assertEqual(subject.redactor.text(value), '[REDACTED]')
@@ -272,6 +274,79 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
             (subject.credentials / 'runner.token').read_text(),
             'ihr_runner_token_0123456789',
         )
+
+
+class EgressProxyTestCase(unittest.IsolatedAsyncioTestCase):
+    """The proxy token of the claim (egress proxy plan 5.3)."""
+
+    TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJjaGFpbiI6ImMifQ.c2lnbmF0dXJlLXZhbHVl'
+
+    async def test_claim_sends_the_pod_uid_only_with_the_proxy(self) -> None:
+        for proxy_url, pod in (
+            ('http://imbi-egress-proxy:3128', '0f6c-uid'),
+            (None, None),
+        ):
+            with self.subTest(proxy_url=proxy_url):
+                subject = make_runner(
+                    pod_uid='0f6c-uid', egress_proxy_url=proxy_url
+                )
+                subject.api = mock.AsyncMock(spec=api.Api)
+                subject.api.chain_claim.return_value = None
+                await subject._claim()
+                subject.api.claim.assert_awaited_once_with(
+                    '', '', runner.CLAIM_WAIT, pod
+                )
+                await subject.run_child('T-1')
+                subject.api.chain_claim.assert_awaited_with('', '', pod)
+
+    def test_proxy_env_with_the_token(self) -> None:
+        subject = make_runner(
+            egress_proxy_url='http://imbi-egress-proxy:3128',
+            mcp_url='http://imbi-mcp.imbi:8001/mcp',
+        )
+        env = subject.egress_proxy({'proxy_token': self.TOKEN})
+        url = f'http://chain:{self.TOKEN}@imbi-egress-proxy:3128'
+        self.assertEqual(env['HTTPS_PROXY'], url)
+        self.assertEqual(
+            env['NO_PROXY'],
+            'localhost,127.0.0.1,::1,imbi.test,imbi-mcp.imbi',
+        )
+
+    def test_cidr_destination_with_the_proxy(self) -> None:
+        # An IP literal in a CIDR destination goes direct; a name of it
+        # goes through the proxy, which allows the CIDR of the token.
+        subject = make_runner(egress_proxy_url='http://imbi-egress-proxy:3128')
+        env = subject.egress_proxy(
+            {
+                'proxy_token': self.TOKEN,
+                'egress': [
+                    {
+                        'slug': 'db',
+                        'cidrs': ['10.20.0.0/16', '10.30.1.0/24'],
+                        'hostnames': [],
+                        'ports': [{'port': 5432, 'protocol': 'TCP'}],
+                    },
+                    {
+                        'slug': 'git',
+                        'cidrs': [],
+                        'hostnames': ['git.example.com'],
+                        'ports': [{'port': 443, 'protocol': 'TCP'}],
+                    },
+                ],
+            }
+        )
+        self.assertEqual(
+            env['HTTPS_PROXY'],
+            f'http://chain:{self.TOKEN}@imbi-egress-proxy:3128',
+        )
+        self.assertEqual(env['NO_PROXY'], env['no_proxy'])
+        excluded = env['NO_PROXY'].split(',')
+        self.assertEqual(excluded[-2:], ['10.20.0.0/16', '10.30.1.0/24'])
+        self.assertNotIn('git.example.com', excluded)
+
+    def test_no_proxy_settings_without_a_proxy(self) -> None:
+        subject = make_runner()
+        self.assertEqual(subject.egress_proxy({'proxy_token': 't'}), {})
 
 
 class ChildRunTestCase(unittest.IsolatedAsyncioTestCase):

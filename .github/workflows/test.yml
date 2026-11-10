@@ -105,3 +105,76 @@ jobs:
             exit 1
           fi
       - run: "apps/harness/isolation/run-kind.sh"
+  proxy:
+    # The Rust egress proxy (proxy/). `moon ci` above does not run its
+    # tasks (runInCI: false), so the Python job needs no Rust. Like
+    # `moon ci`, it runs only for a change that can affect it.
+    name: "Proxy"
+    runs-on: "ubuntu-latest"
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - uses: "actions/checkout@v4"
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: "changes"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A base that git cannot read (a new branch) counts as changed.
+          if git diff --quiet "$BASE" HEAD -- proxy .moon .github/workflows/test.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      # rust-toolchain.toml pins the version.
+      - if: steps.changes.outputs.changed == 'true'
+        working-directory: "proxy"
+        run: "rustup toolchain install"
+      - if: steps.changes.outputs.changed == 'true'
+        uses: "Swatinem/rust-cache@v2"
+        with:
+          workspaces: "proxy"
+      # install-action installs prebuilt binaries, not a cargo build.
+      - if: steps.changes.outputs.changed == 'true'
+        uses: "taiki-e/install-action@v2"
+        with:
+          tool: "cargo-deny"
+      # The same commands as the proxy moon tasks. In CI, `moon run`
+      # finds no task with runInCI: false, so call cargo directly.
+      - if: steps.changes.outputs.changed == 'true'
+        working-directory: "proxy"
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+          cargo deny check
+  proxy-fuzz:
+    # Plan 12.5, X3: 60 seconds of each fuzz target. cargo fuzz needs
+    # the nightly toolchain.
+    name: "Proxy fuzz"
+    needs: "proxy"
+    if: needs.proxy.outputs.changed == 'true'
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+        with:
+          persist-credentials: false
+      - run: "rustup toolchain install nightly --profile minimal"
+      - uses: "Swatinem/rust-cache@v2"
+        with:
+          workspaces: "proxy/fuzz"
+          key: "fuzz"
+      - uses: "taiki-e/install-action@v2"
+        with:
+          tool: "cargo-fuzz"
+      # The prebuilt cargo-fuzz is a musl binary, so its default target
+      # is musl, which ASan does not support. Set the gnu target.
+      - run: |
+          proxy/fuzz/seed.sh
+          for target in parse target; do
+            cargo +nightly fuzz run --fuzz-dir proxy/fuzz \
+              --target x86_64-unknown-linux-gnu "$target" -- \
+              -max_total_time=60
+          done

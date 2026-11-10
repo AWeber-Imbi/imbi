@@ -155,3 +155,38 @@ networkPolicy:
       limits:
         cpu: 200m
         memory: 128Mi
+
+# The egress proxy (egress proxy plan): runner pods reach host name egress
+# destinations through it, with a proxy token from their claim. Needs
+# networkPolicy.enabled. Set enabled in every release, so that its runners
+# get the proxy settings. Only the networkPolicy.manageGlobal release renders
+# the proxy Deployment and its policies.
+egressProxy:
+  enabled: false
+  # The proxy host that the runners use. Empty uses the proxy Service:
+  # imbi-egress-proxy.<release namespace>.svc
+  host: ""
+  # The proxy port. The Service port and the container port are the same
+  # (the network policy matches the container port).
+  port: 3128
+  # /healthz, /readyz, and /metrics.
+  adminPort: 9090
+  replicas: 2
+  image:
+    repository: ghcr.io/aweber-imbi/imbi-egress-proxy
+    tag: latest
+    pullPolicy: IfNotPresent
+  # The HS256 key that imbi-api signs proxy tokens with (the
+  # IMBI_HARNESS_EGRESS_PROXY_SECRET of imbi-api), in a Secret in the release
+  # namespace. The previous key is optional: set it during a key rotation.
+  secret:
+    existingSecret: ""  # REQUIRED in the manageGlobal release when enabled
+    key: current
+    previousKey: previous
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi

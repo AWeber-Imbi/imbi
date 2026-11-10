@@ -119,6 +119,60 @@ kubectl delete clusternetworkpolicies \
   -l app.kubernetes.io/managed-by=imbi-harness-egress-sync
 ```
 
+## Egress proxy
+
+With `egressProxy.enabled`, runner pods reach host name egress destinations
+through the egress proxy (`ghcr.io/aweber-imbi/imbi-egress-proxy`). The
+proxy accepts `CONNECT` with a proxy token from imbi-api, and checks that
+the token holds the host (port 443) or a CIDR of its address with the
+port, and comes from its live runner pod. CIDR destinations keep working
+with the proxy on.
+See [Agent runners](https://github.com/AWeber-Imbi/imbi/blob/main/docs/deployment/agent-runners.md#host-name-destinations)
+for the clients, DNS trust, key rotation, and troubleshooting.
+
+`egressProxy.enabled` needs `networkPolicy.enabled`: the render fails
+without it. Set `egressProxy.enabled` in every release, so that its runner
+pods get `IMBI_HARNESS_EGRESS_PROXY_URL`. Only the `manageGlobal` release
+renders the proxy Deployment, Service, ServiceAccount, Role (pods `get`,
+`list`, `watch` in the release namespace), PodDisruptionBudget, and the
+proxy policies. Every runner pod gets `POD_UID` from the downward API.
+
+| Value | Default | What it does |
+| --- | --- | --- |
+| `egressProxy.enabled` | `false` | Turns on the proxy |
+| `egressProxy.host` | `imbi-egress-proxy.<namespace>.svc` | Proxy host that the runners use |
+| `egressProxy.port` | `3128` | Proxy port. The Service port equals the container port |
+| `egressProxy.adminPort` | `9090` | `/healthz`, `/readyz`, `/metrics` |
+| `egressProxy.replicas` | `2` | Proxy replicas |
+| `egressProxy.image.repository` | `ghcr.io/aweber-imbi/imbi-egress-proxy` | Proxy image |
+| `egressProxy.image.tag` | `latest` | Proxy image tag |
+| `egressProxy.secret.existingSecret` | `""` | Secret with the HS256 token key. Required in the `manageGlobal` release |
+| `egressProxy.secret.key` | `current` | Key of the current token key. imbi-api has the same value in `IMBI_HARNESS_EGRESS_PROXY_SECRET` |
+| `egressProxy.secret.previousKey` | `previous` | Key of the old token key, during a rotation. Optional |
+| `egressProxy.resources` | 100m/64Mi, 1/256Mi | Proxy container resources |
+
+The proxy policies select only the proxy pods
+(`app.kubernetes.io/name=imbi-egress-proxy`):
+
+| Tier     | Priority | Direction | Action | Peers                                                        |
+| -------- | -------- | --------- | ------ | ------------------------------------------------------------ |
+| Admin    | 110      | Egress    | Accept | kube-dns (53), `required.kubeApi`, `internalRanges` on TCP   |
+| Admin    | 111      | Ingress   | Accept | Runner pods on `egressProxy.port`                            |
+| Admin    | 111      | Ingress   | Accept | Every pod on `egressProxy.adminPort` (Prometheus)            |
+| Admin    | 111      | Ingress   | Deny   | Every other pod                                              |
+| Baseline | 30       | Egress    | Deny   | `internalRanges`, `169.254.0.0/16`, `fd00:ec2::/32`          |
+
+`imbi-harness-required` also accepts the proxy pods on `egressProxy.port`
+for the runner pods. Public egress of the proxy stays open.
+
+The runner service account can delete pods (deployment mode) and patch
+pods (egress allowlists) in the namespace, which also holds the proxy
+pods. Admission policies let it delete and patch only its own pod. Thus
+the deployment mode also needs Kubernetes 1.32 or later.
+
+Rollback: set `egressProxy.enabled: false` in every release and upgrade.
+Host name destinations then stop working. CIDR destinations do not change.
+
 ## Checks
 
 The chart has no CI coverage. Check a change with `helm template` and a dry run

@@ -490,6 +490,7 @@ class TaskRun:
         children: abc.Callable[[str], abc.Awaitable[Body]] | None = None,
         mcp_url: str | None = None,
         egress: list[Body] | None = None,
+        proxy_env: dict[str, str] | None = None,
     ) -> None:
         self.claim = claim
         self.task: Body = claim['task']
@@ -541,6 +542,9 @@ class TaskRun:
         #: The egress destinations of the pod (PRD 5.8): the outbound
         #: checks allow their addresses and ports.
         self.egress: list[Body] = egress or []
+        #: The egress proxy environment of the CLI and of the executor's
+        #: commands (egress proxy plan 5.3); empty without a proxy.
+        self.proxy_env: dict[str, str] = proxy_env or {}
         self.relay: relay.Relay | None = None
         #: The third-party relays, by CLI server name (plan P7).
         self.external: dict[str, relay.Relay] = {}
@@ -555,6 +559,11 @@ class TaskRun:
         #: Set when the control or the status changes, so a wait for a
         #: person ends at once on a cancel.
         self.changed = asyncio.Event()
+
+    @property
+    def egress_proxy(self) -> str | None:
+        """The egress proxy URL, with the proxy token."""
+        return self.proxy_env.get('HTTPS_PROXY')
 
     @property
     def context(self) -> Body:
@@ -1077,6 +1086,7 @@ class TaskRun:
             'dest': str(dest),
             'sha': sha,
             'context': self.context,
+            'proxy_env': self.proxy_env,
         }
         if secret is not None:
             request['secret'] = secret
@@ -1193,7 +1203,7 @@ class TaskRun:
                     key=slug,
                     ignored=server.get('ignored_tools') or (),
                     transport=outbound.Transport(
-                        str(server['url']), self.egress
+                        str(server['url']), self.egress, self.egress_proxy
                     ),
                     stopped=lambda: self.stopped,
                 )
@@ -1250,6 +1260,7 @@ class TaskRun:
             server.get('oauth_scope'),
             on_token=self.redactor.add,
             egress=self.egress,
+            proxy=self.egress_proxy,
         )
 
     async def probe_egress(self) -> None:
@@ -1467,6 +1478,7 @@ class TaskRun:
                 # removes TMPDIR.
                 'HARNESS_TMPDIR': str(self.home / 'tmp'),
                 **_extra_ca(),
+                **self.proxy_env,
             },
             system_prompt={
                 'type': 'preset',
@@ -1926,6 +1938,7 @@ class TaskRun:
                     'home': str(self.home / 'home'),
                     'context': self.context,
                     'secrets': resolved,
+                    'proxy_env': self.proxy_env,
                 }
             )
         except api.Refused as err:

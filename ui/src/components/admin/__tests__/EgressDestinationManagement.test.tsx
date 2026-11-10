@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 import type { EgressDestination } from '@/types'
@@ -40,6 +41,7 @@ function destination(
     description: null,
     generation: 2,
     global: false,
+    hostnames: [],
     name: 'Main Postgres',
     organizations: ['acme'],
     pending: false,
@@ -120,6 +122,7 @@ describe('EgressDestinationManagement', () => {
         cidrs: ['10.20.0.0/16', '10.30.0.0/24'],
         description: null,
         global: false,
+        hostnames: [],
         name: 'Main Postgres',
         organizations: ['acme'],
         ports: [
@@ -129,6 +132,115 @@ describe('EgressDestinationManagement', () => {
         slug: 'main-postgres',
       }),
     )
+  })
+
+  it('shows host names in the CIDRs column', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([
+      destination({
+        cidrs: [],
+        hostnames: ['git.example.com', 'zoekt.example.com'],
+        ports: [{ port: 443, protocol: 'TCP' }],
+      }),
+    ])
+    mountAt('/admin/egress-destinations')
+    expect(
+      await screen.findByText('git.example.com, zoekt.example.com'),
+    ).toBeInTheDocument()
+  })
+
+  it('creates a host name destination on 443/TCP', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([])
+    vi.mocked(endpoints.createEgressDestination).mockResolvedValue(
+      destination(),
+    )
+    mountAt('/admin/egress-destinations/new')
+    fireEvent.change(await screen.findByLabelText(/^Name/), {
+      target: { value: 'Git' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Host names' }))
+    expect(screen.queryByLabelText(/^CIDRs/)).not.toBeInTheDocument()
+    const ports = screen.getByLabelText(/^Ports/)
+    expect(ports).toBeDisabled()
+    expect(ports).toHaveValue('443/TCP')
+    fireEvent.change(screen.getByLabelText(/^Host names/), {
+      target: { value: 'Git.Example.com\nzoekt.example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
+    await waitFor(() =>
+      expect(endpoints.createEgressDestination).toHaveBeenCalledWith({
+        cidrs: [],
+        description: null,
+        global: false,
+        hostnames: ['git.example.com', 'zoekt.example.com'],
+        name: 'Git',
+        organizations: [],
+        ports: [{ port: 443, protocol: 'TCP' }],
+        slug: 'git',
+      }),
+    )
+  })
+
+  it.each([
+    ['', 'Add at least one host name'],
+    [
+      Array.from({ length: 26 }, (_, i) => `h${i}.example.com`).join('\n'),
+      'Add at most 25 host names',
+    ],
+  ])('refuses host names %j', async (value, message) => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([])
+    mountAt('/admin/egress-destinations/new')
+    fireEvent.change(await screen.findByLabelText(/^Name/), {
+      target: { value: 'Git' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Host names' }))
+    fireEvent.change(screen.getByLabelText(/^Host names/), {
+      target: { value },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(endpoints.createEgressDestination).not.toHaveBeenCalled()
+  })
+
+  it('shows the API message when it refuses a host name', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([])
+    vi.mocked(endpoints.createEgressDestination).mockRejectedValue(
+      new ApiError(422, 'Unprocessable Entity', {
+        detail: [
+          {
+            loc: ['body', 'hostnames'],
+            msg: 'Value error, 10.0.0.1 is an IP address',
+            type: 'value_error',
+          },
+        ],
+      }),
+    )
+    mountAt('/admin/egress-destinations/new')
+    fireEvent.change(await screen.findByLabelText(/^Name/), {
+      target: { value: 'Git' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Host names' }))
+    fireEvent.change(screen.getByLabelText(/^Host names/), {
+      target: { value: '10.0.0.1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
+    expect(
+      await screen.findByText('Value error, 10.0.0.1 is an IP address'),
+    ).toBeInTheDocument()
+  })
+
+  it('opens a host name destination in its kind', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([
+      destination({
+        cidrs: [],
+        hostnames: ['git.example.com'],
+        ports: [{ port: 443, protocol: 'TCP' }],
+      }),
+    ])
+    mountAt('/admin/egress-destinations/pg-main/edit')
+    expect(await screen.findByLabelText(/^Host names/)).toHaveValue(
+      'git.example.com',
+    )
+    expect(screen.getByRole('radio', { name: 'CIDRs' })).toBeDisabled()
   })
 
   it('shows the API error on save', async () => {

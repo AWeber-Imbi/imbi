@@ -189,10 +189,14 @@ columns = ["organization_id", "slug"]
 unique = true
 
 # An internal network destination that runner pods may reach (the
-# egress allowlist). `generation` goes up on each change to `cidrs` or
-# `ports`; the egress sync writes one ClusterNetworkPolicy for each
-# generation and sets `applied_generation` when it exists. A claim
-# gives a destination only when the two are equal. `organization_ids`
+# egress allowlist). It has `cidrs` or `hostnames`, not both; a host
+# name destination has `cidrs = '{}'` and only port 443/TCP, and the
+# egress proxy accepts it. `generation` goes up on each change to
+# `cidrs`, `hostnames`, or `ports`; the egress sync writes one
+# ClusterNetworkPolicy for each generation of a CIDR destination and
+# sets `applied_generation` when it exists. A host name destination
+# needs no policy: each write sets `applied_generation = generation`.
+# A claim gives a destination only when the two are equal. `organization_ids`
 # limits the agents that may get it; empty means all. An `is_global`
 # destination goes to every chain. A deleted row stays with
 # `deleted_at`, so a new destination with the same slug continues the
@@ -205,6 +209,7 @@ slug = "TEXT NOT NULL"
 name = "TEXT NOT NULL"
 description = "TEXT"
 cidrs = "TEXT[] NOT NULL"
+hostnames = "TEXT[] NOT NULL DEFAULT '{}'"
 ports = "JSONB NOT NULL"
 is_global = "BOOLEAN NOT NULL DEFAULT FALSE"
 organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"

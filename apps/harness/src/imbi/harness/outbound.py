@@ -15,6 +15,11 @@ configuration; the model cannot choose one. Each connection:
   allowed. The runner resolves the host, refuses it when any address
   is not allowed, and connects to the addresses that it checked, in
   order, so a second DNS answer cannot change them.
+
+A host name egress destination (egress proxy plan 5.3) is different:
+the runner connects to the egress proxy, opens a ``CONNECT`` tunnel to
+the host name on port 443, and does TLS to the host through the tunnel.
+The proxy checks the address of the host.
 """
 
 import asyncio
@@ -22,15 +27,87 @@ import ipaddress
 import socket
 import time
 import typing
+import urllib.parse
 
 import httpx
+import idna
 
 if typing.TYPE_CHECKING:
     from collections import abc
 
 #: The egress destinations of the chain, from the claim: each has
-#: ``cidrs`` and ``ports`` (``{port, protocol}``).
+#: ``cidrs``, ``hostnames``, and ``ports`` (``{port, protocol}``).
 type Egress = abc.Sequence[abc.Mapping[str, typing.Any]]
+
+#: The environment variables of the egress proxy (plan 5.3).
+PROXY_ENV = frozenset({'HTTPS_PROXY', 'https_proxy', 'NO_PROXY', 'no_proxy'})
+
+
+def canonical(name: str) -> str | None:
+    """The host name in the canonical form of the egress proxy (IDNA
+    UTS46 A-labels, lower case, no trailing dot); ``None`` when it is
+    not a valid name.
+
+    The same encoding as ``canonical_hostname`` in
+    ``apps/api/src/imbi/api/harness/egress.py``: keep the two identical
+    (the harness does not depend on imbi-common). A test checks it
+    against ``proxy/tests/contract.json``.
+    """
+    try:
+        return idna.encode(name.removesuffix('.'), uts46=True).decode()
+    except idna.IDNAError:
+        return None
+
+
+def hostnames(egress: Egress) -> set[str]:
+    """The host names of the host name destinations of the chain."""
+    return {
+        str(name)
+        for destination in egress
+        for name in destination.get('hostnames') or ()
+    }
+
+
+def proxy_url(base: str, token: str | None) -> str:
+    """``base`` (``http://host:port``) with the proxy token as the
+    password of the user ``chain``. No token: no user info."""
+    if not token:
+        return base
+    parts = urllib.parse.urlsplit(base)
+    return parts._replace(netloc=f'chain:{token}@{parts.netloc}').geturl()
+
+
+def proxy_env(
+    url: str, *services: str | None, egress: Egress = ()
+) -> dict[str, str]:
+    """The proxy environment of a command. ``NO_PROXY`` has the
+    loopback names, the hosts of ``services`` (imbi-api, imbi-mcp), and
+    the CIDRs of the CIDR destinations in ``egress``: a URL with an IP
+    literal in them goes direct, through the network policy. curl 7.86+,
+    git, and Python requests accept a CIDR in ``no_proxy``."""
+    names = ['localhost', '127.0.0.1', '::1']
+    names += [
+        host
+        for service in services
+        if service and (host := urllib.parse.urlsplit(service).hostname)
+    ]
+    names += [
+        str(cidr)
+        for destination in egress
+        for cidr in destination.get('cidrs') or ()
+    ]
+    no_proxy = ','.join(dict.fromkeys(names))
+    return {
+        'HTTPS_PROXY': url,
+        'https_proxy': url,
+        'NO_PROXY': no_proxy,
+        'no_proxy': no_proxy,
+    }
+
+
+def proxy_token(env: abc.Mapping[str, str]) -> str | None:
+    """The proxy token in the ``HTTPS_PROXY`` of ``env``, to redact."""
+    return urllib.parse.urlsplit(env.get('HTTPS_PROXY', '')).password
 
 
 class Refused(httpx.TransportError):
@@ -116,13 +193,26 @@ async def resolve(host: str, port: int, egress: Egress = ()) -> list[str]:
 
 
 class Transport(httpx.AsyncBaseTransport):
-    """HTTPS to one origin, connected to a checked allowed address."""
+    """HTTPS to one origin, connected to a checked allowed address, or
+    through the egress proxy ``proxy`` when the origin is a host name
+    destination of the chain on port 443."""
 
-    def __init__(self, url: str, egress: Egress = ()) -> None:
+    def __init__(
+        self, url: str, egress: Egress = (), proxy: str | None = None
+    ) -> None:
         origin = check_url(url)
         self.origin = (origin.scheme, origin.host, origin.port or 443)
         self.egress = egress
-        self.inner = httpx.AsyncHTTPTransport()
+        #: Through a CONNECT tunnel of the proxy, with TLS to the host
+        #: name; else direct, to a checked address.
+        self.tunneled = bool(
+            proxy
+            and self.origin[2] == 443  # noqa: PLR2004
+            and canonical(origin.host) in hostnames(egress)
+        )
+        self.inner = httpx.AsyncHTTPTransport(
+            proxy=proxy if self.tunneled else None
+        )
 
     async def handle_async_request(
         self, request: httpx.Request
@@ -130,6 +220,8 @@ class Transport(httpx.AsyncBaseTransport):
         url = request.url
         if (url.scheme, url.host, url.port or 443) != self.origin:
             raise Refused('cross_origin_request')
+        if self.tunneled:
+            return await self.inner.handle_async_request(request)
         addresses = await resolve(url.host, self.origin[2], self.egress)
         # The Host header keeps the name; TLS checks the certificate
         # against the name too (SNI).
@@ -178,9 +270,11 @@ class ClientCredentials(httpx.Auth):
         *,
         on_token: abc.Callable[[str], None] = lambda _token: None,
         egress: Egress = (),
+        proxy: str | None = None,
     ) -> None:
         check_url(token_url)
         self.egress = egress
+        self.proxy = proxy
         self.token_url = token_url
         self.client_id = client_id
         self.client_secret = client_secret
@@ -200,7 +294,7 @@ class ClientCredentials(httpx.Auth):
         if self.scope:
             data['scope'] = self.scope
         async with httpx.AsyncClient(
-            transport=Transport(self.token_url, self.egress),
+            transport=Transport(self.token_url, self.egress, self.proxy),
             follow_redirects=False,
             timeout=30,
         ) as client:

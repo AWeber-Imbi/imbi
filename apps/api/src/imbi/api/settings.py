@@ -306,6 +306,21 @@ class AIProviders(pydantic_settings.BaseSettings):
         }.get(slug, '')
 
 
+class HarnessEgressProxy(pydantic_settings.BaseSettings):
+    """The key of the egress proxy token (egress proxy plan 5.1).
+
+    ``IMBI_HARNESS_EGRESS_PROXY_SECRET`` is the HS256 key that a claim
+    signs the proxy token with. It is not the API JWT secret. Empty: no
+    claim gets a proxy token.
+    """
+
+    model_config = settings.base_settings_config(
+        env_prefix='IMBI_HARNESS_EGRESS_PROXY_'
+    )
+
+    secret: pydantic.SecretStr = pydantic.SecretStr('')
+
+
 # Module-level singletons for extended settings
 _auth_settings: Auth | None = None
 _server_config: ServerConfig | None = None
@@ -313,6 +328,7 @@ _storage_settings: Storage | None = None
 _internal_services: InternalServices | None = None
 _iggy_connectors: IggyConnectors | None = None
 _ai_providers: AIProviders | None = None
+_harness_egress_proxy: HarnessEgressProxy | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -375,6 +391,14 @@ def get_ai_providers() -> AIProviders:
     return _ai_providers
 
 
+def get_harness_egress_proxy() -> HarnessEgressProxy:
+    """Get the singleton HarnessEgressProxy settings instance."""
+    global _harness_egress_proxy
+    if _harness_egress_proxy is None:
+        _harness_egress_proxy = HarnessEgressProxy()
+    return _harness_egress_proxy
+
+
 def clear_caches() -> None:
     """Reset the module-level singletons.
 
@@ -383,12 +407,14 @@ def clear_caches() -> None:
     """
     global _auth_settings, _server_config, _storage_settings
     global _internal_services, _iggy_connectors, _ai_providers
+    global _harness_egress_proxy
     _auth_settings = None
     _server_config = None
     _storage_settings = None
     _internal_services = None
     _iggy_connectors = None
     _ai_providers = None
+    _harness_egress_proxy = None
 
 
 def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:

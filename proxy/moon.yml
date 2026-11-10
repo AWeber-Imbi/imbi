@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+#
+# The egress proxy of the agent harness (Rust). The toolchain version is
+# in rust-toolchain.toml. The Pipeline "Proxy" job runs these tasks, so
+# `moon ci` in the Python job does not need a Rust toolchain.
+layer: 'application'
+stack: 'infrastructure'
+language: 'rust'
+
+project:
+  name: 'imbi-egress-proxy'
+  description: 'CONNECT proxy for host name egress destinations'
+
+fileGroups:
+  rust:
+    - 'src/**/*'
+    - 'tests/**/*'
+    - 'Cargo.toml'
+    - 'Cargo.lock'
+    - 'rust-toolchain.toml'
+
+tasks:
+  fmt:
+    command: 'cargo fmt --check'
+    inputs:
+      - '@group(rust)'
+    options:
+      runInCI: false
+
+  lint:
+    command: 'cargo clippy --all-targets --locked -- -D warnings'
+    inputs:
+      - '@group(rust)'
+    options:
+      runInCI: false
+
+  test:
+    command: 'cargo test --locked'
+    inputs:
+      - '@group(rust)'
+    options:
+      runInCI: false
+
+  audit:
+    command: 'cargo deny check'
+    inputs:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+    options:
+      runInCI: false

@@ -97,6 +97,14 @@ containers:
         valueFrom:
           fieldRef: {fieldPath: metadata.namespace}
       {{- end }}
+      # The proxy token is bound to the pod uid (egress proxy plan 5.4).
+      - name: POD_UID
+        valueFrom:
+          fieldRef: {fieldPath: metadata.uid}
+      {{- if .Values.egressProxy.enabled }}
+      - name: IMBI_HARNESS_EGRESS_PROXY_URL
+        value: {{ include "imbi-harness.egressProxyUrl" . | quote }}
+      {{- end }}
       {{- if $egress }}
       - name: IMBI_HARNESS_EGRESS_ENFORCED
         value: "true"

@@ -13,6 +13,7 @@ projects:
   sources:
     root: '.'
     ui: 'ui'
+    proxy: 'proxy'
 
 vcs:
   defaultBranch: main

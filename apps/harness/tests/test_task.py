@@ -226,6 +226,34 @@ class RunWithSecretTestCase(TaskTestCase):
         self.assertTrue(result['is_error'])
 
 
+class EgressProxyEnvTestCase(TaskTestCase):
+    """The proxy environment of the CLI and the executor (plan 5.3)."""
+
+    PROXY: typing.ClassVar[dict[str, str]] = {
+        'HTTPS_PROXY': 'http://chain:t@proxy:3128',
+        'https_proxy': 'http://chain:t@proxy:3128',
+        'NO_PROXY': 'localhost',
+        'no_proxy': 'localhost',
+    }
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.run_task.proxy_env = self.PROXY
+
+    def test_cli_env(self) -> None:
+        env = self.run_task.options('http://127.0.0.1:1').env
+        self.assertEqual({k: env[k] for k in self.PROXY}, self.PROXY)
+
+    async def test_executor_requests(self) -> None:
+        self.call.return_value = {'exit_code': 0, 'output': ''}
+        await self.run_task.run_with_secret({'command': 'curl x'})
+        await self.run_task.clone(
+            'https://git.example/a', self.tmp / 'a', None, None
+        )
+        for call in self.call.await_args_list:
+            self.assertEqual(call.args[0]['proxy_env'], self.PROXY)
+
+
 class OutcomeTestCase(unittest.TestCase):
     def result(self, **changes: typing.Any) -> sdk.ResultMessage:
         values: dict[str, typing.Any] = {

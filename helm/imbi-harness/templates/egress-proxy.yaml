@@ -1,0 +1,252 @@
+{{- /*
+The egress proxy (egress proxy plan 5.2 and 5.4): runner pods reach host
+name egress destinations through it. Its pods do not have
+app.kubernetes.io/name=imbi-harness, so the runner policies do not select
+them; the three proxy policies below do. Only the release with
+networkPolicy.manageGlobal renders it: the policy names are cluster-wide.
+*/ -}}
+{{- $p := .Values.egressProxy }}
+{{- $np := .Values.networkPolicy }}
+{{- if and $p.enabled (not $np.enabled) }}
+{{- fail "egressProxy.enabled needs networkPolicy.enabled: without the egress allowlist, the proxy adds no control" }}
+{{- end }}
+{{- if and $p.enabled $np.manageGlobal }}
+{{- if not $p.secret.existingSecret }}
+{{- fail "egressProxy.secret.existingSecret is required (the HS256 key of the proxy tokens)" }}
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: imbi-egress-proxy
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+---
+# The proxy watches the runner pods: a proxy token works only from the
+# address of its live pod.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: imbi-egress-proxy
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: imbi-egress-proxy
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: imbi-egress-proxy
+subjects:
+  - kind: ServiceAccount
+    name: imbi-egress-proxy
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: imbi-egress-proxy
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  replicas: {{ int $p.replicas }}
+  selector:
+    matchLabels:
+      {{- include "imbi-harness.proxySelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "imbi-harness.proxySelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: imbi-egress-proxy
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: egress-proxy
+          image: "{{ $p.image.repository }}:{{ $p.image.tag }}"
+          imagePullPolicy: {{ $p.image.pullPolicy }}
+          ports:
+            - {name: proxy, containerPort: {{ int $p.port }}, protocol: TCP}
+            - {name: admin, containerPort: {{ int $p.adminPort }}, protocol: TCP}
+          env:
+            - name: IMBI_EGRESS_PROXY_PORT
+              value: {{ $p.port | quote }}
+            - name: IMBI_EGRESS_PROXY_ADMIN_PORT
+              value: {{ $p.adminPort | quote }}
+            - name: IMBI_EGRESS_PROXY_NAMESPACE
+              valueFrom:
+                fieldRef: {fieldPath: metadata.namespace}
+            - name: IMBI_EGRESS_PROXY_INTERNAL_RANGES
+              value: {{ join "," $np.internalRanges | quote }}
+            - name: IMBI_HARNESS_EGRESS_PROXY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $p.secret.existingSecret | quote }}
+                  key: {{ $p.secret.key | quote }}
+            - name: IMBI_HARNESS_EGRESS_PROXY_SECRET_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $p.secret.existingSecret | quote }}
+                  key: {{ $p.secret.previousKey | quote }}
+                  optional: true
+          livenessProbe:
+            httpGet: {path: /healthz, port: admin}
+          readinessProbe:
+            httpGet: {path: /readyz, port: admin}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $p.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+# The port equals the container port: the runner policy matches the pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: imbi-egress-proxy
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "imbi-harness.proxySelectorLabels" . | nindent 4 }}
+  ports:
+    - name: proxy
+      port: {{ int $p.port }}
+      targetPort: {{ int $p.port }}
+      protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: imbi-egress-proxy
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "imbi-harness.proxySelectorLabels" . | nindent 6 }}
+---
+# The proxy reaches DNS, the Kubernetes API (pod watch), and internal
+# addresses on any TCP port: a CIDR grant in a token can hold any TCP
+# port. The proxy decides which internal host and port are allowed.
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: imbi-egress-proxy-egress
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  tier: Admin
+  priority: 110
+  subject:
+    {{- include "imbi-harness.proxyPods" . | nindent 4 }}
+  egress:
+    - name: kube-dns
+      action: Accept
+      to:
+        - pods:
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: {{ $np.required.kubeDns.namespace | quote }}
+            podSelector:
+              matchLabels:
+                {{- toYaml $np.required.kubeDns.podSelector | nindent 16 }}
+      ports:
+        - portNumber: {port: 53, protocol: TCP}
+        - portNumber: {port: 53, protocol: UDP}
+    # A Service ClusterIP: the policy matches it before DNAT.
+    - name: kube-api
+      action: Accept
+      to:
+        - networks: [{{ $np.required.kubeApi.cidr | quote }}]
+      ports:
+        - portNumber: {port: {{ int $np.required.kubeApi.port }}, protocol: TCP}
+    - name: internal
+      action: Accept
+      to:
+        - networks:
+            {{- range $np.internalRanges }}
+            - {{ . | quote }}
+            {{- end }}
+      ports:
+        - portRange: {start: 1, end: 65535, protocol: TCP}
+---
+# Every other internal address and IMDS. Public egress stays open.
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: imbi-egress-proxy-baseline-deny
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  tier: Baseline
+  priority: 30
+  subject:
+    {{- include "imbi-harness.proxyPods" . | nindent 4 }}
+  egress:
+    - name: internal
+      action: Deny
+      to:
+        - networks:
+            {{- range $np.internalRanges }}
+            - {{ . | quote }}
+            {{- end }}
+            - "169.254.0.0/16"
+            - "fd00:ec2::/32"
+---
+# Only runner pods reach the proxy. Host-networked sources (the kubelet
+# probes) are not pod peers, so this does not match them.
+apiVersion: networking.k8s.aws/v1alpha1
+kind: ClusterNetworkPolicy
+metadata:
+  name: imbi-egress-proxy-ingress
+  labels:
+    {{- include "imbi-harness.labels" . | nindent 4 }}
+spec:
+  tier: Admin
+  priority: 111
+  subject:
+    {{- include "imbi-harness.proxyPods" . | nindent 4 }}
+  ingress:
+    - name: runners
+      action: Accept
+      from:
+        - {{ include "imbi-harness.runnerPods" . | indent 10 | trim }}
+      ports:
+        - portNumber: {port: {{ int $p.port }}, protocol: TCP}
+    # /healthz, /readyz, and /metrics only: Prometheus scrapes it.
+    - name: admin
+      action: Accept
+      from:
+        - namespaces: {}
+      ports:
+        - portNumber: {port: {{ int $p.adminPort }}, protocol: TCP}
+    - name: others
+      action: Deny
+      from:
+        - namespaces: {}
+{{- end }}
