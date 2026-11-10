@@ -237,6 +237,7 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
         claim = {
             'chain_id': 'c',
             'agent_token': 'iat_agent_token_0123456789',
+            'proxy_token': 'proxy_token_value_0123456789',
             'task': {'short_id': 'T-1'},
         }
         subject.api.claim.side_effect = [None, claim]
@@ -265,6 +266,7 @@ class CycleTestCase(unittest.IsolatedAsyncioTestCase):
             'ihr_runner_token_0123456789',
             'ihe_executor_token_0123456789',
             'iat_agent_token_0123456789',
+            'proxy_token_value_0123456789',
             'secret',
         ):
             self.assertEqual(subject.redactor.text(value), '[REDACTED]')
@@ -287,7 +289,7 @@ class EgressProxyTestCase(unittest.IsolatedAsyncioTestCase):
             '', '', runner.CLAIM_WAIT, '0f6c-uid'
         )
 
-    def test_proxy_env_with_the_token_redacted(self) -> None:
+    def test_proxy_env_with_the_token(self) -> None:
         subject = make_runner(
             egress_proxy_url='http://imbi-egress-proxy:3128',
             mcp_url='http://imbi-mcp.imbi:8001/mcp',
@@ -299,12 +301,6 @@ class EgressProxyTestCase(unittest.IsolatedAsyncioTestCase):
             env['NO_PROXY'],
             'localhost,127.0.0.1,::1,imbi.test,imbi-mcp.imbi',
         )
-        # A harness log line of a failed clone.
-        logged = subject.redactor.text(
-            f'Clone of x failed: proxy {url} refused CONNECT'
-        )
-        self.assertNotIn(self.TOKEN, logged)
-        self.assertIn('[REDACTED]', logged)
 
     def test_no_proxy_settings_without_a_proxy(self) -> None:
         subject = make_runner()

@@ -336,11 +336,10 @@ class Runner:
 
     def egress_proxy(self, claim: Body) -> dict[str, str]:
         """The proxy environment, with the proxy token of the claim.
-        The redactor gets the token: logs and events never hold it."""
+        :meth:`_start` gives the token to the redactor."""
         if not self.settings.egress_proxy_url:
             return {}
         token = str(claim.get('proxy_token') or '')
-        self.redactor.add(token)
         return outbound.proxy_env(
             outbound.proxy_url(self.settings.egress_proxy_url, token),
             self.settings.api_url,

@@ -2,6 +2,8 @@
 
 import asyncio
 import base64
+import json
+import pathlib
 import socket
 import typing
 import unittest
@@ -389,7 +391,7 @@ class TunnelTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             with self.subTest(url=url, proxy=proxy):
                 made = outbound.Transport(url, egress, proxy)
-                self.assertEqual(made.tunnel is not None, tunnel)
+                self.assertEqual(made.tunneled, tunnel)
 
     async def test_direct_path_is_unchanged(self) -> None:
         made = outbound.Transport(
@@ -471,3 +473,17 @@ class TunnelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             heads[0].startswith(b'CONNECT login.internal.example:443 ')
         )
+
+
+class ContractTestCase(unittest.TestCase):
+    """The canonical host name form matches the proxy contract (C3)."""
+
+    def test_ok_targets(self) -> None:
+        path = pathlib.Path(__file__).parents[3] / 'proxy/tests/contract.json'
+        targets = json.loads(path.read_text())['targets']
+        ok = [t for t in targets if t['expect'] == 'ok']
+        self.assertTrue(ok)
+        for target in ok:
+            with self.subTest(target=target['target']):
+                host = target['target'].rpartition(':')[0]
+                self.assertEqual(outbound.canonical(host), target['host'])
