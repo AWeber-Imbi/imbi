@@ -82,7 +82,7 @@ export function EgressDestinationManagement() {
     (d) =>
       d.slug.includes(query) ||
       d.name.toLowerCase().includes(query) ||
-      d.cidrs.some((c) => c.includes(query)),
+      [...d.cidrs, ...d.hostnames].some((c) => c.includes(query)),
   )
 
   return (
@@ -131,7 +131,9 @@ export function EgressDestinationManagement() {
             header: 'CIDRs',
             key: 'cidrs',
             render: (d) => (
-              <span className="font-mono text-xs">{d.cidrs.join(', ')}</span>
+              <span className="font-mono text-xs">
+                {[...d.cidrs, ...d.hostnames].join(', ')}
+              </span>
             ),
           },
           {
