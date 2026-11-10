@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { render, screen } from '@/test/utils'
@@ -54,7 +55,10 @@ describe('Navigation', () => {
     }
     const { Navigation } = await import('../Navigation')
     render(<Navigation />)
-    expect(screen.getByText('Agents')).toBeInTheDocument()
     expect(screen.queryByText('Admin')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByText('Agents'))
+    expect(
+      await screen.findByRole('menuitem', { name: /Runners/ }),
+    ).toBeInTheDocument()
   })
 })
