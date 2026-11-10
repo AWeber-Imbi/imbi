@@ -128,8 +128,7 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-      # rust-toolchain.toml pins the version. Install it once, before
-      # moon runs the tasks in parallel.
+      # rust-toolchain.toml pins the version.
       - if: steps.changes.outputs.changed == 'true'
         working-directory: "proxy"
         run: "rustup toolchain install"
@@ -142,10 +141,15 @@ jobs:
         uses: "taiki-e/install-action@v2"
         with:
           tool: "cargo-deny"
+      # The same commands as the proxy moon tasks. In CI, `moon run`
+      # finds no task with runInCI: false, so call cargo directly.
       - if: steps.changes.outputs.changed == 'true'
-        uses: "moonrepo/setup-toolchain@v0"
-      - if: steps.changes.outputs.changed == 'true'
-        run: "moon run proxy:fmt proxy:lint proxy:test proxy:audit"
+        working-directory: "proxy"
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+          cargo deny check
   proxy-fuzz:
     # Plan 12.5, X3: 60 seconds of each fuzz target. cargo fuzz needs
     # the nightly toolchain.
