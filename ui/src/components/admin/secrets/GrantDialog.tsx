@@ -89,14 +89,21 @@ export function GrantDialog({
 
   const chosen = bindings.filter((b) => form.binding_ids.includes(b.id))
   const allowed = allowedModes(chosen)
-  // A grant can only narrow its bindings, so a change of bindings selects
-  // every mode that they all allow. Clear the ones the agents do not use.
+  // A grant can only narrow its bindings. A change of bindings keeps the
+  // selected modes that they all allow, so an edit does not widen the
+  // grant. When no selected mode is left, it selects every allowed mode.
   const setBindings = (ids: string[]) =>
-    setForm((prev) => ({
-      ...prev,
-      binding_ids: ids,
-      delivery_modes: allowedModes(bindings.filter((b) => ids.includes(b.id))),
-    }))
+    setForm((prev) => {
+      const modes = ids.length
+        ? allowedModes(bindings.filter((b) => ids.includes(b.id)))
+        : []
+      const kept = prev.delivery_modes.filter((m) => modes.includes(m))
+      return {
+        ...prev,
+        binding_ids: ids,
+        delivery_modes: kept.length ? kept : modes,
+      }
+    })
 
   const purposeOptions = [
     ...new Set([...SETUP_PURPOSES, ...purposes, ...form.purposes]),
@@ -116,6 +123,7 @@ export function GrantDialog({
     form.purposes.length > 0 &&
     form.delivery_modes.length > 0 &&
     form.delivery_modes.every((m) => allowed.includes(m)) &&
+    Number.isInteger(ttl) &&
     ttl > 0 &&
     (!someProjects || form.project_ids.length > 0)
 

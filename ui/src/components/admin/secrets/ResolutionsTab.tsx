@@ -14,6 +14,7 @@ import {
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
   SegmentedControl,
@@ -94,116 +95,123 @@ export function ResolutionsTab({ orgSlug }: { orgSlug: string }) {
           ))}
         </SegmentedControl>
       )}
-      <AdminTable<SecretResolution>
-        actions={(row) => (
-          <div className="flex gap-2">
-            <Button asChild size="sm" variant="outline">
-              <Link to={`/admin/secrets/audit?resolution=${row.id}`}>
-                History
-              </Link>
-            </Button>
-            {row.state === 'active' && (
-              <Button
-                disabled={releaseMutation.isPending}
-                onClick={() => releaseMutation.mutate(row.id)}
-                size="sm"
-                variant="outline"
-              >
-                Release
+      {resolutionsQuery.error ? (
+        <ErrorBanner
+          error={resolutionsQuery.error}
+          title="Failed to load secret resolutions"
+        />
+      ) : (
+        <AdminTable<SecretResolution>
+          actions={(row) => (
+            <div className="flex gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link to={`/admin/secrets/audit?resolution=${row.id}`}>
+                  History
+                </Link>
               </Button>
-            )}
-            {['failed', 'pending'].includes(
-              row.provider_lease.revocation_state,
-            ) && (
-              <Button
-                disabled={revokeMutation.isPending}
-                onClick={() => revokeMutation.mutate(row.id)}
-                size="sm"
-                variant="outline"
-              >
-                Revoke lease
-              </Button>
-            )}
-          </div>
-        )}
-        columns={[
-          {
-            header: 'Reference',
-            key: 'reference',
-            render: (row) => (
-              <span className="font-mono text-xs">{row.reference}</span>
-            ),
-          },
-          { header: 'Purpose', key: 'purpose', render: (row) => row.purpose },
-          { header: 'Agent', key: 'agent', render: (row) => row.agent_id },
-          {
-            header: 'Delivery',
-            key: 'delivery',
-            render: (row) =>
-              row.delivery_target
-                ? `${row.delivery_mode}: ${row.delivery_target}`
-                : row.delivery_mode,
-          },
-          {
-            header: 'State',
-            key: 'state',
-            render: (row) => (
-              <Badge
-                variant={
-                  STATE_VARIANT[row.state as keyof typeof STATE_VARIANT] ??
-                  'neutral'
-                }
-              >
-                {row.failure_reason ?? row.state}
-              </Badge>
-            ),
-          },
-          {
-            header: 'Lease',
-            key: 'lease',
-            render: (row) =>
-              row.provider_lease.revocation_state === 'not_applicable' ? (
-                <span className="text-tertiary">None</span>
-              ) : (
+              {row.state === 'active' && (
+                <Button
+                  disabled={releaseMutation.isPending}
+                  onClick={() => releaseMutation.mutate(row.id)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Release
+                </Button>
+              )}
+              {['failed', 'pending'].includes(
+                row.provider_lease.revocation_state,
+              ) && (
+                <Button
+                  disabled={revokeMutation.isPending}
+                  onClick={() => revokeMutation.mutate(row.id)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Revoke lease
+                </Button>
+              )}
+            </div>
+          )}
+          columns={[
+            {
+              header: 'Reference',
+              key: 'reference',
+              render: (row) => (
+                <span className="font-mono text-xs">{row.reference}</span>
+              ),
+            },
+            { header: 'Purpose', key: 'purpose', render: (row) => row.purpose },
+            { header: 'Agent', key: 'agent', render: (row) => row.agent_id },
+            {
+              header: 'Delivery',
+              key: 'delivery',
+              render: (row) =>
+                row.delivery_target
+                  ? `${row.delivery_mode}: ${row.delivery_target}`
+                  : row.delivery_mode,
+            },
+            {
+              header: 'State',
+              key: 'state',
+              render: (row) => (
                 <Badge
                   variant={
-                    row.provider_lease.revocation_state === 'failed'
-                      ? 'danger'
-                      : 'neutral'
+                    STATE_VARIANT[row.state as keyof typeof STATE_VARIANT] ??
+                    'neutral'
                   }
                 >
-                  {row.provider_lease.revocation_state}
+                  {row.failure_reason ?? row.state}
                 </Badge>
               ),
-          },
-          {
-            cellAlign: 'right',
-            header: 'Used',
-            headerAlign: 'right',
-            key: 'used',
-            render: (row) =>
-              `${row.materialization_count}/${row.materialization_limit}`,
-          },
-          {
-            header: 'Created',
-            key: 'created',
-            render: (row) => <RelativeTime value={row.created_at} />,
-          },
-          {
-            header: 'Expires',
-            key: 'expires',
-            render: (row) => <RelativeTime value={row.expires_at} />,
-          },
-        ]}
-        emptyMessage={
-          state === 'active' && !resolutionId
-            ? 'No active secret resolutions.'
-            : 'No secret resolutions.'
-        }
-        getRowKey={(row) => row.id}
-        loading={resolutionsQuery.isLoading}
-        rows={resolutionsQuery.data ?? []}
-      />
+            },
+            {
+              header: 'Lease',
+              key: 'lease',
+              render: (row) =>
+                row.provider_lease.revocation_state === 'not_applicable' ? (
+                  <span className="text-tertiary">None</span>
+                ) : (
+                  <Badge
+                    variant={
+                      row.provider_lease.revocation_state === 'failed'
+                        ? 'danger'
+                        : 'neutral'
+                    }
+                  >
+                    {row.provider_lease.revocation_state}
+                  </Badge>
+                ),
+            },
+            {
+              cellAlign: 'right',
+              header: 'Used',
+              headerAlign: 'right',
+              key: 'used',
+              render: (row) =>
+                `${row.materialization_count}/${row.materialization_limit}`,
+            },
+            {
+              header: 'Created',
+              key: 'created',
+              render: (row) => <RelativeTime value={row.created_at} />,
+            },
+            {
+              header: 'Expires',
+              key: 'expires',
+              render: (row) => <RelativeTime value={row.expires_at} />,
+            },
+          ]}
+          emptyMessage={
+            state === 'active' && !resolutionId
+              ? 'No active secret resolutions.'
+              : 'No secret resolutions.'
+          }
+          getRowKey={(row) => row.id}
+          loading={resolutionsQuery.isLoading}
+          rows={resolutionsQuery.data ?? []}
+        />
+      )}
     </div>
   )
 }

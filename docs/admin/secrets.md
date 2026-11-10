@@ -154,7 +154,7 @@ A binding gives one AWS secret a reference in Imbi.
    runner uses (see [Purposes](#purposes)).
 8. Optional: in **Allowed delivery targets**, list the environment variable
    names that may receive the value, for example `GRAFANA_TOKEN`.
-9. Click **Save**.
+9. Click **Create binding**.
 
 Click **Validate** on the binding row to check that the role can see the
 AWS secret.
@@ -203,9 +203,10 @@ The two lists control different things:
   grant can give agent A `environment`, and a second grant can give
   agent B only `file_descriptor`.
 
-When you select bindings in the grant form, Imbi selects each mode that
-all of them allow. A mode that a selected binding does not allow is
-disabled. Clear the modes that the agents do not use.
+When you change the bindings in the grant form, Imbi keeps each selected
+mode that all of them allow. When no selected mode is left, Imbi selects
+each mode that all of them allow. A mode that a selected binding does not
+allow is disabled. Clear the modes that the agents do not use.
 
 ## Purposes
 
