@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/segmented-control'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
+import { ResolutionChip } from './controls'
 import type { SecretResolution } from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
@@ -75,15 +76,11 @@ export function ResolutionsTab({ orgSlug }: { orgSlug: string }) {
   return (
     <div className="space-y-4">
       {resolutionId ? (
-        <Button
-          onClick={() => setParams({})}
-          size="sm"
+        <ResolutionChip
+          id={resolutionId}
+          onClear={() => setParams({})}
           title="Show all resolutions"
-          variant="outline"
-        >
-          Resolution{' '}
-          <span className="font-mono">{resolutionId.slice(0, 8)}</span> ×
-        </Button>
+        />
       ) : (
         <SegmentedControl
           ariaLabel="State"
@@ -91,8 +88,8 @@ export function ResolutionsTab({ orgSlug }: { orgSlug: string }) {
           value={state}
         >
           {[...STATES, 'all'].map((s) => (
-            <SegmentedControlItem key={s} value={s}>
-              {s[0].toUpperCase() + s.slice(1)}
+            <SegmentedControlItem className="capitalize" key={s} value={s}>
+              {s}
             </SegmentedControlItem>
           ))}
         </SegmentedControl>

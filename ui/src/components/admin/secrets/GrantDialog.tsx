@@ -12,11 +12,13 @@ import {
 } from '@/components/ui/dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
 import { Chip, ChipGroup } from './controls'
 import {
+  changedFields,
   DELIVERY_MODES,
   duration,
   PURPOSE_PATTERN,
@@ -129,13 +131,7 @@ export function GrantDialog({
     const description = form.description.trim()
     if (description || original) body.description = description
     if (!original) return onSubmit(body)
-    const changed = Object.fromEntries(
-      Object.entries(body).filter(
-        ([key, value]) =>
-          JSON.stringify(value) !==
-          JSON.stringify(original[key as keyof SecretGrant]),
-      ),
-    )
+    const changed = changedFields(body, original)
     if (!Object.keys(changed).length) return onClose()
     onSubmit(changed)
   }
@@ -388,7 +384,7 @@ function Picker({
     <fieldset className={cn('min-w-0', tall && 'flex min-h-0 flex-1 flex-col')}>
       <legend className="mb-2 flex w-full justify-between text-sm font-medium">
         <span>
-          {label} <span className="text-destructive">*</span>
+          {label} <RequiredAsterisk />
         </span>
         <span className="text-tertiary font-normal">
           {selected.length} of {options.length}

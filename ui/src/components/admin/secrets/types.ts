@@ -59,6 +59,19 @@ export const duration = (seconds: number) =>
  * JSON with sorted object keys, and without empty-list properties, so that
  * key order and an absent list do not count as a change.
  */
+/** The fields of `body` that differ from `original`, by `canonical`. */
+export const changedFields = (
+  body: Record<string, unknown>,
+  original: object,
+) =>
+  Object.fromEntries(
+    Object.entries(body).filter(
+      ([key, value]) =>
+        canonical(value) !==
+        canonical((original as Record<string, unknown>)[key] ?? null),
+    ),
+  )
+
 export const canonical = (value: unknown): string =>
   JSON.stringify(value, (_key, val: unknown) =>
     val && typeof val === 'object' && !Array.isArray(val)

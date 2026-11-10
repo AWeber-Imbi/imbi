@@ -133,10 +133,10 @@ describe('SecretsManagement', () => {
       } as never,
     ])
     renderAt('/admin/secrets/resolutions')
-    expect(await screen.findByText('failed')).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Revoke lease' }),
+      await screen.findByRole('button', { name: 'Revoke lease' }),
     ).toBeInTheDocument()
+    expect(screen.getAllByText('failed')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Release' })).toBeNull()
   })
 
@@ -172,7 +172,7 @@ describe('SecretsManagement', () => {
     fireEvent.click(await screen.findByRole('combobox', { name: 'Category' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Resolutions' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Result' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Denied' }))
+    fireEvent.click(await screen.findByRole('option', { name: /denied/i }))
     await waitFor(() =>
       expect(listSecretAuditEvents).toHaveBeenLastCalledWith(
         'acme',
@@ -214,7 +214,7 @@ describe('SecretsManagement', () => {
       'active',
       expect.anything(),
     )
-    fireEvent.click(screen.getByRole('radio', { name: 'All' }))
+    fireEvent.click(screen.getByRole('radio', { name: /all/i }))
     await waitFor(() =>
       expect(listSecretResolutions).toHaveBeenLastCalledWith(
         'acme',

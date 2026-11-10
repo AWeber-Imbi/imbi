@@ -1,3 +1,9 @@
+/** A field kind that the form can draw: text, or a list of text. */
+/** A schema that the form can draw: it has properties. */
+export type DrawableSchema = ObjectSchema & {
+  properties: Record<string, SchemaField>
+}
+
 export interface ObjectSchema {
   properties?: Record<string, SchemaField>
   required?: string[]
@@ -13,7 +19,6 @@ export interface SchemaField {
   type?: string
 }
 
-/** A field kind that the form can draw: text, or a list of text. */
 export const fieldKind = (field: SchemaField) => {
   const type = field.type ?? field.anyOf?.find((t) => t.type !== 'null')?.type
   if (type === 'string') return 'text'
@@ -27,7 +32,7 @@ export const drawable = (schema: unknown) => {
   return props &&
     Object.keys(props).length &&
     Object.values(props).every(fieldKind)
-    ? (schema as ObjectSchema & { properties: Record<string, SchemaField> })
+    ? (schema as DrawableSchema)
     : null
 }
 

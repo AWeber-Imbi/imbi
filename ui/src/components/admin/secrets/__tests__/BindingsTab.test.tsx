@@ -7,7 +7,6 @@ import {
   listSecretBindings,
   listSecretProviders,
   listSecretProviderTypes,
-  listTokenExchangers,
   updateSecretBinding,
 } from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
@@ -22,7 +21,6 @@ vi.mock('@/api/endpoints', () => ({
   listSecretBindings: vi.fn(),
   listSecretProviders: vi.fn(),
   listSecretProviderTypes: vi.fn(),
-  listTokenExchangers: vi.fn(),
   updateSecretBinding: vi.fn(),
   validateSecretBinding: vi.fn(),
 }))
@@ -59,9 +57,6 @@ describe('BindingsTab', () => {
       { config: {}, id: 'aws', name: 'aws', type: 'aws_secrets_manager' },
       { config: {}, id: 'gh', name: 'github', type: 'github_app' },
     ] as never)
-    vi.mocked(listTokenExchangers).mockResolvedValue([
-      { label: 'Acme AI', target_help: '{"acme_id": "..."}', vendor: 'acme' },
-    ])
     vi.mocked(updateSecretBinding).mockResolvedValue({} as never)
     vi.mocked(checkSecretLocator).mockResolvedValue(undefined)
     vi.mocked(listSecretProviderTypes).mockResolvedValue([])

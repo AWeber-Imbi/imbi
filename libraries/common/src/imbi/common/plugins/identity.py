@@ -275,8 +275,7 @@ class WifSecretProvider(secrets.SecretProvider):
     config_model = secrets.NoConfig
 
     def locator_schema(self) -> dict[str, typing.Any] | None:
-        model = self.exchanger.target_model
-        return None if model is None else model.model_json_schema()
+        return secrets.json_schema(self.exchanger.target_model)
 
     def validate_config(
         self, config: dict[str, typing.Any]

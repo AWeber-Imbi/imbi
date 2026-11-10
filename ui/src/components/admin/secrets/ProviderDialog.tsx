@@ -23,7 +23,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { Field, SchemaEditor } from './controls'
 import { jsonObject, type ObjectSchema } from './schema'
 import {
-  canonical,
+  changedFields,
   type SecretProvider,
   type SecretProviderType,
 } from './types'
@@ -71,12 +71,7 @@ export function ProviderDialog({
   const submit = () => {
     const body = { config: noConfig ? {} : parsed, name }
     if (!original) return onSubmit({ ...body, type })
-    const changed = Object.fromEntries(
-      Object.entries(body).filter(
-        ([key, value]) =>
-          canonical(value) !== canonical(original[key as keyof SecretProvider]),
-      ),
-    )
+    const changed = changedFields(body, original)
     if (!Object.keys(changed).length) return onClose()
     onSubmit(changed)
   }

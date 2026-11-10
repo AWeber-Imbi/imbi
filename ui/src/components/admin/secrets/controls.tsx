@@ -1,17 +1,13 @@
 import { type ReactNode, useState } from 'react'
 
 import { toTitleCase } from '@/components/admin/blueprints/blueprint-schema-utils'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import {
-  drawable,
-  fieldKind,
-  jsonObject,
-  type ObjectSchema,
-  type SchemaField,
-} from './schema'
+import { drawable, type DrawableSchema, fieldKind, jsonObject } from './schema'
 
 /** A toggle button made from a hidden checkbox, so a label finds it. */
 export function Chip({
@@ -63,7 +59,7 @@ export function ChipGroup({
   return (
     <fieldset>
       <legend className="mb-2 text-sm font-medium">
-        {label} {required && <span className="text-destructive">*</span>}
+        {label} {required && <RequiredAsterisk />}
         {hint && <span className="text-tertiary ml-2 font-normal">{hint}</span>}
       </legend>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
@@ -90,7 +86,12 @@ export function Field({
     <div className="min-w-0 space-y-1.5">
       <label className="block text-sm font-medium" htmlFor={htmlFor}>
         {label}
-        {required && <span className="text-destructive"> *</span>}
+        {required && (
+          <>
+            {' '}
+            <RequiredAsterisk />
+          </>
+        )}
         {optional && (
           <span className="text-secondary font-normal"> (optional)</span>
         )}
@@ -101,6 +102,23 @@ export function Field({
   )
 }
 
+/** The filter on one resolution, with a button that clears it. */
+export function ResolutionChip({
+  id,
+  onClear,
+  title,
+}: {
+  id: string
+  onClear: () => void
+  title: string
+}) {
+  return (
+    <Button onClick={onClear} size="sm" title={title} variant="outline">
+      Resolution <span className="font-mono">{id.slice(0, 8)}</span> ×
+    </Button>
+  )
+}
+
 /**
  * A boxed JSON object, edited as fields when the schema allows it, or
  * as JSON text. `text` is the source of truth, so both modes agree.
@@ -108,7 +126,6 @@ export function Field({
 // fallow-ignore-next-line complexity
 export function SchemaEditor({
   error,
-  help,
   hint,
   id,
   label,
@@ -117,8 +134,6 @@ export function SchemaEditor({
   text,
 }: {
   error?: string
-  /** Help under the JSON text when there is no schema. */
-  help?: string
   hint: string
   id: string
   label: string
@@ -144,7 +159,7 @@ export function SchemaEditor({
           className="text-sm font-medium"
           htmlFor={showFields ? undefined : id}
         >
-          {label} <span className="text-destructive">*</span>{' '}
+          {label} <RequiredAsterisk />{' '}
           <span className="text-secondary font-normal">{hint}</span>
         </label>
         {schema && (
@@ -177,8 +192,8 @@ export function SchemaEditor({
           />
         )}
         {error && <p className="text-destructive text-xs">{error}</p>}
-        {!showFields && (keys || help) && (
-          <p className="text-secondary text-xs">{keys || help}</p>
+        {!showFields && keys && (
+          <p className="text-secondary text-xs">{keys}</p>
         )}
       </div>
     </fieldset>
@@ -253,7 +268,7 @@ function SchemaFields({
 }: {
   idPrefix: string
   onChange: (value: Record<string, unknown>) => void
-  schema: ObjectSchema & { properties: Record<string, SchemaField> }
+  schema: DrawableSchema
   value: Record<string, unknown>
 }) {
   const setKey = (key: string, next: string | string[]) => {

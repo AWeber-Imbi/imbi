@@ -347,6 +347,11 @@ class NoConfig(pydantic.BaseModel):
 _Model = type[pydantic.BaseModel]
 
 
+def json_schema(model: _Model | None) -> dict[str, typing.Any] | None:
+    """Return the JSON Schema of ``model``, or ``None`` without one."""
+    return None if model is None else model.model_json_schema()
+
+
 class SecretProvider:
     """The provider contract.
 
@@ -373,13 +378,11 @@ class SecretProvider:
 
     def config_schema(self) -> dict[str, typing.Any] | None:
         """Return the JSON Schema of the configuration, or ``None``."""
-        model = self.config_model
-        return None if model is None else model.model_json_schema()
+        return json_schema(self.config_model)
 
     def locator_schema(self) -> dict[str, typing.Any] | None:
         """Return the JSON Schema of a locator, or ``None``."""
-        model = self.locator_model
-        return None if model is None else model.model_json_schema()
+        return json_schema(self.locator_model)
 
     def validate_config(
         self, config: dict[str, typing.Any]

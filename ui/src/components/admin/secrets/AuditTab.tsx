@@ -7,7 +7,6 @@ import { useQuery } from '@tanstack/react-query'
 import { listSecretAuditEvents } from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
@@ -18,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+import { ResolutionChip } from './controls'
 import { AUDIT_CATEGORIES, type SecretAuditEvent } from './types'
 
 const RESULT_VARIANT = {
@@ -71,15 +71,11 @@ export function AuditTab({ orgSlug }: { orgSlug: string }) {
           value={result}
         />
         {resolutionId && (
-          <Button
-            onClick={() => setParams({})}
-            size="sm"
+          <ResolutionChip
+            id={resolutionId}
+            onClear={() => setParams({})}
             title="Show the events of all resolutions"
-            variant="outline"
-          >
-            Resolution{' '}
-            <span className="font-mono">{resolutionId.slice(0, 8)}</span> ×
-          </Button>
+          />
         )}
       </div>
       {auditQuery.error ? (
@@ -168,7 +164,7 @@ function FilterSelect({
         <SelectItem value={ALL}>{all}</SelectItem>
         {options.map((o) => (
           <SelectItem key={o} value={o}>
-            {o[0].toUpperCase() + o.slice(1)}
+            <span className="capitalize">{o}</span>
           </SelectItem>
         ))}
       </SelectContent>

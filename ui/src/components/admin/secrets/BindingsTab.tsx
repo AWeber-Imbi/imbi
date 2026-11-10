@@ -9,7 +9,6 @@ import {
   listSecretBindings,
   listSecretProviders,
   listSecretProviderTypes,
-  listTokenExchangers,
   updateSecretBinding,
   validateSecretBinding,
 } from '@/api/endpoints'
@@ -53,10 +52,6 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   const typesQuery = useQuery({
     queryFn: ({ signal }) => listSecretProviderTypes(orgSlug, signal),
     queryKey: ['secret-provider-types', orgSlug],
-  })
-  const exchangersQuery = useQuery({
-    queryFn: ({ signal }) => listTokenExchangers(orgSlug, signal),
-    queryKey: ['token-exchangers', orgSlug],
   })
   const providerNames = new Map(
     (providersQuery.data ?? []).map((p) => [p.id, p.name]),
@@ -254,7 +249,6 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
             })
             .map((b) => ({ label: b.reference, value: b.id }))}
           error={saveMutation.error}
-          exchangers={exchangersQuery.data ?? []}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>

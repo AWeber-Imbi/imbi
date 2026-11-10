@@ -33,7 +33,7 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { Chip, ChipGroup, Field, SchemaEditor, TagInput } from './controls'
 import { drawable, jsonObject } from './schema'
 import {
-  canonical,
+  changedFields,
   CREDENTIAL_CLASSES,
   DELIVERY_MODES,
   duration,
@@ -41,7 +41,6 @@ import {
   type SecretProvider,
   type SecretProviderType,
   titleList,
-  type TokenExchangerType,
 } from './types'
 
 const PREFIX = 'secret://'
@@ -57,7 +56,6 @@ interface BindingDialogProps {
   /** The github_app bindings that can sign with this key. */
   consumers: { label: string; value: string }[]
   error?: unknown
-  exchangers: TokenExchangerType[]
   isPending: boolean
   onClose: () => void
   onSubmit: (body: Record<string, unknown>) => void
@@ -79,7 +77,6 @@ interface KeyUsage {
 export function BindingDialog({
   consumers,
   error,
-  exchangers,
   isPending,
   onClose,
   onSubmit,
@@ -136,10 +133,6 @@ export function BindingDialog({
     form.credential_class,
     form.locator,
   )
-  // Help for a provider type without a schema: its exchanger help.
-  const help = exchangers.find(
-    (e) => `${e.vendor}_wif` === provider?.type,
-  )?.target_help
 
   // The main id of the locator, such as an AWS secret_id, for the summary.
   const where = schema?.required
@@ -193,13 +186,7 @@ export function BindingDialog({
       }
       return onSubmit({ ...body, provider_id: form.provider_id, reference })
     }
-    const changed = Object.fromEntries(
-      Object.entries(body).filter(
-        ([key, value]) =>
-          canonical(value) !==
-          canonical(original[key as keyof SecretBinding] ?? null),
-      ),
-    )
+    const changed = changedFields(body, original)
     if (!Object.keys(changed).length) return onClose()
     onSubmit(changed)
   }
@@ -296,7 +283,6 @@ export function BindingDialog({
           </div>
           <SchemaEditor
             error={locator.error}
-            help={help}
             hint={
               provider
                 ? `where the secret lives in ${typeLabel(provider.type)}`
