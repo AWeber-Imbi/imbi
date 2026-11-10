@@ -102,9 +102,9 @@ export function AccessTab({
           })
         : createSecretGrant(orgSlug, body),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Access granted')
-      void queryClient.invalidateQueries({
+      await queryClient.invalidateQueries({
         queryKey: ['secret-grants', orgSlug],
       })
     },
