@@ -253,6 +253,7 @@ unset.
 | `IMBI_AI_PROVIDER_API` | str | `''` | Id of the Anthropic AI provider (workload identity) of the imbi-api client. Empty: `ANTHROPIC_API_KEY`. |
 | `IMBI_AI_PROVIDER_ASSISTANT` | str | `''` | Id of the AI provider whose token imbi-assistant gets |
 | `IMBI_AI_PROVIDER_SLACKBOT` | str | `''` | Id of the AI provider whose token imbi-slackbot gets |
+| `IMBI_HARNESS_EGRESS_PROXY_SECRET` | SecretStr | `''` | HS256 key that signs the proxy token of a runner claim. The egress proxy has the same key. Unset: no claim gets a proxy token, so host name egress destinations do not work. See [Agent runners](../deployment/agent-runners.md#host-name-destinations). |
 | `IMBI_GATEWAY_API_TOKEN` | str | none | `imbi-api setup` and `setup-service-accounts` store this value as the API key of the `imbi-gateway` service account. Unset, they generate one and print it. |
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | `setup` stores this pair as the client credential of the `imbi-scheduler` service account. Unset, it generates a pair and prints it. |
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | str | none | See `IMBI_SCHEDULER_SA_CLIENT_ID`. |
@@ -268,7 +269,6 @@ unset.
 | `MAILPIT_SMTP_PORT` | str | none | In development, with the default SMTP host and port, use this port and no TLS (Mailpit) |
 | `IMBI_SECRETS_AWS_ENDPOINT_URL` | str | none | AWS endpoint of the secrets broker, for LocalStack. Unset: AWS. |
 | `IMBI_SECRETS_GITHUB_GHES_HOSTS` | str | `''` | Comma-separated GitHub Enterprise Server hosts that a GitHub App binding can use |
-| `IMBI_HARNESS_EGRESS_PROXY_SECRET` | str | none | HS256 key that signs the proxy token of a runner claim. The egress proxy has the same key. Unset: no claim gets a proxy token, so host name egress destinations do not work. See [Agent runners](../deployment/agent-runners.md#host-name-destinations). |
 
 ### imbi-assistant
 

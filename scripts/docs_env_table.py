@@ -74,6 +74,7 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
             api_settings.IggyConnectors,
             api_settings.InternalServices,
             api_settings.AIProviders,
+            api_settings.HarnessEgressProxy,
         ],
         # The secret providers of the plugins run in imbi-api.
         ['apps/api/src', 'plugins/aws/src', 'plugins/github/src'],
@@ -376,6 +377,11 @@ DESCRIPTIONS: dict[str, str] = {
     'imbi-assistant gets',
     'IMBI_AI_PROVIDER_SLACKBOT': 'Id of the AI provider whose token '
     'imbi-slackbot gets',
+    'IMBI_HARNESS_EGRESS_PROXY_SECRET': 'HS256 key that signs the proxy '
+    'token of a runner claim. The egress proxy has the same key. Unset: no '
+    'claim gets a proxy token, so host name egress destinations do not '
+    'work. See [Agent runners](../deployment/agent-runners.md'
+    '#host-name-destinations).',
     # Other services
     'IMBI_INTERNAL_API_URL': 'In-cluster origin of imbi-api',
     'IMBI_INTERNAL_UI_URL': 'In-cluster UI URL for `llms.txt`. Unset: '
