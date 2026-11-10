@@ -134,6 +134,11 @@ jobs:
         working-directory: "proxy"
         run: "rustup toolchain install"
       - if: steps.changes.outputs.changed == 'true'
+        uses: "Swatinem/rust-cache@v2"
+        with:
+          workspaces: "proxy"
+      # install-action installs prebuilt binaries, not a cargo build.
+      - if: steps.changes.outputs.changed == 'true'
         uses: "taiki-e/install-action@v2"
         with:
           tool: "cargo-deny"
@@ -153,6 +158,10 @@ jobs:
         with:
           persist-credentials: false
       - run: "rustup toolchain install nightly --profile minimal"
+      - uses: "Swatinem/rust-cache@v2"
+        with:
+          workspaces: "proxy/fuzz"
+          key: "fuzz"
       - uses: "taiki-e/install-action@v2"
         with:
           tool: "cargo-fuzz"
