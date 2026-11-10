@@ -164,8 +164,7 @@ The runner never gets a secret value from imbi-api directly:
 The runner's own setup secrets use the same path, with the purposes
 `model_inference`, `workspace_checkout`, and `marketplace_fetch`. The
 executor gives them to the runner on a file descriptor, never to a model
-command. The runner still accepts the `mcp_server` purpose until the
-broker drops it, but no runner code requests it. See [Secrets](../admin/secrets.md) and
+command. See [Secrets](../admin/secrets.md) and
 [Secrets broker](security.md#secrets-broker).
 
 ## 6. Events and usage

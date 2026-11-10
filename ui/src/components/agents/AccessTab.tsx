@@ -285,8 +285,8 @@ function AgentSecrets({
       {runnerRows.length > 0 && (
         <>
           <p className="text-tertiary mt-2 text-xs">
-            Used by the runner for the agent, never given to it: the model key,
-            MCP server credentials.
+            Used by the runner for the agent, never given to it: the model key
+            and the repository tokens.
           </p>
           <GrantTable rows={runnerRows} />
         </>

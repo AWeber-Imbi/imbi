@@ -35,7 +35,6 @@ export const CREDENTIAL_CLASSES = ['static', 'rotated', 'dynamic'] as const
  */
 export const SETUP_PURPOSES = [
   'marketplace_fetch',
-  'mcp_server',
   'model_inference',
   'workspace_checkout',
 ] as const

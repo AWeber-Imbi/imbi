@@ -384,6 +384,22 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             ctx.exception.reason, 'setup_purpose_file_descriptor_only'
         )
 
+    async def test_retired_purpose_is_refused(self) -> None:
+        for mode, target in (
+            ('environment', 'MCP_TOKEN'),
+            ('file_descriptor', '3'),
+        ):
+            with self.subTest(mode=mode):
+                error = await self._denied(
+                    'secret_access_denied',
+                    request=self.request(
+                        purpose='mcp_server',
+                        delivery_mode=mode,
+                        delivery_target=target,
+                    ),
+                )
+                self.assertEqual(error.reason, 'retired_purpose')
+
     async def test_delivery_mode_and_ttl_limits(self) -> None:
         await self._denied(
             'delivery_mode_not_allowed',
