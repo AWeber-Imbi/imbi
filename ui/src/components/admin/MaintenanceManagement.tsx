@@ -31,12 +31,6 @@ export function MaintenanceManagement() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-primary text-2xl font-semibold tracking-tight">
-          Maintenance
-        </h1>
-      </div>
-
       <Tabs
         onValueChange={(value) =>
           navigate(

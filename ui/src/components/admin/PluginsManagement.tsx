@@ -84,15 +84,10 @@ export function PluginsManagement() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-primary text-2xl font-semibold tracking-tight">
-          Plugins
-        </h1>
-        <p className="text-secondary mt-1 text-sm">
-          Installed plugin packages. Plugins are installed with the server
-          deployment — there is no install or uninstall from here.
-        </p>
-      </div>
+      <p className="text-secondary text-sm">
+        Installed plugin packages. Plugins are installed with the server
+        deployment — there is no install or uninstall from here.
+      </p>
 
       {isError ? (
         <Card>
