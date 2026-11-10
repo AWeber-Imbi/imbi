@@ -74,6 +74,27 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## 2.45.0
+
+No setup command is required. imbi-api adds the `hostnames` column of
+`harness.egress_destinations` when it starts.
+
+1. **The `imbi-harness` chart in `deployment` mode needs Kubernetes 1.32
+   or later.** Admission policies now let a runner delete and patch only
+   its own pod. Check the cluster version before you upgrade the chart.
+2. The egress proxy for host name egress destinations is optional and
+   off. To turn it on, follow
+   [Agent runners](agent-runners.md): put the token key in a Secret, set
+   `egressProxy.enabled` and `egressProxy.secret.existingSecret` in every
+   harness release, and set `IMBI_HARNESS_EGRESS_PROXY_SECRET` on imbi-api
+   to the same key. To roll back, set `egressProxy.enabled: false` in
+   every release.
+3. The MCP servers in **Admin > Assistant** no longer reach agents, and
+   the `mcp_server` secret purpose is retired. The broker refuses each
+   request for it. Optionally, delete the grants that still name
+   `mcp_server` in **Admin > Secrets**, and switch off agent tools such as
+   `zoekt.*` under **Not in the catalog** on the agent **Tools** tab.
+
 ## 2.44.0
 
 imbi-api, imbi-assistant, and imbi-slackbot can use the short-lived token
