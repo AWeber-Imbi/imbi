@@ -178,16 +178,21 @@ class Grant(pydantic.BaseModel):
 
 
 def proxy_cidrs(egress: list[Grant]) -> list[dict[str, typing.Any]]:
-    """The ``cidrs`` claim of a proxy token: each CIDR of ``egress``
-    with the TCP ports of its grants, ports sorted and unique, entries
-    in network order. A CIDR with only UDP ports is not in it."""
+    """The ``cidrs`` claim of a proxy token. Each CIDR of ``egress``
+    gets the union of the TCP ports of its grants. The CIDRs with the
+    same ports make one ``{"nets", "ports"}`` entry, so the token stays
+    small: nets in network order, ports sorted, entries sorted by
+    ports. A CIDR with only UDP ports is not in it."""
     ports: dict[ipaddress.IPv4Network, set[int]] = {}
     for grant in egress:
         tcp = {p.port for p in grant.ports if p.protocol == 'TCP'}
         for cidr in grant.cidrs if tcp else ():
             ports.setdefault(ipaddress.IPv4Network(cidr), set()).update(tcp)
+    groups: dict[tuple[int, ...], list[str]] = {}
+    for net in sorted(ports):
+        groups.setdefault(tuple(sorted(ports[net])), []).append(str(net))
     return [
-        {'net': str(net), 'ports': sorted(ports[net])} for net in sorted(ports)
+        {'nets': groups[key], 'ports': list(key)} for key in sorted(groups)
     ]
 
 

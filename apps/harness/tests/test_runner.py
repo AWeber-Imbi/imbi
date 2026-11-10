@@ -281,13 +281,23 @@ class EgressProxyTestCase(unittest.IsolatedAsyncioTestCase):
 
     TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJjaGFpbiI6ImMifQ.c2lnbmF0dXJlLXZhbHVl'
 
-    async def test_claim_sends_the_pod_uid(self) -> None:
-        subject = make_runner(pod_uid='0f6c-uid')
-        subject.api = mock.AsyncMock(spec=api.Api)
-        await subject._claim()
-        subject.api.claim.assert_awaited_once_with(
-            '', '', runner.CLAIM_WAIT, '0f6c-uid'
-        )
+    async def test_claim_sends_the_pod_uid_only_with_the_proxy(self) -> None:
+        for proxy_url, pod in (
+            ('http://imbi-egress-proxy:3128', '0f6c-uid'),
+            (None, None),
+        ):
+            with self.subTest(proxy_url=proxy_url):
+                subject = make_runner(
+                    pod_uid='0f6c-uid', egress_proxy_url=proxy_url
+                )
+                subject.api = mock.AsyncMock(spec=api.Api)
+                subject.api.chain_claim.return_value = None
+                await subject._claim()
+                subject.api.claim.assert_awaited_once_with(
+                    '', '', runner.CLAIM_WAIT, pod
+                )
+                await subject.run_child('T-1')
+                subject.api.chain_claim.assert_awaited_with('', '', pod)
 
     def test_proxy_env_with_the_token(self) -> None:
         subject = make_runner(

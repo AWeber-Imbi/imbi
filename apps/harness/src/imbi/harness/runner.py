@@ -373,12 +373,18 @@ class Runner:
         if workspace.exists():
             LOGGER.error('Could not remove %s', workspace)
 
+    @property
+    def claim_pod(self) -> str | None:
+        """The pod uid for a claim, only with the egress proxy: without
+        it, the claim gets no proxy token, so it cannot fail on its
+        size."""
+        return (
+            self.settings.pod_uid if self.settings.egress_proxy_url else None
+        )
+
     async def _claim(self) -> Body | None:
         return await self.api.claim(
-            self.runner_id,
-            self.runner_token,
-            CLAIM_WAIT,
-            self.settings.pod_uid,
+            self.runner_id, self.runner_token, CLAIM_WAIT, self.claim_pod
         )
 
     def _write_credential(self, name: str, value: str) -> None:
@@ -490,7 +496,7 @@ class Runner:
         async with self.claiming:
             while short_id not in self.runs:
                 claim = await self.api.chain_claim(
-                    self.runner_id, self.runner_token, self.settings.pod_uid
+                    self.runner_id, self.runner_token, self.claim_pod
                 )
                 if claim is None:
                     return {'short_id': short_id, 'status': 'not_claimed'}
