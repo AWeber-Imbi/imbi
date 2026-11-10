@@ -955,6 +955,22 @@ def _unknown_bindings() -> fastapi.HTTPException:
     return _invalid('A binding is not in the organization')
 
 
+def _check_setup_delivery(
+    purposes: abc.Iterable[str], delivery_modes: abc.Iterable[str]
+) -> None:
+    """Raise 422 when a grant gives a setup purpose with a delivery
+    mode other than ``file_descriptor``. The broker refuses such a
+    request anyway, so the grant could never be used."""
+    setup = sorted(set(purposes) & broker.SETUP_PURPOSES)
+    if setup and set(delivery_modes) != {'file_descriptor'}:
+        raise _invalid(
+            f'The purposes {", ".join(setup)} are for the runner only: '
+            'their grant needs the delivery mode file_descriptor and no '
+            'other',
+            'setup_purpose_file_descriptor_only',
+        )
+
+
 @grants_router.get('/', response_model=list[SecretGrant])
 async def list_grants(
     org_id: OrgId, secrets: secret_broker.Store, _: GrantRead
@@ -972,9 +988,11 @@ async def create_grant(
     """Create an allow rule with exact ids.
 
     Raises:
-        422: A binding is not in the organization.
+        422: A binding is not in the organization, or a setup purpose
+            has a delivery mode other than ``file_descriptor``.
 
     """
+    _check_setup_delivery(data.purposes, data.delivery_modes)
     try:
         row = await secrets.create(
             'grants',
@@ -1044,12 +1062,21 @@ async def update_grant(
 
     Raises:
         404: No such grant.
-        422: A binding is not in the organization.
+        422: A binding is not in the organization, or a setup purpose
+            has a delivery mode other than ``file_descriptor``.
 
     """
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
     if not changes:
         return await get_grant(org_id, grant_id, secrets, auth)
+    if 'purposes' in changes or 'delivery_modes' in changes:
+        current = changes
+        if not {'purposes', 'delivery_modes'} <= changes.keys():
+            current = await get_grant(org_id, grant_id, secrets, auth)
+        _check_setup_delivery(
+            changes.get('purposes', current['purposes']),
+            changes.get('delivery_modes', current['delivery_modes']),
+        )
     try:
         row = await fetch_or_404(
             secrets.update,
