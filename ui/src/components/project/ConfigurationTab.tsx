@@ -639,11 +639,14 @@ export function ConfigurationTab({
         </div>
       )}
 
+      {/* Group sets an inline `height: 100%`, which beats a height class,
+          so the viewport height goes through `style`. */}
       <Group
-        className="border-primary bg-primary h-[calc(100dvh-460px)] min-h-80 overflow-hidden rounded-lg border"
+        className="border-primary bg-primary min-h-80 overflow-hidden rounded-lg border"
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
         orientation="horizontal"
+        style={{ height: 'calc(100dvh - 22rem)' }}
       >
         {/* LEFT pane: filter + key list */}
         <Panel
