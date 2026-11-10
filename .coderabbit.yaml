@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Use the organization settings for every key not set here.
+inheritance: true
+reviews:
+  pre_merge_checks:
+    docstrings:
+      # Quoted: a bare off is a YAML boolean.
+      mode: "off"
+  finishing_touches:
+    docstrings:
+      enabled: false
