@@ -302,6 +302,38 @@ class EgressProxyTestCase(unittest.IsolatedAsyncioTestCase):
             'localhost,127.0.0.1,::1,imbi.test,imbi-mcp.imbi',
         )
 
+    def test_cidr_destination_with_the_proxy(self) -> None:
+        # An IP literal in a CIDR destination goes direct; a name of it
+        # goes through the proxy, which allows the CIDR of the token.
+        subject = make_runner(egress_proxy_url='http://imbi-egress-proxy:3128')
+        env = subject.egress_proxy(
+            {
+                'proxy_token': self.TOKEN,
+                'egress': [
+                    {
+                        'slug': 'db',
+                        'cidrs': ['10.20.0.0/16', '10.30.1.0/24'],
+                        'hostnames': [],
+                        'ports': [{'port': 5432, 'protocol': 'TCP'}],
+                    },
+                    {
+                        'slug': 'git',
+                        'cidrs': [],
+                        'hostnames': ['git.example.com'],
+                        'ports': [{'port': 443, 'protocol': 'TCP'}],
+                    },
+                ],
+            }
+        )
+        self.assertEqual(
+            env['HTTPS_PROXY'],
+            f'http://chain:{self.TOKEN}@imbi-egress-proxy:3128',
+        )
+        self.assertEqual(env['NO_PROXY'], env['no_proxy'])
+        excluded = env['NO_PROXY'].split(',')
+        self.assertEqual(excluded[-2:], ['10.20.0.0/16', '10.30.1.0/24'])
+        self.assertNotIn('git.example.com', excluded)
+
     def test_no_proxy_settings_without_a_proxy(self) -> None:
         subject = make_runner()
         self.assertEqual(subject.egress_proxy({'proxy_token': 't'}), {})

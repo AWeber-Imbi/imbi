@@ -177,6 +177,20 @@ class Grant(pydantic.BaseModel):
     hostnames: list[str] = []
 
 
+def proxy_cidrs(egress: list[Grant]) -> list[dict[str, typing.Any]]:
+    """The ``cidrs`` claim of a proxy token: each CIDR of ``egress``
+    with the TCP ports of its grants, ports sorted and unique, entries
+    in network order. A CIDR with only UDP ports is not in it."""
+    ports: dict[ipaddress.IPv4Network, set[int]] = {}
+    for grant in egress:
+        tcp = {p.port for p in grant.ports if p.protocol == 'TCP'}
+        for cidr in grant.cidrs if tcp else ():
+            ports.setdefault(ipaddress.IPv4Network(cidr), set()).update(tcp)
+    return [
+        {'net': str(net), 'ports': sorted(ports[net])} for net in sorted(ports)
+    ]
+
+
 class Pending(pydantic.BaseModel):
     """A destination that a claim left out, and why."""
 

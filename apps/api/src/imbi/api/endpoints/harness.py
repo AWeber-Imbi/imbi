@@ -321,8 +321,9 @@ class Claim(pydantic.BaseModel):
     #: of a chain gets the list of its root claim.
     egress: list[harness_egress.Grant] = []
     #: For the egress proxy (egress proxy plan 5.1): a JWT with the host
-    #: names of ``egress``. Set only when Imbi has the proxy key, the
-    #: claim sent ``pod``, and a grant has host names.
+    #: names and the TCP CIDRs of ``egress``. Set only when Imbi has the
+    #: proxy key, the claim sent ``pod``, and a grant has host names or
+    #: TCP CIDRs.
     proxy_token: str | None = None
 
 
@@ -959,7 +960,8 @@ def _proxy_token(
     egress: list[harness_egress.Grant],
 ) -> str | None:
     """The proxy token of a claim, or ``None`` when Imbi has no proxy
-    key, the runner sent no pod, or no grant has host names.
+    key, the runner sent no pod, or no grant has host names or TCP
+    CIDRs.
 
     Raises:
         _EgressTokenTooLarge: The token is too long for the proxy.
@@ -968,7 +970,8 @@ def _proxy_token(
     proxy = api_settings.get_harness_egress_proxy()
     secret = proxy.secret.get_secret_value()
     hosts = [host for grant in egress for host in grant.hostnames]
-    if not secret or pod is None or not hosts:
+    cidrs = harness_egress.proxy_cidrs(egress)
+    if not secret or pod is None or not (hosts or cidrs):
         return None
     token = tokens.mint_proxy_token(
         secret,
@@ -976,6 +979,7 @@ def _proxy_token(
         attempt=chain['attempt'],
         pod=pod,
         hosts=hosts,
+        cidrs=cidrs,
     )
     if len(token) > tokens.MAX_PROXY_TOKEN_BYTES:
         raise _EgressTokenTooLarge(len(token))
@@ -1612,7 +1616,7 @@ _PodQuery = typing.Annotated[
     fastapi.Query(
         description=(
             'The uid of the runner pod. With it, a claim whose egress '
-            'has host names gets a proxy token for that pod.'
+            'has host names or TCP CIDRs gets a proxy token for that pod.'
         )
     ),
 ]
@@ -1646,7 +1650,7 @@ async def claim_harness_task(
     agent requires, and the pool serves its organization. Return the
     task, the identity bundle, and an agent token for the chain, or
     ``204`` when no task comes in ``wait`` seconds. With ``pod``, the
-    claim has a proxy token when a grant has host names.
+    claim has a proxy token when a grant has host names or TCP CIDRs.
 
     Raises:
         401: ``invalid_runner_credential``.

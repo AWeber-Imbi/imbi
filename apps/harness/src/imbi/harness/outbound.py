@@ -77,14 +77,24 @@ def proxy_url(base: str, token: str | None) -> str:
     return parts._replace(netloc=f'chain:{token}@{parts.netloc}').geturl()
 
 
-def proxy_env(url: str, *services: str | None) -> dict[str, str]:
+def proxy_env(
+    url: str, *services: str | None, egress: Egress = ()
+) -> dict[str, str]:
     """The proxy environment of a command. ``NO_PROXY`` has the
-    loopback names and the hosts of ``services`` (imbi-api, imbi-mcp)."""
+    loopback names, the hosts of ``services`` (imbi-api, imbi-mcp), and
+    the CIDRs of the CIDR destinations in ``egress``: a URL with an IP
+    literal in them goes direct, through the network policy. curl 7.86+,
+    git, and Python requests accept a CIDR in ``no_proxy``."""
     names = ['localhost', '127.0.0.1', '::1']
     names += [
         host
         for service in services
         if service and (host := urllib.parse.urlsplit(service).hostname)
+    ]
+    names += [
+        str(cidr)
+        for destination in egress
+        for cidr in destination.get('cidrs') or ()
     ]
     no_proxy = ','.join(dict.fromkeys(names))
     return {
