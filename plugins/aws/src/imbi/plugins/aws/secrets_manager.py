@@ -45,12 +45,25 @@ class RoleConfig(pydantic.BaseModel):
 class _AwsLocator(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    secret_id: str = pydantic.Field(min_length=1, max_length=2048)
+    secret_id: str = pydantic.Field(
+        description='Name or ARN.',
+        max_length=2048,
+        min_length=1,
+        title='Secret ID',
+    )
     version_stage: str | None = pydantic.Field(
-        default=None, min_length=1, max_length=256
+        default=None,
+        description='Defaults to AWSCURRENT. Not with a version ID.',
+        max_length=256,
+        min_length=1,
+        title='Version stage',
     )
     version_id: str | None = pydantic.Field(
-        default=None, min_length=32, max_length=64
+        default=None,
+        description='Pins one version. Not with a version stage.',
+        max_length=64,
+        min_length=32,
+        title='Version ID',
     )
 
     @pydantic.model_validator(mode='after')
@@ -220,6 +233,7 @@ class AwsSecretsManager(secrets.SecretProvider):
 
     type = 'aws_secrets_manager'
     label = 'AWS Secrets Manager'
+    locator_model = _AwsLocator
     capabilities = frozenset[secrets.SecretCapability](
         {
             'static_retrieval',

@@ -36,6 +36,7 @@ from imbi.api.secret_broker import (
     store,
 )
 from imbi.common.plugins import identity as plugin_identity
+from imbi.common.plugins import secrets as plugin_secrets
 
 OrgId = organizations.MemberOrgId
 
@@ -181,6 +182,11 @@ class SecretProviderType(pydantic.BaseModel):
     type: str
     label: str
     capabilities: list[str]
+    #: The credential classes that a binding of this type can use.
+    credential_classes: list[str]
+    #: The JSON Schema of a binding locator, or ``None`` when the
+    #: provider has no model. The admin form draws its fields from it.
+    locator_schema: dict[str, typing.Any] | None
 
 
 class SecretProviderTest(pydantic.BaseModel):
@@ -463,6 +469,12 @@ async def list_provider_types(_: ProviderRead) -> list[dict[str, typing.Any]]:
             'type': plugin.type,
             'label': plugin.label,
             'capabilities': sorted(plugin.capabilities),
+            'credential_classes': [
+                c
+                for c in typing.get_args(plugin_secrets.CredentialClass)
+                if broker.required_capability(c) in plugin.capabilities
+            ],
+            'locator_schema': plugin.locator_schema(),
         }
         for plugin in providers.all_providers()
     ]

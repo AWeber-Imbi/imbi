@@ -34,13 +34,14 @@ class _Target(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    identity_provider_id: _Id
-    service_account_id: _Id
+    identity_provider_id: _Id = pydantic.Field(title='Identity provider ID')
+    service_account_id: _Id = pydantic.Field(title='Service account ID')
 
 
 class OpenAIExchanger(identity.TokenExchanger):
     vendor = 'openai'
     label = 'OpenAI'
+    target_model = _Target
     target_help = (
         f'{identity.target_keys(_Target)}, the ids from the OpenAI dashboard.'
     )

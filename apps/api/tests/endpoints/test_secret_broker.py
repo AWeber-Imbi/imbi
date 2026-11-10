@@ -164,6 +164,17 @@ class SecretEndpointTestCase(
             {t['type'] for t in response.json()},
             {'fake', 'aws_secrets_manager', 'github_app'},
         )
+        types = {t['type']: t for t in response.json()}
+        aws = types['aws_secrets_manager']
+        self.assertEqual(aws['credential_classes'], ['static', 'rotated'])
+        self.assertEqual(aws['locator_schema']['required'], ['secret_id'])
+        self.assertEqual(
+            aws['locator_schema']['properties']['secret_id']['title'],
+            'Secret ID',
+        )
+        self.assertEqual(
+            types['github_app']['credential_classes'], ['dynamic']
+        )
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)
 
@@ -363,6 +374,8 @@ class SecretEndpointTestCase(
             'credential_class': 'static',
             'locator': {'key': 'json'},
         }
+        bindings = self.base + '/secret-bindings/'
+        before = (await self.client.get(bindings)).json()
         response = await self._post('/secret-bindings/locator-check', body)
         self.assertEqual(response.status_code, 204, response.text)
         for change in (
@@ -375,8 +388,7 @@ class SecretEndpointTestCase(
                 )
                 self.assertEqual(response.status_code, 422, response.text)
                 self.assertIn('message', response.json()['detail'])
-        response = await self.client.get(self.base + '/secret-bindings/')
-        self.assertEqual(response.json(), [])
+        self.assertEqual((await self.client.get(bindings)).json(), before)
         self.permissions.discard('secret_binding:write')
         response = await self._post('/secret-bindings/locator-check', body)
         self.assertEqual(response.status_code, 403)

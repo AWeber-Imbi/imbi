@@ -170,18 +170,31 @@ class _Config(pydantic.BaseModel):
 class _Locator(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    app_id: str = pydantic.Field(pattern=r'^[0-9]{1,20}$')
+    app_id: str = pydantic.Field(pattern=r'^[0-9]{1,20}$', title='App ID')
     #: ``None``: find the installation of each request's repositories.
     installation_id: str | None = pydantic.Field(
-        default=None, pattern=r'^[0-9]{1,20}$'
+        default=None,
+        description="Empty: find it from each request's repositories.",
+        pattern=r'^[0-9]{1,20}$',
+        title='Installation ID',
     )
     #: The ``secret://`` reference of the App private key (PEM, or
     #: base64 PEM), in a binding that is not ``dynamic``.
-    private_key: str
+    private_key: str = pydantic.Field(
+        description='The secret:// reference of the binding with the key.',
+        title='Private key',
+    )
     #: ``owner/name`` repositories for ``marketplace_fetch``: the
     #: marketplaces and their external plugins. Other purposes use the
     #: repositories of the task's project.
-    repositories: list[str] = pydantic.Field(default_factory=list[str])
+    repositories: list[str] = pydantic.Field(
+        default_factory=list[str],
+        description=(
+            'owner/name, for marketplace_fetch only. Other purposes use'
+            " the repositories of the task's project."
+        ),
+        title='Repositories',
+    )
 
     @pydantic.field_validator('private_key')
     @classmethod
@@ -277,6 +290,7 @@ class GitHubApp(secrets.SecretProvider):
 
     type = 'github_app'
     label = 'GitHub App'
+    locator_model = _Locator
     capabilities = frozenset[secrets.SecretCapability](
         {'dynamic_issuance', 'lease_revocation', 'health_check'}
     )
