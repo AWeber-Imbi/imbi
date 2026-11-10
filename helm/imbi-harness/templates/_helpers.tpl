@@ -39,6 +39,11 @@ pods:
       app.kubernetes.io/name: imbi-harness
 {{- end }}
 
+{{/* The egress proxy pods: Deployment, Service, PDB, and policies. */}}
+{{- define "imbi-harness.proxySelectorLabels" -}}
+app.kubernetes.io/name: imbi-egress-proxy
+{{- end }}
+
 {{/* The egress proxy pods: the subject of the proxy policies. */}}
 {{- define "imbi-harness.proxyPods" -}}
 pods:
@@ -47,7 +52,7 @@ pods:
       kubernetes.io/metadata.name: {{ .Release.Namespace }}
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: imbi-egress-proxy
+      {{- include "imbi-harness.proxySelectorLabels" . | nindent 6 }}
 {{- end }}
 
 {{/* The runners' egress proxy URL, with no user info. */}}
