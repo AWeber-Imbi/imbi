@@ -156,7 +156,7 @@ The proxy policies select only the proxy pods
 
 | Tier     | Priority | Direction | Action | Peers                                                        |
 | -------- | -------- | --------- | ------ | ------------------------------------------------------------ |
-| Admin    | 110      | Egress    | Accept | kube-dns (53), `required.kubeApi`, `internalRanges` on 443   |
+| Admin    | 110      | Egress    | Accept | kube-dns (53), `required.kubeApi`, `internalRanges` on TCP   |
 | Admin    | 111      | Ingress   | Accept | Runner pods on `egressProxy.port`                            |
 | Admin    | 111      | Ingress   | Accept | Every pod on `egressProxy.adminPort` (Prometheus)            |
 | Admin    | 111      | Ingress   | Deny   | Every other pod                                              |

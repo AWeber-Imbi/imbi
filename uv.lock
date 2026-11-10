@@ -1408,7 +1408,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "idna", specifier = ">=3.10" },
+    { name = "idna", specifier = ">=3.18" },
     { name = "imbi-common", extras = ["databases", "llm", "mcp", "sentry", "server"], editable = "libraries/common" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },

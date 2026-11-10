@@ -478,8 +478,9 @@ A network policy cannot match a host name. Thus runner pods reach a host
 name destination only through the **egress proxy**:
 
 1. At claim, imbi-api signs a **proxy token**. The token holds the host
-   names of the chain, the CIDRs of the chain with their TCP ports, and
-   the uid of the runner pod.
+   names of the chain, the CIDRs of the chain grouped by their TCP ports,
+   and the uid of the runner pod. The runner sends its pod uid only when
+   the egress proxy is on, so a pool with the proxy off gets no token.
 2. The runner puts the proxy URL, with the token, in the environment of
    the agent's commands.
 3. A client sends `CONNECT <host>:<port>` to the proxy. The proxy resolves

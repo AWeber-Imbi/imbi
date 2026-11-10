@@ -23,23 +23,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "ok",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.ZCoIWMiFxf6YcR4R7YDgjxW4l5UIrELUM1Rmtr3epbA"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.8TTX_RwEs2FxGKegSDXLSKZbs9mLHe9an6RfGlVyFPw"
     },
     {
       "name": "previous_key",
@@ -57,23 +62,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "previous",
       "expect": "ok",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.SoKkonGRew1L5Jw5RC7DpdByjVpIYMfsft6gJ8WrhVU"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.e-3GLXaxrp2MSUpHSXB8TWTLeyWNkgNAVlqz44pjIjY"
     },
     {
       "name": "other_key",
@@ -91,23 +101,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "other",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.VmMBP63Bq52zjscRxdu9V_dT_XQN84Q0DoOPUgjmhbc"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.Qg1iU0qMNxWhn7oPpsvs_ujV6GxX8tH5VYS9qQoZo_Q"
     },
     {
       "name": "expired",
@@ -125,23 +140,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjE4MDAwMDAwNjAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.tX7FPjBIrTp6WGVsYIVQ9Gl6ofhsRWsrAHEaxzacC_4"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjE4MDAwMDAwNjAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.n0F84DSxrfX4PHskfPNAXhHbn-qLezCmtO2Cav7xGHc"
     },
     {
       "name": "wrong_iss",
@@ -159,23 +179,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzb21lb25lIiwiYXVkIjoiaW1iaS1lZ3Jlc3MtcHJveHkiLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6NDEwMjQ0NDgwMCwiY2hhaW4iOiIwYjlmNWEyZS02YTRmLTRjMWQtOWE1MS0zZjFmMmQ3YzhlMTAiLCJhdHRlbXB0IjoxLCJwb2QiOiI2YzFlMmYwYS04YjdkLTRlM2MtYTVmNC0yZDliMWMwZTdhNjYiLCJob3N0cyI6WyJnaXQuZXhhbXBsZS5jb20iLCJ6b2VrdC5wc2UuZXhhbXBsZS5jbG91ZCJdLCJjaWRycyI6W3sibmV0IjoiMTAuMjAuMC4wLzE2IiwicG9ydHMiOls0NDMsODQ0M119LHsibmV0IjoiMTAuMzAuMS4wLzI0IiwicG9ydHMiOlsyMl19XX0.ad27v_36TBfXE0Z3d92_wa-KQVrGPgHIYgMXTbHdb_U"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzb21lb25lIiwiYXVkIjoiaW1iaS1lZ3Jlc3MtcHJveHkiLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6NDEwMjQ0NDgwMCwiY2hhaW4iOiIwYjlmNWEyZS02YTRmLTRjMWQtOWE1MS0zZjFmMmQ3YzhlMTAiLCJhdHRlbXB0IjoxLCJwb2QiOiI2YzFlMmYwYS04YjdkLTRlM2MtYTVmNC0yZDliMWMwZTdhNjYiLCJob3N0cyI6WyJnaXQuZXhhbXBsZS5jb20iLCJ6b2VrdC5wc2UuZXhhbXBsZS5jbG91ZCJdLCJjaWRycyI6W3sibmV0cyI6WyIxMC4zMC4xLjAvMjQiXSwicG9ydHMiOlsyMl19LHsibmV0cyI6WyIxMC4yMC4wLjAvMTYiLCIxMC40MC4wLjAvMTYiXSwicG9ydHMiOls0NDMsODQ0M119XX0.93_aFp38nuXVEHs9O-1tJZf_OlFLKfFUHPGWFYuVMgg"
     },
     {
       "name": "wrong_aud",
@@ -193,23 +218,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktaGFybmVzcyIsImlhdCI6MTgwMDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwLCJjaGFpbiI6IjBiOWY1YTJlLTZhNGYtNGMxZC05YTUxLTNmMWYyZDdjOGUxMCIsImF0dGVtcHQiOjEsInBvZCI6IjZjMWUyZjBhLThiN2QtNGUzYy1hNWY0LTJkOWIxYzBlN2E2NiIsImhvc3RzIjpbImdpdC5leGFtcGxlLmNvbSIsInpvZWt0LnBzZS5leGFtcGxlLmNsb3VkIl0sImNpZHJzIjpbeyJuZXQiOiIxMC4yMC4wLjAvMTYiLCJwb3J0cyI6WzQ0Myw4NDQzXX0seyJuZXQiOiIxMC4zMC4xLjAvMjQiLCJwb3J0cyI6WzIyXX1dfQ.egqENIGg65jhZZuQ5wvCwb4TauxQkKA_2X8tITF3NAM"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktaGFybmVzcyIsImlhdCI6MTgwMDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwLCJjaGFpbiI6IjBiOWY1YTJlLTZhNGYtNGMxZC05YTUxLTNmMWYyZDdjOGUxMCIsImF0dGVtcHQiOjEsInBvZCI6IjZjMWUyZjBhLThiN2QtNGUzYy1hNWY0LTJkOWIxYzBlN2E2NiIsImhvc3RzIjpbImdpdC5leGFtcGxlLmNvbSIsInpvZWt0LnBzZS5leGFtcGxlLmNsb3VkIl0sImNpZHJzIjpbeyJuZXRzIjpbIjEwLjMwLjEuMC8yNCJdLCJwb3J0cyI6WzIyXX0seyJuZXRzIjpbIjEwLjIwLjAuMC8xNiIsIjEwLjQwLjAuMC8xNiJdLCJwb3J0cyI6WzQ0Myw4NDQzXX1dfQ.cQrXgqsz6L8W_c1drmMDwfpEY0L2TAgGGuAII_ais34"
     },
     {
       "name": "missing_pod",
@@ -226,23 +256,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.gsN6DD6mbXPNWTVlLRfGUogYQVTsNu5Urzw7GB84Dx4"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.2Fz4Si0Ex4pwQFvs91lQaMPviH89mqPADBJs8GCyjzQ"
     },
     {
       "name": "missing_hosts",
@@ -256,23 +291,28 @@
         "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.kTcU54Ol-1G4O8v-4SX2hlwH206gxcaGe4TwEr5eMQI"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.36MXCmnDfR4rY1gCJZrFAaOCefktgIdjqo-yoJulgIA"
     },
     {
       "name": "hosts_only",
@@ -307,23 +347,28 @@
         "hosts": [],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "ok",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOltdLCJjaWRycyI6W3sibmV0IjoiMTAuMjAuMC4wLzE2IiwicG9ydHMiOls0NDMsODQ0M119LHsibmV0IjoiMTAuMzAuMS4wLzI0IiwicG9ydHMiOlsyMl19XX0.rLDq9rVNEkjX6XFdKiNwD0hNW2RLLIZlfc3QrsxoKVw"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOltdLCJjaWRycyI6W3sibmV0cyI6WyIxMC4zMC4xLjAvMjQiXSwicG9ydHMiOlsyMl19LHsibmV0cyI6WyIxMC4yMC4wLjAvMTYiLCIxMC40MC4wLjAvMTYiXSwicG9ydHMiOls0NDMsODQ0M119XX0.vwc5Jc5sf7PAvue5nWCYGiTwRqHt5Cq48PbRsxs9_Po"
     },
     {
       "name": "empty_hosts_and_cidrs",
@@ -377,7 +422,9 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/33",
+            "nets": [
+              "10.20.0.0/33"
+            ],
             "ports": [
               443
             ]
@@ -386,7 +433,7 @@
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8zMyIsInBvcnRzIjpbNDQzXX1dfQ.oe-TdX_9Wmpbq4WOAAgGfJIk0PNiuk0-OwwuS3fqgt0"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMjAuMC4wLzMzIl0sInBvcnRzIjpbNDQzXX1dfQ.Of8DB_0YX58X-zRm333g5zDs0lcDTr36QzT-ETQanow"
     },
     {
       "name": "cidr_without_ports",
@@ -404,14 +451,43 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.20.0.0/16"
+            ],
             "ports": []
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbXX1dfQ.cgloWDhRcH5bl1OqKKrULTkWgfzUApFHr1m5e_n2dUY"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMjAuMC4wLzE2Il0sInBvcnRzIjpbXX1dfQ.pjHDbmeKh6CE6E-xYSzORCE5pitWrsfVc-R7ifWsyT0"
+    },
+    {
+      "name": "cidr_group_without_nets",
+      "claims": {
+        "iss": "imbi-api",
+        "aud": "imbi-egress-proxy",
+        "iat": 1800000000,
+        "exp": 4102444800,
+        "chain": "0b9f5a2e-6a4f-4c1d-9a51-3f1f2d7c8e10",
+        "attempt": 1,
+        "pod": "6c1e2f0a-8b7d-4e3c-a5f4-2d9b1c0e7a66",
+        "hosts": [
+          "git.example.com",
+          "zoekt.pse.example.cloud"
+        ],
+        "cidrs": [
+          {
+            "nets": [],
+            "ports": [
+              443
+            ]
+          }
+        ]
+      },
+      "key": "current",
+      "expect": "invalid",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOltdLCJwb3J0cyI6WzQ0M119XX0.HCGmqel5bElsl7Y_UyX1_9Rq-DEQ-YRlbCO_ZqMNgtQ"
     },
     {
       "name": "attempt_not_int",
@@ -429,23 +505,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6IjEiLCJwb2QiOiI2YzFlMmYwYS04YjdkLTRlM2MtYTVmNC0yZDliMWMwZTdhNjYiLCJob3N0cyI6WyJnaXQuZXhhbXBsZS5jb20iLCJ6b2VrdC5wc2UuZXhhbXBsZS5jbG91ZCJdLCJjaWRycyI6W3sibmV0IjoiMTAuMjAuMC4wLzE2IiwicG9ydHMiOls0NDMsODQ0M119LHsibmV0IjoiMTAuMzAuMS4wLzI0IiwicG9ydHMiOlsyMl19XX0.iJUv99drpo876YwLC5L-Y8466y7xpOCnMsbBh2M_0ZE"
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6IjEiLCJwb2QiOiI2YzFlMmYwYS04YjdkLTRlM2MtYTVmNC0yZDliMWMwZTdhNjYiLCJob3N0cyI6WyJnaXQuZXhhbXBsZS5jb20iLCJ6b2VrdC5wc2UuZXhhbXBsZS5jbG91ZCJdLCJjaWRycyI6W3sibmV0cyI6WyIxMC4zMC4xLjAvMjQiXSwicG9ydHMiOlsyMl19LHsibmV0cyI6WyIxMC4yMC4wLjAvMTYiLCIxMC40MC4wLjAvMTYiXSwicG9ydHMiOls0NDMsODQ0M119XX0.LT0ReHVyTJ92Z4XknP_PGVv0kWpw58--ojPrwTfYWwQ"
     },
     {
       "name": "alg_hs512",
@@ -463,23 +544,28 @@
         ],
         "cidrs": [
           {
-            "net": "10.20.0.0/16",
+            "nets": [
+              "10.30.1.0/24"
+            ],
             "ports": [
-              443,
-              8443
+              22
             ]
           },
           {
-            "net": "10.30.1.0/24",
+            "nets": [
+              "10.20.0.0/16",
+              "10.40.0.0/16"
+            ],
             "ports": [
-              22
+              443,
+              8443
             ]
           }
         ]
       },
       "key": "current",
       "expect": "invalid",
-      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldCI6IjEwLjIwLjAuMC8xNiIsInBvcnRzIjpbNDQzLDg0NDNdfSx7Im5ldCI6IjEwLjMwLjEuMC8yNCIsInBvcnRzIjpbMjJdfV19.eUzmtYmGzxH7NXu49fwMbXoH6bUiEE12DNDQodBmlIEaclH2csfMt7NCMJKLES4_vUP5yTMjEMsREmk6qribqw"
+      "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpbWJpLWFwaSIsImF1ZCI6ImltYmktZWdyZXNzLXByb3h5IiwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjQxMDI0NDQ4MDAsImNoYWluIjoiMGI5ZjVhMmUtNmE0Zi00YzFkLTlhNTEtM2YxZjJkN2M4ZTEwIiwiYXR0ZW1wdCI6MSwicG9kIjoiNmMxZTJmMGEtOGI3ZC00ZTNjLWE1ZjQtMmQ5YjFjMGU3YTY2IiwiaG9zdHMiOlsiZ2l0LmV4YW1wbGUuY29tIiwiem9la3QucHNlLmV4YW1wbGUuY2xvdWQiXSwiY2lkcnMiOlt7Im5ldHMiOlsiMTAuMzAuMS4wLzI0Il0sInBvcnRzIjpbMjJdfSx7Im5ldHMiOlsiMTAuMjAuMC4wLzE2IiwiMTAuNDAuMC4wLzE2Il0sInBvcnRzIjpbNDQzLDg0NDNdfV19.oGxfmoqQCZD5IkAvDEeG2uVsdZ_0mKvyVN6MBrFD-hA4a10tmiGIletNxsRPT5av8KqmqCitRBrniM9S82ABVQ"
     }
   ],
   "targets": [

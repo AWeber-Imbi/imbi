@@ -41,20 +41,24 @@ fn tokens() {
                     .map(|h| h.as_str().unwrap())
                     .collect();
                 assert_eq!(claims.hosts, hosts, "{name}");
-                let cidrs: Vec<(String, Vec<u16>)> = claims
+                let cidrs: Vec<(Vec<String>, Vec<u16>)> = claims
                     .cidrs
                     .iter()
-                    .map(|c| (c.net.to_string(), c.ports.clone()))
+                    .map(|c| {
+                        let nets = c.nets.iter().map(ToString::to_string).collect();
+                        (nets, c.ports.clone())
+                    })
                     .collect();
-                let expected: Vec<(String, Vec<u16>)> =
-                    serde_json::from_value::<Vec<Value>>(expected["cidrs"].clone())
-                        .unwrap()
-                        .iter()
-                        .map(|c| {
-                            let ports = serde_json::from_value(c["ports"].clone()).unwrap();
-                            (c["net"].as_str().unwrap().to_owned(), ports)
-                        })
-                        .collect();
+                let expected: Vec<(Vec<String>, Vec<u16>)> = expected["cidrs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|c| {
+                        let nets = serde_json::from_value(c["nets"].clone()).unwrap();
+                        let ports = serde_json::from_value(c["ports"].clone()).unwrap();
+                        (nets, ports)
+                    })
+                    .collect();
                 assert_eq!(cidrs, expected, "{name}");
             }
             "invalid" => assert!(claims.is_none(), "{name}: accepted"),

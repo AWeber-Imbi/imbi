@@ -170,13 +170,28 @@ class ProxyCidrsTests(unittest.TestCase):
                 [
                     grant(['10.10.0.0/16', '10.9.0.0/24'], 8443, 443),
                     grant(['10.10.0.0/16'], 22, 443, udp=53),
+                    grant(['10.8.0.0/24'], 443, 8443),
                 ]
             ),
             [
-                {'net': '10.9.0.0/24', 'ports': [443, 8443]},
-                {'net': '10.10.0.0/16', 'ports': [22, 443, 8443]},
+                {'nets': ['10.10.0.0/16'], 'ports': [22, 443, 8443]},
+                {'nets': ['10.8.0.0/24', '10.9.0.0/24'], 'ports': [443, 8443]},
             ],
         )
+
+    def test_largest_destination_fits(self) -> None:
+        # 25 CIDRs of the longest form and 24 five-digit TCP ports.
+        cidrs = [f'192.168.{n}.128/25' for n in range(100, 125)]
+        cidrs = egress.proxy_cidrs([grant(cidrs, *range(65500, 65524))])
+        token = tokens.mint_proxy_token(
+            PROXY_KEY,
+            chain_id=uuid.uuid4(),
+            attempt=1,
+            pod=uuid.uuid4(),
+            hosts=[],
+            cidrs=cidrs,
+        )
+        self.assertLess(len(token), tokens.MAX_PROXY_TOKEN_BYTES)
 
     def test_udp_only_left_out(self) -> None:
         self.assertEqual(
@@ -194,9 +209,9 @@ class ContractTests(unittest.TestCase):
         # Grants out of order, split, and with UDP: the claim is the same.
         cidrs = egress.proxy_cidrs(
             [
-                grant(['10.30.1.0/24'], 22),
-                grant(['10.20.0.0/16'], 8443, udp=53),
-                grant(['10.20.0.0/16'], 443),
+                grant(['10.40.0.0/16', '10.20.0.0/16'], 8443),
+                grant(['10.30.1.0/24'], 22, udp=53),
+                grant(['10.20.0.0/16', '10.40.0.0/16'], 443),
             ]
         )
         self.assertEqual(cidrs, claims['cidrs'])
@@ -722,7 +737,9 @@ class ProxyTokenTests(EgressTestCase):
                 'cidrs',
             ],
         )
-        self.assertIn({'net': '10.9.0.0/24', 'ports': [443]}, claims['cidrs'])
+        self.assertIn(
+            '10.9.0.0/24', [n for c in claims['cidrs'] for n in c['nets']]
+        )
         self.assertEqual(
             claims['exp'] - claims['iat'], tokens.AGENT_TOKEN_TTL_SECONDS
         )
@@ -775,7 +792,7 @@ class ProxyTokenTests(EgressTestCase):
         )
         self.assertEqual(claims['hosts'], [])
         self.assertEqual(
-            claims['cidrs'], [{'net': '10.9.0.0/24', 'ports': [5432]}]
+            claims['cidrs'], [{'nets': ['10.9.0.0/24'], 'ports': [5432]}]
         )
 
     async def assert_no_token(self, egress_: list[egress.Grant]) -> None:
@@ -827,7 +844,7 @@ class ProxyTokenTests(EgressTestCase):
         self.assertEqual(child['chain'], claim['chain_id'])
 
     async def test_too_large_token_fails_the_task(self) -> None:
-        # 25 names of 247 characters: the token is over 6 KiB.
+        # 25 names of 247 characters: the token is over 4 KiB.
         names = [
             f'{n:02d}{"a" * 58}.{"b" * 60}.{"c" * 60}.{"d" * 60}.com'
             for n in range(egress.MAX_HOSTNAMES)

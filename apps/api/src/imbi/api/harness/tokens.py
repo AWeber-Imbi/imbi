@@ -47,8 +47,10 @@ AGENT_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 #: The issuer and audience of a proxy token.
 PROXY_ISSUER = 'imbi-api'
 PROXY_AUDIENCE = 'imbi-egress-proxy'
-#: The longest proxy token: it must fit in a proxy URL and header.
-MAX_PROXY_TOKEN_BYTES = 6144
+#: The longest proxy token. The runner sends it as a Basic credential
+#: (4/3 larger), and the proxy reads at most 8 KiB of request head
+#: (``MAX_HEAD_BYTES`` in ``proxy/src/request.rs``).
+MAX_PROXY_TOKEN_BYTES = 4096
 
 RUNNER_PREFIX = 'ihr_'
 EXECUTOR_PREFIX = 'ihe_'
@@ -171,9 +173,9 @@ def mint_proxy_token(
 
     The claims and their order are a contract with the proxy (C1, the
     fixture ``proxy/tests/contract.json``). ``hosts`` are the held host
-    names (port 443). ``cidrs`` are ``{"net", "ports"}`` entries
+    names (port 443). ``cidrs`` are ``{"nets", "ports"}`` entries
     (:func:`imbi.api.harness.egress.proxy_cidrs`): the proxy allows an
-    internal address in ``net`` on one of ``ports``. ``now`` and
+    internal address in one of ``nets`` on one of ``ports``. ``now`` and
     ``ttl`` let a test make the fixture token again.
     """
     iat = int(time.time()) if now is None else now
