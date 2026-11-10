@@ -51,7 +51,7 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 const auth = vi.hoisted(() => ({
   user: {
     is_admin: true,
-    organizations: [{ organization_slug: 'acme', permissions: [] }],
+    organizations: [{ organization_slug: 'acme', permissions: [] as string[] }],
     permissions: [] as string[],
   },
 }))
@@ -110,6 +110,34 @@ describe('AgentsArea', () => {
     renderAt('/agents/workflows')
     expect(await screen.findByText('No workflows yet.')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
+  })
+
+  it('shows Runners and Egress Destinations to an administrator', async () => {
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
+    renderAt('/agents/workflows')
+    const nav = await screen.findByRole('navigation', { name: 'Agents' })
+    expect(nav).toHaveTextContent('Runners')
+    expect(nav).toHaveTextContent('Egress Destinations')
+  })
+
+  it('hides Egress Destinations from a runner reader', async () => {
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['harness_pool:read'] },
+      ],
+      permissions: ['harness_pool:read'],
+    }
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
+    renderAt('/agents/egress')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/dashboard'),
+    )
+    const nav = screen.getByRole('navigation', { name: 'Agents' })
+    expect(nav).toHaveTextContent('Runners')
+    expect(nav).not.toHaveTextContent('Egress Destinations')
   })
 
   it('toggles enabled from the list without opening the agent', async () => {

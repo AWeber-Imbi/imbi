@@ -4,6 +4,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
+import { AgentRunners } from '@/components/admin/AgentRunners'
+import { EgressDestinationManagement } from '@/components/admin/EgressDestinationManagement'
 import { WorkflowsManagement } from '@/components/workflows/WorkflowsManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { cn } from '@/lib/utils'
@@ -11,10 +13,10 @@ import { cn } from '@/lib/utils'
 import { useAgentList } from './agentQueries'
 import { AgentsManagement } from './AgentsManagement'
 import {
-  AGENTS_NAV,
+  type AgentsNavItem,
   agentsPath,
   type AgentsSection,
-  isAgentsSection,
+  useAgentsNav,
 } from './agentsNav'
 import { DashboardPage } from './DashboardPage'
 import { PlatformPage } from './PlatformPage'
@@ -29,19 +31,22 @@ import { UsagePage } from './UsagePage'
 export function AgentsArea() {
   const { section } = useParams<{ section?: string }>()
   const navigate = useNavigate()
-  const current: AgentsSection = isAgentsSection(section)
-    ? section
+  const items = useAgentsNav()
+  // A page the user cannot open is the same as an unknown page.
+  const visible = items.some((item) => item.id === section)
+  const current: AgentsSection = visible
+    ? (section as AgentsSection)
     : 'dashboard'
 
   useEffect(() => {
-    if (!isAgentsSection(section)) {
+    if (!visible) {
       navigate(agentsPath('dashboard'), { replace: true })
     }
-  }, [section, navigate])
+  }, [visible, navigate])
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
-      <AgentsSidebar current={current} />
+      <AgentsSidebar current={current} items={items} />
       <div className="min-w-0 flex-1">
         {current === 'dashboard' ? (
           <DashboardPage />
@@ -53,6 +58,14 @@ export function AgentsArea() {
           <UsagePage />
         ) : current === 'platform' ? (
           <PlatformPage />
+        ) : current === 'runners' ? (
+          <div className="p-8">
+            <AgentRunners />
+          </div>
+        ) : current === 'egress' ? (
+          <div className="p-8">
+            <EgressDestinationManagement />
+          </div>
         ) : (
           <WorkflowsManagement />
         )}
@@ -61,7 +74,13 @@ export function AgentsArea() {
   )
 }
 
-function AgentsSidebar({ current }: { current: AgentsSection }) {
+function AgentsSidebar({
+  current,
+  items,
+}: {
+  current: AgentsSection
+  items: AgentsNavItem[]
+}) {
   const [open, setOpen] = useState(true)
   const { selectedOrganization } = useOrganization()
   const { data: agents } = useAgentList(selectedOrganization?.slug)
@@ -86,45 +105,47 @@ function AgentsSidebar({ current }: { current: AgentsSection }) {
                 {group}
               </div>
             )}
-            {AGENTS_NAV.filter((item) => item.group === group).map((item) => {
-              const Icon = item.icon
-              const active = item.id === current
-              const count =
-                item.id === 'manage' && agents
-                  ? String(agents.length)
-                  : item.id === 'tasks' && waiting
-                    ? String(waiting)
-                    : ''
-              return (
-                <Link
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'flex h-10 w-full items-center gap-3 rounded-md text-sm transition-colors',
-                    open ? 'px-3' : 'justify-center',
-                    active
-                      ? 'bg-amber-bg font-medium text-amber-text'
-                      : 'text-secondary hover:bg-secondary hover:text-primary',
-                  )}
-                  key={item.id}
-                  title={
-                    item.id === 'tasks' && waiting
-                      ? `${waiting} waiting on you`
-                      : item.label
-                  }
-                  to={agentsPath(item.id)}
-                >
-                  <Icon className="size-4.5 shrink-0" />
-                  {open && (
-                    <span className="flex-1 text-left">{item.label}</span>
-                  )}
-                  {open && count && (
-                    <span className="font-mono text-xs tabular-nums opacity-70">
-                      {count}
-                    </span>
-                  )}
-                </Link>
-              )
-            })}
+            {items
+              .filter((item) => item.group === group)
+              .map((item) => {
+                const Icon = item.icon
+                const active = item.id === current
+                const count =
+                  item.id === 'manage' && agents
+                    ? String(agents.length)
+                    : item.id === 'tasks' && waiting
+                      ? String(waiting)
+                      : ''
+                return (
+                  <Link
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'flex h-10 w-full items-center gap-3 rounded-md text-sm transition-colors',
+                      open ? 'px-3' : 'justify-center',
+                      active
+                        ? 'bg-amber-bg font-medium text-amber-text'
+                        : 'text-secondary hover:bg-secondary hover:text-primary',
+                    )}
+                    key={item.id}
+                    title={
+                      item.id === 'tasks' && waiting
+                        ? `${waiting} waiting on you`
+                        : item.label
+                    }
+                    to={agentsPath(item.id)}
+                  >
+                    <Icon className="size-4.5 shrink-0" />
+                    {open && (
+                      <span className="flex-1 text-left">{item.label}</span>
+                    )}
+                    {open && count && (
+                      <span className="font-mono text-xs tabular-nums opacity-70">
+                        {count}
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
           </div>
         ))}
       </nav>

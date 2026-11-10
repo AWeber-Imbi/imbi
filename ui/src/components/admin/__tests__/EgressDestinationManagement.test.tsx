@@ -56,7 +56,7 @@ const mountAt = (path: string) => {
     <Routes>
       <Route
         element={<EgressDestinationManagement />}
-        path="/admin/:section?/:slug?/:action?"
+        path="/agents/:section?/:slug?/:action?"
       />
     </Routes>,
   )
@@ -85,7 +85,7 @@ describe('EgressDestinationManagement', () => {
         slug: 'dns',
       }),
     ])
-    mountAt('/admin/egress-destinations')
+    mountAt('/agents/egress')
     expect(await screen.findByText('Main Postgres')).toBeInTheDocument()
     expect(endpoints.listEgressDestinations).toHaveBeenCalledWith(
       undefined,
@@ -103,7 +103,7 @@ describe('EgressDestinationManagement', () => {
     vi.mocked(endpoints.createEgressDestination).mockResolvedValue(
       destination(),
     )
-    mountAt('/admin/egress-destinations/new')
+    mountAt('/agents/egress/new')
     fireEvent.change(await screen.findByLabelText(/^Name/), {
       target: { value: 'Main Postgres' },
     })
@@ -138,7 +138,7 @@ describe('EgressDestinationManagement', () => {
     vi.mocked(endpoints.updateEgressDestination).mockRejectedValue(
       new Error('CIDR 8.8.8.0/24 is not internal'),
     )
-    mountAt('/admin/egress-destinations/pg-main/edit')
+    mountAt('/agents/egress/pg-main/edit')
     fireEvent.click(await screen.findByRole('button', { name: /Save/ }))
     expect(
       await screen.findByText('Failed to save the destination'),

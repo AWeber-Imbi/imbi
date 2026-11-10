@@ -4,32 +4,44 @@ import {
   Inbox,
   LayoutDashboard,
   type LucideIcon,
+  Server,
   SlidersHorizontal,
+  Waypoints,
   Workflow,
 } from 'lucide-react'
+
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAuth } from '@/hooks/useAuth'
+import { hasPermission } from '@/hooks/useHasPermission'
 
 // The pages of the Agents area. The header menu and the area sidebar
 // both use this list, so they always agree.
 
 export interface AgentsNavItem {
+  /** Only platform administrators (`is_admin`) see the page. */
+  adminOnly?: boolean
   group: 'Agentic platform' | 'Settings'
   icon: LucideIcon
   id: AgentsSection
   label: string
   note: string
+  /** An organization permission that also shows the page. */
+  permission?: string
 }
 
 export type AgentsSection =
   | 'dashboard'
+  | 'egress'
   | 'manage'
   | 'platform'
+  | 'runners'
   | 'tasks'
   | 'usage'
   | 'workflows'
 
 export const AGENTS_BASE_PATH = '/agents'
 
-export const AGENTS_NAV: AgentsNavItem[] = [
+const AGENTS_NAV: AgentsNavItem[] = [
   {
     group: 'Agentic platform',
     icon: LayoutDashboard,
@@ -72,12 +84,40 @@ export const AGENTS_NAV: AgentsNavItem[] = [
     label: 'Platform',
     note: 'Base configuration and plugin marketplaces',
   },
+  {
+    group: 'Settings',
+    icon: Server,
+    id: 'runners',
+    label: 'Runners',
+    note: 'Runner pools that serve the organization',
+    permission: 'harness_pool:read',
+  },
+  {
+    adminOnly: true,
+    group: 'Settings',
+    icon: Waypoints,
+    id: 'egress',
+    label: 'Egress Destinations',
+    note: 'Internal networks that runner pods may reach',
+  },
 ]
 
 export function agentsPath(section: AgentsSection, ...rest: string[]): string {
   return [AGENTS_BASE_PATH, section, ...rest.map(encodeURIComponent)].join('/')
 }
 
-export function isAgentsSection(value?: string): value is AgentsSection {
-  return AGENTS_NAV.some((item) => item.id === value)
+/** The {@link AGENTS_NAV} pages that the current user can open. */
+export function useAgentsNav(): AgentsNavItem[] {
+  const { user } = useAuth()
+  const { selectedOrganization } = useOrganization()
+  const isAdmin = user?.is_admin === true
+  return AGENTS_NAV.filter((item) => {
+    if (item.adminOnly) return isAdmin
+    if (!item.permission) return true
+    // The API admits a platform administrator without membership.
+    return (
+      isAdmin ||
+      hasPermission(user, item.permission, selectedOrganization?.slug)
+    )
+  })
 }

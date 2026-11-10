@@ -36,7 +36,8 @@ const STATE_VARIANT: Record<HarnessRunner['state'], BadgeProps['variant']> = {
 
 /**
  * The runner pools that serve the organization and their live runners
- * (ADR 0022). Read only. The Admin route admits administrators only.
+ * (ADR 0022). Read only. The Agents area shows the page to holders of
+ * harness_pool:read and to platform administrators.
  */
 export function AgentRunners() {
   const { selectedOrganization } = useOrganization()

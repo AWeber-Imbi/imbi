@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { type ComponentType, useEffect, useState } from 'react'
 
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -17,9 +17,9 @@ import {
   LayoutDashboard,
   Link2,
   LockKeyhole,
+  MessagesSquare,
   Network,
   Puzzle,
-  Server,
   Shield,
   SlidersHorizontal,
   Sparkles,
@@ -27,23 +27,21 @@ import {
   Target,
   Users,
   UsersRound,
-  Waypoints,
   Webhook,
   Wrench,
 } from 'lucide-react'
 
+import { agentsPath, type AgentsSection } from '@/components/agents/agentsNav'
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AdminOverview } from './admin/AdminOverview'
-import { AgentRunners } from './admin/AgentRunners'
 import { AIModelsManagement } from './admin/AIModelsManagement'
 import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
-import { EgressDestinationManagement } from './admin/EgressDestinationManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { GraphQueryManagement } from './admin/GraphQueryManagement'
 import { IntegrationsManagement } from './admin/integrations/IntegrationsManagement'
@@ -61,277 +59,267 @@ import { UserManagement } from './admin/UserManagement'
 import { Webhooks } from './admin/Webhooks'
 import { PromptLibrary } from './prompts/PromptLibrary'
 
-type AdminSection =
-  | 'agent-runners'
-  | 'ai-models'
-  | 'assistant'
-  | 'blueprints'
-  | 'default-settings'
-  | 'document-templates'
-  | 'egress-destinations'
-  | 'environments'
-  | 'graph-query'
-  | 'integrations'
-  | 'link-definitions'
-  | 'maintenance'
-  | 'oauth'
-  | 'organizations'
-  | 'overview'
-  | 'plugins'
-  | 'project-types'
-  | 'prompts'
-  | 'roles'
-  | 'scoring-policies'
-  | 'secrets'
-  | 'service-accounts'
-  | 'teams'
-  | 'users'
-  | 'webhooks'
-
-// The admin section shown when none is specified in the URL.
-const DEFAULT_ADMIN_SECTION: AdminSection = 'overview'
-
-const VALID_SECTIONS: AdminSection[] = [
-  'agent-runners',
-  'ai-models',
-  'assistant',
-  'blueprints',
-  'default-settings',
-  'egress-destinations',
-  'environments',
-  'graph-query',
-  'integrations',
-  'link-definitions',
-  'document-templates',
-  'maintenance',
-  'oauth',
-  'organizations',
-  'overview',
-  'plugins',
-  'project-types',
-  'prompts',
-  'roles',
-  'scoring-policies',
-  'secrets',
-  'service-accounts',
-  'teams',
-  'users',
-  'webhooks',
-]
-
 interface SectionDef {
+  component: ComponentType
   description: string
+  /** The sidebar heading. An empty group has no heading. */
+  group: string
   icon: typeof Users
-  id: AdminSection
+  id: string
   label: string
   scope: 'org' | 'system'
+}
+
+// The sidebar shows the sections in this order. Each group shows where
+// its first section occurs.
+const SECTIONS: SectionDef[] = [
+  {
+    component: AdminOverview,
+    description: 'Operations metrics and system health at a glance',
+    group: '',
+    icon: LayoutDashboard,
+    id: 'overview',
+    label: 'Overview',
+    scope: 'org',
+  },
+  {
+    component: ProjectTypeManagement,
+    description: 'Manage project types',
+    group: 'Catalog',
+    icon: FolderTree,
+    id: 'project-types',
+    label: 'Project Types',
+    scope: 'org',
+  },
+  {
+    component: EnvironmentManagement,
+    description: 'Manage environments',
+    group: 'Catalog',
+    icon: Layers,
+    id: 'environments',
+    label: 'Environments',
+    scope: 'org',
+  },
+  {
+    component: BlueprintManagement,
+    description: 'Configure metadata templates',
+    group: 'Catalog',
+    icon: FileJson,
+    id: 'blueprints',
+    label: 'Blueprints',
+    scope: 'org',
+  },
+  {
+    component: LinkDefinitionManagement,
+    description: 'Manage link definitions for projects',
+    group: 'Catalog',
+    icon: Link2,
+    id: 'link-definitions',
+    label: 'Link Definitions',
+    scope: 'org',
+  },
+  {
+    component: DocumentTemplateManagement,
+    description: 'Manage reusable document templates',
+    group: 'Catalog',
+    icon: StickyNote,
+    id: 'document-templates',
+    label: 'Document Templates',
+    scope: 'org',
+  },
+  {
+    component: ScoringPolicyManagement,
+    description:
+      'Define attribute, presence, link, and age-based scoring policies',
+    group: 'Catalog',
+    icon: Target,
+    id: 'scoring-policies',
+    label: 'Scoring Policies',
+    scope: 'org',
+  },
+  {
+    component: DefaultSettingsManagement,
+    description: 'Organization-wide defaults, including version formats',
+    group: 'Catalog',
+    icon: SlidersHorizontal,
+    id: 'default-settings',
+    label: 'Defaults',
+    scope: 'org',
+  },
+  {
+    component: TeamManagement,
+    description: 'Manage teams',
+    group: 'People',
+    icon: UsersRound,
+    id: 'teams',
+    label: 'Teams',
+    scope: 'org',
+  },
+  {
+    component: IntegrationsManagement,
+    description: 'Connect external platforms',
+    group: 'Connections',
+    icon: Blocks,
+    id: 'integrations',
+    label: 'Integrations',
+    scope: 'org',
+  },
+  {
+    component: Webhooks,
+    description: 'Inbound endpoints and their delivery activity',
+    group: 'Connections',
+    icon: Webhook,
+    id: 'webhooks',
+    label: 'Webhooks',
+    scope: 'org',
+  },
+  {
+    component: SecretsManagement,
+    description: 'Secret providers, bindings, grants, and their audit',
+    group: 'Connections',
+    icon: LockKeyhole,
+    id: 'secrets',
+    label: 'Secrets',
+    scope: 'org',
+  },
+  {
+    component: UserManagement,
+    description: 'Manage user accounts and administrators',
+    group: 'Access',
+    icon: Users,
+    id: 'users',
+    label: 'Users',
+    scope: 'system',
+  },
+  {
+    component: ServiceAccountManagement,
+    description: 'Manage service accounts and API keys',
+    group: 'Access',
+    icon: Bot,
+    id: 'service-accounts',
+    label: 'Service Accounts',
+    scope: 'system',
+  },
+  {
+    component: RoleManagement,
+    description: 'Define roles and permission collections',
+    group: 'Access',
+    icon: Shield,
+    id: 'roles',
+    label: 'Roles',
+    scope: 'system',
+  },
+  {
+    component: OrganizationManagement,
+    description: 'Manage organizational units and access',
+    group: 'Access',
+    icon: Building2,
+    id: 'organizations',
+    label: 'Organizations',
+    scope: 'system',
+  },
+  {
+    component: AuthProvidersManagement,
+    description: 'Configure SSO authentication providers',
+    group: 'Access',
+    icon: KeyRound,
+    id: 'oauth',
+    label: 'Auth Providers',
+    scope: 'system',
+  },
+  {
+    component: AIModelsManagement,
+    description:
+      'LLM providers and the model catalog, shared by every organization',
+    group: 'AI',
+    icon: Sparkles,
+    id: 'ai-models',
+    label: 'AI Models',
+    scope: 'system',
+  },
+  {
+    component: PromptLibrary,
+    description: 'Versioned prompts, labels, and model settings',
+    group: 'AI',
+    icon: FileCode2,
+    id: 'prompts',
+    label: 'Prompts',
+    scope: 'system',
+  },
+  {
+    component: AssistantManagement,
+    description: 'Configure the AI assistant and its MCP servers',
+    group: 'AI',
+    icon: MessagesSquare,
+    id: 'assistant',
+    label: 'Assistant',
+    scope: 'system',
+  },
+  {
+    component: PluginsManagement,
+    description: 'Manage installed plugins',
+    group: 'System',
+    icon: Puzzle,
+    id: 'plugins',
+    label: 'Plugins',
+    scope: 'system',
+  },
+  {
+    component: MaintenanceManagement,
+    description: 'Run global background maintenance operations',
+    group: 'System',
+    icon: Wrench,
+    id: 'maintenance',
+    label: 'Maintenance',
+    scope: 'system',
+  },
+  {
+    component: GraphQueryManagement,
+    description: 'Run ad-hoc Cypher queries against the graph database',
+    group: 'System',
+    icon: Network,
+    id: 'graph-query',
+    label: 'Graph Query',
+    scope: 'system',
+  },
+]
+
+// The admin section shown when none is specified in the URL.
+const DEFAULT_SECTION = SECTIONS[0]
+
+// Sections that moved to the Agents area. Old links open the new page.
+const MOVED_SECTIONS: Record<string, AgentsSection> = {
+  'agent-runners': 'runners',
+  'egress-destinations': 'egress',
 }
 
 // fallow-ignore-next-line complexity
 export function Admin() {
   const navigate = useNavigate()
-  const { section, slug } = useParams<{ section?: string; slug?: string }>()
+  const { action, section, slug } = useParams<{
+    action?: string
+    section?: string
+    slug?: string
+  }>()
   const isSubPage = !!slug
-  const currentSection: AdminSection = isValidSection(section)
-    ? section
-    : DEFAULT_ADMIN_SECTION
+  const currentSectionData =
+    SECTIONS.find((s) => s.id === section) ?? DEFAULT_SECTION
+  const currentSection = currentSectionData.id
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { selectedOrganization } = useOrganization()
 
   useEffect(() => {
-    if (section === undefined) {
-      navigate(`/admin/${DEFAULT_ADMIN_SECTION}`, { replace: true })
+    const moved = section ? MOVED_SECTIONS[section] : undefined
+    if (moved) {
+      const rest = [slug, action].filter((p): p is string => !!p)
+      navigate(agentsPath(moved, ...rest), { replace: true })
+    } else if (section === undefined) {
+      navigate(`/admin/${DEFAULT_SECTION.id}`, { replace: true })
     }
-  }, [section, navigate])
+  }, [action, section, slug, navigate])
 
   const orgName = selectedOrganization?.name || 'Organization'
-
-  const orgAdminSections: SectionDef[] = [
-    {
-      description: 'Operations metrics and system health at a glance',
-      icon: LayoutDashboard,
-      id: 'overview',
-      label: 'Overview',
-      scope: 'org',
-    },
-    {
-      description: 'Runner pools that serve the organization and their runners',
-      icon: Server,
-      id: 'agent-runners',
-      label: 'Agent Runners',
-      scope: 'org',
-    },
-    {
-      description: 'Configure metadata templates',
-      icon: FileJson,
-      id: 'blueprints',
-      label: 'Blueprints',
-      scope: 'org',
-    },
-    {
-      description: 'Organization-wide defaults, including version formats',
-      icon: SlidersHorizontal,
-      id: 'default-settings',
-      label: 'Default Settings',
-      scope: 'org',
-    },
-    {
-      description: 'Manage reusable document templates',
-      icon: StickyNote,
-      id: 'document-templates',
-      label: 'Document Templates',
-      scope: 'org',
-    },
-    {
-      description: 'Manage environments',
-      icon: Layers,
-      id: 'environments',
-      label: 'Environments',
-      scope: 'org',
-    },
-    {
-      description: 'Connect external platforms',
-      icon: Blocks,
-      id: 'integrations',
-      label: 'Integrations',
-      scope: 'org',
-    },
-    {
-      description: 'Manage link definitions for projects',
-      icon: Link2,
-      id: 'link-definitions',
-      label: 'Link Definitions',
-      scope: 'org',
-    },
-    {
-      description: 'Manage project types',
-      icon: FolderTree,
-      id: 'project-types',
-      label: 'Project Types',
-      scope: 'org',
-    },
-    {
-      description:
-        'Define attribute, presence, link, and age-based scoring policies',
-      icon: Target,
-      id: 'scoring-policies',
-      label: 'Scoring Policies',
-      scope: 'org',
-    },
-    {
-      description: 'Secret providers, bindings, grants, and their audit',
-      icon: LockKeyhole,
-      id: 'secrets',
-      label: 'Secrets',
-      scope: 'org',
-    },
-    {
-      description: 'Manage teams',
-      icon: UsersRound,
-      id: 'teams',
-      label: 'Teams',
-      scope: 'org',
-    },
-    {
-      description: 'Inbound endpoints and their delivery activity',
-      icon: Webhook,
-      id: 'webhooks',
-      label: 'Webhooks',
-      scope: 'org',
-    },
-  ]
-
-  const systemAdminSections: SectionDef[] = [
-    {
-      description:
-        'LLM providers and the model catalog, shared by every organization',
-      icon: Sparkles,
-      id: 'ai-models',
-      label: 'AI Models',
-      scope: 'system',
-    },
-    {
-      description: 'Configure the AI assistant and its MCP servers',
-      icon: Sparkles,
-      id: 'assistant',
-      label: 'Assistant',
-      scope: 'system',
-    },
-    {
-      description: 'Configure SSO authentication providers',
-      icon: KeyRound,
-      id: 'oauth',
-      label: 'Auth Providers',
-      scope: 'system',
-    },
-    {
-      description:
-        'Internal networks that agent runner pods may reach, and their sync state',
-      icon: Waypoints,
-      id: 'egress-destinations',
-      label: 'Egress Destinations',
-      scope: 'system',
-    },
-    {
-      description: 'Run ad-hoc Cypher queries against the graph database',
-      icon: Network,
-      id: 'graph-query',
-      label: 'Graph Query',
-      scope: 'system',
-    },
-    {
-      description: 'Run global background maintenance operations',
-      icon: Wrench,
-      id: 'maintenance',
-      label: 'Maintenance',
-      scope: 'system',
-    },
-    {
-      description: 'Manage organizational units and access',
-      icon: Building2,
-      id: 'organizations',
-      label: 'Organizations',
-      scope: 'system',
-    },
-    {
-      description: 'Manage installed plugins',
-      icon: Puzzle,
-      id: 'plugins',
-      label: 'Plugins',
-      scope: 'system',
-    },
-    {
-      description: 'Versioned prompts, labels, and model settings',
-      icon: FileCode2,
-      id: 'prompts',
-      label: 'Prompts',
-      scope: 'system',
-    },
-    {
-      description: 'Define roles and permission collections',
-      icon: Shield,
-      id: 'roles',
-      label: 'Roles',
-      scope: 'system',
-    },
-    {
-      description: 'Manage service accounts and API keys',
-      icon: Bot,
-      id: 'service-accounts',
-      label: 'Service Accounts',
-      scope: 'system',
-    },
-    {
-      description: 'Manage user accounts and administrators',
-      icon: Users,
-      id: 'users',
-      label: 'User Management',
-      scope: 'system',
-    },
-  ]
-
-  const allSections = [...orgAdminSections, ...systemAdminSections]
-  const currentSectionData = allSections.find((s) => s.id === currentSection)
+  const Content = currentSectionData.component
 
   // fallow-ignore-next-line complexity
   const renderSectionButton = (sectionDef: SectionDef) => {
@@ -348,7 +336,7 @@ export function Admin() {
             : 'text-secondary hover:bg-secondary hover:text-primary'
         }`}
         key={sectionDef.id}
-        title={isCollapsed ? sectionDef.label : undefined}
+        title={isCollapsed ? sectionDef.label : sectionDef.description}
         variant="ghost"
       >
         <Link to={`/admin/${sectionDef.id}`}>
@@ -365,6 +353,35 @@ export function Admin() {
           )}
         </Link>
       </Button>
+    )
+  }
+
+  const renderScope = (
+    scope: SectionDef['scope'],
+    title: string,
+    ScopeIcon: typeof Users,
+  ) => {
+    const sections = SECTIONS.filter((s) => s.scope === scope)
+    const groups = [...new Set(sections.map((s) => s.group))]
+    return (
+      <div className="pb-6">
+        {!isCollapsed && (
+          <div className="text-tertiary flex items-center gap-2 px-3 pt-4 pb-2 text-xs tracking-wider uppercase">
+            <ScopeIcon className="size-3" />
+            {title}
+          </div>
+        )}
+        {groups.map((group) => (
+          <div className="space-y-1 pb-2" key={group}>
+            {!isCollapsed && group && (
+              <div className="text-tertiary px-4 pt-3 pb-1 text-xs font-medium">
+                {group}
+              </div>
+            )}
+            {sections.filter((s) => s.group === group).map(renderSectionButton)}
+          </div>
+        ))}
+      </div>
     )
   }
 
@@ -398,32 +415,10 @@ export function Admin() {
           </div>
 
           <nav
-            className={`flex-1 space-y-1 overflow-y-auto px-4 pb-4 ${isCollapsed ? 'pt-14' : 'pt-4'}`}
+            className={`flex-1 overflow-y-auto px-4 pb-4 ${isCollapsed ? 'pt-14' : 'pt-4'}`}
           >
-            {/* Organization Scope Section */}
-            <div style={{ paddingBottom: '2em' }}>
-              {!isCollapsed && (
-                <div className="text-tertiary flex items-center gap-2 px-3 pt-4 pb-6 text-xs tracking-wider uppercase">
-                  <Building2 className="size-3" />
-                  {orgName} Admin
-                </div>
-              )}
-              {orgAdminSections.map(renderSectionButton)}
-            </div>
-
-            {/* System Admin Section */}
-            <div>
-              {!isCollapsed && (
-                <div
-                  className="text-tertiary flex items-center gap-2 px-3 pb-3 text-xs tracking-wider uppercase"
-                  style={{ paddingTop: '2em' }}
-                >
-                  <Globe className="size-3" />
-                  Global Admin
-                </div>
-              )}
-              {systemAdminSections.map(renderSectionButton)}
-            </div>
+            {renderScope('org', orgName, Building2)}
+            {renderScope('system', 'Global', Globe)}
           </nav>
         </aside>
 
@@ -433,9 +428,7 @@ export function Admin() {
           <div className="border-tertiary bg-primary border-b">
             <div className="px-8 py-6">
               <div className="flex items-center gap-3">
-                {currentSectionData && (
-                  <currentSectionData.icon className="text-amber-text size-5" />
-                )}
+                <currentSectionData.icon className="text-amber-text size-5" />
                 {isSubPage ? (
                   <Button
                     asChild
@@ -443,12 +436,12 @@ export function Admin() {
                     variant="link"
                   >
                     <Link to={`/admin/${currentSection}`}>
-                      {currentSectionData?.label}
+                      {currentSectionData.label}
                     </Link>
                   </Button>
                 ) : (
                   <h1 className="text-primary text-xl font-semibold">
-                    {currentSectionData?.label}
+                    {currentSectionData.label}
                   </h1>
                 )}
               </div>
@@ -457,50 +450,17 @@ export function Admin() {
 
           {/* Section Content */}
           <div className="p-8">
-            {currentSection === 'overview' && <AdminOverview />}
-            {currentSection === 'agent-runners' && <AgentRunners />}
-            {currentSection === 'default-settings' && (
-              <DefaultSettingsManagement key={selectedOrganization?.slug} />
-            )}
-            {currentSection === 'teams' && <TeamManagement />}
-            {currentSection === 'environments' && <EnvironmentManagement />}
-            {currentSection === 'project-types' && <ProjectTypeManagement />}
-            {currentSection === 'integrations' && <IntegrationsManagement />}
-            {currentSection === 'webhooks' && <Webhooks />}
-            {currentSection === 'link-definitions' && (
-              <LinkDefinitionManagement />
-            )}
-            {currentSection === 'document-templates' && (
-              <DocumentTemplateManagement />
-            )}
-            {currentSection === 'blueprints' && <BlueprintManagement />}
-            {currentSection === 'organizations' && <OrganizationManagement />}
-            {currentSection === 'users' && <UserManagement />}
-            {currentSection === 'service-accounts' && (
-              <ServiceAccountManagement />
-            )}
-            {currentSection === 'roles' && <RoleManagement />}
-            {currentSection === 'scoring-policies' && (
-              <ScoringPolicyManagement />
-            )}
-            {currentSection === 'secrets' && <SecretsManagement />}
-            {currentSection === 'ai-models' && <AIModelsManagement />}
-            {currentSection === 'prompts' && <PromptLibrary />}
-            {currentSection === 'assistant' && <AssistantManagement />}
-            {currentSection === 'oauth' && <AuthProvidersManagement />}
-            {currentSection === 'egress-destinations' && (
-              <EgressDestinationManagement />
-            )}
-            {currentSection === 'graph-query' && <GraphQueryManagement />}
-            {currentSection === 'maintenance' && <MaintenanceManagement />}
-            {currentSection === 'plugins' && <PluginsManagement />}
+            {/* A new key resets the defaults form for each organization. */}
+            <Content
+              key={
+                currentSection === 'default-settings'
+                  ? `${currentSection}:${selectedOrganization?.slug}`
+                  : currentSection
+              }
+            />
           </div>
         </main>
       </div>
     </div>
   )
-}
-
-function isValidSection(value: string | undefined): value is AdminSection {
-  return VALID_SECTIONS.includes(value as AdminSection)
 }
