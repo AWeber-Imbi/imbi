@@ -124,6 +124,14 @@ pub struct Claims {
     pub attempt: i64,
     pub pod: String,
     pub hosts: Vec<String>,
+    pub cidrs: Vec<Cidr>,
+}
+
+/// A CIDR grant: the internal addresses in `net`, on the TCP `ports`.
+#[derive(Debug, Deserialize)]
+pub struct Cidr {
+    pub net: IpNet,
+    pub ports: Vec<u16>,
 }
 
 /// The leeway on `exp`, in seconds.
@@ -160,7 +168,11 @@ impl Keys {
         let valid = claims.exp.saturating_add(LEEWAY) >= now
             && !claims.chain.is_empty()
             && !claims.pod.is_empty()
-            && !claims.hosts.is_empty();
+            && (!claims.hosts.is_empty() || !claims.cidrs.is_empty())
+            && claims
+                .cidrs
+                .iter()
+                .all(|c| !c.ports.is_empty() && !c.ports.contains(&0));
         valid.then_some(claims)
     }
 }
@@ -239,12 +251,24 @@ pub fn decide(
         return Decision::new(407, "bad_token");
     };
     let source = conn.source.to_canonical();
+    let held = claims.hosts.iter().any(|h| h == conn.host);
+    // Every internal address must be in a grant that holds the port.
+    // A public address of a mixed answer needs no grant.
+    let granted = conn.addrs.iter().zip(&classes).all(|(ip, class)| {
+        let ip = ip.to_canonical();
+        *class != Class::Internal
+            || claims
+                .cidrs
+                .iter()
+                .any(|c| c.net.contains(&ip) && c.ports.contains(&conn.port))
+    });
     let decision = match pods.addresses(&claims.pod, now) {
         None => Decision::new(407, "pod_unknown"),
         Some(ips) if !ips.contains(&source) => Decision::new(407, "pod_address"),
-        Some(_) if conn.port != 443 => Decision::new(403, "port"),
-        Some(_) if !claims.hosts.iter().any(|h| h == conn.host) => Decision::new(403, "not_held"),
-        Some(_) => Decision::new(200, "held"),
+        Some(_) if held && conn.port == 443 => Decision::new(200, "held"),
+        Some(_) if granted => Decision::new(200, "cidr"),
+        Some(_) if held => Decision::new(403, "port"),
+        Some(_) => Decision::new(403, "not_held"),
     };
     Decision {
         chain: Some(claims.chain),
@@ -272,7 +296,7 @@ mod tests {
         json!({
             "iss": "imbi-api", "aud": "imbi-egress-proxy", "iat": NOW,
             "exp": NOW + 3600, "chain": "chain-1", "attempt": 1, "pod": POD,
-            "hosts": ["git.example.com"],
+            "hosts": ["git.example.com"], "cidrs": [],
         })
     }
 
@@ -472,13 +496,18 @@ mod tests {
             ("attempt", json!("1")),
             ("pod", json!("")),
             ("hosts", json!([])),
+            ("cidrs", json!([{"net": "10.0.0.0/33", "ports": [443]}])),
+            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": []}])),
+            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": [0]}])),
+            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": [65536]}])),
+            ("cidrs", json!([{"net": "10.0.0.0/8"}])),
         ] {
             let case = Case::new("git.example.com", &["10.1.2.3"])
                 .with_claims(|c| c[claim] = value.clone());
             assert_eq!(reason(case), (407, "bad_token"), "{claim}");
         }
         for claim in [
-            "iss", "aud", "iat", "exp", "chain", "attempt", "pod", "hosts",
+            "iss", "aud", "iat", "exp", "chain", "attempt", "pod", "hosts", "cidrs",
         ] {
             let case = Case::new("git.example.com", &["10.1.2.3"])
                 .with_claims(|c| _ = c.as_object_mut().unwrap().remove(claim));
@@ -526,6 +555,58 @@ mod tests {
     fn token_of_the_previous_key_is_allowed() {
         let mut case = Case::new("git.example.com", &["10.1.2.3"]);
         case.auth = Some(basic("chain", &sign(Algorithm::HS256, OLD_KEY, &claims())));
+        assert_eq!(reason(case), (200, "held"));
+    }
+
+    fn cidr_case(addrs: &[&'static str], port: u16) -> Case {
+        let mut case = Case::new("db.example.com", addrs).with_claims(|c| {
+            c["hosts"] = json!([]);
+            c["cidrs"] = json!([
+                {"net": "10.1.0.0/16", "ports": [5432, 443]},
+                {"net": "169.254.0.0/16", "ports": [80]},
+            ]);
+        });
+        case.port = port;
+        case
+    }
+
+    #[test]
+    fn cidr_grant_on_a_granted_port_is_allowed() {
+        let d = cidr_case(&["10.1.2.3"], 5432).decide();
+        assert_eq!((d.status, d.reason), (200, "cidr"));
+        assert_eq!(d.chain.as_deref(), Some("chain-1"));
+    }
+
+    #[test]
+    fn cidr_grant_on_a_port_not_granted_is_403() {
+        assert_eq!(reason(cidr_case(&["10.1.2.3"], 22)), (403, "not_held"));
+    }
+
+    #[test]
+    fn address_outside_every_grant_is_403() {
+        assert_eq!(reason(cidr_case(&["10.2.0.1"], 5432)), (403, "not_held"));
+    }
+
+    #[test]
+    fn mixed_answer_with_one_address_outside_the_grant_is_403() {
+        assert_eq!(
+            reason(cidr_case(&["10.1.2.3", "10.2.0.1"], 5432)),
+            (403, "not_held")
+        );
+    }
+
+    #[test]
+    fn never_list_wins_over_a_cidr_grant() {
+        assert_eq!(
+            reason(cidr_case(&["169.254.169.254"], 80)),
+            (403, "special_address")
+        );
+    }
+
+    #[test]
+    fn held_host_on_443_with_cidrs_in_the_token_is_allowed() {
+        let case = Case::new("git.example.com", &["10.9.9.9"])
+            .with_claims(|c| c["cidrs"] = json!([{"net": "10.1.0.0/16", "ports": [22]}]));
         assert_eq!(reason(case), (200, "held"));
     }
 
