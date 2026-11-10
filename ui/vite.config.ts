@@ -53,6 +53,11 @@ function requestLogger(): Plugin {
   }
 }
 
+const proxyTarget =
+  process.env.API_PROXY_TARGET ||
+  process.env.VITE_API_URL ||
+  'http://localhost:8000'
+
 function versionManifest(): Plugin {
   return {
     apply: 'build',
@@ -209,15 +214,18 @@ export default defineConfig({
     cors: true,
     host: '0.0.0.0',
     port: 5173,
+    // API_PROXY_TARGET sends the proxy to a remote API (for example an
+    // Okteto environment) while the browser keeps VITE_API_URL=/api, so
+    // requests stay same-origin and need no CORS.
     proxy: {
       '/api': {
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: proxyTarget,
       },
       '/uploads': {
         changeOrigin: true,
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: proxyTarget,
       },
     },
   },
