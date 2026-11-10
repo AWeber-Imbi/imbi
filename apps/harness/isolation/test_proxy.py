@@ -92,6 +92,7 @@ def token(pod_uid: str) -> str:
         'attempt': 1,
         'pod': pod_uid,
         'hosts': sorted({HOST}),
+        'cidrs': [],
     }
     signed = b'.'.join(
         b64(json.dumps(part, separators=(',', ':')).encode())
