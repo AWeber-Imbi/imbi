@@ -6,7 +6,7 @@ only for platform administrators. The page has two tabs:
 
 | Tab | What it configures |
 |---|---|
-| **MCP Servers** | The external MCP servers. The assistant and the agents use their tools |
+| **MCP Servers** | The external MCP servers. The assistant uses their tools |
 | **Prompt** | The system prompt, the model, and the model parameters of the assistant |
 
 These settings are global. They apply to every organization.
@@ -48,13 +48,11 @@ versions, labels, the environment override, and the model settings, see
 
 ## MCP servers
 
-An MCP server gives tools to the assistant and to the agents. Imbi
-connects to the server over streamable HTTP.
-
-| Who | Which servers | Tool names |
-|---|---|---|
-| imbi-assistant | Every enabled server | `mcp_<tool prefix>_<tool>` |
-| Agents | The servers of the tools that the agent has. See [Agents](agents.md#tools-and-plugins) | `<server slug>.<tool>` |
+An MCP server gives tools to the assistant. imbi-assistant uses every
+enabled server. Imbi connects to the server over streamable HTTP. The
+tool names in the assistant are `mcp_<tool prefix>_<tool>`. Agents do
+not use these servers. See
+[MCP servers and agents](#mcp-servers-and-agents).
 
 ### Add an MCP server
 
@@ -69,7 +67,7 @@ connects to the server over streamable HTTP.
 | Field | What to enter |
 |---|---|
 | Display name | Required |
-| Slug | Required. Agent tool keys use the slug |
+| Slug | Required. The default tool prefix |
 | URL | Required. The streamable HTTP endpoint of the server |
 | Description | Optional |
 | Enabled | A disabled server is not used |
