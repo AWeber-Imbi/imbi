@@ -586,9 +586,18 @@ async def _persist(db: graph.Pool, node: models.MCPServer) -> models.MCPServer:
 
 
 def _parse_node(raw: typing.Any) -> models.MCPServer:
-    """Parse a graph agtype vertex into an MCPServer model."""
+    """Parse a graph agtype vertex into an MCPServer model.
+
+    As ``Graph.match`` does, use ``model_construct`` when validation
+    fails, so that a status write to a server stored before the
+    ``credential_ref`` removal (no stored secret) does not fail.
+    Create and update validate their input before they write it.
+    """
     props: typing.Any = graph.parse_agtype(raw)
-    return models.MCPServer.model_validate(props)
+    try:
+        return models.MCPServer.model_validate(props)
+    except pydantic.ValidationError:
+        return models.MCPServer.model_construct(**props)
 
 
 async def _fetch(db: graph.Graph, id: str) -> models.MCPServer:

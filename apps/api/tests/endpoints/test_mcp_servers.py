@@ -531,6 +531,29 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(persisted['last_error'], 'tool call failed')
         self.assertIsNotNone(persisted['last_tested_at'])
 
+    def test_report_status_on_legacy_credential_ref_server(self) -> None:
+        """A server stored with only a credential_ref stays writable."""
+        legacy = self._server_props(
+            auth_type='static',
+            static_header='Authorization',
+            credential_ref='secret://mcp/example',
+        )
+        self.mock_db.match.return_value = [
+            models.MCPServer.model_construct(**legacy)
+        ]
+        self.mock_db.execute.return_value = [
+            {'n': {**legacy, 'status': 'degraded'}}
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/mcp-servers/srv-1/status',
+                json={'status': 'degraded', 'error': 'tool call failed'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'degraded')
+
     def test_report_status_not_found(self) -> None:
         """Reporting status for a missing id returns 404."""
         self.mock_db.match.return_value = []

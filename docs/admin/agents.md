@@ -118,12 +118,10 @@ servers.
 - A plugin with the badge **unsupported source** cannot load. See
   [Plugin sources](#plugin-sources).
 
-**Tools** lists the tools in groups:
-
-- The `imbi` group has the tools of the Imbi API.
-- Each other group is an MCP server from **Admin > Global Admin >
-  Assistant > MCP Servers**. The assistant also uses these servers. The Slack
-  bot does not.
+**Tools** lists the tools of the Imbi API, in the `imbi` group. The MCP
+servers in **Admin > Global Admin > Assistant > MCP Servers** are for the
+assistant only and are not in this list. To give the agent other MCP
+servers, select a plugin that brings them.
 
 The key of a tool is `<server slug>.<tool name>`. Each tool has a
 capability badge: **Read**, **Write**, **Destructive**, or **Unknown**. The
@@ -144,10 +142,10 @@ To give the agent a tool:
    select **Per minute**, **Per hour**, or **Per day**. Click **Apply**.
 
 Imbi keeps the tool list for 5 minutes. Click the refresh button to list
-the tools again. The refresh connects to each MCP server, so it needs
+the tools again. The refresh connects to the Imbi MCP server, so it needs
 `agent:write`.
 
-When a server does not answer, its group shows an error: not reachable, no
+When the server does not answer, its group shows an error: not reachable, no
 answer in time, or credentials not accepted. A tool that the agent has but
 that the catalog does not list now shows **Unavailable**. Turn it off to
 remove it.
@@ -182,7 +180,7 @@ add one:
 4. Click **Save**.
 
 The tab also lists the secrets that the runner uses for the agent, for
-example the model key and MCP server credentials. The agent never gets
+example the model key and the repository tokens. The agent never gets
 these values. To change or remove a grant, use **Admin > \<organization\>
 Admin > Secrets**.
 

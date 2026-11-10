@@ -26,9 +26,9 @@ Setup has four steps:
 | Binding | A **reference** that you choose, mapped to one AWS secret | `secret://grafana/api` → `{"secret_id": "imbi/grafana"}` |
 | Grant | Which agents can use which bindings, for which purposes | Agent `ops-helper` may use `secret://grafana/api` for `grafana` |
 
-The reference is a name that you make up. It is not an AWS name. Agents,
-MCP servers, and the model settings use the reference, so you can move a
-secret to a different AWS secret without changing them.
+The reference is a name that you make up. It is not an AWS name. Agents
+and the model settings use the reference, so you can move a secret to a
+different AWS secret without changing them.
 
 ## Prepare AWS
 
