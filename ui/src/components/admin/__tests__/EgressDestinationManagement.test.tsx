@@ -40,6 +40,7 @@ function destination(
     description: null,
     generation: 2,
     global: false,
+    hostnames: [],
     name: 'Main Postgres',
     organizations: ['acme'],
     pending: false,
@@ -120,6 +121,7 @@ describe('EgressDestinationManagement', () => {
         cidrs: ['10.20.0.0/16', '10.30.0.0/24'],
         description: null,
         global: false,
+        hostnames: [],
         name: 'Main Postgres',
         organizations: ['acme'],
         ports: [
@@ -129,6 +131,106 @@ describe('EgressDestinationManagement', () => {
         slug: 'main-postgres',
       }),
     )
+  })
+
+  it('shows host names in the CIDRs column', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([
+      destination({
+        cidrs: [],
+        hostnames: ['git.example.com', 'zoekt.example.com'],
+        ports: [{ port: 443, protocol: 'TCP' }],
+      }),
+    ])
+    mountAt('/admin/egress-destinations')
+    expect(
+      await screen.findByText('git.example.com, zoekt.example.com'),
+    ).toBeInTheDocument()
+  })
+
+  it('creates a host name destination on 443/TCP', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([])
+    vi.mocked(endpoints.createEgressDestination).mockResolvedValue(
+      destination(),
+    )
+    mountAt('/admin/egress-destinations/new')
+    fireEvent.change(await screen.findByLabelText(/^Name/), {
+      target: { value: 'Git' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Host names' }))
+    expect(screen.queryByLabelText(/^CIDRs/)).not.toBeInTheDocument()
+    const ports = screen.getByLabelText(/^Ports/)
+    expect(ports).toBeDisabled()
+    expect(ports).toHaveValue('443/TCP')
+    fireEvent.change(screen.getByLabelText(/^Host names/), {
+      target: { value: 'Git.Example.com\nzoekt.example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
+    await waitFor(() =>
+      expect(endpoints.createEgressDestination).toHaveBeenCalledWith({
+        cidrs: [],
+        description: null,
+        global: false,
+        hostnames: ['git.example.com', 'zoekt.example.com'],
+        name: 'Git',
+        organizations: [],
+        ports: [{ port: 443, protocol: 'TCP' }],
+        slug: 'git',
+      }),
+    )
+  })
+
+  it.each([
+    ['', 'Add at least one host name'],
+    ['10.0.0.1', '10.0.0.1 is an IP address. Use a CIDR destination for it'],
+    ['::1', '::1 is an IP address. Use a CIDR destination for it'],
+    [
+      '*.example.com',
+      '*.example.com is not a host name. Do not use a scheme, path, port, or wildcard',
+    ],
+    [
+      'https://example.com',
+      'https://example.com is not a host name. Do not use a scheme, path, port, or wildcard',
+    ],
+    [
+      'example.com:8443',
+      'example.com:8443 is not a host name. Do not use a scheme, path, port, or wildcard',
+    ],
+    [
+      'localhost',
+      'localhost must have at least one dot, such as api.example.com',
+    ],
+    [
+      Array.from({ length: 26 }, (_, i) => `h${i}.example.com`).join('\n'),
+      'Add at most 25 host names',
+    ],
+  ])('refuses host names %j', async (value, message) => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([])
+    mountAt('/admin/egress-destinations/new')
+    fireEvent.change(await screen.findByLabelText(/^Name/), {
+      target: { value: 'Git' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Host names' }))
+    fireEvent.change(screen.getByLabelText(/^Host names/), {
+      target: { value },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Create Destination/ }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(endpoints.createEgressDestination).not.toHaveBeenCalled()
+  })
+
+  it('opens a host name destination in its kind', async () => {
+    vi.mocked(endpoints.listEgressDestinations).mockResolvedValue([
+      destination({
+        cidrs: [],
+        hostnames: ['git.example.com'],
+        ports: [{ port: 443, protocol: 'TCP' }],
+      }),
+    ])
+    mountAt('/admin/egress-destinations/pg-main/edit')
+    expect(await screen.findByLabelText(/^Host names/)).toHaveValue(
+      'git.example.com',
+    )
+    expect(screen.getByRole('radio', { name: 'CIDRs' })).toBeDisabled()
   })
 
   it('shows the API error on save', async () => {
