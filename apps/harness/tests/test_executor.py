@@ -623,3 +623,75 @@ class CollectTestCase(unittest.TestCase):
             executor._collect(read, time.monotonic() + 30, 10, stop),
             (b'', False, False),
         )
+
+
+PROXY_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJjaGFpbiI6ImMifQ.c2lnbmF0dXJlLXZhbHVl'
+PROXY_URL = f'http://chain:{PROXY_TOKEN}@imbi-egress-proxy.runners.svc:3128'
+PROXY_ENV = {
+    'HTTPS_PROXY': PROXY_URL,
+    'https_proxy': PROXY_URL,
+    'NO_PROXY': 'localhost,127.0.0.1,::1,imbi-api',
+    'no_proxy': 'localhost,127.0.0.1,::1,imbi-api',
+}
+PROXY_AUTH = base64.b64encode(f'chain:{PROXY_TOKEN}'.encode()).decode()
+#: Failed commands that print the proxy URL or its credential.
+FAILED_OUTPUTS = (
+    # git clone
+    f"fatal: unable to access 'https://git.internal.example/a.git/': "
+    f'Received HTTP code 403 from proxy after CONNECT ({PROXY_URL})\n',
+    # curl -v
+    f'* Uses proxy env variable HTTPS_PROXY == {PROXY_URL!r}\n'
+    f'> Proxy-Authorization: Basic {PROXY_AUTH}\n'
+    'curl: (56) CONNECT tunnel failed, response 407\n',
+    # any command: env
+    f'HTTPS_PROXY={PROXY_URL}\nhttps_proxy={PROXY_URL}\n',
+)
+
+
+class ProxyTestCase(BaseTestCase):
+    """The egress proxy environment and its redaction (proxy plan 5.3)."""
+
+    def assert_redacted(self, output: str) -> None:
+        self.assertNotIn(PROXY_TOKEN, output)
+        self.assertNotIn(PROXY_AUTH, output)
+        self.assertIn('[REDACTED]', output)
+
+    async def test_run_gets_the_proxy_and_redacts_it(self) -> None:
+        await self.hello()
+        for text in FAILED_OUTPUTS:
+            with self.subTest(output=text[:20]):
+                self.spawn.return_value = (1, text.encode(), False)
+                reply = await self.executor.dispatch(
+                    request(
+                        proxy_env={**PROXY_ENV, 'LD_PRELOAD': '/x.so'},
+                        secrets=[],
+                    )
+                )
+                self.assert_redacted(reply['output'])
+                env = self.spawn.call_args.args[2]
+                self.assertEqual(
+                    env,
+                    {
+                        'PATH': executor.PATH,
+                        'HOME': '/work/chain/home',
+                        **PROXY_ENV,
+                    },
+                )
+
+    async def test_clone_gets_the_proxy_and_redacts_it(self) -> None:
+        for text in FAILED_OUTPUTS:
+            with self.subTest(output=text[:20]):
+                self.spawn.return_value = (128, text.encode(), False)
+                reply = await self.executor.dispatch(
+                    clone(secret=None, proxy_env=PROXY_ENV)
+                )
+                self.assert_redacted(reply['output'])
+                env = self.spawn.call_args.args[2]
+                self.assertEqual(env['HTTPS_PROXY'], PROXY_URL)
+                self.assertEqual(env['no_proxy'], PROXY_ENV['no_proxy'])
+
+    async def test_no_proxy_env_without_a_proxy(self) -> None:
+        await self.hello()
+        await self.executor.dispatch(request(secrets=[]))
+        env = self.spawn.call_args.args[2]
+        self.assertNotIn('HTTPS_PROXY', env)

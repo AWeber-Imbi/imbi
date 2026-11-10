@@ -246,6 +246,20 @@ class ProbeTestCase(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(await egress.probe([]), [])
 
+    async def test_host_name_destination(self) -> None:
+        """A host name destination has no CIDR: the probe skips it, and
+        the pod label does not change (egress proxy plan 5.1)."""
+        named = {
+            **destination('zoekt'),
+            'cidrs': [],
+            'hostnames': ['zoekt.internal.example'],
+        }
+        connects = mock.AsyncMock()
+        with mock.patch.object(egress, 'connects', connects):
+            self.assertEqual(await egress.probe([named]), [])
+        connects.assert_not_awaited()
+        self.assertEqual(egress.labels([named]), {egress.label('zoekt'): 'g2'})
+
 
 class SyncRoundTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_round(self) -> None:
