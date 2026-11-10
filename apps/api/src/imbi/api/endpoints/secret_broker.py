@@ -222,6 +222,14 @@ class ProviderKeyUsage(pydantic.BaseModel):
         return consumer.check_key_host(value)
 
 
+class SecretLocatorCheck(pydantic.BaseModel):
+    """A locator to check before a binding is saved."""
+
+    provider_id: uuid.UUID
+    credential_class: providers.CredentialClass
+    locator: dict[str, typing.Any]
+
+
 class SecretBindingCreate(pydantic.BaseModel):
     reference: str = pydantic.Field(
         description='secret://<scope>/<path>, without a field'
@@ -869,6 +877,24 @@ async def delete_binding(
         raise fastapi.HTTPException(
             status_code=404, detail='Binding not found'
         )
+
+
+@bindings_router.post('/locator-check', status_code=204)
+async def check_locator(
+    org_id: OrgId,
+    data: SecretLocatorCheck,
+    secrets: secret_broker.Store,
+    _: BindingWrite,
+) -> None:
+    """Check a locator as a save does, and store nothing.
+
+    Raises:
+        422: The provider or the locator is not valid.
+
+    """
+    await _locator(
+        secrets, org_id, data.provider_id, data.locator, data.credential_class
+    )
 
 
 @bindings_router.post(

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
+  checkSecretLocator,
   createSecretBinding,
   deleteSecretBinding,
   listSecretBindings,
@@ -16,16 +17,19 @@ import { AdminTable } from '@/components/ui/admin-table'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import { CopyId } from './CopyId'
-import { SecretDialog } from './SecretDialog'
+import { SecretDialog, type Values } from './SecretDialog'
 import {
   CREDENTIAL_CLASSES,
   DELIVERY_MODES,
   type SecretBinding,
   type SecretBindingCreate,
   type SecretBindingPatch,
+  titleList,
+  titleOptions,
 } from './types'
 
 const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
@@ -72,6 +76,9 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   )
   const bindings = bindingsQuery.data ?? []
   const refresh = () => queryClient.invalidateQueries({ queryKey })
+  // The dialog values, to check the locator while the admin types it.
+  const [formValues, setFormValues] = useState<null | Values>(null)
+  const locator = useLocatorCheck(orgSlug, formValues)
 
   const saveMutation = useMutation({
     mutationFn: ({
@@ -88,6 +95,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
   })
   const open = (target: 'new' | SecretBinding) => {
     saveMutation.reset()
+    setFormValues(null)
     setEditing(target)
   }
   const row = editing === 'new' ? undefined : (editing ?? undefined)
@@ -200,7 +208,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
             header: 'Delivery',
             key: 'delivery',
             render: (row) =>
-              row.allowed_delivery_modes.join(', ') +
+              titleList(row.allowed_delivery_modes) +
               (row.allowed_delivery_targets.length
                 ? ` (${row.allowed_delivery_targets.join(', ')})`
                 : ''),
@@ -239,6 +247,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
         <SecretDialog
           description="Map a logical reference to a location in a provider. A binding holds no secret value."
           error={saveMutation.error}
+          fieldErrors={{ locator: locator.error }}
           fields={[
             {
               createOnly: true,
@@ -293,7 +302,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
               kind: 'multi',
               label: 'Allowed delivery modes',
               name: 'allowed_delivery_modes',
-              options: asOptions(DELIVERY_MODES),
+              options: titleOptions(DELIVERY_MODES),
               required: true,
             },
             {
@@ -357,6 +366,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
             },
           ]}
           isPending={saveMutation.isPending}
+          onChange={setFormValues}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>
             // Close in a per-call callback: open() resets the mutation,
@@ -368,6 +378,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
           }
           original={row}
           title={row ? `Edit binding ${row.reference}` : 'New binding'}
+          validating={locator.checking}
         />
       )}
     </div>
@@ -401,4 +412,56 @@ function unlinkedKeys(
       return []
     return [{ app, key, usage }]
   })
+}
+
+/**
+ * Check the locator in the dialog with the rules of a save, a moment
+ * after the admin stops typing. Return the reason it is not valid, and
+ * whether a check is still to come.
+ */
+// fallow-ignore-next-line complexity
+function useLocatorCheck(orgSlug: string, values: null | Values) {
+  const text = typeof values?.locator === 'string' ? values.locator : ''
+  const providerId = String(values?.provider_id ?? '')
+  const credentialClass = String(values?.credential_class ?? '')
+  let parsed: null | Record<string, unknown> = null
+  let parseError: string | undefined
+  if (text.trim()) {
+    try {
+      const value: unknown = JSON.parse(text)
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        parsed = value as Record<string, unknown>
+      } else {
+        parseError = 'The locator must be a JSON object'
+      }
+    } catch {
+      parseError = 'The locator is not valid JSON'
+    }
+  }
+  const request =
+    parsed && providerId && credentialClass
+      ? JSON.stringify({
+          credential_class: credentialClass,
+          locator: parsed,
+          provider_id: providerId,
+        })
+      : ''
+  const debounced = useDebouncedValue(request, 400)
+  const check = useQuery({
+    enabled: !!debounced,
+    // A query cannot hold undefined, and the 204 has no body.
+    queryFn: async () => {
+      await checkSecretLocator(orgSlug, JSON.parse(debounced))
+      return true
+    },
+    queryKey: ['secret-locator-check', orgSlug, debounced],
+    retry: false,
+    staleTime: Infinity,
+  })
+  if (parseError) return { checking: false, error: parseError }
+  if (!request) return { checking: false, error: undefined }
+  return {
+    checking: request !== debounced || check.isFetching,
+    error: check.error ? extractApiErrorDetail(check.error) : undefined,
+  }
 }

@@ -4233,6 +4233,20 @@ export const updateSecretBinding = (
 export const deleteSecretBinding = (orgSlug: string, id: string) =>
   apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-bindings')}/${id}`)
 
+// Applies the rules of a binding save to a locator, and stores nothing.
+export const checkSecretLocator = (
+  orgSlug: string,
+  body: {
+    credential_class: string
+    locator: Record<string, unknown>
+    provider_id: string
+  },
+) =>
+  apiClient.post<void>(
+    `${secretsPath(orgSlug, 'secret-bindings')}/locator-check`,
+    body,
+  )
+
 export const validateSecretBinding = (orgSlug: string, id: string) =>
   apiClient.post<SecretBindingValidation>(
     `${secretsPath(orgSlug, 'secret-bindings')}/${id}/validate`,

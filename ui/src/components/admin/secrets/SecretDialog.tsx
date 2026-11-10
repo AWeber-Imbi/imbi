@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -23,6 +23,8 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { parseObject } from '@/lib/utils'
 
+export type Values = Record<string, string | string[]>
+
 /**
  * One form field. `list` is comma separated text sent as a string
  * array; `json` is a JSON object; `multi` is a set of checkboxes.
@@ -31,7 +33,7 @@ import { parseObject } from '@/lib/utils'
  * only when a field of the group has a value. A `createOnly` field is
  * not shown in an edit, because the API does not change it.
  */
-export interface FieldSpec {
+interface FieldSpec {
   createOnly?: boolean
   description?: string
   group?: string
@@ -47,32 +49,40 @@ export interface FieldSpec {
 interface SecretDialogProps {
   description: string
   error?: unknown
+  /** A message for each field that is not valid. Save is then disabled. */
+  fieldErrors?: Record<string, string | undefined>
   fields: FieldSpec[]
   isPending: boolean
+  /** Called with the values when they change, for outside validation. */
+  onChange?: (values: Values) => void
   onClose: () => void
   onSubmit: (values: Record<string, unknown>) => void
   /** The row to edit. The dialog then sends only the changed fields. */
   original?: Record<string, unknown>
   title: string
+  /** An outside validation is in progress. Save is then disabled. */
+  validating?: boolean
 }
-
-type Values = Record<string, string | string[]>
 
 /** A create or edit dialog for a provider, a binding, or a grant. */
 // fallow-ignore-next-line complexity
 export function SecretDialog({
   description,
   error,
+  fieldErrors = {},
   fields,
   isPending,
+  onChange,
   onClose,
   onSubmit,
   original,
   title,
+  validating = false,
 }: SecretDialogProps) {
   const [values, setValues] = useState<Values>(() =>
     Object.fromEntries(fields.map((f) => [f.name, initialValue(f, original)])),
   )
+  useEffect(() => onChange?.(values), [onChange, values])
   const visible = fields.filter(
     (f) => !(original && f.createOnly) && (f.show?.(values) ?? true),
   )
@@ -120,7 +130,7 @@ export function SecretDialog({
         <div className="flex flex-wrap gap-4">
           {field.options?.map((option) => (
             <label
-              className="text-primary flex items-center gap-2 text-sm"
+              className="flex items-center gap-2 text-sm text-primary"
               key={option.value}
             >
               <Checkbox
@@ -167,6 +177,22 @@ export function SecretDialog({
     (!field.group ||
       visible.some((f) => f.group === field.group && !isEmpty(values[f.name])))
   const missing = visible.some((f) => isRequired(f) && isEmpty(values[f.name]))
+  const invalid = visible.some((f) => !!fieldErrors[f.name])
+
+  const renderFields = (list: FieldSpec[]) =>
+    list.map((field) => (
+      <FormField
+        description={field.description}
+        error={fieldErrors[field.name]}
+        htmlFor={`secret-${field.name}`}
+        key={field.name}
+        label={field.label}
+        required={isRequired(field)}
+        touched
+      >
+        {renderInput(field)}
+      </FormField>
+    ))
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()} open>
@@ -183,23 +209,16 @@ export function SecretDialog({
               title={`Failed to save: ${title.toLowerCase()}`}
             />
           )}
-          {visible.map((field) => (
-            <FormField
-              description={field.description}
-              htmlFor={`secret-${field.name}`}
-              key={field.name}
-              label={field.label}
-              required={isRequired(field)}
-            >
-              {renderInput(field)}
-            </FormField>
-          ))}
+          {renderFields(visible)}
         </div>
         <DialogFooter>
           <Button onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button disabled={isPending || missing} onClick={submit}>
+          <Button
+            disabled={isPending || missing || invalid || validating}
+            onClick={submit}
+          >
             Save
           </Button>
         </DialogFooter>

@@ -356,6 +356,31 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.json()['max_ttl_seconds'], 60)
 
+    async def test_locator_check(self) -> None:
+        """The check applies the save rules and stores no binding."""
+        body = {
+            'provider_id': str(self.provider['id']),
+            'credential_class': 'static',
+            'locator': {'key': 'json'},
+        }
+        response = await self._post('/secret-bindings/locator-check', body)
+        self.assertEqual(response.status_code, 204, response.text)
+        for change in (
+            {'locator': {'key': 'x', 'arn': 'y'}},
+            {'provider_id': str(uuid.uuid4())},
+        ):
+            with self.subTest(change=change):
+                response = await self._post(
+                    '/secret-bindings/locator-check', body | change
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn('message', response.json()['detail'])
+        response = await self.client.get(self.base + '/secret-bindings/')
+        self.assertEqual(response.json(), [])
+        self.permissions.discard('secret_binding:write')
+        response = await self._post('/secret-bindings/locator-check', body)
+        self.assertEqual(response.status_code, 403)
+
     async def test_github_app_key_rules(self) -> None:
         """A github_app provider takes allowed hosts only, and its
         binding must name a provider key for the same host and App."""

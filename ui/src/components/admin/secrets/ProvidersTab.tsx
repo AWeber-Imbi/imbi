@@ -11,6 +11,7 @@ import {
   testSecretProvider,
   updateSecretProvider,
 } from '@/api/endpoints'
+import { toTitleCase } from '@/components/admin/blueprints/blueprint-schema-utils'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,9 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
     queryFn: ({ signal }) => listSecretProviderTypes(orgSlug, signal),
     queryKey: ['secret-provider-types', orgSlug],
   })
+  const typeLabels = new Map(
+    (typesQuery.data ?? []).map((t) => [t.type, t.label]),
+  )
   const refresh = () => queryClient.invalidateQueries({ queryKey })
 
   const saveMutation = useMutation({
@@ -98,9 +102,12 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
               Edit
             </Button>
             <Button
-              disabled={testMutation.isPending}
+              disabled={testMutation.isPending || !canTest(row)}
               onClick={() => testMutation.mutate(row.id)}
               size="sm"
+              title={
+                canTest(row) ? undefined : 'This provider type has no test'
+              }
               variant="outline"
             >
               Test
@@ -118,13 +125,15 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
           {
             header: 'Type',
             key: 'type',
-            render: (row) => <span className="font-mono">{row.type}</span>,
+            render: (row) => typeLabels.get(row.type) ?? toTitleCase(row.type),
           },
           {
             header: 'Health',
             key: 'health',
             render: (row) =>
-              row.health_status ? (
+              !canTest(row) ? (
+                <span className="text-tertiary">No test</span>
+              ) : row.health_status ? (
                 <Badge
                   variant={
                     row.health_status === 'healthy' ? 'success' : 'danger'
@@ -139,7 +148,12 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
           {
             header: 'Checked',
             key: 'checked',
-            render: (row) => <RelativeTime value={row.health_checked_at} />,
+            render: (row) =>
+              canTest(row) ? (
+                <RelativeTime value={row.health_checked_at} />
+              ) : (
+                <span className="text-tertiary">—</span>
+              ),
           },
           {
             header: 'Enabled',
@@ -213,3 +227,7 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
     </div>
   )
 }
+
+/** Whether the provider type has a health check that Test can run. */
+const canTest = (row: SecretProvider) =>
+  row.capabilities.includes('health_check')

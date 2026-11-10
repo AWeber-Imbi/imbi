@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import {
+  checkSecretLocator,
   listSecretBindings,
   listSecretProviders,
   listTokenExchangers,
@@ -12,6 +14,7 @@ import { BindingsTab } from '../BindingsTab'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
+  checkSecretLocator: vi.fn(),
   createSecretBinding: vi.fn(),
   deleteSecretBinding: vi.fn(),
   listSecretBindings: vi.fn(),
@@ -57,6 +60,41 @@ describe('BindingsTab', () => {
       { label: 'Acme AI', target_help: '{"acme_id": "..."}', vendor: 'acme' },
     ])
     vi.mocked(updateSecretBinding).mockResolvedValue({} as never)
+    vi.mocked(checkSecretLocator).mockResolvedValue(undefined)
+  })
+
+  /** Save waits for the locator check. */
+  const save = async () => {
+    const button = screen.getByRole('button', { name: 'Save' })
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+  }
+
+  it('shows why the locator is not valid and blocks the save', async () => {
+    vi.mocked(checkSecretLocator).mockRejectedValue(
+      new ApiError(422, 'Unprocessable', {
+        detail: {
+          error: 'invalid_configuration',
+          message: 'secret_id is required',
+        },
+      }),
+    )
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    expect(await screen.findByText('secret_id is required')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(checkSecretLocator).toHaveBeenCalledWith('acme', {
+      credential_class: 'static',
+      locator: { secret_id: 'imbi/key' },
+      provider_id: 'aws',
+    })
+    fireEvent.change(screen.getByLabelText(/Locator/), {
+      target: { value: '{"secret_id": ' },
+    })
+    expect(
+      await screen.findByText('The locator is not valid JSON'),
+    ).toBeInTheDocument()
   })
 
   it('shows the target help of each installed exchanger', async () => {
@@ -99,7 +137,9 @@ describe('BindingsTab', () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled(),
+    )
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
@@ -110,7 +150,7 @@ describe('BindingsTab', () => {
     fireEvent.click(edits[0])
     expect(screen.getByLabelText(/Provider key host/)).toHaveValue('github.com')
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await save()
     await waitFor(() =>
       expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
         provider_key_usage: { ...usage, consumers: ['app-1'] },
@@ -129,7 +169,7 @@ describe('BindingsTab', () => {
     fireEvent.change(screen.getByLabelText('Description'), {
       target: { value: 'new' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await save()
     await waitFor(() =>
       expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
         description: 'new',
