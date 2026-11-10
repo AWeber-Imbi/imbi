@@ -438,6 +438,23 @@ Adds one WebSocket per browser tab so open pages learn about changes made by oth
 
 ---
 
+#### [ADR 0024: Work Items](adr/0024-work-items.md)
+
+*Date: 2026-11-06 | Status: Proposed*
+
+Defines work items: the subject that people and agents move to done, native to Imbi or backed by an external system such as Jira. Replaces HandoffBee's board, turns, and asks, and amends ADR 0021.
+
+**Key Decisions:**
+
+- Work items are a new entity in the Postgres `work_items` schema; agent tasks are not repurposed, because a task is one agent on one discrete ask and a work item is the subject many tasks share
+- Every work item has a workflow, named by its type; creating or reopening the work item starts it, and that one driving run opens turns and sets stage and roles. Only a personal to-do may have none
+- A turn is one open row per holder per waiting step, so several reviewers can each hold one; Waiting on me is a person's open turns plus requests on standalone agent tasks
+- Workflows declare any number of roles, each with ordered resolvers: set on the item, an external field, a plugin, the item's own data, its pull requests, or named people
+- ADR 0021 gains send-backs with capped rounds, for each steps, parked steps, "No limit" run time, Turn, Gate, Branch, and Update work item steps, and work item workflows with no trigger
+- A new `issues` plugin capability backs work items with Jira; Imbi syncs to Jira as one blanket Imbi user. A `notify` capability delivers to Slack, and the slackbot creates work items from reactions and mentions
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
