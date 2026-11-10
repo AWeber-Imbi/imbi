@@ -127,10 +127,10 @@ pub struct Claims {
     pub cidrs: Vec<Cidr>,
 }
 
-/// A CIDR grant: the internal addresses in `net`, on the TCP `ports`.
+/// A CIDR grant: the internal addresses in `nets`, on the TCP `ports`.
 #[derive(Debug, Deserialize)]
 pub struct Cidr {
-    pub net: IpNet,
+    pub nets: Vec<IpNet>,
     pub ports: Vec<u16>,
 }
 
@@ -172,7 +172,7 @@ impl Keys {
             && claims
                 .cidrs
                 .iter()
-                .all(|c| !c.ports.is_empty() && !c.ports.contains(&0));
+                .all(|c| !c.nets.is_empty() && !c.ports.is_empty() && !c.ports.contains(&0));
         valid.then_some(claims)
     }
 }
@@ -260,7 +260,7 @@ pub fn decide(
             || claims
                 .cidrs
                 .iter()
-                .any(|c| c.net.contains(&ip) && c.ports.contains(&conn.port))
+                .any(|c| c.ports.contains(&conn.port) && c.nets.iter().any(|n| n.contains(&ip)))
     });
     let decision = match pods.addresses(&claims.pod, now) {
         None => Decision::new(407, "pod_unknown"),
@@ -496,11 +496,14 @@ mod tests {
             ("attempt", json!("1")),
             ("pod", json!("")),
             ("hosts", json!([])),
-            ("cidrs", json!([{"net": "10.0.0.0/33", "ports": [443]}])),
-            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": []}])),
-            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": [0]}])),
-            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": [65536]}])),
-            ("cidrs", json!([{"net": "10.0.0.0/8"}])),
+            ("cidrs", json!([{"nets": ["10.0.0.0/33"], "ports": [443]}])),
+            ("cidrs", json!([{"nets": ["10.0.0.0/8"], "ports": []}])),
+            ("cidrs", json!([{"nets": [], "ports": [443]}])),
+            ("cidrs", json!([{"nets": ["10.0.0.0/8"], "ports": [0]}])),
+            ("cidrs", json!([{"nets": ["10.0.0.0/8"], "ports": [65536]}])),
+            ("cidrs", json!([{"nets": ["10.0.0.0/8"]}])),
+            ("cidrs", json!([{"ports": [443]}])),
+            ("cidrs", json!([{"net": "10.0.0.0/8", "ports": [443]}])),
         ] {
             let case = Case::new("git.example.com", &["10.1.2.3"])
                 .with_claims(|c| c[claim] = value.clone());
@@ -562,8 +565,8 @@ mod tests {
         let mut case = Case::new("db.example.com", addrs).with_claims(|c| {
             c["hosts"] = json!([]);
             c["cidrs"] = json!([
-                {"net": "10.1.0.0/16", "ports": [5432, 443]},
-                {"net": "169.254.0.0/16", "ports": [80]},
+                {"nets": ["10.3.0.0/16", "10.1.0.0/16"], "ports": [5432, 443]},
+                {"nets": ["169.254.0.0/16"], "ports": [80]},
             ]);
         });
         case.port = port;
@@ -606,7 +609,7 @@ mod tests {
     #[test]
     fn held_host_on_443_with_cidrs_in_the_token_is_allowed() {
         let case = Case::new("git.example.com", &["10.9.9.9"])
-            .with_claims(|c| c["cidrs"] = json!([{"net": "10.1.0.0/16", "ports": [22]}]));
+            .with_claims(|c| c["cidrs"] = json!([{"nets": ["10.1.0.0/16"], "ports": [22]}]));
         assert_eq!(reason(case), (200, "held"));
     }
 
