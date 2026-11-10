@@ -47,8 +47,10 @@ AGENT_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 #: The issuer and audience of a proxy token.
 PROXY_ISSUER = 'imbi-api'
 PROXY_AUDIENCE = 'imbi-egress-proxy'
-#: The longest proxy token: it must fit in a proxy URL and header.
-MAX_PROXY_TOKEN_BYTES = 6144
+#: The longest proxy token. The runner sends it as a Basic credential
+#: (4/3 larger), and the proxy reads at most 8 KiB of request head
+#: (``MAX_HEAD_BYTES`` in ``proxy/src/request.rs``).
+MAX_PROXY_TOKEN_BYTES = 4096
 
 RUNNER_PREFIX = 'ihr_'
 EXECUTOR_PREFIX = 'ihe_'

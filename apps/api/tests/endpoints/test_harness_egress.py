@@ -827,7 +827,7 @@ class ProxyTokenTests(EgressTestCase):
         self.assertEqual(child['chain'], claim['chain_id'])
 
     async def test_too_large_token_fails_the_task(self) -> None:
-        # 25 names of 247 characters: the token is over 6 KiB.
+        # 25 names of 247 characters: the token is over 4 KiB.
         names = [
             f'{n:02d}{"a" * 58}.{"b" * 60}.{"c" * 60}.{"d" * 60}.com'
             for n in range(egress.MAX_HOSTNAMES)

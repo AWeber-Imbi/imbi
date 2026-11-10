@@ -151,7 +151,8 @@ spec:
       {{- include "imbi-harness.proxySelectorLabels" . | nindent 6 }}
 ---
 # The proxy reaches DNS, the Kubernetes API (pod watch), and internal
-# addresses on 443 only. The proxy decides which internal host is allowed.
+# addresses on any TCP port: a CIDR grant in a token can hold any TCP
+# port. The proxy decides which internal host and port are allowed.
 apiVersion: networking.k8s.aws/v1alpha1
 kind: ClusterNetworkPolicy
 metadata:
@@ -184,7 +185,7 @@ spec:
         - networks: [{{ $np.required.kubeApi.cidr | quote }}]
       ports:
         - portNumber: {port: {{ int $np.required.kubeApi.port }}, protocol: TCP}
-    - name: internal-https
+    - name: internal
       action: Accept
       to:
         - networks:
@@ -192,7 +193,7 @@ spec:
             - {{ . | quote }}
             {{- end }}
       ports:
-        - portNumber: {port: 443, protocol: TCP}
+        - portRange: {start: 1, end: 65535, protocol: TCP}
 ---
 # Every other internal address and IMDS. Public egress stays open.
 apiVersion: networking.k8s.aws/v1alpha1

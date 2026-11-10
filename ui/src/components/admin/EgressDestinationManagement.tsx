@@ -128,7 +128,7 @@ export function EgressDestinationManagement() {
             ),
           },
           {
-            header: 'CIDRs',
+            header: 'CIDRs / host names',
             key: 'cidrs',
             render: (d) => (
               <span className="font-mono text-xs">
