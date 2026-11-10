@@ -123,8 +123,10 @@ kubectl delete clusternetworkpolicies \
 
 With `egressProxy.enabled`, runner pods reach host name egress destinations
 through the egress proxy (`ghcr.io/aweber-imbi/imbi-egress-proxy`). The
-proxy accepts `CONNECT` on port 443 with a proxy token from imbi-api, and
-checks that the token holds the host and comes from its live runner pod.
+proxy accepts `CONNECT` with a proxy token from imbi-api, and checks that
+the token holds the host (port 443) or a CIDR of its address with the
+port, and comes from its live runner pod. CIDR destinations keep working
+with the proxy on.
 See [Agent runners](https://github.com/AWeber-Imbi/imbi/blob/main/docs/deployment/agent-runners.md#host-name-destinations)
 for the clients, DNS trust, key rotation, and troubleshooting.
 

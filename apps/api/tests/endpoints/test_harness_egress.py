@@ -155,12 +155,51 @@ class HostnameTests(unittest.TestCase):
         )
 
 
+def grant(cidrs: list[str], *tcp: int, udp: int | None = None) -> egress.Grant:
+    """A CIDR grant with the TCP ports ``tcp`` and one UDP port."""
+    ports = [egress.EgressPort(port=port) for port in tcp]
+    if udp is not None:
+        ports.append(egress.EgressPort(port=udp, protocol='UDP'))
+    return egress.Grant(slug='g', generation=1, cidrs=cidrs, ports=ports)
+
+
+class ProxyCidrsTests(unittest.TestCase):
+    def test_merge_and_sort(self) -> None:
+        self.assertEqual(
+            egress.proxy_cidrs(
+                [
+                    grant(['10.10.0.0/16', '10.9.0.0/24'], 8443, 443),
+                    grant(['10.10.0.0/16'], 22, 443, udp=53),
+                ]
+            ),
+            [
+                {'net': '10.9.0.0/24', 'ports': [443, 8443]},
+                {'net': '10.10.0.0/16', 'ports': [22, 443, 8443]},
+            ],
+        )
+
+    def test_udp_only_left_out(self) -> None:
+        self.assertEqual(
+            egress.proxy_cidrs([grant(['10.9.0.0/24'], udp=53)]), []
+        )
+        self.assertEqual(egress.proxy_cidrs([]), [])
+
+
 class ContractTests(unittest.TestCase):
     """The C4 contract with the egress proxy."""
 
     def test_mint_makes_the_valid_token(self) -> None:
         (valid,) = [t for t in CONTRACT['tokens'] if t['name'] == 'valid']
         claims = valid['claims']
+        # Grants out of order, split, and with UDP: the claim is the same.
+        cidrs = egress.proxy_cidrs(
+            [
+                grant(['10.30.1.0/24'], 22),
+                grant(['10.20.0.0/16'], 8443, udp=53),
+                grant(['10.20.0.0/16'], 443),
+            ]
+        )
+        self.assertEqual(cidrs, claims['cidrs'])
         self.assertEqual(
             tokens.mint_proxy_token(
                 CONTRACT['keys'][valid['key']],
@@ -168,6 +207,7 @@ class ContractTests(unittest.TestCase):
                 attempt=claims['attempt'],
                 pod=claims['pod'],
                 hosts=list(reversed(claims['hosts'])),
+                cidrs=cidrs,
                 now=claims['iat'],
                 ttl=claims['exp'] - claims['iat'],
             ),
@@ -670,8 +710,19 @@ class ProxyTokenTests(EgressTestCase):
         )
         self.assertEqual(
             list(claims),
-            ['iss', 'aud', 'iat', 'exp', 'chain', 'attempt', 'pod', 'hosts'],
+            [
+                'iss',
+                'aud',
+                'iat',
+                'exp',
+                'chain',
+                'attempt',
+                'pod',
+                'hosts',
+                'cidrs',
+            ],
         )
+        self.assertIn({'net': '10.9.0.0/24', 'ports': [443]}, claims['cidrs'])
         self.assertEqual(
             claims['exp'] - claims['iat'], tokens.AGENT_TOKEN_TTL_SECONDS
         )
@@ -709,11 +760,37 @@ class ProxyTokenTests(EgressTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIsNone(response.json()['proxy_token'])
 
-    async def test_no_token_without_hosts(self) -> None:
-        with mock.patch.object(harness_api, '_root_egress', return_value=[]):
+    async def test_cidr_only_chain_gets_a_token(self) -> None:
+        cidr_only = [grant(['10.9.0.0/24'], 5432)]
+        with mock.patch.object(
+            harness_api, '_root_egress', return_value=cidr_only
+        ):
+            response = await self.claim_with_pod(await self.register())
+        self.assertEqual(response.status_code, 200, response.text)
+        claims = jwt.decode(
+            response.json()['proxy_token'],
+            PROXY_KEY,
+            algorithms=['HS256'],
+            audience=tokens.PROXY_AUDIENCE,
+        )
+        self.assertEqual(claims['hosts'], [])
+        self.assertEqual(
+            claims['cidrs'], [{'net': '10.9.0.0/24', 'ports': [5432]}]
+        )
+
+    async def assert_no_token(self, egress_: list[egress.Grant]) -> None:
+        with mock.patch.object(
+            harness_api, '_root_egress', return_value=egress_
+        ):
             response = await self.claim_with_pod(await self.register())
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIsNone(response.json()['proxy_token'])
+
+    async def test_no_token_without_egress(self) -> None:
+        await self.assert_no_token([])
+
+    async def test_no_token_for_udp_only_cidrs(self) -> None:
+        await self.assert_no_token([grant(['10.9.0.0/24'], udp=53)])
 
     async def test_child_claim_gets_a_token(self) -> None:
         git = await self.proxied('git', ['git.example.com'])

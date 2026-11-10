@@ -19,9 +19,9 @@ the lease sweep makes every token of a lost runner invalid at once,
 and the long :data:`AGENT_TOKEN_TTL_SECONDS` is only a ceiling.
 
 The **proxy token** also comes from a claim (egress proxy plan 5.1).
-It gives the pod of the chain the host names of its egress grants at
-the egress proxy. It is signed with its own key, not the API key, so
-the proxy cannot mint API tokens.
+It gives the pod of the chain the host names and the CIDRs (with their
+TCP ports) of its egress grants at the egress proxy. It is signed with
+its own key, not the API key, so the proxy cannot mint API tokens.
 """
 
 import dataclasses
@@ -163,14 +163,18 @@ def mint_proxy_token(
     attempt: int,
     pod: uuid.UUID | str,
     hosts: list[str],
+    cidrs: list[dict[str, typing.Any]],
     now: int | None = None,
     ttl: int = AGENT_TOKEN_TTL_SECONDS,
 ) -> str:
     """Return the proxy token of a claim: HS256, signed with ``secret``.
 
     The claims and their order are a contract with the proxy (C1, the
-    fixture ``proxy/tests/contract.json``). ``now`` and ``ttl`` let a
-    test make the fixture token again.
+    fixture ``proxy/tests/contract.json``). ``hosts`` are the held host
+    names (port 443). ``cidrs`` are ``{"net", "ports"}`` entries
+    (:func:`imbi.api.harness.egress.proxy_cidrs`): the proxy allows an
+    internal address in ``net`` on one of ``ports``. ``now`` and
+    ``ttl`` let a test make the fixture token again.
     """
     iat = int(time.time()) if now is None else now
     return jwt.encode(
@@ -183,6 +187,7 @@ def mint_proxy_token(
             'attempt': attempt,
             'pod': str(pod),
             'hosts': sorted(set(hosts)),
+            'cidrs': cidrs,
         },
         secret,
         algorithm='HS256',
