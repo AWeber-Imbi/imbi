@@ -27,9 +27,7 @@ Two more requests are for the runner's own setup secrets (H22):
   it (plan section 6.2). A project repository also gets a push helper
   that reads ``GH_TOKEN`` (#422).
 - ``fetch`` returns the material of a ``model_inference`` resolution to
-  the runner, for its model proxy (plan section 6.4). ``mcp_server``
-  stays a setup purpose until the broker drops it, so ``run`` never
-  delivers it. The reply
+  the runner, for its model proxy (plan section 6.4). The reply
   also has ``expires_at`` for a dynamic credential, and ``bearer`` for
   an OAuth access token (WIF plan 4.7).
 
@@ -101,7 +99,7 @@ _GIT = (
 #: (``apps/harness/git-credential-env``), so ``git push`` works.
 _PUSH_HELPER = '/usr/local/libexec/git-credential-env'
 #: Setup secrets that the executor returns to the runner (H22).
-FETCH_PURPOSES = frozenset({'mcp_server', 'model_inference'})
+FETCH_PURPOSES = frozenset({'model_inference'})
 #: Setup secrets that git gets on a descriptor (H22).
 CLONE_PURPOSES = frozenset({'marketplace_fetch', 'workspace_checkout'})
 #: The runner's own secrets. ``run`` never delivers them: a command

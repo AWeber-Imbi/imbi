@@ -689,6 +689,19 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.json()['error'], 'invalid_secret_reference')
 
+    async def test_retired_purpose_grant_is_refused(self) -> None:
+        response = await self._post(
+            '/secret-grants/',
+            {
+                'agent_ids': ['agent-x'],
+                'binding_ids': [str(self.binding['id'])],
+                'purposes': ['mcp_server'],
+                'delivery_modes': ['file_descriptor'],
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'retired_purpose')
+
     async def test_setup_purpose_grant_is_file_descriptor_only(self) -> None:
         # The broker refuses these requests, so the grant could never
         # be used.
@@ -701,7 +714,7 @@ class SecretEndpointTestCase(
         for change in (
             {},
             {'delivery_modes': ['file_descriptor', 'environment']},
-            {'purposes': ['github_write', 'mcp_server']},
+            {'purposes': ['github_write', 'workspace_checkout']},
         ):
             with self.subTest(change=change):
                 response = await self._post('/secret-grants/', body | change)

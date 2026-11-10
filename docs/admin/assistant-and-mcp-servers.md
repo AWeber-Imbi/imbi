@@ -6,7 +6,7 @@ only for platform administrators. The page has two tabs:
 
 | Tab | What it configures |
 |---|---|
-| **MCP Servers** | The external MCP servers. The assistant and the agents use their tools |
+| **MCP Servers** | The external MCP servers. The assistant uses their tools |
 | **Prompt** | The system prompt, the model, and the model parameters of the assistant |
 
 These settings are global. They apply to every organization.
@@ -24,10 +24,8 @@ These settings are global. They apply to every organization.
 
 <!-- END GENERATED -->
 
-`mcp_server:update` also lets you test a server. Only a platform
-administrator can set the **Credential reference** of a server or link a
-credential for agents. The **Prompt** tab uses the prompt permissions. See
-[Prompts](prompts.md).
+`mcp_server:update` also lets you test a server. The **Prompt** tab uses
+the prompt permissions. See [Prompts](prompts.md).
 
 ## The assistant prompt
 
@@ -50,13 +48,11 @@ versions, labels, the environment override, and the model settings, see
 
 ## MCP servers
 
-An MCP server gives tools to the assistant and to the agents. Imbi
-connects to the server over streamable HTTP.
-
-| Who | Which servers | Tool names |
-|---|---|---|
-| imbi-assistant | Every enabled server | `mcp_<tool prefix>_<tool>` |
-| Agents | The servers of the tools that the agent has. See [Agents](agents.md#tools-and-plugins) | `<server slug>.<tool>` |
+An MCP server gives tools to the assistant. imbi-assistant uses every
+enabled server. Imbi connects to the server over streamable HTTP. The
+tool names in the assistant are `mcp_<tool prefix>_<tool>`. Agents do
+not use these servers. See
+[MCP servers and agents](#mcp-servers-and-agents).
 
 ### Add an MCP server
 
@@ -71,7 +67,7 @@ connects to the server over streamable HTTP.
 | Field | What to enter |
 |---|---|
 | Display name | Required |
-| Slug | Required. Agent tool keys use the slug |
+| Slug | Required. The default tool prefix |
 | URL | Required. The streamable HTTP endpoint of the server |
 | Description | Optional |
 | Enabled | A disabled server is not used |
@@ -94,8 +90,8 @@ connects to the server over streamable HTTP.
 
 Imbi encrypts the header value and the client secret before it stores
 them. The API never returns them. It returns only whether a value is set.
-The assistant uses these stored values. Agents do not. See
-[Credentials for agents](#credentials-for-agents).
+The assistant uses these stored values. See
+[MCP servers and agents](#mcp-servers-and-agents).
 
 **Ignored tools**
 
@@ -110,65 +106,11 @@ tools, and saves the status, the latency, the tool count, and the error.
 The **With issues** filter shows the servers that are `degraded` or
 `unreachable`.
 
-## Credentials for agents
+## MCP servers and agents
 
-An agent never uses the encrypted header value or client secret. The
-runner gets the credential from the [secrets broker](secrets.md) with the
-**Credential reference** of the server, for example
-`secret://mcp/github#token`. The reference applies in every
-organization: each organization that uses the server needs a binding for
-the same reference.
-
-An agent can use a server only when all of these are true:
-
-- The server is enabled.
-- The URL uses `https` and **Verify SSL** is on.
-- For a server with authentication: the server has a credential
-  reference, and a grant gives the agent that reference with the purpose
-  `mcp_server` and the delivery mode `file_descriptor`.
-
-Otherwise the runner leaves out the server, with a reason such as
-`server_disabled`, `tls_required`, or `no_credential_ref`.
-
-### Link a credential
-
-The **Link credential for agents** button makes the binding and the grant
-in one step. It works in the organization that you select in the top
-bar. You must be a platform administrator and a member of that
-organization.
-
-1. Put the credential value in the secret store of the organization, for
-   example AWS Secrets Manager. The binding holds no secret.
-2. Open the server.
-3. Under **Agent credential**, click **Link credential for agents**.
-4. Enter the fields in the table below.
-5. Submit the dialog.
-
-| Field | What to enter |
-|---|---|
-| Reference | `secret://<scope>/<path>`, lowercase, with no field |
-| Field | The field of the secret that holds the value. Empty: the whole value |
-| Provider | The secret provider of the organization |
-| Locator | Where the provider finds the secret, as JSON. For AWS: `{"secret_id": "prod/app", "version_stage": "AWSCURRENT"}` |
-| Agents | The agents that can use the credential. Empty: Imbi makes no grant |
-| Maximum TTL (seconds) | The default is 900 |
-
-Imbi then does these steps:
-
-1. It makes a `static` binding that allows only `file_descriptor`
-   delivery.
-2. If you selected agents, it makes a grant with the purpose `mcp_server`
-   for them.
-3. It asks the provider if the secret exists. If not, it removes what it
-   made and returns `422 credential_binding_not_valid`.
-4. It sets the **Credential reference** of the server.
-
-If the server already has a different reference, Imbi refuses with `409
-credential_ref_conflict`. To change the reference, edit the **Credential
-reference** field.
-
-To add more agents later, add a grant on the **Secrets** page. See
-[Add a grant](secrets.md#add-a-grant).
+These servers are for the assistant only. Agents do not use them. An
+agent gets MCP servers from the plugins of its marketplaces. See
+[Agents](agents.md).
 
 ## Related pages
 

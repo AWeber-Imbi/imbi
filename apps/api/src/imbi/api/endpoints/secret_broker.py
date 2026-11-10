@@ -960,7 +960,13 @@ def _check_setup_delivery(
 ) -> None:
     """Raise 422 when a grant gives a setup purpose with a delivery
     mode other than ``file_descriptor``. The broker refuses such a
-    request anyway, so the grant could never be used."""
+    request anyway, so the grant could never be used. A retired
+    purpose is refused for the same reason."""
+    if retired := sorted(set(purposes) & broker.RETIRED_PURPOSES):
+        raise _invalid(
+            f'The purposes {", ".join(retired)} are retired',
+            'retired_purpose',
+        )
     setup = sorted(set(purposes) & broker.SETUP_PURPOSES)
     if setup and set(delivery_modes) != {'file_descriptor'}:
         raise _invalid(

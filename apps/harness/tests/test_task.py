@@ -193,7 +193,6 @@ class RunWithSecretTestCase(TaskTestCase):
     async def test_setup_secrets_are_refused(self) -> None:
         cases = [
             {'purpose': 'model_inference'},
-            {'purpose': 'mcp_server'},
             {'purpose': 'workspace_checkout'},
             {'purpose': 'marketplace_fetch'},
             {'reference': 'secret://production/anthropic/key'},

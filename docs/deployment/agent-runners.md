@@ -705,7 +705,7 @@ not run it.
 |---|---|---|
 | `repositories_span_installations` | The repositories of one token are in more than one GitHub App installation | Use repositories from one GitHub organization per task, or use separate bindings |
 | `repository_not_allowed` | A `marketplace_fetch` request names a repository that is not in the binding's `repositories` | Add the repository to `repositories` |
-| `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `mcp_server`, `workspace_checkout`, and `marketplace_fetch` with `file_descriptor` only |
+| `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `workspace_checkout`, and `marketplace_fetch` with `file_descriptor` only |
 | `ambiguous_grants` | More than one grant allows the request | Remove the overlap, so that exactly one grant matches |
 | `no_grant` | No grant allows the request | Check the grant's agents, bindings, purposes, delivery modes, and projects |
 

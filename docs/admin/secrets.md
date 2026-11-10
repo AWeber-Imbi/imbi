@@ -26,9 +26,9 @@ Setup has four steps:
 | Binding | A **reference** that you choose, mapped to one AWS secret | `secret://grafana/api` → `{"secret_id": "imbi/grafana"}` |
 | Grant | Which agents can use which bindings, for which purposes | Agent `ops-helper` may use `secret://grafana/api` for `grafana` |
 
-The reference is a name that you make up. It is not an AWS name. Agents,
-MCP servers, and the model settings use the reference, so you can move a
-secret to a different AWS secret without changing them.
+The reference is a name that you make up. It is not an AWS name. Agents
+and the model settings use the reference, so you can move a secret to a
+different AWS secret without changing them.
 
 ## Prepare AWS
 
@@ -185,9 +185,9 @@ The grant form has these fields:
 | Maximum TTL (seconds) | How long one read stays valid. Default 900, maximum 3600 |
 | Projects | On the **Projects** tab: all projects, or only the selected projects |
 
-A grant with a runner purpose (`model_inference`, `mcp_server`,
-`workspace_checkout`, `marketplace_fetch`) must have the delivery mode
-`file_descriptor` and no other. Imbi refuses any other grant with a
+A grant with a runner purpose (`model_inference`, `workspace_checkout`,
+`marketplace_fetch`) must have the delivery mode `file_descriptor` and no
+other. Imbi refuses any other grant with a
 runner purpose, because the broker never gives such a secret in another
 mode.
 
@@ -226,9 +226,11 @@ Grant them with the `file_descriptor` delivery mode only.
 | Purpose | Used for |
 |---|---|
 | `model_inference` | The model API key, from the agent's model settings |
-| `mcp_server` | Credentials of an MCP server, from its `credential_ref` |
 | `workspace_checkout` | Cloning the project repositories |
 | `marketplace_fetch` | Fetching plugins from private marketplaces |
+
+The `mcp_server` purpose is retired. The broker refuses each request
+for it with `retired_purpose`. Delete the grants that still name it.
 
 The GitHub write purpose uses the `environment` delivery mode:
 

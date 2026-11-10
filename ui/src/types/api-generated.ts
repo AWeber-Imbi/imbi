@@ -1559,7 +1559,8 @@ export interface paths {
          *     ``max_concurrent_tasks``, the runner has every label that the
          *     agent requires, and the pool serves its organization. Return the
          *     task, the identity bundle, and an agent token for the chain, or
-         *     ``204`` when no task comes in ``wait`` seconds.
+         *     ``204`` when no task comes in ``wait`` seconds. With ``pod``, the
+         *     claim has a proxy token when a grant has host names or TCP CIDRs.
          *
          *     Raises:
          *         401: ``invalid_runner_credential``.
@@ -1585,7 +1586,9 @@ export interface paths {
          * Claim Harness Child Task
          * @description Claim the oldest queued child task of the runner's chain.
          *
-         *     Only the runner that holds a chain can claim its child tasks.
+         *     Only the runner that holds a chain can claim its child tasks. The
+         *     claim has the egress of the chain, and a proxy token as for
+         *     ``claim``.
          *
          *     Raises:
          *         401: ``invalid_runner_credential``.
@@ -1834,13 +1837,16 @@ export interface paths {
         put?: never;
         /**
          * Create Egress Destination
-         * @description Create an egress destination. Claims give it after the egress
-         *     sync makes its policy.
+         * @description Create an egress destination. Claims give a CIDR destination
+         *     after the egress sync makes its policy, and a host name destination
+         *     at once.
          *
          *     Raises:
          *         403: Not a platform administrator.
          *         409: ``egress_destination_exists``.
-         *         422: A CIDR or port is not valid, a CIDR gets more than 24
+         *         422: A CIDR, host name, or port is not valid, both or neither
+         *             of ``cidrs`` and ``hostnames``, a host name destination
+         *             with a port other than 443/TCP, a CIDR gets more than 24
          *             port pairs, or an unknown organization.
          */
         post: operations["create_egress_destination_api_harness_egress_destinations_post"];
@@ -1886,15 +1892,19 @@ export interface paths {
          * Update Egress Destination
          * @description Change an egress destination.
          *
-         *     A change to ``cidrs`` or ``ports`` starts a new generation: new
-         *     chains do not get the destination until the sync applies it.
-         *     Running chains keep the generation that they have.
+         *     A change to ``cidrs``, ``hostnames``, or ``ports`` starts a new
+         *     generation: new chains do not get a CIDR destination until the
+         *     sync applies it, and get a host name destination at once. Running
+         *     chains keep the generation that they have.
          *
          *     Raises:
          *         403: Not a platform administrator.
          *         404: No such live destination.
-         *         422: A CIDR or port is not valid, a CIDR gets more than 24
-         *             port pairs, or an unknown organization.
+         *         422: A CIDR, host name, or port is not valid, the changed
+         *             destination has both or neither of ``cidrs`` and
+         *             ``hostnames``, a host name destination with a port other
+         *             than 443/TCP, a CIDR gets more than 24 port pairs, or an
+         *             unknown organization.
          */
         patch: operations["update_egress_destination_api_harness_egress_destinations__slug__patch"];
         trace?: never;
@@ -1954,8 +1964,10 @@ export interface paths {
         };
         /**
          * Read Egress Sync State
-         * @description Every egress destination with its current generation, the
-         *     deleted ones too, for ``imbi-harness egress-sync``.
+         * @description Every CIDR egress destination with its current generation, the
+         *     deleted ones too, for ``imbi-harness egress-sync``. A host name
+         *     destination needs no policy, so it is not in the list, and the sync
+         *     deletes the policies of a destination that changed to host names.
          *
          *     Raises:
          *         403: ``egress_sync_forbidden``: not the service account of a
@@ -2142,7 +2154,6 @@ export interface paths {
          *         The created MCP server, without any secret values.
          *
          *     Raises:
-         *         403: ``credential_ref`` is set by a caller that is not an admin.
          *         409: If an MCP server with the same slug already exists.
          */
         post: operations["create_mcp_server_api_mcp_servers__post"];
@@ -2205,7 +2216,6 @@ export interface paths {
          *         The updated MCP server, without any secret values.
          *
          *     Raises:
-         *         403: ``credential_ref`` changes and the caller is not an admin.
          *         404: If no MCP server with the given id exists.
          *         409: If the new slug collides with another MCP server.
          */
@@ -2307,45 +2317,6 @@ export interface paths {
          *         404: If no MCP server with the given id exists.
          */
         post: operations["report_mcp_server_status_api_mcp_servers__id__status_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/mcp-servers/{id}/credential-binding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Link Credential Binding
-         * @description Link the server's credential for agents to a broker binding.
-         *
-         *     Creates a binding (``file_descriptor`` only) in the organization,
-         *     a grant with the ``mcp_server`` purpose for ``agent_ids``, asks the
-         *     provider whether the secret is there, and sets ``credential_ref``.
-         *
-         *     The value is not moved: the broker stores no secret material, so
-         *     the admin first puts the value in the organization's secret store.
-         *     The Fernet fields stay, because apps/assistant still reads them.
-         *
-         *     Raises:
-         *         403: The caller is not a platform admin (the server is global),
-         *             or is not a member of the organization.
-         *         404: No such server or organization.
-         *         409: The reference is bound already in the organization, or
-         *             ``credential_ref_conflict``: the server has another
-         *             reference (change it with PATCH).
-         *         422: The reference, provider, or locator is not valid, or
-         *             ``credential_binding_not_valid``: the provider does not
-         *             find the secret. Nothing is left.
-         */
-        post: operations["link_credential_binding_api_mcp_servers__id__credential_binding_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4879,15 +4850,13 @@ export interface paths {
         };
         /**
          * Get Agent Tool Catalog
-         * @description List the tools that an agent can use, in groups by server.
+         * @description List the Imbi tools that an agent can use.
          *
-         *     The groups are the Imbi tools and the tools of each enabled MCP
-         *     server. A server that fails gives its group with an error code in
-         *     ``error`` and no tools. The error text goes only to the log. The
-         *     catalog is kept for five minutes; ``refresh=true`` lists it again.
-         *     A refresh connects to each MCP server, so it needs
-         *     ``agent:write``. The catalog is the same in each organization,
-         *     because MCP servers are global.
+         *     The catalog has one group, the Imbi tools. When they cannot be
+         *     made, the group has an error code in ``error`` and no tools. The
+         *     error text goes only to the log. The catalog is kept for five
+         *     minutes; ``refresh=true`` lists it again and needs
+         *     ``agent:write``. The catalog is the same in each organization.
          *
          *     Raises:
          *         403: ``refresh=true`` and the caller does not have
@@ -5532,8 +5501,10 @@ export interface paths {
          *
          *     Raises:
          *         409: A concurrent write took the version.
-         *         422: An allowed marketplace is not registered, or a default
-         *             plugin is not in an allowed marketplace's catalog.
+         *         422: An allowed marketplace is not registered, a default
+         *             plugin is not in an allowed marketplace's catalog, or the
+         *             model upstream URL is ``http://`` without
+         *             ``allow_insecure_http``.
          */
         put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
         post?: never;
@@ -6476,6 +6447,29 @@ export interface paths {
         patch: operations["update_binding_api_organizations__org_slug__secret_bindings__binding_id__patch"];
         trace?: never;
     };
+    "/api/organizations/{org_slug}/secret-bindings/locator-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Locator
+         * @description Check a locator as a save does, and store nothing.
+         *
+         *     Raises:
+         *         422: The provider or the locator is not valid.
+         */
+        post: operations["check_locator_api_organizations__org_slug__secret_bindings_locator_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/secret-bindings/{binding_id}/validate": {
         parameters: {
             query?: never;
@@ -6677,6 +6671,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workload-identity/exchangers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Token Exchangers
+         * @description The installed token exchangers: the vendors that can use
+         *     workload identity, with help text for the target.
+         */
+        get: operations["list_token_exchangers_api_organizations__org_slug__workload_identity_exchangers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/workload-identity/": {
         parameters: {
             query?: never;
@@ -6712,6 +6727,9 @@ export interface paths {
         /**
          * List Audit Events
          * @description Return audit events, newest first.
+         *
+         *     Repeat ``type`` to match any of the types. ``result`` matches one
+         *     result.
          *
          *     To page, send the ``at`` and ``event_id`` of the last event as
          *     ``before`` and ``before_event_id``. Events with the same ``at`` are
@@ -11851,46 +11869,6 @@ export interface components {
             refresh_token?: string | null;
         };
         /**
-         * BundleMcpServer
-         * @description A third-party MCP server that the runner relays (plan P7).
-         *
-         *     Holds no secret: the runner resolves ``credential_ref`` with the
-         *     ``mcp_server`` purpose into its own memory.
-         */
-        BundleMcpServer: {
-            /** Slug */
-            slug: string;
-            /** Url */
-            url: string;
-            /**
-             * Auth Type
-             * @enum {string}
-             */
-            auth_type: "none" | "static" | "oauth_client_credentials";
-            /** Static Header */
-            static_header?: string | null;
-            /** Oauth Token Url */
-            oauth_token_url?: string | null;
-            /** Oauth Client Id */
-            oauth_client_id?: string | null;
-            /** Oauth Scope */
-            oauth_scope?: string | null;
-            /**
-             * Ignored Tools
-             * @default []
-             */
-            ignored_tools: string[];
-            /** Credential Ref */
-            credential_ref?: string | null;
-        };
-        /** BundleMcpUnavailable */
-        BundleMcpUnavailable: {
-            /** Slug */
-            slug: string;
-            /** Reason */
-            reason: string;
-        };
-        /**
          * BundlePrompt
          * @description The pinned prompt version of a task, rendered.
          */
@@ -12087,6 +12065,8 @@ export interface components {
              * @default []
              */
             egress: components["schemas"]["Grant"][];
+            /** Proxy Token */
+            proxy_token?: string | null;
         };
         /**
          * ClientCredentialCreate
@@ -12738,55 +12718,6 @@ export interface components {
             tz: string;
             /** Buckets */
             buckets: components["schemas"]["ContributionBucket"][];
-        };
-        /**
-         * CredentialBindingCreate
-         * @description Link an MCP server to a secrets broker binding in one
-         *     organization (harness plan P7).
-         */
-        CredentialBindingCreate: {
-            /**
-             * Organization
-             * @description The organization slug
-             */
-            organization: string;
-            /**
-             * Reference
-             * @description secret://<scope>/<path>, without a field
-             */
-            reference: string;
-            /**
-             * Field
-             * @description The field of the secret that holds the static value or the OAuth client secret
-             */
-            field?: string | null;
-            /**
-             * Provider Id
-             * Format: uuid
-             */
-            provider_id: string;
-            /** Locator */
-            locator: {
-                [key: string]: unknown;
-            };
-            /**
-             * Max Ttl Seconds
-             * @default 900
-             */
-            max_ttl_seconds: number;
-            /**
-             * Agent Ids
-             * @description The agents that may use the credential. Empty: no grant is made.
-             * @default []
-             */
-            agent_ids: string[];
-        };
-        /** CredentialBindingResult */
-        CredentialBindingResult: {
-            server: components["schemas"]["MCPServerResponse"];
-            binding: components["schemas"]["SecretBinding"];
-            grant?: components["schemas"]["SecretGrant"] | null;
-            validation: components["schemas"]["SecretBindingValidation"];
         };
         /**
          * CurrentReleaseEnvironment
@@ -13751,13 +13682,13 @@ export interface components {
             description?: string | null;
             /**
              * Cidrs
-             * @description 1 to 25 IPv4 CIDRs inside the internal ranges. Empty when hostnames is set.
+             * @description 1 to 25 IPv4 CIDRs inside the internal ranges. Not with hostnames.
              * @default []
              */
             cidrs: string[];
             /**
              * Hostnames
-             * @description 1 to 25 DNS names, reached through the egress proxy on 443/TCP. Empty when cidrs is set.
+             * @description 1 to 25 DNS names (at least one dot, no IP literal, no wildcard) that the egress proxy accepts. Stored as IDNA A-labels, lower case, without a trailing dot. Not with cidrs; ports must be 443/TCP.
              * @default []
              */
             hostnames: string[];
@@ -13819,7 +13750,11 @@ export interface components {
              */
             updated_at: string;
         };
-        /** EgressDestinationUpdate */
+        /**
+         * EgressDestinationUpdate
+         * @description A change. The changed destination must still have CIDRs or host
+         *     names, not both; send ``[]`` for the other one to change kind.
+         */
         EgressDestinationUpdate: {
             /** Name */
             name?: string | null;
@@ -14132,6 +14067,11 @@ export interface components {
             cidrs: string[];
             /** Ports */
             ports: components["schemas"]["EgressPort"][];
+            /**
+             * Hostnames
+             * @default []
+             */
+            hostnames: string[];
         };
         /** Graph */
         Graph: {
@@ -14308,16 +14248,6 @@ export interface components {
              * @default []
              */
             subagents: components["schemas"]["BundleSubagent"][];
-            /**
-             * Mcp Servers
-             * @default []
-             */
-            mcp_servers: components["schemas"]["BundleMcpServer"][];
-            /**
-             * Mcp Unavailable
-             * @default []
-             */
-            mcp_unavailable: components["schemas"]["BundleMcpUnavailable"][];
         };
         /**
          * IdentityConnectionPollRequest
@@ -15195,8 +15125,6 @@ export interface components {
             oauth_client_secret?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
-            /** Credential Ref */
-            credential_ref?: string | null;
         };
         /**
          * MCPServerResponse
@@ -15264,8 +15192,6 @@ export interface components {
             has_oauth_client_secret: boolean;
             /** Oauth Scope */
             oauth_scope?: string | null;
-            /** Credential Ref */
-            credential_ref?: string | null;
             /**
              * Status
              * @default unknown
@@ -15362,8 +15288,6 @@ export interface components {
             oauth_client_secret?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
-            /** Credential Ref */
-            credential_ref?: string | null;
         };
         /**
          * MCPServerTestResult
@@ -15435,8 +15359,6 @@ export interface components {
             oauth_client_secret?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
-            /** Credential Ref */
-            credential_ref?: string | null;
         };
         /**
          * MFASetupResponse
@@ -19857,6 +19779,26 @@ export interface components {
             /** Enabled */
             enabled?: boolean | null;
         };
+        /**
+         * SecretLocatorCheck
+         * @description A locator to check before a binding is saved.
+         */
+        SecretLocatorCheck: {
+            /**
+             * Provider Id
+             * Format: uuid
+             */
+            provider_id: string;
+            /**
+             * Credential Class
+             * @enum {string}
+             */
+            credential_class: "static" | "rotated" | "dynamic";
+            /** Locator */
+            locator: {
+                [key: string]: unknown;
+            };
+        };
         /** SecretMaterialization */
         SecretMaterialization: {
             /**
@@ -24251,6 +24193,8 @@ export interface operations {
             query?: {
                 /** @description Seconds to wait for a task (long poll). */
                 wait?: number;
+                /** @description The uid of the runner pod. With it, a claim whose egress has host names or TCP CIDRs gets a proxy token for that pod. */
+                pod?: string | null;
             };
             header?: never;
             path: {
@@ -24289,7 +24233,10 @@ export interface operations {
     };
     claim_harness_child_task_api_harness_runners__runner_id__chain_claim_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The uid of the runner pod. With it, a claim whose egress has host names or TCP CIDRs gets a proxy token for that pod. */
+                pod?: string | null;
+            };
             header?: never;
             path: {
                 runner_id: string;
@@ -25272,41 +25219,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPServerResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    link_credential_binding_api_mcp_servers__id__credential_binding_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CredentialBindingCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CredentialBindingResult"];
                 };
             };
             /** @description Validation Error */
@@ -32658,6 +32570,39 @@ export interface operations {
             };
         };
     };
+    check_locator_api_organizations__org_slug__secret_bindings_locator_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretLocatorCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_binding_api_organizations__org_slug__secret_bindings__binding_id__validate_post: {
         parameters: {
             query?: never;
@@ -33051,6 +32996,37 @@ export interface operations {
             };
         };
     };
+    list_token_exchangers_api_organizations__org_slug__workload_identity_exchangers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenExchangerType"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_workload_identity_api_organizations__org_slug__workload_identity__get: {
         parameters: {
             query?: never;
@@ -33150,7 +33126,8 @@ export interface operations {
         parameters: {
             query?: {
                 resolution_id?: string | null;
-                type?: string;
+                type?: ("secret_provider_created" | "secret_provider_updated" | "secret_provider_deleted" | "secret_provider_tested" | "secret_binding_created" | "secret_binding_updated" | "secret_binding_deleted" | "secret_grant_created" | "secret_grant_updated" | "secret_grant_deleted" | "secret_resolution_allowed" | "secret_resolution_denied" | "secret_resolution_released" | "secret_resolution_expired" | "secret_materialized" | "secret_lease_renewed" | "secret_lease_revoked" | "secret_lease_revocation_failed" | "workload_identity_updated" | "workload_identity_deleted")[] | null;
+                result?: ("allowed" | "denied" | "succeeded" | "failed") | null;
                 before?: string | null;
                 before_event_id?: string;
                 limit?: number;

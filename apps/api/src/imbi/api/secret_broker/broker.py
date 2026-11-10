@@ -72,13 +72,12 @@ MAX_TTL_SECONDS = 3600
 #: The runner's own setup secrets (ADR 0022, H22). The executor gets
 #: them on a file descriptor and never gives them to a model command.
 SETUP_PURPOSES = frozenset(
-    {
-        'marketplace_fetch',
-        'mcp_server',
-        'model_inference',
-        'workspace_checkout',
-    }
+    {'marketplace_fetch', 'model_inference', 'workspace_checkout'}
 )
+#: Purposes that nothing uses any more. Their stored grants were for the
+#: runner only, so the broker refuses them instead of letting them become
+#: ordinary purposes that a model command can request.
+RETIRED_PURPOSES = frozenset({'mcp_server'})
 
 #: Seconds after which an unfinished materialization counts as crashed
 #: and no longer keeps a runner fenced.
@@ -408,6 +407,12 @@ def _refuse_provider_key(binding: Row) -> None:
         )
 
 
+def _refuse_retired(purpose: str) -> None:
+    """Refuse a retired purpose, also for a resolution made before."""
+    if purpose in RETIRED_PURPOSES:
+        raise providers.BrokerError('secret_access_denied', 'retired_purpose')
+
+
 def _check_provider(provider: Row | None, binding: Row) -> Row:
     if provider is None or not provider['enabled']:
         raise providers.BrokerError('secret_provider_disabled')
@@ -442,6 +447,7 @@ async def evaluate(
     """
     if not PURPOSE.fullmatch(purpose):
         raise providers.BrokerError('secret_access_denied', 'invalid_purpose')
+    _refuse_retired(purpose)
     if delivery_mode not in DELIVERY_MODES:
         raise providers.BrokerError('delivery_mode_not_allowed')
     if purpose in SETUP_PURPOSES and delivery_mode != 'file_descriptor':
@@ -831,6 +837,7 @@ class Broker:
             raise providers.BrokerError(
                 'resolution_context_mismatch', 'idempotency_key_reused'
             )
+        _refuse_retired(row['purpose'])
         if row['state'] == 'expired' or row['expired']:
             raise providers.BrokerError('resolution_expired')
         if row['state'] != 'active' or row['materialization_count']:
@@ -909,6 +916,7 @@ class Broker:
             request.purpose,
         ):
             raise providers.BrokerError('resolution_context_mismatch')
+        _refuse_retired(row['purpose'])
         if row['state'] == 'expired' or row['expired']:
             raise providers.BrokerError('resolution_expired')
         if (

@@ -384,6 +384,22 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             ctx.exception.reason, 'setup_purpose_file_descriptor_only'
         )
 
+    async def test_retired_purpose_is_refused(self) -> None:
+        for mode, target in (
+            ('environment', 'MCP_TOKEN'),
+            ('file_descriptor', '3'),
+        ):
+            with self.subTest(mode=mode):
+                error = await self._denied(
+                    'secret_access_denied',
+                    request=self.request(
+                        purpose='mcp_server',
+                        delivery_mode=mode,
+                        delivery_target=target,
+                    ),
+                )
+                self.assertEqual(error.reason, 'retired_purpose')
+
     async def test_delivery_mode_and_ttl_limits(self) -> None:
         await self._denied(
             'delivery_mode_not_allowed',
@@ -512,6 +528,20 @@ class CreateResolutionTestCase(secret_support.SecretCase):
                 'resolution_context_mismatch',
                 request=self.request(idempotency_key='key-1', **change),
             )
+
+    async def test_purpose_retired_after_create_is_refused(self) -> None:
+        request = self.request(idempotency_key='key-retired')
+        created = await self.broker.create_resolution(self.context(), request)
+        with mock.patch.object(
+            broker, 'RETIRED_PURPOSES', frozenset({'github_write'})
+        ):
+            error = await self._denied('secret_access_denied', request=request)
+            self.assertEqual(error.reason, 'retired_purpose')
+            with self.assertRaises(providers.BrokerError) as ctx:
+                await self.broker.materialize(
+                    self.executor(), self.materialize_request(created.handle)
+                )
+        self.assertEqual(ctx.exception.reason, 'retired_purpose')
 
     async def test_concurrent_idempotent_creates(self) -> None:
         request = self.request(idempotency_key='key-2')

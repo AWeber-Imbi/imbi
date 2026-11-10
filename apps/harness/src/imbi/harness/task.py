@@ -107,7 +107,6 @@ SETUP_DELIVERY = {'mode': 'file_descriptor', 'target': '3'}
 SETUP_PURPOSES = frozenset(
     {
         'marketplace_fetch',
-        'mcp_server',
         'model_inference',
         'workspace_checkout',
     }
