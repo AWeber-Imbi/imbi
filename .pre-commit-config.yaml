@@ -22,8 +22,9 @@ repos:
     rev: v1.7.3
     hooks:
       - id: tombi-format
-        # uv owns uv.lock formatting; avoid tombi reflow churn
-        exclude: ^uv\.lock$
+        # uv owns uv.lock and cargo owns proxy/Cargo.lock formatting;
+        # avoid tombi reflow churn (cargo --locked fails on it)
+        exclude: ^(uv\.lock|proxy/Cargo\.lock)$
 
   - repo: local
     hooks:

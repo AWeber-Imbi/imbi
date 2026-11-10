@@ -1,0 +1,30 @@
+[graph]
+all-features = false
+
+[advisories]
+# jsonwebtoken (feature rust_crypto) links rsa, p256, and p384. The
+# proxy uses only HS256 with a shared secret: no RSA or EC key goes
+# through these crates, so the timing problems do not apply.
+ignore = [
+  { id = "RUSTSEC-2023-0071", reason = "rsa: no RSA key is used; HS256 only" },
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint: no EC or RSA key is used; HS256 only" },
+]
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
