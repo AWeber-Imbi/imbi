@@ -103,15 +103,20 @@ binary secret.
 1. Open the **Providers** tab and click **New provider**.
 2. Enter a name: lower case letters, digits, `-`, and `_`.
 3. Select **AWS Secrets Manager**.
-4. Enter the configuration:
+4. In the **Configuration** box, enter the **Region** (for example
+   `us-east-1`) and the **Role ARN**. The **Account ID** is optional.
+   The dialog shows the ExternalId that the role trust policy must
+   require.
 
-    ```json
-    {"region": "us-east-1", "role_arn": "arn:aws:iam::123456789012:role/imbi-secrets"}
-    ```
+    Click **Edit as JSON** to enter the configuration as JSON, for
+    example
+    `{"region": "us-east-1", "role_arn": "arn:aws:iam::123456789012:role/imbi-secrets"}`.
+    Access keys and an endpoint URL are refused.
 
-    `account_id` is optional. Access keys and an endpoint URL are refused.
+5. Click **Create provider**.
 
-5. Click **Save**.
+A workload identity type, such as Anthropic, takes no configuration. Its
+credentials come from the identity source on the **Identity** tab.
 
 When you save, Imbi does two checks. It assumes the role with a random
 ExternalId, which must fail. Then it assumes the role with your

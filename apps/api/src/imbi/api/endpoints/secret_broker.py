@@ -184,6 +184,8 @@ class SecretProviderType(pydantic.BaseModel):
     capabilities: list[str]
     #: The credential classes that a binding of this type can use.
     credential_classes: list[str]
+    #: The JSON Schema of the provider configuration, or ``None``.
+    config_schema: dict[str, typing.Any] | None
     #: The JSON Schema of a binding locator, or ``None`` when the
     #: provider has no model. The admin form draws its fields from it.
     locator_schema: dict[str, typing.Any] | None
@@ -474,6 +476,7 @@ async def list_provider_types(_: ProviderRead) -> list[dict[str, typing.Any]]:
                 for c in typing.get_args(plugin_secrets.CredentialClass)
                 if broker.required_capability(c) in plugin.capabilities
             ],
+            'config_schema': plugin.config_schema(),
             'locator_schema': plugin.locator_schema(),
         }
         for plugin in providers.all_providers()

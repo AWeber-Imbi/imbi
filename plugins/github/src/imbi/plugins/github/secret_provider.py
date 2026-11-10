@@ -159,7 +159,11 @@ class _Config(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    host: str = 'github.com'
+    host: str = pydantic.Field(
+        default='github.com',
+        description='github.com, <tenant>.ghe.com, or a GHES host.',
+        title='Host',
+    )
 
     @pydantic.field_validator('host')
     @classmethod
@@ -291,6 +295,7 @@ class GitHubApp(secrets.SecretProvider):
     type = 'github_app'
     label = 'GitHub App'
     locator_model = _Locator
+    config_model = _Config
     capabilities = frozenset[secrets.SecretCapability](
         {'dynamic_issuance', 'lease_revocation', 'health_check'}
     )

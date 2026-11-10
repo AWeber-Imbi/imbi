@@ -32,13 +32,25 @@ class RoleConfig(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    region: str = pydantic.Field(pattern=r'^[a-z]{2}(-[a-z]+)+-[0-9]+$')
+    region: str = pydantic.Field(
+        description='For example us-east-1.',
+        pattern=r'^[a-z]{2}(-[a-z]+)+-[0-9]+$',
+        title='Region',
+    )
     account_id: str | None = pydantic.Field(
-        default=None, pattern=r'^[0-9]{12}$'
+        default=None,
+        description='The 12-digit account of the secrets, if not the role.',
+        pattern=r'^[0-9]{12}$',
+        title='Account ID',
     )
     role_arn: str = pydantic.Field(
+        description=(
+            'The role that imbi-api assumes. Its trust policy must'
+            ' require the ExternalId.'
+        ),
         pattern=r'^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/-]+$',
         max_length=2048,
+        title='Role ARN',
     )
 
 
@@ -234,6 +246,7 @@ class AwsSecretsManager(secrets.SecretProvider):
     type = 'aws_secrets_manager'
     label = 'AWS Secrets Manager'
     locator_model = _AwsLocator
+    config_model = RoleConfig
     capabilities = frozenset[secrets.SecretCapability](
         {
             'static_retrieval',

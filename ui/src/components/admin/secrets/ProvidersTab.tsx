@@ -20,7 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import { CopyId } from './CopyId'
-import { SecretDialog } from './SecretDialog'
+import { ProviderDialog } from './ProviderDialog'
 import type {
   SecretProvider,
   SecretProviderCreate,
@@ -179,37 +179,8 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
         rows={providersQuery.data ?? []}
       />
       {editing && (
-        <SecretDialog
-          description="An adapter to an external secret system. The configuration holds no credentials: imbi-api uses its workload identity."
+        <ProviderDialog
           error={saveMutation.error}
-          fields={[
-            {
-              description: 'Lower case letters, digits, - and _',
-              kind: 'text',
-              label: 'Name',
-              name: 'name',
-              required: true,
-            },
-            {
-              createOnly: true,
-              kind: 'select',
-              label: 'Type',
-              name: 'type',
-              options: (typesQuery.data ?? []).map((t) => ({
-                label: t.label,
-                value: t.type,
-              })),
-              required: true,
-            },
-            {
-              description:
-                'For AWS: {"region": "us-east-1", "role_arn": "..."}. role_arn is required; its trust policy must require sts:ExternalId "imbi:<organization id>". No access keys. A workload identity type: {}; it needs an identity source (the Identity tab).',
-              initial: '{}',
-              kind: 'json',
-              label: 'Configuration',
-              name: 'config',
-            },
-          ]}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}
           onSubmit={(body) =>
@@ -221,7 +192,7 @@ export function ProvidersTab({ orgSlug }: { orgSlug: string }) {
             )
           }
           original={row}
-          title={row ? `Edit provider ${row.name}` : 'New provider'}
+          types={typesQuery.data ?? []}
         />
       )}
     </div>

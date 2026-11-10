@@ -27,11 +27,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
-import { Chip, ChipGroup } from './controls'
+import { Chip, ChipGroup, Field, SchemaEditor, TagInput } from './controls'
+import { drawable, jsonObject } from './schema'
 import {
   canonical,
   CREDENTIAL_CLASSES,
@@ -45,49 +45,6 @@ import {
 } from './types'
 
 const PREFIX = 'secret://'
-
-/** One locator field, from the JSON Schema of the provider. */
-interface LocatorField {
-  anyOf?: { type?: string }[]
-  description?: string
-  items?: { type?: string }
-  title?: string
-  type?: string
-}
-
-interface LocatorSchema {
-  properties?: Record<string, LocatorField>
-  required?: string[]
-}
-
-/** A field kind that the form can draw: text, or a list of text. */
-const fieldKind = (field: LocatorField) => {
-  const type = field.type ?? field.anyOf?.find((t) => t.type !== 'null')?.type
-  if (type === 'string') return 'text'
-  if (type === 'array' && field.items?.type === 'string') return 'list'
-  return null
-}
-
-/** The schema when the form can draw each of its fields, else null. */
-const drawable = (schema: unknown) => {
-  const props = (schema as LocatorSchema | null)?.properties
-  return props &&
-    Object.keys(props).length &&
-    Object.values(props).every(fieldKind)
-    ? (schema as LocatorSchema & { properties: Record<string, LocatorField> })
-    : null
-}
-
-const parseLocator = (text: string) => {
-  try {
-    const value: unknown = JSON.parse(text)
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
-}
 
 const CLASS_HELP: Record<string, string> = {
   dynamic:
@@ -156,16 +113,7 @@ export function BindingDialog({
   const providerType = providerTypes.find((t) => t.type === provider?.type)
   const classes = providerType?.credential_classes ?? CREDENTIAL_CLASSES
   const schema = drawable(providerType?.locator_schema)
-  const [asJson, setAsJson] = useState(false)
-  const parsed = parseLocator(form.locator)
-  // Fields need a schema and a locator object; else edit the JSON.
-  const showFields = !!schema && !!parsed && !asJson
-  const setLocatorField = (key: string, value: string | string[]) => {
-    const next = { ...parsed }
-    if (value.length) next[key] = value
-    else delete next[key]
-    set('locator', JSON.stringify(next, null, 2))
-  }
+  const parsed = jsonObject(form.locator)
   // A new provider can allow other classes: keep the class valid.
   const setProvider = (id: string) => {
     const type = providers.find((p) => p.id === id)?.type
@@ -188,12 +136,10 @@ export function BindingDialog({
     form.credential_class,
     form.locator,
   )
-  // JSON help: the schema keys, or the exchanger help of a WIF type.
-  const help = schema
-    ? `Keys: ${Object.keys(schema.properties)
-        .map((k) => (schema.required?.includes(k) ? `${k} (required)` : k))
-        .join(', ')}.`
-    : exchangers.find((e) => `${e.vendor}_wif` === provider?.type)?.target_help
+  // Help for a provider type without a schema: its exchanger help.
+  const help = exchangers.find(
+    (e) => `${e.vendor}_wif` === provider?.type,
+  )?.target_help
 
   // The main id of the locator, such as an AWS secret_id, for the summary.
   const where = schema?.required
@@ -348,86 +294,20 @@ export function BindingDialog({
               {CLASS_HELP[form.credential_class]}
             </p>
           </div>
-          <fieldset className="border-tertiary overflow-hidden rounded-lg border">
-            <legend className="sr-only">Locator</legend>
-            <div className="border-tertiary bg-tertiary flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
-              <label
-                className="text-sm font-medium"
-                htmlFor={showFields ? undefined : 'binding-locator'}
-              >
-                Locator <span className="text-destructive">*</span>{' '}
-                <span className="text-secondary font-normal">
-                  {provider
-                    ? `where the secret lives in ${typeLabel(provider.type)}`
-                    : 'where the secret lives in the provider'}
-                </span>
-              </label>
-              {schema && (
-                <button
-                  className="text-info shrink-0 text-xs hover:underline disabled:opacity-50"
-                  disabled={!asJson && !parsed}
-                  onClick={() => setAsJson(!asJson)}
-                  type="button"
-                >
-                  {showFields ? 'Edit as JSON' : 'Edit as fields'}
-                </button>
-              )}
-            </div>
-            <div className="space-y-2 p-3.5">
-              {showFields ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(schema.properties).map(([key, field]) => {
-                    const id = `locator-${key}`
-                    const value = parsed[key]
-                    const props = {
-                      help: field.description,
-                      htmlFor: id,
-                      label: field.title ?? toTitleCase(key),
-                      required: schema.required?.includes(key),
-                    }
-                    return fieldKind(field) === 'list' ? (
-                      <div className="col-span-2" key={key}>
-                        <Field {...props}>
-                          <TagInput
-                            id={id}
-                            onChange={(v) => setLocatorField(key, v)}
-                            placeholder="Add a value, press Enter"
-                            values={
-                              Array.isArray(value) ? value.map(String) : []
-                            }
-                          />
-                        </Field>
-                      </div>
-                    ) : (
-                      <Field key={key} {...props}>
-                        <Input
-                          className="font-mono"
-                          id={id}
-                          onChange={(e) => setLocatorField(key, e.target.value)}
-                          value={typeof value === 'string' ? value : ''}
-                        />
-                      </Field>
-                    )
-                  })}
-                </div>
-              ) : (
-                <Textarea
-                  aria-invalid={!!locator.error}
-                  className="font-mono text-xs"
-                  id="binding-locator"
-                  onChange={(e) => set('locator', e.target.value)}
-                  rows={5}
-                  value={form.locator}
-                />
-              )}
-              {locator.error && (
-                <p className="text-destructive text-xs">{locator.error}</p>
-              )}
-              {!showFields && help && (
-                <p className="text-secondary text-xs">{help}</p>
-              )}
-            </div>
-          </fieldset>
+          <SchemaEditor
+            error={locator.error}
+            help={help}
+            hint={
+              provider
+                ? `where the secret lives in ${typeLabel(provider.type)}`
+                : 'where the secret lives in the provider'
+            }
+            id="binding-locator"
+            label="Locator"
+            onChange={(text) => set('locator', text)}
+            schema={providerType?.locator_schema}
+            text={form.locator}
+          />
           <Field
             help="JSON keys an agent may ask for on their own. Leave empty to deliver only the whole value."
             htmlFor="binding-fields"
@@ -587,92 +467,6 @@ export function BindingDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function Field({
-  children,
-  help,
-  htmlFor,
-  label,
-  optional,
-  required,
-}: {
-  children: React.ReactNode
-  help?: string
-  htmlFor?: string
-  label: string
-  optional?: boolean
-  required?: boolean
-}) {
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <label className="block text-sm font-medium" htmlFor={htmlFor}>
-        {label}
-        {required && <span className="text-destructive"> *</span>}
-        {optional && (
-          <span className="text-secondary font-normal"> (optional)</span>
-        )}
-      </label>
-      {children}
-      {help && <p className="text-secondary text-xs">{help}</p>}
-    </div>
-  )
-}
-
-/** Values as removable tags. Enter or a comma adds the typed value. */
-function TagInput({
-  id,
-  onChange,
-  placeholder,
-  values,
-}: {
-  id: string
-  onChange: (values: string[]) => void
-  placeholder: string
-  values: string[]
-}) {
-  const [text, setText] = useState('')
-  const add = () => {
-    const value = text.trim()
-    if (value && !values.includes(value)) onChange([...values, value])
-    setText('')
-  }
-  return (
-    <div className="border-input flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border px-1.5 py-1">
-      {values.map((v) => (
-        <span
-          className="bg-secondary flex h-6 items-center gap-1 rounded pr-1 pl-2 font-mono text-xs"
-          key={v}
-        >
-          {v}
-          <button
-            aria-label={`Remove ${v}`}
-            className="text-secondary hover:text-primary"
-            onClick={() => onChange(values.filter((x) => x !== v))}
-            type="button"
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        className="h-6 min-w-40 flex-1 bg-transparent px-1 font-mono text-xs outline-none"
-        id={id}
-        onBlur={add}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault()
-            add()
-          } else if (e.key === 'Backspace' && !text && values.length) {
-            onChange(values.slice(0, -1))
-          }
-        }}
-        placeholder={placeholder}
-        value={text}
-      />
-    </div>
   )
 }
 

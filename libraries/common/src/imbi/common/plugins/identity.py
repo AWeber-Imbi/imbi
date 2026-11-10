@@ -272,6 +272,7 @@ class WifSecretProvider(secrets.SecretProvider):
 
     exchanger: typing.ClassVar[TokenExchanger]
     capabilities = frozenset[secrets.SecretCapability]({'dynamic_issuance'})
+    config_model = secrets.NoConfig
 
     def locator_schema(self) -> dict[str, typing.Any] | None:
         model = self.exchanger.target_model

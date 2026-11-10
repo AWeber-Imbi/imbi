@@ -175,6 +175,10 @@ class SecretEndpointTestCase(
         self.assertEqual(
             types['github_app']['credential_classes'], ['dynamic']
         )
+        self.assertEqual(
+            aws['config_schema']['required'], ['region', 'role_arn']
+        )
+        self.assertEqual(types['fake']['config_schema']['properties'], {})
         response = await self.client.delete(self.base + url)
         self.assertEqual(response.status_code, 204)
 

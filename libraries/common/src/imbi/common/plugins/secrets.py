@@ -337,6 +337,12 @@ class SecretProviderHost(typing.Protocol):
         ...
 
 
+class NoConfig(pydantic.BaseModel):
+    """The configuration of a provider that takes none: ``{}``."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+
 #: A model class. ``type`` is a class variable in a provider body.
 _Model = type[pydantic.BaseModel]
 
@@ -357,9 +363,18 @@ class SecretProvider:
     #: makes the decision, for example on fields that depend on each
     #: other.
     locator_model: typing.ClassVar[_Model | None] = None
+    #: The model of the provider configuration, for the admin form. A
+    #: provider without one gets a JSON editor, or no fields when it
+    #: takes no configuration.
+    config_model: typing.ClassVar[_Model | None] = None
 
     def __init__(self, host: SecretProviderHost) -> None:
         self.host = host
+
+    def config_schema(self) -> dict[str, typing.Any] | None:
+        """Return the JSON Schema of the configuration, or ``None``."""
+        model = self.config_model
+        return None if model is None else model.model_json_schema()
 
     def locator_schema(self) -> dict[str, typing.Any] | None:
         """Return the JSON Schema of a locator, or ``None``."""
