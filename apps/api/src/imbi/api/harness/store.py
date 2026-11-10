@@ -806,19 +806,23 @@ class HarnessStore:
             row = await _fetch_one(
                 conn,
                 'INSERT INTO harness.egress_destinations (slug, name,'
-                ' description, cidrs, ports, is_global, organization_ids)'
+                ' description, cidrs, hostnames, ports, is_global,'
+                ' organization_ids, applied_generation)'
                 ' VALUES (%(slug)s, %(name)s, %(description)s, %(cidrs)s,'
-                ' %(ports)s, %(is_global)s, %(organization_ids)s)'
+                ' %(hostnames)s, %(ports)s, %(is_global)s,'
+                ' %(organization_ids)s, CASE WHEN %(proxied)s THEN 1 END)'
                 ' ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name,'
                 ' description = EXCLUDED.description,'
-                ' cidrs = EXCLUDED.cidrs, ports = EXCLUDED.ports,'
+                ' cidrs = EXCLUDED.cidrs, hostnames = EXCLUDED.hostnames,'
+                ' ports = EXCLUDED.ports,'
                 ' is_global = EXCLUDED.is_global,'
                 ' organization_ids = EXCLUDED.organization_ids,'
                 ' generation = egress_destinations.generation + 1,'
-                ' applied_generation = NULL, deleted_at = NULL,'
-                ' created_at = NOW(), updated_at = NOW()'
+                ' applied_generation = CASE WHEN %(proxied)s'
+                ' THEN egress_destinations.generation + 1 END,'
+                ' deleted_at = NULL, created_at = NOW(), updated_at = NOW()'
                 ' RETURNING *',
-                params,
+                {**params, 'proxied': bool(values['hostnames'])},
             )
             if row is None:  # pragma: no cover - RETURNING yields a row
                 raise RuntimeError('egress destination insert returned no row')
@@ -830,11 +834,15 @@ class HarnessStore:
     ) -> Row | None:
         """Change a live egress destination; ``None`` when not found.
 
-        A change to ``cidrs`` or ``ports`` starts the next generation:
-        claims leave the destination out until the sync applies it.
+        A change to ``cidrs``, ``hostnames``, or ``ports`` starts the
+        next generation: claims leave a CIDR destination out until the
+        sync applies it. A host name destination is applied at once.
 
         Raises:
             EgressPortLimit: A CIDR gets too many port pairs.
+            ValueError: The changed destination has both CIDRs and
+                host names, neither, or a host name destination has
+                ports other than 443/TCP.
 
         """
         async with self._pool.connection() as conn, conn.transaction():
@@ -855,19 +863,25 @@ class HarnessStore:
             }
             if not changed:
                 return old
-            network = 'cidrs' in changed or 'ports' in changed
+            network = bool({'cidrs', 'hostnames', 'ports'} & changed.keys())
             if network:
+                egress.check_kind(
+                    merged['cidrs'], merged['hostnames'], merged['ports']
+                )
                 await _check_port_pairs(conn, merged)
             statement = sql.SQL(
                 'UPDATE harness.egress_destinations SET {sets},'
-                ' generation = generation + {bump}, updated_at = NOW()'
-                ' WHERE slug = %s RETURNING *'
+                ' generation = generation + {bump},'
+                ' applied_generation = CASE WHEN {proxied}'
+                ' THEN generation + {bump} ELSE applied_generation END,'
+                ' updated_at = NOW() WHERE slug = %s RETURNING *'
             ).format(
                 sets=sql.SQL(', ').join(
                     sql.SQL('{} = %s').format(sql.Identifier(column))
                     for column in changed
                 ),
                 bump=sql.Literal(1 if network else 0),
+                proxied=sql.Literal(bool(merged['hostnames'])),
             )
             row = await _fetch_one(conn, statement, (*changed.values(), slug))
             await _egress_change(conn, 'updated', actor, old, row)

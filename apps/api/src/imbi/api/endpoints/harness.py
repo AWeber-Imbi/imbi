@@ -40,6 +40,7 @@ import pydantic
 from fastapi import responses
 
 from imbi.api import agent_tasks, agent_tools, harness, secret_broker
+from imbi.api import settings as api_settings
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
 from imbi.api.endpoints import agent_tasks as tasks_api
@@ -319,6 +320,10 @@ class Claim(pydantic.BaseModel):
     #: policy exists. The runner labels its pod with them. Every claim
     #: of a chain gets the list of its root claim.
     egress: list[harness_egress.Grant] = []
+    #: For the egress proxy (egress proxy plan 5.1): a JWT with the host
+    #: names of ``egress``. Set only when Imbi has the proxy key, the
+    #: claim sent ``pod``, and a grant has host names.
+    proxy_token: str | None = None
 
 
 class RunnerFinished(pydantic.BaseModel):
@@ -829,6 +834,11 @@ class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
 
+class _EgressTokenTooLarge(ValueError):
+    """The proxy token is longer than
+    :data:`~imbi.api.harness.tokens.MAX_PROXY_TOKEN_BYTES`."""
+
+
 #: The actor of the outcome of a task that cannot run.
 _SYSTEM = agent_tasks.Actor('system', 'imbi', 'harness')
 
@@ -842,18 +852,21 @@ async def _deliver(
     claimed: tuple[dict[str, typing.Any], dict[str, typing.Any]],
     *,
     pinned: bool,
+    pod: uuid.UUID | None,
 ) -> Claim | None:
     """Return the claim response, or undo the claim when it fails.
 
     A task whose service account is gone can never run, so it closes
     with ``unhandled_no_actor`` and ``None`` is returned: the caller
-    claims again. Any other error undoes the claim and is raised again,
-    so the runner is not left busy with a chain that it does not know.
+    claims again. So does a task whose proxy token is too large
+    (``exceeded_ceiling``, ``egress_token_too_large``). Any other error
+    undoes the claim and is raised again, so the runner is not left
+    busy with a chain that it does not know.
     """
     task, chain = claimed
     try:
         return await _claim(
-            db, store, secrets, runner, task, chain, pinned=pinned
+            db, store, secrets, runner, task, chain, pinned=pinned, pod=pod
         )
     except _NoServiceAccount:
         await tasks.set_outcome(
@@ -863,11 +876,19 @@ async def _deliver(
             'service_account_missing',
             _SYSTEM,
         )
-        await store.release_claim(runner['id'], task, chain, pinned=pinned)
-        return None
+    except _EgressTokenTooLarge:
+        await tasks.set_outcome(
+            task['organization_id'],
+            task['short_id'],
+            'exceeded_ceiling',
+            'egress_token_too_large',
+            _SYSTEM,
+        )
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)
         raise
+    await store.release_claim(runner['id'], task, chain, pinned=pinned)
+    return None
 
 
 async def _claim(
@@ -879,9 +900,10 @@ async def _claim(
     chain: dict[str, typing.Any],
     *,
     pinned: bool,
+    pod: uuid.UUID | None,
 ) -> Claim:
     """Return the claim response of a task: its bundle, agent token,
-    and egress allowlist."""
+    egress allowlist, and proxy token."""
     accounts = await db.match(
         models.ServiceAccount, {'id': task['service_account_id']}
     )
@@ -910,6 +932,11 @@ async def _claim(
     else:
         api_token_error = 'service_account_in_other_organizations'
     org_slug = org_slugs.get(task['organization_id'], '')
+    egress = (
+        await _root_egress(db, store, task, chain)
+        if pinned
+        else [harness_egress.Grant.model_validate(g) for g in chain['egress']]
+    )
     return Claim(
         chain_id=chain['root_task_id'],
         attempt=chain['attempt'],
@@ -921,14 +948,38 @@ async def _claim(
         api_token=api_token,
         api_token_expires_at=api_expires,
         api_token_error=api_token_error,
-        egress=(
-            await _root_egress(db, store, task, chain)
-            if pinned
-            else [
-                harness_egress.Grant.model_validate(g) for g in chain['egress']
-            ]
-        ),
+        egress=egress,
+        proxy_token=_proxy_token(chain, pod, egress),
     )
+
+
+def _proxy_token(
+    chain: dict[str, typing.Any],
+    pod: uuid.UUID | None,
+    egress: list[harness_egress.Grant],
+) -> str | None:
+    """The proxy token of a claim, or ``None`` when Imbi has no proxy
+    key, the runner sent no pod, or no grant has host names.
+
+    Raises:
+        _EgressTokenTooLarge: The token is too long for the proxy.
+
+    """
+    proxy = api_settings.get_harness_egress_proxy()
+    secret = proxy.secret.get_secret_value()
+    hosts = [host for grant in egress for host in grant.hostnames]
+    if not secret or pod is None or not hosts:
+        return None
+    token = tokens.mint_proxy_token(
+        secret,
+        chain_id=chain['root_task_id'],
+        attempt=chain['attempt'],
+        pod=pod,
+        hosts=hosts,
+    )
+    if len(token) > tokens.MAX_PROXY_TOKEN_BYTES:
+        raise _EgressTokenTooLarge(len(token))
+    return token
 
 
 async def _egress_slugs(
@@ -1574,6 +1625,15 @@ async def claim_harness_task(
             description='Seconds to wait for a task (long poll).',
         ),
     ] = 0,
+    pod: typing.Annotated[
+        uuid.UUID | None,
+        fastapi.Query(
+            description=(
+                'The uid of the runner pod. With it, a claim whose egress '
+                'has host names gets a proxy token for that pod.'
+            )
+        ),
+    ] = None,
 ) -> Claim | fastapi.Response:
     """Claim the oldest task that the runner may run; pin its chain.
 
@@ -1581,7 +1641,8 @@ async def claim_harness_task(
     ``max_concurrent_tasks``, the runner has every label that the
     agent requires, and the pool serves its organization. Return the
     task, the identity bundle, and an agent token for the chain, or
-    ``204`` when no task comes in ``wait`` seconds.
+    ``204`` when no task comes in ``wait`` seconds. With ``pod``, the
+    claim has a proxy token when a grant has host names.
 
     Raises:
         401: ``invalid_runner_credential``.
@@ -1603,7 +1664,14 @@ async def claim_harness_task(
             raise _conflict('runner_busy', 'The runner holds a chain') from err
         if claimed is not None:
             delivered = await _deliver(
-                db, store, secrets, tasks, runner, claimed, pinned=True
+                db,
+                store,
+                secrets,
+                tasks,
+                runner,
+                claimed,
+                pinned=True,
+                pod=pod,
             )
             if delivered is not None:
                 return delivered
@@ -1625,10 +1693,21 @@ async def claim_harness_child_task(
     store: harness.Store,
     secrets: secret_broker.Store,
     tasks: agent_tasks.Store,
+    pod: typing.Annotated[
+        uuid.UUID | None,
+        fastapi.Query(
+            description=(
+                'The uid of the runner pod. With it, a claim whose egress '
+                'has host names gets a proxy token for that pod.'
+            )
+        ),
+    ] = None,
 ) -> Claim | fastapi.Response:
     """Claim the oldest queued child task of the runner's chain.
 
-    Only the runner that holds a chain can claim its child tasks.
+    Only the runner that holds a chain can claim its child tasks. The
+    claim has the egress of the chain, and a proxy token as for
+    ``claim``.
 
     Raises:
         401: ``invalid_runner_credential``.
@@ -1636,7 +1715,7 @@ async def claim_harness_child_task(
     """
     while (claimed := await store.claim_child(runner)) is not None:
         delivered = await _deliver(
-            db, store, secrets, tasks, runner, claimed, pinned=False
+            db, store, secrets, tasks, runner, claimed, pinned=False, pod=pod
         )
         if delivered is not None:
             return delivered
@@ -2057,7 +2136,12 @@ class _DestinationFields(pydantic.BaseModel):
     @pydantic.field_validator('cidrs', check_fields=False)
     @classmethod
     def _check_cidrs(cls, value: list[str] | None) -> list[str] | None:
-        return None if value is None else harness_egress.check_cidrs(value)
+        return harness_egress.check_cidrs(value) if value else value
+
+    @pydantic.field_validator('hostnames', check_fields=False)
+    @classmethod
+    def _check_hostnames(cls, value: list[str] | None) -> list[str] | None:
+        return harness_egress.check_hostnames(value) if value else value
 
     @pydantic.field_validator('ports', check_fields=False)
     @classmethod
@@ -2072,10 +2156,19 @@ class EgressDestinationCreate(_DestinationFields):
     name: str = pydantic.Field(min_length=1, max_length=200)
     description: str | None = None
     cidrs: list[str] = pydantic.Field(
-        min_length=1,
+        default=[],
         description=(
             f'1 to {harness_egress.MAX_CIDRS} IPv4 CIDRs inside the '
-            'internal ranges.'
+            'internal ranges. Not with hostnames.'
+        ),
+    )
+    hostnames: list[str] = pydantic.Field(
+        default=[],
+        description=(
+            f'1 to {harness_egress.MAX_HOSTNAMES} DNS names (at least one '
+            'dot, no IP literal, no wildcard) that the egress proxy '
+            'accepts. Stored as IDNA A-labels, lower case, without a '
+            'trailing dot. Not with cidrs; ports must be 443/TCP.'
         ),
     )
     ports: list[harness_egress.EgressPort] = pydantic.Field(min_length=1)
@@ -2092,13 +2185,22 @@ class EgressDestinationCreate(_DestinationFields):
         ),
     )
 
+    @pydantic.model_validator(mode='after')
+    def _check_kind(self) -> typing.Self:
+        harness_egress.check_kind(self.cidrs, self.hostnames, self.ports)
+        return self
+
 
 class EgressDestinationUpdate(_DestinationFields):
+    """A change. The changed destination must still have CIDRs or host
+    names, not both; send ``[]`` for the other one to change kind."""
+
     name: str | None = pydantic.Field(
         default=None, min_length=1, max_length=200
     )
     description: str | None = None
     cidrs: list[str] | None = None
+    hostnames: list[str] | None = None
     ports: list[harness_egress.EgressPort] | None = None
     global_: bool | None = pydantic.Field(default=None, alias='global')
     organizations: list[str] | None = None
@@ -2116,13 +2218,16 @@ class EgressDestinationResponse(pydantic.BaseModel):
     name: str
     description: str | None = None
     cidrs: list[str]
+    #: Empty for a CIDR destination.
+    hostnames: list[str] = []
     ports: list[harness_egress.EgressPort]
     global_: bool = pydantic.Field(alias='global')
     organizations: list[str]
-    #: Goes up on each change to ``cidrs`` or ``ports``.
+    #: Goes up on each change to ``cidrs``, ``hostnames``, or ``ports``.
     generation: int
     #: The generation whose policy the sync made. Claims give the
-    #: destination only when it equals ``generation``.
+    #: destination only when it equals ``generation``. A host name
+    #: destination needs no policy, so it always equals ``generation``.
     applied_generation: int | None = None
     pending: bool
     #: The agents that have the destination. Shown only to platform
@@ -2339,13 +2444,16 @@ async def create_egress_destination(
     store: harness.Store,
     auth: _Admin,
 ) -> EgressDestinationResponse:
-    """Create an egress destination. Claims give it after the egress
-    sync makes its policy.
+    """Create an egress destination. Claims give a CIDR destination
+    after the egress sync makes its policy, and a host name destination
+    at once.
 
     Raises:
         403: Not a platform administrator.
         409: ``egress_destination_exists``.
-        422: A CIDR or port is not valid, a CIDR gets more than 24
+        422: A CIDR, host name, or port is not valid, both or neither
+            of ``cidrs`` and ``hostnames``, a host name destination
+            with a port other than 443/TCP, a CIDR gets more than 24
             port pairs, or an unknown organization.
 
     """
@@ -2354,6 +2462,7 @@ async def create_egress_destination(
         'name': data.name,
         'description': data.description,
         'cidrs': data.cidrs,
+        'hostnames': data.hostnames,
         'ports': [p.model_dump() for p in data.ports],
         'is_global': data.global_,
         'organization_ids': (
@@ -2405,15 +2514,19 @@ async def update_egress_destination(
 ) -> EgressDestinationResponse:
     """Change an egress destination.
 
-    A change to ``cidrs`` or ``ports`` starts a new generation: new
-    chains do not get the destination until the sync applies it.
-    Running chains keep the generation that they have.
+    A change to ``cidrs``, ``hostnames``, or ``ports`` starts a new
+    generation: new chains do not get a CIDR destination until the
+    sync applies it, and get a host name destination at once. Running
+    chains keep the generation that they have.
 
     Raises:
         403: Not a platform administrator.
         404: No such live destination.
-        422: A CIDR or port is not valid, a CIDR gets more than 24
-            port pairs, or an unknown organization.
+        422: A CIDR, host name, or port is not valid, the changed
+            destination has both or neither of ``cidrs`` and
+            ``hostnames``, a host name destination with a port other
+            than 443/TCP, a CIDR gets more than 24 port pairs, or an
+            unknown organization.
 
     """
     changes: dict[str, typing.Any] = {}
@@ -2424,6 +2537,8 @@ async def update_egress_destination(
         changes['description'] = data.description
     if data.cidrs is not None:
         changes['cidrs'] = data.cidrs
+    if data.hostnames is not None:
+        changes['hostnames'] = data.hostnames
     if data.ports is not None:
         changes['ports'] = [p.model_dump() for p in data.ports]
     if data.global_ is not None:
@@ -2447,6 +2562,8 @@ async def update_egress_destination(
         )
     except harness.EgressPortLimit as err:
         raise _port_limit(err) from err
+    except ValueError as err:
+        raise _unprocessable(str(err)) from err
     if row is None:
         raise _not_found(slug)
     return (await _responses(db, [row], with_agents=True))[0]
@@ -2514,8 +2631,10 @@ async def egress_sync_status(
 async def read_egress_sync_state(
     store: harness.Store, _auth: _PoolAccount
 ) -> EgressSyncState:
-    """Every egress destination with its current generation, the
-    deleted ones too, for ``imbi-harness egress-sync``.
+    """Every CIDR egress destination with its current generation, the
+    deleted ones too, for ``imbi-harness egress-sync``. A host name
+    destination needs no policy, so it is not in the list, and the sync
+    deletes the policies of a destination that changed to host names.
 
     Raises:
         403: ``egress_sync_forbidden``: not the service account of a
@@ -2528,6 +2647,7 @@ async def read_egress_sync_state(
                 {**row, 'deleted': row['deleted_at'] is not None}
             )
             for row in await store.egress_destinations(deleted=True)
+            if not row['hostnames']
         ]
     )
 

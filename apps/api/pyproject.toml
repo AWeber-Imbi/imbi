@@ -28,6 +28,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
+  "idna>=3.10",
   "imbi-common[databases,llm,mcp,sentry,server]==2.44.0",
   "jinja2",
   "jsonpatch>=1.33",

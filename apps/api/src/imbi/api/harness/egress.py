@@ -1,17 +1,21 @@
 """Egress destinations: the internal hosts that runner pods may reach.
 
 A ClusterNetworkPolicy in the runner namespace denies the internal
-ranges to runner pods. Each destination is a set of CIDRs and ports
-that the egress sync (``imbi-harness egress-sync``) accepts with one
-policy for each generation. The claim gives a chain the global
-destinations and the destinations of its root agent, but only the
-generations that have a policy, so a new or narrowed destination never
-gives more access than the policy (fail closed).
+ranges to runner pods. A destination is a set of CIDRs and ports that
+the egress sync (``imbi-harness egress-sync``) accepts with one policy
+for each generation, or a set of host names on port 443 that the
+egress proxy accepts (egress proxy plan 5.1). The claim gives a chain
+the global destinations and the destinations of its root agent, but
+only the generations that have a policy, so a new or narrowed
+destination never gives more access than the policy (fail closed). A
+host name destination needs no policy: the claim puts its host names
+into the proxy token, so each generation is applied at once.
 """
 
 import ipaddress
 import typing
 
+import idna
 import pydantic
 
 from imbi.common import models
@@ -35,6 +39,8 @@ FORBIDDEN_RANGES = tuple(
 #: The VPC CNI limits (PRD constraint 5).
 MAX_CIDRS = 25
 MAX_PORTS_PER_CIDR = 24
+#: The most host names of one destination (egress proxy plan 5.1).
+MAX_HOSTNAMES = 25
 
 
 class EgressPort(pydantic.BaseModel):
@@ -68,6 +74,43 @@ def check_cidrs(cidrs: list[str]) -> list[str]:
     return [str(network) for network in sorted(networks)]
 
 
+def canonical_hostname(name: str) -> str:
+    """Return ``name`` in canonical form: IDNA A-labels, lower case, no
+    trailing dot. The egress proxy compares this form (contract C3).
+
+    Raises:
+        ValueError: ``name`` is not a valid DNS name (a wildcard, a
+            ``/``, ``@``, ``:``, ``[``, or ``]`` included), has no dot,
+            or is an IP literal.
+
+    """
+    try:
+        host = idna.encode(name.removesuffix('.'), uts46=True).decode()
+    except idna.IDNAError as err:
+        raise ValueError(f'{name!r} is not a valid host name') from err
+    labels = host.split('.')
+    # A top-level label is never numeric, so this also refuses an IPv4
+    # literal in every form ("10.1.2.3", "0x0a.1").
+    if len(labels) < 2 or not labels[-1][:1].isalpha():
+        raise ValueError(f'{name!r} is not a fully qualified host name')
+    return host
+
+
+def check_hostnames(names: list[str]) -> list[str]:
+    """Return the host names in canonical form, sorted, without
+    duplicates.
+
+    Raises:
+        ValueError: A name is not valid (:func:`canonical_hostname`),
+            or there are not 1 to :data:`MAX_HOSTNAMES` names.
+
+    """
+    hosts = {canonical_hostname(name) for name in names}
+    if not 1 <= len(hosts) <= MAX_HOSTNAMES:
+        raise ValueError(f'A destination has 1 to {MAX_HOSTNAMES} host names')
+    return sorted(hosts)
+
+
 def check_ports(ports: list[EgressPort]) -> list[EgressPort]:
     """Return the ports sorted, without duplicates.
 
@@ -79,6 +122,29 @@ def check_ports(ports: list[EgressPort]) -> list[EgressPort]:
     if not unique:
         raise ValueError('A destination has at least one port')
     return [unique[key] for key in sorted(unique)]
+
+
+#: The only ports of a host name destination: the proxy tunnels TLS.
+HOSTNAME_PORTS = (EgressPort(port=443, protocol='TCP'),)
+
+
+def check_kind(
+    cidrs: list[str],
+    hostnames: list[str],
+    ports: list[EgressPort] | list[dict[str, typing.Any]],
+) -> None:
+    """Check that a destination has CIDRs or host names, and that a
+    host name destination has only port 443/TCP.
+
+    Raises:
+        ValueError: Both or neither, or other ports.
+
+    """
+    if bool(cidrs) == bool(hostnames):
+        raise ValueError('A destination has CIDRs or host names, not both')
+    found = tuple(EgressPort.model_validate(p) for p in ports)
+    if hostnames and found != HOSTNAME_PORTS:
+        raise ValueError('A host name destination has only port 443/TCP')
 
 
 def port_pairs_over_limit(
@@ -107,6 +173,8 @@ class Grant(pydantic.BaseModel):
     generation: int
     cidrs: list[str]
     ports: list[EgressPort]
+    #: Empty for a CIDR destination. The proxy token holds them.
+    hostnames: list[str] = []
 
 
 class Pending(pydantic.BaseModel):
@@ -166,6 +234,7 @@ def grants(
                 generation=row['generation'],
                 cidrs=row['cidrs'],
                 ports=row['ports'],
+                hostnames=row['hostnames'],
             )
         )
     return granted, pending
