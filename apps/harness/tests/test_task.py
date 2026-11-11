@@ -427,7 +427,10 @@ class ConfigTestCase(TaskTestCase):
         subject = self.make(
             hooks={'PreToolUse': []},
             claude_settings={
-                'permissions': {'deny': ['Bash(rm *)'], 'ask': ['Edit']},
+                'permissions': {
+                    'deny': ['Bash(rm *)', 'mcp__imbi__report_outcome'],
+                    'ask': ['Edit'],
+                },
                 'hooks': hooks,
                 'includeCoAuthoredBy': False,
             },
@@ -448,7 +451,7 @@ class ConfigTestCase(TaskTestCase):
         # The configuration is not changed.
         self.assertEqual(
             subject.config['claude_settings']['permissions']['deny'],
-            ['Bash(rm *)'],
+            ['Bash(rm *)', 'mcp__imbi__report_outcome'],
         )
 
     def test_dropped_settings_are_a_warning(self) -> None:
@@ -509,6 +512,17 @@ class ConfigTestCase(TaskTestCase):
                 + '\n\n[Truncated by the harness.]'
             )
         )
+
+    def test_instructions_fit_in_the_prompt_budget(self) -> None:
+        for name in ('app', 'lib'):
+            repo = self.tmp / 'chain' / 'repos' / name
+            repo.mkdir()
+            for file in ('CLAUDE.md', 'AGENTS.md'):
+                (repo / file).write_text('\u00e9' * task.INSTRUCTION_BYTES)
+        subject = self.make(system_prompt_prefix='p' * 4096)
+        prompt = subject.system_prompt()
+        self.assertLessEqual(len(prompt.encode()), task.PROMPT_BYTES)
+        self.assertIn('[Truncated by the harness.]', prompt)
 
     def gitconfig(self, task_id: str, slug: str | None, name: str) -> str:
         """Write the config of a task, then read its identity with git."""

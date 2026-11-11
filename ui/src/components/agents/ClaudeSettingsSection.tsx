@@ -30,7 +30,14 @@ export function ClaudeSettingsSection({
     queryKey: queryKeys.agentPlatformConfig(orgSlug),
   })
   const org = settingsText(config.data?.config.claude_settings)
-  const enforced = config.data?.config.enforced ?? []
+  const policy = config.data?.config
+  // Without allow_agent_hooks, the API refuses agent hooks too.
+  const enforced = [
+    ...new Set([
+      ...(policy?.enforced ?? []),
+      ...(policy && !policy.allow_agent_hooks ? ['hooks'] : []),
+    ]),
+  ]
 
   return (
     <section className="flex flex-col gap-3">

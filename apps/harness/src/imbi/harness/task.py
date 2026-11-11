@@ -395,6 +395,10 @@ def _repository(url: str) -> str | None:
 PLUGIN_MANIFEST = pathlib.PurePosixPath('.claude-plugin/plugin.json')
 #: The cap on the bytes of one repository instruction file.
 INSTRUCTION_BYTES = 64 * 1024
+#: The cap on the UTF-8 bytes of the system prompt. The SDK gives it to
+#: the CLI in one argument, and Linux limits one argument to 128 KiB.
+PROMPT_BYTES = 120 * 1024
+_TRUNCATED = '\n\n[Truncated by the harness.]'
 #: The cap on the bytes of one published plugin.
 PLUGIN_BYTES = 64 * 1024 * 1024
 MARKETPLACE_FILE = pathlib.PurePosixPath('.claude-plugin/marketplace.json')
@@ -487,9 +491,11 @@ def _publish(source: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
     return dest
 
 
-def _instruction_file(path: pathlib.Path) -> str:
-    """The text of a repository instruction file, at most
-    :data:`INSTRUCTION_BYTES`, or empty when there is none."""
+def _instruction_file(
+    path: pathlib.Path, limit: int = INSTRUCTION_BYTES
+) -> str:
+    """The text of a repository instruction file, at most ``limit``
+    bytes, or empty when there is none."""
     try:
         # Non-blocking, and regular files only: a FIFO would stop the
         # runner's event loop.
@@ -499,10 +505,11 @@ def _instruction_file(path: pathlib.Path) -> str:
     with os.fdopen(fd, 'rb') as file:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             return ''
-        data = file.read(INSTRUCTION_BYTES + 1)
-    text = data[:INSTRUCTION_BYTES].decode(errors='replace').strip()
-    if len(data) > INSTRUCTION_BYTES:
-        text += '\n\n[Truncated by the harness.]'
+        data = file.read(limit + 1)
+    # 'ignore', not 'replace': the text is then at most ``limit`` bytes.
+    text = data[:limit].decode(errors='ignore').strip()
+    if len(data) > limit:
+        text += _TRUNCATED
     return text
 
 
@@ -1345,7 +1352,15 @@ class TaskRun:
             'permissions': {
                 **permissions,
                 'allow': [*permissions.get('allow', []), *allowed],
-                'deny': [*permissions.get('deny', []), *denied],
+                # _deny_rule: the model can always call report_outcome.
+                'deny': [
+                    *(
+                        tool
+                        for rule in permissions.get('deny', [])
+                        for tool in _deny_rule(str(rule))
+                    ),
+                    *denied,
+                ],
             },
         }
         sandbox: Body = self.config.get('sandbox') or {}
@@ -1367,10 +1382,11 @@ class TaskRun:
                 f'Code settings, so they were left out: {", ".join(dropped)}'
             )
 
-    def instructions(self) -> str:
+    def instructions(self, budget: int = PROMPT_BYTES) -> str:
         """The harness rules, then each repository's ``CLAUDE.md`` and
-        ``AGENTS.md``, read as ``agent``. They go in the system prompt:
-        the CLI reads no instruction file (``setting_sources=[]``)."""
+        ``AGENTS.md``, read as ``agent``, in at most ``budget`` UTF-8
+        bytes. They go in the system prompt: the CLI reads no
+        instruction file (``setting_sources=[]``)."""
         parts = [
             _RULES.format(
                 subagents=', '.join(
@@ -1386,11 +1402,19 @@ class TaskRun:
                 or ' none',
             )
         ]
+        budget -= len(parts[0].encode())
         with privilege.effective(privilege.AGENT):
             for repo in self._repo_dirs():
                 for path in (repo / 'CLAUDE.md', repo / 'AGENTS.md'):
-                    if text := _instruction_file(path):
-                        parts.append(f'# Instructions from {path}\n\n{text}')
+                    header = f'# Instructions from {path}\n\n'
+                    # Room for the separator, header, and truncation note.
+                    limit = min(
+                        INSTRUCTION_BYTES,
+                        budget - 2 - len(header.encode()) - len(_TRUNCATED),
+                    )
+                    if limit > 0 and (text := _instruction_file(path, limit)):
+                        parts.append(header + text)
+                        budget -= 2 + len(parts[-1].encode())
         return '\n\n'.join(parts)
 
     def write_config(self) -> None:
@@ -1441,13 +1465,10 @@ class TaskRun:
         """The organization prefix, the agent's rendered prompt, the
         harness and repository instructions, and the task context."""
         prompt: Body = self.bundle.get('prompt') or {}
-        parts = [
-            self.config.get('system_prompt_prefix'),
-            prompt.get('system'),
-            self.instructions(),
-            self.task_context(),
-            UNTRUSTED_RULE,
-        ]
+        head = [self.config.get('system_prompt_prefix'), prompt.get('system')]
+        tail = [self.task_context(), UNTRUSTED_RULE]
+        used = sum(len(str(part).encode()) + 2 for part in head + tail if part)
+        parts = [*head, self.instructions(PROMPT_BYTES - used), *tail]
         return '\n\n'.join(str(part) for part in parts if part)
 
     def task_context(self) -> str:
