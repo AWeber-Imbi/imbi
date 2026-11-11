@@ -639,17 +639,20 @@ class TaskStore:
             )
             return await cursor.fetchall()
 
-    async def last_agent_turn(self, task_id: uuid.UUID) -> str | None:
+    async def last_agent_turn(self, task: Row) -> str | None:
         """Return the body of the newest ``turn`` of the agent.
 
-        ``None`` when the agent wrote no turn, or the log is archived.
+        It reads ClickHouse when the log of the task is archived.
+        ``None`` when the agent wrote no turn.
         """
+        if task['log_archived_at'] is not None:
+            return await log.last_archived_agent_turn(task)
         async with self._pool.connection() as conn:
             cursor = await conn.execute(
                 "SELECT payload->>'body' FROM agent_runtime.events"
                 " WHERE task_id = %s AND type = 'turn'"
                 " AND actor_kind = 'agent' ORDER BY seq DESC LIMIT 1",
-                (task_id,),
+                (task['id'],),
             )
             row = await cursor.fetchone()
         return row[0] if row else None

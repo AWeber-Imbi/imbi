@@ -20,9 +20,9 @@ import {
 import { ApiError } from '@/api/client'
 import {
   controlAgentTask,
-  createAgentTask,
   deleteAgentTask,
   reassignAgentTask,
+  retryAgentTask,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,12 +35,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { RichMarkdown } from '@/components/ui/rich-markdown'
+import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { Agent, AgentTask, AgentTaskEvent } from '@/types'
+import type { AgentTask, AgentTaskEvent } from '@/types'
 
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
@@ -552,9 +553,7 @@ function TaskHeader({
         </h2>
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         <TaskControls orgSlug={orgSlug} task={task} />
-        {agent?.enabled && (
-          <TaskRetry agent={agent} orgSlug={orgSlug} task={task} />
-        )}
+        <TaskRetry orgSlug={orgSlug} task={task} />
         <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
@@ -635,35 +634,29 @@ function TaskHeader({
 }
 
 /**
- * Copy a failed task to a new task and open it. Hidden without
+ * Retry a failed task as a new task, with what happened to it and an
+ * optional note, then open the new task. Hidden without
  * `agent_task:create`.
  */
-function TaskRetry({
-  agent,
-  orgSlug,
-  task,
-}: {
-  agent: Agent
-  orgSlug: string
-  task: AgentTask
-}) {
+function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   const canCreate = useHasPermission('agent_task:create', orgSlug)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
   // Keep one key until a retry succeeds, so a repeat after a lost
   // response returns the first copy and does not make a second one.
   const [retryKey, setRetryKey] = useState(() => crypto.randomUUID())
   const retry = useMutation({
     mutationFn: () =>
-      createAgentTask(orgSlug, {
-        agent_slug: agent.slug,
-        description: task.description,
+      retryAgentTask(orgSlug, task.short_id, {
         idempotency_key: retryKey,
-        project_id: task.project_id,
-        title: task.title,
+        note: note.trim() || null,
       }),
     onSuccess: (copy) => {
       setRetryKey(crypto.randomUUID())
+      setOpen(false)
+      setNote('')
       void queryClient.invalidateQueries({
         queryKey: queryKeys.agentTasks(orgSlug),
       })
@@ -672,23 +665,52 @@ function TaskRetry({
   })
   if (!canCreate || !isFailed(task)) return null
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Button
-        aria-label="Retry task"
-        disabled={retry.isPending}
-        onClick={() => retry.mutate()}
-        size="sm"
-        title="Retry as a new task"
-        variant="outline"
-      >
-        <RotateCcw className="size-4" />
-      </Button>
-      {retry.error && (
-        <span className="text-danger text-xs" role="alert">
-          {errorMessage(retry.error)}
-        </span>
-      )}
-    </div>
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label="Retry task"
+          size="sm"
+          title="Retry as a new task"
+          variant="outline"
+        >
+          <RotateCcw className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="flex w-96 flex-col gap-3">
+        <p className="text-secondary text-sm">
+          Imbi makes a new task with the same agent and description, and adds
+          the outcome and the last agent message of {task.short_id}.
+        </p>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            retry.mutate()
+          }}
+        >
+          <Textarea
+            aria-label="Note for the retry"
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What should the agent do differently? (optional)"
+            rows={4}
+            value={note}
+          />
+          <Button
+            className="self-end"
+            disabled={retry.isPending}
+            size="sm"
+            type="submit"
+          >
+            Retry
+          </Button>
+        </form>
+        {retry.error && (
+          <p className="text-danger text-xs" role="alert">
+            {errorMessage(retry.error)}
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 

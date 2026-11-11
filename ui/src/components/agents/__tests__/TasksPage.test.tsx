@@ -29,6 +29,7 @@ vi.mock('@/api/endpoints', () => ({
   replyAgentTask: vi.fn(),
   resolveAgentTaskRequest: vi.fn(),
   resolvePrompt: vi.fn(),
+  retryAgentTask: vi.fn(),
 }))
 
 const ORGS = vi.hoisted(() => [{ slug: 'acme' }, { slug: 'beta' }])
@@ -662,21 +663,22 @@ describe('Tasks', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('retries a failed task as a new task', async () => {
+  it('retries a failed task with a note', async () => {
     vi.mocked(endpoints.getAgentTask).mockResolvedValue({
       ...closedTask(1),
       outcome: 'failed_error',
     })
-    vi.mocked(endpoints.createAgentTask).mockResolvedValue(task())
+    vi.mocked(endpoints.retryAgentTask).mockResolvedValue(task())
     renderAt('/agents/tasks/acme/T-11')
     fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    fireEvent.change(screen.getByLabelText('Note for the retry'), {
+      target: { value: ' Use the new token. ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() =>
-      expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
-        agent_slug: agent().slug,
-        description: 'Find why the build fails.',
+      expect(endpoints.retryAgentTask).toHaveBeenCalledWith('acme', 'T-11', {
         idempotency_key: expect.any(String),
-        project_id: 'proj-1',
-        title: 'Closed 1',
+        note: 'Use the new token.',
       }),
     )
   })
@@ -686,20 +688,21 @@ describe('Tasks', () => {
       ...closedTask(1),
       outcome: 'failed_error',
     })
-    vi.mocked(endpoints.createAgentTask).mockRejectedValue(
+    vi.mocked(endpoints.retryAgentTask).mockRejectedValue(
       new Error('Network error'),
     )
     renderAt('/agents/tasks/acme/T-11')
-    const button = await screen.findByRole('button', { name: 'Retry task' })
-    fireEvent.click(button)
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    const submit = screen.getByRole('button', { name: 'Retry' })
+    fireEvent.click(submit)
     await screen.findByRole('alert')
-    fireEvent.click(button)
+    fireEvent.click(submit)
     await waitFor(() =>
-      expect(endpoints.createAgentTask).toHaveBeenCalledTimes(2),
+      expect(endpoints.retryAgentTask).toHaveBeenCalledTimes(2),
     )
     const [first, second] = vi
-      .mocked(endpoints.createAgentTask)
-      .mock.calls.map(([, body]) => body.idempotency_key)
+      .mocked(endpoints.retryAgentTask)
+      .mock.calls.map(([, , body]) => body.idempotency_key)
     expect(first).toEqual(expect.any(String))
     expect(second).toBe(first)
   })
