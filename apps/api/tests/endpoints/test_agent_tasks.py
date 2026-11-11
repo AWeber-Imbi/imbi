@@ -15,6 +15,7 @@ import decimal
 import json
 import typing
 import uuid
+from unittest import mock
 
 import httpx
 import slugify
@@ -1136,6 +1137,113 @@ class AcknowledgeTests(AgentTaskTestCase):
         self.assertIn('requires user authentication', response.text)
 
 
+class RetryTests(AgentTaskTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.make_agent()
+        await self.create_task(project_ids=[self.project_id])
+
+    async def fail(
+        self, turn: str | None = 'I could not read\nthe secret.'
+    ) -> None:
+        """Close T-1 as failed, after an agent turn."""
+        actor = agent_tasks.Actor('agent', 'triage', 'harness')
+        if turn is not None:
+            await self.store.append_events(
+                self.org,
+                'T-1',
+                [
+                    agent_tasks.NewEvent(
+                        event_id=uuid.uuid4(),
+                        type='turn',
+                        payload={'body': turn},
+                        actor=actor,
+                    )
+                ],
+                None,
+            )
+        await self.store.set_outcome(
+            self.org, 'T-1', 'failed_external', 'secret_refused', actor
+        )
+
+    async def retry(self, **body: typing.Any) -> httpx.Response:
+        return await self.client.post(self.url('T-1/retry'), json=body)
+
+    async def test_open_task_is_refused(self) -> None:
+        response = await self.retry()
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_unknown_task_is_404(self) -> None:
+        response = await self.client.post(self.url('T-9/retry'), json={})
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_copy_has_the_previous_attempt_and_note(self) -> None:
+        await self.fail()
+        response = await self.retry(note='Use the new token.')
+        self.assertEqual(response.status_code, 201, response.text)
+        task = response.json()
+        self.assertEqual(task['short_id'], 'T-2')
+        self.assertEqual(task['title'], 'Look at the build')
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']], [self.project_id]
+        )
+        self.assertEqual(task['origin']['kind'], 'human')
+        self.assertEqual(
+            task['description'],
+            'Find why the build fails.\n\n---\n\n## Previous attempt\n\n'
+            'This task retries T-1, which closed as `failed_external`: '
+            'secret_refused.\n\nThe last message from the agent:\n\n'
+            '> I could not read\n> the secret.\n\n'
+            f'## Note from {self.email}\n\nUse the new token.',
+        )
+        original = await self.store.get(self.org, 'T-1')
+        assert original is not None
+        self.assertEqual(original['status'], 'closed')
+
+    async def test_repeat_with_key_returns_first_copy(self) -> None:
+        await self.fail(turn=None)
+        first = await self.retry(idempotency_key='retry-1')
+        self.assertEqual(first.status_code, 201, first.text)
+        self.assertNotIn('last message', first.json()['description'])
+        again = await self.retry(idempotency_key='retry-1')
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()['id'], first.json()['id'])
+
+    async def test_repeat_with_key_skips_the_log_read(self) -> None:
+        await self.fail()
+        first = await self.retry(idempotency_key='retry-1')
+        self.assertEqual(first.status_code, 201, first.text)
+        failing = mock.AsyncMock(side_effect=RuntimeError('ClickHouse down'))
+        with mock.patch.object(self.store, 'last_agent_turn', failing):
+            again = await self.retry(idempotency_key='retry-1')
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()['id'], first.json()['id'])
+        failing.assert_not_awaited()
+
+    async def test_archived_log_reads_clickhouse(self) -> None:
+        await self.fail(turn=None)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-1'),
+            )
+        with mock.patch.object(
+            agent_tasks.log,
+            'last_archived_agent_turn',
+            mock.AsyncMock(return_value='From the archive.'),
+        ):
+            response = await self.retry()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIn('> From the archive.', response.json()['description'])
+
+    async def test_service_account_is_refused(self) -> None:
+        await self.fail()
+        await self.act_as_service_account(member=True)
+        response = await self.retry()
+        self.assertEqual(response.status_code, 403, response.text)
+
+
 class DeleteTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -1259,6 +1367,8 @@ class PermissionTests(AgentTaskTestCase):
             ),
             ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
             ('agent_task:manage', 'POST', 'T-1/acknowledge', None),
+            ('agent_task:create', 'POST', 'T-1/retry', {}),
+            ('agent_task:read', 'POST', 'T-1/retry', {}),
             ('agent_task:delete', 'DELETE', 'T-1', None),
             (
                 'agent_task:resolve',
@@ -1454,6 +1564,7 @@ class MembershipTests(AgentTaskTestCase):
             ('POST', 'T-1/reassign', {'owner': self.member}),
             ('POST', 'T-1/reply', {'body': 'Hi.'}),
             ('POST', 'T-1/acknowledge', None),
+            ('POST', 'T-1/retry', {}),
             (
                 'POST',
                 f'T-1/requests/{uuid.uuid4()}/resolve',

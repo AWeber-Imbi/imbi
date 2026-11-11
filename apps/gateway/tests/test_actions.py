@@ -3402,6 +3402,7 @@ class StartWorkflowTests(helpers.TestCase):
                 'trigger': 'hook',
                 'binding': 'b-1',
                 'payload': {'payload': {'action': 'opened'}},
+                'project_id': 'proj',
             },
         )
 

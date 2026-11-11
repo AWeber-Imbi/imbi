@@ -20,7 +20,7 @@ types.
 
 | Permission | Lets you | Roles that have it |
 |---|---|---|
-| `scoring_policy:read` | View scoring policies | `admin` |
+| `scoring_policy:read` | View scoring policies | `admin`, `developer` |
 | `scoring_policy:write` | Create/update scoring policies | `admin` |
 | `scoring_policy:delete` | Delete scoring policies | `admin` |
 | `scoring_policy:rescore` | Trigger rescore for a single project | `admin`, `developer`, `default` |

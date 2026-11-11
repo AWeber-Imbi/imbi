@@ -5322,6 +5322,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Agent Task
+         * @description Make a new task that does a closed task again.
+         *
+         *     The new task has the agent, title, and projects of the closed task.
+         *     Its description adds what happened to the closed task, and the note
+         *     of the person. The closed task does not change. The caller also
+         *     needs ``agent_task:read``, because the new description shows the
+         *     log of the closed task.
+         *
+         *     Raises:
+         *         403: The caller is not a person, not a member of the org, or
+         *             cannot read tasks.
+         *         404: No such task.
+         *         409: The task is not closed, or its agent is disabled.
+         *         422: The agent or a project is no longer in the org.
+         */
+        post: operations["retry_agent_task_api_organizations__org_slug__agent_tasks__short_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/{short_id}/reassign": {
         parameters: {
             query?: never;
@@ -11191,6 +11224,19 @@ export interface components {
             acknowledged_at?: string | null;
             /** Acknowledged By */
             acknowledged_by?: string | null;
+        };
+        /** AgentTaskRetry */
+        AgentTaskRetry: {
+            /**
+             * Note
+             * @description What the agent should do differently this time.
+             */
+            note?: string | null;
+            /**
+             * Idempotency Key
+             * @description A repeat with the same key returns the first task.
+             */
+            idempotency_key?: string | null;
         };
         /** AgentTaskWaiting */
         AgentTaskWaiting: {
@@ -18972,6 +19018,11 @@ export interface components {
              * @description The trigger binding of the gateway rule that started a webhook run.
              */
             binding?: string | null;
+            /**
+             * Project Id
+             * @description The project that the gateway matched to the webhook delivery. Only a webhook run uses it.
+             */
+            project_id?: string | null;
         };
         /** RunDetail */
         RunDetail: {
@@ -30931,6 +30982,51 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_agent_task_api_organizations__org_slug__agent_tasks__short_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskRetry"];
+            };
+        };
+        responses: {
+            /** @description A task with this idempotency key exists; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

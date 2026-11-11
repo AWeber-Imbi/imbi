@@ -1552,9 +1552,9 @@ async def start_workflow(
 
     imbi-workflows writes this rule for each ``webhook`` trigger of an
     active workflow; a person does not. The run has a ``webhook``
-    origin, and the delivery id is its idempotency key, so a redelivery
-    starts no second run. When a delivery matches more than one project,
-    every call after the first returns the first run.
+    origin. The call names the project that the delivery matched, and
+    the API keys the run on the delivery id and that project: each
+    matched project gets one run, and a redelivery starts no second run.
 
     A delivery without a verified signature or a valid id is skipped.
     The run's trigger payload is the webhook body. The call names the
@@ -1579,5 +1579,6 @@ async def start_workflow(
                 'trigger': action_config.trigger,
                 'binding': action_config.binding,
                 'payload': {'payload': body},
+                'project_id': ctx.project_id,
             },
         )

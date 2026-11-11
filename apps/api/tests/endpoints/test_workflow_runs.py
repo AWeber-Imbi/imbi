@@ -22,6 +22,7 @@ from imbi.api.endpoints import project_deployments, workflow_runs
 from imbi.common import graph
 from imbi.common.plugins import base as plugin_base
 from imbi.common.workflows import graph as wf
+from imbi.common.workflows.registry import agent as agent_step
 
 PERMISSIONS = frozenset(
     {
@@ -830,11 +831,12 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self,
         pinned: dict[str, typing.Any],
         params: dict[str, typing.Any] | None = None,
+        origin: dict[str, typing.Any] | None = None,
     ) -> None:
         """Start a run of a workflow whose agent step has ``pinned``.
 
         ``params`` is the rendered input of the step; it defaults to
-        ``pinned``.
+        ``pinned``. ``origin`` is added to the run's origin record.
         """
         slug = f'agent-{uuid.uuid4().hex[:8]}'
         await self.store.create(
@@ -867,7 +869,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 trigger_node_id='start',
                 origin_kind='human',
                 origin_id=self.email,
-                origin={'kind': 'human', 'user': self.email},
+                origin={'kind': 'human', 'user': self.email, **(origin or {})},
                 idempotency_key=None,
                 payload={},
                 concurrency_key=None,
@@ -912,6 +914,11 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             ['ok'],
         )
         async with self.task_pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_projects'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
             await conn.execute(
                 'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
                 (self.org,),
@@ -1044,6 +1051,38 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         task = await self.tasks.get(self.org, response.json()['task_id'])
         assert task is not None
         self.assertEqual(task['agent_id'], self.agent)
+
+    async def test_trigger_project_comes_from_the_run_origin(self) -> None:
+        pinned = {
+            'agent_id': self.agent,
+            'instruction': 'Go.',
+            'project_id': agent_step.TRIGGER_PROJECT,
+        }
+        await self._agent_run(pinned)
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'trigger_project_missing'}
+        )
+        # The origin's project is used: this one is not in the org.
+        await self._agent_run(pinned, origin={'project_id': 'p-missing'})
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('p-missing', response.text)
+        self.assertEqual(await self._count(), 0)
+        # A valid origin project wins over a rendered project_id.
+        await self._agent_run(
+            pinned,
+            {**pinned, 'project_id': 'p-other'},
+            origin={'project_id': self.project},
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']], [self.project]
+        )
 
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""

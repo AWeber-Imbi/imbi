@@ -202,6 +202,30 @@ class SweepTests(ClickHouseTestCase):
         # An archived task is not swept again.
         self.assertFalse(await self.store.archive(task['id'], 6))
 
+    async def test_last_agent_turn_reads_the_archive(self) -> None:
+        actor = agent_tasks.Actor('agent', 'triage', 'harness')
+        turn = agent_tasks.NewEvent(
+            event_id=uuid.uuid4(),
+            type='turn',
+            payload={'body': 'I could not read the secret.'},
+            actor=actor,
+        )
+        await self.store.append_events(self.org, 'T-1', [turn], None)
+        await self.store.set_outcome(
+            self.org, 'T-1', 'failed_external', 'secret_refused', actor
+        )
+        # Read the task before the archive, as a retry can.
+        stale = await self.store.get(self.org, 'T-1')
+        assert stale is not None
+        await sweeper.sweep_once(self.store)
+        await sweeper.sweep_once(self.store)
+        self.assertEqual(await self.postgres_events(self.task['id']), [])
+        self.assertIsNone(stale['log_archived_at'])
+        self.assertEqual(
+            await self.store.last_agent_turn(stale),
+            'I could not read the secret.',
+        )
+
     async def test_sweep_republishes_usage_rows(self) -> None:
         actor = agent_tasks.Actor('agent', 'agent-1', 'harness')
         prices: dict[str, decimal.Decimal | None] = {

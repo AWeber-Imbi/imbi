@@ -292,6 +292,7 @@ class WebhookRunTestCase(TriggerTestCase):
         delivery: str = 'd-1',
         webhook: str | None = None,
         binding: str | None = None,
+        project: str | None = None,
     ) -> typing.Awaitable[httpx.Response]:
         return self.client.post(
             f'{self.url}/runs',
@@ -299,6 +300,7 @@ class WebhookRunTestCase(TriggerTestCase):
                 'trigger': 'hook',
                 'binding': binding or self.binding,
                 'payload': {'payload': {'a': 1}},
+                'project_id': project,
             },
             headers={
                 'X-Imbi-Webhook': webhook or self.webhook,
@@ -331,6 +333,21 @@ class WebhookRunTestCase(TriggerTestCase):
         response = await self._post(delivery='d-2')
         self.assertNotEqual(response.json()['id'], run['id'])
         self.assertEqual(await self._run_count(), 2)
+
+    async def test_each_matched_project_gets_one_run(self) -> None:
+        self._as('imbi-gateway')
+        runs = []
+        for project in ('p-1', 'p-2', 'p-1'):
+            response = await self._post(project=project)
+            self.assertEqual(response.status_code, 202, response.text)
+            runs.append(response.json())
+        self.assertEqual(runs[0]['id'], runs[2]['id'])
+        self.assertNotEqual(runs[0]['id'], runs[1]['id'])
+        self.assertEqual(await self._run_count(), 2)
+        self.assertEqual(runs[1]['origin']['project_id'], 'p-2')
+        self.assertEqual(
+            runs[1]['payload'], {'payload': {'a': 1}, 'project': 'p-2'}
+        )
 
     async def test_other_webhook_is_refused(self) -> None:
         self._as('imbi-gateway')

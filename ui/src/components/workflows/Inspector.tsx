@@ -213,6 +213,7 @@ export function NodePanel({
             onRemoveItem={onRemoveItem}
             orgSlug={orgSlug}
             params={node.params}
+            webhookProject={graph.nodes.some((n) => n.type === 'webhook')}
           />
           {incoming > 1 && (
             <FormField

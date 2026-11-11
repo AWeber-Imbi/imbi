@@ -23,6 +23,7 @@ import {
   type FieldSource,
   isIdOrReference,
   type ParamField,
+  TRIGGER_PROJECT,
 } from './schemaFields'
 import { useSourceOptions } from './workflowQueries'
 
@@ -34,6 +35,8 @@ interface ParamsFormProps {
   onRemoveItem: (name: string, index: number) => void
   orgSlug: string
   params: Record<string, unknown>
+  /** The workflow has a webhook trigger, so a run can have a project. */
+  webhookProject: boolean
 }
 
 /** An email recipient: a team or a user, by graph node id. */
@@ -50,6 +53,7 @@ export function ParamsForm({
   onRemoveItem,
   orgSlug,
   params,
+  webhookProject,
 }: ParamsFormProps) {
   return (
     <>
@@ -71,6 +75,7 @@ export function ParamsForm({
               onRemoveItem={(i) => onRemoveItem(field.name, i)}
               orgSlug={orgSlug}
               value={value}
+              webhookProject={webhookProject}
             />
           </FormField>
         )
@@ -113,6 +118,7 @@ function FieldControl({
   onRemoveItem,
   orgSlug,
   value,
+  webhookProject,
 }: {
   field: ParamField
   id: string
@@ -120,6 +126,7 @@ function FieldControl({
   onRemoveItem: (index: number) => void
   orgSlug: string
   value: unknown
+  webhookProject: boolean
 }) {
   switch (field.kind) {
     case 'boolean':
@@ -188,6 +195,7 @@ function FieldControl({
           orgSlug={orgSlug}
           source={field.source}
           value={typeof value === 'string' ? value : ''}
+          webhookProject={webhookProject}
         />
       )
     case 'text':
@@ -388,21 +396,39 @@ function SourceField({
   orgSlug,
   source,
   value,
+  webhookProject,
 }: {
   id: string
   onChange: (value: string) => void
   orgSlug: string
   source: FieldSource
   value: string
+  webhookProject: boolean
 }) {
   const { loading, options } = useSourceOptions(orgSlug, source)
+  const detect = source === 'project' && webhookProject
   return (
-    <Combobox
-      id={id}
-      onChange={onChange}
-      options={options}
-      placeholder={loading ? 'Loading…' : 'Choose…'}
-      value={value}
-    />
+    <>
+      <Combobox
+        id={id}
+        onChange={onChange}
+        options={
+          detect
+            ? [
+                { label: 'Detected from webhook', value: TRIGGER_PROJECT },
+                ...options,
+              ]
+            : options
+        }
+        placeholder={loading ? 'Loading…' : 'Choose…'}
+        value={value}
+      />
+      {detect && value === TRIGGER_PROJECT && (
+        <p className="text-secondary mt-1 text-xs">
+          The project that the webhook matched. A delivery that matches more
+          than one project starts one run for each.
+        </p>
+      )}
+    </>
   )
 }

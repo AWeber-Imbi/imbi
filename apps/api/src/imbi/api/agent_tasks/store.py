@@ -697,20 +697,33 @@ class TaskStore:
             )
             return await cursor.fetchall()
 
-    async def last_agent_turn(self, task_id: uuid.UUID) -> str | None:
+    async def last_agent_turn(self, task: Row) -> str | None:
         """Return the body of the newest ``turn`` of the agent.
 
-        ``None`` when the agent wrote no turn, or the log is archived.
+        It reads ClickHouse when the log of the task is archived.
+        ``None`` when the agent wrote no turn.
         """
+        if task['log_archived_at'] is not None:
+            return await log.last_archived_agent_turn(task)
+        # One statement reads the archive state and the turn from the same
+        # snapshot, so an archive that commits after the caller read
+        # ``task`` cannot hide the turn.
         async with self._pool.connection() as conn:
             cursor = await conn.execute(
-                "SELECT payload->>'body' FROM agent_runtime.events"
-                " WHERE task_id = %s AND type = 'turn'"
-                " AND actor_kind = 'agent' ORDER BY seq DESC LIMIT 1",
-                (task_id,),
+                'SELECT t.log_archived_at IS NOT NULL,'
+                " (SELECT e.payload->>'body' FROM agent_runtime.events AS e"
+                "   WHERE e.task_id = t.id AND e.type = 'turn'"
+                "   AND e.actor_kind = 'agent' ORDER BY e.seq DESC LIMIT 1)"
+                ' FROM agent_runtime.tasks AS t WHERE t.id = %s',
+                (task['id'],),
             )
             row = await cursor.fetchone()
-        return row[0] if row else None
+        if row is None:
+            return None
+        archived, body = row
+        if archived:
+            return await log.last_archived_agent_turn(task)
+        return None if body is None else str(body)
 
     async def unarchived(self) -> list[Row]:
         """Return the tasks whose log is not archived, by organization.

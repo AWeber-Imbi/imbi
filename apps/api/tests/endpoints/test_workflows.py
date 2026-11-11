@@ -596,10 +596,35 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         # Run input must not choose the agent or the project.
         for params in (
             {'agent_id': '{{ trigger.agent }}'},
-            {'agent_id': agent, 'project_id': '{{ trigger.project }}'},
+            {'agent_id': agent, 'project_id': '{{ trigger.payload.p }}'},
         ):
             codes = await self._codes('agent', {**params, 'instruction': 'x'})
             self.assertIn('invalid_reference', codes, params)
+        # The webhook's project comes from the run's origin, so it is
+        # allowed, but only when every trigger is a webhook.
+        hooked = {
+            'agent_id': agent,
+            'instruction': 'x',
+            'project_id': '{{ trigger.project }}',
+        }
+        codes = await self._codes('agent', hooked)
+        self.assertNotIn('invalid_reference', codes)
+        self.assertIn('trigger_project_needs_webhook', codes)
+        response = await self.client.post(
+            f'{self.base}/anything/validate',
+            json={
+                'graph': {
+                    'nodes': [
+                        _node(
+                            'start', 'webhook', {'webhook_id': self.webhook}
+                        ),
+                        _node('x', 'agent', hooked),
+                    ],
+                    'edges': [{'source': 'start', 'port': 0, 'target': 'x'}],
+                }
+            },
+        )
+        self.assertEqual(response.json()['issues'], [], response.text)
 
         graph_ = {
             'nodes': [
