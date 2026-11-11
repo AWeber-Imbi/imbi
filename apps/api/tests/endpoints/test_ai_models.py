@@ -1,11 +1,14 @@
 """Tests for the global AI model catalog endpoints."""
 
+import decimal
 import typing
+from unittest import mock
 
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api.endpoints import ai_models, ai_providers
+from imbi.common.llm import discovery
 
 BASE = '/ai-models'
 IMPORT_BASE = '/ai-providers'
@@ -25,6 +28,7 @@ UPDATE = 'SET m.'
 DELETE = 'DETACH DELETE m'
 CLEAR_TEAMS = ai_models._CLEAR_TEAMS_QUERY
 ADD_TEAM = ai_models._ADD_TEAM_QUERY
+PRICE_ROWS = ai_models._PRICE_SYNC_QUERY
 
 
 def model_props(**overrides: typing.Any) -> dict[str, typing.Any]:
@@ -60,8 +64,35 @@ def team_props(
     return {'id': id, 'name': name, 'slug': slug}
 
 
+#: Already reduced to per-million prices, as ``prices.fetch`` returns it.
+PRICE_TABLE: dict[str, typing.Any] = {
+    'claude-opus-5': {
+        'input_cost_per_million': decimal.Decimal(5),
+        'output_cost_per_million': decimal.Decimal(25),
+        'cache_read_cost_per_million': decimal.Decimal('0.5'),
+        'cache_write_cost_per_million': decimal.Decimal('6.25'),
+    },
+    'claude-haiku-4-5': {
+        'input_cost_per_million': decimal.Decimal(1),
+        'output_cost_per_million': decimal.Decimal(5),
+        'cache_read_cost_per_million': None,
+        'cache_write_cost_per_million': None,
+    },
+}
+
+
 class AIModelTestBase(provider_tests.AIProviderTestBase):
-    """Reuses the provider fixture: same app, principal, and mocks."""
+    """Reuses the provider fixture: same app, principal, and mocks.
+
+    The LiteLLM price file is never downloaded.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.fetch_prices = mock.AsyncMock(return_value=PRICE_TABLE)
+        patcher = mock.patch('imbi.common.llm.prices.fetch', self.fetch_prices)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
 
 class ReadModelTestCase(AIModelTestBase):
@@ -623,8 +654,11 @@ class ImportModelsTestCase(AIModelTestBase):
     """``POST /ai-providers/{id}/import-models``."""
 
     def test_creates_new_and_skips_existing(self) -> None:
-        """A model id the provider already serves is skipped, not an error."""
-        self.route(
+        """A model id the provider already serves is skipped, not an error.
+
+        The created model takes the LiteLLM prices it has.
+        """
+        router = self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
             (EXISTING_IDS, [{'model_id': 'claude-opus-5'}]),
             (TAKEN_SLUGS, [{'slug': 'claude-haiku-4-5'}]),
@@ -662,6 +696,24 @@ class ImportModelsTestCase(AIModelTestBase):
         self.assertEqual(data['skipped'], ['claude-opus-5'])
         self.assertEqual(len(data['created']), 1)
         self.assertEqual(data['created'][0]['slug'], 'claude-haiku-4-5-2')
+        params = router.params_for(CREATE)
+        self.assertEqual(params['input_cost_per_million'], '1')
+        self.assertEqual(params['output_cost_per_million'], '5')
+        self.assertIsNone(params['cache_read_cost_per_million'])
+
+    def test_price_file_failure_imports_without_prices(self) -> None:
+        """LiteLLM being down never fails an import."""
+        self.fetch_prices.side_effect = discovery.DiscoveryError('down')
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (CREATE, [{'m': model_props()}]),
+        )
+        response = self.client.post(
+            f'{IMPORT_BASE}/prv-1/import-models',
+            json={'models': [{'model_id': 'claude-opus-5'}]},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(router.params_for(CREATE)['input_cost_per_million'])
 
     def test_all_skipped_is_200_not_201(self) -> None:
         """Nothing was created, so nothing was created."""
@@ -676,6 +728,142 @@ class ImportModelsTestCase(AIModelTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['created'], [])
         self.assertEqual(response.json()['skipped'], ['claude-opus-5'])
+
+
+class PriceSyncTestCase(AIModelTestBase):
+    """``POST /ai-models/price-sync/preview`` and ``/apply``."""
+
+    def _rows(self, *, written: bool = True) -> typing.Any:
+        return self.route(
+            (
+                PRICE_ROWS,
+                [
+                    {
+                        'm': model_props(),
+                        'p': provider_tests.provider_props(),
+                    },
+                    {
+                        'm': model_props(
+                            id='mdl-2',
+                            name='Haiku',
+                            slug='haiku',
+                            model_id='claude-haiku-4-5',
+                            input_cost_per_million='1',
+                            output_cost_per_million='5',
+                        ),
+                        'p': provider_tests.provider_props(),
+                    },
+                    {
+                        'm': model_props(
+                            id='mdl-3', name='Local', model_id='llama'
+                        ),
+                        'p': provider_tests.provider_props(),
+                    },
+                ],
+            ),
+            (UPDATE, [{'m': model_props()}] if written else []),
+        )
+
+    def test_preview(self) -> None:
+        """Only differing prices are sent; the rest are counted."""
+        self._rows()
+        response = self.client.post(BASE + '/price-sync/preview')
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['unmatched'], ['Local'])
+        self.assertEqual(data['up_to_date'], 1)
+        [model] = data['models']
+        self.assertEqual(model['id'], 'mdl-1')
+        self.assertEqual(model['litellm_key'], 'claude-opus-5')
+        self.assertEqual(
+            model['fields'],
+            [
+                {
+                    'field': 'input_cost_per_million',
+                    'current': '3',
+                    'litellm': '5',
+                },
+                {
+                    'field': 'output_cost_per_million',
+                    'current': '15',
+                    'litellm': '25',
+                },
+                {
+                    'field': 'cache_read_cost_per_million',
+                    'current': None,
+                    'litellm': '0.5',
+                },
+                {
+                    'field': 'cache_write_cost_per_million',
+                    'current': None,
+                    'litellm': '6.25',
+                },
+            ],
+        )
+
+    def test_apply_fills_missing_prices_only(self) -> None:
+        """Set prices are kept unless the model allows overwrite."""
+        router = self._rows()
+        response = self.client.post(
+            BASE + '/price-sync/apply', json={'models': [{'id': 'mdl-1'}]}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(), {'updated': ['mdl-1'], 'skipped': []}
+        )
+        params = router.params_for(UPDATE)
+        self.assertEqual(params['id'], 'mdl-1')
+        self.assertEqual(params['cache_read_cost_per_million'], '0.5')
+        self.assertEqual(params['cache_write_cost_per_million'], '6.25')
+        self.assertEqual(params['input_cost_per_million'], '3')
+        self.assertEqual(params['output_cost_per_million'], '15')
+        self.assertIsNotNone(params['updated_at'])
+
+    def test_apply_overwrite(self) -> None:
+        """``overwrite`` lets a set price change."""
+        router = self._rows()
+        response = self.client.post(
+            BASE + '/price-sync/apply',
+            json={'models': [{'id': 'mdl-1', 'overwrite': True}]},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        params = router.params_for(UPDATE)
+        self.assertEqual(params['input_cost_per_million'], '5')
+        self.assertEqual(params['output_cost_per_million'], '25')
+
+    def test_apply_skips_unmatched_unknown_and_unchanged(self) -> None:
+        """Nothing is written when there is nothing to change."""
+        router = self._rows()
+        response = self.client.post(
+            BASE + '/price-sync/apply',
+            json={
+                'models': [{'id': 'mdl-2'}, {'id': 'mdl-3'}, {'id': 'gone'}]
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {'updated': [], 'skipped': ['mdl-2', 'mdl-3', 'gone']},
+        )
+        self.assertFalse(any(UPDATE in q for q, _ in router.calls))
+
+    def test_apply_model_gone_is_404(self) -> None:
+        """The shared write path reports a model deleted mid-sync."""
+        self._rows(written=False)
+        response = self.client.post(
+            BASE + '/price-sync/apply', json={'models': [{'id': 'mdl-1'}]}
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_download_failure_is_502(self) -> None:
+        """A failed download is a sanitized 502."""
+        self._rows()
+        self.fetch_prices.side_effect = discovery.DiscoveryError(
+            'LiteLLM is down'
+        )
+        response = self.client.post(BASE + '/price-sync/preview')
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()['detail'], 'LiteLLM is down')
 
 
 class ModelPermissionTestCase(AIModelTestBase):
@@ -721,6 +909,18 @@ class ModelPermissionTestCase(AIModelTestBase):
         response = self.client.post(
             f'{IMPORT_BASE}/prv-1/import-models',
             json={'models': [{'model_id': 'claude-opus-5'}]},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_price_sync_denied(self) -> None:
+        """Price sync needs ai_model:update."""
+        self.auth_context.permissions = {'ai_model:read'}
+        self.route()
+        self.assertEqual(
+            self.client.post(BASE + '/price-sync/preview').status_code, 403
+        )
+        response = self.client.post(
+            BASE + '/price-sync/apply', json={'models': [{'id': 'mdl-1'}]}
         )
         self.assertEqual(response.status_code, 403)
 

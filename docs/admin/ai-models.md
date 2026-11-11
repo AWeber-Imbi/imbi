@@ -210,7 +210,10 @@ Discovery reads only. Nothing is written until you import.
 
 Every imported model lands enabled, as `Chat`, and available to every team.
 Anthropic also supplies the context window and the maximum output tokens where
-it publishes them. Narrow the access and fill in the costs afterwards.
+it publishes them. Imbi fills each price that the
+[LiteLLM price file](#sync-prices-from-litellm) has. If Imbi cannot download
+that file, the import continues without prices. Narrow the access and fill in
+the missing costs afterwards.
 
 Discovery also tests the stored credential. A failure reports the driver and
 the HTTP status or the transport error. The provider's response body is never
@@ -219,6 +222,32 @@ shown, because a provider can echo the key back inside it.
 Discovery fails with a clear message in three cases. The provider has no
 stored credential. The driver does not support discovery. The provider
 rejected the call.
+
+## Sync prices from LiteLLM
+
+The Anthropic and OpenAI model lists contain no prices. Imbi can copy list
+prices from the public
+[LiteLLM price file](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json).
+The sync sets the input, output, cache read, and cache write prices.
+
+1. Click **Sync prices** above the provider list.
+2. Wait for the comparison. Imbi downloads the price file and shows only
+   the prices that differ: the current price, then the LiteLLM price. The
+   dialog counts the models that are up to date.
+3. To replace a price that is already set, select **Overwrite set prices**
+   for that model.
+4. Click **Apply** in the footer.
+
+Imbi fills an empty price. Imbi keeps a set price that differs, unless you
+select overwrite for that model. Contract rates can differ from list prices,
+so overwrite is off by default.
+
+Imbi finds a model in the file by its model identifier. For the Anthropic and
+OpenAI drivers, Imbi also tries `<driver>/<model identifier>`. The dialog
+lists the models that have no match. Set their prices by hand.
+
+The sync needs `ai_model:update`. The API routes are
+`POST /ai-models/price-sync/preview` and `POST /ai-models/price-sync/apply`.
 
 ## Team access
 
@@ -261,7 +290,7 @@ is no cascade, so a provider cannot take its models with it.
 |---|---|
 | `ai_model:read` | View providers, models, and the driver list. |
 | `ai_model:create` | Add providers and models. Run discovery and import discovered models. |
-| `ai_model:update` | Change a provider or a model, including the enabled flag. |
+| `ai_model:update` | Change a provider or a model, including the enabled flag. Sync prices from LiteLLM. |
 | `ai_model:delete` | Delete providers and models. |
 | `ai_model:credentials` | Set and remove provider credentials. |
 | `ai_provider:token` | Get the token of the AI provider of the calling service. The `imbi-assistant`, `imbi-slackbot`, and `admin` roles have it. |
