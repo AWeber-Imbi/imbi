@@ -86,7 +86,7 @@ class GitHubAppLiveTestCase(unittest.IsolatedAsyncioTestCase):
             secrets.ResolveContext(
                 organization_id='live',
                 task_id=uuid.uuid4(),
-                project_id='live',
+                project_ids=('live',),
                 purpose=purpose,
                 ttl_seconds=600,
                 credential_class='dynamic',

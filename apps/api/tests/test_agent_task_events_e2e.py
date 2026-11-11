@@ -59,7 +59,7 @@ class LargeTaskEventTestCase(unittest.IsolatedAsyncioTestCase):
             'short_id': 'T-1',
             'agent_id': 'e2e-agent',
             'agent_version': 1,
-            'project_id': None,
+            'projects': [],
         }
         # The payload JSON is 1 MiB: the new inline limit.
         result = 'x' * (MIB - len('{"result":""}'))

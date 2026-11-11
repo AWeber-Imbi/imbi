@@ -72,7 +72,7 @@ interface Row {
   tone: 'accent' | 'info' | 'neutral'
 }
 
-/** The primary project and the associated projects of the task. */
+/** The projects of the task. */
 export function AssociatedProjectsTab({
   orgSlug,
   task,
@@ -124,11 +124,10 @@ export function AssociatedProjectsTab({
             <span className="text-tertiary min-w-0 flex-1 truncate font-mono text-xs">
               {p.project_slug}
             </span>
-            {p.primary && <Badge variant="neutral">Primary</Badge>}
             {!p.available && (
               <span className="text-tertiary text-xs">No longer available</span>
             )}
-            {editable && !p.primary ? (
+            {editable && (
               <button
                 aria-label={`Remove project ${p.project_slug}`}
                 className="text-tertiary hover:text-danger flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
@@ -139,8 +138,6 @@ export function AssociatedProjectsTab({
               >
                 <Trash2 className="size-3.5" />
               </button>
-            ) : (
-              editable && <span className="size-8 shrink-0" />
             )}
             {p.available ? (
               <Link

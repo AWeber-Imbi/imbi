@@ -163,7 +163,6 @@ def _new_resolution(
         'runner_id': runner['id'],
         'task_id': task['id'],
         'agent_id': task['agent_id'],
-        'project_id': task['project_id'],
         'purpose': purpose,
         'reference': reference,
         'expires_at': time.time() + ttl,
@@ -326,7 +325,7 @@ def _claim_body(chain: Row, task: Row) -> Row:
                 'id',
                 'short_id',
                 'agent_id',
-                'project_id',
+                'projects',
                 'title',
                 'description',
                 'origin',
@@ -383,7 +382,7 @@ def _new_task(body: Row, chain_id: str, origin: Row) -> Row:
         'id': str(uuid.uuid4()),
         'short_id': short_id,
         'agent_id': body.get('agent_id', AGENT_ID),
-        'project_id': None,
+        'projects': [],
         'title': body.get('title', short_id),
         'description': f'{body.get("instruction", "Work.")}\n\n'
         f'[[task:{short_id}]]',
@@ -501,13 +500,11 @@ def _materialize(token: str, body: Row) -> Row:
     context = (
         body.get('task_id'),
         body.get('agent_id'),
-        body.get('project_id'),
         body.get('purpose'),
     )
     if resolution['runner_id'] != runner['id'] or context != (
         resolution['task_id'],
         resolution['agent_id'],
-        resolution['project_id'],
         resolution['purpose'],
     ):
         raise Fail(403, 'resolution_context_mismatch')
@@ -927,7 +924,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             task = {
                 'id': body.get('task_id') or str(uuid.uuid4()),
                 'agent_id': AGENT_ID,
-                'project_id': None,
+                'projects': [],
             }
             resolution = _new_resolution(
                 runner,

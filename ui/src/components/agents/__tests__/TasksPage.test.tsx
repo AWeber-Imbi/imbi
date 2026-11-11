@@ -675,7 +675,7 @@ describe('Tasks', () => {
         agent_slug: agent().slug,
         description: 'Find why the build fails.',
         idempotency_key: expect.any(String),
-        project_id: 'proj-1',
+        project_ids: ['proj-1'],
         title: 'Closed 1',
       }),
     )
@@ -804,7 +804,7 @@ describe('Tasks', () => {
       expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
         description: 'Check the build\nFind why it fails.',
-        project_id: 'p-1',
+        project_ids: ['p-1'],
         title: 'Check the build',
       }),
     )

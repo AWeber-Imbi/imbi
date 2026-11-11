@@ -150,10 +150,12 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
                     (self.org,),
                 )
-            await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
-                (self.org,),
-            )
+            for table in ('task_projects', 'tasks'):
+                await conn.execute(
+                    f'DELETE FROM agent_runtime.{table}'
+                    ' WHERE organization_id = %s',
+                    (self.org,),
+                )
             await conn.execute(
                 'DELETE FROM harness.pools WHERE name = %s',
                 (self.runner_pool,),
@@ -230,8 +232,8 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
             await conn.execute(
                 'INSERT INTO agent_runtime.tasks (id, organization_id,'
                 ' short_id, agent_id, agent_version, service_account_id,'
-                ' project_id, title, description, origin_kind, origin_id,'
-                ' origin, owner) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s,'
+                ' title, description, origin_kind, origin_id,'
+                ' origin, owner) VALUES (%s, %s, %s, %s, 1, %s, %s, %s,'
                 " 'human', 'test', %s, 'test')",
                 (
                     task_id,
@@ -239,19 +241,31 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                     task_id.hex[:8],
                     agent or self.agent,
                     'sa',
-                    self.project if project == '' else project,
                     'Task',
                     '',
                     pg_json.Jsonb({}),
                 ),
             )
+            project_id = self.project if project == '' else project
+            if project_id is not None:
+                await self.add_task_project(conn, task_id, project_id)
         return task_id
+
+    async def add_task_project(
+        self, conn: typing.Any, task_id: uuid.UUID, project_id: str
+    ) -> None:
+        await conn.execute(
+            'INSERT INTO agent_runtime.task_projects (organization_id,'
+            ' task_id, project_id, project_slug, added_by_kind, added_by)'
+            " VALUES (%s, %s, %s, %s, 'human', 'test')",
+            (self.org, task_id, project_id, project_id),
+        )
 
     def context(self, **changes: typing.Any) -> broker.ResolutionContext:
         values: dict[str, typing.Any] = {
             'organization_id': self.org,
             'agent_id': self.agent,
-            'project_id': self.project,
+            'project_ids': (self.project,),
             'task_id': self.task_id,
             'runner_id': self.runner,
         } | changes
@@ -275,7 +289,6 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
             'nonce': uuid.uuid4().hex,
             'task_id': self.task_id,
             'agent_id': self.agent,
-            'project_id': self.project,
             'purpose': 'github_write',
         } | changes
         return broker.MaterializeRequest(**values)

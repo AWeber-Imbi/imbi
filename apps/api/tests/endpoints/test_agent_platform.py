@@ -371,7 +371,7 @@ class BundleTests(PlatformTestCase):
             ],
         )
         await self.set_links({'github-repository': 'https://github.com/a/b'})
-        response = await self.create_task(project_id=self.project_id)
+        response = await self.create_task(project_ids=[self.project_id])
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['platform_config_version'], 1)
         task = await self.task_row(response.json()['short_id'])
@@ -414,7 +414,7 @@ class BundleTests(PlatformTestCase):
                 'docs': 'https://github.com/ops/docs',
             }
         )
-        response = await self.create_task(project_id=self.project_id)
+        response = await self.create_task(project_ids=[self.project_id])
         task = await self.task_row(response.json()['short_id'])
         bundle = await harness_api._identity(
             self.graph, self.harness, self.secret_store, task, self.org

@@ -120,7 +120,12 @@ provider_id = "UUID NOT NULL"
 reference = "TEXT NOT NULL"
 field = "TEXT"
 agent_id = "TEXT NOT NULL"
+# Not used. A resolution had the one project of its task here before a
+# task had a list of projects.
 project_id = "TEXT"
+# The projects of the task when the resolution was made. The
+# task must have the same projects when the resolution materializes.
+project_ids = "TEXT[] NOT NULL DEFAULT '{}'"
 task_id = "UUID NOT NULL"
 runner_id = "TEXT NOT NULL"
 purpose = "TEXT NOT NULL"

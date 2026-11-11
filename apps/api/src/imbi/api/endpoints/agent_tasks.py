@@ -95,8 +95,10 @@ class AgentTaskCreate(pydantic.BaseModel):
     description: str = pydantic.Field(
         min_length=1, description='The instruction for the agent.'
     )
-    project_id: str | None = pydantic.Field(
-        default=None, description='The primary project of the task.'
+    project_ids: list[str] = pydantic.Field(
+        default_factory=list,
+        max_length=50,
+        description='The projects of the task.',
     )
     budget: decimal.Decimal | None = pydantic.Field(
         default=None,
@@ -136,6 +138,11 @@ class AgentTaskOrigin(pydantic.BaseModel):
     user: str | None = None
 
 
+class TaskProject(pydantic.BaseModel):
+    project_id: str
+    project_slug: str
+
+
 class AgentTaskResponse(pydantic.BaseModel):
     id: uuid.UUID
     short_id: str
@@ -146,9 +153,9 @@ class AgentTaskResponse(pydantic.BaseModel):
     #: when the task was made. ``None``: the defaults apply.
     platform_config_version: int | None = None
     service_account_id: str
-    project_id: str | None = None
-    #: The slug of the project when the task was made.
-    project_slug: str | None = None
+    #: The projects of the task, oldest first. Each slug is the slug
+    #: when the project was associated.
+    projects: list[TaskProject]
     title: str
     description: str
     origin: AgentTaskOrigin
@@ -311,8 +318,6 @@ class AssociatedProject(pydantic.BaseModel):
     name: str | None = None
     #: ``false`` when the project is no longer in the organization.
     available: bool
-    #: The primary project of the task. It cannot be removed.
-    primary: bool = False
     added_by_kind: ActorKind | None = None
     added_by: str | None = None
     added_at: datetime.datetime | None = None
@@ -336,13 +341,6 @@ _AGENT_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{slug: {slug}}})
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN a
-"""
-
-_PROJECT_QUERY: typing.LiteralString = """
-MATCH (p:Project {{id: {project_id}}})
-      -[:OWNED_BY]->(:Team)
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-RETURN p.slug AS slug
 """
 
 _PROJECTS_QUERY: typing.LiteralString = """
@@ -710,18 +708,27 @@ async def _owner(
     return str(creator)
 
 
-async def _project_slug(
-    db: graph.Graph, org_slug: str, project_id: str
-) -> str:
-    """Return the slug of a project in the org, or raise 422."""
+async def _project_slugs(
+    db: graph.Graph, org_slug: str, project_ids: list[str]
+) -> list[tuple[str, str]]:
+    """Return the ``(id, slug)`` of each project in the org, in the
+    order of ``project_ids`` with no repeats, or raise 422."""
+    ids = list(dict.fromkeys(project_ids))
+    if not ids:
+        return []
     records = await db.execute(
-        _PROJECT_QUERY,
-        {'project_id': project_id, 'org_slug': org_slug},
-        ['slug'],
+        _PROJECTS_QUERY,
+        {'org_slug': org_slug, 'ids': ids},
+        ['id', 'slug', 'name'],
     )
-    if not records:
-        raise _unprocessable(f'Project {project_id!r} not found')
-    return str(graph.parse_agtype(records[0]['slug']))
+    slugs = {
+        str(graph.parse_agtype(r['id'])): str(graph.parse_agtype(r['slug']))
+        for r in records
+    }
+    for project_id in ids:
+        if project_id not in slugs:
+            raise _unprocessable(f'Project {project_id!r} not found')
+    return [(project_id, slugs[project_id]) for project_id in ids]
 
 
 @contextlib.contextmanager
@@ -739,11 +746,6 @@ def _relation_errors() -> abc.Generator[None]:
         ) from e
     except agent_tasks.SelfDependency as e:
         raise _unprocessable(f'Task {str(e)!r} cannot require itself') from e
-    except agent_tasks.PrimaryProject as e:
-        raise _conflict(
-            'primary_project',
-            f'Project {str(e)!r} is the primary project of the task',
-        ) from e
 
 
 #: A caller with ``agent_task:read``, with no exception for the service
@@ -889,9 +891,7 @@ async def make_task(
         else models.AgentSettings.model_validate(raw_settings)
     )
     budget = task_budget(settings, data.budget)
-    project_slug: str | None = None
-    if data.project_id is not None:
-        project_slug = await _project_slug(db, org_slug, data.project_id)
+    projects = await _project_slugs(db, org_slug, data.project_ids)
     agent_id = str(agent['id'])
     service_account_id = await agents.ensure_service_account(
         db, agent_id, str(agent.get('name', data.agent_slug))
@@ -905,8 +905,7 @@ async def make_task(
             agent_version=agent_version,
             prompt_version=prompt_version,
             service_account_id=service_account_id,
-            project_id=data.project_id,
-            project_slug=project_slug,
+            projects=projects,
             title=data.title,
             description=data.description,
             origin_kind=origin.kind,
@@ -1476,8 +1475,7 @@ async def list_agent_task_projects(
     store: agent_tasks.Store,
     _auth: TaskReader,
 ) -> list[dict[str, typing.Any]]:
-    """List the projects of a task: the primary project first, then the
-    associated projects, oldest first.
+    """List the projects of a task, oldest first.
 
     The caller needs ``agent_task:read``, also the service account of the
     task's agent: the rows show who associated each project.
@@ -1485,16 +1483,7 @@ async def list_agent_task_projects(
     A project that is no longer in the org is not ``available``; its
     slug is the slug when it was associated.
     """
-    rows: list[dict[str, typing.Any]] = []
-    if task['project_id']:
-        rows.append(
-            {
-                'project_id': task['project_id'],
-                'project_slug': task['project_slug'] or task['project_id'],
-                'primary': True,
-            }
-        )
-    rows += await store.projects(task)
+    rows = await store.projects(task)
     records = await db.execute(
         _PROJECTS_QUERY,
         {'org_slug': org_slug, 'ids': [row['project_id'] for row in rows]},
@@ -1534,13 +1523,12 @@ async def associate_agent_task_project(
         403: The caller is not a person, has no ``agent_task:manage``,
             or is not a member of the org.
         404: No such task.
-        409: ``task_archived``, or ``primary_project``: the project is
-            the primary project of the task.
+        409: ``task_archived``.
         422: The project is not in the org.
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
-    slug = await _project_slug(db, org_slug, project_id)
+    [(_, slug)] = await _project_slugs(db, org_slug, [project_id])
     with _relation_errors():
         await store.associate_project(
             org_id, short_id.upper(), project_id, slug, _actor(auth)

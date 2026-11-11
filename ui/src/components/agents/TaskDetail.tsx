@@ -573,14 +573,19 @@ function TaskHeader({
             v{task.agent_version}
           </span>
         </Fact>
-        {task.project_id && (
+        {task.projects.length > 0 && (
           <Fact icon={<Box className="size-3.5" />}>
-            <Link
-              className="font-mono text-xs hover:underline"
-              to={`/projects/${encodeURIComponent(task.project_id)}`}
-            >
-              {task.project_slug ?? task.project_id}
-            </Link>
+            {task.projects.map((p, i) => (
+              <span key={p.project_id}>
+                {i > 0 && ', '}
+                <Link
+                  className="font-mono text-xs hover:underline"
+                  to={`/projects/${encodeURIComponent(p.project_id)}`}
+                >
+                  {p.project_slug}
+                </Link>
+              </span>
+            ))}
           </Fact>
         )}
         <Fact icon={<TriggerIcon className="size-3.5" />}>
@@ -659,7 +664,7 @@ function TaskRetry({
         agent_slug: agent.slug,
         description: task.description,
         idempotency_key: retryKey,
-        project_id: task.project_id,
+        project_ids: task.projects.map((p) => p.project_id),
         title: task.title,
       }),
     onSuccess: (copy) => {

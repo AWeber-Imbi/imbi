@@ -115,7 +115,7 @@ class SecretRunnerTestCase(test_harness.RunnerTestCase):
         values: dict[str, typing.Any] = {
             'organization_id': self.org,
             'agent_id': self.agent_id,
-            'project_id': None,
+            'project_ids': (),
             'task_id': uuid.UUID(self.task['id']),
             'runner_id': self.runner['runner_id'],
         } | changes
@@ -142,7 +142,6 @@ class SecretRunnerTestCase(test_harness.RunnerTestCase):
                 nonce=uuid.uuid4().hex,
                 task_id=uuid.UUID(self.task['id']),
                 agent_id=self.agent_id,
-                project_id=None,
                 purpose='github_write',
             ),
         )
@@ -269,7 +268,6 @@ class RouteTests(SecretRunnerTestCase):
             'nonce': uuid.uuid4().hex,
             'task_id': self.task['id'],
             'agent_id': self.agent_id,
-            'project_id': None,
             'purpose': 'github_write',
         } | changes
         return await self.client.post(

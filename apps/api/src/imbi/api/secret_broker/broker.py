@@ -37,6 +37,7 @@ import re
 import secrets
 import typing
 import uuid
+from collections import abc
 
 import orjson
 import psycopg
@@ -247,7 +248,8 @@ class ResolutionContext:
 
     organization_id: str
     agent_id: str
-    project_id: str | None
+    #: The projects of the task, in any order.
+    project_ids: tuple[str, ...]
     task_id: uuid.UUID
     runner_id: str
 
@@ -293,7 +295,6 @@ class MaterializeRequest:
     nonce: str = dataclasses.field(repr=False)
     task_id: uuid.UUID
     agent_id: str
-    project_id: str | None
     purpose: str
 
 
@@ -379,18 +380,26 @@ class Decision:
 # --- Policy ---------------------------------------------------------------
 
 #: The enabled grants of an organization that allow a binding for an
-#: agent, a project, a purpose, and a delivery mode. A grant with no
-#: project ids allows any project; a task with no project matches only
+#: agent, the projects of a task, a purpose, and a delivery mode. A
+#: grant with no project ids allows any project. A grant with project
+#: ids must list all the projects of the task; a task with no project
+#: matches only
 #: such a grant.
+#: The grant ``g`` allows the task projects ``%(projects)s``.
+PROJECTS_ALLOWED = (
+    '(cardinality(g.project_ids) = 0'
+    ' OR (cardinality(%(projects)s::TEXT[]) > 0'
+    ' AND %(projects)s::TEXT[] <@ g.project_ids))'
+)
+
 _GRANT_MATCH = (
-    'SELECT * FROM secrets.grants'
+    'SELECT * FROM secrets.grants AS g'  # noqa: S608
     ' WHERE organization_id = %(org)s AND enabled'
     ' AND %(binding)s = ANY(binding_ids)'
     ' AND %(agent)s = ANY(agent_ids)'
     ' AND %(purpose)s = ANY(purposes)'
     ' AND %(mode)s = ANY(delivery_modes)'
-    ' AND (cardinality(project_ids) = 0'
-    '      OR %(project)s::TEXT = ANY(project_ids))'
+    ' AND ' + PROJECTS_ALLOWED
 )
 
 
@@ -506,7 +515,7 @@ async def evaluate(
     conn: Conn,
     organization_id: str,
     agent_id: str,
-    project_id: str | None,
+    project_ids: abc.Sequence[str],
     reference: Reference,
     purpose: str,
     delivery_mode: str,
@@ -571,7 +580,7 @@ async def evaluate(
             'agent': agent_id,
             'purpose': purpose,
             'mode': delivery_mode,
-            'project': project_id,
+            'projects': list(project_ids),
         },
     )
     if not grants:
@@ -592,15 +601,16 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
     """
     task = await _fetch_one(
         conn,
-        'SELECT organization_id, agent_id, project_id, status'
-        ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
+        'SELECT organization_id, agent_id, status, '  # noqa: S608
+        + task_store.PROJECTS
+        + ' FROM agent_runtime.tasks AS t WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
         task['organization_id'],
         task['agent_id'],
-        task['project_id'],
-    ) != (context.organization_id, context.agent_id, context.project_id):
+        {project['project_id'] for project in task['projects']},
+    ) != (context.organization_id, context.agent_id, set(context.project_ids)):
         raise providers.BrokerError(
             'resolution_context_mismatch', 'task_mismatch'
         )
@@ -629,7 +639,7 @@ def _event(
         reason=reason,
         actor=actor or f'runner:{text("runner_id")}',
         agent_id=text('agent_id'),
-        project_id=text('project_id'),
+        project_id=','.join(row.get('project_ids') or ()),
         task_id=text('task_id'),
         runner_id=text('runner_id'),
         provider_id=text('provider_id'),
@@ -761,7 +771,7 @@ class Broker:
         context_row: Row = {
             'organization_id': context.organization_id,
             'agent_id': context.agent_id,
-            'project_id': context.project_id,
+            'project_ids': list(context.project_ids),
             'task_id': context.task_id,
             'runner_id': context.runner_id,
             'purpose': request.purpose,
@@ -841,7 +851,7 @@ class Broker:
                 conn,
                 context.organization_id,
                 context.agent_id,
-                context.project_id,
+                context.project_ids,
                 reference,
                 request.purpose,
                 request.delivery_mode,
@@ -852,7 +862,7 @@ class Broker:
                 conn,
                 'INSERT INTO secrets.resolutions (id, organization_id,'
                 ' binding_id, grant_id, provider_id, reference, field,'
-                ' agent_id, project_id, task_id, runner_id, purpose,'
+                ' agent_id, project_ids, task_id, runner_id, purpose,'
                 ' delivery_mode, delivery_target, ttl_seconds, handle_hash,'
                 ' idempotency_key, repository, expires_at) VALUES (%s, %s,'
                 ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
@@ -866,7 +876,7 @@ class Broker:
                     str(reference),
                     reference.field,
                     context.agent_id,
-                    context.project_id,
+                    list(context.project_ids),
                     context.task_id,
                     context.runner_id,
                     request.purpose,
@@ -984,12 +994,10 @@ class Broker:
         if row['runner_id'] != executor.runner_id or (
             row['task_id'],
             row['agent_id'],
-            row['project_id'],
             row['purpose'],
         ) != (
             request.task_id,
             request.agent_id,
-            request.project_id,
             request.purpose,
         ):
             raise providers.BrokerError('resolution_context_mismatch')
@@ -1017,7 +1025,7 @@ class Broker:
             ResolutionContext(
                 organization_id=row['organization_id'],
                 agent_id=row['agent_id'],
-                project_id=row['project_id'],
+                project_ids=tuple(row['project_ids']),
                 task_id=row['task_id'],
                 runner_id=row['runner_id'],
             ),
@@ -1060,7 +1068,7 @@ class Broker:
                 'agent': row['agent_id'],
                 'purpose': row['purpose'],
                 'mode': row['delivery_mode'],
-                'project': row['project_id'],
+                'projects': row['project_ids'],
                 'grant': row['grant_id'],
             },
         )
@@ -1087,7 +1095,7 @@ class Broker:
                 providers.ResolveContext(
                     organization_id=row['organization_id'],
                     task_id=row['task_id'],
-                    project_id=row['project_id'],
+                    project_ids=tuple(row['project_ids']),
                     purpose=row['purpose'],
                     ttl_seconds=row['ttl_seconds'],
                     credential_class=decision.binding['credential_class'],
@@ -1651,7 +1659,7 @@ class Broker:
                 providers.ResolveContext(
                     organization_id=organization_id,
                     task_id=task_id or uuid.UUID(int=0),
-                    project_id=None,
+                    project_ids=(),
                     purpose='provider_key',
                     ttl_seconds=MAX_TTL_SECONDS,
                     credential_class=binding['credential_class'],

@@ -614,8 +614,9 @@ class GitHubApp(secrets.SecretProvider):
         installation; the token then covers only that one repository. A
         request without a repository gets every listed repository, and
         none with an empty list (the runner always names one).
-        The other purposes use the verified repository ids of the task's
-        project (:meth:`project_repository_ids`).
+        The other purposes use the verified repository ids of all the
+        task's projects (:meth:`project_repository_ids`). A project with
+        no verified repository adds none.
 
         Raises:
             BrokerError: The purpose is unknown, the task has no
@@ -643,9 +644,19 @@ class GitHubApp(secrets.SecretProvider):
                     )
                 repositories = [context.repository]
         else:
-            repository_ids = await self.project_repository_ids(
-                _host(config), context.project_id
-            )
+            found: set[int] = set()
+            for project_id in context.project_ids:
+                with contextlib.suppress(secrets.BrokerError):
+                    found.update(
+                        await self.project_repository_ids(
+                            _host(config), project_id
+                        )
+                    )
+            if context.project_ids and not found:
+                raise secrets.BrokerError(
+                    'secret_access_denied', 'project_repository_unverified'
+                )
+            repository_ids = sorted(found)
         # An empty list never reaches GitHub: no repositories would give
         # a token for every repository of the installation.
         if not repositories and not repository_ids:

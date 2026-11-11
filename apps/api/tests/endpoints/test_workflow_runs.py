@@ -1054,8 +1054,6 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 agent_version=1,
                 prompt_version=None,
                 service_account_id='sa',
-                project_id=None,
-                project_slug=None,
                 title='Planted',
                 description='Planted',
                 origin_kind='human',

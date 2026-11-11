@@ -341,7 +341,8 @@ class SecretGrant(pydantic.BaseModel):
 
 class SecretGrantEvaluate(pydantic.BaseModel):
     agent_id: Id
-    project_id: Id | None = None
+    #: The projects of the task. A grant with project ids must list all.
+    project_ids: list[Id] = pydantic.Field(default_factory=list, max_length=50)
     reference: str
     purpose: Purpose
     delivery_mode: DeliveryMode
@@ -373,7 +374,7 @@ class SecretResolution(pydantic.BaseModel):
     provider_id: uuid.UUID
     reference: str
     agent_id: str
-    project_id: str | None
+    project_ids: list[str]
     task_id: uuid.UUID
     runner_id: str
     purpose: str
@@ -1028,7 +1029,7 @@ async def evaluate_grants(
         decision = await secrets.evaluate(
             org_id,
             data.agent_id,
-            data.project_id,
+            data.project_ids,
             reference,
             data.purpose,
             data.delivery_mode,

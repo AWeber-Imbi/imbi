@@ -974,7 +974,7 @@ async def step_agent_task(
                 agent_slug=str(graph.parse_agtype(records[0]['slug'])),
                 title=f'{workflow["name"]}: {step["title"]}',
                 description=params.instruction,
-                project_id=project_id,
+                project_ids=[project_id] if project_id else [],
                 budget=params.budget,
             )
         except pydantic.ValidationError as e:

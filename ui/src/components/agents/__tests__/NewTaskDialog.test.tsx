@@ -105,8 +105,34 @@ describe('NewTaskDialog', () => {
       agent_slug: 'forager',
       description:
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
-      project_id: 'p-3',
+      project_ids: ['p-3'],
       title: 'Fix the crash',
+    })
+  })
+
+  it('creates a task with two projects', async () => {
+    const onClose = vi.fn()
+    render(<NewTaskDialog isOpen onClose={onClose} />)
+    fireEvent.change(screen.getByLabelText('What should the agent do?'), {
+      target: { value: 'Sync the schemas' },
+    })
+    fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
+    fireEvent.click(await screen.findByText('search'))
+    fireEvent.click(screen.getByText('billing'))
+    // A selected project leaves the list and can be removed.
+    expect(
+      screen.getByRole('button', { name: 'Remove project search' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryAllByRole('button', { name: /^(billing|search)$/ }),
+    ).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+      agent_slug: 'forager',
+      description: 'Sync the schemas',
+      project_ids: ['p-3', 'p-1'],
+      title: 'Sync the schemas',
     })
   })
 
@@ -122,7 +148,7 @@ describe('NewTaskDialog', () => {
     expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
       description: 'Look for shell=True calls',
-      project_id: null,
+      project_ids: [],
       title: 'Look for shell=True calls',
     })
   })

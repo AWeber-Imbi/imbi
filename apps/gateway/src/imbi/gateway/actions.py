@@ -1529,7 +1529,7 @@ async def create_agent_task(
         'description': _untrusted_description(
             text, webhook_id, delivery_id, action_config.agent_slug
         ),
-        'project_id': ctx.project_id,
+        'project_ids': [ctx.project_id],
         'idempotency_key': (
             f'{delivery_id}:{action_config.agent_slug}:{ctx.project_id}'
         ),

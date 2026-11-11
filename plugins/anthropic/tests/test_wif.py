@@ -26,7 +26,7 @@ def _context(agent_id: str | None = 'agent-1') -> secrets.ResolveContext:
     return secrets.ResolveContext(
         organization_id='org',
         task_id=uuid.uuid4(),
-        project_id=None,
+        project_ids=(),
         purpose='model_inference',
         ttl_seconds=900,
         credential_class='dynamic',

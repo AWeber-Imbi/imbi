@@ -268,36 +268,38 @@ class SecretStore:
         self,
         organization_id: str,
         agent_id: str,
-        project_id: str | None = None,
+        project_ids: abc.Sequence[str] = (),
     ) -> list[Row]:
         """The references that an agent can request for a command in a
-        task of ``project_id``: an enabled grant for the agent and the
-        project, with ``environment`` delivery, on an enabled binding
+        task of ``project_ids``: an enabled grant for the agent and all
+        the projects, with ``environment`` delivery, on an enabled binding
         that allows it. The same rules as :func:`broker.evaluate`.
 
         Each row has the ``reference``, and the ``description`` and
         ``allowed_fields`` of its binding, as hints for the model.
         """
         return await self._all(
-            'SELECT DISTINCT b.reference, b.description, b.allowed_fields'
+            'SELECT DISTINCT b.reference, b.description, b.allowed_fields'  # noqa: S608
             ' FROM secrets.grants g'
             ' JOIN secrets.bindings b ON b.id = ANY(g.binding_ids)'
-            ' WHERE g.organization_id = %s AND g.enabled AND b.enabled'
+            ' WHERE g.organization_id = %(org)s AND g.enabled AND b.enabled'
             ' AND b.organization_id = g.organization_id'
-            ' AND %s = ANY(g.agent_ids)'
+            ' AND %(agent)s = ANY(g.agent_ids)'
             " AND 'environment' = ANY(g.delivery_modes)"
             " AND 'environment' = ANY(b.allowed_delivery_modes)"
-            ' AND (cardinality(g.project_ids) = 0'
-            '      OR %s::TEXT = ANY(g.project_ids))'
-            ' ORDER BY b.reference',
-            (organization_id, agent_id, project_id),
+            ' AND ' + broker.PROJECTS_ALLOWED + ' ORDER BY b.reference',
+            {
+                'org': organization_id,
+                'agent': agent_id,
+                'projects': list(project_ids),
+            },
         )
 
     async def evaluate(
         self,
         organization_id: str,
         agent_id: str,
-        project_id: str | None,
+        project_ids: abc.Sequence[str],
         reference: broker.Reference,
         purpose: str,
         delivery_mode: str,
@@ -315,7 +317,7 @@ class SecretStore:
                 conn,
                 organization_id,
                 agent_id,
-                project_id,
+                project_ids,
                 reference,
                 purpose,
                 delivery_mode,
