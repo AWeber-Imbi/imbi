@@ -479,7 +479,12 @@ class GitHubApp(secrets.SecretProvider):
     async def health(
         self, config: dict[str, typing.Any], organization_id: str
     ) -> secrets.Health:
-        """Check that the GitHub API answers. No credentials are used."""
+        """Check that the GitHub API answers. No credentials are used.
+
+        A GHEC tenant refuses each anonymous call (401 or 404), so each
+        answer other than a redirect, a rate limit or 5xx shows that the
+        API answers. A redirect is usually a proxy login page.
+        """
         try:
             async with httpx.AsyncClient(
                 base_url=_api_base(_host(config)),
@@ -491,7 +496,16 @@ class GitHubApp(secrets.SecretProvider):
             return secrets.Health('unhealthy', err.reason)
         except httpx.TransportError:
             return secrets.Health('unhealthy', 'unreachable')
-        if response.status_code != 200:
+        status = response.status_code
+        rate_limited = status == 429 or (
+            status == 403
+            and (
+                response.headers.get('x-ratelimit-remaining') == '0'
+                or 'retry-after' in response.headers
+                or 'secondary rate limit' in response.text.lower()
+            )
+        )
+        if 300 <= status < 400 or rate_limited or status >= 500:
             return secrets.Health('unhealthy', 'provider_error')
         return secrets.Health('healthy', identity={'host': _host(config)})
 
