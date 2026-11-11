@@ -431,7 +431,9 @@ class Executor:
         reply = _reply(exit_code, output, dropped, values)
         # The task redacts its events with the values, keys included: a
         # short member such as "o" would change "body" to "b[REDACTED]dy".
+        # A whole secret value stays, whatever its length.
         short = {v for v in member_values if len(v) < redact.MIN_FRAGMENT}
+        short -= {env[target] for target in targets}
         if short:
             reply['values'] = [v for v in values if v not in short]
         reply['variables'] = names
