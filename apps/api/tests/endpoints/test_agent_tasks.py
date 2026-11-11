@@ -22,7 +22,7 @@ import slugify
 from psycopg import sql
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, harness, models, workflows
+from imbi.api import agent_tasks, harness, models, secret_broker, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agents
 from imbi.api.graph_sql import props_template
@@ -1436,6 +1436,10 @@ class ServiceAccountTests(AgentTaskTestCase):
         await workflows.initialize()
         self.test_app.dependency_overrides[workflows._inject_store] = (
             lambda: workflows.WorkflowStore(self.pool)
+        )
+        secrets = mock.AsyncMock(spec=secret_broker.store.SecretStore)
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: secrets
         )
         agent = await self.create_agent('triage')
         (account,) = await self.service_accounts(agent['id'])
