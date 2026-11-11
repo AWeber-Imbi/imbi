@@ -250,6 +250,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'DELETE /organizations/{org_slug}/agent-tasks/{short_id}/projects/{project_id}',
         'DELETE /organizations/{org_slug}/agent-tasks/{short_id}/requires/{prerequisite}',
         'POST /organizations/{org_slug}/agent-tasks/',
+        'POST /organizations/{org_slug}/agent-tasks/{short_id}/acknowledge',
         'POST /organizations/{org_slug}/agent-tasks/{short_id}/cancel',
         'POST /organizations/{org_slug}/agent-tasks/{short_id}/pause',
         'POST /organizations/{org_slug}/agent-tasks/{short_id}/reassign',
