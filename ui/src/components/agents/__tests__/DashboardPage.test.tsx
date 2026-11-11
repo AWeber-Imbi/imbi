@@ -162,11 +162,20 @@ describe('Dashboard', () => {
   })
 
   it('acknowledges a failed task and leaves acknowledged ones out', async () => {
+    let acked = false
+    vi.mocked(endpoints.acknowledgeAgentTask).mockImplementation(async () => {
+      acked = true
+      return { ...RECENT[2], acknowledged_at: ago(0) }
+    })
     vi.mocked(endpoints.listAgentTasks).mockImplementation(
       async (_org, params) =>
         params.status
           ? OPEN
-          : [{ ...RECENT[0], acknowledged_at: ago(1) }, ...RECENT.slice(1)],
+          : RECENT.map((t) =>
+              t.id === 'T-9' || (acked && t.id === 'T-7')
+                ? { ...t, acknowledged_at: ago(0) }
+                : t,
+            ),
     )
     renderAt('/agents/dashboard')
     const items = await links('Needs attention')
@@ -178,6 +187,12 @@ describe('Dashboard', () => {
       expect(endpoints.acknowledgeAgentTask).toHaveBeenCalledWith(
         'acme',
         'T-7',
+      ),
+    )
+    // The success refresh removes it before the next poll.
+    await waitFor(async () =>
+      expect(await links('Needs attention')).not.toContainEqual(
+        expect.stringContaining('T-7 exceeded_ceiling'),
       ),
     )
     // Only closed tasks can be acknowledged.
