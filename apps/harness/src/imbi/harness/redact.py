@@ -6,6 +6,7 @@ know.
 """
 
 import base64
+import json
 import re
 import typing
 import urllib.parse
@@ -38,6 +39,8 @@ def variants(value: bytes) -> set[bytes]:
         value.hex().upper().encode(),
         urllib.parse.quote(value, safe='').encode(),
         urllib.parse.quote_plus(value).encode(),
+        # A value inside JSON output, for example "\\n" for a newline.
+        json.dumps(value.decode(errors='replace'))[1:-1].encode(),
     }
     for encode in (base64.b64encode, base64.urlsafe_b64encode):
         for shift in range(3):

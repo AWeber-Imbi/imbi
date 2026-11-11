@@ -235,6 +235,11 @@ def _string_members(material: str) -> list[str]:
     while pending:
         value = pending.pop()
         if isinstance(value, str) and value:
+            # A lone surrogate would stop the reply after the command.
+            try:
+                value.encode()
+            except UnicodeEncodeError:
+                raise Invalid('invalid_material') from None
             found.append(value)
         elif isinstance(value, dict):
             pending.extend(typing.cast('dict[str, object]', value).values())

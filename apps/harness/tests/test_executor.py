@@ -199,6 +199,17 @@ class ExecutorTestCase(BaseTestCase):
         await self.executor.dispatch(request())
         self.assertEqual(self.spawn.call_args.args[2]['GH_TOKEN'], SECRET)
 
+    async def test_unencodable_member_is_refused(self) -> None:
+        await self.hello()
+        self.api.materialize.return_value = {
+            'material': '{"outer": {"value": "\\ud800"}}',
+            'encoding': 'utf8',
+        }
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(reply, {'error': 'invalid_material'})
+        self.spawn.assert_not_called()
+        self.api.release.assert_awaited_once()
+
     async def test_binary_material_is_refused(self) -> None:
         await self.hello()
         self.api.materialize.return_value = {
