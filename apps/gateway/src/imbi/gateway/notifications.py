@@ -51,6 +51,7 @@ _SENSITIVE_HEADERS = frozenset(
         'x-gitlab-token',
         'x-pagerduty-signature',
         'x-sonar-webhook-hmac-sha256',
+        'sentry-hook-signature',
     }
 )
 

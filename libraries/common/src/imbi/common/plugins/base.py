@@ -647,6 +647,15 @@ class PluginContext(pydantic.BaseModel):
     # ``integration_slug`` and merges any dashboard links into
     # ``Project.links``.  ``None`` on every inbound context.
     service_writeback: ServiceWriteback | None = None
+    # The project node's current properties, blueprint facts included
+    # (e.g. ``{"sentry_open_issues": 4}``).  Populated by the host for
+    # analysis so a doctor can compare a fact against the remote value.
+    # Empty when the host does not populate it.
+    project_facts: dict[str, typing.Any] = {}
+    # Output side-channel: an analysis remediation sets this to the
+    # project facts it wants written, by fact name.  The host sets each
+    # value on the project node.  ``None`` on every inbound context.
+    fact_writeback: dict[str, typing.Any] | None = None
     # Output side-channel: the credential the capability actually acted
     # with, when that was the Integration's own rather than the actor's
     # identity -- e.g. ``'github-app installation 12345678'``.  Set by

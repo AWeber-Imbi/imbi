@@ -28,6 +28,7 @@ members = [
     "imbi-plugin-oidc",
     "imbi-plugin-openai",
     "imbi-plugin-pagerduty",
+    "imbi-plugin-sentry",
     "imbi-plugin-sonarqube",
     "imbi-scheduler",
     "imbi-slackbot",
@@ -1260,6 +1261,7 @@ dependencies = [
     { name = "imbi-plugin-oidc" },
     { name = "imbi-plugin-openai" },
     { name = "imbi-plugin-pagerduty" },
+    { name = "imbi-plugin-sentry" },
     { name = "imbi-plugin-sonarqube" },
     { name = "imbi-scheduler" },
     { name = "imbi-slackbot" },
@@ -1314,6 +1316,7 @@ requires-dist = [
     { name = "imbi-plugin-oidc", editable = "plugins/oidc" },
     { name = "imbi-plugin-openai", editable = "plugins/openai" },
     { name = "imbi-plugin-pagerduty", editable = "plugins/pagerduty" },
+    { name = "imbi-plugin-sentry", editable = "plugins/sentry" },
     { name = "imbi-plugin-sonarqube", editable = "plugins/sonarqube" },
     { name = "imbi-scheduler", editable = "apps/scheduler" },
     { name = "imbi-slackbot", editable = "apps/slackbot" },
@@ -1770,6 +1773,23 @@ dependencies = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "imbi-common", extras = ["databases"], editable = "libraries/common" },
+    { name = "pydantic", specifier = ">=2" },
+]
+
+[[package]]
+name = "imbi-plugin-sentry"
+version = "2.45.0"
+source = { editable = "plugins/sentry" }
+dependencies = [
+    { name = "httpx" },
+    { name = "imbi-common" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
 ]
 

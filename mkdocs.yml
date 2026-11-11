@@ -84,6 +84,7 @@ nav:
       - Logz.io: plugins/logzio.md
       - OIDC: plugins/oidc.md
       - PagerDuty: plugins/pagerduty.md
+      - Sentry: plugins/sentry.md
       - SonarQube: plugins/sonarqube.md
   - Deployment:
       - Docker: deployment/docker.md
@@ -220,6 +221,7 @@ plugins:
             - plugins/logzio/src
             - plugins/oidc/src
             - plugins/pagerduty/src
+            - plugins/sentry/src
             - plugins/sonarqube/src
           options:
             show_source: true
