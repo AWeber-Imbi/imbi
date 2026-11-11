@@ -1065,6 +1065,17 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual(response.status_code, 422, response.text)
         self.assertIn('p-missing', response.text)
         self.assertEqual(await self._count(), 0)
+        # A valid origin project wins over a rendered project_id.
+        await self._agent_run(
+            pinned,
+            {**pinned, 'project_id': 'p-other'},
+            origin={'project_id': self.project},
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        self.assertEqual(task['project_id'], self.project)
 
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""
