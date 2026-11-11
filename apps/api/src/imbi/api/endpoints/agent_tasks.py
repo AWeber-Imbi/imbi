@@ -96,9 +96,7 @@ class AgentTaskCreate(pydantic.BaseModel):
         min_length=1, description='The instruction for the agent.'
     )
     project_ids: list[str] = pydantic.Field(
-        default_factory=list,
-        max_length=50,
-        description='The projects of the task.',
+        default_factory=list, description='The projects of the task.'
     )
     budget: decimal.Decimal | None = pydantic.Field(
         default=None,

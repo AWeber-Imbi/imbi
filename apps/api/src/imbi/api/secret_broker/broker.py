@@ -601,21 +601,38 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
     """
     task = await _fetch_one(
         conn,
-        'SELECT organization_id, agent_id, status, '  # noqa: S608
-        + task_store.PROJECTS
-        + ' FROM agent_runtime.tasks AS t WHERE id = %s FOR UPDATE',
+        'SELECT organization_id, agent_id, status'
+        ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
         task['organization_id'],
         task['agent_id'],
-        {project['project_id'] for project in task['projects']},
+        await _task_project_ids(
+            conn, context.organization_id, context.task_id
+        ),
     ) != (context.organization_id, context.agent_id, set(context.project_ids)):
         raise providers.BrokerError(
             'resolution_context_mismatch', 'task_mismatch'
         )
     if task['status'] == 'closed':
         raise providers.BrokerError('secret_access_denied', 'task_closed')
+
+
+async def _task_project_ids(
+    conn: Conn, organization_id: str, task_id: uuid.UUID
+) -> set[str]:
+    """Return the project ids of a task.
+
+    Call it after the task row is locked, in a new statement, so it
+    sees a project change that committed while the lock waited.
+    """
+    cur = await conn.execute(
+        'SELECT project_id FROM agent_runtime.task_projects'
+        ' WHERE organization_id = %s AND task_id = %s',
+        (organization_id, task_id),
+    )
+    return {row[0] for row in await cur.fetchall()}
 
 
 def _event(
@@ -1715,9 +1732,7 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
     )
     resolution = await cur.fetchone()
     cur = await conn.execute(
-        'SELECT status, '  # noqa: S608
-        + task_store.PROJECTS
-        + ' FROM agent_runtime.tasks AS t WHERE id = %s FOR SHARE',
+        'SELECT status FROM agent_runtime.tasks WHERE id = %s FOR SHARE',
         (row['task_id'],),
     )
     task = await cur.fetchone()
@@ -1736,7 +1751,9 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
         and task is not None
         and task[0] != 'closed'
         # The projects can change while the provider call runs.
-        and {project['project_id'] for project in task[1]}
+        and await _task_project_ids(
+            conn, row['organization_id'], row['task_id']
+        )
         == set(row['project_ids'])
         and runner is not None
         and runner[0] in ('idle', 'busy')
