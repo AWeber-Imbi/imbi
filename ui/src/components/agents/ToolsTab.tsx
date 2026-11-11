@@ -435,7 +435,7 @@ function ToolRowView({
         >
           {row.key}
         </div>
-        <div className="text-tertiary text-xs">
+        <div className="text-tertiary text-xs wrap-break-word">
           {row.unavailable
             ? 'The catalog does not list this tool now.'
             : row.description}
