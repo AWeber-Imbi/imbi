@@ -101,8 +101,8 @@ describe('PluginsSection', () => {
     expect(screen.getByText('feature-dev')).toBeInTheDocument()
     // A default plugin is on and cannot be turned off.
     expect(screen.getByLabelText('commit-commands')).toBeDisabled()
-    // An external plugin needs a resolved commit to be pinned.
-    expect(screen.getByLabelText('remote')).toBeDisabled()
+    // An external plugin without a resolved commit is not shown.
+    expect(screen.queryByLabelText('remote')).not.toBeInTheDocument()
     expect(screen.getByLabelText('linked')).toBeEnabled()
   })
 

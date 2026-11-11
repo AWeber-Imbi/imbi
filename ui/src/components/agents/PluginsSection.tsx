@@ -161,6 +161,9 @@ function MarketplacePlugins({
           const external = plugin.path == null
           const head = external ? plugin.repository_sha : marketplace.head_sha
           const outside = external && !head
+          // Hide a plugin that runners cannot load, unless the agent
+          // already has it (so that the operator can turn it off).
+          if (outside && !chosen) return null
           const stale =
             chosen?.sha &&
             head &&
@@ -172,7 +175,7 @@ function MarketplacePlugins({
                 aria-label={plugin.name}
                 checked={isDefault || !!chosen}
                 className="mt-0.5"
-                disabled={isDefault || (outside && !chosen)}
+                disabled={isDefault}
                 onCheckedChange={(on) =>
                   onToggle(marketplace.slug, plugin.name, on === true)
                 }
