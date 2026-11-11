@@ -22,6 +22,9 @@ class RedactTestCase(unittest.TestCase):
         value = b'line one\nline "two"'
         text = redact.redact(b'{"v": "line one\\nline \\"two\\""}', [value])
         self.assertEqual(text, '{"v": "[REDACTED]"}')
+        value = 'päss\nword'.encode()
+        text = redact.redact('"päss\\nword"'.encode(), [value])
+        self.assertEqual(text, '"[REDACTED]"')
 
     def test_hex(self) -> None:
         self.check(VALUE.hex().encode())
