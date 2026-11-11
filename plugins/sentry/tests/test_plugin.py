@@ -160,6 +160,22 @@ class DoctorTests(_RespxCase):
         self.assertEqual('noop', result.status)
         self.assertIsNone(ctx.fact_writeback)
 
+    async def test_bool_fact_is_not_a_count(self) -> None:
+        respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
+        respx.get(_ISSUES_URL).mock(
+            return_value=httpx.Response(200, json=[], headers={'X-Hits': '1'})
+        )
+        ctx = _ctx(facts={'sentry_open_issues': True, 'sentry_new': 1})
+        items = {i.slug: i for i in await SentryDoctor().analyze(ctx, _CREDS)}
+        self.assertEqual(
+            'warn', items['issue-count:sentry_open_issues'].status
+        )
+        self.assertEqual('pass', items['issue-count:sentry_new'].status)
+        result = await SentryDoctor().remediate(
+            ctx, _CREDS, 'sync-issue-counts'
+        )
+        self.assertEqual('fixed', result.status)
+
     async def test_missing_project_offers_create(self) -> None:
         respx.get(_PROJECT_URL).respond(404)
         items = await SentryDoctor().analyze(_ctx(), _CREDS)
@@ -230,6 +246,15 @@ class DoctorTests(_RespxCase):
             _ctx(connected=False), _CREDS
         )
         self.assertEqual('failed', linked.status)
+        unlinked = _ctx(connected=False)
+        items = await SentryDoctor().analyze(unlinked, _CREDS)
+        self.assertEqual('fail', items[0].status)
+        self.assertIsNone(items[0].remediation)
+        result = await SentryDoctor().remediate(
+            unlinked, _CREDS, 'link-project'
+        )
+        self.assertEqual('failed', result.status)
+        self.assertIsNone(unlinked.service_writeback)
         self.assertFalse(
             any(c.request.method in ('POST', 'DELETE') for c in respx.calls)
         )

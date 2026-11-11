@@ -91,6 +91,25 @@ def _slug(ctx: PluginContext) -> str:
     return connection.identifier if connection else ctx.project_slug
 
 
+def _count_matches(value: object, count: int) -> bool:
+    """Return whether a stored fact equals a Sentry count.
+
+    A bool is an int in Python, so ``True == 1``; reject it explicitly.
+    """
+    return type(value) is int and value == count
+
+
+def _may_link(ctx: PluginContext, project: dict[str, typing.Any]) -> bool:
+    """Return whether the Doctor may link ``project`` to this project.
+
+    An existing edge is kept: someone already chose it. A new link follows
+    the rule of :func:`find_or_create`.
+    """
+    return _connection(ctx) is not None or client.may_link(
+        project, client.sentry_team(ctx)
+    )
+
+
 def _owns_sentry_project(ctx: PluginContext) -> bool:
     """Return whether the project may change its Sentry project's teams.
 
@@ -173,6 +192,16 @@ class SentryDoctor(AnalysisCapability):
                 'pass',
                 f'Linked to Sentry project {expected.identifier!r}.',
             )
+        if not _may_link(ctx, project):
+            return _item(
+                'exists-in',
+                'Sentry project',
+                'fail',
+                f'Sentry project {expected.identifier!r} is owned only by '
+                f'other teams ({", ".join(client.team_slugs(project))}); '
+                'Imbi cannot link it. Add the mapped team to it in Sentry, '
+                'then re-run the doctor.',
+            )
         return _item(
             'exists-in',
             'Sentry project',
@@ -247,7 +276,7 @@ class SentryDoctor(AnalysisCapability):
                 'pass',
                 f'{fact} matches Sentry ({count}).',
             )
-            if ctx.project_facts.get(fact) == count
+            if _count_matches(ctx.project_facts.get(fact), count)
             else _item(
                 f'issue-count:{fact}',
                 f'Fact {fact}',
@@ -283,6 +312,14 @@ class SentryDoctor(AnalysisCapability):
                         're-run the doctor to create it.'
                     ),
                 )
+            if remediation_id == _LINK and not _may_link(ctx, project):
+                return RemediationResult(
+                    status='failed',
+                    message=(
+                        f'Sentry project {slug!r} is owned only by other '
+                        'teams; refusing to link it.'
+                    ),
+                )
             if remediation_id == _SYNC_FACTS:
                 return await self._sync_facts(ctx, s, project)
             if remediation_id == _SET_TEAM:
@@ -302,7 +339,10 @@ class SentryDoctor(AnalysisCapability):
         project: dict[str, typing.Any],
     ) -> RemediationResult:
         counts = await client.count_all(ctx, s, project)
-        if all(ctx.project_facts.get(f) == c for f, c in counts.items()):
+        if all(
+            _count_matches(ctx.project_facts.get(f), c)
+            for f, c in counts.items()
+        ):
             return RemediationResult(
                 status='noop', message='Issue counts already match Sentry.'
             )

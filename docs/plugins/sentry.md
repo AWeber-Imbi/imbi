@@ -107,16 +107,19 @@ The fixes:
 - **Create / link the Sentry project** creates the Sentry project if it
   does not exist, then writes the edge and the link. You must confirm it.
 - **Repair the Sentry link** writes the edge and the link for a Sentry
-  project that exists. It never creates a project.
+  project that exists. It never creates a project. When the project has
+  no edge, it does not link a Sentry project that only other teams own.
 - **Set the Sentry team** makes the expected team (from `team_mapping`,
   or the Imbi team slug) the only owner of the Sentry project. When the
   expected team already owns the project, it removes all other teams, so
   those teams lose access. When no team owns the project, it adds the
   expected team. When only other teams own it, it does nothing: add the
-  expected team in Sentry first. You must confirm it, and it is not sweepable. It is offered
-  only for the Sentry project with the Imbi project slug, linked by the
-  plugin itself. For an identifier that someone set by hand, change the
-  teams in Sentry.
+  expected team in Sentry first. You must confirm it, and it is not
+  sweepable. It is offered only for the Sentry project with the Imbi
+  project slug, linked by the plugin itself or not linked yet. If the
+  project has no edge and the expected team shares the Sentry project
+  with another team, the fix removes that other team. For an identifier
+  that someone set by hand, change the teams in Sentry.
 - **Sync issue counts from Sentry** writes each count to its fact. It is
   sweepable, so **Apply Sync Fixes** keeps the facts current.
 
@@ -132,7 +135,9 @@ The fixes:
 - Sentry gives an approximate count (the `X-Hits` header), with a maximum
   of 1000.
 - A change of the project slug does not change the Sentry project. After
-  a change of the owning team, the Doctor shows `sentry-team` as failed
-  until you apply **Set the Sentry team**.
+  a change of the owning team, the Doctor shows `sentry-team` as failed.
+  If the new team already owns the Sentry project, apply **Set the
+  Sentry team**. If only the old team owns it, the Doctor does not offer
+  the fix: add the new team in Sentry first, then run the Doctor again.
 - The lifecycle does not change the teams of a Sentry project that
   exists. It only links the project, and the Doctor reports the team.
