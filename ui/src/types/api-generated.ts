@@ -15740,7 +15740,7 @@ export interface components {
             /** Approval Tools */
             approval_tools: string[];
             /** Secrets */
-            secrets: string[];
+            secrets: components["schemas"]["SecretReference"][];
             /** Github App Binding */
             github_app_binding: string | null;
         };
@@ -19976,6 +19976,13 @@ export interface components {
              * @default false
              */
             bearer: boolean;
+            /**
+             * Members
+             * @default {}
+             */
+            members: {
+                [key: string]: string;
+            };
         };
         /**
          * SecretMaterializationCreate
@@ -20120,6 +20127,25 @@ export interface components {
             locator_schema: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * SecretReference
+         * @description A secret reference that the agent may request, with the hints of
+         *     its binding for the model. Names only, never a value.
+         */
+        SecretReference: {
+            /** Reference */
+            reference: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Allowed Fields
+             * @default []
+             */
+            allowed_fields: string[];
         };
         /** SecretResolution */
         SecretResolution: {

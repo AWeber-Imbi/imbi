@@ -6,8 +6,9 @@ only materialize and release the resolutions of its runner. For a
 ``run`` request it:
 
 1. materializes each handle, immediately before it starts the command,
-2. runs the command as ``agent``, with only the secrets, ``HOME``,
-   and a fixed ``PATH`` in its environment, and changes to the
+2. runs the command as ``agent``, with only the secrets (and the JSON
+   members that imbi-api gives for each), ``HOME``, and a fixed
+   ``PATH`` in its environment, and changes to the
    workspace only after the switch to ``agent``,
 3. reads at most a bounded amount of output, and kills every ``agent``
    process when the command ends or times out,
@@ -38,6 +39,7 @@ Rev 1 runs one request at a time (:attr:`Executor.lock`), so every
 import asyncio
 import base64
 import contextlib
+import json
 import logging
 import os
 import pathlib
@@ -220,6 +222,32 @@ def _target(secret: Message) -> str:
     return target
 
 
+def _string_members(material: str) -> list[str]:
+    """Each non-empty string in a JSON object, nested ones too, or none."""
+    try:
+        parsed: object = json.loads(material)
+    except ValueError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    pending: list[object] = [parsed]
+    found: list[str] = []
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str) and value:
+            # A lone surrogate would stop the reply after the command.
+            try:
+                value.encode()
+            except UnicodeEncodeError:
+                raise Invalid('invalid_material') from None
+            found.append(value)
+        elif isinstance(value, dict):
+            pending.extend(typing.cast('dict[str, object]', value).values())
+        elif isinstance(value, list):
+            pending.extend(typing.cast('list[object]', value))
+    return found
+
+
 def _material(body: Message) -> str:
     material = str(body['material'])
     if body.get('encoding') == 'base64':
@@ -362,13 +390,35 @@ class Executor:
                 raise Invalid('purpose_not_allowed')
             proxy, hidden = _proxy(request)
             env = {'PATH': PATH, 'HOME': home, **proxy}
+            names: list[str] = []
+            # The string members of a JSON value are redacted, also one
+            # that is not exported: the raw value in the target holds
+            # it. Numbers and booleans are not: "3" or "true" would be
+            # erased from all output.
+            member_values: list[str] = []
             for secret, target in zip(wanted, targets, strict=True):
-                env[target] = await self._materialize(secret, context)
+                body = await self._materialized(secret, context)
+                env[target] = _material(body)
+                names.append(target)
+                member_values.extend(_string_members(env[target]))
+                # imbi-api gives only the members that the binding
+                # allows; a name that is set already keeps its value. A
+                # NUL in a value would stop the command from starting.
+                members: Message = body.get('members') or {}
+                for name, value in members.items():
+                    if (
+                        _ENV_NAME.match(name)
+                        and name not in env
+                        and '\0' not in value
+                    ):
+                        env[name] = value
+                        names.append(name)
+                        member_values.append(value)
             # gh reads GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server
             # host and GH_TOKEN for the others (#434).
             if 'GH_TOKEN' in env:
                 env.setdefault('GH_ENTERPRISE_TOKEN', env['GH_TOKEN'])
-            values = [env[target] for target in targets] + hidden
+            values = [env[name] for name in names] + member_values + hidden
             exit_code, output, dropped = await self._spawn(
                 command, cwd, env, timeout
             )
@@ -378,7 +428,16 @@ class Executor:
             return {'error': 'imbi_unavailable'}
         finally:
             await self._release(wanted)
-        return _reply(exit_code, output, dropped, values)
+        reply = _reply(exit_code, output, dropped, values)
+        # The task redacts its events with the values, keys included: a
+        # short member such as "o" would change "body" to "b[REDACTED]dy".
+        # A whole secret value stays, whatever its length.
+        short = {v for v in member_values if len(v) < redact.MIN_FRAGMENT}
+        short -= {env[target] for target in targets}
+        if short:
+            reply['values'] = [v for v in values if v not in short]
+        reply['variables'] = names
+        return reply
 
     async def clone(self, request: Message) -> Message:
         """Clone ``url`` into ``dest`` as ``agent``, with the token of

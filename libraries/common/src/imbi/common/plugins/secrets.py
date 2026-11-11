@@ -72,16 +72,21 @@ _RETRYABLE = frozenset({'secret_provider_unavailable'})
 class BrokerError(Exception):
     """A broker failure with a code from :data:`ERROR_STATUS`.
 
-    ``reason`` is a safe reason code for audit events. Neither holds
-    provider text or secret material.
+    ``reason`` is a safe reason code for audit events. ``hint`` is safe
+    text for the caller that tells it what to change, for example the
+    field names of a binding. None holds provider text or secret
+    material.
     """
 
-    def __init__(self, code: str, reason: str | None = None) -> None:
+    def __init__(
+        self, code: str, reason: str | None = None, *, hint: str | None = None
+    ) -> None:
         if code not in ERROR_STATUS:
             raise ValueError(f'Unknown broker error code {code!r}')
         super().__init__(code)
         self.code = code
         self.reason = reason or code
+        self.hint = hint
 
     @property
     def status(self) -> int:

@@ -169,8 +169,10 @@ this agent, this binding, and that purpose. For the App setup, see
 [Configure GitHub access](../deployment/agent-runners.md#6-configure-github-access).
 
 **Secrets** lists the secrets that the agent can request with
-`run_with_secret`. Each secret goes into the environment of one command. To
-add one:
+`run_with_secret`. Each secret goes into the environment of one command.
+The agent sees the description and the allowed fields of each binding, so
+write a description that tells the agent what the secret is for. To add
+one:
 
 1. Click **Add access**.
 2. Select the **Secret**.

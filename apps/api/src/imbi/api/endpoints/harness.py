@@ -395,6 +395,9 @@ class SecretMaterialization(pydantic.BaseModel):
     credential_expires_at: datetime.datetime | None = None
     #: An OAuth access token: send it in ``Authorization: Bearer``.
     bearer: bool = False
+    #: The JSON members of the secret, each for its own environment
+    #: name (environment delivery without a ``#field`` only).
+    members: dict[str, str] = {}
 
 
 class SecretResolutionReleased(pydantic.BaseModel):
@@ -697,11 +700,14 @@ async def _identity(
                 update={
                     # What the agent may request comes from its grants,
                     # not from a list in the agent (#445).
-                    'secrets': await secrets.agent_references(
-                        task['organization_id'],
-                        task['agent_id'],
-                        task.get('project_id'),
-                    )
+                    'secrets': [
+                        platform.SecretReference.model_validate(row)
+                        for row in await secrets.agent_references(
+                            task['organization_id'],
+                            task['agent_id'],
+                            task.get('project_id'),
+                        )
+                    ]
                 }
             ),
             'repositories': await _repositories(db, store, task, settings),

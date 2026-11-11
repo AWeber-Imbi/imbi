@@ -269,13 +269,18 @@ class SecretStore:
         organization_id: str,
         agent_id: str,
         project_id: str | None = None,
-    ) -> list[str]:
+    ) -> list[Row]:
         """The references that an agent can request for a command in a
         task of ``project_id``: an enabled grant for the agent and the
         project, with ``environment`` delivery, on an enabled binding
-        that allows it. The same rules as :func:`broker.evaluate`."""
-        found = await self._all(
-            'SELECT DISTINCT b.reference FROM secrets.grants g'
+        that allows it. The same rules as :func:`broker.evaluate`.
+
+        Each row has the ``reference``, and the ``description`` and
+        ``allowed_fields`` of its binding, as hints for the model.
+        """
+        return await self._all(
+            'SELECT DISTINCT b.reference, b.description, b.allowed_fields'
+            ' FROM secrets.grants g'
             ' JOIN secrets.bindings b ON b.id = ANY(g.binding_ids)'
             ' WHERE g.organization_id = %s AND g.enabled AND b.enabled'
             ' AND b.organization_id = g.organization_id'
@@ -287,7 +292,6 @@ class SecretStore:
             ' ORDER BY b.reference',
             (organization_id, agent_id, project_id),
         )
-        return [str(row['reference']) for row in found]
 
     async def evaluate(
         self,

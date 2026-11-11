@@ -512,7 +512,10 @@ class NarrowingTests(unittest.TestCase):
         )
         self.assertEqual(merged.denied_tools, ['Edit', 'WebFetch'])
         self.assertEqual(merged.approval_tools, ['Bash', 'Write'])
-        self.assertEqual(merged.secrets, ['secret://ci/token'])
+        self.assertEqual(
+            merged.secrets,
+            [platform.SecretReference(reference='secret://ci/token')],
+        )
         self.assertEqual(
             platform.merge(
                 config, models.AgentSettings(permission_mode='plan')

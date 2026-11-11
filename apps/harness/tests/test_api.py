@@ -71,6 +71,21 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
             await self.api.materialize('e', {'handle': 'h'})
         self.assertEqual(ctx.exception.status, 409)
         self.assertEqual(ctx.exception.code, 'resolution_already_used')
+        self.assertEqual(ctx.exception.hint, '')
+
+    async def test_error_hint_from_envelope(self) -> None:
+        self.mock.post('/harness/secret-resolutions').respond(
+            403,
+            json={
+                'detail': {
+                    'error': 'secret_field_not_allowed',
+                    'hint': 'use one of #SENTRY_AUTH_TOKEN',
+                }
+            },
+        )
+        with self.assertRaises(api.Refused) as ctx:
+            await self.api.create_resolution('a', {})
+        self.assertEqual(ctx.exception.hint, 'use one of #SENTRY_AUTH_TOKEN')
 
     async def test_error_without_envelope(self) -> None:
         self.mock.post('/harness/runners/r/heartbeat').respond(

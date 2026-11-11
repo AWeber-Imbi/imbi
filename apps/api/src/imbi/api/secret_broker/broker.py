@@ -38,6 +38,7 @@ import secrets
 import typing
 import uuid
 
+import orjson
 import psycopg
 import psycopg.errors
 import psycopg_pool
@@ -168,13 +169,7 @@ def check_delivery(mode: str, target: str | None) -> str | None:
     """
     ok = False
     if mode == 'environment':
-        ok = (
-            target is not None
-            and _ENV_NAME.fullmatch(target) is not None
-            and target not in _UNSAFE_ENV
-            and not target.startswith(_UNSAFE_ENV_PREFIXES)
-            and not target.endswith(_UNSAFE_ENV_SUFFIXES)
-        )
+        ok = target is not None and _safe_env_name(target)
     elif mode == 'file':
         ok = target is not None and _FILE_NAME.fullmatch(target) is not None
     elif mode == 'file_descriptor':
@@ -188,6 +183,44 @@ def check_delivery(mode: str, target: str | None) -> str | None:
             'delivery_mode_not_allowed', 'invalid_target'
         )
     return target
+
+
+def env_members(
+    material: providers.Material, binding: Row, row: Row
+) -> dict[str, str]:
+    """Return the JSON members that go into their own environment names.
+
+    Only for ``environment`` delivery without a ``#field``: each string
+    member with a safe name (as :func:`check_delivery`). A binding with
+    a target list allows only those names. The requested target keeps
+    the whole material, so a member with its name is left out.
+    """
+    if row['field'] is not None or row['delivery_mode'] != 'environment':
+        return {}
+    try:
+        document = orjson.loads(material.value)
+    except orjson.JSONDecodeError:
+        return {}
+    if not isinstance(document, dict):
+        return {}
+    targets: list[str] = binding['allowed_delivery_targets']
+    return {
+        name: value
+        for name, value in typing.cast(dict[str, typing.Any], document).items()
+        if isinstance(value, str)
+        and name != row['delivery_target']
+        and _safe_env_name(name)
+        and (not targets or name in targets)
+    }
+
+
+def _safe_env_name(name: str) -> bool:
+    return (
+        _ENV_NAME.fullmatch(name) is not None
+        and name not in _UNSAFE_ENV
+        and not name.startswith(_UNSAFE_ENV_PREFIXES)
+        and not name.endswith(_UNSAFE_ENV_SUFFIXES)
+    )
 
 
 def _digest(label: bytes, value: str) -> bytes:
@@ -274,6 +307,7 @@ class Materialization:
         'delivery_target',
         'encoding',
         'material',
+        'members',
         'resolution_expires_at',
         'resolution_id',
     )
@@ -282,8 +316,12 @@ class Materialization:
         self,
         row: Row,
         material: providers.Material,
+        members: dict[str, str],
     ) -> None:
         self.resolution_id: uuid.UUID = row['id']
+        #: The JSON members that go into their own environment names
+        #: (:func:`env_members`).
+        self.members = members
         self.delivery_mode: str = row['delivery_mode']
         self.delivery_target: str | None = row['delivery_target']
         self.resolution_expires_at: datetime.datetime = row['expires_at']
@@ -305,6 +343,7 @@ class Materialization:
             'resolution_id': str(self.resolution_id),
             'encoding': self.encoding,
             'material': self.material,
+            'members': self.members,
             'delivery': {
                 'mode': self.delivery_mode,
                 'target': self.delivery_target,
@@ -389,14 +428,52 @@ def _check_binding(binding: Row | None, reference: Reference) -> Row:
         raise providers.BrokerError('secret_binding_not_found')
     if not binding['enabled']:
         raise providers.BrokerError('secret_binding_disabled')
-    # A binding with a field list gives only those fields; a binding
-    # without one gives the whole value only.
+    # A binding with a field list gives only those fields (without a
+    # ``#field``, all of them: :func:`filter_fields`); a binding without
+    # one gives the whole value only. Field names are not secret, so the
+    # refusal names them.
     allowed: list[str] = binding['allowed_fields']
-    if (reference.field is None and allowed) or (
-        reference.field is not None and reference.field not in allowed
-    ):
-        raise providers.BrokerError('secret_field_not_allowed')
+    if reference.field is not None and reference.field not in allowed:
+        raise providers.BrokerError(
+            'secret_field_not_allowed',
+            hint=(
+                'use one of ' + ', '.join(f'#{name}' for name in allowed)
+                if allowed
+                else 'the secret has no fields, request it without #<field>'
+            ),
+        )
     return binding
+
+
+def filter_fields(
+    material: providers.Material, binding: Row, field: str | None
+) -> None:
+    """Keep only the allowed members of a request without a ``#field``:
+    the material becomes a JSON object with only them.
+
+    Raises:
+        BrokerError: The binding has a field list and the value is not
+            a JSON object.
+
+    """
+    allowed: list[str] = binding['allowed_fields']
+    if field is not None or not allowed:
+        return
+    try:
+        document = orjson.loads(material.value)
+    except orjson.JSONDecodeError:
+        document = None
+    if not isinstance(document, dict):
+        raise providers.BrokerError(
+            'secret_materialization_failed', 'not_a_json_object'
+        )
+    material.value = orjson.dumps(
+        {
+            k: v
+            for k, v in typing.cast(dict[str, typing.Any], document).items()
+            if k in allowed
+        }
+    )
 
 
 def _refuse_provider_key(binding: Row) -> None:
@@ -894,8 +971,8 @@ class Broker:
                     reason=err.reason,
                 )
             raise
-        material = await self._resolve(row, decision)
-        return Materialization(row, material)
+        material, members = await self._resolve(row, decision)
+        return Materialization(row, material, members)
 
     async def _check_materialize(
         self,
@@ -995,8 +1072,11 @@ class Broker:
 
     async def _resolve(
         self, row: Row, decision: Decision
-    ) -> providers.Material:
-        """Call the provider and keep its lease. Marks a failure."""
+    ) -> tuple[providers.Material, dict[str, str]]:
+        """Call the provider and keep its lease. Marks a failure.
+
+        Return the material and its members (:func:`env_members`).
+        """
         plugin = providers.get(decision.provider['type'])
         config = decision.provider['config']
         try:
@@ -1016,6 +1096,12 @@ class Broker:
                     agent_id=row['agent_id'],
                 ),
             )
+            try:
+                filter_fields(material, decision.binding, row['field'])
+            except providers.BrokerError:
+                await self._revoke_unsaved(row, plugin, config, material)
+                raise
+            members = env_members(material, decision.binding, row)
             now = datetime.datetime.now(datetime.UTC)
             expired = (
                 material.credential_expires_at is not None
@@ -1041,7 +1127,7 @@ class Broker:
             )
             await self._fail(row, failure)
             raise failure from None
-        return material
+        return material, members
 
     async def _finish(
         self,

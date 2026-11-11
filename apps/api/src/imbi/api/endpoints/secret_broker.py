@@ -100,14 +100,14 @@ AuditRead = typing.Annotated[
 
 
 def broker_error(err: providers.BrokerError) -> fastapi.HTTPException:
-    return fastapi.HTTPException(
-        status_code=err.status,
-        detail={
-            'error': err.code,
-            'reason': err.reason,
-            'message': err.code.replace('_', ' ').capitalize(),
-        },
-    )
+    detail = {
+        'error': err.code,
+        'reason': err.reason,
+        'message': err.code.replace('_', ' ').capitalize(),
+    }
+    if err.hint:
+        detail['hint'] = err.hint
+    return fastapi.HTTPException(status_code=err.status, detail=detail)
 
 
 def _invalid(

@@ -98,6 +98,7 @@ class ExecutorTestCase(BaseTestCase):
                 'exit_code': 0,
                 'output': 'token=[REDACTED]\n',
                 'values': [SECRET],
+                'variables': ['GH_TOKEN'],
             },
         )
         body = self.api.materialize.call_args.args[1]
@@ -120,6 +121,80 @@ class ExecutorTestCase(BaseTestCase):
         self.assertEqual(timeout, executor.COMMAND_TIMEOUT)
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
 
+    async def test_json_members_get_their_own_names(self) -> None:
+        member = 'sntrys_' + 'a' * 40
+        self.api.materialize.return_value = {
+            'material': json.dumps(
+                {'SENTRY_AUTH_TOKEN': member, 'NUL_TOKEN': 'nul\0value'}
+            ),
+            'encoding': 'utf8',
+            # imbi-api filters the names; the executor never replaces a
+            # name that is set already, nor takes an invalid one.
+            'members': {
+                'SENTRY_AUTH_TOKEN': member,
+                'PATH': '/tmp/evil',
+                'GH_TOKEN': 'other',
+                'bad name': 'x',
+                # A NUL would stop the command from starting.
+                'NUL_TOKEN': 'nul\0value',
+            },
+        }
+        self.spawn.return_value = (0, f'{member}\n'.encode(), False)
+        await self.hello()
+        reply = await self.executor.dispatch(request())
+        env = self.spawn.call_args.args[2]
+        self.assertEqual(env['SENTRY_AUTH_TOKEN'], member)
+        self.assertEqual(env['PATH'], executor.PATH)
+        self.assertNotIn('bad name', env)
+        self.assertNotIn('NUL_TOKEN', env)
+        self.assertEqual(
+            json.loads(env['GH_TOKEN'])['SENTRY_AUTH_TOKEN'], member
+        )
+        self.assertEqual(reply['variables'], ['GH_TOKEN', 'SENTRY_AUTH_TOKEN'])
+        # A member value is redacted too, not only the whole material.
+        self.assertEqual(reply['output'], '[REDACTED]\n')
+        self.assertIn(member, reply['values'])
+        # A member that is not exported is still in the raw value.
+        self.assertIn('nul\0value', reply['values'])
+
+    async def test_members_not_exported_are_redacted(self) -> None:
+        # The broker exports no member with an unsafe name, but the raw
+        # value still holds it, so the command can print it alone.
+        hidden = 'lowercase-' + 'b' * 30
+        nested = 'nested-' + 'c' * 30
+        self.api.materialize.return_value = {
+            'material': json.dumps(
+                {'token': hidden, 'port': 3, 'nested': {'keys': [nested]}}
+            ),
+            'encoding': 'utf8',
+            'members': {},
+        }
+        self.spawn.return_value = (
+            0,
+            f'{hidden} {nested} 3\n'.encode(),
+            False,
+        )
+        await self.hello()
+        reply = await self.executor.dispatch(request())
+        self.assertNotIn('token', self.spawn.call_args.args[2])
+        # Numbers are not redacted: "3" would be erased everywhere.
+        self.assertEqual(reply['output'], '[REDACTED] [REDACTED] 3\n')
+
+    async def test_short_members_stay_out_of_task_values(self) -> None:
+        # The command output hides "o"; the task events do not, so that
+        # a key such as "body" stays as it is.
+        self.api.materialize.return_value = {
+            'material': json.dumps({'config': {'mode': 'o'}, 'KEY': SECRET}),
+            'encoding': 'utf8',
+            'members': {'KEY': SECRET},
+        }
+        self.spawn.return_value = (0, b'o\n', False)
+        await self.hello()
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(reply['output'], '[REDACTED]\n')
+        self.assertNotIn('o', reply['values'])
+        self.assertIn(SECRET, reply['values'])
+
     async def test_new_nonce_for_each_materialization(self) -> None:
         await self.hello()
         await self.executor.dispatch(request())
@@ -138,6 +213,17 @@ class ExecutorTestCase(BaseTestCase):
         }
         await self.executor.dispatch(request())
         self.assertEqual(self.spawn.call_args.args[2]['GH_TOKEN'], SECRET)
+
+    async def test_unencodable_member_is_refused(self) -> None:
+        await self.hello()
+        self.api.materialize.return_value = {
+            'material': '{"outer": {"value": "\\ud800"}}',
+            'encoding': 'utf8',
+        }
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(reply, {'error': 'invalid_material'})
+        self.spawn.assert_not_called()
+        self.api.release.assert_awaited_once()
 
     async def test_binary_material_is_refused(self) -> None:
         await self.hello()
@@ -241,7 +327,8 @@ class ExecutorTestCase(BaseTestCase):
         await self.hello()
         reply = await self.executor.dispatch(request(secrets=[]))
         self.assertEqual(
-            reply, {'exit_code': 0, 'output': f'token={SECRET}\n'}
+            reply,
+            {'exit_code': 0, 'output': f'token={SECRET}\n', 'variables': []},
         )
 
 
