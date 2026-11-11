@@ -413,6 +413,7 @@ class Executor:
                     ):
                         env[name] = value
                         names.append(name)
+                        member_values.append(value)
             # gh reads GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server
             # host and GH_TOKEN for the others (#434).
             if 'GH_TOKEN' in env:
@@ -428,6 +429,11 @@ class Executor:
         finally:
             await self._release(wanted)
         reply = _reply(exit_code, output, dropped, values)
+        # The task redacts its events with the values, keys included: a
+        # short member such as "o" would change "body" to "b[REDACTED]dy".
+        short = {v for v in member_values if len(v) < redact.MIN_FRAGMENT}
+        if short:
+            reply['values'] = [v for v in values if v not in short]
         reply['variables'] = names
         return reply
 

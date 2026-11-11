@@ -180,6 +180,21 @@ class ExecutorTestCase(BaseTestCase):
         # Numbers are not redacted: "3" would be erased everywhere.
         self.assertEqual(reply['output'], '[REDACTED] [REDACTED] 3\n')
 
+    async def test_short_members_stay_out_of_task_values(self) -> None:
+        # The command output hides "o"; the task events do not, so that
+        # a key such as "body" stays as it is.
+        self.api.materialize.return_value = {
+            'material': json.dumps({'config': {'mode': 'o'}, 'KEY': SECRET}),
+            'encoding': 'utf8',
+            'members': {'KEY': SECRET},
+        }
+        self.spawn.return_value = (0, b'o\n', False)
+        await self.hello()
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(reply['output'], '[REDACTED]\n')
+        self.assertNotIn('o', reply['values'])
+        self.assertIn(SECRET, reply['values'])
+
     async def test_new_nonce_for_each_materialization(self) -> None:
         await self.hello()
         await self.executor.dispatch(request())
