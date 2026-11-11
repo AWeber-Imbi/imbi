@@ -825,13 +825,12 @@ export type AgentTaskResolve = Schemas['AgentTaskRequestResolve']
 
 export type AgentTaskStatus = AgentTask['status']
 
-// The tools that an agent can use, in groups by server, and the
-// configuration of one tool. The tool key is `<server slug>.<name>`.
+// The Imbi tools that an agent can use, and the configuration of one
+// tool. The tool key is `imbi.<name>`; an older key can have another
+// prefix.
 export type AgentToolCatalog = Schemas['AgentToolCatalog']
 
 export type AgentToolConfig = Schemas['AgentToolConfig']
-
-export type AgentToolGroup = Schemas['AgentToolGroup']
 
 export type AgentUpdate = Schemas['AgentUpdate']
 

@@ -1316,8 +1316,8 @@ async def get_agent_tool_catalog(
 ) -> agent_tools.AgentToolCatalog:
     """List the Imbi tools that an agent can use.
 
-    The catalog has one group, the Imbi tools. When they cannot be
-    made, the group has an error code in ``error`` and no tools. The
+    When the tools cannot be made, the catalog has an error code in
+    ``error`` and no tools. The
     error text goes only to the log. The catalog is kept for five
     minutes; ``refresh=true`` lists it again and needs
     ``agent:write``. The catalog is the same in each organization.

@@ -118,12 +118,12 @@ servers.
 - A plugin with the badge **unsupported source** cannot load. See
   [Plugin sources](#plugin-sources).
 
-**Tools** lists the tools of the Imbi API, in the `imbi` group. The MCP
+**Tools** lists the tools of the Imbi API, in one list. The MCP
 servers in **Admin > Global Admin > Assistant > MCP Servers** are for the
 assistant only and are not in this list. To give the agent other MCP
 servers, select a plugin that brings them.
 
-The key of a tool is `<server slug>.<tool name>`. Each tool has a
+The key of a tool is `imbi.<tool name>`. Each tool has a
 capability badge: **Read**, **Write**, **Destructive**, or **Unknown**. The
 badge comes from the MCP annotations of the tool.
 
@@ -131,8 +131,7 @@ To give the agent a tool:
 
 1. Find the tool. Use the search field, the **Capability** filter, or
    **Enabled only**.
-2. Turn on the switch of the tool. **Enable all** turns on all the tools of
-   a server.
+2. Turn on the switch of the tool. **Enable all** turns on all the tools.
 3. Optional: click **Approval**. Then a person must approve each call. See
    [Approvals](agent-tasks.md#answer-a-request).
 4. Optional: click an environment chip to block that environment. A
@@ -142,13 +141,12 @@ To give the agent a tool:
    select **Per minute**, **Per hour**, or **Per day**. Click **Apply**.
 
 Imbi keeps the tool list for 5 minutes. Click the refresh button to list
-the tools again. The refresh connects to the Imbi MCP server, so it needs
-`agent:write`.
+the tools again. The refresh needs `agent:write`.
 
-When the server does not answer, its group shows an error: not reachable, no
-answer in time, or credentials not accepted. A tool that the agent has but
-that the catalog does not list now shows **Unavailable**. Turn it off to
-remove it.
+When Imbi cannot list the tools, the list shows an error. A tool that the
+agent has but that the catalog does not list now, for example a `zoekt.*`
+tool from before 2.45.0, shows **Unavailable** under **Not in the catalog**.
+Turn it off to remove it.
 
 ### Access
 

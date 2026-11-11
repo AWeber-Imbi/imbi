@@ -45,45 +45,30 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
 export function catalog(): AgentToolCatalog {
   return {
     generated_at: '2026-10-06T12:00:00Z',
-    groups: [
+    tools: [
       {
-        server: { name: 'Imbi', slug: 'imbi', transport: 'internal' },
-        tools: [
-          {
-            capability: 'destructive',
-            description: 'Delete a project.',
-            key: 'imbi.delete_project',
-            name: 'delete_project',
-          },
-          {
-            capability: 'read',
-            description: 'Search the service catalog.',
-            key: 'imbi.list_projects',
-            name: 'list_projects',
-          },
-        ],
+        capability: 'write',
+        description: 'Create a project.',
+        key: 'imbi.create_project',
+        name: 'create_project',
       },
       {
-        server: { name: 'GitHub', slug: 'github', transport: 'internal' },
-        tools: [
-          {
-            capability: 'write',
-            description: 'Open a pull request.',
-            key: 'github.create_pull_request',
-            name: 'create_pull_request',
-          },
-          {
-            capability: 'unknown',
-            description: 'Read a file at a ref.',
-            key: 'github.read_file',
-            name: 'read_file',
-          },
-        ],
+        capability: 'destructive',
+        description: 'Delete a project.',
+        key: 'imbi.delete_project',
+        name: 'delete_project',
       },
       {
-        error: 'timeout',
-        server: { name: 'Sentry', slug: 'sentry', transport: 'internal' },
-        tools: [],
+        capability: 'unknown',
+        description: 'Return the current user.',
+        key: 'imbi.get_me',
+        name: 'get_me',
+      },
+      {
+        capability: 'read',
+        description: 'Search the service catalog.',
+        key: 'imbi.list_projects',
+        name: 'list_projects',
       },
     ],
   }

@@ -32,6 +32,7 @@ import {
   CAPABILITIES,
   formatRateLimit,
   groupViews,
+  IMBI_SLUG,
   RATE_PERIODS,
   type RatePeriod,
   setTools,
@@ -74,8 +75,8 @@ interface ToolsTabProps {
 }
 
 /**
- * The tools that the agent can use, in groups by server. A switch turns
- * a tool on; then approval, environments, and a rate limit apply to it.
+ * The Imbi tools that the agent can use. A switch turns a tool on; then
+ * approval, environments, and a rate limit apply to it.
  */
 export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const { query: catalog, refresh } = useAgentToolCatalog(orgSlug)
@@ -85,7 +86,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const [search, setSearch] = useState('')
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set())
   const [enabledOnly, setEnabledOnly] = useState(false)
-  const [open, setOpen] = useState<Set<string>>(new Set())
+  const [open, setOpen] = useState<Set<string>>(new Set([IMBI_SLUG]))
 
   if (catalog.isLoading)
     return (
@@ -100,11 +101,10 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
       <ErrorBanner error={catalog.error} title="Failed to load the tools" />
     )
 
-  const groups = catalog.data.groups
   const filters = { capabilities, enabledOnly, query: search }
-  const views = groupViews(groups, value, filters)
+  const views = groupViews(catalog.data, value, filters)
   const filtering = !!search.trim() || enabledOnly || capabilities.size > 0
-  const total = groups.reduce((n, g) => n + g.tools.length, 0)
+  const total = catalog.data.tools.length
   const enabled = Object.keys(value).length
   const chips: EnvironmentChip[] = (environments.data ?? []).map((e) => ({
     name: e.name,
@@ -112,9 +112,8 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   }))
 
   const counts: Record<string, number> = {}
-  for (const g of groups)
-    for (const t of g.tools)
-      counts[t.capability] = (counts[t.capability] ?? 0) + 1
+  for (const t of catalog.data.tools)
+    counts[t.capability] = (counts[t.capability] ?? 0) + 1
 
   const setConfig = (key: string, config: AgentToolConfig) =>
     onChange({ ...value, [key]: config })
@@ -133,7 +132,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
           <Input
             aria-label="Search tools"
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search ${total.toLocaleString()} tools — name, server, or description`}
+            placeholder={`Search ${total.toLocaleString()} tools — name or description`}
             value={search}
           />
         </div>
@@ -343,9 +342,6 @@ function ToolGroupCard({
         >
           <Chevron className="text-tertiary size-4 shrink-0" />
           <span className="truncate text-sm font-semibold">{view.name}</span>
-          <span className="bg-secondary text-secondary rounded px-2 py-0.5 font-mono text-xs">
-            {view.transport}
-          </span>
         </button>
         <span className="text-secondary font-mono text-xs whitespace-nowrap tabular-nums">
           {on} of {listed.length} enabled
@@ -380,8 +376,7 @@ function ToolGroupCard({
           role="alert"
         >
           <AlertCircle className="size-4 shrink-0" />
-          Could not list the tools of this server:{' '}
-          {TOOL_ERROR_MESSAGES[view.error]}
+          Could not list the tools: {TOOL_ERROR_MESSAGES[view.error]}
         </div>
       )}
       {isOpen && (
@@ -400,13 +395,13 @@ function ToolGroupCard({
           ))}
           {view.rows.length > shown.length && (
             <div className="text-tertiary px-5 py-2 text-xs">
-              Showing {shown.length} of {view.rows.length} tools on this server.
-              Search to narrow.
+              Showing {shown.length} of {view.rows.length} tools. Search to
+              narrow.
             </div>
           )}
           {view.rows.length === 0 && !view.error && (
             <div className="text-tertiary px-5 py-3 text-xs">
-              This server lists no tools.
+              The catalog lists no tools.
             </div>
           )}
         </div>
