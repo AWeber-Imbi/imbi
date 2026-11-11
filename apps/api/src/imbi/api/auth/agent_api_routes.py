@@ -233,6 +233,8 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PATCH /ai-models/{id}',
         'PATCH /prompts/{namespace}/{slug}',
         'POST /ai-models/',
+        'POST /ai-models/price-sync/apply',
+        'POST /ai-models/price-sync/preview',
         'POST /ai-providers/{id}/import-models',
         'POST /organizations/{org_slug}/agent-marketplaces/',
         'POST /organizations/{org_slug}/agent-marketplaces/{slug}/sync',
