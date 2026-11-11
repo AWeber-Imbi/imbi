@@ -878,7 +878,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'document_template:read',
             'me:identities:manage',
             'search:read',
-            # Granted to `default` in production; developer keeps parity.
+            # Moved here from production's `default` role (2026-11-11).
             'admin:plugins:read',
             'project:configuration:read',
             'project:configuration:read_secrets',
