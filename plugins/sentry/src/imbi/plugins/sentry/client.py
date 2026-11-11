@@ -1,5 +1,6 @@
 """Sentry REST API client, plus the settings every capability shares."""
 
+import asyncio
 import importlib.metadata
 import re
 import typing
@@ -137,7 +138,8 @@ async def _request(
         'User-Agent': f'imbi-plugin-sentry/{_VERSION}',
     }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as http_client:
+        # Within the host's default 10 second plugin deadline.
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
             return await http_client.request(
                 method,
                 f'{s.base_url}/api/0{path}',
@@ -286,7 +288,11 @@ async def count_all(
 ) -> dict[str, int]:
     """Return ``{fact name: issue count}`` for every configured fact."""
     period = issue_period(ctx)
-    return {
-        fact: await count_issues(s, str(project['id']), query, period)
-        for fact, query in issue_count_facts(ctx).items()
-    }
+    facts = issue_count_facts(ctx)
+    counts = await asyncio.gather(
+        *(
+            count_issues(s, str(project['id']), query, period)
+            for query in facts.values()
+        )
+    )
+    return dict(zip(facts, counts, strict=True))

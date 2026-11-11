@@ -122,6 +122,8 @@ class SetProjectFactsTestCase(unittest.IsolatedAsyncioTestCase):
                     'properties': {
                         'open_issues': {'type': 'integer'},
                         'new_issues': {'type': 'integer'},
+                        'tags': {'type': 'array'},
+                        'id': {'type': 'string'},
                     },
                 },
             }
@@ -137,10 +139,24 @@ class SetProjectFactsTestCase(unittest.IsolatedAsyncioTestCase):
             self.db, 'p1', ['service'], {'open_issues': 3, 'new_issues': 1}
         )
         self.assertIsNone(refusal)
-        self.assertEqual(2, self.db.execute.await_count)
-        query, params, _ = self.db.execute.await_args_list[0].args
-        self.assertIn('SET p.open_issues = {value}', query)
-        self.assertEqual({'project_id': 'p1', 'value': 3}, params)
+        self.db.execute.assert_awaited_once()
+        query, params, _ = self.db.execute.await_args.args
+        self.assertIn('SET p.open_issues = {v0}, p.new_issues = {v1}', query)
+        self.assertEqual({'project_id': 'p1', 'v0': 3, 'v1': 1}, params)
+
+    async def test_refuses_core_project_field(self) -> None:
+        refusal = await blueprint_compliance.set_project_facts(
+            self.db, 'p1', ['service'], {'id': 'other-id'}
+        )
+        self.assertIn('`id` is not a blueprint property', refusal or '')
+        self.db.execute.assert_not_awaited()
+
+    async def test_refuses_wrong_array_type(self) -> None:
+        refusal = await blueprint_compliance.set_project_facts(
+            self.db, 'p1', ['service'], {'tags': 'not-a-list'}
+        )
+        self.assertIn('must be array', refusal or '')
+        self.db.execute.assert_not_awaited()
 
     async def test_refuses_unknown_fact_and_writes_nothing(self) -> None:
         refusal = await blueprint_compliance.set_project_facts(

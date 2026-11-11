@@ -64,17 +64,17 @@ def _ctx(
     )
 
 
-def _issues(request: httpx.Request) -> httpx.Response:
-    hits = {'is:unresolved': '7', 'is:new': '2'}[request.url.params['query']]
-    assert request.url.params['project'] == '42'
-    assert request.url.params['statsPeriod'] == '14d'
-    return httpx.Response(200, json=[], headers={'X-Hits': hits})
-
-
 class _RespxCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         respx.mock.start()
         self.addCleanup(respx.mock.stop, quiet=True)
+
+    def _issues(self, request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        self.assertEqual('42', params['project'])
+        self.assertEqual('14d', params['statsPeriod'])
+        hits = {'is:unresolved': '7', 'is:new': '2'}[params['query']]
+        return httpx.Response(200, json=[], headers={'X-Hits': hits})
 
 
 class ManifestTests(unittest.TestCase):
@@ -127,14 +127,14 @@ class LifecycleTests(_RespxCase):
 class DoctorTests(_RespxCase):
     async def test_all_pass(self) -> None:
         respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         ctx = _ctx(facts={'sentry_open_issues': 7, 'sentry_new': 2})
         items = await SentryDoctor().analyze(ctx, _CREDS)
         self.assertEqual(['pass'] * 4, [i.status for i in items])
 
     async def test_stale_fact_offers_sweepable_sync(self) -> None:
         respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         ctx = _ctx(facts={'sentry_open_issues': 3, 'sentry_new': 2})
         items = {i.slug: i for i in await SentryDoctor().analyze(ctx, _CREDS)}
         stale = items['issue-count:sentry_open_issues']
@@ -152,7 +152,7 @@ class DoctorTests(_RespxCase):
 
     async def test_sync_noop_when_current(self) -> None:
         respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         ctx = _ctx(facts={'sentry_open_issues': 7, 'sentry_new': 2})
         result = await SentryDoctor().remediate(
             ctx, _CREDS, 'sync-issue-counts'
@@ -175,7 +175,7 @@ class DoctorTests(_RespxCase):
 
     async def test_drifted_link_offers_link_repair(self) -> None:
         respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         ctx = _ctx(links={})
         items = await SentryDoctor().analyze(ctx, _CREDS)
         self.assertEqual('fail', items[0].status)
@@ -193,7 +193,7 @@ class DoctorTests(_RespxCase):
             'teams': [{'slug': 'old'}, {'slug': 'sentry-platform'}],
         }
         respx.get(_PROJECT_URL).respond(200, json=project)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         items = {
             i.slug: i for i in await SentryDoctor().analyze(_ctx(), _CREDS)
         }
@@ -219,7 +219,7 @@ class DoctorTests(_RespxCase):
     async def test_foreign_project_is_never_claimed(self) -> None:
         project = {**_PROJECT, 'teams': [{'slug': 'other'}]}
         respx.get(_PROJECT_URL).respond(200, json=project)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         items = {
             i.slug: i for i in await SentryDoctor().analyze(_ctx(), _CREDS)
         }
@@ -239,7 +239,7 @@ class DoctorTests(_RespxCase):
         ctx.service_connections[0].verified_identifier = None
         project = {**_PROJECT, 'teams': [{'slug': 'other'}]}
         respx.get(_PROJECT_URL).respond(200, json=project)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         items = {i.slug: i for i in await SentryDoctor().analyze(ctx, _CREDS)}
         self.assertEqual('fail', items['sentry-team'].status)
         self.assertIsNone(items['sentry-team'].remediation)
@@ -285,7 +285,7 @@ class DoctorTests(_RespxCase):
 class ActionTests(_RespxCase):
     async def test_patches_counts(self) -> None:
         respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
-        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
         patch = respx.patch(
             'http://imbi-api/api/organizations/org/projects/p1'
         ).respond(200, json={})

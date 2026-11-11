@@ -29,6 +29,7 @@ from imbi.api.blueprint_compliance import (
     fetch_project_props,
     remediate_blueprint,
     set_project_facts,
+    validate_project_facts,
 )
 from imbi.api.endpoints._helpers import (
     linked_identifier_resolver,
@@ -674,9 +675,18 @@ async def _persist_writebacks(
 ) -> str | None:
     """Persist the write-backs a remediation set on ``ctx``.
 
-    Returns a refusal message when a write-back was refused. A refused
-    service write-back stops the rest, so nothing is half-applied.
+    Returns a refusal message when a write-back was refused. The facts
+    are validated first and a refused write-back stops the rest, so
+    nothing is half-applied.
     """
+    type_slugs: list[str] = []
+    if ctx.fact_writeback is not None:
+        type_slugs = await lookup_project_type_slugs(db, ctx.project_id)
+        refusal = await validate_project_facts(
+            db, type_slugs, ctx.fact_writeback
+        )
+        if refusal is not None:
+            return refusal
     if ctx.service_writeback is not None:
         refusal = await persist_service_writeback(db, ctx, auth)
         if refusal is not None:
@@ -684,10 +694,18 @@ async def _persist_writebacks(
     if ctx.link_writeback is not None:
         await persist_link_writeback(db, ctx)
     if ctx.fact_writeback is not None:
-        type_slugs = await lookup_project_type_slugs(db, ctx.project_id)
-        return await set_project_facts(
+        refusal = await set_project_facts(
             db, ctx.project_id, type_slugs, ctx.fact_writeback
         )
+        if refusal is not None:
+            return refusal
+        # A fact can flip a condition policy on a dependent project, as
+        # the project PATCH does for a changed attribute.
+        try:
+            client = common_valkey.get_client()
+        except RuntimeError:
+            client = None
+        await score_queue.enqueue_dependents(client, db, ctx.project_id)
     return None
 
 
