@@ -454,6 +454,21 @@ class ConfigTestCase(TaskTestCase):
             ['Bash(rm *)', 'mcp__imbi__report_outcome'],
         )
 
+    def test_settings_argument_is_bounded_utf8(self) -> None:
+        # 23,000 characters of 2 UTF-8 bytes; escaped, 138,000 bytes.
+        subject = self.make(
+            claude_settings={'attribution': {'commit': 'é' * 23000}}
+        )
+        value = subject.settings_argument()
+        self.assertIn('é', value)
+        self.assertLessEqual(len(value.encode()), task.PROMPT_BYTES)
+        subject = self.make(
+            claude_settings={'attribution': {'commit': 'é' * 70000}}
+        )
+        with self.assertRaises(task.Failed) as caught:
+            subject.settings_argument()
+        self.assertEqual(caught.exception.reason, 'settings_too_large')
+
     def test_dropped_settings_are_a_warning(self) -> None:
         self.run_task.note_dropped_settings()
         self.assertEqual(self.run_task.recorder.take(), [])

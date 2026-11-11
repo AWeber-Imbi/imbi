@@ -395,8 +395,9 @@ def _repository(url: str) -> str | None:
 PLUGIN_MANIFEST = pathlib.PurePosixPath('.claude-plugin/plugin.json')
 #: The cap on the bytes of one repository instruction file.
 INSTRUCTION_BYTES = 64 * 1024
-#: The cap on the UTF-8 bytes of the system prompt. The SDK gives it to
-#: the CLI in one argument, and Linux limits one argument to 128 KiB.
+#: The cap on the UTF-8 bytes of the system prompt and of the settings.
+#: The SDK gives each to the CLI in one argument, and Linux limits one
+#: argument to 128 KiB.
 PROMPT_BYTES = 120 * 1024
 _TRUNCATED = '\n\n[Truncated by the harness.]'
 #: The cap on the bytes of one published plugin.
@@ -1373,6 +1374,17 @@ class TaskRun:
             }
         return settings
 
+    def settings_argument(self) -> str:
+        """:meth:`settings` as the ``--settings`` argument. Linux limits
+        one argument to 128 KiB, and the organization and agent documents
+        together can be larger, so a larger argument fails the task."""
+        value = json.dumps(
+            self.settings(), ensure_ascii=False, separators=(',', ':')
+        )
+        if len(value.encode()) > PROMPT_BYTES:
+            raise Failed('settings_too_large')
+        return value
+
     def note_dropped_settings(self) -> None:
         """Tell the reader of the task which agent settings the
         organization's enforced paths left out (settings plan 4.2)."""
@@ -1566,7 +1578,7 @@ class TaskRun:
             # No settings or instruction file: the model can write every
             # one that the CLI would read (settings plan 4.1).
             setting_sources=[],
-            settings=json.dumps(self.settings()),
+            settings=self.settings_argument(),
             plugins=[
                 {'type': 'local', 'path': str(path)} for path in self.plugins
             ],
