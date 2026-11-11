@@ -189,13 +189,15 @@ class _Locator(pydantic.BaseModel):
         title='Private key',
     )
     #: ``owner/name`` repositories for ``marketplace_fetch``: the
-    #: marketplaces and their external plugins. Other purposes use the
+    #: marketplaces and their external plugins; empty allows each
+    #: repository of the installation. Other purposes use the
     #: repositories of the task's project.
     repositories: list[str] = pydantic.Field(
         default_factory=list[str],
         description=(
-            'owner/name, for marketplace_fetch only. Other purposes use'
-            " the repositories of the task's project."
+            'owner/name, for marketplace_fetch only. Empty: each'
+            ' repository of the installation. Other purposes use the'
+            " repositories of the task's project."
         ),
         title='Repositories',
     )
@@ -607,9 +609,11 @@ class GitHubApp(secrets.SecretProvider):
         """Mint a token for the task's repositories and the purpose.
 
         ``marketplace_fetch`` uses the repository that the runner asks
-        for, which must be in the ``repositories`` of the binding; with
-        none, all of them. The other purposes use the verified repository
-        ids of the task's project (:meth:`project_repository_ids`).
+        for. When the binding lists ``repositories``, the repository must
+        be one of them; an empty list allows each repository of the
+        installation. The token always covers only that one repository.
+        The other purposes use the verified repository ids of the task's
+        project (:meth:`project_repository_ids`).
 
         Raises:
             BrokerError: The purpose is unknown, the task has no
@@ -629,7 +633,7 @@ class GitHubApp(secrets.SecretProvider):
         if context.purpose == 'marketplace_fetch':
             repositories = list(locator.get('repositories', []))
             if context.repository is not None:
-                if context.repository.lower() not in {
+                if repositories and context.repository.lower() not in {
                     name.lower() for name in repositories
                 }:
                     raise secrets.BrokerError(

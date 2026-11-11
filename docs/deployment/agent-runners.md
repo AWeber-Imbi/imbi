@@ -182,8 +182,9 @@ One binding can serve repositories in more than one GitHub organization:
 1. Install the GitHub App on each GitHub organization.
 2. Remove `installation_id` from the binding locator. Imbi then finds the
    installation of each repository.
-3. List each marketplace and each external plugin repository in the
-   binding's `repositories`, as `owner/name`.
+3. Optional: list each marketplace and each external plugin repository in
+   the binding's `repositories`, as `owner/name`. An empty list allows each
+   repository of the installations.
 
 The repositories of one token must all be in one installation.
 
@@ -681,7 +682,7 @@ Find the error code first:
 | `model_key_unavailable` | The executor could not get the key value | Validate the binding. Check the provider |
 | `workspace_checkout_refused` | The broker refused the `workspace_checkout` token | Check the GitHub grants of [step 6](#6-configure-github-access) |
 | `workspace_checkout_failed` | The clone of a project repository failed | Check that the GitHub App can read the repository |
-| `marketplace_fetch_failed` | The clone of a plugin marketplace or plugin repository failed | Put each marketplace and external plugin repository in the binding's `repositories`. Install the App on each GitHub organization. A marketplace that is not on public github.com needs a token |
+| `marketplace_fetch_failed` | The clone of a plugin marketplace or plugin repository failed | When the binding's `repositories` is not empty, put each marketplace and external plugin repository in it. Install the App on each GitHub organization. A marketplace that is not on public github.com needs a token |
 | `plugin_not_pinned` | A plugin in the configuration has no URL or commit | Save the agent again. A save pins each plugin to a commit |
 | `plugin_not_loaded` | The CLI did not load a pinned plugin | Look for the `SDK init` line in the runner log. It lists the plugins that loaded |
 | `service_account_in_other_organizations` | The agent's service account is a member of more than one organization, so Imbi gives it no API token | Remove the service account from the other organizations |
@@ -704,7 +705,7 @@ not run it.
 | Reason | Cause | Fix |
 |---|---|---|
 | `repositories_span_installations` | The repositories of one token are in more than one GitHub App installation | Use repositories from one GitHub organization per task, or use separate bindings |
-| `repository_not_allowed` | A `marketplace_fetch` request names a repository that is not in the binding's `repositories` | Add the repository to `repositories` |
+| `repository_not_allowed` | A `marketplace_fetch` request names a repository that is not in the binding's `repositories` | Add the repository to `repositories`, or empty the list to allow each repository of the installation |
 | `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `workspace_checkout`, and `marketplace_fetch` with `file_descriptor` only |
 | `ambiguous_grants` | More than one grant allows the request | Remove the overlap, so that exactly one grant matches |
 | `no_grant` | No grant allows the request | Check the grant's agents, bindings, purposes, delivery modes, and projects |
