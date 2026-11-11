@@ -2,15 +2,17 @@ import { useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 import {
-  CheckCircle2,
-  Clock,
+  Check,
+  ChevronRight,
+  ChevronsUpDown,
   ExternalLink,
+  GitCommitHorizontal,
   LoaderCircle,
-  type LucideIcon,
+  MoreHorizontal,
   Plus,
-  RotateCcw,
+  Tag,
   Trash2,
-  XCircle,
+  X,
 } from 'lucide-react'
 
 import {
@@ -19,10 +21,15 @@ import {
   type ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
 import { AttributeValue } from '@/components/ui/attribute-value'
-import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
 import { InlineField } from '@/components/ui/inline-edit/InlineField'
@@ -38,7 +45,11 @@ import { UserIdentity } from '@/components/ui/user-identity'
 import { useEnvironmentEdgePatch } from '@/hooks/useEnvironmentEdgePatch'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
-import { formatFieldKey } from '@/lib/project-field-formatting'
+import { formatByFormat } from '@/lib/formatDate'
+import {
+  formatFieldKey,
+  formatFieldValue,
+} from '@/lib/project-field-formatting'
 import { sanitizeUri } from '@/lib/utils'
 import type { DeploymentStatus, LatestDeployment, Project } from '@/types'
 
@@ -59,7 +70,10 @@ interface DeploymentInfo {
   updated: null | string
 }
 
-// Shared overline label style for the per-environment attribute cells.
+// Label style for the expanded per-environment detail cells.
+const DETAIL_LABEL_CLASS = 'text-secondary mb-1 text-xs'
+
+// Overline label style for the add-environment form fields.
 const OVERLINE_CLASS =
   'text-tertiary mb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase'
 
@@ -86,23 +100,13 @@ const URL_DEF: ProjectSchemaSectionProperty = { format: 'uri', type: 'string' }
 // backend enum.
 const RELEASE_STATUS: Record<
   DeploymentStatus,
-  {
-    Icon: LucideIcon
-    label: string
-    spin?: boolean
-    variant: BadgeProps['variant']
-  }
+  { color: string; label: string; spin?: boolean }
 > = {
-  failed: { Icon: XCircle, label: 'Failed', variant: 'danger' },
-  in_progress: {
-    Icon: LoaderCircle,
-    label: 'Deploying',
-    spin: true,
-    variant: 'warning',
-  },
-  pending: { Icon: Clock, label: 'Queued', variant: 'neutral' },
-  rolled_back: { Icon: RotateCcw, label: 'Rolled back', variant: 'warning' },
-  success: { Icon: CheckCircle2, label: 'Deployed', variant: 'success' },
+  failed: { color: 'text-danger', label: 'Failed' },
+  in_progress: { color: 'text-warning', label: 'Deploying', spin: true },
+  pending: { color: 'text-tertiary', label: 'Queued' },
+  rolled_back: { color: 'text-warning', label: 'Rolled back' },
+  success: { color: 'text-success', label: 'Deployed' },
 }
 
 // Environment fields that are structural (the node itself) or already shown in
@@ -147,6 +151,15 @@ export function ProjectEnvironmentsCard({
 
   const [adding, setAdding] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<null | string>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const allExpanded =
+    environments.length > 0 && environments.every((e) => expanded.has(e.slug))
+  const toggleExpanded = (slug: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(slug)) next.add(slug)
+      return next
+    })
 
   const { data: orgEnvironments = [] } = useQuery({
     queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
@@ -188,18 +201,42 @@ export function ProjectEnvironmentsCard({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Environments</CardTitle>
-        {!adding && unassignedEnvs.length > 0 && (
-          <button
-            className="text-secondary hover:bg-secondary hover:text-primary inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors"
-            onClick={() => setAdding(true)}
-            type="button"
-          >
-            <Plus className="size-3" />
-            Add environment
-          </button>
-        )}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <div className="flex items-center gap-2">
+          <CardTitle>Environments</CardTitle>
+          <span className="bg-secondary text-secondary rounded px-1.5 py-0.5 text-xs tabular-nums">
+            {environments.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {environments.length > 0 && (
+            <button
+              className="text-secondary hover:text-primary inline-flex items-center gap-1.5 text-xs transition-colors"
+              onClick={() =>
+                setExpanded(
+                  allExpanded
+                    ? new Set()
+                    : new Set(environments.map((e) => e.slug)),
+                )
+              }
+              type="button"
+            >
+              <ChevronsUpDown className="size-3.5" />
+              {allExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          )}
+          {!adding && unassignedEnvs.length > 0 && (
+            <Button
+              onClick={() => setAdding(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Plus />
+              Add environment
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {adding && (
@@ -231,49 +268,57 @@ export function ProjectEnvironmentsCard({
                 : linkUrl
             }
             const urlText = (
-              <span className="text-primary text-sm">{displayUrl}</span>
+              <span className="text-secondary text-sm">{displayUrl}</span>
             )
             const deployment = deploymentStatus[env.slug]
-            const version = deployment
-              ? (deployment.tag ?? deployment.committish)
-              : null
             const attrs = dynamicAttributes(env)
             const urlDef = attrDefs.url ?? URL_DEF
             const showUrlBlock = isFieldEditable('url', urlDef) || !!displayUrl
+            const isOpen = expanded.has(env.slug)
             return (
               <div
-                className="group border-tertiary border-b py-4 last:border-0"
+                className="border-tertiary border-b py-3 last:border-0"
                 key={env.slug}
               >
                 <div className="flex items-center gap-x-4 gap-y-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+                  <button
+                    aria-expanded={isOpen}
+                    aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${env.name} details`}
+                    className="text-tertiary hover:text-primary shrink-0"
+                    onClick={() => toggleExpanded(env.slug)}
+                    type="button"
+                  >
+                    <ChevronRight
+                      className={`size-4 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-2">
                     <EnvironmentBadge
                       label_color={env.label_color}
                       name={env.name}
                       slug={env.slug}
                     />
                     {deployment?.status ? (
-                      <ReleaseBadge status={deployment.status} />
+                      <ReleaseStatus status={deployment.status} />
                     ) : null}
-                    {version ? (
-                      <span className="text-primary font-mono text-sm tabular-nums">
-                        {version}
-                      </span>
-                    ) : null}
+                    <Version
+                      committish={deployment?.committish}
+                      tag={deployment?.tag}
+                    />
                     {deployment?.updated ? (
-                      <span className="text-tertiary text-sm">
+                      <span className="text-secondary text-sm">
                         {deployment.updated}
                       </span>
                     ) : null}
                     {/* A newer attempt than the release above: what is
                         deploying now, or what failed trying. */}
                     {deployment?.latest ? (
-                      <span className="flex items-center gap-2">
-                        <ReleaseBadge status={deployment.latest.status} />
-                        <span className="text-secondary font-mono text-sm tabular-nums">
-                          {deployment.latest.tag ??
-                            deployment.latest.committish}
-                        </span>
+                      <span className="flex items-center gap-3">
+                        <ReleaseStatus status={deployment.latest.status} />
+                        <Version
+                          committish={deployment.latest.committish}
+                          tag={deployment.latest.tag}
+                        />
                       </span>
                     ) : null}
                   </div>
@@ -297,41 +342,51 @@ export function ProjectEnvironmentsCard({
                       {linkUrl ? (
                         <a
                           aria-label="Open URL"
-                          className="text-warning shrink-0"
+                          className="text-secondary hover:text-primary shrink-0"
                           href={linkUrl}
                           rel="noopener noreferrer"
                           target="_blank"
                         >
-                          <ExternalLink className="size-3" />
+                          <ExternalLink className="size-3.5" />
                         </a>
                       ) : null}
                     </div>
                   ) : null}
 
-                  {/* Remove — revealed on row hover (and keyboard focus). */}
-                  <button
-                    aria-label={`Remove ${env.name} environment`}
-                    className={`text-secondary hover:text-danger shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 ${showUrlBlock ? '' : 'ml-auto'}`}
-                    disabled={replacing}
-                    onClick={() => setPendingDelete(env.slug)}
-                    type="button"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        aria-label={`${env.name} actions`}
+                        className={`text-secondary hover:text-primary shrink-0 ${showUrlBlock ? '' : 'ml-auto'}`}
+                        disabled={replacing}
+                        type="button"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-danger"
+                        onSelect={() => setPendingDelete(env.slug)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Remove
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
-                {deployment?.performedBy || attrs.length > 0 ? (
-                  <div
-                    className="mt-4 grid gap-4"
-                    style={{
-                      gridTemplateColumns:
-                        'repeat(auto-fit, minmax(150px, 1fr))',
-                    }}
-                  >
+                {isOpen ? (
+                  <div className="bg-secondary mt-3 ml-8 grid grid-cols-2 gap-x-6 gap-y-5 rounded-lg p-5 lg:grid-cols-4">
+                    {!deployment?.performedBy && attrs.length === 0 ? (
+                      <p className="text-tertiary col-span-full text-sm">
+                        No details.
+                      </p>
+                    ) : null}
                     {/* Deployed by — read-only actor identity */}
                     {deployment?.performedBy ? (
                       <div className="min-w-0">
-                        <div className={OVERLINE_CLASS}>Deployed by</div>
+                        <div className={DETAIL_LABEL_CLASS}>Deployed By</div>
                         <UserIdentity
                           actor={deployment.performedBy}
                           displayNames={displayNames}
@@ -350,17 +405,11 @@ export function ProjectEnvironmentsCard({
                     {attrs.map(({ key, rawValue }) => {
                       const def = attrDefs[key]
                       const display = (
-                        <AttributeValue
-                          def={def}
-                          fallback={
-                            <span className="text-tertiary">&mdash;</span>
-                          }
-                          rawValue={rawValue}
-                        />
+                        <DetailValue def={def} rawValue={rawValue} />
                       )
                       return (
                         <div className="min-w-0" key={key}>
-                          <div className={OVERLINE_CLASS}>
+                          <div className={DETAIL_LABEL_CLASS}>
                             {def?.title || formatFieldKey(key)}
                           </div>
                           {def && isFieldEditable(key, def) ? (
@@ -573,6 +622,50 @@ function coerceDrafts(
   return fields
 }
 
+// Detail-panel value: dates show the absolute time over the relative one,
+// booleans a check/cross with Yes/No; everything else uses AttributeValue.
+// fallow-ignore-next-line complexity
+function DetailValue({
+  def,
+  rawValue,
+}: {
+  def?: ProjectSchemaSectionProperty
+  rawValue: unknown
+}) {
+  // Blueprint x-ui color/icon maps win: AttributeValue applies them.
+  const plain = !def?.['x-ui']
+  const isDate = def?.format === 'date-time' || def?.format === 'date'
+  if (plain && isDate && rawValue != null && rawValue !== '') {
+    return (
+      <div className="text-sm">
+        <div className="text-primary">
+          {formatByFormat(String(rawValue), def?.format)}
+        </div>
+        <div className="text-secondary">{formatFieldValue(rawValue, def)}</div>
+      </div>
+    )
+  }
+  if (plain && (def?.type === 'boolean' || typeof rawValue === 'boolean')) {
+    const yes = rawValue === true || rawValue === 'true'
+    const Icon = yes ? Check : X
+    return (
+      <span className="text-primary flex items-center gap-1.5 text-sm">
+        <Icon
+          className={`size-3.5 ${yes ? 'text-success' : 'text-tertiary'}`}
+        />
+        {yes ? 'Yes' : 'No'}
+      </span>
+    )
+  }
+  return (
+    <AttributeValue
+      def={def}
+      fallback={<span className="text-tertiary">&mdash;</span>}
+      rawValue={rawValue}
+    />
+  )
+}
+
 // Blueprint-defined edge attributes for a single environment, ordered
 // deterministically by key. Membership is dynamic — whatever the project's
 // relationship blueprint declares flows through here, no hard-coded columns.
@@ -618,14 +711,36 @@ function isDraftField(key: string, def: ProjectSchemaSectionProperty): boolean {
   return key !== 'url' && simple && isFieldEditable(key, def)
 }
 
-function ReleaseBadge({ status }: { status: string }) {
+// Status as a colored dot (spinner while deploying) beside a muted label.
+function ReleaseStatus({ status }: { status: string }) {
   const meta = RELEASE_STATUS[status as DeploymentStatus]
   if (!meta) return null
-  const { Icon, label, spin, variant } = meta
   return (
-    <Badge className="gap-1" variant={variant}>
-      <Icon className={`size-3${spin ? ' animate-spin' : ''}`} />
-      {label}
-    </Badge>
+    <span className="text-secondary flex items-center gap-2 text-sm">
+      {meta.spin ? (
+        <LoaderCircle className={`size-3 animate-spin ${meta.color}`} />
+      ) : (
+        <span className={`size-2 rounded-full bg-current ${meta.color}`} />
+      )}
+      {meta.label}
+    </span>
+  )
+}
+
+// Deployed version: the tag when there is one, else the commit.
+function Version({
+  committish,
+  tag,
+}: {
+  committish?: null | string
+  tag?: null | string
+}) {
+  if (!tag && !committish) return null
+  const Icon = tag ? Tag : GitCommitHorizontal
+  return (
+    <span className="text-primary flex items-center gap-1.5 font-mono text-sm tabular-nums">
+      <Icon className="text-secondary size-3.5" />
+      {tag ?? committish}
+    </span>
   )
 }
