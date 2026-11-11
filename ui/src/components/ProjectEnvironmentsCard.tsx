@@ -635,7 +635,8 @@ function DetailValue({
   // Blueprint x-ui color/icon maps win: AttributeValue applies them.
   const plain = !def?.['x-ui']
   const isDate = def?.format === 'date-time' || def?.format === 'date'
-  if (plain && isDate && rawValue != null && rawValue !== '') {
+  const isSet = rawValue != null && rawValue !== ''
+  if (plain && isDate && isSet) {
     return (
       <div className="text-sm">
         <div className="text-primary">
@@ -645,7 +646,11 @@ function DetailValue({
       </div>
     )
   }
-  if (plain && (def?.type === 'boolean' || typeof rawValue === 'boolean')) {
+  if (
+    plain &&
+    isSet &&
+    (def?.type === 'boolean' || typeof rawValue === 'boolean')
+  ) {
     const yes = rawValue === true || rawValue === 'true'
     const Icon = yes ? Check : X
     return (

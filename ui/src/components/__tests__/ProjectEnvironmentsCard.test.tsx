@@ -216,6 +216,45 @@ describe('ProjectEnvironmentsCard details panel', () => {
     expect(screen.queryByText('Deployed By')).not.toBeInTheDocument()
   })
 
+  it('shows an unset boolean attribute as a dash, not No', async () => {
+    render(
+      <ThemeProvider>
+        <ProjectEnvironmentsCard
+          deploymentStatus={{}}
+          environments={[
+            { ...env('prod', null), pinned: false } as Environment,
+            { ...env('staging', null), pinned: null } as Environment,
+          ]}
+          orgSlug="acme"
+          projectId="1"
+          projectSchema={{
+            sections: [
+              {
+                name: 'Deployment',
+                properties: { pinned: { type: 'boolean' } },
+                scope: 'environment',
+                slug: 'deployment',
+              },
+            ],
+          }}
+        />
+      </ThemeProvider>,
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Expand prod details' }),
+    )
+    expect(screen.getByText('No')).toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse prod details' }),
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Expand staging details' }),
+    )
+    expect(screen.queryByText('No')).not.toBeInTheDocument()
+  })
+
   it('opens the remove confirmation from the row actions menu', async () => {
     renderCard()
 
