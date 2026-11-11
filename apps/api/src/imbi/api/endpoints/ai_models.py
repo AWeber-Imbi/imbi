@@ -29,7 +29,7 @@ from imbi.api.endpoints._helpers import (
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
-from imbi.common.llm import drivers
+from imbi.common.llm import discovery, drivers, prices
 
 LOGGER = logging.getLogger(__name__)
 
@@ -694,6 +694,32 @@ async def _fetch_response(db: graph.Graph, id: str) -> AIModelResponse:
     return responses[0]
 
 
+async def _persist(db: graph.Graph, node: models.AIModel) -> None:
+    """Write a validated model's properties and stamp ``updated_at``.
+
+    Raises:
+        fastapi.HTTPException: 404 when the model is gone, 409 when the
+            slug collides.
+
+    """
+    node.updated_at = datetime.datetime.now(datetime.UTC)
+    props = node.model_dump(
+        mode='json',
+        exclude={'provider', 'allowed_teams', 'id', 'created_at'},
+    )
+    set_stmt = set_clause('m', props)
+    query = f'MATCH (m:AIModel {{{{id: {{id}}}}}}) {set_stmt} RETURN m'
+    with conflict_on_unique_violation(
+        f'AI model with slug {node.slug!r} already exists'
+    ):
+        records = await db.execute(query, {**props, 'id': node.id}, ['m'])
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'AI model with id {node.id!r} not found',
+        )
+
+
 @ai_models_router.patch('/{id}', response_model=AIModelResponse)
 async def patch_ai_model(
     id: str,
@@ -775,22 +801,7 @@ async def patch_ai_model(
             db, provider.id, node.model_id, exclude_id=id
         )
 
-    node.updated_at = datetime.datetime.now(datetime.UTC)
-    props = node.model_dump(
-        mode='json',
-        exclude={'provider', 'allowed_teams', 'id', 'created_at'},
-    )
-    set_stmt = set_clause('m', props)
-    query = f'MATCH (m:AIModel {{{{id: {{id}}}}}}) {set_stmt} RETURN m'
-    with conflict_on_unique_violation(
-        f'AI model with slug {node.slug!r} already exists'
-    ):
-        records = await db.execute(query, {**props, 'id': id}, ['m'])
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'AI model with id {id!r} not found',
-        )
+    await _persist(db, node)
     if provider.id != current_response.provider_id:
         params = {'id': id, 'provider_id': provider.id}
         await db.execute(_LINK_PROVIDER_QUERY, params, ['id'])
@@ -852,7 +863,9 @@ async def import_ai_models(
     everyone;
     an admin narrows it afterwards. A ``model_id`` the provider already
     serves is reported in ``skipped`` rather than failing the batch, so
-    re-importing after adding one model is not an error.
+    re-importing after adding one model is not an error. Each model
+    takes the LiteLLM list prices it has; when the price file cannot be
+    downloaded, the models are imported without prices.
 
     Answers 201 when at least one model was created and 200 when every
     requested model was skipped, since nothing came into existence.
@@ -870,6 +883,11 @@ async def import_ai_models(
     """
     _ = auth
     provider = await ai_providers.fetch_provider(db, id)
+    try:
+        table = await prices.fetch()
+    except discovery.DiscoveryError as exc:
+        LOGGER.warning('Importing AI models without LiteLLM prices: %s', exc)
+        table = {}
     existing = await _existing_model_ids(db, provider.id)
     taken = await _taken_slugs(db)
 
@@ -881,6 +899,8 @@ async def import_ai_models(
             continue
         name = item.display_name or item.model_id
         slug = _unique_slug(slugify.slugify(name) or 'model', taken)
+        match = prices.lookup(table, item.model_id, provider.driver)
+        synced = match[1] if match else {}
         node = _build(
             {
                 'name': name,
@@ -888,6 +908,7 @@ async def import_ai_models(
                 'model_id': item.model_id,
                 'context_window': item.context_window,
                 'max_output_tokens': item.max_output_tokens,
+                **{k: v for k, v in synced.items() if v is not None},
             },
             provider,
         )
@@ -942,6 +963,190 @@ async def _taken_slugs(db: graph.Graph) -> set[str]:
         for value in (graph.parse_agtype(record['slug']) for record in records)
         if value
     }
+
+
+class PriceSyncField(pydantic.BaseModel):
+    """One price that differs: the catalog value and the LiteLLM value."""
+
+    field: str
+    current: decimal.Decimal | None
+    litellm: decimal.Decimal
+
+
+class PriceSyncModel(pydantic.BaseModel):
+    """A catalog model with prices that differ from LiteLLM."""
+
+    id: str
+    name: str
+    provider_name: str
+    litellm_key: str
+    fields: list[PriceSyncField]
+
+
+class PriceSyncPreview(pydantic.BaseModel):
+    """The differing catalog prices next to the LiteLLM list prices.
+
+    ``up_to_date`` counts the matched models with nothing to change;
+    ``unmatched`` names the models with no priced LiteLLM entry.
+    """
+
+    models: list[PriceSyncModel]
+    up_to_date: int
+    unmatched: list[str]
+
+
+class PriceSyncApplyItem(pydantic.BaseModel):
+    """One model to sync. ``overwrite`` lets a set price change."""
+
+    id: str
+    overwrite: bool = False
+
+
+class PriceSyncApplyRequest(pydantic.BaseModel):
+    """Request body for applying LiteLLM prices."""
+
+    models: list[PriceSyncApplyItem] = pydantic.Field(min_length=1)
+
+
+class PriceSyncApplyResult(pydantic.BaseModel):
+    """The ids of the models written, and of the requested models that
+    are unknown, have no LiteLLM match, or had nothing to change."""
+
+    updated: list[str]
+    skipped: list[str]
+
+
+_PRICE_SYNC_QUERY: typing.LiteralString = """
+MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
+RETURN m, p
+"""
+
+
+async def _fetch_prices() -> dict[str, prices.Prices]:
+    """Return the LiteLLM prices, or raise a sanitized 502."""
+    try:
+        return await prices.fetch()
+    except discovery.DiscoveryError as exc:
+        raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+async def _price_rows(
+    db: graph.Graph,
+) -> list[tuple[models.AIModel, tuple[str, prices.Prices] | None]]:
+    """Pair every catalog model with its LiteLLM match, if any."""
+    table = await _fetch_prices()
+    rows: list[tuple[models.AIModel, tuple[str, prices.Prices] | None]] = []
+    for record in await db.execute(_PRICE_SYNC_QUERY, {}, ['m', 'p']):
+        props, provider_props = (
+            _props(record.get('m')),
+            _props(record.get('p')),
+        )
+        if props is None or provider_props is None:
+            continue
+        node = parse_model(props, provider_props)
+        rows.append(
+            (node, prices.lookup(table, node.model_id, node.provider.driver))
+        )
+    return sorted(rows, key=lambda row: row[0].name.lower())
+
+
+def _current_prices(node: models.AIModel) -> prices.Prices:
+    return {field: getattr(node, field) for field in prices.FIELDS}
+
+
+@ai_models_router.post('/price-sync/preview', response_model=PriceSyncPreview)
+async def preview_price_sync(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ai_model:update')),
+    ],
+) -> PriceSyncPreview:
+    """Compare catalog prices with the LiteLLM list prices.
+
+    Nothing is written. A model matches on its exact ``model_id``, or on
+    ``<driver>/<model_id>`` for the ``anthropic`` and ``openai`` drivers.
+    Only the models and the prices that differ are returned.
+
+    Raises:
+        502: The LiteLLM price file could not be downloaded.
+
+    """
+    _ = auth
+    preview = PriceSyncPreview(models=[], up_to_date=0, unmatched=[])
+    for node, match in await _price_rows(db):
+        if match is None:
+            preview.unmatched.append(node.name)
+            continue
+        key, synced = match
+        current = _current_prices(node)
+        differing = prices.plan_update(current, synced, overwrite=True)
+        if not differing:
+            preview.up_to_date += 1
+            continue
+        preview.models.append(
+            PriceSyncModel(
+                id=node.id,
+                name=node.name,
+                provider_name=node.provider.name,
+                litellm_key=key,
+                fields=[
+                    PriceSyncField(
+                        field=field, current=current[field], litellm=value
+                    )
+                    for field, value in differing.items()
+                ],
+            )
+        )
+    return preview
+
+
+@ai_models_router.post(
+    '/price-sync/apply', response_model=PriceSyncApplyResult
+)
+async def apply_price_sync(
+    data: PriceSyncApplyRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ai_model:update')),
+    ],
+) -> PriceSyncApplyResult:
+    """Write LiteLLM list prices to the requested models.
+
+    A missing price is filled. A set price that differs changes only
+    when the request sets ``overwrite`` for that model, because a
+    contract rate can differ from the list price.
+
+    Raises:
+        502: The LiteLLM price file could not be downloaded.
+
+    """
+    _ = auth
+    overwrite = {item.id: item.overwrite for item in data.models}
+    result = PriceSyncApplyResult(updated=[], skipped=[])
+    for node, match in await _price_rows(db):
+        if node.id not in overwrite:
+            continue
+        changes = (
+            prices.plan_update(
+                _current_prices(node), match[1], overwrite=overwrite[node.id]
+            )
+            if match
+            else {}
+        )
+        if not changes:
+            continue
+        payload = node.model_dump(exclude={'provider', 'allowed_teams'})
+        await _persist(db, _build({**payload, **changes}, node.provider))
+        LOGGER.info(
+            'Synced LiteLLM prices for AI model %s: %s',
+            node.id,
+            ', '.join(sorted(changes)),
+        )
+        result.updated.append(node.id)
+    result.skipped = [i for i in overwrite if i not in result.updated]
+    return result
 
 
 __all__ = [

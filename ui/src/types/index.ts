@@ -111,6 +111,16 @@ export type AIModelKind = 'chat' | 'completion'
 /** `generative` returns text; `decision` returns typed judgments. */
 export type AIModelType = 'decision' | 'generative'
 
+// LiteLLM list prices next to the catalog prices, and the result of
+// writing them.
+export type AIPriceSyncApplyRequest = Schemas['PriceSyncApplyRequest']
+
+export type AIPriceSyncApplyResult = Schemas['PriceSyncApplyResult']
+
+export type AIPriceSyncModel = Schemas['PriceSyncModel']
+
+export type AIPriceSyncPreview = Schemas['PriceSyncPreview']
+
 export interface AIProvider {
   auth_kind: AIProviderAuthKind
   base_url: null | string

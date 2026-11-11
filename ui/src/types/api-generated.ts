@@ -220,6 +220,60 @@ export interface paths {
         patch: operations["patch_ai_model_api_ai_models__id__patch"];
         trace?: never;
     };
+    "/api/ai-models/price-sync/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Price Sync
+         * @description Compare catalog prices with the LiteLLM list prices.
+         *
+         *     Nothing is written. A model matches on its exact ``model_id``, or on
+         *     ``<driver>/<model_id>`` for the ``anthropic`` and ``openai`` drivers.
+         *     Only the models and the prices that differ are returned.
+         *
+         *     Raises:
+         *         502: The LiteLLM price file could not be downloaded.
+         */
+        post: operations["preview_price_sync_api_ai_models_price_sync_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-models/price-sync/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Price Sync
+         * @description Write LiteLLM list prices to the requested models.
+         *
+         *     A missing price is filled. A set price that differs changes only
+         *     when the request sets ``overwrite`` for that model, because a
+         *     contract rate can differ from the list price.
+         *
+         *     Raises:
+         *         502: The LiteLLM price file could not be downloaded.
+         */
+        post: operations["apply_price_sync_api_ai_models_price_sync_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai-provider-drivers": {
         parameters: {
             query?: never;
@@ -260,7 +314,9 @@ export interface paths {
          *     everyone;
          *     an admin narrows it afterwards. A ``model_id`` the provider already
          *     serves is reported in ``skipped`` rather than failing the batch, so
-         *     re-importing after adding one model is not an error.
+         *     re-importing after adding one model is not an error. Each model
+         *     takes the LiteLLM list prices it has; when the price file cannot be
+         *     downloaded, the models are imported without prices.
          *
          *     Answers 201 when at least one model was created and 200 when every
          *     requested model was skipped, since nothing came into existence.
@@ -16537,6 +16593,81 @@ export interface components {
             missing_score: number;
         };
         /**
+         * PriceSyncApplyItem
+         * @description One model to sync. ``overwrite`` lets a set price change.
+         */
+        PriceSyncApplyItem: {
+            /** Id */
+            id: string;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /**
+         * PriceSyncApplyRequest
+         * @description Request body for applying LiteLLM prices.
+         */
+        PriceSyncApplyRequest: {
+            /** Models */
+            models: components["schemas"]["PriceSyncApplyItem"][];
+        };
+        /**
+         * PriceSyncApplyResult
+         * @description The ids of the models written, and of the requested models that
+         *     are unknown, have no LiteLLM match, or had nothing to change.
+         */
+        PriceSyncApplyResult: {
+            /** Updated */
+            updated: string[];
+            /** Skipped */
+            skipped: string[];
+        };
+        /**
+         * PriceSyncField
+         * @description One price that differs: the catalog value and the LiteLLM value.
+         */
+        PriceSyncField: {
+            /** Field */
+            field: string;
+            /** Current */
+            current: string | null;
+            /** Litellm */
+            litellm: string;
+        };
+        /**
+         * PriceSyncModel
+         * @description A catalog model with prices that differ from LiteLLM.
+         */
+        PriceSyncModel: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider Name */
+            provider_name: string;
+            /** Litellm Key */
+            litellm_key: string;
+            /** Fields */
+            fields: components["schemas"]["PriceSyncField"][];
+        };
+        /**
+         * PriceSyncPreview
+         * @description The differing catalog prices next to the LiteLLM list prices.
+         *
+         *     ``up_to_date`` counts the matched models with nothing to change;
+         *     ``unmatched`` names the models with no priced LiteLLM entry.
+         */
+        PriceSyncPreview: {
+            /** Models */
+            models: components["schemas"]["PriceSyncModel"][];
+            /** Up To Date */
+            up_to_date: number;
+            /** Unmatched */
+            unmatched: string[];
+        };
+        /**
          * ProblemPackageRow
          * @description One ``project + package + version`` finding.
          *
@@ -22422,6 +22553,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_price_sync_api_ai_models_price_sync_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceSyncPreview"];
+                };
+            };
+        };
+    };
+    apply_price_sync_api_ai_models_price_sync_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceSyncApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceSyncApplyResult"];
                 };
             };
             /** @description Validation Error */

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { DollarSign, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -50,6 +50,7 @@ import { CredentialsDialog } from './ai-models/CredentialsDialog'
 import { decimalToNumber } from './ai-models/decimal'
 import { DiscoverModelsDialog } from './ai-models/DiscoverModelsDialog'
 import { ModelDialog, type ModelFormValues } from './ai-models/ModelDialog'
+import { PriceSyncDialog } from './ai-models/PriceSyncDialog'
 import {
   ProviderDialog,
   type ProviderFormValues,
@@ -112,6 +113,7 @@ export function AIModelsManagement() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<ProviderFilter>('all')
   const [expandKey, setExpandKey] = useState<null | string>(null)
+  const [priceSyncOpen, setPriceSyncOpen] = useState(false)
 
   const driversQuery = useQuery({
     queryFn: ({ signal }) => listAIProviderDrivers(signal),
@@ -355,13 +357,19 @@ export function AIModelsManagement() {
         error={listError}
         errorTitle="Failed to load AI models"
         headerActions={
-          <Button
-            onClick={() => navigate(`${LIST_PATH}/new-provider`)}
-            variant="secondary"
-          >
-            <Plus className="mr-2 size-4" />
-            Add provider
-          </Button>
+          <>
+            <Button onClick={() => setPriceSyncOpen(true)} variant="secondary">
+              <DollarSign className="mr-2 size-4" />
+              Sync prices
+            </Button>
+            <Button
+              onClick={() => navigate(`${LIST_PATH}/new-provider`)}
+              variant="secondary"
+            >
+              <Plus className="mr-2 size-4" />
+              Add provider
+            </Button>
+          </>
         }
         headerExtras={
           <Select
@@ -553,6 +561,19 @@ export function AIModelsManagement() {
           }
           open
           provider={discoverProvider}
+        />
+      )}
+
+      {priceSyncOpen && (
+        <PriceSyncDialog
+          onApplied={(result) => {
+            toast.success(
+              `Updated prices for ${result.updated.length} model${result.updated.length === 1 ? '' : 's'}`,
+            )
+            setPriceSyncOpen(false)
+            invalidate()
+          }}
+          onClose={() => setPriceSyncOpen(false)}
         />
       )}
     </div>

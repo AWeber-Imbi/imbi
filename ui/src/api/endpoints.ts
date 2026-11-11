@@ -64,6 +64,9 @@ import type {
   AIModelCreate,
   AIModelImportRequest,
   AIModelImportResult,
+  AIPriceSyncApplyRequest,
+  AIPriceSyncApplyResult,
+  AIPriceSyncPreview,
   AIProvider,
   AIProviderCreate,
   AIProviderDriver,
@@ -2102,6 +2105,13 @@ export const importAIModels = (
     `/ai-providers/${encodeURIComponent(providerId)}/import-models`,
     body,
   )
+
+// POST because the preview downloads the LiteLLM price file.
+export const previewAIModelPrices = () =>
+  apiClient.post<AIPriceSyncPreview>('/ai-models/price-sync/preview')
+
+export const applyAIModelPrices = (body: AIPriceSyncApplyRequest) =>
+  apiClient.post<AIPriceSyncApplyResult>('/ai-models/price-sync/apply', body)
 
 // Admin - Auth Providers (global). Login providers are org-less
 // Integrations backed by a login-capable identity plugin. Authentication
