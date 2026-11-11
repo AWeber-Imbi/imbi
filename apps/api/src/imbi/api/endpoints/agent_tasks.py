@@ -95,8 +95,10 @@ class AgentTaskCreate(pydantic.BaseModel):
     description: str = pydantic.Field(
         min_length=1, description='The instruction for the agent.'
     )
-    project_ids: list[str] = pydantic.Field(
-        default_factory=list, description='The projects of the task.'
+    project_ids: list[_ShortText] = pydantic.Field(
+        default_factory=list,
+        max_length=50,
+        description='The projects of the task.',
     )
     budget: decimal.Decimal | None = pydantic.Field(
         default=None,
@@ -1376,7 +1378,9 @@ async def retry_agent_task(
     if not records:
         raise _unprocessable('The agent of the task is not in the org')
     last_turn = await store.last_agent_turn(task)
-    create = AgentTaskCreate(
+    # Not validated: the projects are stored associations, and a task can
+    # have more of them than the 50 that a create request allows.
+    create = AgentTaskCreate.model_construct(
         agent_slug=str(graph.parse_agtype(records[0]['slug'])),
         title=task['title'],
         description=retry_description(task, last_turn, data.note, user.email),
