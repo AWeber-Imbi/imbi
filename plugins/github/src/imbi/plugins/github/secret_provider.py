@@ -482,7 +482,8 @@ class GitHubApp(secrets.SecretProvider):
         """Check that the GitHub API answers. No credentials are used.
 
         A GHEC tenant refuses each anonymous call (401 or 404), so each
-        answer other than 429 or 5xx shows that the API answers.
+        answer other than a redirect, 429 or 5xx shows that the API
+        answers. A redirect is usually a proxy login page.
         """
         try:
             async with httpx.AsyncClient(
@@ -495,7 +496,8 @@ class GitHubApp(secrets.SecretProvider):
             return secrets.Health('unhealthy', err.reason)
         except httpx.TransportError:
             return secrets.Health('unhealthy', 'unreachable')
-        if response.status_code == 429 or response.status_code >= 500:
+        status = response.status_code
+        if 300 <= status < 400 or status == 429 or status >= 500:
             return secrets.Health('unhealthy', 'provider_error')
         return secrets.Health('healthy', identity={'host': _host(config)})
 

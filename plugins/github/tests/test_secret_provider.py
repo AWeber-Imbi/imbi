@@ -567,7 +567,11 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         health = await APP.health(CONFIG, 'org')
         self.assertEqual(health.status, 'healthy')
         ghec = 'https://api.aweber.ghe.com/meta'
-        for status, expected in ((404, 'healthy'), (503, 'unhealthy')):
+        for status, expected in (
+            (404, 'healthy'),
+            (302, 'unhealthy'),
+            (503, 'unhealthy'),
+        ):
             respx.get(ghec).mock(return_value=httpx.Response(status))
             health = await APP.health({'host': 'aweber.ghe.com'}, 'org')
             self.assertEqual(health.status, expected, status)
