@@ -607,33 +607,24 @@ class ClaudeSettingsTests(unittest.TestCase):
             ["the organization enforces claude_settings 'permissions.deny'"],
         )
 
-    def test_agent_hooks_need_bash(self) -> None:
+    def test_agent_hooks_need_the_org_opt_in(self) -> None:
         settings = models.AgentSettings(
             claude_settings=models.ClaudeSettings.model_validate(
                 {'hooks': HOOKS}
             )
         )
-        for config in (
-            platform.AgentPlatformConfig(denied_tools=['Bash']),
-            platform.AgentPlatformConfig(allowed_tools=['Read']),
-            platform.AgentPlatformConfig(approval_tools=['Bash']),
-            platform.AgentPlatformConfig(permission_mode='plan'),
-            platform.AgentPlatformConfig(
-                sandbox=models.AgentSandbox(enabled=True)
-            ),
-            platform.AgentPlatformConfig(
-                claude_settings=models.ClaudeSettings.model_validate(
-                    {'permissions': {'deny': ['Bash(curl *)']}}
-                )
-            ),
-        ):
-            with self.subTest(config=config):
-                self.assertEqual(len(platform.widenings(config, settings)), 1)
-                merged = platform.merge(config, settings)
-                self.assertNotIn('hooks', merged.claude_settings)
-                self.assertEqual(merged.claude_settings_dropped, ['hooks'])
+        config = platform.AgentPlatformConfig()
         self.assertEqual(
-            platform.widenings(platform.AgentPlatformConfig(), settings), []
+            platform.widenings(config, settings),
+            ['the organization does not allow agent claude_settings hooks'],
+        )
+        merged = platform.merge(config, settings)
+        self.assertNotIn('hooks', merged.claude_settings)
+        self.assertEqual(merged.claude_settings_dropped, ['hooks'])
+        config = platform.AgentPlatformConfig(allow_agent_hooks=True)
+        self.assertEqual(platform.widenings(config, settings), [])
+        self.assertEqual(
+            platform.merge(config, settings).claude_settings, {'hooks': HOOKS}
         )
 
     def test_merge_replaces_each_path_the_org_does_not_enforce(self) -> None:
