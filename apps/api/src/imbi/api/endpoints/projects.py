@@ -4148,15 +4148,6 @@ async def delete_project(
             detail=f'Project {project_id!r} not found',
         )
     await _search_index.drop(db, models.Project, project_id)
-    # After the graph delete: if this fails, a grant keeps an id that
-    # no project has, which matches nothing.
-    await secrets.remove_project(
-        organizations.organization_id(
-            graph.parse_agtype(records[0]['org_id']), org_slug
-        ),
-        project_id,
-        auth.principal_name,
-    )
 
     # Project node is gone; never let a dispatch hiccup turn a
     # successful delete into a 500.  ``delete_repository=false`` skips
@@ -4179,4 +4170,13 @@ async def delete_project(
                 'Lifecycle dispatch failed after deleting project %s',
                 project_id,
             )
+    # After the graph delete and the dispatch: if this fails, a grant
+    # keeps an id that no project has, which matches nothing.
+    await secrets.remove_project(
+        organizations.organization_id(
+            graph.parse_agtype(records[0]['org_id']), org_slug
+        ),
+        project_id,
+        auth.principal_name,
+    )
     return ProjectDeletedResponse(lifecycle_results=lifecycle_results)
