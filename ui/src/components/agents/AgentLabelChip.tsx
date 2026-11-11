@@ -28,7 +28,7 @@ export function AgentLabelChip({
 }
 
 export function AgentLabels({ tags }: { tags: ChipTag[] }) {
-  if (tags.length === 0) return <span className="text-sm text-tertiary">—</span>
+  if (tags.length === 0) return <span className="text-tertiary text-sm">—</span>
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (

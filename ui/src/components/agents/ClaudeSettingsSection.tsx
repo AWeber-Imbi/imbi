@@ -63,7 +63,7 @@ export function ClaudeSettingsSection({
           }
           label="Organization"
         >
-          <pre className="h-41 overflow-auto rounded-md border border-tertiary bg-secondary p-2 font-mono text-xs text-secondary">
+          <pre className="border-tertiary bg-secondary text-secondary h-41 overflow-auto rounded-md border p-2 font-mono text-xs">
             {org || 'None'}
           </pre>
         </Field>

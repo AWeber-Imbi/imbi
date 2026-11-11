@@ -126,7 +126,7 @@ export function UsagePage() {
           </SelectContent>
         </Select>
         <button
-          className="ml-1 text-xs text-action hover:underline"
+          className="text-action ml-1 text-xs hover:underline"
           onClick={reset}
           type="button"
         >
@@ -137,13 +137,13 @@ export function UsagePage() {
       {usage.error ? (
         <ErrorBanner error={usage.error} title="Failed to load usage" />
       ) : !usage.data ? (
-        <p className="text-sm text-tertiary">Loading…</p>
+        <p className="text-tertiary text-sm">Loading…</p>
       ) : (
         <>
           <CapWarnings agents={agents} usage={usage.data} />
           <UsageTotals usage={usage.data} />
           {usage.data.unpriced_reports > 0 && (
-            <p className="text-xs text-tertiary">
+            <p className="text-tertiary text-xs">
               {formatCount(usage.data.unpriced_reports)} usage report
               {usage.data.unpriced_reports === 1 ? '' : 's'} had no price and
               count as $0.
@@ -250,8 +250,8 @@ function UsageChart({
   const label = (key: string) => (key === OTHER ? 'Other agents' : nameOf(key))
 
   return (
-    <div className="rounded-lg border border-border bg-card">
-      <div className="flex items-end justify-between border-b border-border px-5 py-4">
+    <div className="border-border bg-card rounded-lg border">
+      <div className="border-border flex items-end justify-between border-b px-5 py-4">
         <SegmentedControl
           ariaLabel="Chart metric"
           onValueChange={(v) => onMetric(v as Metric)}
@@ -262,7 +262,7 @@ function UsageChart({
             Token usage
           </SegmentedControlItem>
         </SegmentedControl>
-        <span className="flex items-center gap-4 font-mono text-xs text-tertiary tabular-nums">
+        <span className="text-tertiary flex items-center gap-4 font-mono text-xs tabular-nums">
           <span>
             by agent · {metric === 'cost' ? 'dollars' : 'tokens'} per day
           </span>
@@ -270,7 +270,7 @@ function UsageChart({
         </span>
       </div>
       {usage.agents.length === 0 ? (
-        <p className="px-5 py-10 text-center text-sm text-tertiary">
+        <p className="text-tertiary px-5 py-10 text-center text-sm">
           No usage in this range.
         </p>
       ) : (
@@ -299,7 +299,7 @@ function UsageChart({
               </button>
             ))}
             {focus && (
-              <span className="ml-auto text-xs text-tertiary">
+              <span className="text-tertiary ml-auto text-xs">
                 Showing {label(focus)} only. Click again to show all.
               </span>
             )}
@@ -326,16 +326,16 @@ function UsageTable({
   const head = 'text-overline text-tertiary px-5 py-2.5 text-right uppercase'
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+    <div className="border-border bg-card overflow-hidden rounded-lg border">
+      <div className="border-border flex items-center justify-between border-b px-5 py-4">
         <h3 className="text-card-title">Usage by agent</h3>
-        <span className="text-xs text-tertiary">
+        <span className="text-tertiary text-xs">
           Grouped by agent · last {range} days
         </span>
       </div>
       <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-border">
+          <tr className="border-border border-b">
             <th className={`${head} text-left`}>Agent</th>
             <th className={head}>Tasks</th>
             <th className={head}>Tokens in</th>
@@ -349,7 +349,7 @@ function UsageTable({
             const key = keyOf(row.agent_id) ?? row.agent_id
             return (
               <tr
-                className={`cursor-pointer border-b border-border hover:bg-secondary ${focus && focus !== key ? 'opacity-45' : ''} ${focus === key ? 'bg-secondary' : ''}`}
+                className={`border-border hover:bg-secondary cursor-pointer border-b ${focus && focus !== key ? 'opacity-45' : ''} ${focus === key ? 'bg-secondary' : ''}`}
                 key={row.agent_id}
                 onClick={() => onFocus(focus === key ? null : key)}
               >
@@ -421,14 +421,14 @@ function UsageTotals({ usage }: { usage: AgentUsage }) {
     <div className="grid grid-cols-3 gap-4">
       {tiles.map((t) => (
         <div
-          className="flex flex-col gap-1 rounded-lg border border-border bg-card px-5 py-4"
+          className="border-border bg-card flex flex-col gap-1 rounded-lg border px-5 py-4"
           key={t.label}
         >
-          <span className="text-xs text-secondary">{t.label}</span>
+          <span className="text-secondary text-xs">{t.label}</span>
           <span className="font-mono text-2xl tracking-tight tabular-nums">
             {t.value}
           </span>
-          <span className="text-xs text-tertiary">{t.note}</span>
+          <span className="text-tertiary text-xs">{t.note}</span>
         </div>
       ))}
     </div>

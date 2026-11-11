@@ -92,7 +92,7 @@ export function DashboardPage() {
   const canRead = useHasPermission('agent_task:read', orgSlug)
   if (!orgSlug || !canRead) {
     return (
-      <div className="p-8 text-center text-tertiary">
+      <div className="text-tertiary p-8 text-center">
         {orgSlug
           ? 'You do not have permission to read agent tasks.'
           : 'Select an organization to see agent tasks.'}
@@ -116,7 +116,7 @@ function BusiestAgents({
   const max = rows[0]?.tasks ?? 0
   return (
     <Card
-      action={<span className="text-xs text-tertiary">30 days</span>}
+      action={<span className="text-tertiary text-xs">30 days</span>}
       title="Busiest agents"
     >
       {rows.length === 0 ? (
@@ -127,13 +127,13 @@ function BusiestAgents({
             <li className="flex flex-col gap-1" key={row.agent_id}>
               <span className="flex items-baseline justify-between">
                 <span className="text-sm">{nameOf(row.agent_id)}</span>
-                <span className="font-mono text-xs text-tertiary tabular-nums">
+                <span className="text-tertiary font-mono text-xs tabular-nums">
                   {formatCount(row.tasks)}
                 </span>
               </span>
-              <span className="h-1.5 w-full overflow-hidden rounded-full bg-tertiary">
+              <span className="bg-tertiary h-1.5 w-full overflow-hidden rounded-full">
                 <span
-                  className="block h-full bg-action"
+                  className="bg-action block h-full"
                   style={{ width: `${(row.tasks / max) * 100}%` }}
                 />
               </span>
@@ -163,10 +163,10 @@ function Card({
       aria-label={title}
       className={cn('rounded-lg border border-border bg-card', className)}
     >
-      <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+      <div className="border-border flex items-center justify-between gap-4 border-b px-5 py-4">
         <div>
           <h2 className="text-card-title">{title}</h2>
-          {subtitle && <p className="text-xs text-tertiary">{subtitle}</p>}
+          {subtitle && <p className="text-tertiary text-xs">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -191,7 +191,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
     )
   }
   if (!open.data || !recent.data || !usage.data) {
-    return <p className="p-8 text-sm text-tertiary">Loading…</p>
+    return <p className="text-tertiary p-8 text-sm">Loading…</p>
   }
 
   // The time of the last list read: ages change when the lists refresh.
@@ -343,7 +343,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
 
 function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="px-5 py-10 text-center text-sm text-tertiary">{children}</p>
+    <p className="text-tertiary px-5 py-10 text-center text-sm">{children}</p>
   )
 }
 
@@ -383,11 +383,11 @@ function NeedsAttention({
       action={
         <span className="flex items-center gap-3">
           {acknowledge.error && (
-            <span className="text-xs text-danger" role="alert">
+            <span className="text-danger text-xs" role="alert">
               {errorMessage(acknowledge.error)}
             </span>
           )}
-          <span className="font-mono text-xs text-tertiary tabular-nums">
+          <span className="text-tertiary font-mono text-xs tabular-nums">
             {items.length} open
           </span>
         </span>
@@ -405,7 +405,7 @@ function NeedsAttention({
         <ul>
           {items.map((item) => (
             <li
-              className="flex items-center border-b border-border pr-3 transition-colors last:border-b-0 hover:bg-secondary"
+              className="border-border hover:bg-secondary flex items-center border-b pr-3 transition-colors last:border-b-0"
               key={item.key}
             >
               <Link
@@ -415,11 +415,11 @@ function NeedsAttention({
                 <Badge variant={item.tone}>{item.kind}</Badge>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{item.title}</span>
-                  <span className="block truncate text-xs text-tertiary">
+                  <span className="text-tertiary block truncate text-xs">
                     {item.meta}
                   </span>
                 </span>
-                <span className="font-mono text-xs text-tertiary tabular-nums">
+                <span className="text-tertiary font-mono text-xs tabular-nums">
                   {item.age}
                 </span>
               </Link>
@@ -459,7 +459,7 @@ function RecentRuns({
     <Card
       action={
         <Link
-          className="text-sm text-action hover:underline"
+          className="text-action text-sm hover:underline"
           to={agentsPath('tasks')}
         >
           All tasks
@@ -472,26 +472,26 @@ function RecentRuns({
       ) : (
         <ul>
           {tasks.map((t) => (
-            <li className="border-b border-border last:border-b-0" key={t.id}>
+            <li className="border-border border-b last:border-b-0" key={t.id}>
               <Link
-                className="flex items-center gap-4 px-5 py-3 transition-colors hover:bg-secondary"
+                className="hover:bg-secondary flex items-center gap-4 px-5 py-3 transition-colors"
                 to={agentsPath('tasks', orgSlug, t.short_id)}
               >
-                <span className="w-16 shrink-0 font-mono text-xs text-tertiary tabular-nums">
+                <span className="text-tertiary w-16 shrink-0 font-mono text-xs tabular-nums">
                   {t.short_id}
                 </span>
                 <span className="w-32 shrink-0 truncate text-sm">
                   {nameOf(t.agent_id)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm text-secondary">
+                <span className="text-secondary min-w-0 flex-1 truncate text-sm">
                   {t.title}
                 </span>
                 <Badge variant={statusVariant(t)}>{statusLabel(t)}</Badge>
-                <span className="w-20 text-right font-mono text-xs text-tertiary tabular-nums">
+                <span className="text-tertiary w-20 text-right font-mono text-xs tabular-nums">
                   {formatMoney(t.cost_total)}
                 </span>
                 <RelativeTime
-                  className="w-12 text-right text-xs text-tertiary"
+                  className="text-tertiary w-12 text-right text-xs"
                   tooltip={false}
                   value={t.created_at}
                   variant="narrow"
@@ -525,12 +525,12 @@ function Tile({
   const max = Math.max(0, ...(spark ?? []).map((s) => s.value))
   return (
     <Link
-      className="flex flex-col rounded-lg border border-tertiary bg-primary p-5 transition-colors hover:bg-secondary"
+      className="border-tertiary bg-primary hover:bg-secondary flex flex-col rounded-lg border p-5 transition-colors"
       to={to}
     >
       <span className="flex items-start justify-between">
         <span className="text-overline text-tertiary uppercase">{label}</span>
-        <Icon className="size-4 text-tertiary" />
+        <Icon className="text-tertiary size-4" />
       </span>
       <span className="mt-2 flex items-end justify-between gap-3">
         <span className="flex flex-col">
@@ -542,7 +542,7 @@ function Tile({
           >
             {value}
           </span>
-          <span className="mt-1 text-xs text-tertiary">{note}</span>
+          <span className="text-tertiary mt-1 text-xs">{note}</span>
         </span>
         {spark && (
           <span
@@ -613,7 +613,7 @@ function WaitingOnPeople({
             waits.length ? 'text-danger' : undefined,
           )}
           <Link
-            className="text-sm text-action hover:underline"
+            className="text-action text-sm hover:underline"
             to={agentsPath('tasks')}
           >
             View all
@@ -628,7 +628,7 @@ function WaitingOnPeople({
       ) : (
         <table className="w-full border-collapse">
           <thead>
-            <tr className="border-b border-border bg-secondary">
+            <tr className="border-border bg-secondary border-b">
               <th className={`${head} text-left`}>Person</th>
               <th className={`${head} text-right`}>Waiting</th>
               <th className={`${head} text-left`}>Oldest wait</th>
@@ -638,7 +638,7 @@ function WaitingOnPeople({
           <tbody>
             {rows.map(([owner, ms]) => (
               <tr
-                className="border-b border-border last:border-b-0"
+                className="border-border border-b last:border-b-0"
                 key={owner}
               >
                 <td className="px-5 py-3">
@@ -649,7 +649,7 @@ function WaitingOnPeople({
                 </td>
                 <td className="px-5 py-3">
                   <span className="flex items-center gap-3">
-                    <span className="h-1.5 w-24 overflow-hidden rounded-full bg-tertiary">
+                    <span className="bg-tertiary h-1.5 w-24 overflow-hidden rounded-full">
                       <span
                         className={cn(
                           'block h-full',
@@ -662,12 +662,12 @@ function WaitingOnPeople({
                         style={{ width: `${(ms[0] / (longest || 1)) * 100}%` }}
                       />
                     </span>
-                    <span className="font-mono text-xs text-secondary tabular-nums">
+                    <span className="text-secondary font-mono text-xs tabular-nums">
                       {formatElapsed(ms[0])}
                     </span>
                   </span>
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-sm text-secondary tabular-nums">
+                <td className="text-secondary px-5 py-3 text-right font-mono text-sm tabular-nums">
                   {formatElapsed(median(ms))}
                 </td>
               </tr>

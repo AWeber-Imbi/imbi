@@ -122,7 +122,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
     <div className="flex flex-col gap-4">
       <div>
         <div className="text-overline text-tertiary uppercase">Tools</div>
-        <p className="mt-1 text-xs text-tertiary">
+        <p className="text-tertiary mt-1 text-xs">
           Switch on each Imbi API tool the agent may call. Other MCP servers
           come with the plugins in the Plugins section.
         </p>
@@ -173,7 +173,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
             <RefreshCw className={cn(refresh.isPending && 'animate-spin')} />
           </Button>
         )}
-        <span className="font-mono text-sm whitespace-nowrap text-tertiary tabular-nums">
+        <span className="text-tertiary font-mono text-sm whitespace-nowrap tabular-nums">
           {enabled} of {total} enabled
         </span>
       </div>
@@ -203,7 +203,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
           />
         ))}
         {filtering && views.length === 0 && (
-          <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-tertiary">
+          <div className="border-border bg-card text-tertiary rounded-lg border p-8 text-center text-sm">
             No tools match that search.
           </div>
         )}
@@ -247,7 +247,7 @@ function RateLimitButton({
     >
       <PopoverTrigger asChild>
         <button
-          className="h-7 rounded-md border border-input px-2 font-mono text-xs whitespace-nowrap text-secondary hover:bg-secondary"
+          className="border-input text-secondary hover:bg-secondary h-7 rounded-md border px-2 font-mono text-xs whitespace-nowrap"
           title="Rate limit"
           type="button"
         >
@@ -256,7 +256,7 @@ function RateLimitButton({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64">
         <div className="flex flex-col gap-3">
-          <p className="text-xs font-medium tracking-wide text-secondary uppercase">
+          <p className="text-secondary text-xs font-medium tracking-wide uppercase">
             Rate limit
           </p>
           <div className="flex gap-2">
@@ -282,7 +282,7 @@ function RateLimitButton({
             </Select>
           </div>
           {count.trim() && !valid && (
-            <p className="text-xs text-danger">Enter a whole number above 0</p>
+            <p className="text-danger text-xs">Enter a whole number above 0</p>
           )}
           <div className="flex justify-end gap-2">
             {config.rate_limit && (
@@ -332,18 +332,18 @@ function ToolGroupCard({
   const shown = view.rows.slice(0, ROW_LIMIT)
   const Chevron = isOpen ? ChevronDown : ChevronRight
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-center gap-3 border-b border-border px-5 py-3">
+    <div className="border-border bg-card overflow-hidden rounded-lg border">
+      <div className="border-border flex items-center gap-3 border-b px-5 py-3">
         <button
           aria-expanded={isOpen}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
           onClick={onToggleOpen}
           type="button"
         >
-          <Chevron className="size-4 shrink-0 text-tertiary" />
+          <Chevron className="text-tertiary size-4 shrink-0" />
           <span className="truncate text-sm font-semibold">{view.name}</span>
         </button>
-        <span className="font-mono text-xs whitespace-nowrap text-secondary tabular-nums">
+        <span className="text-secondary font-mono text-xs whitespace-nowrap tabular-nums">
           {on} of {listed.length} enabled
         </span>
         {(listed.length > 0 || on > 0) && (
@@ -372,7 +372,7 @@ function ToolGroupCard({
       </div>
       {view.error && (
         <div
-          className="flex items-center gap-2 border-b border-border px-5 py-3 text-sm text-danger"
+          className="border-border text-danger flex items-center gap-2 border-b px-5 py-3 text-sm"
           role="alert"
         >
           <AlertCircle className="size-4 shrink-0" />
@@ -394,13 +394,13 @@ function ToolGroupCard({
             />
           ))}
           {view.rows.length > shown.length && (
-            <div className="px-5 py-2 text-xs text-tertiary">
+            <div className="text-tertiary px-5 py-2 text-xs">
               Showing {shown.length} of {view.rows.length} tools. Search to
               narrow.
             </div>
           )}
           {view.rows.length === 0 && !view.error && (
-            <div className="px-5 py-3 text-xs text-tertiary">
+            <div className="text-tertiary px-5 py-3 text-xs">
               The catalog lists no tools.
             </div>
           )}
@@ -420,7 +420,7 @@ function ToolRowView({
   const capability = CAPABILITIES.find((c) => c.slug === row.capability)
   const all = environments.map((e) => e.slug)
   return (
-    <div className="flex items-center gap-4 border-b border-border px-5 py-3 last:border-b-0">
+    <div className="border-border flex items-center gap-4 border-b px-5 py-3 last:border-b-0">
       <Switch
         aria-label={`Enable ${row.key}`}
         checked={!!config}
@@ -437,7 +437,7 @@ function ToolRowView({
           {row.key}
         </div>
         <div
-          className="truncate text-xs text-tertiary"
+          className="text-tertiary truncate text-xs"
           title={row.description ?? undefined}
         >
           {row.unavailable

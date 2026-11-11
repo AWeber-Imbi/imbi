@@ -39,16 +39,16 @@ export function Field({
 }) {
   return (
     <div>
-      <Label className="mb-1.5 block text-sm text-secondary" htmlFor={htmlFor}>
+      <Label className="text-secondary mb-1.5 block text-sm" htmlFor={htmlFor}>
         {label}
       </Label>
       {children}
       {error ? (
-        <p className="mt-1.5 text-xs text-danger" role="alert">
+        <p className="text-danger mt-1.5 text-xs" role="alert">
           {error}
         </p>
       ) : (
-        help && <p className="mt-1.5 text-xs text-tertiary">{help}</p>
+        help && <p className="text-tertiary mt-1.5 text-xs">{help}</p>
       )}
     </div>
   )

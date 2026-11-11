@@ -107,22 +107,22 @@ export function SubagentsTab({
           value={search}
         />
       )}
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <div className="border-border bg-card overflow-hidden rounded-lg border">
+        <div className="border-border flex items-center justify-between border-b px-5 py-3">
           <span className="text-overline text-tertiary uppercase">
             Delegates to
           </span>
-          <span className="font-mono text-xs text-secondary tabular-nums">
+          <span className="text-secondary font-mono text-xs tabular-nums">
             {selectedCount} of {choices.length} agents
           </span>
         </div>
         {choices.length === 0 && (
-          <p className="px-5 py-4 text-sm text-tertiary">
+          <p className="text-tertiary px-5 py-4 text-sm">
             There are no other agents in this organization.
           </p>
         )}
         {choices.length > 0 && shown.length === 0 && (
-          <p className="px-5 py-4 text-sm text-tertiary">
+          <p className="text-tertiary px-5 py-4 text-sm">
             No agents match that search.
           </p>
         )}
@@ -158,25 +158,25 @@ function SubagentRow({
   const Caret = showPrompt ? ChevronUp : ChevronDown
   const fieldId = `subagent-instructions-${agent.id}`
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div className="border-border border-b last:border-b-0">
       <div className="flex items-center gap-3 px-5 py-3">
         <Checkbox
           aria-label={`Delegate to ${agent.name}`}
           checked={!!selected}
           onCheckedChange={(checked) => onToggle(checked === true)}
         />
-        <Icon className="size-4 shrink-0 text-secondary" />
+        <Icon className="text-secondary size-4 shrink-0" />
         <span className="w-33 shrink-0 truncate text-sm font-medium">
           {agent.name}
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs text-secondary">
+        <span className="text-secondary min-w-0 flex-1 truncate text-xs">
           {agent.description}
         </span>
         {!agent.enabled && <Badge variant="neutral">Disabled</Badge>}
         {selected && (
           <button
             aria-expanded={showPrompt}
-            className="flex h-7 items-center gap-1.5 rounded-md border border-input px-2 text-xs whitespace-nowrap text-secondary hover:bg-secondary"
+            className="border-input text-secondary hover:bg-secondary flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs whitespace-nowrap"
             onClick={onToggleOpen}
             type="button"
           >
@@ -186,9 +186,9 @@ function SubagentRow({
         )}
       </div>
       {showPrompt && (
-        <div className="border-t border-border bg-secondary py-4 pr-5 pl-14">
+        <div className="border-border bg-secondary border-t py-4 pr-5 pl-14">
           <label
-            className="mb-1.5 block text-sm text-secondary"
+            className="text-secondary mb-1.5 block text-sm"
             htmlFor={fieldId}
           >
             Delegation instructions for {agent.name}
@@ -201,7 +201,7 @@ function SubagentRow({
             rows={4}
             value={selected.instructions}
           />
-          <p className="mt-1.5 text-xs text-tertiary">
+          <p className="text-tertiary mt-1.5 text-xs">
             Appended to {agent.name}&apos;s own system prompt when this agent
             delegates to it. Leave empty to delegate with the task context
             alone.

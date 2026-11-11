@@ -100,7 +100,7 @@ export function AgentEditor({ agent, orgSlug, source }: AgentEditorProps) {
           title={`Failed to load the prompt ${ref}`}
         />
         <button
-          className="self-start text-sm text-action"
+          className="text-action self-start text-sm"
           onClick={() =>
             navigate(agentsPath('manage', ...(agent ? [agent.slug] : [])))
           }
@@ -203,7 +203,7 @@ function AgentEditorForm({
 
       {save.error && (
         <div
-          className="flex items-start gap-3 rounded-lg border border-danger bg-danger p-4 text-danger"
+          className="border-danger bg-danger text-danger flex items-start gap-3 rounded-lg border p-4"
           role="alert"
         >
           <AlertCircle className="size-5 shrink-0" />
@@ -214,7 +214,7 @@ function AgentEditorForm({
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-border" role="tablist">
+      <div className="border-border flex gap-1 border-b" role="tablist">
         {tabs.map((t) => (
           <button
             aria-selected={tab === t.key}
@@ -231,7 +231,7 @@ function AgentEditorForm({
           >
             {t.label}
             {(t.key === 'tools' || t.key === 'subagents') && (
-              <span className="ml-2 font-mono text-xs text-tertiary tabular-nums">
+              <span className="text-tertiary ml-2 font-mono text-xs tabular-nums">
                 {t.key === 'tools'
                   ? Object.keys(draft.tools).length
                   : draft.subagents.length}

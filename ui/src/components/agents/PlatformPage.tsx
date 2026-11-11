@@ -88,7 +88,7 @@ export function PlatformPage() {
 
   if (!orgSlug) {
     return (
-      <div className="p-8 text-center text-tertiary">
+      <div className="text-tertiary p-8 text-center">
         Select an organization to see its agent platform.
       </div>
     )
@@ -172,24 +172,24 @@ function MarketplacesCard({
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-b border-tertiary px-5 py-3.5">
+      <div className="border-tertiary border-b px-5 py-3.5">
         <div className="text-[15px] font-medium">Plugin marketplaces</div>
-        <p className="text-xs text-tertiary">
+        <p className="text-tertiary text-xs">
           Claude Code plugin marketplaces, read through the organization's
           GitHub integration at the head of the default branch.
         </p>
       </div>
       {marketplaces.length === 0 ? (
-        <p className="px-5 py-4 text-sm text-tertiary">No marketplaces.</p>
+        <p className="text-tertiary px-5 py-4 text-sm">No marketplaces.</p>
       ) : (
-        <ul className="divide-y divide-tertiary">
+        <ul className="divide-tertiary divide-y">
           {marketplaces.map((m) => (
             <li className="flex items-center gap-3 px-5 py-2.5" key={m.slug}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{m.slug}</span>
                   {m.name && (
-                    <span className="font-mono text-xs text-tertiary">
+                    <span className="text-tertiary font-mono text-xs">
                       {m.name}
                     </span>
                   )}
@@ -199,17 +199,17 @@ function MarketplacesCard({
                     </Badge>
                   )}
                 </div>
-                <div className="truncate font-mono text-xs text-secondary">
+                <div className="text-secondary truncate font-mono text-xs">
                   {m.url}
                 </div>
               </div>
-              <span className="text-xs whitespace-nowrap text-secondary">
+              <span className="text-secondary text-xs whitespace-nowrap">
                 {m.plugins?.length ?? 0} plugins
               </span>
-              <span className="font-mono text-xs text-tertiary">
+              <span className="text-tertiary font-mono text-xs">
                 {m.head_sha?.slice(0, 7) ?? '—'}
               </span>
-              <span className="text-xs whitespace-nowrap text-tertiary">
+              <span className="text-tertiary text-xs whitespace-nowrap">
                 {m.synced_at ? formatRelativeDate(m.synced_at) : 'never'}
               </span>
               {canWrite && (
@@ -239,7 +239,7 @@ function MarketplacesCard({
       )}
       {canWrite && (
         <form
-          className="flex items-end gap-3 border-t border-tertiary px-5 py-3"
+          className="border-tertiary flex items-end gap-3 border-t px-5 py-3"
           onSubmit={(e) => {
             e.preventDefault()
             create.mutate()
@@ -355,7 +355,7 @@ function ConfigCard({
       <div className="flex items-center gap-3">
         <div>
           <div className="text-[15px] font-medium">Base configuration</div>
-          <p className="text-xs text-tertiary">
+          <p className="text-tertiary text-xs">
             {stored.version
               ? `Version ${stored.version}, saved ${formatRelativeDate(stored.created_at ?? '')} by ${stored.created_by}`
               : 'No version yet. The defaults apply.'}
@@ -597,10 +597,10 @@ function ConfigCard({
           Allowed marketplaces and default plugins
         </div>
         {marketplaces.length === 0 && (
-          <p className="text-sm text-tertiary">Add a marketplace first.</p>
+          <p className="text-tertiary text-sm">Add a marketplace first.</p>
         )}
         {marketplaces.map((m) => (
-          <div className="rounded-lg border border-tertiary" key={m.slug}>
+          <div className="border-tertiary rounded-lg border" key={m.slug}>
             <label className="flex items-center gap-2 px-3 py-2 text-sm">
               <Checkbox
                 checked={allowed.has(m.slug)}
@@ -617,10 +617,10 @@ function ConfigCard({
                 }
               />
               <span className="font-medium">{m.slug}</span>
-              <span className="font-mono text-xs text-tertiary">{m.url}</span>
+              <span className="text-tertiary font-mono text-xs">{m.url}</span>
             </label>
             {allowed.has(m.slug) && (
-              <div className="grid grid-cols-3 gap-x-4 gap-y-1 border-t border-tertiary px-3 py-2">
+              <div className="border-tertiary grid grid-cols-3 gap-x-4 gap-y-1 border-t px-3 py-2">
                 {(m.plugins ?? []).map((p) => (
                   <label
                     className="flex items-center gap-2 font-mono text-xs"

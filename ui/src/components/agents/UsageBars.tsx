@@ -50,7 +50,7 @@ export function UsageBars({
       >
         {ticks.map((t) => (
           <span
-            className="font-mono text-xs text-tertiary tabular-nums"
+            className="text-tertiary font-mono text-xs tabular-nums"
             key={t}
           >
             {format((max / 4) * t)}
@@ -104,10 +104,10 @@ export function UsageBars({
             </svg>
           )}
         </div>
-        <div className="mt-2 flex border-t border-border pt-2">
+        <div className="border-border mt-2 flex border-t pt-2">
           {days.map((day, i) => (
             <span
-              className="flex-1 text-center font-mono text-xs whitespace-nowrap text-tertiary"
+              className="text-tertiary flex-1 text-center font-mono text-xs whitespace-nowrap"
               key={day}
             >
               {i % tickEvery === 0 ? formatDay(day) : ''}

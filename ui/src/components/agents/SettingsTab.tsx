@@ -173,7 +173,7 @@ function EgressField({
       label="Egress destinations"
     >
       {options.length === 0 ? (
-        <p className="text-sm text-tertiary">
+        <p className="text-tertiary text-sm">
           {destinations.isLoading ? 'Loading…' : 'No destinations available.'}
         </p>
       ) : (
@@ -189,7 +189,7 @@ function EgressField({
                 }
               />
               {o.name}
-              <span className="font-mono text-xs text-tertiary">{o.slug}</span>
+              <span className="text-tertiary font-mono text-xs">{o.slug}</span>
             </label>
           ))}
         </div>

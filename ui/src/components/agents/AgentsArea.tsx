@@ -101,7 +101,7 @@ function AgentsSidebar({
         {groups.map((group) => (
           <div className="flex flex-col gap-1" key={group}>
             {open && group !== 'Agentic platform' && (
-              <div className="px-3 py-1 text-overline text-tertiary uppercase">
+              <div className="text-overline text-tertiary px-3 py-1 uppercase">
                 {group}
               </div>
             )}
@@ -149,7 +149,7 @@ function AgentsSidebar({
           </div>
         ))}
       </nav>
-      <div className="shrink-0 border-t border-tertiary bg-primary px-3 py-1.5">
+      <div className="border-tertiary bg-primary shrink-0 border-t px-3 py-1.5">
         <button
           aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
           className={cn(

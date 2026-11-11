@@ -90,7 +90,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
       {versions.error ? (
         <ErrorBanner error={versions.error} title="Failed to load versions" />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-border bg-card overflow-hidden rounded-lg border">
           {versions.isLoading && (
             <div className="flex flex-col gap-3 p-5">
               <Sk h={20} r={4} />
@@ -101,7 +101,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
             const current = v.n === agent.version
             return (
               <div
-                className="flex items-center gap-4 border-b border-border px-5 py-3 last:border-b-0"
+                className="border-border flex items-center gap-4 border-b px-5 py-3 last:border-b-0"
                 key={v.n}
               >
                 <span className="w-8.5 font-mono text-sm font-semibold tabular-nums">
@@ -112,7 +112,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
                   <div className="truncate text-sm">
                     {v.summary || 'No summary'}
                   </div>
-                  <div className="text-xs text-tertiary">
+                  <div className="text-tertiary text-xs">
                     {formatRelativeDate(v.created_at)} · {v.created_by}
                     {v.snapshot.prompt_version != null &&
                       ` · prompt v${v.snapshot.prompt_version}`}
@@ -135,12 +135,12 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
       )}
 
       {canDelete && (
-        <div className="rounded-lg border border-destructive bg-card p-6">
+        <div className="border-destructive bg-card rounded-lg border p-6">
           <div className="text-overline text-destructive uppercase">
             Delete agent
           </div>
           <div className="mt-2 flex items-center gap-6">
-            <p className="flex-1 text-sm text-pretty text-secondary">
+            <p className="text-secondary flex-1 text-sm text-pretty">
               {locked
                 ? `${agent.name} is a subagent of ${delegators.length} agent${delegators.length === 1 ? '' : 's'}. Remove it from each agent below before it can be deleted.`
                 : 'Deletes the agent and its version history. Its prompt stays in the prompt CMS.'}
@@ -155,7 +155,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
             </Button>
           </div>
           {locked && (
-            <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
+            <div className="border-border mt-4 flex flex-col gap-2 border-t pt-4">
               {delegators.map((d) => (
                 <div className="flex items-center gap-3 text-sm" key={d.id}>
                   <Link
@@ -164,7 +164,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
                   >
                     {d.name}
                   </Link>
-                  <span className="font-mono text-xs text-tertiary">
+                  <span className="text-tertiary font-mono text-xs">
                     {d.slug}
                   </span>
                 </div>

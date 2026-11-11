@@ -102,17 +102,17 @@ export function AssociatedProjectsTab({
         Projects this task reads from or writes to
       </PanelHeader>
       {(projects.error ?? unlink.error) && (
-        <p className="px-6 py-3 text-sm text-danger" role="alert">
+        <p className="text-danger px-6 py-3 text-sm" role="alert">
           {errorMessage((projects.error ?? unlink.error)!)}
         </p>
       )}
       <ul aria-label="Associated projects">
         {(projects.data ?? []).map((p) => (
           <li
-            className="flex items-center gap-4 border-b border-tertiary px-6 py-3"
+            className="border-tertiary flex items-center gap-4 border-b px-6 py-3"
             key={p.project_id}
           >
-            <Box className="size-4 shrink-0 text-tertiary" />
+            <Box className="text-tertiary size-4 shrink-0" />
             <span
               className={cn(
                 'max-w-72 min-w-44 truncate text-sm font-medium',
@@ -121,17 +121,17 @@ export function AssociatedProjectsTab({
             >
               {p.name ?? p.project_slug}
             </span>
-            <span className="min-w-0 flex-1 truncate font-mono text-xs text-tertiary">
+            <span className="text-tertiary min-w-0 flex-1 truncate font-mono text-xs">
               {p.project_slug}
             </span>
             {p.primary && <Badge variant="neutral">Primary</Badge>}
             {!p.available && (
-              <span className="text-xs text-tertiary">No longer available</span>
+              <span className="text-tertiary text-xs">No longer available</span>
             )}
             {editable && !p.primary ? (
               <button
                 aria-label={`Remove project ${p.project_slug}`}
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-tertiary transition-colors hover:text-danger"
+                className="text-tertiary hover:text-danger flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
                 disabled={unlink.isPending}
                 onClick={() => unlink.mutate(p.project_id)}
                 title="Remove project"
@@ -157,7 +157,7 @@ export function AssociatedProjectsTab({
         ))}
       </ul>
       {projects.data?.length === 0 && (
-        <p className="px-6 py-10 text-center text-sm text-tertiary">
+        <p className="text-tertiary px-6 py-10 text-center text-sm">
           No associated projects.
         </p>
       )}
@@ -218,11 +218,11 @@ export function LinkProjectDialog({
           />
           <ul
             aria-label="Projects"
-            className="max-h-80 overflow-y-auto rounded-md border border-tertiary"
+            className="border-tertiary max-h-80 overflow-y-auto rounded-md border"
           >
             {results.map((p) => (
               <li
-                className="border-b border-tertiary last:border-b-0"
+                className="border-tertiary border-b last:border-b-0"
                 key={p.id}
               >
                 <button
@@ -234,29 +234,29 @@ export function LinkProjectDialog({
                   onClick={() => setPick(pick === p.id ? null : p.id)}
                   type="button"
                 >
-                  <Box className="size-4 shrink-0 text-tertiary" />
+                  <Box className="text-tertiary size-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {p.name}
                   </span>
-                  <span className="text-xs whitespace-nowrap text-tertiary">
+                  <span className="text-tertiary text-xs whitespace-nowrap">
                     {p.team.name}
                   </span>
                 </button>
               </li>
             ))}
             {results.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-tertiary">
+              <li className="text-tertiary px-4 py-8 text-center text-sm">
                 No projects match that search.
               </li>
             )}
           </ul>
           {link.error && (
-            <p className="text-sm text-danger" role="alert">
+            <p className="text-danger text-sm" role="alert">
               {errorMessage(link.error)}
             </p>
           )}
           <div className="flex items-center justify-end gap-3">
-            <span className="text-sm text-secondary">
+            <span className="text-secondary text-sm">
               {picked ? `Linking ${picked.name}` : 'Choose a project to link'}
             </span>
             <Button
@@ -319,11 +319,11 @@ export function LinkTaskDialog({
           />
           <ul
             aria-label="Tasks"
-            className="max-h-80 overflow-y-auto rounded-md border border-tertiary"
+            className="border-tertiary max-h-80 overflow-y-auto rounded-md border"
           >
             {results.map((t) => (
               <li
-                className="border-b border-tertiary last:border-b-0"
+                className="border-tertiary border-b last:border-b-0"
                 key={t.id}
               >
                 <button
@@ -337,13 +337,13 @@ export function LinkTaskDialog({
                   }
                   type="button"
                 >
-                  <span className="shrink-0 font-mono text-xs text-tertiary tabular-nums">
+                  <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
                     {t.short_id}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {t.title}
                   </span>
-                  <span className="text-xs whitespace-nowrap text-tertiary">
+                  <span className="text-tertiary text-xs whitespace-nowrap">
                     {agents?.find((a) => a.id === t.agent_id)?.name ?? ''}
                   </span>
                   <Badge variant={statusVariant(t)}>{statusLabel(t)}</Badge>
@@ -351,7 +351,7 @@ export function LinkTaskDialog({
               </li>
             ))}
             {found.data && results.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-tertiary">
+              <li className="text-tertiary px-4 py-8 text-center text-sm">
                 No tasks match that search.
               </li>
             )}
@@ -377,14 +377,14 @@ export function LinkTaskDialog({
                 </SegmentedControlItem>
               ))}
             </SegmentedControl>
-            <p className="text-sm text-secondary">
+            <p className="text-secondary text-sm">
               {pick
                 ? linkHint(shortId, pick, kind)
                 : 'Choose a task above, then set the relationship.'}
             </p>
           </div>
           {link.error && (
-            <p className="text-sm text-danger" role="alert">
+            <p className="text-danger text-sm" role="alert">
               {errorMessage(link.error)}
             </p>
           )}
@@ -469,43 +469,43 @@ export function RelatedTasksTab({
         Tasks this one requires or is required by, and its delegation
       </PanelHeader>
       {relations.error && (
-        <p className="px-6 py-3 text-sm text-danger" role="alert">
+        <p className="text-danger px-6 py-3 text-sm" role="alert">
           {errorMessage(relations.error)}
         </p>
       )}
       {unlink.error && (
-        <p className="px-6 py-3 text-sm text-danger" role="alert">
+        <p className="text-danger px-6 py-3 text-sm" role="alert">
           {errorMessage(unlink.error)}
         </p>
       )}
       <ul aria-label="Related tasks">
         {rows.map((row) => (
           <li
-            className="flex items-center gap-4 border-b border-tertiary px-6 py-3 hover:bg-secondary"
+            className="border-tertiary hover:bg-secondary flex items-center gap-4 border-b px-6 py-3"
             key={`${row.kind}-${row.task.short_id}`}
           >
             <span className="flex w-44 shrink-0 items-center gap-1.5">
               <Badge variant={row.tone}>{row.kind}</Badge>
-              <span className="text-xs text-tertiary">{row.alias}</span>
+              <span className="text-tertiary text-xs">{row.alias}</span>
             </span>
             <Link
               className="flex min-w-0 flex-1 items-center gap-4"
               to={agentsPath('tasks', orgSlug, row.task.short_id)}
             >
-              <span className="shrink-0 font-mono text-xs text-tertiary tabular-nums">
+              <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
                 {row.task.short_id}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm">
                 {row.task.title}
               </span>
-              <span className="text-xs whitespace-nowrap text-tertiary">
+              <span className="text-tertiary text-xs whitespace-nowrap">
                 {agents?.find((a) => a.id === row.task.agent_id)?.name ?? ''}
               </span>
               <Badge variant={statusVariant(row.task)}>
                 {statusLabel(row.task)}
               </Badge>
               <RelativeTime
-                className="w-20 text-right font-mono text-xs whitespace-nowrap text-tertiary"
+                className="text-tertiary w-20 text-right font-mono text-xs whitespace-nowrap"
                 tooltip={false}
                 value={row.task.created_at}
               />
@@ -513,7 +513,7 @@ export function RelatedTasksTab({
             {canManage && row.link ? (
               <button
                 aria-label={`Remove ${row.kind.toLowerCase()} ${row.task.short_id}`}
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-tertiary transition-colors hover:text-danger"
+                className="text-tertiary hover:text-danger flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
                 disabled={unlink.isPending}
                 onClick={() => unlink.mutate(row.link!)}
                 title="Remove link"
@@ -528,7 +528,7 @@ export function RelatedTasksTab({
         ))}
       </ul>
       {r && rows.length === 0 && (
-        <p className="px-6 py-10 text-center text-sm text-tertiary">
+        <p className="text-tertiary px-6 py-10 text-center text-sm">
           No related tasks.
         </p>
       )}
@@ -560,8 +560,8 @@ function PanelHeader({
   children: ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-tertiary px-6 py-3">
-      <span className="text-xs text-tertiary">{children}</span>
+    <div className="border-tertiary flex items-center gap-3 border-b px-6 py-3">
+      <span className="text-tertiary text-xs">{children}</span>
       <span className="ml-auto">{action}</span>
     </div>
   )

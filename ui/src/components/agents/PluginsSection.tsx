@@ -77,7 +77,7 @@ export function PluginsSection({
       <section className="flex flex-col gap-3">
         <div>
           <div className="text-overline text-tertiary uppercase">Plugins</div>
-          <p className="mt-1 text-xs text-tertiary">
+          <p className="text-tertiary mt-1 text-xs">
             Skills, commands, subagents, and MCP servers from the marketplaces
             that the organization allows (Agents › Platform). While a plugin is
             on, the agent can use every tool of its MCP servers. A save pins
@@ -85,7 +85,7 @@ export function PluginsSection({
           </p>
         </div>
         {shown.length === 0 && !config.isLoading && (
-          <p className="text-sm text-tertiary">
+          <p className="text-tertiary text-sm">
             The organization allows no marketplace yet.
           </p>
         )}
@@ -100,8 +100,8 @@ export function PluginsSection({
           />
         ))}
         {orphans.length > 0 && (
-          <div className="rounded-lg border border-tertiary p-3">
-            <div className="text-xs text-warning">
+          <div className="border-tertiary rounded-lg border p-3">
+            <div className="text-warning text-xs">
               Not in an allowed marketplace now. Runners leave these out.
             </div>
             {orphans.map((p) => (
@@ -137,17 +137,17 @@ function MarketplacePlugins({
   selected: AgentPlugin[]
 }) {
   return (
-    <div className="rounded-lg border border-tertiary">
-      <div className="flex items-center gap-2 border-b border-tertiary px-3 py-2">
+    <div className="border-tertiary rounded-lg border">
+      <div className="border-tertiary flex items-center gap-2 border-b px-3 py-2">
         <span className="text-sm font-medium">{marketplace.slug}</span>
-        <span className="truncate font-mono text-xs text-tertiary">
+        <span className="text-tertiary truncate font-mono text-xs">
           {marketplace.url}
         </span>
-        <span className="ml-auto font-mono text-xs text-tertiary">
+        <span className="text-tertiary ml-auto font-mono text-xs">
           {short(marketplace.head_sha) || 'not synced'}
         </span>
       </div>
-      <ul className="divide-y divide-tertiary">
+      <ul className="divide-tertiary divide-y">
         {(marketplace.plugins ?? []).map((plugin) => {
           const isDefault = defaults.some(
             (d) =>
@@ -181,7 +181,7 @@ function MarketplacePlugins({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs">{plugin.name}</span>
                   {plugin.version && (
-                    <span className="text-xs text-tertiary">
+                    <span className="text-tertiary text-xs">
                       {plugin.version}
                     </span>
                   )}
@@ -195,13 +195,13 @@ function MarketplacePlugins({
                     </Badge>
                   )}
                   {chosen?.sha && (
-                    <span className="font-mono text-xs text-tertiary">
+                    <span className="text-tertiary font-mono text-xs">
                       pinned {short(chosen.sha)}
                     </span>
                   )}
                   {stale && (
                     <button
-                      className="text-xs text-action hover:underline"
+                      className="text-action text-xs hover:underline"
                       onClick={() => onRepin(chosen)}
                       type="button"
                     >
@@ -210,12 +210,12 @@ function MarketplacePlugins({
                   )}
                 </div>
                 {plugin.description && (
-                  <p className="mt-0.5 text-xs text-secondary">
+                  <p className="text-secondary mt-0.5 text-xs">
                     {plugin.description}
                   </p>
                 )}
                 {plugin.mcp_servers.length > 0 && (
-                  <p className="mt-0.5 text-xs text-tertiary">
+                  <p className="text-tertiary mt-0.5 text-xs">
                     MCP {plugin.mcp_servers.length > 1 ? 'servers' : 'server'}:{' '}
                     <span className="font-mono">
                       {plugin.mcp_servers.join(', ')}

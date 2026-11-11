@@ -61,7 +61,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
     render: (a: Agent) => {
       const u = usageOf(a)
       return (
-        <span className="font-mono text-sm text-secondary tabular-nums">
+        <span className="text-secondary font-mono text-sm tabular-nums">
           {u ? value(u) : '—'}
         </span>
       )
@@ -145,7 +145,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
             ),
             key: 'team',
             render: (a) => (
-              <span className="text-sm text-secondary">
+              <span className="text-secondary text-sm">
                 {a.team?.name ?? '—'}
               </span>
             ),
@@ -220,13 +220,13 @@ function AgentNameCell({ agent }: { agent: Agent }) {
   const Icon = useIcon(agent.icon, Bot)
   return (
     <div className="flex items-center gap-3">
-      <Icon className="size-4 shrink-0 text-secondary" />
+      <Icon className="text-secondary size-4 shrink-0" />
       <div className="flex min-w-0 flex-col">
         <span className="text-sm font-medium whitespace-nowrap">
           {agent.name}
         </span>
         {agent.description && (
-          <span className="max-w-65 truncate text-xs text-tertiary">
+          <span className="text-tertiary max-w-65 truncate text-xs">
             {agent.description}
           </span>
         )}

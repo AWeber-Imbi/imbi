@@ -40,8 +40,8 @@ export function SystemPromptTab({ onChange, value }: SystemPromptTabProps) {
           <SegmentedControlItem value="split">Split</SegmentedControlItem>
           <SegmentedControlItem value="preview">Preview</SegmentedControlItem>
         </SegmentedControl>
-        <span className="text-xs text-tertiary">Markdown</span>
-        <span className="ml-auto font-mono text-xs text-tertiary tabular-nums">
+        <span className="text-tertiary text-xs">Markdown</span>
+        <span className="text-tertiary ml-auto font-mono text-xs tabular-nums">
           {words.toLocaleString()} words · ~{tokens.toLocaleString()} tokens
         </span>
       </div>
@@ -62,25 +62,25 @@ export function SystemPromptTab({ onChange, value }: SystemPromptTabProps) {
           />
         )}
         {mode !== 'write' && (
-          <div className="max-h-180 min-h-155 overflow-y-auto rounded-md border border-border bg-card px-6 py-5">
+          <div className="border-border bg-card max-h-180 min-h-155 overflow-y-auto rounded-md border px-6 py-5">
             <MarkdownPreview value={value} />
           </div>
         )}
       </div>
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="mb-1 text-overline text-tertiary uppercase">
+      <div className="border-border bg-card rounded-lg border p-6">
+        <div className="text-overline text-tertiary mb-1 uppercase">
           Available variables
         </div>
-        <p className="mb-3 text-xs text-tertiary">
+        <p className="text-tertiary mb-3 text-xs">
           Imbi fills in these values when a runner starts a task.
         </p>
         <div className="flex flex-col gap-2">
           {VARIABLES.map((v) => (
             <div className="flex items-baseline gap-4" key={v.token}>
-              <span className="w-50 font-mono text-xs text-action">
+              <span className="text-action w-50 font-mono text-xs">
                 {v.token}
               </span>
-              <span className="text-xs text-secondary">{v.note}</span>
+              <span className="text-secondary text-xs">{v.note}</span>
             </div>
           ))}
         </div>

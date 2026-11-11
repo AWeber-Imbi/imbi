@@ -124,8 +124,8 @@ export function ConversationTab({
   useScrollToHash(shown.length > 0)
 
   return (
-    <div className="flex min-h-full flex-col bg-tertiary">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-tertiary bg-primary px-6 py-2.5">
+    <div className="bg-tertiary flex min-h-full flex-col">
+      <div className="border-tertiary bg-primary sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b px-6 py-2.5">
         {CHIPS.map((chip) => (
           <Chip
             count={counts[chip.key]}
@@ -158,7 +158,7 @@ export function ConversationTab({
           <SegmentedControlItem value="full">Full</SegmentedControlItem>
         </SegmentedControl>
         <div className="relative ml-auto">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-tertiary" />
+          <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
           <Input
             aria-label="Search this task"
             className="h-8 w-48 pl-8 text-xs"
@@ -171,12 +171,12 @@ export function ConversationTab({
       </div>
       <ol className="flex-1 py-4">
         {all.length === 0 && (
-          <li className="px-6 py-4 text-sm text-tertiary">
+          <li className="text-tertiary px-6 py-4 text-sm">
             No conversation yet.
           </li>
         )}
         {all.length > 0 && shown.length === 0 && (
-          <li className="px-6 py-4 text-sm text-tertiary">
+          <li className="text-tertiary px-6 py-4 text-sm">
             Nothing matches these filters.
           </li>
         )}
@@ -236,9 +236,9 @@ export function toolSummary(tool: string, args: unknown): string {
 
 function AgentMessage({ body, name }: { body: string; name: string }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-tertiary bg-primary px-4 pt-3 pb-3.5 shadow-xs">
+    <div className="border-tertiary bg-primary flex flex-col gap-2 rounded-lg border px-4 pt-3 pb-3.5 shadow-xs">
       <div className="flex items-center gap-2">
-        <span className="grid size-5 place-items-center rounded-full bg-action text-[10px] font-semibold text-action-foreground">
+        <span className="bg-action text-action-foreground grid size-5 place-items-center rounded-full text-[10px] font-semibold">
           {name.slice(0, 1).toUpperCase()}
         </span>
         <span className="text-sm font-semibold">{name}</span>
@@ -286,7 +286,7 @@ function Chip({
         )}
       />
       {label}
-      <span className="text-[11px] text-tertiary tabular-nums">{count}</span>
+      <span className="text-tertiary text-[11px] tabular-nums">{count}</span>
     </button>
   )
 }
@@ -330,8 +330,8 @@ function Diff({ args }: { args: Record<string, unknown> }) {
   const cut = !all && rows.length > OUTPUT_LINES
   return (
     <>
-      <div className="overflow-x-auto rounded-md border border-tertiary">
-        <div className="bg-secondary px-3 py-1.5 font-mono text-xs text-secondary">
+      <div className="border-tertiary overflow-x-auto rounded-md border">
+        <div className="bg-secondary text-secondary px-3 py-1.5 font-mono text-xs">
           {String(args.file_path ?? args.notebook_path ?? '')}
         </div>
         <pre className="py-1 font-mono text-xs leading-relaxed whitespace-pre-wrap">
@@ -373,7 +373,7 @@ function EntryBody({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
       return <Thinking ctx={ctx} id={entry.id} text={body} />
     if (e.payload.kind === 'warning')
       return (
-        <div className="flex max-w-[74ch] items-start gap-2 rounded-lg border border-warning bg-warning px-3 py-2 text-sm text-warning">
+        <div className="border-warning bg-warning text-warning flex max-w-[74ch] items-start gap-2 rounded-lg border px-3 py-2 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           {body}
         </div>
@@ -395,7 +395,7 @@ function EntryBody({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
   }
   if (e.type === 'todos.updated') return <Todos event={e} />
   return (
-    <span className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary">
+    <span className="bg-secondary text-secondary inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs">
       {systemText(e)}
     </span>
   )
@@ -418,17 +418,17 @@ function HumanMessage({
   event: AgentTaskEvent
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-info/40 bg-info px-4 pt-3 pb-3.5">
+    <div className="border-info/40 bg-info flex flex-col gap-2 rounded-lg border px-4 pt-3 pb-3.5">
       <div className="flex items-center gap-2">
         <UserIdentity email={event.actor_id ?? ''} size="small" />
         <Badge variant="info">Person</Badge>
         {!['harness', 'web'].includes(event.channel) && (
-          <span className="text-xs text-tertiary">via {event.channel}</span>
+          <span className="text-tertiary text-xs">via {event.channel}</span>
         )}
       </div>
       <Prose>{body}</Prose>
       {typeof event.payload.decision === 'string' && (
-        <p className="text-sm text-secondary">{event.payload.decision}</p>
+        <p className="text-secondary text-sm">{event.payload.decision}</p>
       )}
     </div>
   )
@@ -497,7 +497,7 @@ function ResultOutput({ error, result }: { error: boolean; result: string }) {
   if (!result) return null
   return (
     <>
-      <span className="text-[10.5px] font-semibold tracking-wide text-tertiary uppercase">
+      <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
         Output
       </span>
       <Output error={error} text={result} />
@@ -525,7 +525,7 @@ function Row({
       id={e ? `e${e.seq}` : undefined}
     >
       <a
-        className="pt-3 pr-1.5 text-right font-mono text-[11px] text-tertiary tabular-nums hover:text-info"
+        className="text-tertiary hover:text-info pt-3 pr-1.5 text-right font-mono text-[11px] tabular-nums"
         href={e ? `#e${e.seq}` : undefined}
         title="Link to this event"
       >
@@ -557,7 +557,7 @@ function Row({
 function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
   return (
     <button
-      className="self-start text-xs text-info hover:underline"
+      className="text-info self-start text-xs hover:underline"
       onClick={onClick}
       type="button"
     >
@@ -578,11 +578,11 @@ function Thinking({
   const open = ctx.isOpen(id)
   return (
     <Collapsible
-      className="rounded-lg border border-amber-border/50 bg-amber-bg/50"
+      className="border-amber-border/50 bg-amber-bg/50 rounded-lg border"
       onOpenChange={() => ctx.toggle(id)}
       open={open}
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-amber-text">
+      <CollapsibleTrigger className="text-amber-text flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs">
         <ChevronRight
           className={cn('size-3.5 transition-transform', open && 'rotate-90')}
         />
@@ -592,7 +592,7 @@ function Thinking({
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <p className="max-w-[80ch] px-4 pb-3 pl-8 text-[13px] leading-relaxed whitespace-pre-wrap text-secondary italic">
+        <p className="text-secondary max-w-[80ch] px-4 pb-3 pl-8 text-[13px] leading-relaxed whitespace-pre-wrap italic">
           {text}
         </p>
       </CollapsibleContent>
@@ -606,8 +606,8 @@ function Todos({ event }: { event: AgentTaskEvent }) {
     title?: string
   }[]
   return (
-    <div className="inline-flex flex-col gap-1 rounded-lg border border-tertiary bg-primary px-3 py-2">
-      <span className="text-[10.5px] font-semibold tracking-wide text-tertiary uppercase">
+    <div className="border-tertiary bg-primary inline-flex flex-col gap-1 rounded-lg border px-3 py-2">
+      <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
         Plan · {todos.filter((t) => t.done).length} of {todos.length} done
       </span>
       <ul className="flex flex-col gap-0.5 text-xs">
@@ -653,7 +653,7 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
       onOpenChange={() => ctx.toggle(entry.id)}
       open={open}
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm hover:bg-tertiary">
+      <CollapsibleTrigger className="hover:bg-tertiary flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm">
         <ChevronRight
           className={cn(
             'size-3.5 shrink-0 text-tertiary transition-transform',
@@ -686,13 +686,13 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
         {entry.children.length > 0 && (
           <Badge variant="accent">{entry.children.length} steps</Badge>
         )}
-        <span className="font-mono text-[11px] whitespace-nowrap text-tertiary tabular-nums">
+        <span className="text-tertiary font-mono text-[11px] whitespace-nowrap tabular-nums">
           {ms == null ? '' : ms < 1000 ? `${ms}ms` : formatElapsed(ms)}
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2 border-t border-tertiary px-3 pt-2.5 pb-3">
+      <CollapsibleContent className="border-tertiary flex flex-col gap-2 border-t px-3 pt-2.5 pb-3">
         {denied && (
-          <p className="rounded-md bg-danger px-2.5 py-1.5 text-xs text-danger">
+          <p className="bg-danger text-danger rounded-md px-2.5 py-1.5 text-xs">
             {label(
               (p.policy as { reason?: unknown }).reason ??
                 'Denied by policy before it ran.',
@@ -700,7 +700,7 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
           </p>
         )}
         <div className="flex items-center gap-2">
-          <span className="text-[10.5px] font-semibold tracking-wide text-tertiary uppercase">
+          <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
             {json ? 'Raw event' : family === 'shell' ? 'Terminal' : 'Input'}
           </span>
           <SegmentedControl
@@ -728,8 +728,8 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
         )}
       </CollapsibleContent>
       {entry.children.length > 0 && (
-        <div className="mx-3 mb-3 ml-6 flex flex-col gap-2 border-l-2 border-accent/40 pt-1 pl-3.5">
-          <span className="text-[10.5px] font-semibold tracking-wide text-accent uppercase">
+        <div className="border-accent/40 mx-3 mb-3 ml-6 flex flex-col gap-2 border-l-2 pt-1 pl-3.5">
+          <span className="text-accent text-[10.5px] font-semibold tracking-wide uppercase">
             {String(args.subagent_type ?? 'Subagent')}
           </span>
           {entry.children.map((child) => (

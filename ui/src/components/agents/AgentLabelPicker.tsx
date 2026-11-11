@@ -120,7 +120,7 @@ export function AgentLabelPicker({
             </CommandList>
           </Command>
           {q && !exists && (
-            <div className="flex flex-col gap-2 border-t border-tertiary p-3">
+            <div className="border-tertiary flex flex-col gap-2 border-t p-3">
               <div className="text-overline text-tertiary uppercase">
                 New label color
               </div>
