@@ -700,7 +700,8 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
             placeholder="What should the agent do differently? (optional)"
             // A failed retry can still have made the task, and a repeat
             // with the same key returns it unchanged, so lock the note.
-            readOnly={retry.isError && !rejected}
+            // Also lock it while the request runs.
+            readOnly={retry.isPending || (retry.isError && !rejected)}
             rows={4}
             value={note}
           />

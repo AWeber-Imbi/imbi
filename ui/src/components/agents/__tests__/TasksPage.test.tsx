@@ -710,6 +710,22 @@ describe('Tasks', () => {
     expect(second).toBe(first)
   })
 
+  it('locks the note while a retry is pending', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+      ...closedTask(1),
+      outcome: 'failed_error',
+    })
+    vi.mocked(endpoints.retryAgentTask).mockReturnValue(new Promise(() => {}))
+    renderAt('/agents/tasks/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Note for the retry')).toHaveAttribute(
+        'readonly',
+      ),
+    )
+  })
+
   it('keeps the note editable after a rejected retry', async () => {
     vi.mocked(endpoints.getAgentTask).mockResolvedValue({
       ...closedTask(1),
