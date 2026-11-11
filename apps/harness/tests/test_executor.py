@@ -133,6 +133,8 @@ class ExecutorTestCase(BaseTestCase):
                 'PATH': '/tmp/evil',
                 'GH_TOKEN': 'other',
                 'bad name': 'x',
+                # A NUL would stop the command from starting.
+                'NUL_TOKEN': 'nul\0value',
             },
         }
         self.spawn.return_value = (0, f'{member}\n'.encode(), False)
@@ -142,6 +144,7 @@ class ExecutorTestCase(BaseTestCase):
         self.assertEqual(env['SENTRY_AUTH_TOKEN'], member)
         self.assertEqual(env['PATH'], executor.PATH)
         self.assertNotIn('bad name', env)
+        self.assertNotIn('NUL_TOKEN', env)
         self.assertEqual(
             json.loads(env['GH_TOKEN']), {'SENTRY_AUTH_TOKEN': member}
         )
@@ -149,6 +152,8 @@ class ExecutorTestCase(BaseTestCase):
         # A member value is redacted too, not only the whole material.
         self.assertEqual(reply['output'], '[REDACTED]\n')
         self.assertIn(member, reply['values'])
+        # A member that is not exported is still in the raw value.
+        self.assertIn('nul\0value', reply['values'])
 
     async def test_new_nonce_for_each_materialization(self) -> None:
         await self.hello()

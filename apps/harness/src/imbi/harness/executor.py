@@ -364,22 +364,31 @@ class Executor:
             proxy, hidden = _proxy(request)
             env = {'PATH': PATH, 'HOME': home, **proxy}
             names: list[str] = []
+            # Every member value is redacted, also one that is not
+            # exported: the raw value in the target still holds it.
+            member_values: list[str] = []
             for secret, target in zip(wanted, targets, strict=True):
                 body = await self._materialized(secret, context)
                 env[target] = _material(body)
                 names.append(target)
                 # imbi-api gives only the members that the binding
-                # allows; a name that is set already keeps its value.
+                # allows; a name that is set already keeps its value. A
+                # NUL in a value would stop the command from starting.
                 members: Message = body.get('members') or {}
                 for name, value in members.items():
-                    if _ENV_NAME.match(name) and name not in env:
+                    member_values.append(value)
+                    if (
+                        _ENV_NAME.match(name)
+                        and name not in env
+                        and '\0' not in value
+                    ):
                         env[name] = value
                         names.append(name)
             # gh reads GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server
             # host and GH_TOKEN for the others (#434).
             if 'GH_TOKEN' in env:
                 env.setdefault('GH_ENTERPRISE_TOKEN', env['GH_TOKEN'])
-            values = [env[name] for name in names] + hidden
+            values = [env[name] for name in names] + member_values + hidden
             exit_code, output, dropped = await self._spawn(
                 command, cwd, env, timeout
             )

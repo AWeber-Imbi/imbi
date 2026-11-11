@@ -478,7 +478,7 @@ def _bundle(task: Row) -> Row:
             'system_prompt_prefix': '',
             'hooks': {},
             'approval_tools': options['approval_tools'],
-            'secrets': [REFERENCE],
+            'secrets': [{'reference': REFERENCE}],
             'github_app_binding': (
                 APP_REFERENCE if options.get('binding') else None
             ),
