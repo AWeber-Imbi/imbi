@@ -422,6 +422,49 @@ class ConfigTestCase(TaskTestCase):
         self.assertIn('`secret://production/github/token`', rules)
         self.assertIn(rules, subject.system_prompt())
 
+    def test_settings_put_the_harness_over_claude_settings(self) -> None:
+        hooks = {'Stop': [{'hooks': [{'type': 'command', 'command': 'x'}]}]}
+        subject = self.make(
+            hooks={'PreToolUse': []},
+            claude_settings={
+                'permissions': {'deny': ['Bash(rm *)'], 'ask': ['Edit']},
+                'hooks': hooks,
+                'includeCoAuthoredBy': False,
+            },
+        )
+        settings = subject.settings()
+        allowed, denied = subject.tools()
+        self.assertEqual(
+            settings['permissions'],
+            {
+                'deny': ['Bash(rm *)', *denied],
+                'ask': ['Edit'],
+                'allow': allowed,
+            },
+        )
+        # claude_settings wins over the field for older runners.
+        self.assertEqual(settings['hooks'], hooks)
+        self.assertFalse(settings['includeCoAuthoredBy'])
+        # The configuration is not changed.
+        self.assertEqual(
+            subject.config['claude_settings']['permissions']['deny'],
+            ['Bash(rm *)'],
+        )
+
+    def test_dropped_settings_are_a_warning(self) -> None:
+        self.run_task.note_dropped_settings()
+        self.assertEqual(self.run_task.recorder.take(), [])
+        subject = self.make(claude_settings_dropped=['hooks', 'attribution'])
+        subject.note_dropped_settings()
+        (event,) = subject.recorder.take()
+        self.assertEqual(event['payload']['kind'], 'warning')
+        self.assertIn('hooks, attribution', event['payload']['body'])
+
+    def test_settings_from_an_older_api_use_its_hooks(self) -> None:
+        subject = self.make(hooks={'PreToolUse': []})
+        subject.config.pop('claude_settings', None)
+        self.assertEqual(subject.settings()['hooks'], {'PreToolUse': []})
+
     def test_rules_give_the_hints_of_each_secret(self) -> None:
         subject = self.make(
             secrets=[
@@ -443,6 +486,12 @@ class ConfigTestCase(TaskTestCase):
             rules,
         )
         self.assertIn('  - `secret://plain/key`\n', rules)
+
+    def test_instructions_skip_a_file_that_is_not_regular(self) -> None:
+        fifo = self.tmp / 'CLAUDE.md'
+        os.mkfifo(fifo)
+        self.assertEqual(task._instruction_file(fifo), '')
+        self.assertEqual(task._instruction_file(self.tmp / 'missing'), '')
 
     def test_includes_the_repository_instructions(self) -> None:
         repo = self.tmp / 'chain' / 'repos' / 'app'

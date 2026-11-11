@@ -196,7 +196,21 @@ def widenings(
         f'the organization enforces claude_settings {path!r}'
         for path in _enforced(config, settings)
     )
+    if settings.claude_settings.hooks is not None and not _bash_allowed(
+        config
+    ):
+        # A command hook runs a shell command, like Bash.
+        problems.append(
+            'claude_settings hooks need Bash, which the organization '
+            'does not allow'
+        )
     return problems
+
+
+def _bash_allowed(config: AgentPlatformConfig) -> bool:
+    return 'Bash' not in config.denied_tools and (
+        config.allowed_tools is None or 'Bash' in config.allowed_tools
+    )
 
 
 def _enforced(

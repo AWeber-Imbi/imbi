@@ -27,6 +27,7 @@ import pathlib
 import random
 import re
 import shutil
+import stat
 import typing
 import urllib.parse
 import uuid
@@ -452,11 +453,12 @@ def _read_tree(source: pathlib.Path) -> _Tree:
             if not target.is_file() or not target.is_relative_to(root):
                 LOGGER.warning('Plugin file left out: %s', path)
                 continue
-            mode = target.stat().st_mode
-            data = target.read_bytes()
-            total += len(data)
+            status = target.stat()
+            total += status.st_size
             if total > PLUGIN_BYTES:
                 raise Failed('plugin_too_large')
+            mode = status.st_mode
+            data = target.read_bytes()
             relative = pathlib.PurePosixPath(path.relative_to(root))
             tree.append((relative, data, mode))
     return tree
@@ -489,10 +491,15 @@ def _instruction_file(path: pathlib.Path) -> str:
     """The text of a repository instruction file, at most
     :data:`INSTRUCTION_BYTES`, or empty when there is none."""
     try:
-        with path.open('rb') as file:
-            data = file.read(INSTRUCTION_BYTES + 1)
+        # Non-blocking, and regular files only: a FIFO would stop the
+        # runner's event loop.
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
         return ''
+    with os.fdopen(fd, 'rb') as file:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return ''
+        data = file.read(INSTRUCTION_BYTES + 1)
     text = data[:INSTRUCTION_BYTES].decode(errors='replace').strip()
     if len(data) > INSTRUCTION_BYTES:
         text += '\n\n[Truncated by the harness.]'
@@ -737,6 +744,7 @@ class TaskRun:
         )
         await self.start_relay()
         self.write_config()
+        self.note_dropped_settings()
         return await self.run_sdk(url)
 
     async def abandon(self, reason: str) -> None:
@@ -1292,11 +1300,27 @@ class TaskRun:
 
     def settings(self) -> Body:
         """The settings of the CLI. The SDK passes them in ``--settings``,
-        not in a file that the model could change (settings plan 4.1)."""
+        not in a file that the model could change (settings plan 4.1).
+
+        The merged organization and agent ``claude_settings``, with the
+        harness layer over them: the tool lists join their permission
+        lists, and the sandbox is the harness's.
+        """
         allowed, denied = self.tools()
-        settings: Body = {'permissions': {'allow': allowed, 'deny': denied}}
-        if self.config.get('hooks'):
-            settings['hooks'] = self.config['hooks']
+        base: Body = self.config.get('claude_settings') or {}
+        if 'claude_settings' not in self.config and self.config.get('hooks'):
+            # ponytail: an imbi-api older than claude_settings (2.45);
+            # remove when every supported API sends it.
+            base = {'hooks': self.config['hooks']}
+        permissions: Body = base.get('permissions') or {}
+        settings: Body = {
+            **base,
+            'permissions': {
+                **permissions,
+                'allow': [*permissions.get('allow', []), *allowed],
+                'deny': [*permissions.get('deny', []), *denied],
+            },
+        }
         sandbox: Body = self.config.get('sandbox') or {}
         if sandbox.get('enabled'):
             settings['sandbox'] = {
@@ -1306,6 +1330,15 @@ class TaskRun:
                 ),
             }
         return settings
+
+    def note_dropped_settings(self) -> None:
+        """Tell the reader of the task which agent settings the
+        organization's enforced paths left out (settings plan 4.2)."""
+        if dropped := api.items(self.config, 'claude_settings_dropped'):
+            self.recorder.notice(
+                'The organization enforces these Claude Code settings, so '
+                f'the agent values were left out: {", ".join(dropped)}'
+            )
 
     def instructions(self) -> str:
         """The harness rules, then each repository's ``CLAUDE.md`` and

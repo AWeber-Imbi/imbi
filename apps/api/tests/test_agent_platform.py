@@ -607,6 +607,21 @@ class ClaudeSettingsTests(unittest.TestCase):
             ["the organization enforces claude_settings 'permissions.deny'"],
         )
 
+    def test_agent_hooks_need_bash(self) -> None:
+        settings = models.AgentSettings(
+            claude_settings=models.ClaudeSettings.model_validate(
+                {'hooks': HOOKS}
+            )
+        )
+        for config in (
+            platform.AgentPlatformConfig(denied_tools=['Bash']),
+            platform.AgentPlatformConfig(allowed_tools=['Read']),
+        ):
+            self.assertEqual(len(platform.widenings(config, settings)), 1)
+        self.assertEqual(
+            platform.widenings(platform.AgentPlatformConfig(), settings), []
+        )
+
     def test_merge_replaces_each_path_the_org_does_not_enforce(self) -> None:
         config = platform.AgentPlatformConfig(
             claude_settings=models.ClaudeSettings.model_validate(
