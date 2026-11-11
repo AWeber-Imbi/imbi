@@ -1245,7 +1245,7 @@ wheels = [
 
 [[package]]
 name = "imbi"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "." }
 dependencies = [
     { name = "imbi-api" },
@@ -1358,7 +1358,7 @@ docs = [
 
 [[package]]
 name = "imbi-api"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "aioboto3" },
@@ -1440,7 +1440,7 @@ provides-extras = ["otel", "sentry"]
 
 [[package]]
 name = "imbi-assistant"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/assistant" }
 dependencies = [
     { name = "anthropic" },
@@ -1465,7 +1465,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-common"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "libraries/common" }
 dependencies = [
     { name = "argon2-cffi" },
@@ -1571,7 +1571,7 @@ provides-extras = ["databases", "llm", "mcp", "otel", "sentry", "server"]
 
 [[package]]
 name = "imbi-gateway"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/gateway" }
 dependencies = [
     { name = "cel-python" },
@@ -1600,7 +1600,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-harness"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/harness" }
 dependencies = [
     { name = "claude-agent-sdk" },
@@ -1619,7 +1619,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-mcp"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/mcp" }
 dependencies = [
     { name = "fastmcp" },
@@ -1642,7 +1642,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-anthropic"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/anthropic" }
 dependencies = [
     { name = "imbi-common" },
@@ -1657,7 +1657,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-aws"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/aws" }
 dependencies = [
     { name = "aioboto3" },
@@ -1676,7 +1676,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-github"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/github" }
 dependencies = [
     { name = "httpx" },
@@ -1695,7 +1695,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-google"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/google" }
 dependencies = [
     { name = "httpx" },
@@ -1712,7 +1712,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-logzio"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/logzio" }
 dependencies = [
     { name = "httpx" },
@@ -1729,7 +1729,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-oidc"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/oidc" }
 dependencies = [
     { name = "httpx" },
@@ -1746,7 +1746,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-openai"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/openai" }
 dependencies = [
     { name = "imbi-common" },
@@ -1761,7 +1761,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-pagerduty"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/pagerduty" }
 dependencies = [
     { name = "httpx" },
@@ -1778,7 +1778,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-sentry"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/sentry" }
 dependencies = [
     { name = "httpx" },
@@ -1795,7 +1795,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-sonarqube"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "plugins/sonarqube" }
 dependencies = [
     { name = "httpx" },
@@ -1812,7 +1812,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-scheduler"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/scheduler" }
 dependencies = [
     { name = "croniter" },
@@ -1839,7 +1839,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-slackbot"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/slackbot" }
 dependencies = [
     { name = "anthropic" },
@@ -1868,7 +1868,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-workflows"
-version = "2.45.0"
+version = "2.46.0"
 source = { editable = "apps/workflows" }
 dependencies = [
     { name = "fastapi" },
