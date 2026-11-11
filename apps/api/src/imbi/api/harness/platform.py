@@ -194,30 +194,40 @@ def widenings(
             )
     problems.extend(
         f'the organization enforces claude_settings {path!r}'
+        if path in config.enforced
+        else f'claude_settings {path!r} needs Bash with no limit, which '
+        'the organization does not allow'
         for path in _enforced(config, settings)
     )
-    if settings.claude_settings.hooks is not None and not _bash_allowed(
-        config
-    ):
-        # A command hook runs a shell command, like Bash.
-        problems.append(
-            'claude_settings hooks need Bash, which the organization '
-            'does not allow'
-        )
     return problems
 
 
-def _bash_allowed(config: AgentPlatformConfig) -> bool:
-    return 'Bash' not in config.denied_tools and (
-        config.allowed_tools is None or 'Bash' in config.allowed_tools
+def _bash_unrestricted(config: AgentPlatformConfig) -> bool:
+    """A command hook runs a shell command outside the sandbox, the
+    approvals, and plan mode: an agent can add one only when the
+    organization puts no limit on Bash."""
+    deny = (
+        config.claude_settings.permissions or models.ClaudePermissions()
+    ).deny
+    return (
+        'Bash' not in config.denied_tools
+        and (config.allowed_tools is None or 'Bash' in config.allowed_tools)
+        and 'Bash' not in config.approval_tools
+        and not any(rule.startswith('Bash') for rule in deny or [])
+        and not config.sandbox.enabled
+        and config.permission_mode != 'plan'
     )
 
 
 def _enforced(
     config: AgentPlatformConfig, settings: models.AgentSettings
 ) -> list[str]:
-    """The paths that the agent sets and the organization enforces."""
-    return sorted(set(settings.claude_settings.paths()) & set(config.enforced))
+    """The paths that the agent sets and cannot: the organization
+    enforces them, or they are hooks and Bash has a limit."""
+    enforced = set(config.enforced)
+    if not _bash_unrestricted(config):
+        enforced.add('hooks')
+    return sorted(set(settings.claude_settings.paths()) & enforced)
 
 
 def merge(

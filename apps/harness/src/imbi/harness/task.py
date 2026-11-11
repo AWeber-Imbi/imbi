@@ -1336,8 +1336,8 @@ class TaskRun:
         organization's enforced paths left out (settings plan 4.2)."""
         if dropped := api.items(self.config, 'claude_settings_dropped'):
             self.recorder.notice(
-                'The organization enforces these Claude Code settings, so '
-                f'the agent values were left out: {", ".join(dropped)}'
+                'The organization does not let this agent set these Claude '
+                f'Code settings, so they were left out: {", ".join(dropped)}'
             )
 
     def instructions(self) -> str:

@@ -1079,12 +1079,13 @@ class _ClaudeModel(pydantic.BaseModel):
         serialize_by_alias=True,
     )
 
-    @pydantic.model_serializer(mode='wrap')
-    def _drop_unset(
-        self, handler: pydantic.SerializerFunctionWrapHandler
-    ) -> dict[str, typing.Any]:
-        """Leave out each key that is not set, as Claude Code does."""
-        return {k: v for k, v in handler(self).items() if v is not None}
+
+def _unset(**kwargs: typing.Any) -> typing.Any:
+    """An optional settings key: left out of a dump when not set, as
+    Claude Code does."""
+    return pydantic.Field(
+        default=None, exclude_if=lambda value: value is None, **kwargs
+    )
 
 
 #: ``Tool`` or ``Tool(specifier)``, for example ``Bash(git push *)``.
@@ -1123,9 +1124,9 @@ ClaudeHookEvent = typing.Literal[
 
 
 class ClaudePermissions(_ClaudeModel):
-    allow: list[str] | None = None
-    deny: list[str] | None = None
-    ask: list[str] | None = None
+    allow: list[str] | None = _unset()
+    deny: list[str] | None = _unset()
+    ask: list[str] | None = _unset()
 
     _check = pydantic.field_validator('allow', 'deny', 'ask')(_rules)
 
@@ -1133,17 +1134,17 @@ class ClaudePermissions(_ClaudeModel):
 class ClaudeHookCommand(_ClaudeModel):
     type: typing.Literal['command'] = 'command'
     command: str = pydantic.Field(min_length=1, max_length=4096)
-    timeout: int | None = pydantic.Field(default=None, gt=0, le=3600)
+    timeout: int | None = _unset(gt=0, le=3600)
 
 
 class ClaudeHookMatcher(_ClaudeModel):
-    matcher: str | None = None
+    matcher: str | None = _unset()
     hooks: list[ClaudeHookCommand] = pydantic.Field(min_length=1)
 
 
 class ClaudeAttribution(_ClaudeModel):
-    commit: str | None = None
-    pr: str | None = None
+    commit: str | None = _unset()
+    pr: str | None = _unset()
 
 
 #: The largest settings document, in bytes of JSON.
@@ -1173,12 +1174,12 @@ class ClaudeSettings(_ClaudeModel):
     it.
     """
 
-    permissions: ClaudePermissions | None = None
-    hooks: dict[ClaudeHookEvent, list[ClaudeHookMatcher]] | None = None
-    attribution: ClaudeAttribution | None = None
-    include_co_authored_by: bool | None = None
-    respect_gitignore: bool | None = None
-    cleanup_period_days: int | None = pydantic.Field(default=None, ge=1)
+    permissions: ClaudePermissions | None = _unset()
+    hooks: dict[ClaudeHookEvent, list[ClaudeHookMatcher]] | None = _unset()
+    attribution: ClaudeAttribution | None = _unset()
+    include_co_authored_by: bool | None = _unset()
+    respect_gitignore: bool | None = _unset()
+    cleanup_period_days: int | None = _unset(ge=1)
 
     @pydantic.model_validator(mode='after')
     def _check_size(self) -> typing.Self:

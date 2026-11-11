@@ -616,8 +616,22 @@ class ClaudeSettingsTests(unittest.TestCase):
         for config in (
             platform.AgentPlatformConfig(denied_tools=['Bash']),
             platform.AgentPlatformConfig(allowed_tools=['Read']),
+            platform.AgentPlatformConfig(approval_tools=['Bash']),
+            platform.AgentPlatformConfig(permission_mode='plan'),
+            platform.AgentPlatformConfig(
+                sandbox=models.AgentSandbox(enabled=True)
+            ),
+            platform.AgentPlatformConfig(
+                claude_settings=models.ClaudeSettings.model_validate(
+                    {'permissions': {'deny': ['Bash(curl *)']}}
+                )
+            ),
         ):
-            self.assertEqual(len(platform.widenings(config, settings)), 1)
+            with self.subTest(config=config):
+                self.assertEqual(len(platform.widenings(config, settings)), 1)
+                merged = platform.merge(config, settings)
+                self.assertNotIn('hooks', merged.claude_settings)
+                self.assertEqual(merged.claude_settings_dropped, ['hooks'])
         self.assertEqual(
             platform.widenings(platform.AgentPlatformConfig(), settings), []
         )
