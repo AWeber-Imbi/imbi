@@ -101,9 +101,20 @@ describe('PluginsSection', () => {
     expect(screen.getByText('feature-dev')).toBeInTheDocument()
     // A default plugin is on and cannot be turned off.
     expect(screen.getByLabelText('commit-commands')).toBeDisabled()
-    // An external plugin needs a resolved commit to be pinned.
-    expect(screen.getByLabelText('remote')).toBeDisabled()
+    // An external plugin without a resolved commit is not shown.
+    expect(screen.queryByLabelText('remote')).not.toBeInTheDocument()
     expect(screen.getByLabelText('linked')).toBeEnabled()
+  })
+
+  it('shows an unusable plugin that is a default', async () => {
+    const withRemote = config()
+    withRemote.config.default_plugins.push({
+      marketplace: 'claude-code',
+      plugin: 'remote',
+    })
+    vi.mocked(endpoints.getAgentPlatformConfig).mockResolvedValue(withRemote)
+    render(<Harness initial={emptyDraft().settings} />)
+    expect(await screen.findByLabelText('remote')).toBeChecked()
   })
 
   it('names the MCP servers that a plugin brings', async () => {
