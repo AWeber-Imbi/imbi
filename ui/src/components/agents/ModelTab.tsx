@@ -113,6 +113,12 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
       params: { ...value.params, [key]: { ...value.params[key], ...patch } },
     })
 
+  const selectProvider = (next: string) => {
+    setProvider(next)
+    if (selected && selected.provider_name !== next)
+      onChange({ ...value, effort: null, model: null })
+  }
+
   const selectModel = (slug: null | string) => {
     const model = models.find((m) => m.slug === slug)
     onChange({
@@ -133,7 +139,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
         >
           LLM provider
         </Label>
-        <Select onValueChange={setProvider} value={activeProvider}>
+        <Select onValueChange={selectProvider} value={activeProvider}>
           <SelectTrigger id="agent-provider">
             <SelectValue placeholder="No providers in the catalog" />
           </SelectTrigger>

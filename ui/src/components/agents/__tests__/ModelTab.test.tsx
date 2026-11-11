@@ -91,6 +91,28 @@ describe('ModelTab', () => {
     )
   })
 
+  it('clears the model and effort when the provider changes', async () => {
+    const initial = {
+      ...promptDraftFromVersion(null),
+      effort: 'high' as const,
+      model: 'claude-opus-5-5',
+    }
+    render(<Harness initial={initial} />)
+    await screen.findByText('claude-opus-5-5', { selector: 'span' })
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'LLM provider' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'OpenAI' }))
+
+    expect(last()).toMatchObject({ effort: null, model: null })
+    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent(
+      'No model selected',
+    )
+    expect(screen.queryByRole('combobox', { name: 'Effort' })).toBeNull()
+
+    await pickModel('gpt-5')
+    expect(last()).toMatchObject({ effort: null, model: 'gpt-5' })
+  })
+
   it('offers only the controls the agent runtime applies', () => {
     render(<Harness initial={promptDraftFromVersion(null)} />)
     fireEvent.click(
