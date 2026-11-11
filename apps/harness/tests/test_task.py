@@ -531,6 +531,19 @@ class ConfigTestCase(TaskTestCase):
         self.assertEqual(options.env['ENABLE_PROMPT_CACHING_1H'], '1')
         self.assertNotIn('FORCE_PROMPT_CACHING_5M', options.env)
 
+    def test_options_ignore_invalid_model_params(self) -> None:
+        subject = self.make()
+        subject.bundle['prompt']['params'] = {
+            'effort': ['high'],
+            'prompt_cache_ttl': {'ttl': '1h'},
+        }
+        options = subject.options('u')
+        self.assertIsNone(options.effort)
+        self.assertNotIn('ENABLE_PROMPT_CACHING_1H', options.env)
+        self.assertNotIn('FORCE_PROMPT_CACHING_5M', options.env)
+        subject.bundle['prompt']['params'] = {'effort': 'ultra'}
+        self.assertIsNone(subject.options('u').effort)
+
     def test_options_five_minute_cache(self) -> None:
         subject = self.make()
         subject.bundle['prompt']['params'] = {'prompt_cache_ttl': '5m'}

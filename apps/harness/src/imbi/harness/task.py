@@ -416,10 +416,20 @@ def _model_env(params: Body) -> dict[str, str]:
     env: dict[str, str] = {}
     if params.get('max_tokens'):
         env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(params['max_tokens'])
-    ttl = _CACHE_TTL_ENV.get(params.get('prompt_cache_ttl') or '')
-    if ttl:
-        env[ttl] = '1'
+    ttl = params.get('prompt_cache_ttl')
+    flag = _CACHE_TTL_ENV.get(ttl) if isinstance(ttl, str) else None
+    if flag:
+        env[flag] = '1'
     return env
+
+
+_EFFORT_LEVELS: tuple[str, ...] = typing.get_args(sdk.EffortLevel)
+
+
+def _effort(params: Body) -> sdk.EffortLevel | None:
+    """The prompt version's effort level, or None when it is not one."""
+    effort = params.get('effort')
+    return effort if effort in _EFFORT_LEVELS else None
 
 
 def _json(path: pathlib.Path) -> Body:
@@ -1400,7 +1410,7 @@ class TaskRun:
             ],
             model=prompt.get('model_id') or self.model,
             thinking={'type': 'adaptive', 'display': 'summarized'},
-            effort=params.get('effort'),
+            effort=_effort(params),
             # The SDK default (1 MiB) fails the task on one large message.
             max_buffer_size=SDK_BUFFER,
             stderr=_cli_stderr,
