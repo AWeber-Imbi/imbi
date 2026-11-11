@@ -18,6 +18,11 @@ SUCCEEDED = frozenset(
     {'done_acted', 'done_nothing_to_act_on', 'no_reason_to_run'}
 )
 
+#: The one template that ``project_id`` can be: the project that the
+#: gateway matched to the webhook delivery. imbi-api reads it from the
+#: run's origin, which only the gateway sets, not from run input.
+TRIGGER_PROJECT = '{{ trigger.project }}'
+
 
 class Params(pydantic.BaseModel):
     agent_id: str = pydantic.Field(
@@ -27,7 +32,10 @@ class Params(pydantic.BaseModel):
         min_length=1, description='What the agent must do.'
     )
     project_id: str | None = pydantic.Field(
-        default=None, description='The primary project of the task.'
+        default=None,
+        description='The primary project of the task, or '
+        f'``{TRIGGER_PROJECT}`` for the project that the webhook '
+        'delivery matched.',
     )
     #: The same limits as the budget of an ADR 0020 task.
     budget: decimal.Decimal | None = pydantic.Field(

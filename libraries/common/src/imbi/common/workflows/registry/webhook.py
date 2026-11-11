@@ -20,6 +20,10 @@ class Params(pydantic.BaseModel):
 
 class Output(pydantic.BaseModel):
     payload: dict[str, typing.Any]
+    #: The id of the project that the gateway matched to the delivery,
+    #: for templates. An agent step reads its project from the run's
+    #: origin instead, which run input cannot change.
+    project: str | None = None
 
 
 def required_permissions(_params: dict[str, typing.Any]) -> set[str]:

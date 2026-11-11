@@ -127,6 +127,9 @@ const PLAIN_REFERENCE =
   /^\{\{\s*[a-z][a-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\}$/
 const TEMPLATE_MARKERS = ['{{', '{%', '{#']
 
+/** The project that the gateway matched to a webhook delivery. */
+export const TRIGGER_PROJECT = '{{ trigger.project }}'
+
 export function isIdOrReference(value: string): boolean {
   return (
     !TEMPLATE_MARKERS.some((m) => value.includes(m)) ||
