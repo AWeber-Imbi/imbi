@@ -51,7 +51,7 @@ COPY --from=builder /app /app
 COPY --chmod=0755 apps/harness/agent-cli /usr/local/bin/agent-cli
 COPY --chmod=0755 apps/harness/git-credential-fd /usr/local/libexec/git-credential-fd
 COPY --chmod=0755 apps/harness/git-credential-env /usr/local/libexec/git-credential-env
-RUN mkdir -p /usr/local/libexec /work /run/creds /run/executor \
+RUN mkdir -p /usr/local/libexec /work /run/creds /run/executor /run/plugins \
  && ln -s "$(/app/bin/python -c 'import claude_agent_sdk, pathlib; print(pathlib.Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude")')" /usr/local/libexec/claude \
  && chown agent:agent /work \
  && find / -xdev -perm /6000 -type f -exec chmod a-s {} +

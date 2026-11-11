@@ -2,7 +2,7 @@
 
 :class:`TaskRun` opens an ADR 0020 session, builds the chain workspace
 (root task only), gets the model key, starts the task's model proxy,
-writes the task's ``CLAUDE_CONFIG_DIR``, runs the SDK, sends the events,
+writes the task's git configuration, runs the SDK, sends the events,
 and sets the outcome.
 
 Control and budget: a session heartbeat every
@@ -54,6 +54,9 @@ LOGGER = logging.getLogger(__name__)
 
 #: ``#!/bin/sh -p`` + ``setpriv --reuid=agent ...`` + the bundled CLI.
 CLI_WRAPPER = '/usr/local/bin/agent-cli'
+#: An emptyDir of the runner container only. The runner makes it mode
+#: 0755 at start, so ``agent`` cannot add, rename, or remove an entry.
+PUBLISHED_PLUGINS = pathlib.Path('/run/plugins')
 SESSION_HEARTBEAT = 10
 #: The largest CLI message line that the SDK reads.
 SDK_BUFFER = 64 * 1024 * 1024
@@ -253,9 +256,16 @@ class Layout:
 
     ``repos`` and ``plugins`` are for the whole chain; ``tasks/<id>``
     holds ``HOME``, ``TMPDIR``, and ``CLAUDE_CONFIG_DIR`` of each task.
+    ``published`` holds the copies of the plugins that the CLI loads:
+    ``root`` owns them, so ``agent`` can read them and not change them.
     """
 
     root: pathlib.Path
+    plugins_root: pathlib.Path = PUBLISHED_PLUGINS
+
+    @property
+    def published(self) -> pathlib.Path:
+        return self.plugins_root / self.root.name
 
     @property
     def repos(self) -> pathlib.Path:
@@ -280,6 +290,8 @@ class Layout:
             self.root.mkdir(mode=0o711, exist_ok=True)
             for path in (self.repos, self.plugins, self.root / 'tasks'):
                 path.mkdir(mode=0o700, exist_ok=True)
+        with privilege.effective():
+            self.published.mkdir(mode=0o755, exist_ok=True)
 
     def make_task(self, task_id: str) -> pathlib.Path:
         path = self.task(task_id)
@@ -380,6 +392,10 @@ def _repository(url: str) -> str | None:
 
 
 PLUGIN_MANIFEST = pathlib.PurePosixPath('.claude-plugin/plugin.json')
+#: The cap on the bytes of one repository instruction file.
+INSTRUCTION_BYTES = 64 * 1024
+#: The cap on the bytes of one published plugin.
+PLUGIN_BYTES = 64 * 1024 * 1024
 MARKETPLACE_FILE = pathlib.PurePosixPath('.claude-plugin/marketplace.json')
 
 #: models.PluginName, which the API checks on save.
@@ -412,6 +428,75 @@ def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
             ):
                 return found
     return None
+
+
+type _Tree = list[tuple[pathlib.PurePosixPath, bytes | None, int]]
+
+
+def _read_tree(source: pathlib.Path) -> _Tree:
+    """Each directory (``None``) and file under ``source``, less
+    ``.git``, with its mode. A symbolic link is read only when its
+    target is a file in ``source``; any other link is left out."""
+    root = source.resolve()
+    tree: _Tree = []
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        base = pathlib.Path(dirpath)
+        dirnames[:] = [
+            d for d in dirnames if d != '.git' and not (base / d).is_symlink()
+        ]
+        tree.append((pathlib.PurePosixPath(base.relative_to(root)), None, 0))
+        for name in filenames:
+            path = base / name
+            target = path.resolve()
+            if not target.is_file() or not target.is_relative_to(root):
+                LOGGER.warning('Plugin file left out: %s', path)
+                continue
+            mode = target.stat().st_mode
+            data = target.read_bytes()
+            total += len(data)
+            if total > PLUGIN_BYTES:
+                raise Failed('plugin_too_large')
+            relative = pathlib.PurePosixPath(path.relative_to(root))
+            tree.append((relative, data, mode))
+    return tree
+
+
+def _publish(source: pathlib.Path, dest: pathlib.Path) -> pathlib.Path:
+    """Copy a plugin clone that ``agent`` owns to ``dest`` as ``root``:
+    directories ``0755``, files ``0644`` (``0755`` when executable).
+    The model can then not change a hook, an MCP server, or a skill of
+    a pinned plugin (settings plan section 4.1).
+
+    Two passes, not ``shutil.copytree``: root has no
+    ``CAP_DAC_OVERRIDE``, so it cannot read the clone, and ``agent``
+    cannot write ``dest``."""
+    with privilege.effective(privilege.AGENT):
+        tree = _read_tree(source)
+    with privilege.effective():
+        for relative, data, mode in tree:
+            path = dest / relative
+            if data is None:
+                path.mkdir(exist_ok=True)
+                path.chmod(0o755)
+            else:
+                path.write_bytes(data)
+                path.chmod(0o755 if mode & 0o111 else 0o644)
+    return dest
+
+
+def _instruction_file(path: pathlib.Path) -> str:
+    """The text of a repository instruction file, at most
+    :data:`INSTRUCTION_BYTES`, or empty when there is none."""
+    try:
+        with path.open('rb') as file:
+            data = file.read(INSTRUCTION_BYTES + 1)
+    except OSError:
+        return ''
+    text = data[:INSTRUCTION_BYTES].decode(errors='replace').strip()
+    if len(data) > INSTRUCTION_BYTES:
+        text += '\n\n[Truncated by the harness.]'
+    return text
 
 
 def _extra_ca() -> dict[str, str]:
@@ -991,11 +1076,12 @@ class TaskRun:
                 dest,
                 dest / _relative(plugin.get('path')),
             )
+            name = f'{dest.name}-{len(self.plugins)}'
+            path = _publish(path, self.layout.published / name)
             self.plugins.append(path)
-            with privilege.effective(privilege.AGENT):
-                self.plugin_servers.extend(
-                    _plugin_servers(path, str(plugin['plugin']))
-                )
+            self.plugin_servers.extend(
+                _plugin_servers(path, str(plugin['plugin']))
+            )
 
     def _manifest(
         self, name: str, clone: pathlib.Path, path: pathlib.Path
@@ -1204,9 +1290,9 @@ class TaskRun:
         relayed = self.relay.allowed_tools() if self.relay else []
         return [*allowed, *IMBI_TOOLS, *relayed, *self.plugin_servers], denied
 
-    def write_config(self) -> None:
-        """Write ``settings.json`` and ``CLAUDE.md`` of the task's
-        ``CLAUDE_CONFIG_DIR`` (plan section 6.2 step 4)."""
+    def settings(self) -> Body:
+        """The settings of the CLI. The SDK passes them in ``--settings``,
+        not in a file that the model could change (settings plan 4.1)."""
         allowed, denied = self.tools()
         settings: Body = {'permissions': {'allow': allowed, 'deny': denied}}
         if self.config.get('hooks'):
@@ -1219,32 +1305,37 @@ class TaskRun:
                     sandbox.get('allow_unsandboxed_commands')
                 ),
             }
-        rules = _RULES.format(
-            subagents=', '.join(
-                f'`{slug}`' + (f' ({text})' if text else '')
-                for slug, text in self.subagents().items()
+        return settings
+
+    def instructions(self) -> str:
+        """The harness rules, then each repository's ``CLAUDE.md`` and
+        ``AGENTS.md``, read as ``agent``. They go in the system prompt:
+        the CLI reads no instruction file (``setting_sources=[]``)."""
+        parts = [
+            _RULES.format(
+                subagents=', '.join(
+                    f'`{slug}`' + (f' ({text})' if text else '')
+                    for slug, text in self.subagents().items()
+                )
+                or 'none',
+                cwd=self.cwd,
+                secrets=''.join(
+                    f'\n  - {_secret_line(item)}'
+                    for item in api.items(self.config, 'secrets')
+                )
+                or ' none',
             )
-            or 'none',
-            cwd=self.cwd,
-            secrets=''.join(
-                f'\n  - {_secret_line(item)}'
-                for item in api.items(self.config, 'secrets')
-            )
-            or ' none',
-        )
-        config = self.home / '.claude'
+        ]
         with privilege.effective(privilege.AGENT):
-            # The repositories' own instructions, as imports. They are
-            # memory, so the settings above (the organization policy)
-            # still win; a repository's .claude/settings.json is never
-            # read (setting_sources has no 'project').
-            imports = [
-                f'@{path}'
-                for repo in self._repo_dirs()
-                for path in (repo / 'CLAUDE.md', repo / 'AGENTS.md')
-                if path.is_file()
-            ]
-            (config / 'settings.json').write_text(json.dumps(settings))
+            for repo in self._repo_dirs():
+                for path in (repo / 'CLAUDE.md', repo / 'AGENTS.md'):
+                    if text := _instruction_file(path):
+                        parts.append(f'# Instructions from {path}\n\n{text}')
+        return '\n\n'.join(parts)
+
+    def write_config(self) -> None:
+        """Write the git and gh configuration of the task's ``HOME``."""
+        with privilege.effective(privilege.AGENT):
             # The commit identity of this task's agent (#422). In HOME,
             # so a child task in the same repositories has its own.
             (self.home / 'home' / '.gitconfig').write_text(self._gitconfig())
@@ -1255,9 +1346,6 @@ class TaskRun:
                 # multi-account format, which needs a stored token.
                 (gh / 'config.yml').write_text('version: "1"\n')
                 (gh / 'hosts.yml').write_text(hosts)
-            (config / 'CLAUDE.md').write_text(
-                '\n'.join([rules, *imports]) + '\n'
-            )
 
     def _gitconfig(self) -> str:
         """The agent's name, and an email that is not routable."""
@@ -1290,11 +1378,13 @@ class TaskRun:
     # --- SDK ----------------------------------------------------------
 
     def system_prompt(self) -> str:
-        """The organization prefix, then the agent's rendered prompt."""
+        """The organization prefix, the agent's rendered prompt, the
+        harness and repository instructions, and the task context."""
         prompt: Body = self.bundle.get('prompt') or {}
         parts = [
             self.config.get('system_prompt_prefix'),
             prompt.get('system'),
+            self.instructions(),
             self.task_context(),
             UNTRUSTED_RULE,
         ]
@@ -1390,9 +1480,10 @@ class TaskRun:
                 if self.config.get('permission_mode') == 'plan'
                 else 'dontAsk'
             ),
-            # Not 'project': a repository's settings could widen the
-            # organization's policy.
-            setting_sources=['user'],
+            # No settings or instruction file: the model can write every
+            # one that the CLI would read (settings plan 4.1).
+            setting_sources=[],
+            settings=json.dumps(self.settings()),
             plugins=[
                 {'type': 'local', 'path': str(path)} for path in self.plugins
             ],
