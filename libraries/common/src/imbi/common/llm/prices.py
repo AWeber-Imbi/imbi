@@ -11,7 +11,6 @@ with a message safe to show an admin.
 """
 
 import decimal
-import math
 import time
 import typing
 
@@ -125,13 +124,18 @@ def plan_update(
     }
 
 
+#: USD per token. At or above this, the per-million price does not fit
+#: the ``NUMERIC(14, 6)`` cost columns.
+_MAX_PER_TOKEN = 100
+
+
 def _per_million(value: object) -> decimal.Decimal | None:
     """USD per token -> USD per 1M tokens, or ``None`` for junk."""
     if (
         isinstance(value, bool)
         or not isinstance(value, int | float)
-        or not math.isfinite(value)
-        or value < 0
+        # Also refuses NaN and infinity.
+        or not 0 <= value < _MAX_PER_TOKEN
     ):
         return None
     result = (decimal.Decimal(str(value)) * 1_000_000).quantize(_PLACES)

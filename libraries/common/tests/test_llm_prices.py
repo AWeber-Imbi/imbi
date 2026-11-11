@@ -92,7 +92,17 @@ class LookupTestCase(unittest.TestCase):
                 self.assertEqual(str(prices._per_million(raw)), expected)
 
     def test_junk_prices_are_none(self) -> None:
-        for raw in (None, 'x', True, -1e-06, float('inf'), float('nan')):
+        for raw in (
+            None,
+            'x',
+            True,
+            -1e-06,
+            float('inf'),
+            float('nan'),
+            100,
+            1e30,
+            10**400,
+        ):
             with self.subTest(raw=raw):
                 self.assertIsNone(prices._per_million(raw))
 
