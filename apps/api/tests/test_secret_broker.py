@@ -1498,6 +1498,38 @@ class RemoveAgentTestCase(secret_support.SecretCase):
             )
 
 
+class RemoveProjectTestCase(secret_support.SecretCase):
+    async def test_never_widens_a_grant(self) -> None:
+        shared = await self.add_grant(
+            [self.binding['id']], project_ids=[self.project, 'other']
+        )
+        any_project = await self.add_grant(
+            [self.binding['id']], project_ids=[]
+        )
+        await self.store.remove_project(self.org, self.project, 'admin')
+        # setUp's grant had only this project. Empty would mean "every
+        # project", so it is deleted instead.
+        self.assertIsNone(
+            await self.store.get('grants', self.org, self.grant['id'])
+        )
+        kept = await self.store.get('grants', self.org, shared['id'])
+        assert kept is not None
+        self.assertEqual(kept['project_ids'], ['other'])
+        untouched = await self.store.get('grants', self.org, any_project['id'])
+        assert untouched is not None
+        self.assertEqual(untouched['project_ids'], [])
+        self.assertEqual(
+            {
+                e.grant_id: (e.type, e.project_id)
+                for e in await self.audit_events()
+            },
+            {
+                str(self.grant['id']): ('secret_grant_deleted', self.project),
+                str(shared['id']): ('secret_grant_updated', self.project),
+            },
+        )
+
+
 class TaskEventTestCase(secret_support.SecretCase):
     async def test_each_step_writes_a_task_event(self) -> None:
         created = await self.broker.create_resolution(

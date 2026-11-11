@@ -18,8 +18,8 @@ import nanoid
 import psycopg
 import pydantic
 
-from imbi.api import blueprint_attributes
-from imbi.api.auth import permissions
+from imbi.api import blueprint_attributes, secret_broker
+from imbi.api.auth import organizations, permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.domain.models import ExistsInResponse
 from imbi.api.endpoints import _search_index
@@ -4080,6 +4080,7 @@ async def delete_project(
     org_slug: str,
     project_id: str,
     db: graph.Pool,
+    secrets: secret_broker.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -4088,7 +4089,7 @@ async def delete_project(
     ],
     delete_repository: bool = True,
 ) -> ProjectDeletedResponse:
-    """Delete a project.
+    """Delete a project, and remove it from the secret grants.
 
     When ``delete_repository`` is true (the default), each assigned
     lifecycle plugin's ``on_project_deleted`` hook is also invoked so
@@ -4128,9 +4129,9 @@ async def delete_project(
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     DETACH DELETE p
-    RETURN p
+    RETURN o.id AS org_id
     """
     records = await db.execute(
         query,
@@ -4138,6 +4139,7 @@ async def delete_project(
             'project_id': project_id,
             'org_slug': org_slug,
         },
+        ['org_id'],
     )
 
     if not records:
@@ -4146,6 +4148,15 @@ async def delete_project(
             detail=f'Project {project_id!r} not found',
         )
     await _search_index.drop(db, models.Project, project_id)
+    # After the graph delete: if this fails, a grant keeps an id that
+    # no project has, which matches nothing.
+    await secrets.remove_project(
+        organizations.organization_id(
+            graph.parse_agtype(records[0]['org_id']), org_slug
+        ),
+        project_id,
+        auth.principal_name,
+    )
 
     # Project node is gone; never let a dispatch hiccup turn a
     # successful delete into a 500.  ``delete_repository=false`` skips
