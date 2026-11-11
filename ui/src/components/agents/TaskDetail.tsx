@@ -12,6 +12,7 @@ import {
   Coins,
   Pause,
   Play,
+  RotateCcw,
   Trash2,
   UserRoundPen,
 } from 'lucide-react'
@@ -19,6 +20,7 @@ import {
 import { ApiError } from '@/api/client'
 import {
   controlAgentTask,
+  createAgentTask,
   deleteAgentTask,
   reassignAgentTask,
 } from '@/api/endpoints'
@@ -38,7 +40,7 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Agent, AgentTask, AgentTaskEvent } from '@/types'
 
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
@@ -48,6 +50,7 @@ import {
   checksFrom,
   formatElapsed,
   formatTokens,
+  isFailed,
   phaseTimeline,
   requestsFrom,
   statusLabel,
@@ -549,6 +552,9 @@ function TaskHeader({
         </h2>
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         <TaskControls orgSlug={orgSlug} task={task} />
+        {agent?.enabled && (
+          <TaskRetry agent={agent} orgSlug={orgSlug} task={task} />
+        )}
         <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
@@ -623,6 +629,64 @@ function TaskHeader({
             )
           })}
         </ol>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Copy a failed task to a new task and open it. Hidden without
+ * `agent_task:create`.
+ */
+function TaskRetry({
+  agent,
+  orgSlug,
+  task,
+}: {
+  agent: Agent
+  orgSlug: string
+  task: AgentTask
+}) {
+  const canCreate = useHasPermission('agent_task:create', orgSlug)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  // Keep one key until a retry succeeds, so a repeat after a lost
+  // response returns the first copy and does not make a second one.
+  const [retryKey, setRetryKey] = useState(() => crypto.randomUUID())
+  const retry = useMutation({
+    mutationFn: () =>
+      createAgentTask(orgSlug, {
+        agent_slug: agent.slug,
+        description: task.description,
+        idempotency_key: retryKey,
+        project_id: task.project_id,
+        title: task.title,
+      }),
+    onSuccess: (copy) => {
+      setRetryKey(crypto.randomUUID())
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.agentTasks(orgSlug),
+      })
+      navigate(agentsPath('tasks', orgSlug, copy.short_id))
+    },
+  })
+  if (!canCreate || !isFailed(task)) return null
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Button
+        aria-label="Retry task"
+        disabled={retry.isPending}
+        onClick={() => retry.mutate()}
+        size="sm"
+        title="Retry as a new task"
+        variant="outline"
+      >
+        <RotateCcw className="size-4" />
+      </Button>
+      {retry.error && (
+        <span className="text-danger text-xs" role="alert">
+          {errorMessage(retry.error)}
+        </span>
       )}
     </div>
   )

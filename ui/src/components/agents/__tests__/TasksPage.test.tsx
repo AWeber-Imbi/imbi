@@ -662,6 +662,57 @@ describe('Tasks', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('retries a failed task as a new task', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+      ...closedTask(1),
+      outcome: 'failed_error',
+    })
+    vi.mocked(endpoints.createAgentTask).mockResolvedValue(task())
+    renderAt('/agents/tasks/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    await waitFor(() =>
+      expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+        agent_slug: agent().slug,
+        description: 'Find why the build fails.',
+        idempotency_key: expect.any(String),
+        project_id: 'proj-1',
+        title: 'Closed 1',
+      }),
+    )
+  })
+
+  it('sends the same key when a retry after an error repeats', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+      ...closedTask(1),
+      outcome: 'failed_error',
+    })
+    vi.mocked(endpoints.createAgentTask).mockRejectedValue(
+      new Error('Network error'),
+    )
+    renderAt('/agents/tasks/acme/T-11')
+    const button = await screen.findByRole('button', { name: 'Retry task' })
+    fireEvent.click(button)
+    await screen.findByRole('alert')
+    fireEvent.click(button)
+    await waitFor(() =>
+      expect(endpoints.createAgentTask).toHaveBeenCalledTimes(2),
+    )
+    const [first, second] = vi
+      .mocked(endpoints.createAgentTask)
+      .mock.calls.map(([, body]) => body.idempotency_key)
+    expect(first).toEqual(expect.any(String))
+    expect(second).toBe(first)
+  })
+
+  it('has no Retry for a task that did not fail', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue(closedTask(1))
+    renderAt('/agents/tasks/acme/T-11')
+    await screen.findByRole('button', { name: 'Delete task' })
+    expect(
+      screen.queryByRole('button', { name: 'Retry task' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('returns focus to Cancel when the confirm closes', async () => {
     renderAt('/agents/tasks/acme/T-3/conversation')
     const button = await screen.findByRole('button', { name: 'Cancel task' })

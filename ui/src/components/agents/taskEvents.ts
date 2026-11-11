@@ -154,6 +154,19 @@ export function groupTasks(tasks: AgentTaskListItem[]): InboxGroup[] {
   }).filter((g) => g.tasks.length > 0)
 }
 
+/** A closed task that did not reach its goal. */
+export function isFailed(task: {
+  outcome?: null | string
+  status: AgentTaskStatus
+}): boolean {
+  return (
+    task.status === 'closed' &&
+    (!!task.outcome?.startsWith('failed_') ||
+      task.outcome === 'exceeded_ceiling' ||
+      task.outcome === 'request_expired')
+  )
+}
+
 /** The phases of a task in order, with the time spent in each (F7). */
 export function phaseTimeline(
   events: AgentTaskEvent[],
@@ -239,11 +252,6 @@ export function statusVariant(task: {
   if (task.status === 'running') return 'info'
   if (task.status !== 'closed') return 'neutral'
   if (task.outcome?.startsWith('done_')) return 'success'
-  if (
-    task.outcome?.startsWith('failed_') ||
-    task.outcome === 'exceeded_ceiling' ||
-    task.outcome === 'request_expired'
-  )
-    return 'danger'
+  if (isFailed(task)) return 'danger'
   return 'neutral'
 }
