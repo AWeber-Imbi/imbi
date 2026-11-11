@@ -426,20 +426,16 @@ function ToolRowView({
         checked={!!config}
         onCheckedChange={onToggle}
       />
-      <div className="w-70 min-w-0">
+      <div className="min-w-0 flex-1">
         <div
           className={cn(
-            'truncate font-mono text-xs',
+            'font-mono text-xs break-all',
             config ? 'text-primary' : 'text-tertiary',
           )}
-          title={row.key}
         >
           {row.key}
         </div>
-        <div
-          className="text-tertiary truncate text-xs"
-          title={row.description ?? undefined}
-        >
+        <div className="text-tertiary text-xs">
           {row.unavailable
             ? 'The catalog does not list this tool now.'
             : row.description}
@@ -452,9 +448,8 @@ function ToolRowView({
           <Badge variant={capability.tone}>{capability.label}</Badge>
         )
       )}
-      <span className="flex-1" />
       {config && (
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             aria-pressed={config.approval}
             className={chip(config.approval, 'h-7 px-2')}
