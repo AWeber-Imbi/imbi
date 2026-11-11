@@ -497,7 +497,11 @@ class GitHubApp(secrets.SecretProvider):
         except httpx.TransportError:
             return secrets.Health('unhealthy', 'unreachable')
         status = response.status_code
-        if 300 <= status < 400 or status == 429 or status >= 500:
+        rate_limited = status == 429 or (
+            status == 403
+            and response.headers.get('x-ratelimit-remaining') == '0'
+        )
+        if 300 <= status < 400 or rate_limited or status >= 500:
             return secrets.Health('unhealthy', 'provider_error')
         return secrets.Health('healthy', identity={'host': _host(config)})
 
