@@ -1025,6 +1025,25 @@ class WorkspaceTestCase(TaskTestCase):
             self.redactor.text('ghs_checkout_token_0123456789'), '[REDACTED]'
         )
 
+    async def test_same_name_repositories_get_their_own_dirs(self) -> None:
+        # Two projects can have repositories with one name (#628).
+        self.run_task.bundle['repositories'] = [
+            {'name': 'team-a/app', 'url': 'https://github.com/team-a/app'},
+            {'name': 'team-b/app', 'url': 'https://github.com/team-b/app'},
+            {'name': 'team-a/lib', 'url': 'https://github.com/team-a/lib'},
+        ]
+        self.call.return_value = {'exit_code': 0, 'output': ''}
+        await self.run_task.build_workspace()
+        repos = self.tmp / 'chain' / 'repos'
+        self.assertEqual(
+            [request['dest'] for request in self.clone_calls()],
+            [
+                str(repos / 'team-a_app'),
+                str(repos / 'team-b_app'),
+                str(repos / 'team-a_lib'),
+            ],
+        )
+
     async def test_failed_checkout(self) -> None:
         self.call.return_value = {'exit_code': 128, 'output': 'fatal'}
         with self.assertRaises(task.Failed) as ctx:

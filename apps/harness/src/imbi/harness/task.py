@@ -1082,8 +1082,11 @@ class TaskRun:
         (plan sections 5.2 and 6.2)."""
         binding = self.config.get('github_app_binding')
         repo: Body
-        for repo in api.items(self.bundle, 'repositories'):
-            name = str(repo['name']).rpartition('/')[2]
+        for repo, dest in zip(
+            api.items(self.bundle, 'repositories'),
+            self._repo_dirs(),
+            strict=True,
+        ):
             secret = None
             if binding:
                 secret = await self.setup_secret(
@@ -1093,7 +1096,7 @@ class TaskRun:
                     raise Failed('workspace_checkout_refused')
             if not await self.clone(
                 str(repo['url']),
-                self.layout.repos / name,
+                dest,
                 None,
                 secret,
                 push_helper=True,
@@ -1304,11 +1307,20 @@ class TaskRun:
         return self.relay.take_audit(name, arguments) if self.relay else None
 
     def _repo_dirs(self) -> list[pathlib.Path]:
-        return [
-            self.layout.repos / str(repo['name']).rpartition('/')[2]
+        """The clone directory of each repository: ``repos/<name>``, or
+        ``repos/<owner>_<name>`` for all of them when two repositories
+        have the same name (#628). A GitHub owner has no ``_``, so no
+        two of these are the same."""
+        names = [
+            str(repo['name']).rpartition('/')[::2]
             for repo in typing.cast(
                 'list[Body]', api.items(self.bundle, 'repositories')
             )
+        ]
+        unique = len({base for _, base in names}) == len(names)
+        return [
+            self.layout.repos / (base if unique else f'{owner}_{base}')
+            for owner, base in names
         ]
 
     def _cwd(self) -> pathlib.Path:
