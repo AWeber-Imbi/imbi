@@ -4171,12 +4171,19 @@ async def delete_project(
                 project_id,
             )
     # After the graph delete and the dispatch: if this fails, a grant
-    # keeps an id that no project has, which matches nothing.
-    await secrets.remove_project(
-        organizations.organization_id(
-            graph.parse_agtype(records[0]['org_id']), org_slug
-        ),
-        project_id,
-        auth.principal_name,
-    )
+    # keeps an id that no project has, which matches nothing.  Log the
+    # failure and keep the successful delete response.
+    try:
+        await secrets.remove_project(
+            organizations.organization_id(
+                graph.parse_agtype(records[0]['org_id']), org_slug
+            ),
+            project_id,
+            auth.principal_name,
+        )
+    except Exception:
+        LOGGER.exception(
+            'Unable to remove deleted project %s from secret grants',
+            project_id,
+        )
     return ProjectDeletedResponse(lifecycle_results=lifecycle_results)

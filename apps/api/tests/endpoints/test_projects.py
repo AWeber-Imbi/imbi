@@ -1426,6 +1426,22 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             'org-1', PROJECT_ID, 'admin@example.com'
         )
 
+    def test_delete_succeeds_when_grant_cleanup_raises(self) -> None:
+        """A grant cleanup failure must not turn the delete into a 500."""
+        self.mock_db.execute.return_value = [{'org_id': 'org-1'}]
+        self.secret_store.remove_project.side_effect = RuntimeError('down')
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'lifecycle_results': []})
+
     def test_delete_not_found(self) -> None:
         """Test deleting nonexistent project."""
         self.mock_db.execute.return_value = []
