@@ -45,6 +45,16 @@ describe('agentDraft', () => {
     expect(isPromptChanged(draft.prompt, version)).toBe(false)
   })
 
+  it('drops a stored effort for a model that is not Claude', () => {
+    const version = promptVersion({
+      model_id: 'gpt-5',
+      params: { effort: 'high' },
+    })
+    const draft = draftFromAgent(agent(), version)
+    expect(draft.prompt.effort).toBeNull()
+    expect(isPromptChanged(draft.prompt, version)).toBe(true)
+  })
+
   it('round-trips the settings', () => {
     const draft = draftFromAgent(agent(), null)
     expect(draft.settings).toEqual({

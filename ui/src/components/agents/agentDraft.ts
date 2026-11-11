@@ -360,9 +360,9 @@ export function promptDraftFromVersion(
         : { on: true, value: String(stored) }
   }
   return {
-    effort:
-      storedEffort(version) ??
-      (isClaudeModel(version?.model_id) ? DEFAULT_EFFORT : null),
+    effort: isClaudeModel(version?.model_id)
+      ? (storedEffort(version) ?? DEFAULT_EFFORT)
+      : null,
     model: version?.model ?? null,
     params,
     system: version?.system ?? '',
