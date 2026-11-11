@@ -35,7 +35,7 @@ import psycopg.errors
 import pydantic
 import slugify
 
-from imbi.api import agent_tools, harness, workflows
+from imbi.api import agent_tools, harness, secret_broker, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -1442,12 +1442,14 @@ async def delete_agent(
     slug: str,
     db: graph.Pool,
     store: workflows.Store,
-    _auth: typing.Annotated[
+    secrets: secret_broker.Store,
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:delete')),
     ],
 ) -> None:
-    """Delete an agent, every version of it, and its service account.
+    """Delete an agent, every version of it, and its service account,
+    and remove it from the secret grants.
 
     Raises:
         404: No such agent.
@@ -1479,6 +1481,9 @@ async def delete_agent(
             graph_cypher.Statement(_DELETE_AGENT_QUERY, params),
         ]
     )
+    # After the graph delete: if this fails, a grant keeps an id that
+    # no agent has, which matches nothing.
+    await secrets.remove_agent(org_id, params['id'], auth.principal_name)
 
 
 async def _assert_not_delegated_to(

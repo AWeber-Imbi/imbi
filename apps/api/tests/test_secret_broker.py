@@ -1423,6 +1423,81 @@ class AuditOutboxTestCase(secret_support.SecretCase):
         )
 
 
+class RemoveAgentTestCase(secret_support.SecretCase):
+    async def test_strips_the_agent_and_deletes_empty_grants(self) -> None:
+        shared = await self.add_grant(
+            [self.binding['id']], agent_ids=[self.agent, 'other']
+        )
+        # Controls: another agent's grant, and this agent in another org.
+        unrelated = await self.add_grant(
+            [self.binding['id']], agent_ids=['other']
+        )
+        other_org = f'{self.org}-other'
+        self.addAsyncCleanup(self.drop_org_grants, other_org)
+        foreign = await self.store.create(
+            'grants',
+            other_org,
+            {
+                'agent_ids': [self.agent],
+                'project_ids': [self.project],
+                'binding_ids': [],
+                'purposes': ['github_write'],
+                'delivery_modes': ['environment'],
+                'max_ttl_seconds': 900,
+                'created_by': 'test',
+            },
+        )
+        await self.store.remove_agent(self.org, self.agent, 'admin')
+        self.assertEqual(
+            await self.store.get('grants', self.org, unrelated['id']),
+            unrelated,
+        )
+        self.assertEqual(
+            await self.store.get('grants', other_org, foreign['id']),
+            foreign,
+        )
+        # setUp's grant has only this agent, so it goes.
+        self.assertIsNone(
+            await self.store.get('grants', self.org, self.grant['id'])
+        )
+        kept = await self.store.get('grants', self.org, shared['id'])
+        assert kept is not None
+        self.assertEqual(kept['agent_ids'], ['other'])
+        events = {
+            e.grant_id: (e.type, e.agent_id, e.actor)
+            for e in await self.audit_events()
+        }
+        self.assertEqual(
+            events,
+            {
+                str(self.grant['id']): (
+                    'secret_grant_deleted',
+                    self.agent,
+                    'admin',
+                ),
+                str(shared['id']): (
+                    'secret_grant_updated',
+                    self.agent,
+                    'admin',
+                ),
+            },
+        )
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT count(*) FROM secrets.audit_outbox'
+                " WHERE event->>'organization_id' = %s",
+                (other_org,),
+            )
+            self.assertEqual(await cur.fetchone(), (0,))
+
+    async def drop_org_grants(self, organization_id: str) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM secrets.grants WHERE organization_id = %s',
+                (organization_id,),
+            )
+
+
 class TaskEventTestCase(secret_support.SecretCase):
     async def test_each_step_writes_a_task_event(self) -> None:
         created = await self.broker.create_resolution(
