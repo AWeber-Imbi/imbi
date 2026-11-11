@@ -57,15 +57,30 @@ export function ClaudeSettingsSection({
         </Field>
         <Field
           help={
-            enforced.length
-              ? `Enforced, agents cannot set: ${enforced.join(', ')}`
-              : 'The organization enforces no key.'
+            !config.isSuccess
+              ? undefined
+              : enforced.length
+                ? `Enforced, agents cannot set: ${enforced.join(', ')}`
+                : 'The organization enforces no key.'
           }
           label="Organization"
         >
-          <pre className="border-tertiary bg-secondary text-secondary h-41 overflow-auto rounded-md border p-2 font-mono text-xs">
-            {org || 'None'}
-          </pre>
+          {config.isError ? (
+            <p className="text-danger text-xs" role="alert">
+              Could not load the organization settings: {config.error.message}{' '}
+              <button
+                className="underline"
+                onClick={() => void config.refetch()}
+                type="button"
+              >
+                Retry
+              </button>
+            </p>
+          ) : (
+            <pre className="border-tertiary bg-secondary text-secondary h-41 overflow-auto rounded-md border p-2 font-mono text-xs">
+              {config.isSuccess ? org || 'None' : 'Loading…'}
+            </pre>
+          )}
         </Field>
       </div>
     </section>

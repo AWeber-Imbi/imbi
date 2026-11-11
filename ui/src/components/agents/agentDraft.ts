@@ -108,8 +108,13 @@ export const SETTINGS_PATHS = Object.keys({
   respectGitignore: true,
 } satisfies Record<ClaudeSettingsPath, true>) as ClaudeSettingsPath[]
 
+// JSON keys, not the dotted SETTINGS_PATHS: `permissions.allow` is the
+// `allow` key of a `permissions` object.
 export const SETTINGS_HELP =
-  `Claude Code settings, as JSON. Allowed keys: ${SETTINGS_PATHS.join(', ')}. ` +
+  'Claude Code settings, as JSON. Allowed keys: attribution, ' +
+  'cleanupPeriodDays, hooks, includeCoAuthoredBy, permissions (allow, ask, ' +
+  'deny), respectGitignore. Example: ' +
+  '{"permissions": {"allow": ["Bash(make *)"]}}. ' +
   'An allow rule cannot give a tool outside the tool map.'
 
 export const AGENT_PROMPT_NAMESPACE = 'agents'
