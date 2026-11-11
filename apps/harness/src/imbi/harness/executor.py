@@ -223,18 +223,24 @@ def _target(secret: Message) -> str:
 
 
 def _string_members(material: str) -> list[str]:
-    """The string member values of a JSON object, or none."""
+    """Each non-empty string in a JSON object, nested ones too, or none."""
     try:
         parsed: object = json.loads(material)
     except ValueError:
         return []
     if not isinstance(parsed, dict):
         return []
-    return [
-        v
-        for v in typing.cast('dict[str, object]', parsed).values()
-        if isinstance(v, str) and v
-    ]
+    pending: list[object] = [parsed]
+    found: list[str] = []
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str) and value:
+            found.append(value)
+        elif isinstance(value, dict):
+            pending.extend(typing.cast('dict[str, object]', value).values())
+        elif isinstance(value, list):
+            pending.extend(typing.cast('list[object]', value))
+    return found
 
 
 def _material(body: Message) -> str:

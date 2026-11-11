@@ -161,17 +161,24 @@ class ExecutorTestCase(BaseTestCase):
         # The broker exports no member with an unsafe name, but the raw
         # value still holds it, so the command can print it alone.
         hidden = 'lowercase-' + 'b' * 30
+        nested = 'nested-' + 'c' * 30
         self.api.materialize.return_value = {
-            'material': json.dumps({'token': hidden, 'port': 3}),
+            'material': json.dumps(
+                {'token': hidden, 'port': 3, 'nested': {'keys': [nested]}}
+            ),
             'encoding': 'utf8',
             'members': {},
         }
-        self.spawn.return_value = (0, f'{hidden} 3\n'.encode(), False)
+        self.spawn.return_value = (
+            0,
+            f'{hidden} {nested} 3\n'.encode(),
+            False,
+        )
         await self.hello()
         reply = await self.executor.dispatch(request())
         self.assertNotIn('token', self.spawn.call_args.args[2])
         # Numbers are not redacted: "3" would be erased everywhere.
-        self.assertEqual(reply['output'], '[REDACTED] 3\n')
+        self.assertEqual(reply['output'], '[REDACTED] [REDACTED] 3\n')
 
     async def test_new_nonce_for_each_materialization(self) -> None:
         await self.hello()
