@@ -611,7 +611,9 @@ class GitHubApp(secrets.SecretProvider):
         ``marketplace_fetch`` uses the repository that the runner asks
         for. When the binding lists ``repositories``, the repository must
         be one of them; an empty list allows each repository of the
-        installation. The token always covers only that one repository.
+        installation; the token then covers only that one repository. A
+        request without a repository gets every listed repository, and
+        none with an empty list (the runner always names one).
         The other purposes use the verified repository ids of the task's
         project (:meth:`project_repository_ids`).
 

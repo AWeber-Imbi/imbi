@@ -352,7 +352,8 @@ another host shows **unsupported source**.
 
 With a GitHub App binding, an empty `repositories` list allows each
 marketplace and plugin repository of the App installation. Otherwise, only
-the listed repositories are allowed. Each token covers one repository. When
+the listed repositories are allowed. The runner names one repository for
+each token, so each token covers one repository. When
 the token is refused or the clone fails, the runner clones a `github.com`
 repository anonymously. This works only for a public repository. Otherwise, and for a
 repository on another host, the task fails with `marketplace_fetch_failed`.
