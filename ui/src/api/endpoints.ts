@@ -3889,6 +3889,10 @@ export const controlAgentTask = (
   action: 'cancel' | 'pause' | 'resume',
 ) => apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/${action}`)
 
+/** Mark a closed task as needing no more attention. */
+export const acknowledgeAgentTask = (orgSlug: string, shortId: string) =>
+  apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/acknowledge`)
+
 export const reassignAgentTask = (
   orgSlug: string,
   shortId: string,

@@ -173,6 +173,10 @@ class AgentTaskResponse(pydantic.BaseModel):
     log_archived_at: datetime.datetime | None = None
     #: The id of the root task of the chain (ADR 0022).
     chain_id: uuid.UUID | None = None
+    #: When a person marked the closed task as needing no more
+    #: attention, and who.
+    acknowledged_at: datetime.datetime | None = None
+    acknowledged_by: str | None = None
 
 
 class AgentTaskListItem(AgentTaskResponse):
@@ -1164,6 +1168,39 @@ async def delete_agent_task(
         task['id'],
         _actor(auth).id,
     )
+
+
+@agent_tasks_router.post(
+    '/{short_id}/acknowledge', response_model=AgentTaskResponse
+)
+async def acknowledge_agent_task(
+    org_id: OrgId,
+    short_id: str,
+    store: agent_tasks.Store,
+    auth: ManagingPerson,
+) -> dict[str, typing.Any]:
+    """Mark a closed task as needing no more attention.
+
+    The first acknowledgement stays; a repeat returns the task.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such task.
+        409: The task is not closed.
+
+    """
+    try:
+        return await store.acknowledge(
+            org_id, short_id.upper(), _actor(auth).id
+        )
+    except agent_tasks.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        ) from e
+    except agent_tasks.TaskOpen as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Task {short_id!r} is not closed'
+        ) from e
 
 
 @agent_tasks_router.post(

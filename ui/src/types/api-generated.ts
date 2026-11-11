@@ -4908,8 +4908,8 @@ export interface paths {
          * Get Agent Tool Catalog
          * @description List the Imbi tools that an agent can use.
          *
-         *     The catalog has one group, the Imbi tools. When they cannot be
-         *     made, the group has an error code in ``error`` and no tools. The
+         *     When the tools cannot be made, the catalog has an error code in
+         *     ``error`` and no tools. The
          *     error text goes only to the log. The catalog is kept for five
          *     minutes; ``refresh=true`` lists it again and needs
          *     ``agent:write``. The catalog is the same in each organization.
@@ -5289,6 +5289,33 @@ export interface paths {
          *         409: The task is closed.
          */
         post: operations["cancel_agent_task_api_organizations__org_slug__agent_tasks__short_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Agent Task
+         * @description Mark a closed task as needing no more attention.
+         *
+         *     The first acknowledgement stays; a repeat returns the task.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is not closed.
+         */
+        post: operations["acknowledge_agent_task_api_organizations__org_slug__agent_tasks__short_id__acknowledge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6564,7 +6591,8 @@ export interface paths {
          * @description Create an allow rule with exact ids.
          *
          *     Raises:
-         *         422: A binding is not in the organization.
+         *         422: A binding is not in the organization, or a setup purpose
+         *             has a delivery mode other than ``file_descriptor``.
          */
         post: operations["create_grant_api_organizations__org_slug__secret_grants__post"];
         delete?: never;
@@ -6618,7 +6646,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such grant.
-         *         422: A binding is not in the organization.
+         *         422: A binding is not in the organization, or a setup purpose
+         *             has a delivery mode other than ``file_descriptor``.
          */
         patch: operations["update_grant_api_organizations__org_slug__secret_grants__grant_id__patch"];
         trace?: never;
@@ -10992,6 +11021,10 @@ export interface components {
             log_archived_at?: string | null;
             /** Chain Id */
             chain_id?: string | null;
+            /** Acknowledged At */
+            acknowledged_at?: string | null;
+            /** Acknowledged By */
+            acknowledged_by?: string | null;
             /** Blocked Since */
             blocked_since?: string | null;
         };
@@ -11160,6 +11193,10 @@ export interface components {
             log_archived_at?: string | null;
             /** Chain Id */
             chain_id?: string | null;
+            /** Acknowledged At */
+            acknowledged_at?: string | null;
+            /** Acknowledged By */
+            acknowledged_by?: string | null;
         };
         /** AgentTaskWaiting */
         AgentTaskWaiting: {
@@ -30829,6 +30866,38 @@ export interface operations {
         };
     };
     cancel_agent_task_api_organizations__org_slug__agent_tasks__short_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_agent_task_api_organizations__org_slug__agent_tasks__short_id__acknowledge_post: {
         parameters: {
             query?: never;
             header?: never;
