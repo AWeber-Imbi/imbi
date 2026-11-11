@@ -1133,7 +1133,9 @@ class ClaudePermissions(_ClaudeModel):
 
 class ClaudeHookCommand(_ClaudeModel):
     type: typing.Literal['command'] = 'command'
-    command: str = pydantic.Field(min_length=1, max_length=4096)
+    #: No length limit: an older version stored hooks with no limit,
+    #: and the settings document has a size limit.
+    command: str = pydantic.Field(min_length=1)
     timeout: int | None = _unset(gt=0, le=3600)
 
 
@@ -1183,7 +1185,7 @@ class ClaudeSettings(_ClaudeModel):
 
     @pydantic.model_validator(mode='after')
     def _check_size(self) -> typing.Self:
-        size = len(self.model_dump_json())
+        size = len(self.model_dump_json().encode())
         if size > CLAUDE_SETTINGS_BYTES:
             raise ValueError(
                 f'The settings are larger than {CLAUDE_SETTINGS_BYTES} bytes'
@@ -1198,8 +1200,11 @@ class ClaudeSettings(_ClaudeModel):
             document[f'permissions.{key}'] = value
         return document
 
-    @classmethod
-    def from_paths(cls, paths: dict[str, typing.Any]) -> ClaudeSettings:
+    @staticmethod
+    def document(paths: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        """The settings document of the :meth:`paths` of valid
+        settings. Not validated again: two valid documents together can
+        be larger than :data:`CLAUDE_SETTINGS_BYTES`."""
         document: dict[str, typing.Any] = {}
         for path, value in paths.items():
             head, _, key = path.partition('.')
@@ -1207,7 +1212,7 @@ class ClaudeSettings(_ClaudeModel):
                 document.setdefault(head, {})[key] = value
             else:
                 document[path] = value
-        return cls.model_validate(document)
+        return document
 
 
 class AgentPlugin(pydantic.BaseModel):

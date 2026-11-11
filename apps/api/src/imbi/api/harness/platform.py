@@ -258,7 +258,7 @@ def merge(
     for path in dropped:
         del agent[path]
     paths = config.claude_settings.paths() | agent
-    claude = models.ClaudeSettings.from_paths(paths).model_dump(mode='json')
+    claude = models.ClaudeSettings.document(paths)
     upstream = config.model_upstream
     if settings.model_key_ref is not None:
         upstream = upstream.model_copy(

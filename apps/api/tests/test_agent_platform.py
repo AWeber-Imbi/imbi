@@ -568,8 +568,9 @@ class ClaudeSettingsTests(unittest.TestCase):
             {'hooks': {'PreToolUse': [{'hooks': [{'command': 'x', 'y': 1}]}]}},
             {'hooks': {'NotAnEvent': []}},
             {'permissions': {'allow': ['Bash(']}},
-            {'hooks': {'Stop': [{'hooks': [{'command': 'x' * 4097}]}]}},
             {'permissions': {'allow': ['Read'] * 20_000}},
+            # Bytes, not characters: 40,000 characters in 80,000 bytes.
+            {'attribution': {'commit': 'é' * 40_000}},
         ):
             with (
                 self.subTest(document=str(document)[:60]),
@@ -594,6 +595,27 @@ class ClaudeSettingsTests(unittest.TestCase):
         self.assertEqual(config.enforced, ['hooks'])
         config = platform.AgentPlatformConfig.model_validate({'hooks': {}})
         self.assertEqual(config.enforced, [])
+        # An older version had no command length limit.
+        long = {
+            'Stop': [{'hooks': [{'type': 'command', 'command': 'x' * 5000}]}]
+        }
+        config = platform.AgentPlatformConfig.model_validate({'hooks': long})
+        self.assertEqual(config.claude_settings.model_dump()['hooks'], long)
+
+    def test_merge_can_be_larger_than_each_document(self) -> None:
+        config = platform.AgentPlatformConfig(
+            claude_settings=models.ClaudeSettings.model_validate(
+                {'attribution': {'commit': 'x' * 40_000}}
+            )
+        )
+        settings = models.AgentSettings(
+            claude_settings=models.ClaudeSettings.model_validate(
+                {'permissions': {'allow': [f'Read({"x" * 40_000})']}}
+            )
+        )
+        merged = platform.merge(config, settings).claude_settings
+        self.assertEqual(len(merged['attribution']['commit']), 40_000)
+        self.assertEqual(len(merged['permissions']['allow']), 1)
 
     def test_enforced_paths_refuse_the_agent(self) -> None:
         config = platform.AgentPlatformConfig(enforced=['permissions.deny'])
