@@ -228,15 +228,13 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
               </p>
             </div>
           </div>
-          {!role.is_system && (
-            <Button
-              className="bg-action text-action-foreground hover:bg-action-hover"
-              onClick={onEdit}
-            >
-              <Edit2 className="mr-2 size-4" />
-              Edit Role
-            </Button>
-          )}
+          <Button
+            className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
+          >
+            <Edit2 className="mr-2 size-4" />
+            Edit Role
+          </Button>
         </CardHeader>
 
         {/* Stats Bar */}
@@ -303,74 +301,69 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
       {activeTab === 'permissions' && (
         <div className="space-y-4">
           {/* Add Permission Section */}
-          {!role.is_system && (
-            <div className="border-border bg-card rounded-lg border p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-primary text-sm font-medium">
-                  Assign Permission
-                </h3>
-                <Button
-                  className="text-info hover:text-info/80"
-                  onClick={() => setShowAddPermission(!showAddPermission)}
-                  size="sm"
-                  variant="link"
+          <div className="border-border bg-card rounded-lg border p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-primary text-sm font-medium">
+                Assign Permission
+              </h3>
+              <Button
+                className="text-info hover:text-info/80"
+                onClick={() => setShowAddPermission(!showAddPermission)}
+                size="sm"
+                variant="link"
+              >
+                {showAddPermission ? 'Cancel' : 'Add Permission'}
+              </Button>
+            </div>
+
+            {showAddPermission && (
+              <div className="flex items-center gap-2">
+                <Select
+                  onValueChange={setSelectedPermission}
+                  value={selectedPermission}
                 >
-                  {showAddPermission ? 'Cancel' : 'Add Permission'}
+                  <SelectTrigger
+                    aria-label="Select a permission"
+                    className="flex-1"
+                  >
+                    <SelectValue placeholder="Select a permission..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePermissions.map((perm) => (
+                      <SelectItem key={perm.name} value={perm.name}>
+                        {perm.name} - {perm.description || perm.action}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  className="bg-action text-action-foreground hover:bg-action-hover"
+                  disabled={!selectedPermission || grantMutation.isPending}
+                  onClick={handleGrantPermission}
+                  size="sm"
+                >
+                  <Plus className="mr-2 size-4" />
+                  {grantMutation.isPending ? 'Adding...' : 'Assign'}
                 </Button>
               </div>
+            )}
 
-              {showAddPermission && (
-                <div className="flex items-center gap-2">
-                  <Select
-                    onValueChange={setSelectedPermission}
-                    value={selectedPermission}
-                  >
-                    <SelectTrigger
-                      aria-label="Select a permission"
-                      className="flex-1"
-                    >
-                      <SelectValue placeholder="Select a permission..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availablePermissions.map((perm) => (
-                        <SelectItem key={perm.name} value={perm.name}>
-                          {perm.name} - {perm.description || perm.action}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    className="bg-action text-action-foreground hover:bg-action-hover"
-                    disabled={!selectedPermission || grantMutation.isPending}
-                    onClick={handleGrantPermission}
-                    size="sm"
-                  >
-                    <Plus className="mr-2 size-4" />
-                    {grantMutation.isPending ? 'Adding...' : 'Assign'}
-                  </Button>
-                </div>
-              )}
-
-              <div className="bg-info text-info mt-3 flex items-start gap-2 rounded p-2 text-xs">
-                <AlertCircle className="mt-0.5 size-3 shrink-0" />
-                <span>
-                  Permissions define what actions users with this role can
-                  perform
-                </span>
-              </div>
+            <div className="bg-info text-info mt-3 flex items-start gap-2 rounded p-2 text-xs">
+              <AlertCircle className="mt-0.5 size-3 shrink-0" />
+              <span>
+                Permissions define what actions users with this role can perform
+              </span>
             </div>
-          )}
+          </div>
 
           {/* Permissions Table */}
           {Object.keys(groupedPermissions).length === 0 ? (
             <div className="text-tertiary py-8 text-center">
               <Shield className="mx-auto mb-2 size-8 opacity-50" />
               <div>No permissions assigned</div>
-              {!role.is_system && (
-                <div className="mt-1 text-sm">
-                  Use the section above to add permissions
-                </div>
-              )}
+              <div className="mt-1 text-sm">
+                Use the section above to add permissions
+              </div>
             </div>
           ) : (
             <Card className="overflow-hidden">
@@ -384,11 +377,9 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                       <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                         Description
                       </TableHead>
-                      {!role.is_system && (
-                        <TableHead className="text-tertiary px-6 py-3 text-right text-xs tracking-wider uppercase">
-                          Actions
-                        </TableHead>
-                      )}
+                      <TableHead className="text-tertiary px-6 py-3 text-right text-xs tracking-wider uppercase">
+                        Actions
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-tertiary divide-y">
@@ -407,31 +398,29 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                           <TableCell className="text-secondary px-6 py-4 text-sm">
                             {perm.description || perm.action}
                           </TableCell>
-                          {!role.is_system && (
-                            <TableCell className="px-6 py-4 text-right">
-                              <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      aria-label={`Remove ${perm.name} permission`}
-                                      className="text-danger hover:bg-danger size-7"
-                                      disabled={revokeMutation.isPending}
-                                      onClick={() =>
-                                        handleRevokePermission(perm.name)
-                                      }
-                                      size="icon"
-                                      variant="ghost"
-                                    >
-                                      <Trash2 className="size-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Remove permission</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </TableCell>
-                          )}
+                          <TableCell className="px-6 py-4 text-right">
+                            <TooltipProvider delayDuration={200}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    aria-label={`Remove ${perm.name} permission`}
+                                    className="text-danger hover:bg-danger size-7"
+                                    disabled={revokeMutation.isPending}
+                                    onClick={() =>
+                                      handleRevokePermission(perm.name)
+                                    }
+                                    size="icon"
+                                    variant="ghost"
+                                  >
+                                    <Trash2 className="size-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Remove permission</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
                         </TableRow>
                       ))}
                   </TableBody>

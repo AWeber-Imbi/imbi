@@ -26,7 +26,7 @@ Accounts**. The **Admin** item shows only for platform administrators.
 | Permission | Lets you | Roles that have it |
 |---|---|---|
 | `service_account:create` | Create service accounts | `admin` |
-| `service_account:read` | View service accounts | `admin` |
+| `service_account:read` | View service accounts | `admin`, `developer` |
 | `service_account:update` | Update service accounts | `admin` |
 | `service_account:delete` | Delete service accounts | `admin` |
 

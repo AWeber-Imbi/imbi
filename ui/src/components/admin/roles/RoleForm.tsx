@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import {
-  AlertCircle,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Save,
-  X,
-} from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronRight, Save, X } from 'lucide-react'
 
 import { getAdminSettings, getRole } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
@@ -108,8 +101,6 @@ export function RoleForm({
       )
     }
   }, [existingRole])
-
-  const isSystemRole = isEditing && existingRole?.is_system
 
   const handleNameChange = (value: string) => {
     setName(value)
@@ -243,41 +234,23 @@ export function RoleForm({
             <X className="mr-2 size-4" />
             Cancel
           </Button>
-          {!isSystemRole && (
-            <Button
-              className="bg-action text-action-foreground hover:bg-action-hover"
-              disabled={
-                isLoading ||
-                (!isEditing && (adminSettingsLoading || !!adminSettingsError))
-              }
-              onClick={handleSave}
-            >
-              <Save className="mr-2 size-4" />
-              {isLoading
-                ? 'Saving...'
-                : isEditing
-                  ? 'Save Changes'
-                  : 'Create Role'}
-            </Button>
-          )}
+          <Button
+            className="bg-action text-action-foreground hover:bg-action-hover"
+            disabled={
+              isLoading ||
+              (!isEditing && (adminSettingsLoading || !!adminSettingsError))
+            }
+            onClick={handleSave}
+          >
+            <Save className="mr-2 size-4" />
+            {isLoading
+              ? 'Saving...'
+              : isEditing
+                ? 'Save Changes'
+                : 'Create Role'}
+          </Button>
         </div>
       </div>
-
-      {/* System Role Warning */}
-      {isSystemRole && (
-        <div className="border-warning bg-warning rounded-lg border p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="text-warning size-5 shrink-0" />
-            <div>
-              <div className="text-warning font-medium">System Role</div>
-              <div className="text-warning mt-1 text-sm">
-                This is a system role and cannot be modified. System roles are
-                managed automatically.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* API Error Display */}
       {error && (
@@ -309,10 +282,7 @@ export function RoleForm({
                 touched={touched.name}
               >
                 <Input
-                  className={` ${
-                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
-                  }`}
-                  disabled={isLoading || isSystemRole}
+                  disabled={isLoading}
                   onBlur={() => {
                     setTouched({ ...touched, name: true })
                     const err = validateName(name)
@@ -333,10 +303,8 @@ export function RoleForm({
                   Slug <RequiredAsterisk />
                 </Label>
                 <Input
-                  className={`font-mono ${
-                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
-                  }`}
-                  disabled={isLoading || isSystemRole}
+                  className="font-mono"
+                  disabled={isLoading}
                   onBlur={() => {
                     setTouched({ ...touched, slug: true })
                     const err = validateSlug(slug)
@@ -366,8 +334,8 @@ export function RoleForm({
                 Description
               </Label>
               <Textarea
-                className={`resize-none ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
-                disabled={isLoading || isSystemRole}
+                className="resize-none"
+                disabled={isLoading}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this role's purpose and scope"
                 rows={3}
@@ -381,10 +349,7 @@ export function RoleForm({
                 Priority
               </Label>
               <Input
-                className={` ${
-                  isSystemRole ? 'cursor-not-allowed opacity-60' : ''
-                }`}
-                disabled={isLoading || isSystemRole}
+                disabled={isLoading}
                 onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
                 placeholder="0"
                 type="number"
@@ -475,7 +440,6 @@ export function RoleForm({
                                 ? 'indeterminate'
                                 : false
                           }
-                          disabled={isSystemRole}
                           id={`group-${resource}`}
                           onCheckedChange={() => toggleAllInGroup(resource)}
                         />
@@ -510,7 +474,6 @@ export function RoleForm({
                               <Checkbox
                                 checked={selectedPermissions.has(perm.name)}
                                 className="mt-0.5"
-                                disabled={isSystemRole}
                                 id={perm.name}
                                 onCheckedChange={() =>
                                   togglePermission(perm.name)
