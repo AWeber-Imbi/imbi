@@ -74,6 +74,23 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## 2.46.0
+
+Run `imbi-api setup-permissions`. It gives the `developer` role
+`role:read` and the 13 permissions of production's `default` role that
+the seed did not have. imbi-api adds the new `agent_runtime` task columns
+and the `task_projects` table when it starts, and moves the project of
+each existing task into that table.
+
+1. **Deploy imbi-api before the harness runners.** A runner of this
+   release sends the project set of a task, and an older imbi-api refuses
+   its secret materializations for project tasks. A resolution made
+   before the deploy and materialized after it fails one time.
+2. **Deploy the `imbi-harness` chart together with the runner image.**
+   The runner pod gets a new `plugins` emptyDir (`plugins.sizeLimit`,
+   default `1Gi`), and a runner of this release fails at start when
+   `/run/plugins` is missing.
+
 ## 2.45.0
 
 No setup command is required. imbi-api adds the `hostnames` column of
