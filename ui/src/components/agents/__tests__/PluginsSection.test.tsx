@@ -106,6 +106,17 @@ describe('PluginsSection', () => {
     expect(screen.getByLabelText('linked')).toBeEnabled()
   })
 
+  it('shows an unusable plugin that is a default', async () => {
+    const withRemote = config()
+    withRemote.config.default_plugins.push({
+      marketplace: 'claude-code',
+      plugin: 'remote',
+    })
+    vi.mocked(endpoints.getAgentPlatformConfig).mockResolvedValue(withRemote)
+    render(<Harness initial={emptyDraft().settings} />)
+    expect(await screen.findByLabelText('remote')).toBeChecked()
+  })
+
   it('names the MCP servers that a plugin brings', async () => {
     render(<Harness initial={emptyDraft().settings} />)
     expect(await screen.findByText('grafana')).toBeInTheDocument()

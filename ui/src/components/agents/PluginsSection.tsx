@@ -162,8 +162,8 @@ function MarketplacePlugins({
           const head = external ? plugin.repository_sha : marketplace.head_sha
           const outside = external && !head
           // Hide a plugin that runners cannot load, unless the agent
-          // already has it (so that the operator can turn it off).
-          if (outside && !chosen) return null
+          // already has it or it is a default (so that its state shows).
+          if (outside && !chosen && !isDefault) return null
           const stale =
             chosen?.sha &&
             head &&
