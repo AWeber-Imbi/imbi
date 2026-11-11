@@ -138,7 +138,7 @@ export function AccessTab({
           title="Failed to load the secret grants"
         />
       )}
-      <p className="text-tertiary text-sm">
+      <p className="text-sm text-tertiary">
         The secrets broker gives the agent a secret only when a grant names the
         agent. Grants apply at once and are not part of the agent version.
         {!agent && ' Save the agent first to give it access.'}
@@ -164,18 +164,18 @@ export function AccessTab({
           />
         </Field>
         {github && agent && canRead && (
-          <ul className="border-tertiary divide-tertiary divide-y rounded-lg border">
+          <ul className="divide-y divide-tertiary rounded-lg border border-tertiary">
             {GITHUB_PURPOSES.map(({ label, mode, purpose }) => {
               const ok = covers(mine, github.id, purpose, mode)
               return (
                 <li className="flex items-center gap-3 px-3 py-2" key={purpose}>
                   {ok ? (
-                    <Check className="text-success size-4" />
+                    <Check className="size-4 text-success" />
                   ) : (
-                    <X className="text-tertiary size-4" />
+                    <X className="size-4 text-tertiary" />
                   )}
                   <span className="flex-1 text-sm">{label}</span>
-                  <span className="text-tertiary font-mono text-xs">
+                  <span className="font-mono text-xs text-tertiary">
                     {purpose}
                   </span>
                   {!ok && canWrite && (
@@ -257,7 +257,7 @@ function AgentSecrets({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <div className="text-overline text-tertiary flex-1 uppercase">
+        <div className="flex-1 text-overline text-tertiary uppercase">
           Secrets
         </div>
         {canWrite && (
@@ -267,7 +267,7 @@ function AgentSecrets({
           </Button>
         )}
       </div>
-      <p className="text-tertiary text-xs">
+      <p className="text-xs text-tertiary">
         The agent can request these with run_with_secret: each one goes into the
         environment of one command. Change or remove a grant in{' '}
         <Link className="text-action hover:underline" to="/admin/secrets">
@@ -276,7 +276,7 @@ function AgentSecrets({
         .
       </p>
       {agentRows.length === 0 ? (
-        <p className="text-tertiary text-sm">
+        <p className="text-sm text-tertiary">
           No grant lets the agent request a secret.
         </p>
       ) : (
@@ -284,7 +284,7 @@ function AgentSecrets({
       )}
       {runnerRows.length > 0 && (
         <>
-          <p className="text-tertiary mt-2 text-xs">
+          <p className="mt-2 text-xs text-tertiary">
             Used by the runner for the agent, never given to it: the model key
             and the repository tokens.
           </p>
@@ -362,7 +362,7 @@ function canSupplyModelKey(b: SecretBinding): boolean {
 function GrantTable({ rows }: { rows: AccessRow[] }) {
   return (
     <table className="w-full text-sm">
-      <thead className="text-tertiary text-left text-xs">
+      <thead className="text-left text-xs text-tertiary">
         <tr>
           <th className="py-1 font-normal">Reference</th>
           <th className="py-1 font-normal">Purposes</th>
@@ -370,13 +370,13 @@ function GrantTable({ rows }: { rows: AccessRow[] }) {
           <th className="py-1 font-normal">TTL</th>
         </tr>
       </thead>
-      <tbody className="divide-tertiary divide-y">
+      <tbody className="divide-y divide-tertiary">
         {rows.map(({ binding, grant }) => (
           <tr key={`${grant.id}-${binding.id}`}>
             <td className="py-2 font-mono text-xs">
               {binding.reference}
               {grant.agent_ids.length > 1 && (
-                <span className="text-tertiary ml-2 font-sans">
+                <span className="ml-2 font-sans text-tertiary">
                   shared with {grant.agent_ids.length - 1} other
                   {grant.agent_ids.length > 2 ? ' agents' : ' agent'}
                 </span>
@@ -474,24 +474,24 @@ function ModelKey({
         </Select>
       </Field>
       {loaded && value && !binding && (
-        <p className="text-danger text-sm">
+        <p className="text-sm text-danger">
           This binding does not exist. Select a different binding.
         </p>
       )}
       {binding && !usable && (
-        <p className="text-danger text-sm">
+        <p className="text-sm text-danger">
           This binding cannot supply a model key. Select a different binding.
         </p>
       )}
       {binding && usable && showGrant && (
-        <div className="border-tertiary flex items-center gap-3 rounded-lg border px-3 py-2">
+        <div className="flex items-center gap-3 rounded-lg border border-tertiary px-3 py-2">
           {ok ? (
-            <Check className="text-success size-4" />
+            <Check className="size-4 text-success" />
           ) : (
-            <X className="text-tertiary size-4" />
+            <X className="size-4 text-tertiary" />
           )}
           <span className="flex-1 text-sm">Call the model</span>
-          <span className="text-tertiary font-mono text-xs">
+          <span className="font-mono text-xs text-tertiary">
             {MODEL_PURPOSE}
           </span>
           {!ok && canGrant && (

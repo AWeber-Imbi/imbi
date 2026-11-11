@@ -28,7 +28,7 @@ export function AgentsManagement() {
 
   if (!orgSlug) {
     return (
-      <div className="text-tertiary p-8 text-center">
+      <div className="p-8 text-center text-tertiary">
         Select an organization to manage agents.
       </div>
     )
@@ -59,7 +59,7 @@ export function AgentsManagement() {
   const agent = slug ? agents.find((a) => a.slug === slug) : undefined
   if (slug && slug !== 'new' && !agent) {
     return (
-      <div className="text-secondary flex flex-col items-center gap-2 p-8 text-center text-sm">
+      <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-secondary">
         <p>No agent with the slug “{slug}” in this organization.</p>
         <Link className="text-action" to={agentsPath('manage')}>
           Back to agents

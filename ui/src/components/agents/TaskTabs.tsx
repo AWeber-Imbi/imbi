@@ -32,11 +32,11 @@ const VERDICT: Record<
 export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
   const checks = checksFrom(events)
   if (checks.length === 0) {
-    return <p className="text-tertiary p-6 text-sm">No checks reported yet.</p>
+    return <p className="p-6 text-sm text-tertiary">No checks reported yet.</p>
   }
   return (
     <div>
-      <p className="border-tertiary text-tertiary border-b px-6 py-3 text-xs">
+      <p className="border-b border-tertiary px-6 py-3 text-xs text-tertiary">
         Signals the agent and its subagents report against this task
       </p>
       <ul>
@@ -54,10 +54,10 @@ export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
           ].filter(Boolean)
           return (
             <li
-              className="border-tertiary flex items-center gap-3 border-b px-6 py-3"
+              className="flex items-center gap-3 border-b border-tertiary px-6 py-3"
               key={e.event_id}
             >
-              <Activity className="text-tertiary size-4 shrink-0" />
+              <Activity className="size-4 shrink-0 text-tertiary" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{label(p.name)}</span>
@@ -66,12 +66,12 @@ export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
                   </Badge>
                 </div>
                 {detail.length > 0 && (
-                  <div className="text-tertiary text-xs">
+                  <div className="text-xs text-tertiary">
                     {detail.join(' · ')}
                   </div>
                 )}
               </div>
-              <span className="text-secondary ml-auto font-mono text-xs whitespace-nowrap tabular-nums">
+              <span className="ml-auto font-mono text-xs whitespace-nowrap text-secondary tabular-nums">
                 {p.value == null ? '—' : label(p.value)}
               </span>
             </li>
@@ -99,7 +99,7 @@ export function Composer({
   const send = (hold: boolean) =>
     reply.mutate(hold, { onSuccess: () => setBody('') })
   return (
-    <div className="border-tertiary bg-primary flex shrink-0 flex-col gap-2 border-t px-6 py-3">
+    <div className="flex shrink-0 flex-col gap-2 border-t border-tertiary bg-primary px-6 py-3">
       <Textarea
         aria-label="Reply"
         onChange={(e) => setBody(e.target.value)}
@@ -125,7 +125,7 @@ export function Composer({
           Reply and hold
         </Button>
         {reply.error && (
-          <span className="text-danger text-xs" role="alert">
+          <span className="text-xs text-danger" role="alert">
             {errorMessage(reply.error)}
           </span>
         )}
@@ -146,7 +146,7 @@ export function InputRequiredTab({
 }) {
   if (requests.length === 0) {
     return (
-      <p className="text-tertiary p-6 text-sm">
+      <p className="p-6 text-sm text-tertiary">
         This task has not asked for input.
       </p>
     )
@@ -205,11 +205,11 @@ export function RequestCard({
       : RESOLVED[r.status]
     const by = taken?.by ?? r.resolved_by
     return (
-      <div className="border-tertiary flex flex-col gap-1 rounded-lg border px-4 py-3">
+      <div className="flex flex-col gap-1 rounded-lg border border-tertiary px-4 py-3">
         <div className="flex items-center gap-2 text-sm">
-          <Check className="text-success size-4 shrink-0" />
+          <Check className="size-4 shrink-0 text-success" />
           <span className="font-medium">{r.title}</span>
-          <span className="text-secondary ml-auto text-xs">
+          <span className="ml-auto text-xs text-secondary">
             {status}
             {by && ` by ${by}`}
             {r.resolved_at && !taken && (
@@ -221,7 +221,7 @@ export function RequestCard({
           </span>
         </div>
         {r.answer && !taken && (
-          <p className="text-secondary pl-6 text-sm whitespace-pre-wrap">
+          <p className="pl-6 text-sm whitespace-pre-wrap text-secondary">
             {r.answer}
           </p>
         )}
@@ -231,13 +231,13 @@ export function RequestCard({
 
   const actionable = canResolve && task.status !== 'closed'
   return (
-    <div className="border-amber-border bg-amber-bg flex flex-col gap-3 rounded-lg border p-4">
+    <div className="flex flex-col gap-3 rounded-lg border border-amber-border bg-amber-bg p-4">
       <div className="flex items-center gap-2 text-xs">
-        <Hand className="text-amber-text size-3.5" />
+        <Hand className="size-3.5 text-amber-text" />
         <span className="text-overline text-amber-text uppercase">
           Waiting on you
         </span>
-        <span className="text-amber-text ml-auto">
+        <span className="ml-auto text-amber-text">
           asked <RelativeTime tooltip={false} value={r.opened_at} /> by{' '}
           {actorName(r.opened_by)}
         </span>
@@ -245,14 +245,14 @@ export function RequestCard({
       <div>
         <h3 className="text-sm font-medium">{r.title}</h3>
         {r.why && (
-          <p className="text-secondary mt-1 text-sm whitespace-pre-wrap">
+          <p className="mt-1 text-sm whitespace-pre-wrap text-secondary">
             {r.why}
           </p>
         )}
       </div>
       {r.artifacts.map((a, i) => (
         <div
-          className="border-tertiary bg-primary truncate rounded border px-3 py-2 font-mono text-xs"
+          className="truncate rounded border border-tertiary bg-primary px-3 py-2 font-mono text-xs"
           key={i}
         >
           {label(a)}
@@ -322,7 +322,7 @@ export function RequestCard({
         </div>
       )}
       {resolve.error && (
-        <p className="text-danger text-xs" role="alert">
+        <p className="text-xs text-danger" role="alert">
           {errorMessage(resolve.error)}
         </p>
       )}

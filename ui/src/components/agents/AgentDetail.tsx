@@ -125,7 +125,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       </div>
 
       <div className="flex items-start gap-4">
-        <div className="bg-secondary text-action flex size-12 shrink-0 items-center justify-center rounded-lg">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-secondary text-action">
           <Icon className="size-6" />
         </div>
         <div className="min-w-0 flex-1">
@@ -134,12 +134,12 @@ export function AgentDetail({ agent }: { agent: Agent }) {
             <Badge variant={agent.enabled ? 'success' : 'neutral'}>
               {agent.enabled ? 'Enabled' : 'Disabled'}
             </Badge>
-            <span className="text-tertiary font-mono text-sm tabular-nums">
+            <span className="font-mono text-sm text-tertiary tabular-nums">
               v{agent.version}
             </span>
           </div>
           {agent.description && (
-            <p className="text-secondary mt-1 text-sm text-pretty">
+            <p className="mt-1 text-sm text-pretty text-secondary">
               {agent.description}
             </p>
           )}
@@ -170,7 +170,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         </div>
       </div>
 
-      <div className="border-border bg-card rounded-lg border">
+      <div className="rounded-lg border border-border bg-card">
         <dl className="grid grid-cols-3 gap-x-8 gap-y-5 p-6">
           {rows.map((row) => (
             <div className="flex flex-col gap-1" key={row.name}>
@@ -191,22 +191,22 @@ export function AgentDetail({ agent }: { agent: Agent }) {
 
       <div className="grid grid-cols-2 gap-6">
         <SubagentsCard agent={agent} />
-        <div className="border-border bg-card rounded-lg border">
-          <div className="border-border flex items-center justify-between border-b px-6 py-4">
+        <div className="rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <h3 className="text-card-title">System prompt</h3>
             {system && (
-              <span className="text-tertiary font-mono text-sm tabular-nums">
+              <span className="font-mono text-sm text-tertiary tabular-nums">
                 {wordCount(system).toLocaleString()} words
               </span>
             )}
           </div>
           <div className="max-h-65 overflow-hidden px-6 py-4">
             {prompt.isLoading ? (
-              <p className="text-tertiary text-sm">Loading…</p>
+              <p className="text-sm text-tertiary">Loading…</p>
             ) : system ? (
               <MarkdownPreview value={system} />
             ) : (
-              <p className="text-tertiary text-sm">
+              <p className="text-sm text-tertiary">
                 {prompt.isError
                   ? 'Could not load the system prompt.'
                   : 'No system prompt yet.'}
@@ -235,11 +235,11 @@ function CostOverTime({ usage }: { usage: AgentUsage }) {
     { label: 'Peak day', value: formatMoney(Math.max(...cost)) },
   ]
   return (
-    <div className="border-border bg-card rounded-lg border">
-      <div className="border-border flex items-end justify-between border-b px-6 py-4">
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-end justify-between border-b border-border px-6 py-4">
         <div>
           <h3 className="text-card-title">Cost over time</h3>
-          <p className="text-tertiary text-xs">Daily spend · last 30 days</p>
+          <p className="text-xs text-tertiary">Daily spend · last 30 days</p>
         </div>
         <div className="flex items-center gap-6">
           {stats.map((s) => (
@@ -253,7 +253,7 @@ function CostOverTime({ usage }: { usage: AgentUsage }) {
         </div>
       </div>
       {usage.days.length === 0 ? (
-        <p className="text-tertiary px-6 py-10 text-center text-sm">
+        <p className="px-6 py-10 text-center text-sm text-tertiary">
           No spend in the last 30 days.
         </p>
       ) : (
@@ -271,11 +271,11 @@ function CostOverTime({ usage }: { usage: AgentUsage }) {
             />
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-2 px-6 pb-4">
-            <span className="text-secondary flex items-center gap-2 text-xs">
-              <span className="bg-action size-2.25 rounded-xs" />
+            <span className="flex items-center gap-2 text-xs text-secondary">
+              <span className="size-2.25 rounded-xs bg-action" />
               Cost per day
             </span>
-            <span className="text-secondary flex items-center gap-2 text-xs">
+            <span className="flex items-center gap-2 text-xs text-secondary">
               <span
                 className="h-0.5 w-3 rounded-xs"
                 style={{ background: RUNS_COLOR }}
@@ -321,10 +321,10 @@ function SubagentItem({ subagent }: { subagent: AgentSubagentRef }) {
   const Icon = useIcon(subagent.icon, Bot)
   const tools = `${subagent.tool_count} tool${subagent.tool_count === 1 ? '' : 's'}`
   return (
-    <div className="border-border flex items-center gap-3 border-b px-6 py-3 last:border-b-0">
-      <Icon className="text-secondary size-4 shrink-0" />
+    <div className="flex items-center gap-3 border-b border-border px-6 py-3 last:border-b-0">
+      <Icon className="size-4 shrink-0 text-secondary" />
       <span className="text-sm font-medium">{subagent.name}</span>
-      <span className="text-tertiary flex-1 text-right font-mono text-xs tabular-nums">
+      <span className="flex-1 text-right font-mono text-xs text-tertiary tabular-nums">
         v{subagent.version} · {tools}
       </span>
     </div>
@@ -335,16 +335,16 @@ function SubagentItem({ subagent }: { subagent: AgentSubagentRef }) {
 function SubagentsCard({ agent }: { agent: Agent }) {
   const subagents = agent.subagents ?? []
   return (
-    <div className="border-border bg-card rounded-lg border">
-      <div className="border-border flex items-center justify-between border-b px-6 py-4">
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-6 py-4">
         <h3 className="text-card-title">Subagents</h3>
-        <span className="text-tertiary font-mono text-sm tabular-nums">
+        <span className="font-mono text-sm text-tertiary tabular-nums">
           {subagents.length}
         </span>
       </div>
       <div className="flex flex-col">
         {subagents.length === 0 && (
-          <p className="text-tertiary px-6 py-5 text-sm">
+          <p className="px-6 py-5 text-sm text-tertiary">
             No subagents. This agent does all of its own work.
           </p>
         )}
@@ -370,10 +370,10 @@ function ToolAccessCard({ agent }: { agent: Agent }) {
     ])
   }
   return (
-    <div className="border-border bg-card rounded-lg border">
-      <div className="border-border flex items-center justify-between border-b px-6 py-4">
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-6 py-4">
         <h3 className="text-card-title">Tools and MCP access</h3>
-        <span className="text-tertiary font-mono text-sm tabular-nums">
+        <span className="font-mono text-sm text-tertiary tabular-nums">
           {catalog.data
             ? `${keys.length} of ${total} enabled`
             : `${keys.length} enabled`}
@@ -381,18 +381,18 @@ function ToolAccessCard({ agent }: { agent: Agent }) {
       </div>
       <div className="flex flex-col">
         {keys.length === 0 && (
-          <p className="text-tertiary px-6 py-4 text-sm">No tools enabled.</p>
+          <p className="px-6 py-4 text-sm text-tertiary">No tools enabled.</p>
         )}
         {[...servers].map(([server, tools]) => (
           <div
-            className="border-border flex items-center gap-4 border-b px-6 py-3 last:border-b-0"
+            className="flex items-center gap-4 border-b border-border px-6 py-3 last:border-b-0"
             key={server}
           >
             <span className="w-30 shrink-0 truncate text-sm font-medium">
               {server}
             </span>
             <span
-              className="text-secondary min-w-0 flex-1 truncate font-mono text-xs"
+              className="min-w-0 flex-1 truncate font-mono text-xs text-secondary"
               title={tools.join(', ')}
             >
               {tools.join(', ')}

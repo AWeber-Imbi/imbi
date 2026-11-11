@@ -96,11 +96,11 @@ export function TaskDetail({
   )
 
   if (task.isLoading) {
-    return <p className="text-tertiary p-6 text-sm">Loading…</p>
+    return <p className="p-6 text-sm text-tertiary">Loading…</p>
   }
   if (!task.data) {
     return (
-      <p className="text-secondary p-6 text-sm" role="alert">
+      <p className="p-6 text-sm text-secondary" role="alert">
         {task.error instanceof ApiError && task.error.status === 404
           ? `No task ${shortId} in this organization.`
           : `Could not load ${shortId}: ${task.error?.message ?? ''}`}
@@ -142,7 +142,7 @@ export function TaskDetail({
     <div className="flex min-h-0 flex-1 flex-col">
       <TaskHeader end={end} events={log} orgSlug={orgSlug} task={t} />
       <div
-        className="border-tertiary flex shrink-0 gap-1 border-b px-4"
+        className="flex shrink-0 gap-1 border-b border-tertiary px-4"
         role="tablist"
       >
         {tabs.map((x) => (
@@ -164,7 +164,7 @@ export function TaskDetail({
           >
             {x.label}
             {x.count !== undefined && (
-              <span className="text-tertiary ml-2 font-mono text-xs tabular-nums">
+              <span className="ml-2 font-mono text-xs text-tertiary tabular-nums">
                 {x.count}
               </span>
             )}
@@ -173,7 +173,7 @@ export function TaskDetail({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {events.error && (
-          <p className="text-danger px-6 pt-4 text-sm" role="alert">
+          <p className="px-6 pt-4 text-sm text-danger" role="alert">
             Could not load the task log: {events.error.message}
           </p>
         )}
@@ -206,7 +206,7 @@ export function TaskDetail({
 
 function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
   return (
-    <span className="text-secondary flex items-center gap-1.5 text-sm">
+    <span className="flex items-center gap-1.5 text-sm text-secondary">
       {icon}
       {children}
     </span>
@@ -272,7 +272,7 @@ function OverviewTab({
   return (
     <div className="flex flex-col gap-4 px-6 py-5">
       <Card className="p-5">
-        <h3 className="text-overline text-tertiary mb-4 uppercase">Details</h3>
+        <h3 className="mb-4 text-overline text-tertiary uppercase">Details</h3>
         <dl className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-3 xl:grid-cols-5">
           {rows.map((row) => (
             <div className="flex min-w-0 flex-col gap-1" key={row.name}>
@@ -287,7 +287,7 @@ function OverviewTab({
         </dl>
       </Card>
       <Card className="overflow-hidden p-0">
-        <div className="border-tertiary flex items-center justify-between border-b px-5 py-3">
+        <div className="flex items-center justify-between border-b border-tertiary px-5 py-3">
           <h3 className="text-overline text-tertiary uppercase">Description</h3>
           <Button
             onClick={() => setRaw((r) => !r)}
@@ -300,7 +300,7 @@ function OverviewTab({
         </div>
         <div className="p-5">
           {raw ? (
-            <pre className="text-primary font-mono text-sm wrap-break-word whitespace-pre-wrap">
+            <pre className="font-mono text-sm wrap-break-word whitespace-pre-wrap text-primary">
               {task.description}
             </pre>
           ) : (
@@ -312,14 +312,14 @@ function OverviewTab({
       </Card>
       {todos && todos.length > 0 && (
         <Card className="p-5">
-          <h3 className="text-overline text-tertiary mb-3 uppercase">Todos</h3>
+          <h3 className="mb-3 text-overline text-tertiary uppercase">Todos</h3>
           <ul className="flex flex-col gap-1">
             {todos.map((todo, i) => (
               <li className="flex items-center gap-2 text-sm" key={i}>
                 {todo.done ? (
-                  <Check className="text-success size-3.5" />
+                  <Check className="size-3.5 text-success" />
                 ) : (
-                  <Circle className="text-tertiary size-3.5" />
+                  <Circle className="size-3.5 text-tertiary" />
                 )}
                 <span className={todo.done ? 'text-secondary' : ''}>
                   {todo.title}
@@ -447,14 +447,14 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
             </Button>
           </form>
           {reassign.error && (
-            <p className="text-danger text-xs" role="alert">
+            <p className="text-xs text-danger" role="alert">
               {errorMessage(reassign.error)}
             </p>
           )}
         </PopoverContent>
       </Popover>
       {error && !open && (
-        <span className="text-danger text-xs" role="alert">
+        <span className="text-xs text-danger" role="alert">
           {errorMessage(error)}
         </span>
       )}
@@ -508,7 +508,7 @@ function TaskDelete({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         title={`Delete ${task.short_id}?`}
       />
       {remove.error && (
-        <span className="text-danger text-xs" role="alert">
+        <span className="text-xs text-danger" role="alert">
           {errorMessage(remove.error)}
         </span>
       )}
@@ -542,9 +542,9 @@ function TaskHeader({
     task.cache_write_tokens
   const phases = phaseTimeline(events, end)
   return (
-    <div className="border-tertiary flex shrink-0 flex-col gap-3 border-b px-6 pt-5 pb-4">
+    <div className="flex shrink-0 flex-col gap-3 border-b border-tertiary px-6 pt-5 pb-4">
       <div className="flex items-start gap-3">
-        <span className="text-tertiary pt-0.5 font-mono text-sm">
+        <span className="pt-0.5 font-mono text-sm text-tertiary">
           {task.short_id}
         </span>
         <h2 className="min-w-0 flex-1 text-lg font-medium text-pretty">
@@ -561,7 +561,7 @@ function TaskHeader({
         <Fact>
           {agent ? (
             <Link
-              className="text-primary font-medium hover:underline"
+              className="font-medium text-primary hover:underline"
               to={agentsPath('manage', agent.slug)}
             >
               {agent.name}
@@ -569,7 +569,7 @@ function TaskHeader({
           ) : (
             <span className="font-mono text-xs">{task.agent_id}</span>
           )}
-          <span className="text-tertiary font-mono text-xs">
+          <span className="font-mono text-xs text-tertiary">
             v{task.agent_version}
           </span>
         </Fact>
@@ -592,8 +592,8 @@ function TaskHeader({
             {formatElapsed(end - Date.parse(task.created_at))}
           </span>
         </Fact>
-        <span className="text-primary flex items-center gap-1.5 font-mono text-sm tabular-nums">
-          <Coins className="text-secondary size-3.5" />
+        <span className="flex items-center gap-1.5 font-mono text-sm text-primary tabular-nums">
+          <Coins className="size-3.5 text-secondary" />
           {formatTokens(tokens)} tok · {formatMoney(task.cost_total)}
           {task.budget != null && (
             <span className="text-tertiary">
@@ -610,19 +610,19 @@ function TaskHeader({
             return (
               <li className="flex items-center gap-2" key={`${p.at}-${i}`}>
                 {current ? (
-                  <Circle className="text-action size-3.5" />
+                  <Circle className="size-3.5 text-action" />
                 ) : (
-                  <Check className="text-action size-3.5" />
+                  <Check className="size-3.5 text-action" />
                 )}
                 <span
                   className={cn(
                     'text-sm',
-                    current ? 'text-primary font-medium' : 'text-secondary',
+                    current ? 'font-medium text-primary' : 'text-secondary',
                   )}
                 >
                   {p.phase}
                 </span>
-                <span className="text-tertiary font-mono text-xs tabular-nums">
+                <span className="font-mono text-xs text-tertiary tabular-nums">
                   {formatElapsed(p.ms)}
                 </span>
               </li>
@@ -684,7 +684,7 @@ function TaskRetry({
         <RotateCcw className="size-4" />
       </Button>
       {retry.error && (
-        <span className="text-danger text-xs" role="alert">
+        <span className="text-xs text-danger" role="alert">
           {errorMessage(retry.error)}
         </span>
       )}

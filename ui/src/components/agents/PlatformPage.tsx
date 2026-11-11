@@ -39,7 +39,13 @@ import type {
   AgentPlatformConfigResponse,
 } from '@/types'
 
-import { parseLabels } from './agentDraft'
+import {
+  parseLabels,
+  parseSettingsText,
+  SETTINGS_HELP,
+  SETTINGS_PATHS,
+  settingsText,
+} from './agentDraft'
 import { Field } from './OverviewTab'
 
 const MODES: AgentPlatformConfig['permission_mode'][] = [
@@ -54,9 +60,9 @@ const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
 interface ConfigForm {
   allowedTools: string
   approvalTools: string
+  claudeSettings: string
   config: AgentPlatformConfig
   deniedTools: string
-  hooks: string
 }
 
 /**
@@ -82,7 +88,7 @@ export function PlatformPage() {
 
   if (!orgSlug) {
     return (
-      <div className="text-tertiary p-8 text-center">
+      <div className="p-8 text-center text-tertiary">
         Select an organization to see its agent platform.
       </div>
     )
@@ -166,24 +172,24 @@ function MarketplacesCard({
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-tertiary border-b px-5 py-3.5">
+      <div className="border-b border-tertiary px-5 py-3.5">
         <div className="text-[15px] font-medium">Plugin marketplaces</div>
-        <p className="text-tertiary text-xs">
+        <p className="text-xs text-tertiary">
           Claude Code plugin marketplaces, read through the organization's
           GitHub integration at the head of the default branch.
         </p>
       </div>
       {marketplaces.length === 0 ? (
-        <p className="text-tertiary px-5 py-4 text-sm">No marketplaces.</p>
+        <p className="px-5 py-4 text-sm text-tertiary">No marketplaces.</p>
       ) : (
-        <ul className="divide-tertiary divide-y">
+        <ul className="divide-y divide-tertiary">
           {marketplaces.map((m) => (
             <li className="flex items-center gap-3 px-5 py-2.5" key={m.slug}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{m.slug}</span>
                   {m.name && (
-                    <span className="text-tertiary font-mono text-xs">
+                    <span className="font-mono text-xs text-tertiary">
                       {m.name}
                     </span>
                   )}
@@ -193,17 +199,17 @@ function MarketplacesCard({
                     </Badge>
                   )}
                 </div>
-                <div className="text-secondary truncate font-mono text-xs">
+                <div className="truncate font-mono text-xs text-secondary">
                   {m.url}
                 </div>
               </div>
-              <span className="text-secondary text-xs whitespace-nowrap">
+              <span className="text-xs whitespace-nowrap text-secondary">
                 {m.plugins?.length ?? 0} plugins
               </span>
-              <span className="text-tertiary font-mono text-xs">
+              <span className="font-mono text-xs text-tertiary">
                 {m.head_sha?.slice(0, 7) ?? '—'}
               </span>
-              <span className="text-tertiary text-xs whitespace-nowrap">
+              <span className="text-xs whitespace-nowrap text-tertiary">
                 {m.synced_at ? formatRelativeDate(m.synced_at) : 'never'}
               </span>
               {canWrite && (
@@ -233,7 +239,7 @@ function MarketplacesCard({
       )}
       {canWrite && (
         <form
-          className="border-tertiary flex items-end gap-3 border-t px-5 py-3"
+          className="flex items-end gap-3 border-t border-tertiary px-5 py-3"
           onSubmit={(e) => {
             e.preventDefault()
             create.mutate()
@@ -286,11 +292,11 @@ function ConfigCard({
         ? ''
         : csv(stored.config.allowed_tools),
     approvalTools: csv(stored.config.approval_tools),
+    claudeSettings: settingsText(stored.config.claude_settings),
     config: stored.config,
     deniedTools: csv(stored.config.denied_tools),
-    hooks: JSON.stringify(stored.config.hooks ?? {}, null, 2),
   }))
-  const [hooksError, setHooksError] = useState('')
+  const [settingsError, setSettingsError] = useState('')
   const config = form.config
   const setConfig = (patch: Partial<AgentPlatformConfig>) =>
     setForm((f) => ({ ...f, config: { ...f.config, ...patch } }))
@@ -305,6 +311,7 @@ function ConfigCard({
   }
   const allowed = new Set(config.allowed_marketplaces ?? [])
   const defaults = config.default_plugins ?? []
+  const enforced = config.enforced ?? []
 
   const save = useMutation({
     mutationFn: (body: AgentPlatformConfig) =>
@@ -317,22 +324,20 @@ function ConfigCard({
   })
 
   const onSave = () => {
-    let hooks: Record<string, unknown>
-    try {
-      hooks = form.hooks.trim() ? JSON.parse(form.hooks) : {}
-    } catch {
-      setHooksError('Enter a JSON object')
+    const claudeSettings = parseSettingsText(form.claudeSettings)
+    if (claudeSettings === null) {
+      setSettingsError('Enter a JSON object')
       return
     }
-    setHooksError('')
+    setSettingsError('')
     save.mutate({
       ...config,
       allowed_tools: form.allowedTools.trim()
         ? parseLabels(form.allowedTools)
         : null,
       approval_tools: parseLabels(form.approvalTools),
+      claude_settings: claudeSettings,
       denied_tools: parseLabels(form.deniedTools),
-      hooks,
     })
   }
 
@@ -350,7 +355,7 @@ function ConfigCard({
       <div className="flex items-center gap-3">
         <div>
           <div className="text-[15px] font-medium">Base configuration</div>
-          <p className="text-tertiary text-xs">
+          <p className="text-xs text-tertiary">
             {stored.version
               ? `Version ${stored.version}, saved ${formatRelativeDate(stored.created_at ?? '')} by ${stored.created_by}`
               : 'No version yet. The defaults apply.'}
@@ -542,18 +547,49 @@ function ConfigCard({
           />
         </Field>
         <Field
-          error={hooksError}
-          help="Agent SDK hooks, as JSON. Agents cannot change them."
-          htmlFor="hooks"
-          label="Hooks"
+          error={settingsError}
+          help={SETTINGS_HELP}
+          htmlFor="claude-settings"
+          label="Claude Code settings"
         >
           <Textarea
             className="font-mono text-xs"
-            id="hooks"
-            onChange={(e) => setForm((f) => ({ ...f, hooks: e.target.value }))}
+            id="claude-settings"
+            onChange={(e) =>
+              setForm((f) => ({ ...f, claudeSettings: e.target.value }))
+            }
+            placeholder="{}"
             rows={5}
-            value={form.hooks}
+            value={form.claudeSettings}
           />
+          <label className="flex items-center gap-2 pt-2 text-sm">
+            <Switch
+              checked={!!config.allow_agent_hooks}
+              onCheckedChange={(on) => setConfig({ allow_agent_hooks: on })}
+            />
+            Let agents set hooks (a hook runs shell commands outside the sandbox
+            and the tool map)
+          </label>
+          <div className="pt-2 text-xs">
+            <span className="text-tertiary">Enforce (agents cannot set):</span>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1">
+              {SETTINGS_PATHS.map((path) => (
+                <label className="flex items-center gap-2 font-mono" key={path}>
+                  <Checkbox
+                    checked={enforced.includes(path)}
+                    onCheckedChange={(on) =>
+                      setConfig({
+                        enforced: on
+                          ? [...enforced, path]
+                          : enforced.filter((p) => p !== path),
+                      })
+                    }
+                  />
+                  {path}
+                </label>
+              ))}
+            </div>
+          </div>
         </Field>
       </fieldset>
       <section className="flex flex-col gap-2">
@@ -561,10 +597,10 @@ function ConfigCard({
           Allowed marketplaces and default plugins
         </div>
         {marketplaces.length === 0 && (
-          <p className="text-tertiary text-sm">Add a marketplace first.</p>
+          <p className="text-sm text-tertiary">Add a marketplace first.</p>
         )}
         {marketplaces.map((m) => (
-          <div className="border-tertiary rounded-lg border" key={m.slug}>
+          <div className="rounded-lg border border-tertiary" key={m.slug}>
             <label className="flex items-center gap-2 px-3 py-2 text-sm">
               <Checkbox
                 checked={allowed.has(m.slug)}
@@ -581,10 +617,10 @@ function ConfigCard({
                 }
               />
               <span className="font-medium">{m.slug}</span>
-              <span className="text-tertiary font-mono text-xs">{m.url}</span>
+              <span className="font-mono text-xs text-tertiary">{m.url}</span>
             </label>
             {allowed.has(m.slug) && (
-              <div className="border-tertiary grid grid-cols-3 gap-x-4 gap-y-1 border-t px-3 py-2">
+              <div className="grid grid-cols-3 gap-x-4 gap-y-1 border-t border-tertiary px-3 py-2">
                 {(m.plugins ?? []).map((p) => (
                   <label
                     className="flex items-center gap-2 font-mono text-xs"

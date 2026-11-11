@@ -131,7 +131,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
     <div className="flex max-w-180 flex-col gap-4">
       <div>
         <Label
-          className="text-secondary mb-1.5 block text-sm"
+          className="mb-1.5 block text-sm text-secondary"
           htmlFor="agent-provider"
         >
           LLM provider
@@ -151,14 +151,14 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
       </div>
 
       <div>
-        <Label className="text-secondary mb-1.5 block text-sm">Model</Label>
+        <Label className="mb-1.5 block text-sm text-secondary">Model</Label>
         <ModelPicker
           models={models.filter((m) => m.provider_name === activeProvider)}
           onChange={(model) => onChange({ ...value, model })}
           selected={selected}
           value={value.model}
         />
-        <p className="text-tertiary mt-1.5 text-xs">
+        <p className="mt-1.5 text-xs text-tertiary">
           Input / output price per million tokens. The list shows the enabled
           models in the AI Models catalog.
         </p>
@@ -166,7 +166,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
 
       <div className="flex">
         <button
-          className="text-action ml-auto flex items-center gap-1.5 text-sm hover:underline"
+          className="ml-auto flex items-center gap-1.5 text-sm text-action hover:underline"
           onClick={() => setAdvanced(!advanced)}
           type="button"
         >
@@ -180,7 +180,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
       </div>
 
       {advanced && (
-        <div className="border-border flex flex-col gap-5 border-t pt-5">
+        <div className="flex flex-col gap-5 border-t border-border pt-5">
           <div className="grid grid-cols-2 gap-x-6 gap-y-5">
             {PARAMS.map((p) => (
               <ParamRow
@@ -193,7 +193,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
               />
             ))}
           </div>
-          <p className="text-tertiary text-xs">
+          <p className="text-xs text-tertiary">
             Anything switched off is left unset and the provider default
             applies.
           </p>
@@ -238,7 +238,7 @@ function ModelPicker({
       <PopoverTrigger asChild>
         <button
           aria-label="Model"
-          className="border-input bg-card hover:border-action flex h-10 w-full items-center gap-3 rounded-md border px-3 text-left"
+          className="flex h-10 w-full items-center gap-3 rounded-md border border-input bg-card px-3 text-left hover:border-action"
           type="button"
         >
           <span
@@ -250,11 +250,11 @@ function ModelPicker({
             {value ?? 'No model selected'}
           </span>
           {meta && (
-            <span className="text-tertiary font-mono text-xs tabular-nums">
+            <span className="font-mono text-xs text-tertiary tabular-nums">
               {meta}
             </span>
           )}
-          <ChevronDown className="text-tertiary size-4" />
+          <ChevronDown className="size-4 text-tertiary" />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -275,7 +275,7 @@ function ModelPicker({
                   }}
                   value="__none__"
                 >
-                  <span className="text-tertiary flex-1 text-sm">No model</span>
+                  <span className="flex-1 text-sm text-tertiary">No model</span>
                 </CommandItem>
               )}
               {models.map((m) => {
@@ -294,12 +294,12 @@ function ModelPicker({
                       {m.slug}
                     </span>
                     {context && (
-                      <span className="bg-secondary text-secondary rounded px-2 py-0.5 font-mono text-xs whitespace-nowrap tabular-nums">
+                      <span className="rounded bg-secondary px-2 py-0.5 font-mono text-xs whitespace-nowrap text-secondary tabular-nums">
                         {context} context
                       </span>
                     )}
                     {price && (
-                      <span className="bg-amber-bg text-amber-text rounded px-2 py-0.5 font-mono text-xs whitespace-nowrap tabular-nums">
+                      <span className="rounded bg-amber-bg px-2 py-0.5 font-mono text-xs whitespace-nowrap text-amber-text tabular-nums">
                         {price}
                       </span>
                     )}
@@ -397,14 +397,14 @@ function ParamRow({
               step={control.step}
               value={[Number(state.value) || 0]}
             />
-            <span className="border-input bg-card flex h-9 w-16.5 items-center rounded-md border px-2 font-mono text-sm tabular-nums">
+            <span className="flex h-9 w-16.5 items-center rounded-md border border-input bg-card px-2 font-mono text-sm tabular-nums">
               {state.value}
             </span>
           </div>
         )}
       </div>
       {error && (
-        <p className="text-danger text-xs" role="alert">
+        <p className="text-xs text-danger" role="alert">
           {error}
         </p>
       )}

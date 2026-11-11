@@ -5,6 +5,8 @@ import type {
   AgentSettings,
   AgentSubagent,
   AgentToolConfig,
+  ClaudeSettings,
+  ClaudeSettingsPath,
   PromptParams,
   PromptVariable,
   PromptVersion,
@@ -68,6 +70,8 @@ export interface PromptDraft {
 export type ResponseSla = NonNullable<AgentSettings['response_sla']>
 
 export interface SettingsDraft {
+  /** Claude Code settings, as JSON text. Empty is none. */
+  claudeSettings: string
   /** The slugs of the egress destinations that the agent's pods reach. */
   egressDestinations: string[]
   /** The `secret://` reference of the agent's GitHub App binding. */
@@ -88,6 +92,23 @@ export interface SettingsDraft {
   taskBudget: string
   taskTimeout: string
 }
+
+// The Claude Code settings paths (an allowlist). `satisfies` fails the
+// build when the API adds a path that is not here.
+export const SETTINGS_PATHS = Object.keys({
+  attribution: true,
+  cleanupPeriodDays: true,
+  hooks: true,
+  includeCoAuthoredBy: true,
+  'permissions.allow': true,
+  'permissions.ask': true,
+  'permissions.deny': true,
+  respectGitignore: true,
+} satisfies Record<ClaudeSettingsPath, true>) as ClaudeSettingsPath[]
+
+export const SETTINGS_HELP =
+  `Claude Code settings, as JSON. Allowed keys: ${SETTINGS_PATHS.join(', ')}. ` +
+  'An allow rule cannot give a tool outside the tool map.'
 
 export const AGENT_PROMPT_NAMESPACE = 'agents'
 export const AGENT_PROMPT_LABEL = 'stable'
@@ -139,6 +160,8 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
   if (!draft.slug) errors.name = errors.name ?? 'Name must contain a letter'
   if (!draft.team) errors.team = 'Owner team is required'
   const s = draft.settings
+  if (parseSettingsText(s.claudeSettings) === null)
+    errors.claudeSettings = 'Enter a JSON object'
   if (s.monthlyCostCap.trim() && parseMoney(s.monthlyCostCap) === null)
     errors.monthlyCostCap = 'Enter an amount, for example $400'
   if (s.taskBudget.trim() && parseMoney(s.taskBudget) === null)
@@ -174,6 +197,7 @@ export function draftFromAgent(
     name: agent.name,
     prompt: promptDraftFromVersion(prompt),
     settings: {
+      claudeSettings: settingsText(settings.claude_settings),
       egressDestinations: settings.egress_destinations ?? [],
       githubAppBinding: settings.github_app_binding ?? '',
       kept: {
@@ -232,6 +256,7 @@ export function emptyDraft(): AgentDraft {
     name: '',
     prompt: promptDraftFromVersion(null),
     settings: {
+      claudeSettings: '',
       egressDestinations: [],
       githubAppBinding: '',
       kept: {},
@@ -394,6 +419,20 @@ export const AGENT_PROMPT_VARIABLES: Record<string, PromptVariable> = {
   },
 }
 
+/** The settings object of editor text, or null when the text is not
+ * a JSON object. Empty text is no settings. */
+export function parseSettingsText(text: string): ClaudeSettings | null {
+  if (!text.trim()) return {}
+  try {
+    const value: unknown = JSON.parse(text)
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as ClaudeSettings)
+      : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * The body of the new prompt version. Fields that the agent editor does
  * not show (messages, tools, variables, other params) come from the
@@ -434,6 +473,7 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
   return {
     ...draft.kept,
     approval_tools: draft.kept.approval_tools ?? [],
+    claude_settings: parseSettingsText(draft.claudeSettings) ?? {},
     denied_tools: draft.kept.denied_tools ?? [],
     egress_destinations: [...draft.egressDestinations].sort(),
     github_app_binding: draft.githubAppBinding.trim() || null,
@@ -453,6 +493,13 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
       ? parseDuration(draft.taskTimeout)
       : null,
   }
+}
+
+/** Claude Code settings as editor text: empty for none. */
+export function settingsText(value?: ClaudeSettings | null): string {
+  return value && Object.keys(value).length
+    ? JSON.stringify(value, null, 2)
+    : ''
 }
 
 /** A runner label, as the API accepts it. */

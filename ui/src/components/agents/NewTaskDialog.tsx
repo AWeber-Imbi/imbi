@@ -120,11 +120,11 @@ export function NewTaskDialog({
       open={isOpen}
     >
       <DialogContent className="max-h-[calc(100vh-48px)] max-w-160 gap-0 overflow-hidden p-0">
-        <div className="border-tertiary shrink-0 border-b px-5 pt-4.5 pr-12 pb-3.5">
+        <div className="shrink-0 border-b border-tertiary px-5 pt-4.5 pr-12 pb-3.5">
           <DialogTitle className="text-[17px] font-semibold">
             New task
           </DialogTitle>
-          <DialogDescription className="text-secondary mt-0.5 text-[12.5px]">
+          <DialogDescription className="mt-0.5 text-[12.5px] text-secondary">
             Hand a piece of work to an agent. It shows up in your Inbox as soon
             as you create it.
           </DialogDescription>
@@ -147,13 +147,13 @@ export function NewTaskDialog({
               value={request}
             />
             {source && (
-              <div className="border-tertiary bg-secondary flex items-center gap-2 rounded-md border px-2.5 py-1.5">
-                <source.icon className="text-secondary size-3.25" />
-                <span className="text-secondary text-xs">Source</span>
+              <div className="flex items-center gap-2 rounded-md border border-tertiary bg-secondary px-2.5 py-1.5">
+                <source.icon className="size-3.25 text-secondary" />
+                <span className="text-xs text-secondary">Source</span>
                 <span className="text-[12.5px] font-medium">
                   {source.label}
                 </span>
-                <span className="text-tertiary ml-auto max-w-65 truncate font-mono text-[11.5px]">
+                <span className="ml-auto max-w-65 truncate font-mono text-[11.5px] text-tertiary">
                   {source.url}
                 </span>
               </div>
@@ -163,7 +163,7 @@ export function NewTaskDialog({
           <div className="flex flex-col gap-2">
             <Overline>Agent</Overline>
             {agents.length === 0 ? (
-              <p className="text-tertiary text-sm">No enabled agents.</p>
+              <p className="text-sm text-tertiary">No enabled agents.</p>
             ) : (
               <div
                 aria-label="Agent"
@@ -185,8 +185,8 @@ export function NewTaskDialog({
           <div className="flex flex-col gap-2">
             <Overline>Project (optional)</Overline>
             {project ? (
-              <div className="border-secondary flex items-center gap-2 rounded-md border px-2.5 py-2">
-                <Box className="text-secondary size-3.5" />
+              <div className="flex items-center gap-2 rounded-md border border-secondary px-2.5 py-2">
+                <Box className="size-3.5 text-secondary" />
                 <span className="font-mono text-[12.5px] font-medium">
                   {project.slug}
                 </span>
@@ -201,9 +201,9 @@ export function NewTaskDialog({
                 </Button>
               </div>
             ) : (
-              <div className="border-secondary overflow-hidden rounded-md border">
-                <div className="border-tertiary bg-secondary flex h-8.5 items-center gap-2 border-b px-2.5">
-                  <Search className="text-tertiary size-3.5" />
+              <div className="overflow-hidden rounded-md border border-secondary">
+                <div className="flex h-8.5 items-center gap-2 border-b border-tertiary bg-secondary px-2.5">
+                  <Search className="size-3.5 text-tertiary" />
                   <input
                     aria-label="Search projects"
                     className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
@@ -214,7 +214,7 @@ export function NewTaskDialog({
                 </div>
                 {projects.map((p) => (
                   <button
-                    className="border-tertiary hover:bg-secondary flex w-full items-center gap-2 border-b px-3 py-2 text-left last:border-b-0"
+                    className="flex w-full items-center gap-2 border-b border-tertiary px-3 py-2 text-left last:border-b-0 hover:bg-secondary"
                     key={p.id}
                     onClick={() => {
                       setProjectId(p.id)
@@ -222,15 +222,15 @@ export function NewTaskDialog({
                     }}
                     type="button"
                   >
-                    <Box className="text-tertiary size-3.25" />
+                    <Box className="size-3.25 text-tertiary" />
                     <span className="font-mono text-[12.5px]">{p.slug}</span>
-                    <span className="text-tertiary ml-auto text-[11.5px]">
+                    <span className="ml-auto text-[11.5px] text-tertiary">
                       {p.project_types[0]?.name}
                     </span>
                   </button>
                 ))}
                 {projects.length === 0 && (
-                  <p className="text-tertiary px-3 py-3 text-[12.5px]">
+                  <p className="px-3 py-3 text-[12.5px] text-tertiary">
                     {query.trim()
                       ? `No projects match "${query.trim()}".`
                       : 'No projects.'}
@@ -241,13 +241,13 @@ export function NewTaskDialog({
           </div>
 
           {create.error && (
-            <p className="text-danger text-sm" role="alert">
+            <p className="text-sm text-danger" role="alert">
               {errorMessage(create.error)}
             </p>
           )}
         </form>
-        <div className="border-tertiary bg-secondary flex shrink-0 items-center gap-2 border-t px-5 py-3">
-          <span className="text-tertiary min-w-0 text-xs">
+        <div className="flex shrink-0 items-center gap-2 border-t border-tertiary bg-secondary px-5 py-3">
+          <span className="min-w-0 text-xs text-tertiary">
             {missing.length
               ? `Needs ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')}.`
               : 'Starts as Queued. Esc to cancel.'}
@@ -299,7 +299,7 @@ function AgentCard({
       role="radio"
       type="button"
     >
-      <span className="bg-secondary text-secondary flex size-7 shrink-0 items-center justify-center rounded-md">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary">
         {agent.icon ? (
           <EntityIcon className="size-4" icon={agent.icon} />
         ) : (
@@ -311,12 +311,12 @@ function AgentCard({
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex items-center gap-1.5">
           <span className="text-[13.5px] font-semibold">{agent.name}</span>
-          <span className="text-tertiary font-mono text-[11px]">
+          <span className="font-mono text-[11px] text-tertiary">
             v{agent.version}
           </span>
         </span>
         {agent.description && (
-          <span className="text-secondary line-clamp-2 text-xs leading-snug">
+          <span className="line-clamp-2 text-xs leading-snug text-secondary">
             {agent.description}
           </span>
         )}
@@ -337,7 +337,7 @@ function AgentCard({
 
 function Overline({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-tertiary text-[11.5px] font-semibold tracking-[0.06em] uppercase">
+    <span className="text-[11.5px] font-semibold tracking-[0.06em] text-tertiary uppercase">
       {children}
     </span>
   )

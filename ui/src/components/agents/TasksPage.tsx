@@ -81,7 +81,7 @@ export function TasksPage() {
 
   if (!orgSlug || !canRead) {
     return (
-      <div className="text-tertiary p-8 text-center">
+      <div className="p-8 text-center text-tertiary">
         {orgSlug
           ? 'You do not have permission to read agent tasks.'
           : 'Select an organization to see agent tasks.'}
@@ -96,7 +96,7 @@ export function TasksPage() {
 
   if (taskOrg && !urlOrg) {
     return (
-      <div className="text-tertiary p-8 text-center">
+      <div className="p-8 text-center text-tertiary">
         You are not a member of the organization {taskOrg}.
       </div>
     )
@@ -112,7 +112,7 @@ export function TasksPage() {
         orientation="horizontal"
       >
         <Panel
-          className="border-tertiary bg-primary flex min-h-0 flex-col"
+          className="flex min-h-0 flex-col border-tertiary bg-primary"
           defaultSize="32%"
           id="list"
           maxSize="55%"
@@ -123,7 +123,7 @@ export function TasksPage() {
             selected={taskOrg === orgSlug ? shortId : undefined}
           />
         </Panel>
-        <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
+        <Separator className="relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors hover:after:bg-amber-border focus-visible:after:bg-amber-border" />
         <Panel className="flex min-h-0 flex-col" id="detail" minSize="35%">
           {taskOrg && shortId ? (
             <TaskDetail
@@ -133,7 +133,7 @@ export function TasksPage() {
               tab={tab}
             />
           ) : (
-            <div className="text-tertiary flex flex-1 flex-col items-center justify-center gap-2 text-sm">
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-tertiary">
               <Inbox className="size-8" />
               Select a task.
             </div>
@@ -210,7 +210,7 @@ function TaskInbox({
 
   return (
     <>
-      <div className="border-tertiary flex shrink-0 flex-col gap-2 border-b p-3">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-tertiary p-3">
         <div className="flex items-center gap-2">
           <Input
             aria-label="Filter tasks"
@@ -263,9 +263,9 @@ function TaskInbox({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {loading && <p className="text-tertiary p-4 text-sm">Loading…</p>}
+        {loading && <p className="p-4 text-sm text-tertiary">Loading…</p>}
         {error && (
-          <p className="text-danger p-4 text-sm" role="alert">
+          <p className="p-4 text-sm text-danger" role="alert">
             Could not load tasks: {error.message}{' '}
             <button className="underline" onClick={retry} type="button">
               Retry
@@ -273,7 +273,7 @@ function TaskInbox({
           </p>
         )}
         {!loading && !error && groups.length === 0 && (
-          <p className="text-tertiary p-6 text-center text-sm">
+          <p className="p-6 text-center text-sm text-tertiary">
             {tasks.length === 0 && !q && !mine
               ? canCreate
                 ? 'No tasks yet. Create one with New task.'
@@ -283,7 +283,7 @@ function TaskInbox({
         )}
         {groups.map((group) => (
           <section aria-label={group.label} key={group.id}>
-            <h3 className="border-tertiary bg-secondary text-overline text-tertiary flex justify-between border-b px-4 py-1.5 uppercase">
+            <h3 className="flex justify-between border-b border-tertiary bg-secondary px-4 py-1.5 text-overline text-tertiary uppercase">
               <span>{group.label}</span>
               <span className="font-mono tabular-nums">
                 {group.tasks.length}
@@ -301,11 +301,11 @@ function TaskInbox({
           </section>
         ))}
         {more && !error && (
-          <p className="text-tertiary p-4 text-center text-sm">Loading…</p>
+          <p className="p-4 text-center text-sm text-tertiary">Loading…</p>
         )}
         <div ref={sentinelRef} />
       </div>
-      <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
+      <div className="shrink-0 border-t border-tertiary py-2 text-center text-xs text-tertiary">
         {shown.length} of {tasks.length}
         {more && '+'} tasks
       </div>
@@ -342,10 +342,10 @@ function TaskRow({
       to={agentsPath('tasks', orgSlug, task.short_id)}
     >
       <span className="flex items-center gap-2">
-        <span className="text-tertiary font-mono text-xs">{task.short_id}</span>
+        <span className="font-mono text-xs text-tertiary">{task.short_id}</span>
         <Badge variant={statusVariant(task)}>{label}</Badge>
         <RelativeTime
-          className="text-tertiary ml-auto font-mono text-xs"
+          className="ml-auto font-mono text-xs text-tertiary"
           tooltip={false}
           value={since}
           variant="narrow"
@@ -353,10 +353,10 @@ function TaskRow({
       </span>
       <span className="text-sm font-medium">{task.title}</span>
       <span className="flex items-center gap-2 text-xs">
-        <span className="text-secondary truncate font-mono">
+        <span className="truncate font-mono text-secondary">
           {task.project_slug ?? ''}
         </span>
-        <span className="text-tertiary ml-auto flex shrink-0 items-center gap-1">
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-tertiary">
           <TriggerIcon className="size-3" />
           {trigger.label}
         </span>
