@@ -39,6 +39,7 @@ Rev 1 runs one request at a time (:attr:`Executor.lock`), so every
 import asyncio
 import base64
 import contextlib
+import json
 import logging
 import os
 import pathlib
@@ -221,6 +222,21 @@ def _target(secret: Message) -> str:
     return target
 
 
+def _string_members(material: str) -> list[str]:
+    """The string member values of a JSON object, or none."""
+    try:
+        parsed: object = json.loads(material)
+    except ValueError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    return [
+        v
+        for v in typing.cast('dict[str, object]', parsed).values()
+        if isinstance(v, str) and v
+    ]
+
+
 def _material(body: Message) -> str:
     material = str(body['material'])
     if body.get('encoding') == 'base64':
@@ -364,19 +380,21 @@ class Executor:
             proxy, hidden = _proxy(request)
             env = {'PATH': PATH, 'HOME': home, **proxy}
             names: list[str] = []
-            # Every member value is redacted, also one that is not
-            # exported: the raw value in the target still holds it.
+            # The string members of a JSON value are redacted, also one
+            # that is not exported: the raw value in the target holds
+            # it. Numbers and booleans are not: "3" or "true" would be
+            # erased from all output.
             member_values: list[str] = []
             for secret, target in zip(wanted, targets, strict=True):
                 body = await self._materialized(secret, context)
                 env[target] = _material(body)
                 names.append(target)
+                member_values.extend(_string_members(env[target]))
                 # imbi-api gives only the members that the binding
                 # allows; a name that is set already keeps its value. A
                 # NUL in a value would stop the command from starting.
                 members: Message = body.get('members') or {}
                 for name, value in members.items():
-                    member_values.append(value)
                     if (
                         _ENV_NAME.match(name)
                         and name not in env

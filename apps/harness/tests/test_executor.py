@@ -124,7 +124,9 @@ class ExecutorTestCase(BaseTestCase):
     async def test_json_members_get_their_own_names(self) -> None:
         member = 'sntrys_' + 'a' * 40
         self.api.materialize.return_value = {
-            'material': json.dumps({'SENTRY_AUTH_TOKEN': member}),
+            'material': json.dumps(
+                {'SENTRY_AUTH_TOKEN': member, 'NUL_TOKEN': 'nul\0value'}
+            ),
             'encoding': 'utf8',
             # imbi-api filters the names; the executor never replaces a
             # name that is set already, nor takes an invalid one.
@@ -146,7 +148,7 @@ class ExecutorTestCase(BaseTestCase):
         self.assertNotIn('bad name', env)
         self.assertNotIn('NUL_TOKEN', env)
         self.assertEqual(
-            json.loads(env['GH_TOKEN']), {'SENTRY_AUTH_TOKEN': member}
+            json.loads(env['GH_TOKEN'])['SENTRY_AUTH_TOKEN'], member
         )
         self.assertEqual(reply['variables'], ['GH_TOKEN', 'SENTRY_AUTH_TOKEN'])
         # A member value is redacted too, not only the whole material.
@@ -154,6 +156,22 @@ class ExecutorTestCase(BaseTestCase):
         self.assertIn(member, reply['values'])
         # A member that is not exported is still in the raw value.
         self.assertIn('nul\0value', reply['values'])
+
+    async def test_members_not_exported_are_redacted(self) -> None:
+        # The broker exports no member with an unsafe name, but the raw
+        # value still holds it, so the command can print it alone.
+        hidden = 'lowercase-' + 'b' * 30
+        self.api.materialize.return_value = {
+            'material': json.dumps({'token': hidden, 'port': 3}),
+            'encoding': 'utf8',
+            'members': {},
+        }
+        self.spawn.return_value = (0, f'{hidden} 3\n'.encode(), False)
+        await self.hello()
+        reply = await self.executor.dispatch(request())
+        self.assertNotIn('token', self.spawn.call_args.args[2])
+        # Numbers are not redacted: "3" would be erased everywhere.
+        self.assertEqual(reply['output'], '[REDACTED] 3\n')
 
     async def test_new_nonce_for_each_materialization(self) -> None:
         await self.hello()
