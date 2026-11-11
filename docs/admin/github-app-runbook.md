@@ -1,12 +1,7 @@
----
-hide:
-  - toc
----
-
 # GitHub App Runbook
 
-This runbook gives one agent access to GitHub: GitHub, AWS, and Imbi, from
-the start to the end. After the setup, the agent's runner can clone the
+This runbook gives one agent access to GitHub, from the start to the end:
+GitHub, AWS, and Imbi. After the setup, the agent's runner can clone the
 project repository, and the agent can push and open pull requests and
 issues. The commits and pull requests show as `<agent>[bot]`.
 
@@ -15,115 +10,264 @@ private key from AWS Secrets Manager and gets a new installation token
 from GitHub. The token covers one repository and one purpose, and lasts
 one hour at most.
 
+This page gives the order and the values for each side. The Imbi screens
+have their own pages, linked from each step.
+
 The examples use the agent `reviewer`, the App ID `1234`, and the GitHub
 host `example.ghe.com`. Use your own values.
 
-## Setup
-
 <style>
-.md-grid { max-width: 90rem; }
-.ghr { --g-surface: var(--md-default-bg-color); --g-ink: var(--md-default-fg-color); --g-muted: var(--md-default-fg-color--light); --g-line: var(--md-default-fg-color--lightest);
-  --g-gh: #3f5f8f; --g-aws: #a35f0c; --g-imbi: #17766a; --g-accent: #c2410c; --g-gh-tint: #e9eef6; --g-aws-tint: #f8efe3; --g-imbi-tint: #e4f2ef; --g-mono: var(--md-code-font-family, ui-monospace, Menlo, monospace); }
-[data-md-color-scheme="slate"] .ghr { --g-gh: #8eaee0; --g-aws: #f0a94e; --g-imbi: #5cc7b6; --g-accent: #ff8a4c; --g-gh-tint: #1f2a3c; --g-aws-tint: #2c2318; --g-imbi-tint: #172d2a; }
-.ghr-layout { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; margin: 1.2rem 0 2rem; }
-@media (max-width: 76em) { .ghr-layout { grid-template-columns: minmax(0, 1fr); } }
-.ghr .mapcol { position: sticky; top: 3.6rem; display: grid; gap: .5rem; }
-@media (max-width: 76em) { .ghr .mapcol { position: static; } }
-.md-typeset .ghr figure { margin: 0; max-width: none; display: block; border: 1px solid var(--g-line); border-radius: .4rem; padding: .6rem; background: var(--g-surface); }
-.ghr .svgscroll { overflow-x: auto; }
-.ghr svg { display: block; width: 100%; height: auto; color: var(--g-ink); }
-.ghr svg.map { min-width: 640px; } .ghr svg.seq { min-width: 760px; }
-.md-typeset .ghr figcaption { font-size: .68rem; color: var(--g-muted); margin: .4rem 0 0; max-width: none; text-align: left; }
-.ghr .legend { display: flex; flex-wrap: wrap; gap: .2rem 1rem; font-size: .66rem; color: var(--g-muted); }
-.ghr .legend span { display: inline-flex; align-items: center; gap: .3rem; }
-.ghr .sw { width: 1.1rem; height: .6rem; border-radius: 2px; border: 1.5px solid var(--g-muted); }
-.ghr .sw.dash { border-style: dashed; } .ghr .sw.acc { border-color: var(--g-accent); }
+.ghr { --g-ink: var(--md-default-fg-color); --g-muted: var(--md-default-fg-color--light); --g-line: var(--md-default-fg-color--lighter); --g-bg: var(--md-default-bg-color); --g-gh: #3f5f8f; --g-aws: #9a5a0c; --g-imbi: #17766a; --g-accent: #c2410c; --g-gh-tint: #edf1f8; --g-aws-tint: #f9f1e6; --g-imbi-tint: #e8f4f1; --g-mono: var(--md-code-font-family, monospace); --g-sans: var(--md-text-font-family, sans-serif); }
+[data-md-color-scheme="slate"] .ghr { --g-gh: #8eaee0; --g-aws: #f0a94e; --g-imbi: #5cc7b6; --g-accent: #ff8a4c; --g-gh-tint: #222b3b; --g-aws-tint: #2d251b; --g-imbi-tint: #1b2e2b; }
+.md-typeset figure.ghr { display: block; width: 100%; max-width: 100%; }
+.ghr svg { display: block; width: 100%; height: auto; }
 .ghr .band { stroke: none; } .ghr .band.gh { fill: var(--g-gh-tint); } .ghr .band.aws { fill: var(--g-aws-tint); } .ghr .band.imbi { fill: var(--g-imbi-tint); }
-.ghr .lane { font: 600 12px var(--md-text-font-family, sans-serif); letter-spacing: .08em; text-transform: uppercase; }
+.ghr .lane { font: 700 12px var(--g-sans); letter-spacing: .08em; text-transform: uppercase; }
 .ghr .lane.gh { fill: var(--g-gh); } .ghr .lane.aws { fill: var(--g-aws); } .ghr .lane.imbi { fill: var(--g-imbi); }
-.ghr .node rect.box { fill: var(--g-surface); stroke-width: 1.5; }
+.ghr .node rect.box { fill: var(--g-bg); stroke-width: 1.5; }
 .ghr .node.gh rect.box { stroke: var(--g-gh); } .ghr .node.aws rect.box { stroke: var(--g-aws); } .ghr .node.imbi rect.box { stroke: var(--g-imbi); }
 .ghr .node.once rect.box { stroke-dasharray: 5 4; }
-.ghr .node .t { font: 600 13px var(--md-text-font-family, sans-serif); fill: var(--g-ink); }
-.ghr .node .s { font: 400 10.5px var(--g-mono); fill: var(--g-muted); }
+.ghr .node .t { font: 700 13px var(--g-sans); fill: var(--g-ink); }
+.ghr .node .s { font: 400 11px var(--g-mono); fill: var(--g-muted); }
 .ghr .node .k { font: 500 11px var(--g-mono); fill: var(--g-accent); }
-.ghr .node .n { font: 700 11px var(--md-text-font-family, sans-serif); fill: var(--g-surface); }
-.ghr .node.gh circle.badge { fill: var(--g-gh); } .ghr .node.aws circle.badge { fill: var(--g-aws); } .ghr .node.imbi circle.badge { fill: var(--g-imbi); }
-.ghr .mk { fill: var(--g-muted); } .ghr .mk-on { fill: var(--g-accent); } .ghr .mk-ink { fill: var(--g-ink); }
-.ghr .edge path { fill: none; stroke: var(--g-muted); stroke-width: 1.4; marker-end: url(#arr); }
+.ghr .node .n { font: 700 11px var(--g-sans); fill: var(--g-bg); }
+.ghr .node.gh .badge { fill: var(--g-gh); } .ghr .node.aws .badge { fill: var(--g-aws); } .ghr .node.imbi .badge { fill: var(--g-imbi); }
+.ghr .mk { fill: var(--g-muted); } .ghr .mk-ink { fill: var(--g-ink); }
+.ghr .edge path { fill: none; stroke: var(--g-muted); stroke-width: 1.4; marker-end: url(#ghr-arr); }
 .ghr .edge.ref path { stroke-dasharray: 4 4; }
 .ghr .edge text { font: 400 11px var(--g-mono); fill: var(--g-muted); }
-.ghr svg.map .node, .ghr svg.map .edge { transition: opacity 160ms ease; }
-.ghr svg.map.focus .node, .ghr svg.map.focus .edge { opacity: .22; }
-.ghr svg.map.focus .on { opacity: 1; }
-.ghr svg.map.focus .node.on rect.box { stroke: var(--g-accent); stroke-width: 2.5; }
-.ghr svg.map.focus .edge.on path { stroke: var(--g-accent); stroke-width: 2; marker-end: url(#arrOn); }
-.ghr svg.map.focus .edge.on text { fill: var(--g-accent); }
-.ghr .steps { display: grid; gap: .5rem; }
-.md-typeset .ghr p { margin: 0; }
-.md-typeset .ghr .grp { font-size: .64rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--g-muted); margin-top: .5rem; }
-.ghr .step { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); gap: .2rem .6rem; border: 1px solid var(--g-line); border-radius: .4rem; padding: .7rem .8rem .7rem .6rem; cursor: pointer; background: var(--g-surface); }
-.ghr .step:hover { border-color: var(--g-muted); }
-.ghr .step:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
-.ghr .step[aria-pressed="true"] { border-color: var(--g-accent); box-shadow: 0 0 0 1px var(--g-accent); }
-.ghr .num { width: 1.4rem; height: 1.4rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .65rem; color: var(--g-surface); grid-row: span 2; }
-.ghr .gh .num { background: var(--g-gh); } .ghr .aws .num { background: var(--g-aws); } .ghr .imbi .num { background: var(--g-imbi); }
-.ghr .zero .num { background: transparent; color: var(--g-muted); border: 1.5px dashed var(--g-muted); }
-.ghr .head { display: flex; flex-wrap: wrap; gap: .1rem .6rem; align-items: baseline; }
-.ghr .ttl { font-weight: 700; font-size: .8rem; }
-.ghr .where { font-size: .58rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
-.ghr .gh .where { color: var(--g-gh); } .ghr .aws .where { color: var(--g-aws); } .ghr .imbi .where { color: var(--g-imbi); } .ghr .zero .where { color: var(--g-muted); }
-.ghr .body { display: grid; gap: .45rem; min-width: 0; font-size: .7rem; }
-.md-typeset .ghr .path { color: var(--g-muted); font-size: .66rem; }
-.md-typeset .ghr dl.vals { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .15rem .8rem; margin: 0; }
-.md-typeset .ghr dl.vals dt { color: var(--g-muted); font-weight: 400; margin: 0; }
-.md-typeset .ghr dl.vals dd { margin: 0; overflow-wrap: anywhere; }
-@media (max-width: 30em) { .md-typeset .ghr dl.vals { grid-template-columns: minmax(0, 1fr); } .md-typeset .ghr dl.vals dd { margin-bottom: .3rem; } }
-.ghr .check { display: flex; gap: .5rem; } .ghr .check b { color: var(--g-imbi); white-space: nowrap; }
-.md-typeset .ghr .note, .md-typeset .ghr .see { color: var(--g-muted); }
-.ghr .note strong { color: var(--g-ink); }
 .ghr .podbox { fill: none; stroke: var(--g-muted); stroke-dasharray: 4 4; }
-.ghr .podlbl { font: 500 10.5px var(--g-mono); fill: var(--g-muted); }
+.ghr .podlbl { font: 400 10.5px var(--g-mono); fill: var(--g-muted); }
 .ghr .life { stroke: var(--g-line); stroke-width: 1.2; stroke-dasharray: 3 4; }
-.ghr .hdr { font: 600 13px var(--md-text-font-family, sans-serif); fill: var(--g-ink); }
+.ghr .hdr { font: 700 12.5px var(--g-sans); fill: var(--g-ink); }
 .ghr .hdr.imbi { fill: var(--g-imbi); } .ghr .hdr.aws { fill: var(--g-aws); } .ghr .hdr.gh { fill: var(--g-gh); }
-.ghr .needs-h { font: 600 11px var(--md-text-font-family, sans-serif); fill: var(--g-muted); letter-spacing: .08em; text-transform: uppercase; }
-.ghr .phase { fill: var(--g-imbi-tint); } .ghr .phase-t { font: 600 12px var(--md-text-font-family, sans-serif); fill: var(--g-ink); }
-.ghr .msg path { fill: none; stroke: var(--g-ink); stroke-width: 1.3; marker-end: url(#sarr); }
-.ghr .ret path { fill: none; stroke: var(--g-muted); stroke-width: 1.2; stroke-dasharray: 5 4; marker-end: url(#sret); }
+.ghr .needs-h { font: 700 11px var(--g-sans); fill: var(--g-muted); letter-spacing: .08em; text-transform: uppercase; }
+.ghr .phase { fill: var(--g-imbi-tint); } .ghr .phase-t { font: 700 12px var(--g-sans); fill: var(--g-ink); }
+.ghr .msg path { fill: none; stroke: var(--g-ink); stroke-width: 1.3; marker-end: url(#ghr-sarr); }
+.ghr .ret path { fill: none; stroke: var(--g-muted); stroke-width: 1.2; stroke-dasharray: 5 4; marker-end: url(#ghr-sret); }
 .ghr .msg text { font: 400 11px var(--g-mono); fill: var(--g-ink); } .ghr .ret text { font: 400 11px var(--g-mono); fill: var(--g-muted); }
-.ghr .self rect { fill: var(--g-surface); stroke: var(--g-imbi); stroke-width: 1.2; }
+.ghr .self rect { fill: var(--g-bg); stroke: var(--g-imbi); stroke-width: 1.2; }
 .ghr .self text { font: 400 11px var(--g-mono); fill: var(--g-ink); }
 .ghr .note rect { stroke: var(--g-muted); stroke-dasharray: 4 3; }
-.ghr .need rect { fill: var(--g-surface); stroke: var(--g-accent); stroke-width: 1.2; }
-.ghr .need text { font: 600 10.5px var(--md-text-font-family, sans-serif); fill: var(--g-accent); }
-@media (prefers-reduced-motion: reduce) { .ghr svg.map .node, .ghr svg.map .edge { transition: none; } }
+.ghr .need rect { fill: var(--g-bg); stroke: var(--g-accent); stroke-width: 1.2; }
+.ghr .need text { font: 700 10.5px var(--g-sans); fill: var(--g-accent); }
 </style>
 
-<div class="ghr"><div class="ghr-layout"><div class="mapcol"><figure><div class="svgscroll"><svg class="map" id="ghr-map" viewBox="0 0 1076 530" role="img" aria-label="Setup map. In GitHub, an App, its private key, and one installation per org. In AWS, the key stored as a secret that the Imbi role can read. In Imbi, a key binding pointing at the AWS secret, an App binding pointing at the key binding, two grants on the App binding, and the agent selecting the App binding."> <defs> <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"> <path d="M0,0 L10,5 L0,10 z" class="mk"></path> </marker> <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"> <path d="M0,0 L10,5 L0,10 z" class="mk-on"></path> </marker> </defs> <rect class="band gh" x="6" y="8" width="270" height="514" rx="8"></rect> <rect class="band aws" x="296" y="8" width="258" height="514" rx="8"></rect> <rect class="band imbi" x="574" y="8" width="496" height="514" rx="8"></rect> <text class="lane gh" x="44" y="40">GitHub</text> <text class="lane aws" x="330" y="40">AWS</text> <text class="lane imbi" x="596" y="40">Imbi</text> <!-- edges --> <g class="edge" data-s="2"><path d="M149,136 V188"></path><text x="158" y="166">generate</text></g> <g class="edge" data-s="3"><path d="M44,104 H28 V364 H42"></path><text x="22" y="300" transform="rotate(-90 22 300)">install per org</text></g> <g class="edge" data-s="4"><path d="M254,218 H328"></path><text x="291" y="210" text-anchor="middle">paste PEM</text></g> <g class="edge" data-s="0 4"><path d="M430,128 V188"></path><text x="439" y="162">can read</text></g> <g class="edge" data-s="0"><path d="M596,100 H532"></path><text x="564" y="92" text-anchor="middle">assumes</text></g> <g class="edge" data-s="5"><path d="M596,222 H532"></path><text x="564" y="214" text-anchor="middle">secret_id</text></g> <g class="edge" data-s="5"><path d="M686,128 V188"></path><text x="695" y="162">provider</text></g> <g class="edge" data-s="6"><path d="M946,128 V188"></path><text x="955" y="162">provider</text></g> <g class="edge" data-s="6"><path d="M856,210 H778"></path><text x="817" y="202" text-anchor="middle">private_key</text></g> <g class="edge" data-s="6"><path d="M776,240 H854"></path><text x="815" y="256" text-anchor="middle">consumer</text></g> <g class="edge" data-s="7"><path d="M748,320 L874,256"></path><text x="826" y="304">binding</text></g> <g class="edge" data-s="8"><path d="M946,320 V256"></path><text x="955" y="292">binding</text></g> <g class="edge" data-s="7"><path d="M686,384 L776,448"></path><text x="690" y="428">agent</text></g> <g class="edge" data-s="8"><path d="M946,384 L858,448"></path><text x="914" y="428">agent</text></g> <g class="edge ref" data-s="9"><path d="M906,478 H1056 V222 H1040"></path><text x="1066" y="350" text-anchor="middle" transform="rotate(-90 1066 350)">GitHub App binding</text></g> <!-- GitHub --> <g class="node gh" data-s="1 3"> <rect class="box" x="44" y="72" width="210" height="64" rx="7"></rect> <circle class="badge" cx="44" cy="72" r="10"></circle><text class="n" x="44" y="76" text-anchor="middle">1</text> <text class="t" x="60" y="98">GitHub App</text> <text class="k" x="60" y="118">App ID 1234</text> </g> <g class="node gh" data-s="2 4"> <rect class="box" x="44" y="190" width="210" height="56" rx="7"></rect> <circle class="badge" cx="44" cy="190" r="10"></circle><text class="n" x="44" y="194" text-anchor="middle">2</text> <text class="t" x="60" y="214">Private key</text> <text class="s" x="60" y="232">.pem file</text> </g> <g class="node gh" data-s="3"> <rect class="box" x="44" y="300" width="210" height="128" rx="7"></rect> <circle class="badge" cx="44" cy="300" r="10"></circle><text class="n" x="44" y="304" text-anchor="middle">3</text> <text class="t" x="60" y="324">Installations</text> <text class="s" x="60" y="346">org-a</text> <text class="s" x="60" y="364">org-b</text> <text class="s" x="60" y="382">org-c</text> <text class="s" x="60" y="408">… one per org</text> </g> <!-- AWS --> <g class="node aws once" data-s="0"> <rect class="box" x="330" y="72" width="200" height="56" rx="7"></rect> <text class="t" x="346" y="96">IAM role</text> <text class="s" x="346" y="114">imbi-secrets</text> </g> <g class="node aws" data-s="4 5"> <rect class="box" x="330" y="190" width="200" height="56" rx="7"></rect> <circle class="badge" cx="330" cy="190" r="10"></circle><text class="n" x="330" y="194" text-anchor="middle">4</text> <text class="t" x="346" y="214">Secret</text> <text class="s" x="346" y="232">imbi/github/reviewer</text> </g> <!-- Imbi --> <g class="node imbi once" data-s="0 5"> <rect class="box" x="596" y="72" width="180" height="56" rx="7"></rect> <text class="t" x="612" y="96">AWS provider</text> <text class="s" x="612" y="114">aws_secrets_manager</text> </g> <g class="node imbi once" data-s="0 6"> <rect class="box" x="856" y="72" width="180" height="56" rx="7"></rect> <text class="t" x="872" y="96">GitHub provider</text> <text class="s" x="872" y="114">github_app</text> </g> <g class="node imbi" data-s="5 6"> <rect class="box" x="596" y="190" width="180" height="64" rx="7"></rect> <circle class="badge" cx="596" cy="190" r="10"></circle><text class="n" x="596" y="194" text-anchor="middle">5</text> <text class="t" x="612" y="212">Key binding</text> <text class="s" x="612" y="229">ghe/reviewer_private_key</text> <text class="k" x="612" y="245">provider key · 1234</text> </g> <g class="node imbi" data-s="6 7 8 9"> <rect class="box" x="856" y="190" width="180" height="64" rx="7"></rect> <circle class="badge" cx="856" cy="190" r="10"></circle><text class="n" x="856" y="194" text-anchor="middle">6</text> <text class="t" x="872" y="212">App binding</text> <text class="s" x="872" y="229">ghe/reviewer</text> <text class="k" x="872" y="245">app_id 1234</text> </g> <g class="node imbi" data-s="7"> <rect class="box" x="596" y="320" width="180" height="64" rx="7"></rect> <circle class="badge" cx="596" cy="320" r="10"></circle><text class="n" x="596" y="324" text-anchor="middle">7</text> <text class="t" x="612" y="342">Grant · runner</text> <text class="s" x="612" y="359">checkout, marketplace</text> <text class="s" x="612" y="375">file_descriptor</text> </g> <g class="node imbi" data-s="8"> <rect class="box" x="856" y="320" width="180" height="64" rx="7"></rect> <circle class="badge" cx="856" cy="320" r="10"></circle><text class="n" x="856" y="324" text-anchor="middle">8</text> <text class="t" x="872" y="342">Grant · write</text> <text class="s" x="872" y="359">github_write</text> <text class="s" x="872" y="375">environment</text> </g> <g class="node imbi" data-s="7 8 9"> <rect class="box" x="726" y="450" width="180" height="56" rx="7"></rect> <circle class="badge" cx="726" cy="450" r="10"></circle><text class="n" x="726" y="454" text-anchor="middle">9</text> <text class="t" x="742" y="474">Agent · reviewer</text> <text class="s" x="742" y="492">Access tab</text> </g> </svg></div><figcaption>An arrow points from the part that holds a reference to the part that it names. The orange <code>1234</code> is the same App ID in three places. Select a step to show the parts that it makes and connects.</figcaption></figure><div class="legend"><span><i class="sw"></i>One for each agent</span><span><i class="sw dash"></i>One for each Imbi organization</span><span><i class="sw acc"></i>The parts of the selected step</span></div></div><div class="steps" id="ghr-steps"><p class="grp">Before you start</p><div role="button" tabindex="0" class="step zero" data-step="0" aria-pressed="false"><span class="num">0</span><div class="head"><span class="ttl">Check the shared parts</span><span class="where">AWS and Imbi</span></div><div class="body"><p>Each Imbi organization sets these up one time, not for each agent.</p><dl class="vals"><dt>IAM role</dt><dd>imbi-api can assume it with the ExternalId <code>imbi:&lt;organization id&gt;</code>. It can read the secret prefix, for example <code>imbi/*</code></dd><dt>AWS provider</dt><dd>Type AWS Secrets Manager, with the role</dd><dt>GitHub provider</dt><dd>Type <code>github_app</code>, with the GitHub host, for example <code>example.ghe.com</code></dd></dl><div class="check"><b>Check</b><span>Click <strong>Test</strong> on each provider row.</span></div><p class="see">See <a href="../secrets/#prepare-aws">Secrets, Prepare AWS</a>, <a href="../secrets/#add-a-provider">Secrets, Add a provider</a>.</p></div></div><p class="grp">In GitHub</p><div role="button" tabindex="0" class="step gh" data-step="1" aria-pressed="false"><span class="num">1</span><div class="head"><span class="ttl">Create the GitHub App</span><span class="where">GitHub</span></div><div class="body"><p class="path">The owning organization › Settings › Developer settings › GitHub Apps › New GitHub App</p><dl class="vals"><dt>Name</dt><dd><code>reviewer</code>. Commits and pull requests show as <code>reviewer[bot]</code></dd><dt>Homepage URL</dt><dd>Any URL, for example the Imbi page of the agent</dd><dt>Webhook</dt><dd>Clear <strong>Active</strong>. Imbi needs no events from this App</dd><dt>Contents</dt><dd>Read and write</dd><dt>Pull requests</dt><dd>Read and write</dd><dt>Issues</dt><dd>Read and write</dd><dt>Metadata</dt><dd>Read-only. GitHub adds it</dd><dt>Install on</dt><dd><strong>Any account</strong>, under <em>Where can this GitHub App be installed?</em> A private App can only be installed in the organization that owns it</dd></dl><p class="note">These permissions are the upper limit. Each token asks for less: <code>contents: read</code> for checkout, and write only for <code>github_write</code>.</p><div class="check"><b>Check</b><span>The App settings page shows the App ID. Copy it.</span></div><p class="see">See <a href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app">GitHub, Registering a GitHub App</a>.</p></div></div><div role="button" tabindex="0" class="step gh" data-step="2" aria-pressed="false"><span class="num">2</span><div class="head"><span class="ttl">Generate the private key</span><span class="where">GitHub</span></div><div class="body"><p class="path">App settings › Private keys › Generate a private key</p><p>The browser downloads a <code>.pem</code> file. imbi-api signs a JWT with it for each token. Keep the file only until step 4.</p><div class="check"><b>Check</b><span>The key and its fingerprint show under <strong>Private keys</strong>.</span></div></div></div><div role="button" tabindex="0" class="step gh" data-step="3" aria-pressed="false"><span class="num">3</span><div class="head"><span class="ttl">Install the App in each organization</span><span class="where">GitHub</span></div><div class="body"><p class="path">App settings › Install App › the organization › Install</p><p>Do this for each GitHub organization that the agent works in. Select <strong>All repositories</strong> or the repositories that the agent needs. If the organization requires approval, an organization owner approves the install.</p><p class="note">You do not need the installation ID. Imbi finds the installation of each repository. The repositories of one token must be in one installation.</p><div class="check"><b>Check</b><span>The organization's <strong>Settings › GitHub Apps</strong> lists <code>reviewer</code>.</span></div></div></div><p class="grp">In AWS</p><div role="button" tabindex="0" class="step aws" data-step="4" aria-pressed="false"><span class="num">4</span><div class="head"><span class="ttl">Store the key in Secrets Manager</span><span class="where">AWS</span></div><div class="body"><p class="path">Secrets Manager › Store a new secret › Other type of secret › Plaintext</p><dl class="vals"><dt>Value</dt><dd>The full <code>.pem</code> text, with the <code>BEGIN</code> and <code>END</code> lines</dd><dt>Secret name</dt><dd><code>imbi/github/reviewer</code>. Use a name that the IAM role can read</dd><dt>Encryption key</dt><dd>The default key, or a KMS key that the role can decrypt</dd></dl><p class="note">Imbi does not store the key. imbi-api reads it from AWS each time it makes a token.</p><div class="check"><b>Check</b><span>The secret is in the list. Then delete the local <code>.pem</code> file.</span></div></div></div><p class="grp">In Imbi: Admin › &lt;organization&gt; Admin › Secrets</p><div role="button" tabindex="0" class="step imbi" data-step="5" aria-pressed="false"><span class="num">5</span><div class="head"><span class="ttl">Add the key binding</span><span class="where">Bindings tab</span></div><div class="body"><p>This binding names the AWS secret and marks it as a provider key. Only imbi-api reads a provider key. No grant can give it to an agent, so do not add a grant for it.</p><dl class="vals"><dt>Reference</dt><dd><code>ghe/reviewer_private_key</code>. Use lower case letters, digits, and <code>_</code></dd><dt>Provider</dt><dd>The AWS Secrets Manager provider</dd><dt>Credential class</dt><dd><code>static</code></dd><dt>Secret ID</dt><dd><code>imbi/github/reviewer</code></dd><dt>Allowed fields</dt><dd>Empty</dd><dt>Provider key host</dt><dd><code>example.ghe.com</code></dd><dt>Provider key App id</dt><dd><code>1234</code></dd><dt>Consumers</dt><dd>Empty for now. Step 6 fills it</dd></dl><div class="check"><b>Check</b><span>Click <strong>Validate</strong> on the row. Imbi checks that it can read the AWS secret.</span></div><p class="see">See <a href="../secrets/#add-a-binding">Secrets, Add a binding</a>.</p></div></div><div role="button" tabindex="0" class="step imbi" data-step="6" aria-pressed="false"><span class="num">6</span><div class="head"><span class="ttl">Add the App binding, then link it back</span><span class="where">Bindings tab</span></div><div class="body"><p>This binding makes the tokens. It names the key binding. The key binding must then list it as a consumer.</p><dl class="vals"><dt>Reference</dt><dd><code>ghe/reviewer</code></dd><dt>Provider</dt><dd>The <code>github_app</code> provider</dd><dt>Credential class</dt><dd><code>dynamic</code></dd><dt>App ID</dt><dd><code>1234</code></dd><dt>Installation ID</dt><dd>Empty, so that one binding works in each organization</dd><dt>Private key</dt><dd><code>secret://ghe/reviewer_private_key</code></dd><dt>Repositories</dt><dd>Empty. Only <code>marketplace_fetch</code> uses this list</dd><dt>Allowed delivery modes</dt><dd><code>file_descriptor</code> and <code>environment</code></dd><dt>Description</dt><dd>What the token is for. The agent sees this text</dd></dl><p class="note"><strong>Then</strong> edit <code>ghe/reviewer_private_key</code>, select <code>ghe/reviewer</code> under <strong>Consumers</strong>, and save. The order matters: the App binding must name an existing key binding, and <strong>Consumers</strong> lists only existing App bindings.</p><div class="check"><b>Check</b><span>Click <strong>Validate</strong> on the App binding row.</span></div></div></div><div role="button" tabindex="0" class="step imbi" data-step="7" aria-pressed="false"><span class="num">7</span><div class="head"><span class="ttl">Grant the runner purposes</span><span class="where">Grants tab</span></div><div class="body"><p>The runner uses these tokens to clone the project repository and fetch plugins. The agent never sees them. The agent must exist before a grant can name it.</p><dl class="vals"><dt>Agents</dt><dd><code>reviewer</code></dd><dt>Bindings</dt><dd><code>ghe/reviewer</code></dd><dt>Purposes</dt><dd><code>workspace_checkout</code>, <code>marketplace_fetch</code></dd><dt>Delivery modes</dt><dd><code>file_descriptor</code> only</dd><dt>Projects</dt><dd>All, or the selected projects</dd></dl></div></div><div role="button" tabindex="0" class="step imbi" data-step="8" aria-pressed="false"><span class="num">8</span><div class="head"><span class="ttl">Grant the write purpose</span><span class="where">Grants tab</span></div><div class="body"><p>The agent uses this token to push and to open pull requests and issues with <code>run_with_secret</code>. The token is in the environment of one command only, and Imbi removes it from the output.</p><dl class="vals"><dt>Agents</dt><dd><code>reviewer</code></dd><dt>Bindings</dt><dd><code>ghe/reviewer</code></dd><dt>Purposes</dt><dd><code>github_write</code></dd><dt>Delivery modes</dt><dd><code>environment</code> only</dd></dl><p class="note">Keep grants 7 and 8 separate. A grant allows each of its purposes with each of its delivery modes, and exactly one grant must allow each request.</p></div></div><p class="grp">On the agent</p><div role="button" tabindex="0" class="step imbi" data-step="9" aria-pressed="false"><span class="num">9</span><div class="head"><span class="ttl">Select the App binding on the agent</span><span class="where">Agents › reviewer › Edit › Access</span></div><div class="body"><p>Set <strong>GitHub App</strong> to <code>ghe/reviewer</code> and save. The runner asks for tokens from this binding. The grants decide if imbi-api allows the request. The agent needs both.</p><p class="note"><strong>Quick way:</strong> do this step after step 6. Each purpose with no check shows a <strong>Grant</strong> button. The buttons make grants 7 and 8.</p><div class="check"><b>Check</b><span><code>workspace_checkout</code>, <code>github_write</code>, and <code>marketplace_fetch</code> each show a check.</span></div><p class="see">See <a href="../agents/#access">Agents, Access</a>.</p></div></div></div></div></div>
+## How the parts connect
 
-## When a task runs
+<figure class="ghr"><svg class="ghr-map" viewBox="0 0 760 746" role="img" aria-label="Setup map. In GitHub: the App, its private key, and one installation per organization. In AWS: the key stored as a secret that the IAM role can read. In Imbi: the key binding names the AWS secret, the App binding names the key binding, two grants name the App binding and the agent, and the agent selects the App binding."><defs><marker id="ghr-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"></path></marker></defs><rect class="band gh" x="6" y="8" width="748" height="150" rx="8"></rect><text class="lane gh" x="24" y="30">GitHub</text><rect class="band aws" x="6" y="168" width="748" height="110" rx="8"></rect><text class="lane aws" x="24" y="190">AWS</text><rect class="band imbi" x="6" y="288" width="748" height="450" rx="8"></rect><text class="lane imbi" x="24" y="310">Imbi</text><g class="node gh"><rect class="box" x="30" y="48" width="180" height="92" rx="7"></rect><circle class="badge" cx="30" cy="48" r="10"></circle><text class="n" x="30" y="52" text-anchor="middle">3</text><text class="t" x="46" y="72">Installations</text><text class="s" x="46" y="90">org-a, org-b, org-c</text><text class="s" x="46" y="106">one per organization</text></g><g class="node gh"><rect class="box" x="280" y="48" width="180" height="64" rx="7"></rect><circle class="badge" cx="280" cy="48" r="10"></circle><text class="n" x="280" y="52" text-anchor="middle">1</text><text class="t" x="296" y="72">GitHub App</text><text class="k" x="296" y="90">App ID 1234</text></g><g class="node gh"><rect class="box" x="550" y="48" width="180" height="56" rx="7"></rect><circle class="badge" cx="550" cy="48" r="10"></circle><text class="n" x="550" y="52" text-anchor="middle">2</text><text class="t" x="566" y="72">Private key</text><text class="s" x="566" y="90">.pem file</text></g><g class="node aws once"><rect class="box" x="280" y="200" width="180" height="56" rx="7"></rect><text class="t" x="296" y="224">IAM role</text><text class="s" x="296" y="242">reads imbi/*</text></g><g class="node aws"><rect class="box" x="550" y="200" width="180" height="56" rx="7"></rect><circle class="badge" cx="550" cy="200" r="10"></circle><text class="n" x="550" y="204" text-anchor="middle">4</text><text class="t" x="566" y="224">Secret</text><text class="s" x="566" y="242">imbi/github/reviewer</text></g><g class="node imbi once"><rect class="box" x="30" y="330" width="180" height="56" rx="7"></rect><text class="t" x="46" y="354">GitHub provider</text><text class="s" x="46" y="372">github_app</text></g><g class="node imbi once"><rect class="box" x="280" y="330" width="180" height="56" rx="7"></rect><text class="t" x="296" y="354">AWS provider</text><text class="s" x="296" y="372">aws_secrets_manager</text></g><g class="node imbi"><rect class="box" x="280" y="440" width="180" height="72" rx="7"></rect><circle class="badge" cx="280" cy="440" r="10"></circle><text class="n" x="280" y="444" text-anchor="middle">6</text><text class="t" x="296" y="464">App binding</text><text class="s" x="296" y="482">ghe/reviewer</text><text class="k" x="296" y="498">app_id 1234</text></g><g class="node imbi"><rect class="box" x="550" y="440" width="196" height="72" rx="7"></rect><circle class="badge" cx="550" cy="440" r="10"></circle><text class="n" x="550" y="444" text-anchor="middle">5</text><text class="t" x="566" y="464">Key binding</text><text class="s" x="566" y="482">ghe/reviewer_private_key</text><text class="k" x="566" y="498">provider key, 1234</text></g><g class="node imbi"><rect class="box" x="30" y="560" width="180" height="72" rx="7"></rect><circle class="badge" cx="30" cy="560" r="10"></circle><text class="n" x="30" y="564" text-anchor="middle">7</text><text class="t" x="46" y="584">Grant: runner</text><text class="s" x="46" y="602">workspace_checkout,</text><text class="s" x="46" y="618">marketplace_fetch</text></g><g class="node imbi"><rect class="box" x="280" y="560" width="180" height="72" rx="7"></rect><circle class="badge" cx="280" cy="560" r="10"></circle><text class="n" x="280" y="564" text-anchor="middle">8</text><text class="t" x="296" y="584">Grant: write</text><text class="s" x="296" y="602">github_write</text></g><g class="node imbi"><rect class="box" x="280" y="664" width="180" height="56" rx="7"></rect><circle class="badge" cx="280" cy="664" r="10"></circle><text class="n" x="280" y="668" text-anchor="middle">9</text><text class="t" x="296" y="688">Agent reviewer</text><text class="s" x="296" y="706">GitHub App setting</text></g><g class="edge"><path d="M280,80 H212"></path><text x="246" y="72" text-anchor="middle">install</text></g><g class="edge"><path d="M460,76 H548"></path><text x="504" y="68" text-anchor="middle">generate</text></g><g class="edge"><path d="M640,104 V198"></path><text x="648" y="156" text-anchor="start">store</text></g><g class="edge"><path d="M460,228 H548"></path><text x="504" y="220" text-anchor="middle">can read</text></g><g class="edge"><path d="M370,330 V258"></path><text x="378" y="300" text-anchor="start">assumes</text></g><g class="edge"><path d="M640,440 V258"></path><text x="648" y="356" text-anchor="start">Secret ID</text></g><g class="edge"><path d="M460,372 L575,438"></path><text x="522" y="394" text-anchor="start">provider</text></g><g class="edge"><path d="M210,386 L300,438"></path><text x="232" y="426" text-anchor="start">provider</text></g><g class="edge"><path d="M550,466 H462"></path><text x="506" y="458" text-anchor="middle">private_key</text></g><g class="edge"><path d="M460,494 H548"></path><text x="506" y="510" text-anchor="middle">consumers</text></g><g class="edge"><path d="M370,560 V514"></path><text x="378" y="542" text-anchor="start">binding</text></g><g class="edge"><path d="M180,560 L290,514"></path><text x="214" y="530" text-anchor="end">binding</text></g><g class="edge"><path d="M125,632 L285,676"></path><text x="178" y="668" text-anchor="end">agent</text></g><g class="edge"><path d="M370,632 V662"></path><text x="378" y="652" text-anchor="start">agent</text></g><g class="edge ref"><path d="M460,692 H530 V530 H445 V515"></path><text x="538" y="610" text-anchor="middle" transform="rotate(-90 538 610)">GitHub App</text></g></svg><figcaption>An arrow points from the part that holds a reference to the part that it names. A number is the step that makes the part. A dashed box is made one time for each Imbi organization.</figcaption></figure>
+
+| Part | Where | What it holds |
+|---|---|---|
+| GitHub App | GitHub | The App ID and the permissions. The permissions are the upper limit of each token |
+| Private key | GitHub, then AWS | The `.pem` file. imbi-api signs a JWT with it |
+| Installation | GitHub | One for each GitHub organization. A token can only cover repositories of one installation |
+| Secret | AWS Secrets Manager | The `.pem` text |
+| Key binding | Imbi | A reference for the AWS secret, marked as a provider key. Only imbi-api reads it. No grant can give it to an agent |
+| App binding | Imbi | The App ID and the reference of the key binding. It gets the tokens |
+| Grants | Imbi | Which agents may use the App binding, for which purposes |
+| Agent setting | Imbi | Which App binding the runner asks for |
+
+The agent setting and the grants do different things. The setting tells
+the runner which binding to ask for. The grant decides if imbi-api allows
+the request. The agent needs both.
+
+## How a token is made
 
 The runner asks for a token when a task starts, to clone the repository.
 The agent asks for a second token when it pushes or opens a pull request.
+The **Step** column gives the setup step that each message needs.
 
-<div class="ghr"><figure><div class="svgscroll"><svg class="seq" viewBox="0 0 1070 908" role="img" aria-label="Sequence of a task run. The runner claims the task and learns the App binding. It asks imbi-api to resolve the binding for checkout; imbi-api checks that exactly one grant matches and returns a handle. The executor materializes the handle; imbi-api reads the private key from AWS, finds the verified repository, signs a JWT, and mints a repository-scoped read token from GitHub. The executor clones, then releases, and imbi-api revokes the token. Later the agent calls run_with_secret for github_write; the same steps mint a write token that lives only in one command's environment, and the output is scrubbed."> <defs><marker id="sarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-ink"></path></marker><marker id="sret" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"></path></marker></defs> <rect class="podbox" x="8" y="10" width="402" height="58" rx="8"></rect> <text class="podlbl" x="20" y="26">runner pod</text> <line class="life" x1="60" y1="64" x2="60" y2="898"></line> <text class="hdr pod" x="60" y="52" text-anchor="middle">Agent</text> <line class="life" x1="200" y1="64" x2="200" y2="898"></line> <text class="hdr pod" x="200" y="52" text-anchor="middle">Runner</text> <line class="life" x1="340" y1="64" x2="340" y2="898"></line> <text class="hdr pod" x="340" y="52" text-anchor="middle">Executor</text> <line class="life" x1="520" y1="64" x2="520" y2="898"></line> <text class="hdr imbi" x="520" y="52" text-anchor="middle">imbi-api</text> <line class="life" x1="690" y1="64" x2="690" y2="898"></line> <text class="hdr aws" x="690" y="52" text-anchor="middle">AWS</text> <line class="life" x1="850" y1="64" x2="850" y2="898"></line> <text class="hdr gh" x="850" y="52" text-anchor="middle">GitHub</text> <text class="needs-h" x="1010" y="52" text-anchor="middle">needs</text> <rect class="phase" x="8" y="86" width="1054" height="24" rx="4"></rect><text class="phase-t" x="20" y="102">Task starts: clone the repo</text> <g class="msg"><path d="M203,134 H517"></path><text x="360.0" y="128" text-anchor="middle">claim the task</text></g> <g class="ret"><path d="M517,164 H203"></path><text x="360.0" y="158" text-anchor="middle">repo to clone + App binding</text></g> <g class="need" data-s="9"><rect x="968" y="148" width="84" height="20" rx="10"></rect><text x="1010" y="162" text-anchor="middle">step 9</text></g> <g class="msg"><path d="M203,194 H517"></path><text x="360.0" y="188" text-anchor="middle">resolve ghe/reviewer · workspace_checkout</text></g> <g class="self"><rect x="388" y="208" width="264" height="22" rx="4"></rect><text x="520.0" y="223" text-anchor="middle">requires exactly one matching grant</text></g> <g class="need" data-s="7"><rect x="968" y="208" width="84" height="20" rx="10"></rect><text x="1010" y="222" text-anchor="middle">step 7</text></g> <g class="ret"><path d="M517,254 H203"></path><text x="360.0" y="248" text-anchor="middle">handle</text></g> <g class="msg"><path d="M203,284 H337"></path><text x="270.0" y="278" text-anchor="middle">handle</text></g> <g class="msg"><path d="M343,314 H517"></path><text x="430.0" y="308" text-anchor="middle">materialize the handle</text></g> <g class="msg"><path d="M523,344 H687"></path><text x="605.0" y="338" text-anchor="middle">read the key</text></g> <g class="need" data-s="4 5"><rect x="968" y="328" width="84" height="20" rx="10"></rect><text x="1010" y="342" text-anchor="middle">step 4, 5</text></g> <g class="ret"><path d="M687,374 H523"></path><text x="605.0" y="368" text-anchor="middle">.pem</text></g> <g class="self"><rect x="388" y="388" width="264" height="22" rx="4"></rect><text x="520.0" y="403" text-anchor="middle">looks up the verified repo id</text></g> <g class="need" data-s="Doctor"><rect x="968" y="388" width="84" height="20" rx="10"></rect><text x="1010" y="402" text-anchor="middle">Doctor</text></g> <g class="msg"><path d="M523,434 H847"></path><text x="685.0" y="428" text-anchor="middle">JWT: find the installation for this repo</text></g> <g class="need" data-s="1 2 3"><rect x="968" y="418" width="84" height="20" rx="10"></rect><text x="1010" y="432" text-anchor="middle">step 1, 2, 3</text></g> <g class="msg"><path d="M523,464 H847"></path><text x="685.0" y="458" text-anchor="middle">mint token: this repo, contents:read</text></g> <g class="need" data-s="6"><rect x="968" y="448" width="84" height="20" rx="10"></rect><text x="1010" y="462" text-anchor="middle">step 6</text></g> <g class="ret"><path d="M847,494 H523"></path><text x="685.0" y="488" text-anchor="middle">token, 1 hour max</text></g> <g class="ret"><path d="M517,524 H343"></path><text x="430.0" y="518" text-anchor="middle">token</text></g> <g class="msg"><path d="M343,554 H847"></path><text x="595.0" y="548" text-anchor="middle">git clone, token on a file descriptor</text></g> <g class="msg"><path d="M343,584 H517"></path><text x="430.0" y="578" text-anchor="middle">release</text></g> <g class="msg"><path d="M523,614 H847"></path><text x="685.0" y="608" text-anchor="middle">revoke the token</text></g> <rect class="phase" x="8" y="626" width="1054" height="24" rx="4"></rect><text class="phase-t" x="20" y="642">Agent opens a PR</text> <g class="msg"><path d="M63,674 H197"></path><text x="130.0" y="668" text-anchor="middle">run_with_secret</text></g> <g class="self"><rect x="10" y="688" width="270.79999999999995" height="22" rx="4"></rect><text x="145.39999999999998" y="703" text-anchor="middle">gh pr create · github_write · GH_TOKEN</text></g> <g class="msg"><path d="M203,734 H517"></path><text x="360.0" y="728" text-anchor="middle">resolve ghe/reviewer · github_write</text></g> <g class="need" data-s="8"><rect x="968" y="718" width="84" height="20" rx="10"></rect><text x="1010" y="732" text-anchor="middle">step 8</text></g> <g class="self note"><rect x="180" y="747" width="690" height="24" rx="4"></rect><text x="525.0" y="763" text-anchor="middle">Same as above: grant check, handle, key, mint. Token gets contents, pull_requests, issues: write.</text></g> <g class="msg"><path d="M343,794 H847"></path><text x="595.0" y="788" text-anchor="middle">gh pr create, GH_TOKEN in this command only</text></g> <g class="ret"><path d="M337,824 H63"></path><text x="200.0" y="818" text-anchor="middle">output, token scrubbed</text></g> <g class="msg"><path d="M343,854 H517"></path><text x="430.0" y="848" text-anchor="middle">release + revoke</text></g> </svg></div><figcaption>Solid arrows are requests. Dashed arrows are replies. Each chip names the setup step that the message needs.</figcaption></figure></div>
+<figure class="ghr"><svg class="ghr-seq" viewBox="0 0 760 836" role="img" aria-label="A task run. The runner claims the task and gets the App binding. It asks imbi-api to resolve the binding for workspace_checkout. imbi-api requires exactly one matching grant and returns a handle. The executor materializes the handle. imbi-api reads the key from AWS, finds the installation, and gets a token for the one repository. The executor clones and releases, and imbi-api revokes the token. Later the agent calls run_with_secret for github_write, and the same steps make a write token for one command."><defs><marker id="ghr-sarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-ink" d="M0,0 L10,5 L0,10 z"></path></marker><marker id="ghr-sret" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"></path></marker></defs><rect class="podbox" x="8" y="8" width="296" height="52" rx="8"></rect><text class="podlbl" x="18" y="22">runner pod</text><line class="life" x1="50" y1="58" x2="50" y2="828"></line><text class="hdr " x="50" y="48" text-anchor="middle">Agent</text><line class="life" x1="150" y1="58" x2="150" y2="828"></line><text class="hdr " x="150" y="48" text-anchor="middle">Runner</text><line class="life" x1="255" y1="58" x2="255" y2="828"></line><text class="hdr " x="255" y="48" text-anchor="middle">Executor</text><line class="life" x1="395" y1="58" x2="395" y2="828"></line><text class="hdr imbi" x="395" y="48" text-anchor="middle">imbi-api</text><line class="life" x1="530" y1="58" x2="530" y2="828"></line><text class="hdr aws" x="530" y="48" text-anchor="middle">AWS</text><line class="life" x1="640" y1="58" x2="640" y2="828"></line><text class="hdr gh" x="640" y="48" text-anchor="middle">GitHub</text><text class="needs-h" x="718" y="48" text-anchor="middle">Step</text><rect class="phase" x="8" y="75" width="744" height="23" rx="4"></rect><text class="phase-t" x="18" y="91">Task starts: clone the repository</text><g class="msg"><path d="M153,120 H392"></path><text x="272.5" y="115" text-anchor="middle">claim the task</text></g><g class="ret"><path d="M392,148 H153"></path><text x="272.5" y="143" text-anchor="middle">repository + App binding</text></g><g class="need"><rect x="684" y="133" width="68" height="19" rx="9.5"></rect><text x="718" y="147" text-anchor="middle">9</text></g><g class="msg"><path d="M153,176 H392"></path><text x="272.5" y="171" text-anchor="middle">resolve: workspace_checkout</text></g><g class="self"><rect x="274.0" y="189" width="242.0" height="21" rx="4"></rect><text x="395.0" y="204" text-anchor="middle">requires exactly one matching grant</text></g><g class="need"><rect x="684" y="189" width="68" height="19" rx="9.5"></rect><text x="718" y="203" text-anchor="middle">7</text></g><g class="ret"><path d="M392,232 H153"></path><text x="272.5" y="227" text-anchor="middle">handle</text></g><g class="msg"><path d="M153,260 H252"></path><text x="202.5" y="255" text-anchor="middle">handle</text></g><g class="msg"><path d="M258,288 H392"></path><text x="325.0" y="283" text-anchor="middle">materialize</text></g><g class="msg"><path d="M398,316 H527"></path><text x="462.5" y="311" text-anchor="middle">read the key</text></g><g class="need"><rect x="684" y="301" width="68" height="19" rx="9.5"></rect><text x="718" y="315" text-anchor="middle">4, 5</text></g><g class="ret"><path d="M527,344 H398"></path><text x="462.5" y="339" text-anchor="middle">.pem</text></g><g class="self"><rect x="283.6" y="357" width="222.8" height="21" rx="4"></rect><text x="395.0" y="372" text-anchor="middle">looks up the verified repository</text></g><g class="need"><rect x="684" y="357" width="68" height="19" rx="9.5"></rect><text x="718" y="371" text-anchor="middle">Doctor</text></g><g class="msg"><path d="M398,400 H637"></path><text x="517.5" y="395" text-anchor="middle">JWT: find the installation</text></g><g class="need"><rect x="684" y="385" width="68" height="19" rx="9.5"></rect><text x="718" y="399" text-anchor="middle">1, 2, 3</text></g><g class="msg"><path d="M398,428 H637"></path><text x="517.5" y="423" text-anchor="middle">token: one repo, contents read</text></g><g class="need"><rect x="684" y="413" width="68" height="19" rx="9.5"></rect><text x="718" y="427" text-anchor="middle">6</text></g><g class="ret"><path d="M637,456 H398"></path><text x="517.5" y="451" text-anchor="middle">token, one hour at most</text></g><g class="ret"><path d="M392,484 H258"></path><text x="325.0" y="479" text-anchor="middle">token</text></g><g class="msg"><path d="M258,512 H637"></path><text x="447.5" y="507" text-anchor="middle">git clone, token on a file descriptor</text></g><g class="msg"><path d="M258,540 H392"></path><text x="325.0" y="535" text-anchor="middle">release</text></g><g class="msg"><path d="M398,568 H637"></path><text x="517.5" y="563" text-anchor="middle">revoke the token</text></g><rect class="phase" x="8" y="579" width="744" height="23" rx="4"></rect><text class="phase-t" x="18" y="595">The agent opens a pull request</text><g class="msg"><path d="M53,624 H147"></path><text x="100.0" y="619" text-anchor="middle">run_with_secret</text></g><g class="self"><rect x="10" y="637" width="184.4" height="21" rx="4"></rect><text x="102.2" y="652" text-anchor="middle">gh pr create, github_write</text></g><g class="msg"><path d="M153,680 H392"></path><text x="272.5" y="675" text-anchor="middle">resolve: github_write</text></g><g class="need"><rect x="684" y="665" width="68" height="19" rx="9.5"></rect><text x="718" y="679" text-anchor="middle">8</text></g><g class="self note"><rect x="130" y="692" width="530" height="23" rx="4"></rect><text x="395.0" y="708" text-anchor="middle">The same steps. The token gets contents, pull_requests, issues: write.</text></g><g class="msg"><path d="M258,736 H637"></path><text x="447.5" y="731" text-anchor="middle">gh pr create, GH_TOKEN in one command</text></g><g class="ret"><path d="M252,764 H53"></path><text x="152.5" y="759" text-anchor="middle">output, token removed</text></g><g class="msg"><path d="M258,792 H392"></path><text x="325.0" y="787" text-anchor="middle">release and revoke</text></g></svg><figcaption>Solid arrows are requests. Dashed arrows are replies.</figcaption></figure>
 
-- imbi-api does all the GitHub authentication. The private key goes from
-  AWS to imbi-api and no further. The runner pod gets only short-lived
-  tokens.
-- Each token is new. It covers one repository and one purpose, lasts one
-  hour at most, and Imbi revokes it on release.
+- imbi-api does all of the GitHub authentication. The private key goes
+  from AWS to imbi-api and no further. The runner pod gets only
+  short-lived tokens.
+- The token for `github_write` is in the environment of one command only,
+  and Imbi removes it from the command output.
 - The token covers only the repository that the GitHub integration
   verified for the project. If the project's `EXISTS_IN` edge was made or
   edited by hand, the Doctor check
   [`identifier-verified`](../plugins/github.md#identifier-verified) fails
   and Imbi refuses the token.
 
-## When a request is refused
+## Before you start
 
-Open **Admin, Secrets, Audit** to see the reason. **Resolutions** shows
-the token reads.
+These parts are made one time for each Imbi organization, not for each
+agent. Check that they exist:
+
+| Part | Where | See |
+|---|---|---|
+| IAM role that imbi-api assumes, with the ExternalId `imbi:<organization id>` and read access to the secret prefix | AWS | [Secrets, Prepare AWS](secrets.md#prepare-aws) |
+| An AWS Secrets Manager provider | **Admin, Secrets, Providers** | [Secrets, Add a provider](secrets.md#add-a-provider) |
+| A `github_app` provider with the GitHub host | **Admin, Secrets, Providers** | [Agent Runners, Configure GitHub access](../deployment/agent-runners.md#6-configure-github-access) |
+
+Click **Test** on each provider row to check it.
+
+The `github_app` provider accepts `github.com`, a `<tenant>.ghe.com`
+host, or a GHES host that the operator lists in
+`IMBI_SECRETS_GITHUB_GHES_HOSTS`.
+
+## Step 1: Create the GitHub App
+
+In the GitHub organization that owns the App, open **Settings, Developer
+settings, GitHub Apps, New GitHub App**.
+
+| Field | Value |
+|---|---|
+| GitHub App name | The agent name, for example `reviewer`. Commits show as `reviewer[bot]` |
+| Homepage URL | Any URL, for example the Imbi page of the agent |
+| Webhook | Clear **Active**. Imbi needs no events from this App |
+| Repository permissions: Contents | Read and write |
+| Repository permissions: Pull requests | Read and write |
+| Repository permissions: Issues | Read and write |
+| Repository permissions: Metadata | Read-only (GitHub adds it) |
+| Where can this GitHub App be installed? | **Any account**. A private App can only be installed in the organization that owns it |
+
+Click **Create GitHub App**. Copy the **App ID** from the App settings
+page.
+
+Each token asks only for the permissions of its purpose. GitHub refuses a
+token with more permissions than the App has.
+
+| Purpose | Token permissions |
+|---|---|
+| `workspace_checkout` | `contents: read` |
+| `marketplace_fetch` | `contents: read` |
+| `github_write` | `contents: write`, `pull_requests: write`, `issues: write` |
+
+## Step 2: Generate the private key
+
+On the App settings page, under **Private keys**, click **Generate a
+private key**. The browser downloads a `.pem` file. Keep it only until
+step 4.
+
+## Step 3: Install the App
+
+On the App settings page, click **Install App**. Select a GitHub
+organization, then **All repositories** or the repositories that the agent
+works in. Click **Install**. If the organization requires approval, an
+organization owner approves the install.
+
+Do this for each GitHub organization that the agent works in.
+
+You do not need the installation ID. Imbi finds the installation of each
+repository. The repositories of one token must all be in one
+installation.
+
+To check, open the organization's **Settings, GitHub Apps**. The App is
+in the list.
+
+## Step 4: Store the key in AWS
+
+In AWS Secrets Manager, click **Store a new secret**:
+
+| Field | Value |
+|---|---|
+| Secret type | **Other type of secret**, **Plaintext** |
+| Value | The full `.pem` text, with the `BEGIN` and `END` lines |
+| Secret name | For example `imbi/github/reviewer`. Use a name that the IAM role can read |
+| Encryption key | The default key, or a KMS key that the role can decrypt |
+
+Then delete the local `.pem` file.
+
+## Step 5: Add the key binding
+
+Open **Admin, Secrets, Bindings** and click **New binding** (see
+[Secrets, Add a binding](secrets.md#add-a-binding)).
+
+| Field | Value |
+|---|---|
+| Reference | `ghe/reviewer_private_key`. Use lower case letters, digits, and `_` |
+| Provider | The AWS Secrets Manager provider |
+| Credential class | `static` |
+| Secret ID | `imbi/github/reviewer` |
+| Allowed fields | Empty |
+| Provider key host | `example.ghe.com` |
+| Provider key App id | `1234` |
+
+Leave **Consumers** empty. The App binding does not exist yet. Do not add
+a grant for this binding.
+
+Click **Validate** on the row to check that Imbi can read the AWS secret.
+
+## Step 6: Add the App binding
+
+Click **New binding** again.
+
+| Field | Value |
+|---|---|
+| Reference | `ghe/reviewer` |
+| Provider | The `github_app` provider |
+| Credential class | `dynamic` |
+| App ID | `1234` |
+| Installation ID | Empty, so that one binding works in each GitHub organization |
+| Private key | `secret://ghe/reviewer_private_key` |
+| Repositories | Empty. Only `marketplace_fetch` uses this list. See [Agents, Plugin marketplaces](agents.md#plugin-marketplaces) |
+| Allowed delivery modes | `file_descriptor` and `environment` |
+| Description | What the token is for. The agent sees this text |
+
+Then edit the key binding `ghe/reviewer_private_key`. Under
+**Consumers**, select `ghe/reviewer` and save.
+
+The order matters. The App binding must name an existing key binding, and
+the **Consumers** list shows only existing App bindings.
+
+Click **Validate** on the App binding row.
+
+## Step 7: Grant the runner purposes
+
+The runner uses these tokens to clone the project repository and to fetch
+plugins. The agent never sees them. The agent must exist before a grant
+can name it, so save the agent first.
+
+Open **Admin, Secrets, Grants** and click **New grant**.
+
+| Field | Value |
+|---|---|
+| Agents | `reviewer` |
+| Bindings | `ghe/reviewer` |
+| Purposes | `workspace_checkout`, `marketplace_fetch` |
+| Delivery modes | `file_descriptor` only |
+| Projects | All, or the selected projects |
+
+## Step 8: Grant the write purpose
+
+The agent uses this token to push and to open pull requests and issues
+with `run_with_secret`.
+
+| Field | Value |
+|---|---|
+| Agents | `reviewer` |
+| Bindings | `ghe/reviewer` |
+| Purposes | `github_write` |
+| Delivery modes | `environment` only |
+| Projects | All, or the selected projects |
+
+Keep the grants of steps 7 and 8 separate. A grant allows each of its
+purposes with each of its delivery modes, and exactly one grant must
+allow each request. With no match, Imbi refuses the request with
+`no_grant`. With two matches, it refuses with `ambiguous_grants`.
+
+## Step 9: Select the App binding on the agent
+
+Open **Agents**, the agent, **Edit**, then the **Access** tab. Select
+`ghe/reviewer` as the **GitHub App** and save. See
+[Agents, Access](agents.md#access).
+
+The tab shows a row for `workspace_checkout`, `github_write`, and
+`marketplace_fetch`. Each row shows a check when a grant allows it.
+
+You can also do this step right after step 6. Then click **Grant** on
+each row that has no check. Imbi adds the purpose to the agent's grant
+that has the same binding and delivery mode, or makes a new grant. The
+result is the grants of steps 7 and 8.
+
+## Check
+
+Run a task on a project whose GitHub repository the agent can reach.
+Open **Admin, Secrets, Resolutions** to see the token reads, and
+**Audit** to see a refused request and its reason.
 
 | Reason | Fix |
 |---|---|
@@ -141,26 +285,3 @@ Doctor and apply the `identifier-verified` fix.
 Nothing in Imbi requires one App for each agent. A grant can name more
 than one agent, so other agents can use `ghe/reviewer`. Their commits and
 pull requests then show as `reviewer[bot]`.
-
-<script>
-(function () {
-  var map = document.getElementById('ghr-map');
-  if (!map) return;
-  var parts = map.querySelectorAll('[data-s]');
-  var steps = document.querySelectorAll('#ghr-steps .step');
-  var current = null;
-  function select(n) {
-    current = current === n ? null : n;
-    map.classList.toggle('focus', current !== null);
-    parts.forEach(function (el) {
-      el.classList.toggle('on', current !== null && el.getAttribute('data-s').split(' ').indexOf(current) !== -1);
-    });
-    steps.forEach(function (s) { s.setAttribute('aria-pressed', String(s.getAttribute('data-step') === current)); });
-  }
-  steps.forEach(function (s) {
-    var n = s.getAttribute('data-step');
-    s.addEventListener('click', function (e) { if (!e.target.closest('a')) select(n); });
-    s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(n); } });
-  });
-})();
-</script>
