@@ -1122,6 +1122,13 @@ class AcknowledgeTests(AgentTaskTestCase):
         )
         self.assertEqual(first['last_seq'], response.json()['last_seq'])
 
+    async def test_service_account_is_refused(self) -> None:
+        await self.client.post(self.url('T-1/cancel'))
+        await self.act_as_service_account(member=True)
+        response = await self.acknowledge()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('requires user authentication', response.text)
+
 
 class DeleteTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:

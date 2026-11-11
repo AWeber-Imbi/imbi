@@ -1184,15 +1184,14 @@ async def acknowledge_agent_task(
     The first acknowledgement stays; a repeat returns the task.
 
     Raises:
-        403: The caller is not a member of the org.
+        403: The caller is not a person, or not a member of the org.
         404: No such task.
         409: The task is not closed.
 
     """
+    user = auth.require_user
     try:
-        return await store.acknowledge(
-            org_id, short_id.upper(), _actor(auth).id
-        )
+        return await store.acknowledge(org_id, short_id.upper(), user.email)
     except agent_tasks.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
