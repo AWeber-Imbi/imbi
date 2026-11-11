@@ -68,6 +68,9 @@ interface BindingDialogProps {
   providerTypes: SecretProviderType[]
 }
 
+// A Select item value cannot be empty: this one clears the host.
+const NO_HOST = '__none__'
+
 interface KeyConsumer {
   appId: string
   host: string
@@ -101,7 +104,10 @@ export function BindingDialog({
     allowed_delivery_targets: original?.allowed_delivery_targets ?? [],
     allowed_fields: original?.allowed_fields ?? [],
     app_id: usage?.app_id ?? '',
-    consumers: usage?.consumers ?? [],
+    // Drop saved ids of deleted bindings: no checkbox can clear them.
+    consumers: (usage?.consumers ?? []).filter((id) =>
+      consumers.some((c) => c.value === id),
+    ),
     credential_class: original?.credential_class ?? 'static',
     description: original?.description ?? '',
     host: usage?.host ?? '',
@@ -401,10 +407,12 @@ export function BindingDialog({
                   label="Provider key host"
                   required={keyUsed}
                 >
-                  {hosts.length ? (
+                  {appHosts.length ? (
                     <Select
                       disabled={pinned}
-                      onValueChange={(value) => set('host', value)}
+                      onValueChange={(value) =>
+                        set('host', value === NO_HOST ? '' : value)
+                      }
                       value={form.host}
                     >
                       <SelectTrigger
@@ -414,6 +422,7 @@ export function BindingDialog({
                         <SelectValue placeholder="Select a host" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={NO_HOST}>None</SelectItem>
                         {hosts.map((h) => (
                           <SelectItem key={h} value={h}>
                             {h}
