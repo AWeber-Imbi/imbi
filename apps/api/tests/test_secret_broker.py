@@ -1362,6 +1362,40 @@ class AuditOutboxTestCase(secret_support.SecretCase):
         )
 
 
+class RemoveAgentTestCase(secret_support.SecretCase):
+    async def test_strips_the_agent_and_deletes_empty_grants(self) -> None:
+        shared = await self.add_grant(
+            [self.binding['id']], agent_ids=[self.agent, 'other']
+        )
+        await self.store.remove_agent(self.org, self.agent, 'admin')
+        # setUp's grant has only this agent, so it goes.
+        self.assertIsNone(
+            await self.store.get('grants', self.org, self.grant['id'])
+        )
+        kept = await self.store.get('grants', self.org, shared['id'])
+        assert kept is not None
+        self.assertEqual(kept['agent_ids'], ['other'])
+        events = {
+            e.grant_id: (e.type, e.agent_id, e.actor)
+            for e in await self.audit_events()
+        }
+        self.assertEqual(
+            events,
+            {
+                str(self.grant['id']): (
+                    'secret_grant_deleted',
+                    self.agent,
+                    'admin',
+                ),
+                str(shared['id']): (
+                    'secret_grant_updated',
+                    self.agent,
+                    'admin',
+                ),
+            },
+        )
+
+
 class TaskEventTestCase(secret_support.SecretCase):
     async def test_each_step_writes_a_task_event(self) -> None:
         created = await self.broker.create_resolution(

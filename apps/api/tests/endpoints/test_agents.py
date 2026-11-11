@@ -15,7 +15,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_prompts
-from imbi.api import harness, models, workflows
+from imbi.api import harness, models, secret_broker, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import agents
 from imbi.common import graph
@@ -82,6 +82,12 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.workflow_store.agent_references.return_value = 0
         self.test_app.dependency_overrides[workflows._inject_store] = (
             lambda: self.workflow_store
+        )
+        self.secret_store = mock.AsyncMock(
+            spec=secret_broker.store.SecretStore
+        )
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.secret_store
         )
         patcher = mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
@@ -741,6 +747,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('DETACH DELETE c, s, a', statements[1].cypher)
         for stmt in statements:
             self.assertEqual(stmt.params, {'id': 'agent-1'})
+        self.secret_store.remove_agent.assert_awaited_once_with(
+            'engineering', 'agent-1', mock.ANY
+        )
 
     def test_delete_used_in_workflows_conflicts(self) -> None:
         self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
@@ -754,6 +763,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             'engineering', 'agent-1'
         )
         self.mock_db._execute_batch.assert_not_awaited()
+        self.secret_store.remove_agent.assert_not_awaited()
 
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []

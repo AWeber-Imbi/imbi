@@ -264,6 +264,50 @@ class SecretStore:
             await _audit(conn, event, row)
             return row is not None
 
+    async def remove_agent(
+        self, organization_id: str, agent_id: str, actor: str
+    ) -> None:
+        """Remove a deleted agent from every grant of the organization.
+
+        A grant left with no agent matches nothing, so it is deleted.
+        The audit events commit with the change.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'UPDATE secrets.grants'
+                ' SET agent_ids = array_remove(agent_ids, %(agent)s),'
+                ' updated_at = NOW()'
+                ' WHERE organization_id = %(org)s'
+                ' AND %(agent)s = ANY(agent_ids)'
+                ' RETURNING id, agent_ids',
+                {'agent': agent_id, 'org': organization_id},
+            )
+            changed = await cur.fetchall()
+            empty = [r['id'] for r in changed if not r['agent_ids']]
+            if empty:
+                await cur.execute(
+                    'DELETE FROM secrets.grants WHERE id = ANY(%s)', (empty,)
+                )
+            await audit.write(
+                conn,
+                [
+                    audit.Event(
+                        organization_id=organization_id,
+                        type='secret_grant_deleted'
+                        if r['id'] in empty
+                        else 'secret_grant_updated',
+                        actor=actor,
+                        agent_id=agent_id,
+                        grant_id=str(r['id']),
+                    )
+                    for r in changed
+                ],
+            )
+
     async def agent_references(
         self,
         organization_id: str,
