@@ -869,6 +869,28 @@ async def create_agent_task(
     )
 
 
+async def _keyed_task(
+    store: agent_tasks.TaskStore,
+    org_id: str,
+    origin: TaskOrigin,
+    key: str | None,
+    response: fastapi.Response,
+) -> dict[str, typing.Any] | None:
+    """Return the task that has ``key``, and set status 200, if it exists."""
+    if key is None:
+        return None
+    if _STEP_KEY.match(key):
+        raise _unprocessable(
+            'The idempotency key has the shape of a workflow step key'
+        )
+    existing = await store.find_by_idempotency_key(
+        org_id, origin.kind, origin.id, key
+    )
+    if existing is not None:
+        response.status_code = 200
+    return existing
+
+
 async def _create_task(
     db: graph.Graph,
     store: agent_tasks.TaskStore,
@@ -881,17 +903,9 @@ async def _create_task(
     auth: permissions.AuthContext,
 ) -> dict[str, typing.Any]:
     """Make a task, or return the task that has ``key`` with status 200."""
-    if key is not None and _STEP_KEY.match(key):
-        raise _unprocessable(
-            'The idempotency key has the shape of a workflow step key'
-        )
-    if key is not None:
-        existing = await store.find_by_idempotency_key(
-            org_id, origin.kind, origin.id, key
-        )
-        if existing is not None:
-            response.status_code = 200
-            return existing
+    existing = await _keyed_task(store, org_id, origin, key, response)
+    if existing is not None:
+        return existing
     owner = await _owner(db, org_slug, auth, origin)
     task, created = await make_task(
         db, store, org_slug, org_id, data, origin, key, owner, _actor(auth)
@@ -1331,6 +1345,14 @@ async def retry_agent_task(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is not closed'
         )
+    # A repeat returns the first retry before the agent and log reads,
+    # which can fail after the first retry succeeded.
+    origin = task_origin(auth)
+    existing = await _keyed_task(
+        store, org_id, origin, data.idempotency_key, response
+    )
+    if existing is not None:
+        return existing
     records = await db.execute(
         _AGENT_SLUG_QUERY,
         {'id': task['agent_id'], 'org_slug': org_slug},
@@ -1351,7 +1373,7 @@ async def retry_agent_task(
         org_slug,
         org_id,
         create,
-        task_origin(auth),
+        origin,
         data.idempotency_key,
         response,
         auth,

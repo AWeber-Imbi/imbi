@@ -696,6 +696,9 @@ describe('Tasks', () => {
     const submit = screen.getByRole('button', { name: 'Retry' })
     fireEvent.click(submit)
     await screen.findByRole('alert')
+    expect(screen.getByLabelText('Note for the retry')).toHaveAttribute(
+      'readonly',
+    )
     fireEvent.click(submit)
     await waitFor(() =>
       expect(endpoints.retryAgentTask).toHaveBeenCalledTimes(2),

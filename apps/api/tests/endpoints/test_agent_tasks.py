@@ -1201,6 +1201,17 @@ class RetryTests(AgentTaskTestCase):
         self.assertEqual(again.status_code, 200, again.text)
         self.assertEqual(again.json()['id'], first.json()['id'])
 
+    async def test_repeat_with_key_skips_the_log_read(self) -> None:
+        await self.fail()
+        first = await self.retry(idempotency_key='retry-1')
+        self.assertEqual(first.status_code, 201, first.text)
+        failing = mock.AsyncMock(side_effect=RuntimeError('ClickHouse down'))
+        with mock.patch.object(self.store, 'last_agent_turn', failing):
+            again = await self.retry(idempotency_key='retry-1')
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()['id'], first.json()['id'])
+        failing.assert_not_awaited()
+
     async def test_archived_log_reads_clickhouse(self) -> None:
         await self.fail(turn=None)
         async with self.pool.connection() as conn:

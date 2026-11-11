@@ -692,6 +692,9 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
             aria-label="Note for the retry"
             onChange={(e) => setNote(e.target.value)}
             placeholder="What should the agent do differently? (optional)"
+            // A failed retry can still have made the task, and a repeat
+            // with the same key returns it unchanged, so lock the note.
+            readOnly={retry.isError}
             rows={4}
             value={note}
           />
@@ -706,7 +709,7 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         </form>
         {retry.error && (
           <p className="text-danger text-xs" role="alert">
-            {errorMessage(retry.error)}
+            {errorMessage(retry.error)} Retry again to send the same note.
           </p>
         )}
       </PopoverContent>

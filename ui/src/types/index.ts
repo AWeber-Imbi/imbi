@@ -819,7 +819,6 @@ export type AgentSubagentRef = Schemas['AgentSubagentRef']
 export type AgentTask = Schemas['AgentTaskResponse']
 
 export type AgentTaskCreate = Schemas['AgentTaskCreate']
-export type AgentTaskRetry = Schemas['AgentTaskRetry']
 
 export type AgentTaskEvent = Schemas['AgentTaskEventResponse']
 
@@ -833,6 +832,8 @@ export type AgentTaskRelated = Schemas['RelatedTask']
 export type AgentTaskRelations = Schemas['AgentTaskRelations']
 
 export type AgentTaskResolve = Schemas['AgentTaskRequestResolve']
+
+export type AgentTaskRetry = Schemas['AgentTaskRetry']
 
 export type AgentTaskStatus = AgentTask['status']
 
