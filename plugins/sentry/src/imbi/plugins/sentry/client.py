@@ -211,18 +211,36 @@ def team_slugs(project: dict[str, typing.Any]) -> list[str]:
     ]
 
 
+def may_link(project: dict[str, typing.Any], team: str | None) -> bool:
+    """Return whether Imbi may link an existing Sentry project.
+
+    Only when no team owns it, or ``team`` already does: linking a
+    project owned only by other teams would hand it to this project.
+    """
+    current = team_slugs(project)
+    return not current or team in current
+
+
 async def set_team(
     s: Settings, project: dict[str, typing.Any], team: str
 ) -> list[str]:
     """Make ``team`` the only team that owns ``project``.
 
-    Adds ``team`` first, so the project is never left without an owner,
-    then removes every other team. Returns the removed team slugs.
+    Removes other teams only when ``team`` already owns the project, so
+    someone with access in Sentry has granted it; a project with no team
+    gets ``team`` added. Otherwise raises, because replacing the owners
+    of a project that ``team`` has no claim to would take it from them.
+    Returns the removed team slugs.
     """
     slug = str(project['slug'])
     path = f'/projects/{_q(s.organization)}/{_q(slug)}/teams'
     current = team_slugs(project)
-    if team not in current:
+    if current and team not in current:
+        raise SentryClientError(
+            f'Sentry team {team!r} does not own this project; add it to the '
+            'project in Sentry first.'
+        )
+    if not current:
         response = await _request(s, 'POST', f'{path}/{_q(team)}/')
         if response.status_code == 404:
             raise SentryClientError(

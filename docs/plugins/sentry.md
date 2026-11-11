@@ -109,9 +109,11 @@ The fixes:
 - **Repair the Sentry link** writes the edge and the link for a Sentry
   project that exists. It never creates a project.
 - **Set the Sentry team** makes the expected team (from `team_mapping`,
-  or the Imbi team slug) the only owner of the Sentry project. It adds
-  that team first, then removes all other teams, so those teams lose
-  access. You must confirm it, and it is not sweepable. It is offered
+  or the Imbi team slug) the only owner of the Sentry project. When the
+  expected team already owns the project, it removes all other teams, so
+  those teams lose access. When no team owns the project, it adds the
+  expected team. When only other teams own it, it does nothing: add the
+  expected team in Sentry first. You must confirm it, and it is not sweepable. It is offered
   only for the Sentry project with the Imbi project slug, linked by the
   plugin itself. For an identifier that someone set by hand, change the
   teams in Sentry.
@@ -122,7 +124,7 @@ The fixes:
 
 | Event | What it does |
 |---|---|
-| Created | Creates the Sentry project in the team from `team_mapping`, or links the project that exists |
+| Created | Creates the Sentry project in the team from `team_mapping`, or links the project that exists. It does not link a Sentry project that only other teams own |
 | Deleted | Nothing in Sentry. Imbi removes the edge and the link with the project, and Sentry keeps the issue history |
 
 ## Known limits

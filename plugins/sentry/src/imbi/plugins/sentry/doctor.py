@@ -202,14 +202,17 @@ class SentryDoctor(AnalysisCapability):
                 'pass',
                 f'Sentry team {expected!r} owns the project.',
             )
-        if not _owns_sentry_project(ctx):
+        if not _owns_sentry_project(ctx) or not client.may_link(
+            project, expected
+        ):
             return _item(
                 'sentry-team',
                 'Sentry team',
                 'fail',
                 f'The Sentry project is owned by {teams or "no team"}; '
-                f'expected only {expected!r}. Imbi did not link this Sentry '
-                'project itself, so change its teams in Sentry.',
+                f'expected only {expected!r}. Imbi cannot claim this Sentry '
+                f'project; add {expected!r} to it in Sentry, then re-run the '
+                'doctor.',
             )
         return _item(
             'sentry-team',

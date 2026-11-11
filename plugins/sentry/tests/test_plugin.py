@@ -187,8 +187,11 @@ class DoctorTests(_RespxCase):
         result = await SentryDoctor().remediate(_ctx(), _CREDS, 'link-project')
         self.assertEqual('failed', result.status)
 
-    async def test_wrong_team_is_replaced(self) -> None:
-        project = {**_PROJECT, 'teams': [{'slug': 'old'}]}
+    async def test_extra_team_is_removed(self) -> None:
+        project = {
+            **_PROJECT,
+            'teams': [{'slug': 'old'}, {'slug': 'sentry-platform'}],
+        }
         respx.get(_PROJECT_URL).respond(200, json=project)
         respx.get(_ISSUES_URL).mock(side_effect=_issues)
         items = {
@@ -200,16 +203,36 @@ class DoctorTests(_RespxCase):
         self.assertTrue(team.remediation.destructive)
         self.assertFalse(team.remediation.sweepable)
 
-        add = respx.post(f'{_TEAMS_URL}/sentry-platform/').respond(201)
         remove = respx.delete(f'{_TEAMS_URL}/old/').respond(204)
         result = await SentryDoctor().remediate(_ctx(), _CREDS, 'set-team')
         self.assertEqual('fixed', result.status)
         self.assertIn('removed old', result.message)
-        self.assertTrue(add.called)
         self.assertTrue(remove.called)
-        # The new team is added before the old one is removed.
-        methods = [c.request.method for c in respx.calls]
-        self.assertLess(methods.index('POST'), methods.index('DELETE'))
+
+    async def test_unowned_project_gets_mapped_team(self) -> None:
+        respx.get(_PROJECT_URL).respond(200, json={**_PROJECT, 'teams': []})
+        add = respx.post(f'{_TEAMS_URL}/sentry-platform/').respond(201)
+        result = await SentryDoctor().remediate(_ctx(), _CREDS, 'set-team')
+        self.assertEqual('fixed', result.status)
+        self.assertTrue(add.called)
+
+    async def test_foreign_project_is_never_claimed(self) -> None:
+        project = {**_PROJECT, 'teams': [{'slug': 'other'}]}
+        respx.get(_PROJECT_URL).respond(200, json=project)
+        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        items = {
+            i.slug: i for i in await SentryDoctor().analyze(_ctx(), _CREDS)
+        }
+        self.assertIsNone(items['sentry-team'].remediation)
+        result = await SentryDoctor().remediate(_ctx(), _CREDS, 'set-team')
+        self.assertEqual('failed', result.status)
+        linked = await SentryLifecycle().on_project_created(
+            _ctx(connected=False), _CREDS
+        )
+        self.assertEqual('failed', linked.status)
+        self.assertFalse(
+            any(c.request.method in ('POST', 'DELETE') for c in respx.calls)
+        )
 
     async def test_hand_set_identifier_gets_no_team_fix(self) -> None:
         ctx = _ctx()
@@ -239,15 +262,12 @@ class DoctorTests(_RespxCase):
         result = await SentryDoctor().remediate(_ctx(), _CREDS, 'set-team')
         self.assertEqual('noop', result.status)
 
-    async def test_set_team_unknown_team_fails_without_removing(self) -> None:
-        project = {**_PROJECT, 'teams': [{'slug': 'old'}]}
-        respx.get(_PROJECT_URL).respond(200, json=project)
+    async def test_set_team_unknown_team_fails(self) -> None:
+        respx.get(_PROJECT_URL).respond(200, json={**_PROJECT, 'teams': []})
         respx.post(f'{_TEAMS_URL}/sentry-platform/').respond(404)
-        remove = respx.delete(f'{_TEAMS_URL}/old/').respond(204)
         result = await SentryDoctor().remediate(_ctx(), _CREDS, 'set-team')
         self.assertEqual('failed', result.status)
         self.assertIn('team_mapping', result.message)
-        self.assertFalse(remove.called)
 
     async def test_unreachable_sentry_warns(self) -> None:
         respx.get(_PROJECT_URL).mock(side_effect=httpx.ConnectError('down'))

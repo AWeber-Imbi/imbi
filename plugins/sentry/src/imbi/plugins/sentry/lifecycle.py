@@ -27,9 +27,15 @@ async def find_or_create(
     be created.
     """
     project = await client.get_project(s, slug)
-    if project is not None:
-        return project, False
     team = client.sentry_team(ctx)
+    if project is not None:
+        if not client.may_link(project, team):
+            raise client.SentryClientError(
+                f'Sentry project {slug!r} exists and is owned only by other '
+                f'teams ({", ".join(client.team_slugs(project))}); refusing '
+                'to link it.'
+            )
+        return project, False
     if team is None:
         raise client.SentryClientError(
             'The project has no owning team to map to a Sentry team.'
