@@ -574,6 +574,7 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
             (404, {}, ('healthy', None)),
             (302, {}, ('unhealthy', 'provider_error')),
             (403, limited, ('unhealthy', 'provider_error')),
+            (403, {'retry-after': '60'}, ('unhealthy', 'provider_error')),
             (429, {}, ('unhealthy', 'provider_error')),
             (503, {}, ('unhealthy', 'provider_error')),
         ):
@@ -582,6 +583,16 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
             )
             health = await APP.health({'host': 'aweber.ghe.com'}, 'org')
             self.assertEqual((health.status, health.reason), expected, status)
+        respx.get(ghec).mock(
+            return_value=httpx.Response(
+                403,
+                json={'message': 'You have exceeded a secondary rate limit.'},
+            )
+        )
+        health = await APP.health({'host': 'aweber.ghe.com'}, 'org')
+        self.assertEqual(
+            (health.status, health.reason), ('unhealthy', 'provider_error')
+        )
         health = await APP.health({'host': 'evil.example'}, 'org')
         self.assertEqual(
             (health.status, health.reason), ('unhealthy', 'host_not_allowed')
