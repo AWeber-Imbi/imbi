@@ -6,8 +6,9 @@ only materialize and release the resolutions of its runner. For a
 ``run`` request it:
 
 1. materializes each handle, immediately before it starts the command,
-2. runs the command as ``agent``, with only the secrets, ``HOME``,
-   and a fixed ``PATH`` in its environment, and changes to the
+2. runs the command as ``agent``, with only the secrets (and the JSON
+   members that imbi-api gives for each), ``HOME``, and a fixed
+   ``PATH`` in its environment, and changes to the
    workspace only after the switch to ``agent``,
 3. reads at most a bounded amount of output, and kills every ``agent``
    process when the command ends or times out,
@@ -362,13 +363,23 @@ class Executor:
                 raise Invalid('purpose_not_allowed')
             proxy, hidden = _proxy(request)
             env = {'PATH': PATH, 'HOME': home, **proxy}
+            names: list[str] = []
             for secret, target in zip(wanted, targets, strict=True):
-                env[target] = await self._materialize(secret, context)
+                body = await self._materialized(secret, context)
+                env[target] = _material(body)
+                names.append(target)
+                # imbi-api gives only the members that the binding
+                # allows; a name that is set already keeps its value.
+                members: Message = body.get('members') or {}
+                for name, value in members.items():
+                    if _ENV_NAME.match(name) and name not in env:
+                        env[name] = value
+                        names.append(name)
             # gh reads GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server
             # host and GH_TOKEN for the others (#434).
             if 'GH_TOKEN' in env:
                 env.setdefault('GH_ENTERPRISE_TOKEN', env['GH_TOKEN'])
-            values = [env[target] for target in targets] + hidden
+            values = [env[name] for name in names] + hidden
             exit_code, output, dropped = await self._spawn(
                 command, cwd, env, timeout
             )
@@ -378,7 +389,9 @@ class Executor:
             return {'error': 'imbi_unavailable'}
         finally:
             await self._release(wanted)
-        return _reply(exit_code, output, dropped, values)
+        reply = _reply(exit_code, output, dropped, values)
+        reply['variables'] = names
+        return reply
 
     async def clone(self, request: Message) -> Message:
         """Clone ``url`` into ``dest`` as ``agent``, with the token of

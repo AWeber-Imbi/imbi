@@ -94,6 +94,15 @@ class AgentPlatformConfig(pydantic.BaseModel):
         return None if value is None else sorted(set(value))
 
 
+class SecretReference(pydantic.BaseModel):
+    """A secret reference that the agent may request, with the hints of
+    its binding for the model. Names only, never a value."""
+
+    reference: str
+    description: str = ''
+    allowed_fields: list[str] = []
+
+
 class MergedConfig(pydantic.BaseModel):
     """The configuration that a runner applies to one task."""
 
@@ -106,7 +115,7 @@ class MergedConfig(pydantic.BaseModel):
     system_prompt_prefix: str
     hooks: dict[str, typing.Any]
     approval_tools: list[str]
-    secrets: list[str]
+    secrets: list[SecretReference]
     github_app_binding: str | None
 
 
@@ -206,7 +215,7 @@ def merge(
         approval_tools=sorted(
             {*config.approval_tools, *settings.approval_tools}
         ),
-        secrets=settings.secrets,
+        secrets=[SecretReference(reference=r) for r in settings.secrets],
         github_app_binding=settings.github_app_binding,
     )
 

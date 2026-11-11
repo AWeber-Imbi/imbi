@@ -25,10 +25,12 @@ def _pod(pod: str | None) -> dict[str, str]:
 class Refused(Exception):
     """imbi-api refused a request. ``code`` is its error code."""
 
-    def __init__(self, status: int, code: str) -> None:
+    def __init__(self, status: int, code: str, hint: str = '') -> None:
         super().__init__(f'{status} {code}')
         self.status = status
         self.code = code
+        #: What to change, for the model (``detail.hint``), if any.
+        self.hint = hint
 
 
 class Api:
@@ -60,9 +62,11 @@ class Api:
                 if isinstance(decoded, dict)
                 else None
             )
+            hint = ''
             if isinstance(detail, dict):
                 code = str(typing.cast('Body', detail).get('error', code))
-            raise Refused(response.status_code, code)
+                hint = str(typing.cast('Body', detail).get('hint') or '')
+            raise Refused(response.status_code, code, hint)
         return response
 
     async def pool_token(self, client_id: str, client_secret: str) -> str:

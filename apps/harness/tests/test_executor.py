@@ -98,6 +98,7 @@ class ExecutorTestCase(BaseTestCase):
                 'exit_code': 0,
                 'output': 'token=[REDACTED]\n',
                 'values': [SECRET],
+                'variables': ['GH_TOKEN'],
             },
         )
         body = self.api.materialize.call_args.args[1]
@@ -119,6 +120,35 @@ class ExecutorTestCase(BaseTestCase):
         )
         self.assertEqual(timeout, executor.COMMAND_TIMEOUT)
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+
+    async def test_json_members_get_their_own_names(self) -> None:
+        member = 'sntrys_' + 'a' * 40
+        self.api.materialize.return_value = {
+            'material': json.dumps({'SENTRY_AUTH_TOKEN': member}),
+            'encoding': 'utf8',
+            # imbi-api filters the names; the executor never replaces a
+            # name that is set already, nor takes an invalid one.
+            'members': {
+                'SENTRY_AUTH_TOKEN': member,
+                'PATH': '/tmp/evil',
+                'GH_TOKEN': 'other',
+                'bad name': 'x',
+            },
+        }
+        self.spawn.return_value = (0, f'{member}\n'.encode(), False)
+        await self.hello()
+        reply = await self.executor.dispatch(request())
+        env = self.spawn.call_args.args[2]
+        self.assertEqual(env['SENTRY_AUTH_TOKEN'], member)
+        self.assertEqual(env['PATH'], executor.PATH)
+        self.assertNotIn('bad name', env)
+        self.assertEqual(
+            json.loads(env['GH_TOKEN']), {'SENTRY_AUTH_TOKEN': member}
+        )
+        self.assertEqual(reply['variables'], ['GH_TOKEN', 'SENTRY_AUTH_TOKEN'])
+        # A member value is redacted too, not only the whole material.
+        self.assertEqual(reply['output'], '[REDACTED]\n')
+        self.assertIn(member, reply['values'])
 
     async def test_new_nonce_for_each_materialization(self) -> None:
         await self.hello()
@@ -241,7 +271,8 @@ class ExecutorTestCase(BaseTestCase):
         await self.hello()
         reply = await self.executor.dispatch(request(secrets=[]))
         self.assertEqual(
-            reply, {'exit_code': 0, 'output': f'token={SECRET}\n'}
+            reply,
+            {'exit_code': 0, 'output': f'token={SECRET}\n', 'variables': []},
         )
 
 

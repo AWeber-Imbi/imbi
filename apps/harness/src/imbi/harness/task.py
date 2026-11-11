@@ -141,7 +141,11 @@ _RULES = """\
 - The `purpose` of a secret is a slug that a secret grant allows, not a
   description. For `git push` and `gh` with the GitHub token, use
   `github_write`.
-- The secret references that you may request: {secrets}.
+- When a secret is a JSON object, each string member also goes into
+  the environment with its own name, for example `SENTRY_AUTH_TOKEN`.
+  The tool result names each variable that it set. A secret with
+  fields gives only those members; request one with `#<field>`.
+- The secret references that you may request:{secrets}
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
 - Before you stop, use `report_outcome` once: `done_acted` when you
@@ -327,6 +331,18 @@ def _cli_stderr(line: str) -> None:
 
 def _tool_error(text: str) -> Body:
     return {'content': [{'type': 'text', 'text': text}], 'is_error': True}
+
+
+def _secret_line(item: Body) -> str:
+    """One secret reference of the prompt, with the hints of its
+    binding: ``reference`` (fields: ...): description."""
+    line = f'`{item["reference"]}`'
+    if fields := item.get('allowed_fields'):
+        line += f' (fields: {", ".join(fields)})'
+    # One line: a description cannot start a new prompt section.
+    if description := ' '.join(str(item.get('description') or '').split()):
+        line += f': {description}'
+    return line
 
 
 def _secret_refusal(secret: Body, upstream: Body) -> str | None:
@@ -1210,10 +1226,11 @@ class TaskRun:
             )
             or 'none',
             cwd=self.cwd,
-            secrets=', '.join(
-                f'`{ref}`' for ref in api.items(self.config, 'secrets')
+            secrets=''.join(
+                f'\n  - {_secret_line(item)}'
+                for item in api.items(self.config, 'secrets')
             )
-            or 'none',
+            or ' none',
         )
         config = self.home / '.claude'
         with privilege.effective(privilege.AGENT):
@@ -1774,17 +1791,23 @@ class TaskRun:
                 if refusal := _secret_refusal(secret, upstream):
                     return _tool_error(refusal)
             for secret in wanted:
-                created = await self.api.create_resolution(
-                    {
-                        'reference': secret['reference'],
-                        'purpose': secret['purpose'],
-                        'ttl_seconds': RESOLUTION_TTL,
-                        'delivery': {
-                            'mode': 'environment',
-                            'target': secret['env'],
-                        },
-                    }
-                )
+                try:
+                    created = await self.api.create_resolution(
+                        {
+                            'reference': secret['reference'],
+                            'purpose': secret['purpose'],
+                            'ttl_seconds': RESOLUTION_TTL,
+                            'delivery': {
+                                'mode': 'environment',
+                                'target': secret['env'],
+                            },
+                        }
+                    )
+                except api.Refused as err:
+                    hint = f': {err.hint}' if err.hint else ''
+                    return _tool_error(
+                        f'The secret request was refused: {err.code}{hint}'
+                    )
                 resolved.append(
                     {
                         'handle': created['handle'],
@@ -1804,8 +1827,6 @@ class TaskRun:
                     'proxy_env': self.proxy_env,
                 }
             )
-        except api.Refused as err:
-            return _tool_error(f'The secret request was refused: {err.code}')
         except (httpx.HTTPError, OSError):
             return _tool_error('The secret service is not available')
         except (KeyError, TypeError):
@@ -1813,12 +1834,15 @@ class TaskRun:
         self.redactor.add(*reply.get('values', []))
         if 'error' in reply:
             return _tool_error(f'The command did not run: {reply["error"]}')
+        # The names only, so that the model knows what it can use.
+        names = ', '.join(reply.get('variables') or [])
+        names = f'secret variables: {names}\n' if names else ''
         return {
             'content': [
                 {
                     'type': 'text',
                     'text': f'exit code {reply["exit_code"]}\n'
-                    f'{reply["output"]}',
+                    f'{names}{reply["output"]}',
                 }
             ]
         }

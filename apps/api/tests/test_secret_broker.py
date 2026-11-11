@@ -21,6 +21,7 @@ from apps.api.tests import secret_support
 from apps.api.tests.secret_support import MATERIAL
 from imbi.api import secret_broker
 from imbi.api.agent_tasks import store as task_store
+from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import sweeper
 from imbi.api.secret_broker import audit, broker, providers, store
 from imbi.common.auth import encryption
@@ -167,6 +168,117 @@ class ReferenceTestCase(unittest.TestCase):
         self.assertNotIn('nonce-x', repr(request))
 
 
+def _binding(**values: typing.Any) -> dict[str, typing.Any]:
+    return {'allowed_fields': [], 'allowed_delivery_targets': []} | values
+
+
+def _row(**values: typing.Any) -> dict[str, typing.Any]:
+    return {
+        'field': None,
+        'delivery_mode': 'environment',
+        'delivery_target': 'GH_TOKEN',
+    } | values
+
+
+class FilterFieldsTestCase(unittest.TestCase):
+    def test_keeps_only_the_allowed_members(self) -> None:
+        material = providers.Material(orjson.dumps({'A': 'a', 'B': 'b'}))
+        broker.filter_fields(material, _binding(allowed_fields=['A']), None)
+        self.assertEqual(orjson.loads(material.value), {'A': 'a'})
+
+    def test_no_change_with_a_field_or_no_list(self) -> None:
+        value = orjson.dumps({'A': 'a', 'B': 'b'})
+        for binding, field in (
+            (_binding(allowed_fields=['A']), 'A'),
+            (_binding(), None),
+        ):
+            material = providers.Material(value)
+            broker.filter_fields(material, binding, field)
+            self.assertEqual(material.value, value)
+
+    def test_list_needs_a_json_object(self) -> None:
+        for value in (b'plain', b'[1]'):
+            with self.subTest(value=value):
+                with self.assertRaises(providers.BrokerError) as ctx:
+                    broker.filter_fields(
+                        providers.Material(value),
+                        _binding(allowed_fields=['A']),
+                        None,
+                    )
+                self.assertEqual(ctx.exception.reason, 'not_a_json_object')
+
+
+class BrokerErrorTestCase(unittest.TestCase):
+    def test_hint_reaches_the_error_detail(self) -> None:
+        error = secrets_api.broker_error(
+            providers.BrokerError('secret_field_not_allowed', hint='use #A')
+        )
+        detail = typing.cast(dict[str, str], error.detail)
+        self.assertEqual(detail['hint'], 'use #A')
+        error = secrets_api.broker_error(
+            providers.BrokerError('secret_access_denied')
+        )
+        self.assertNotIn('hint', typing.cast(dict[str, str], error.detail))
+
+
+class EnvMembersTestCase(unittest.TestCase):
+    def _members(
+        self, value: typing.Any, binding: typing.Any = None, **row: typing.Any
+    ) -> dict[str, str]:
+        return broker.env_members(
+            providers.Material(orjson.dumps(value)),
+            binding or _binding(),
+            _row(**row),
+        )
+
+    def test_safe_string_members(self) -> None:
+        document = {
+            'SENTRY_AUTH_TOKEN': 'token',
+            'ORG': 'acme',
+            # The requested target keeps the whole value.
+            'GH_TOKEN': 'x',
+            'lower': 'x',
+            'PATH': 'x',
+            'LD_PRELOAD': 'x',
+            'HTTPS_PROXY': 'x',
+            'PORT': 5432,
+            'DEBUG': True,
+            'NESTED': {'a': 'b'},
+        }
+        self.assertEqual(
+            self._members(document),
+            {'SENTRY_AUTH_TOKEN': 'token', 'ORG': 'acme'},
+        )
+
+    def test_target_list_limits_the_names(self) -> None:
+        self.assertEqual(
+            self._members(
+                {'SENTRY_AUTH_TOKEN': 'token', 'ORG': 'acme'},
+                _binding(allowed_delivery_targets=['GH_TOKEN', 'ORG']),
+            ),
+            {'ORG': 'acme'},
+        )
+
+    def test_none_without_environment_or_json_object(self) -> None:
+        document = {'SENTRY_AUTH_TOKEN': 'token'}
+        self.assertEqual(
+            self._members(document, field='SENTRY_AUTH_TOKEN'), {}
+        )
+        self.assertEqual(
+            self._members(
+                document, delivery_mode='stdin', delivery_target=None
+            ),
+            {},
+        )
+        self.assertEqual(self._members(['not', 'an object']), {})
+        self.assertEqual(
+            broker.env_members(
+                providers.Material(b'plain'), _binding(), _row()
+            ),
+            {},
+        )
+
+
 class CreateResolutionTestCase(secret_support.SecretCase):
     async def _denied(
         self,
@@ -286,21 +398,22 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             self.grant['id'],
             {'binding_ids': [self.binding['id'], binding['id']]},
         )
-        await self._denied(
-            'secret_field_not_allowed',
-            request=self.request(reference='secret://production/github/app'),
-        )
-        await self._denied(
+        error = await self._denied(
             'secret_field_not_allowed',
             request=self.request(
                 reference='secret://production/github/app#user'
             ),
         )
-        await self._denied(
+        # Field names are not secret: the refusal names them.
+        self.assertEqual(error.hint, 'use one of #token')
+        error = await self._denied(
             'secret_field_not_allowed',
             request=self.request(
                 reference='secret://production/github/token#token'
             ),
+        )
+        self.assertEqual(
+            error.hint, 'the secret has no fields, request it without #<field>'
         )
         created = await self.broker.create_resolution(
             self.context(),
@@ -310,6 +423,16 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             self.executor(), self.materialize_request(created.handle)
         )
         self.assertEqual(result.material, MATERIAL)
+        self.assertEqual(result.members, {})
+        # Without a #field, only the allowed members (T-42).
+        created = await self.broker.create_resolution(
+            self.context(),
+            self.request(reference='secret://production/github/app'),
+        )
+        result = await self.broker.materialize(
+            self.executor(), self.materialize_request(created.handle)
+        )
+        self.assertEqual(orjson.loads(result.material), {'token': MATERIAL})
 
     async def test_binding_pins_delivery_targets(self) -> None:
         await self.store.update(
@@ -801,6 +924,52 @@ class MaterializeTestCase(secret_support.SecretCase):
         )
         await self._refused(
             'resolution_not_found', self.materialize_request(created.handle)
+        )
+
+    async def test_json_members_reach_the_body(self) -> None:
+        self.fake.values['plain'] = orjson.dumps(
+            {'SENTRY_AUTH_TOKEN': MATERIAL}
+        )
+        created = await self._create()
+        result = await self.broker.materialize(
+            self.executor(), self.materialize_request(created.handle)
+        )
+        self.assertEqual(
+            result.body()['members'], {'SENTRY_AUTH_TOKEN': MATERIAL}
+        )
+        self.assertNotIn(MATERIAL, repr(result))
+
+    async def test_fields_need_a_json_object(self) -> None:
+        await self.store.update(
+            'bindings', self.org, self.binding['id'], {'allowed_fields': ['A']}
+        )
+        created = await self._create()
+        await self._refused(
+            'secret_materialization_failed',
+            self.materialize_request(created.handle),
+        )
+        row = await self.broker.get(created.resolution_id)
+        assert row is not None
+        self.assertEqual(row['state'], 'failed')
+
+    async def test_agent_references_have_the_hints(self) -> None:
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.binding['id'],
+            {'allowed_fields': ['SENTRY_AUTH_TOKEN'], 'description': 'Sentry'},
+        )
+        self.assertEqual(
+            await self.store.agent_references(
+                self.org, self.agent, self.project
+            ),
+            [
+                {
+                    'reference': 'secret://production/github/token',
+                    'description': 'Sentry',
+                    'allowed_fields': ['SENTRY_AUTH_TOKEN'],
+                }
+            ],
         )
 
     async def test_provider_failure_marks_failed(self) -> None:

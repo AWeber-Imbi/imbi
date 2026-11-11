@@ -98,6 +98,10 @@ object, a reference can select one member with `#field`, for example
 `secret://grafana/api#token`. A field works only on a text secret, not on a
 binary secret.
 
+Use member names that are also environment variable names, for example
+`{"SENTRY_AUTH_TOKEN": "..."}`. Then an agent gets each member as its own
+variable (see [How an agent uses a secret](#how-an-agent-uses-a-secret)).
+
 ## Add a provider
 
 1. Open the **Providers** tab and click **New provider**.
@@ -148,12 +152,15 @@ A binding gives one AWS secret a reference in Imbi.
     disabled until it is valid.
 
 6. In **Allowed fields**, list the JSON members that requests may select,
-   for example `token`. Leave it empty to allow only the whole value.
+   for example `token`. Leave it empty to allow only the whole value. With
+   a list, a request without `#field` gets a JSON object with only the
+   listed members. The agent sees the field names, not the values.
 7. Select the **Allowed delivery modes**. Select `environment` for a secret
    that agents use in commands, and `file_descriptor` for a secret that the
    runner uses (see [Purposes](#purposes)).
 8. Optional: in **Allowed delivery targets**, list the environment variable
-   names that may receive the value, for example `GRAFANA_TOKEN`.
+   names that may receive the value, for example `GRAFANA_TOKEN`. The list
+   also limits the JSON members that go into their own variables.
 9. Click **Create binding**.
 
 Click **Validate** on the binding row to check that the role can see the
@@ -248,7 +255,10 @@ as `grafana` or `npm`: lower case letters, digits, and `_`.
 
 When a task starts, Imbi tells the agent which references it may use. The
 list comes from the enabled grants for the agent and the task's project that
-allow `environment` delivery.
+allow `environment` delivery. For each reference, the agent also sees the
+binding description and its allowed fields. Write a description that tells
+the agent what the secret is for. A refusal with `secret_field_not_allowed`
+tells the agent the fields that it can use.
 
 The agent calls the `run_with_secret` tool with a command, and for each
 secret a reference, a purpose, and an environment variable name:
@@ -264,6 +274,24 @@ secret a reference, a purpose, and an environment variable name:
 
 The value is in the environment of that one command only. Imbi removes the
 value from the command output before the agent sees it.
+
+When the value is a JSON object and the request has no `#field`, Imbi also
+puts each member into its own variable. For
+`{"SENTRY_AUTH_TOKEN": "..."}`, the command gets `SENTRY_AUTH_TOKEN` and
+the requested variable gets the whole JSON object. These rules apply:
+
+- Only members with a string value get a variable.
+- The member name must be a safe variable name: upper case letters,
+  digits, and `_`. Imbi skips names such as `PATH`, `HOME`, `LD_*`, and
+  `*_PROXY`, the same names that a request cannot use.
+- When the binding has **Allowed fields**, only those members go to the
+  command.
+- When the binding has **Allowed delivery targets**, only members with
+  those names get a variable.
+- A member does not replace a variable that is set already.
+
+The tool result gives the names of the variables that it set, never the
+values. Imbi removes each member value from the command output too.
 
 ## Workload identity
 
