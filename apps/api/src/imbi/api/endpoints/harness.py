@@ -650,12 +650,12 @@ async def _repositories(
         )
         if provider is not None and provider['type'] == 'github_app':
             config = provider['config'] or {}
-    found: dict[str, BundleRepository] = {}
+    found: dict[tuple[str, str], BundleRepository] = {}
     for project in task['projects']:
         url = (
             await _helpers.lookup_project_links(db, project['project_id'])
         ).get(_REPOSITORY_LINK)
-        if url is None or url in found:
+        if url is None:
             continue
         try:
             # The provider parses the link: an empty configuration is
@@ -663,8 +663,8 @@ async def _repositories(
             repository = providers.get('github_app').repository(config, url)
         except providers.BrokerError:
             continue
-        if repository is not None:
-            found[url] = BundleRepository(
+        if repository is not None and repository not in found:
+            found[repository] = BundleRepository(
                 host=repository[0], name=repository[1], url=url
             )
     return list(found.values())
@@ -1790,10 +1790,6 @@ async def create_harness_child_task(
                 agent_version=agent_version,
                 prompt_version=prompt_version,
                 service_account_id=service_account_id,
-                projects=[
-                    (project['project_id'], project['project_slug'])
-                    for project in parent['projects']
-                ],
                 title=data.title,
                 description=data.description,
                 origin_kind='task',

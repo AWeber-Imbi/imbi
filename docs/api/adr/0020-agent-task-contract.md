@@ -302,9 +302,9 @@ that lists projects must list all the projects of the task.
 - **Dependencies are information only.** A dependency does not change a
   task's status and does not affect dispatch. Before a dependency gates
   anything, cycle checks must come first.
-- **The primary project is not in `task_projects`.** Associating the
-  primary project is refused. A row stays when its project is deleted
-  from the graph; the UI shows the slug snapshot as no longer available.
+- **All projects are in `task_projects`.** A row stays when its project
+  is deleted from the graph; the UI shows the slug snapshot as no longer
+  available.
 - **Events.** Each change writes an event: `dependency.added`,
   `dependency.removed`, `project.associated`, `project.dissociated`. A
   dependency event is written on both tasks, in one transaction, with

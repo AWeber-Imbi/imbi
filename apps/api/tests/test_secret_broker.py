@@ -671,6 +671,24 @@ class CreateResolutionTestCase(secret_support.SecretCase):
                 request=self.request(idempotency_key='key-1', **change),
             )
 
+    async def test_repeat_with_other_projects_is_refused(self) -> None:
+        request = self.request(idempotency_key='key-projects')
+        await self.broker.create_resolution(self.context(), request)
+        async with self.pool.connection() as conn:
+            await self.add_task_project(conn, self.task_id, 'proj-other')
+        await self.store.update(
+            'grants',
+            self.org,
+            self.grant['id'],
+            {'project_ids': [self.project, 'proj-other']},
+        )
+        error = await self._denied(
+            'resolution_context_mismatch',
+            self.context(project_ids=(self.project, 'proj-other')),
+            request,
+        )
+        self.assertEqual(error.reason, 'idempotency_key_reused')
+
     async def test_purpose_retired_after_create_is_refused(self) -> None:
         request = self.request(idempotency_key='key-retired')
         created = await self.broker.create_resolution(self.context(), request)
@@ -1206,6 +1224,14 @@ class LeaseTestCase(secret_support.SecretCase):
         # As if the close hook failed: the resolution is still active.
         await self._change_during_provider_call(
             "UPDATE agent_runtime.tasks SET status = 'closed' WHERE id = %s"
+        )
+
+    async def test_project_added_during_a_provider_call(self) -> None:
+        await self._change_during_provider_call(
+            'INSERT INTO agent_runtime.task_projects (organization_id,'
+            ' task_id, project_id, project_slug, added_by_kind, added_by)'
+            " SELECT organization_id, id, 'proj-late', 'late', 'human', 'test'"
+            ' FROM agent_runtime.tasks WHERE id = %s'
         )
 
     async def test_runner_fenced_during_a_provider_call(self) -> None:

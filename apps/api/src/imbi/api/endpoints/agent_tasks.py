@@ -117,6 +117,24 @@ class AgentTaskCreate(pydantic.BaseModel):
         description='A repeat with the same key returns the first task.',
     )
 
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def _legacy_project_id(cls, data: object) -> object:
+        """Read the old ``project_id`` field as a list of one project.
+
+        A client that is not updated yet still sends it. Without this,
+        the task would have no project and no error would show.
+        """
+        if not isinstance(data, dict):
+            return data
+        fields = dict(typing.cast(dict[str, typing.Any], data))
+        if 'project_id' in fields:
+            legacy = fields.pop('project_id')
+            if 'project_ids' in fields:
+                raise ValueError('send project_ids or project_id, not both')
+            fields['project_ids'] = [] if legacy is None else [legacy]
+        return fields
+
 
 class AgentTaskRetry(pydantic.BaseModel):
     note: str | None = pydantic.Field(

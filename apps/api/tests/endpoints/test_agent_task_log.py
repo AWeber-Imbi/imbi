@@ -456,9 +456,14 @@ class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
         self.assertEqual(len(await self.opslog(ids)), 2)
 
     async def test_task_without_project_has_no_rows(self) -> None:
-        ids = await self.resolve_and_close('T-1')
+        with mock.patch.object(
+            iggy, 'publish_rows', wraps=iggy.publish_rows
+        ) as publish:
+            ids = await self.resolve_and_close('T-1')
         self.assertEqual(len(ids), 2)
-        self.assertEqual(await self.opslog(ids), [])
+        streams = [call.args[0] for call in publish.call_args_list]
+        self.assertIn(log.EVENTS_STREAM, streams)
+        self.assertNotIn(log.OPSLOG_STREAM, streams)
 
 
 class StaleSessionTests(

@@ -241,6 +241,8 @@ class NewTask:
     owner: str
     budget: decimal.Decimal | None
     #: The ``(project_id, project_slug)`` of each project of the task.
+    #: A child task (origin ``task``) gets the projects of its parent
+    #: instead.
     projects: abc.Sequence[tuple[str, str]] = ()
     #: The root task of the chain of a child task. ``None`` makes the
     #: task the root of its own chain.
@@ -544,7 +546,26 @@ class TaskStore:
                         task.organization_id,
                     ),
                 )
-                if task.projects:
+                if task.origin_kind == 'task':
+                    # The parent row is locked, so its projects cannot
+                    # change until this commits.
+                    await conn.execute(
+                        'INSERT INTO agent_runtime.task_projects'
+                        ' (organization_id, task_id, project_id,'
+                        ' project_slug, added_by_kind, added_by)'
+                        ' SELECT organization_id, %s, project_id,'
+                        ' project_slug, %s, %s'
+                        ' FROM agent_runtime.task_projects'
+                        ' WHERE organization_id = %s AND task_id = %s::uuid',
+                        (
+                            task_id,
+                            actor.kind,
+                            actor.id,
+                            task.organization_id,
+                            task.origin_id,
+                        ),
+                    )
+                elif task.projects:
                     async with conn.cursor() as cursor:
                         await cursor.executemany(
                             'INSERT INTO agent_runtime.task_projects'

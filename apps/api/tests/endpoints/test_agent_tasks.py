@@ -427,6 +427,19 @@ class CreateTaskTests(AgentTaskTestCase):
         response = await self.create_task()
         self.assertEqual(response.status_code, 409, response.text)
 
+    async def test_legacy_project_id_is_one_project(self) -> None:
+        await self.make_agent()
+        response = await self.create_task(project_id=self.project_id)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [p['project_id'] for p in response.json()['projects']],
+            [self.project_id],
+        )
+        response = await self.create_task(
+            project_id=self.project_id, project_ids=[self.project_id]
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
     async def test_unknown_agent_or_project_is_refused(self) -> None:
         await self.make_agent()
         response = await self.create_task(agent_slug='nope')

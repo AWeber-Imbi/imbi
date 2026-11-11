@@ -912,6 +912,7 @@ class Broker:
             row['delivery_target'],
             row['ttl_seconds'],
             row['repository'],
+            set(row['project_ids']),
         ) != (
             context.runner_id,
             reference,
@@ -920,6 +921,7 @@ class Broker:
             check_delivery(request.delivery_mode, request.delivery_target),
             request.ttl_seconds,
             request.repository,
+            set(context.project_ids),
         ):
             raise providers.BrokerError(
                 'resolution_context_mismatch', 'idempotency_key_reused'
@@ -1150,7 +1152,8 @@ class Broker:
         The resolution is locked ``FOR UPDATE``, and its task and runner
         ``FOR SHARE``, so a release, a task close, or fencing that ran
         during the provider call is seen here. When the resolution is
-        no longer ``active``, its task is closed, or its runner is not
+        no longer ``active``, its task is closed or has other projects
+        than at create, or its runner is not
         live (``idle`` or ``busy``, as for the executor credential), the
         new lease is revoked at once and the material is not returned.
         When the lease cannot be saved, it is revoked at once too. The
@@ -1712,7 +1715,9 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
     )
     resolution = await cur.fetchone()
     cur = await conn.execute(
-        'SELECT status FROM agent_runtime.tasks WHERE id = %s FOR SHARE',
+        'SELECT status, '  # noqa: S608
+        + task_store.PROJECTS
+        + ' FROM agent_runtime.tasks AS t WHERE id = %s FOR SHARE',
         (row['task_id'],),
     )
     task = await cur.fetchone()
@@ -1730,6 +1735,9 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
         and resolution[0] == 'active'
         and task is not None
         and task[0] != 'closed'
+        # The projects can change while the provider call runs.
+        and {project['project_id'] for project in task[1]}
+        == set(row['project_ids'])
         and runner is not None
         and runner[0] in ('idle', 'busy')
     )

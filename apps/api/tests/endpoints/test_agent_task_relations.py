@@ -303,6 +303,15 @@ class DependencyTests(RelationTestCase):
         )
         return child
 
+    async def test_child_gets_the_projects_of_its_parent(self) -> None:
+        response = await self.put(f'T-1/projects/{self.second_project}')
+        self.assertEqual(response.status_code, 204, response.text)
+        child = await self.delegate(self.agent_tasks['T-1'])
+        self.assertEqual(
+            {p['project_id'] for p in child['projects']},
+            {self.project_id, self.second_project},
+        )
+
     async def test_delegation_is_parent_and_children(self) -> None:
         child = await self.delegate(self.agent_tasks['T-2'])
         relations = (await self.client.get(self.url('T-2/relations'))).json()
