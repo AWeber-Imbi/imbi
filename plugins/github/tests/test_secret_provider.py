@@ -293,6 +293,18 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.reason, 'repository_not_allowed')
 
     @respx.mock
+    async def test_marketplace_fetch_with_no_list_allows_any_one(self) -> None:
+        route = _mock_github()
+        await APP.resolve(
+            CONFIG,
+            LOCATOR | {'repositories': []},
+            None,
+            _context('marketplace_fetch', repository='octo/lint'),
+        )
+        body = json.loads(route.calls.last.request.content)
+        self.assertEqual(body['repositories'], ['lint'])
+
+    @respx.mock
     async def test_finds_the_installation_of_the_repositories(self) -> None:
         """A binding without an installation_id works in each org."""
         tools = {'id': 77, 'account': {'login': 'tools'}}
