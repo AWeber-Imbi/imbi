@@ -11119,8 +11119,13 @@ export interface components {
         };
         /** AgentToolCatalog */
         AgentToolCatalog: {
-            /** Groups */
-            groups: components["schemas"]["AgentToolGroup"][];
+            /**
+             * Tools
+             * @default []
+             */
+            tools: components["schemas"]["AgentCatalogTool"][];
+            /** Error */
+            error?: ("unreachable" | "timeout" | "auth_failed") | null;
             /**
              * Generated At
              * Format: date-time
@@ -11142,29 +11147,6 @@ export interface components {
             /** Environments */
             environments?: string[] | null;
             rate_limit?: components["schemas"]["AgentRateLimit"] | null;
-        };
-        /** AgentToolGroup */
-        AgentToolGroup: {
-            server: components["schemas"]["AgentToolServer"];
-            /**
-             * Tools
-             * @default []
-             */
-            tools: components["schemas"]["AgentCatalogTool"][];
-            /** Error */
-            error?: ("unreachable" | "timeout" | "auth_failed") | null;
-        };
-        /** AgentToolServer */
-        AgentToolServer: {
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /**
-             * Transport
-             * @constant
-             */
-            transport: "internal";
         };
         /**
          * AgentUpdate

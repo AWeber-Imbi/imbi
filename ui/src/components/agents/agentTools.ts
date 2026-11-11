@@ -1,19 +1,19 @@
-import type { AgentToolConfig, AgentToolGroup } from '@/types'
+import type { AgentToolCatalog, AgentToolConfig } from '@/types'
 
 import type { AgentTools } from './agentDraft'
 
-// The rules of the Tools and MCPs tab, without React: filters, the
-// rows of each server group, and the edits to the tool map.
+// The rules of the Tools tab, without React: filters, the rows of
+// each group, and the edits to the tool map.
 
-export type Capability = AgentToolGroup['tools'][number]['capability']
+export type Capability = AgentToolCatalog['tools'][number]['capability']
 
-export type ToolErrorCode = NonNullable<AgentToolGroup['error']>
+export type ToolErrorCode = NonNullable<AgentToolCatalog['error']>
 
-/** The message for each error code of a server group. */
+/** The message for each error code of the catalog. */
 export const TOOL_ERROR_MESSAGES: Record<ToolErrorCode, string> = {
-  auth_failed: 'the server did not accept the credentials.',
-  timeout: 'the server did not answer in time.',
-  unreachable: 'the server is not reachable.',
+  auth_failed: 'the API did not accept the credentials.',
+  timeout: 'the API did not answer in time.',
+  unreachable: 'the API is not reachable.',
 }
 
 export type RatePeriod = NonNullable<AgentToolConfig['rate_limit']>['per']
@@ -28,6 +28,9 @@ export const CAPABILITIES: {
   { label: 'Destructive', slug: 'destructive', tone: 'danger' },
   { label: 'Unknown', slug: 'unknown', tone: 'neutral' },
 ]
+
+/** The group slug of the Imbi tools, and the prefix of their keys. */
+export const IMBI_SLUG = 'imbi'
 
 export const RATE_PERIODS: {
   label: string
@@ -59,7 +62,6 @@ export interface ToolGroupView {
   name: string
   rows: ToolRow[]
   slug: string
-  transport: string
 }
 
 export interface ToolRow {
@@ -79,39 +81,33 @@ export function formatRateLimit(config: AgentToolConfig): string {
 }
 
 /**
- * The groups to show. A tool that is enabled but not in the catalog
- * is an "unavailable" row in the group of its server, or in a group of
- * its own when the catalog has no such server, so it can be removed.
+ * The groups to show: the Imbi tools, and then each tool that is
+ * enabled but not in the catalog, for example a `zoekt.*` key from an
+ * earlier release, as an "unavailable" row so it can be removed.
  */
 export function groupViews(
-  groups: AgentToolGroup[],
+  catalog: AgentToolCatalog,
   tools: AgentTools,
   filters: ToolFilters,
 ): ToolGroupView[] {
-  const listed = new Set(groups.flatMap((g) => g.tools.map((t) => t.key)))
-  const orphans = Object.keys(tools)
+  const listed = new Set(catalog.tools.map((t) => t.key))
+  const lost = Object.keys(tools)
     .filter((key) => !listed.has(key))
     .sort()
-  const known = new Set(groups.map((g) => g.server.slug))
-  const views: ToolGroupView[] = groups.map((g) => ({
-    allRows: [
-      ...g.tools.map((t) => ({
+  const views: ToolGroupView[] = [
+    {
+      allRows: catalog.tools.map((t) => ({
         capability: t.capability,
         description: t.description ?? null,
         key: t.key,
         unavailable: false,
       })),
-      ...orphans
-        .filter((key) => serverOf(key) === g.server.slug)
-        .map(unavailableRow),
-    ],
-    error: g.error ?? null,
-    name: g.server.name,
-    rows: [],
-    slug: g.server.slug,
-    transport: g.server.transport,
-  }))
-  const lost = orphans.filter((key) => !known.has(serverOf(key)))
+      error: catalog.error ?? null,
+      name: 'Imbi',
+      rows: [],
+      slug: IMBI_SLUG,
+    },
+  ]
   if (lost.length)
     views.push({
       allRows: lost.map(unavailableRow),
@@ -119,7 +115,6 @@ export function groupViews(
       name: 'Not in the catalog',
       rows: [],
       slug: '',
-      transport: 'unavailable',
     })
   const query = filters.query.trim().toLowerCase()
   for (const view of views) {
@@ -138,7 +133,7 @@ export function groupViews(
   }
   const filtering =
     !!query || filters.enabledOnly || filters.capabilities.size > 0
-  // An error must stay visible, so a failed server is not hidden.
+  // An error must stay visible, so a failed group is not hidden.
   return views.filter((v) => !filtering || v.rows.length > 0 || v.error)
 }
 

@@ -360,9 +360,7 @@ function SubagentsCard({ agent }: { agent: Agent }) {
 function ToolAccessCard({ agent }: { agent: Agent }) {
   const { query: catalog } = useAgentToolCatalog(agent.organization.slug)
   const keys = Object.keys(agent.tools ?? {}).sort()
-  const groups = catalog.data?.groups ?? []
-  const total = groups.reduce((n, g) => n + g.tools.length, 0)
-  const names = new Map(groups.map((g) => [g.server.slug, g.server.name]))
+  const total = catalog.data?.tools.length ?? 0
   const servers = new Map<string, string[]>()
   for (const key of keys) {
     const server = serverOf(key)
@@ -391,7 +389,7 @@ function ToolAccessCard({ agent }: { agent: Agent }) {
             key={server}
           >
             <span className="w-30 shrink-0 truncate text-sm font-medium">
-              {names.get(server) ?? server}
+              {server}
             </span>
             <span
               className="text-secondary min-w-0 flex-1 truncate font-mono text-xs"

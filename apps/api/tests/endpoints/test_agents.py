@@ -1378,14 +1378,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             scoring._inject_optional_client,
         )
         catalog = agent_tools.AgentToolCatalog(
-            groups=[
-                agent_tools.AgentToolGroup(
-                    server=agent_tools.AgentToolServer(
-                        slug='imbi', name='Imbi', transport='internal'
-                    ),
-                    error='timeout',
-                )
-            ],
+            error='timeout',
             generated_at=datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC),
         )
         with mock.patch.object(
@@ -1394,9 +1387,8 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.get(BASE + '/tool-catalog?refresh=true')
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
-        self.assertEqual(body['groups'][0]['server']['slug'], 'imbi')
-        self.assertEqual(body['groups'][0]['tools'], [])
-        self.assertEqual(body['groups'][0]['error'], 'timeout')
+        self.assertEqual(body['tools'], [])
+        self.assertEqual(body['error'], 'timeout')
         args = get_catalog.await_args
         self.assertIs(args.args[0], valkey_client)
         self.assertTrue(args.kwargs['refresh'])
@@ -1413,7 +1405,6 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
         self.auth_context.permissions = {'agent:read'}
         catalog = agent_tools.AgentToolCatalog(
-            groups=[],
             generated_at=datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC),
         )
         with mock.patch.object(

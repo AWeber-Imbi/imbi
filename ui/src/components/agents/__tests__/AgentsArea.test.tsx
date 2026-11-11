@@ -376,13 +376,13 @@ describe('AgentsArea', () => {
     expect(endpoints.createAgent).not.toHaveBeenCalled()
   })
 
-  it('shows the enabled tools by server on the detail page', async () => {
+  it('shows the enabled tools by prefix on the detail page', async () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([
       agent({
         tools: {
-          'github.read_file': { approval: false },
           'imbi.delete_project': { approval: true },
           'imbi.list_projects': { approval: false },
+          'zoekt.search': { approval: false },
         },
       }),
     ])
@@ -392,8 +392,9 @@ describe('AgentsArea', () => {
     expect(
       screen.getByText('delete_project, list_projects'),
     ).toBeInTheDocument()
-    expect(screen.getByText('GitHub')).toBeInTheDocument()
-    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('imbi')).toBeInTheDocument()
+    expect(screen.getByText('zoekt')).toBeInTheDocument()
+    expect(screen.getByText('search')).toBeInTheDocument()
   })
 
   it('shows the subagents on the detail page', async () => {
@@ -506,18 +507,15 @@ describe('AgentsArea', () => {
     const tab = screen.getByRole('tab', { name: /Tools and plugins/ })
     expect(tab).toHaveTextContent('Tools and plugins0')
     fireEvent.click(tab)
-    await screen.findByText('0 of 4 enabled')
-    fireEvent.click(screen.getByRole('button', { name: /GitHub/ }))
-    fireEvent.click(
-      screen.getByRole('switch', { name: 'Enable github.read_file' }),
-    )
+    await screen.findAllByText('0 of 4 enabled')
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable imbi.get_me' }))
     expect(tab).toHaveTextContent('Tools and plugins1')
     fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }))
     await waitFor(() => expect(endpoints.updateAgent).toHaveBeenCalled())
     expect(vi.mocked(endpoints.updateAgent).mock.calls[0][2]).toEqual(
       expect.objectContaining({
         tools: {
-          'github.read_file': {
+          'imbi.get_me': {
             approval: false,
             environments: null,
             rate_limit: null,

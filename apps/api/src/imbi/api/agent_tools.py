@@ -1,17 +1,17 @@
 """The catalog of tools that an agent can use.
 
-The catalog has one group, ``imbi``: the tools that imbi-mcp and
+The catalog is the list of Imbi tools: the tools that imbi-mcp and
 imbi-assistant make from the OpenAPI document of this API. This module
 makes them in the same way, in this process, so the names are the
 same. The MCP servers in Admin > Assistant are for the assistant only.
 An agent gets other MCP servers from the plugins of its marketplaces.
 
-When the tools cannot be made, the group has an :data:`ErrorCode` in
+When the tools cannot be made, the catalog has an :data:`ErrorCode` in
 ``error`` and no tools. The error text goes only to the log, never to
 the response or to the cache. The catalog is kept in Valkey for
 :data:`CACHE_TTL_SECONDS`.
 
-A tool key is ``<server slug>.<tool name>``. An agent stores its tool
+A tool key is ``imbi.<tool name>``. An agent stores its tool
 configuration by this key.
 """
 
@@ -34,43 +34,32 @@ LOGGER = logging.getLogger(__name__)
 CACHE_KEY = 'imbi:agents:tool-catalog'
 CACHE_TTL_SECONDS = 300
 
-#: The server slug of the Imbi tools.
-IMBI_SERVER_SLUG = 'imbi'
-
 #: The maximum length of a tool description in the catalog.
 DESCRIPTION_LENGTH = 300
 
 Capability = typing.Literal['read', 'write', 'destructive', 'unknown']
-Transport = typing.Literal['internal']
 
-#: Why the tools of a server could not be listed. ``auth_failed`` is
+#: Why the tools could not be listed. ``auth_failed`` is
 #: an HTTP 401 or 403 response. ``unreachable`` is each other failure.
 ErrorCode = typing.Literal['unreachable', 'timeout', 'auth_failed']
 
 
-class AgentToolServer(pydantic.BaseModel):
-    slug: str
-    name: str
-    transport: Transport
-
-
 class AgentCatalogTool(pydantic.BaseModel):
-    #: ``<server slug>.<tool name>``.
+    #: ``imbi.<tool name>``.
     key: str
     name: str
     description: str | None = None
     capability: Capability
 
 
-class AgentToolGroup(pydantic.BaseModel):
-    server: AgentToolServer
-    tools: list[AgentCatalogTool] = []
-    #: Set when the tools of this server could not be listed.
-    error: ErrorCode | None = None
-
-
 class AgentToolCatalog(pydantic.BaseModel):
-    groups: list[AgentToolGroup]
+    #: A kept copy in another form, for example the grouped form of an
+    #: earlier release, does not validate, so it is listed again.
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    tools: list[AgentCatalogTool] = []
+    #: Set when the tools could not be listed.
+    error: ErrorCode | None = None
     generated_at: datetime.datetime
 
 
@@ -105,13 +94,12 @@ def _summary(description: str | None) -> str | None:
 
 
 def _tool(
-    server_slug: str,
     name: str,
     description: str | None,
     annotations: mcp_types.ToolAnnotations | None,
 ) -> AgentCatalogTool:
     return AgentCatalogTool(
-        key=f'{server_slug}.{name}',
+        key=f'imbi.{name}',
         name=name,
         description=_summary(description),
         capability=capability(annotations),
@@ -155,12 +143,10 @@ def _imbi_server(
     )
 
 
-async def _imbi_group(spec: dict[str, typing.Any]) -> AgentToolGroup:
-    """List the Imbi tools from the OpenAPI document. Never raises."""
-    group = AgentToolGroup(
-        server=AgentToolServer(
-            slug=IMBI_SERVER_SLUG, name='Imbi', transport='internal'
-        )
+async def build_catalog(spec: dict[str, typing.Any]) -> AgentToolCatalog:
+    """List the Imbi tools from the OpenAPI document now. Never raises."""
+    catalog = AgentToolCatalog(
+        generated_at=datetime.datetime.now(datetime.UTC)
     )
     try:
         # The client is not used: no tool is called.
@@ -173,24 +159,13 @@ async def _imbi_group(spec: dict[str, typing.Any]) -> AgentToolGroup:
         raise
     except Exception as err:
         LOGGER.exception('Cannot make the Imbi tools')
-        group.error = _error_code(err)
-        return group
-    group.tools = sorted(
-        (
-            _tool(IMBI_SERVER_SLUG, t.name, t.description, t.annotations)
-            for t in tools
-        ),
+        catalog.error = _error_code(err)
+        return catalog
+    catalog.tools = sorted(
+        (_tool(t.name, t.description, t.annotations) for t in tools),
         key=lambda t: t.name,
     )
-    return group
-
-
-async def build_catalog(spec: dict[str, typing.Any]) -> AgentToolCatalog:
-    """List the catalog now."""
-    return AgentToolCatalog(
-        groups=[await _imbi_group(spec)],
-        generated_at=datetime.datetime.now(datetime.UTC),
-    )
+    return catalog
 
 
 async def get_catalog(
@@ -203,8 +178,8 @@ async def get_catalog(
 
     ``refresh`` lists the catalog again and replaces the kept copy.
     Without Valkey, each call lists the catalog. A kept copy that does
-    not validate, for example one with error text from an earlier
-    release, is listed again.
+    not validate, for example one from an earlier release, is listed
+    again.
     """
     if client is not None and not refresh:
         try:

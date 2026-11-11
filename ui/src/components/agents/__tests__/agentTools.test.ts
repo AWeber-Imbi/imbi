@@ -24,46 +24,49 @@ describe('agentTools', () => {
 
   it('shows tools that the catalog does not list as unavailable', () => {
     const views = groupViews(
-      catalog().groups,
+      catalog(),
       {
-        'gone.old_tool': {},
+        'imbi.gone': {},
         'imbi.list_projects': {},
-        'sentry.resolve_issue': {},
+        'zoekt.search': {},
       },
       none,
     )
-    expect(views.map((v) => v.name)).toEqual([
-      'Imbi',
-      'GitHub',
-      'Sentry',
-      'Not in the catalog',
-    ])
-    const sentry = views[2]
-    expect(sentry.error).toBe('timeout')
-    expect(sentry.rows).toEqual([
+    expect(views.map((v) => v.name)).toEqual(['Imbi', 'Not in the catalog'])
+    expect(views[0].rows).toHaveLength(4)
+    expect(views[1].rows).toEqual([
       {
         capability: null,
         description: null,
-        key: 'sentry.resolve_issue',
+        key: 'imbi.gone',
+        unavailable: true,
+      },
+      {
+        capability: null,
+        description: null,
+        key: 'zoekt.search',
         unavailable: true,
       },
     ])
-    expect(views[3].rows.map((r) => r.key)).toEqual(['gone.old_tool'])
   })
 
   it('filters by search, capability, and enabled', () => {
-    const tools = { 'github.read_file': {} }
-    const search = groupViews(catalog().groups, tools, {
+    const tools = { 'imbi.get_me': {} }
+    const search = groupViews(catalog(), tools, {
       ...none,
-      query: 'pull',
+      query: 'create',
     })
-    // A failed server stays visible, so its error is not hidden.
-    expect(search.map((v) => v.slug)).toEqual(['github', 'sentry'])
-    expect(search[0].rows.map((r) => r.key)).toEqual([
-      'github.create_pull_request',
-    ])
+    expect(search[0].rows.map((r) => r.key)).toEqual(['imbi.create_project'])
+    expect(groupViews(catalog(), tools, { ...none, query: 'nothing' })).toEqual(
+      [],
+    )
+    // A failed catalog stays visible, so its error is not hidden.
+    const failed = { ...catalog(), error: 'timeout' as const, tools: [] }
+    expect(
+      groupViews(failed, tools, { ...none, query: 'nothing' })[0].error,
+    ).toBe('timeout')
 
-    const destructive = groupViews(catalog().groups, tools, {
+    const destructive = groupViews(catalog(), tools, {
       ...none,
       capabilities: new Set(['destructive']),
     })
@@ -71,12 +74,12 @@ describe('agentTools', () => {
       'imbi.delete_project',
     ])
 
-    const enabled = groupViews(catalog().groups, tools, {
+    const enabled = groupViews(catalog(), tools, {
       ...none,
       enabledOnly: true,
     })
     expect(enabled.flatMap((v) => v.rows.map((r) => r.key))).toEqual([
-      'github.read_file',
+      'imbi.get_me',
     ])
   })
 

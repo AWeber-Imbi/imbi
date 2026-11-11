@@ -76,18 +76,14 @@ describe('ToolsTab', () => {
     ])
   })
 
-  it('shows the groups, the counts, and a server error', async () => {
-    render(<Harness initial={{ 'github.read_file': {} as never }} />)
-    expect(await screen.findByText('1 of 4 enabled')).toBeInTheDocument()
+  it('shows the Imbi tools open, with the counts', async () => {
+    render(<Harness initial={{ 'imbi.get_me': {} as never }} />)
+    expect(await screen.findAllByText('1 of 4 enabled')).toHaveLength(2)
     expect(
       screen.getByText(/come with the plugins in the Plugins section/),
     ).toBeInTheDocument()
-    expect(
-      within(group('GitHub')).getByText('1 of 2 enabled'),
-    ).toBeInTheDocument()
-    expect(within(group('Sentry')).getByRole('alert')).toHaveTextContent(
-      'Could not list the tools of this server: the server did not answer in time.',
-    )
+    expect(within(group('Imbi')).getByText('imbi.list_projects')).toBeVisible()
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(endpoints.getAgentToolCatalog).toHaveBeenCalledWith(
       'acme',
       false,
@@ -97,8 +93,7 @@ describe('ToolsTab', () => {
 
   it('switches a tool on and sets approval and environments', async () => {
     render(<Harness initial={{}} />)
-    await screen.findByText('0 of 4 enabled')
-    fireEvent.click(screen.getByRole('button', { name: /Imbi/ }))
+    await screen.findAllByText('0 of 4 enabled')
     fireEvent.click(
       screen.getByRole('switch', { name: 'Enable imbi.list_projects' }),
     )
@@ -125,7 +120,7 @@ describe('ToolsTab', () => {
     render(
       <Harness
         initial={{
-          'github.read_file': {
+          'imbi.get_me': {
             approval: false,
             environments: null,
             rate_limit: null,
@@ -133,14 +128,13 @@ describe('ToolsTab', () => {
         }}
       />,
     )
-    await screen.findByText('1 of 4 enabled')
-    fireEvent.click(screen.getByRole('button', { name: /GitHub/ }))
+    await screen.findAllByText('1 of 4 enabled')
     fireEvent.click(screen.getByRole('button', { name: 'No limit' }))
     fireEvent.change(await screen.findByLabelText('Calls'), {
       target: { value: '6' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    expect(last()['github.read_file'].rate_limit).toEqual({
+    expect(last()['imbi.get_me'].rate_limit).toEqual({
       count: 6,
       per: 'hour',
     })
@@ -149,55 +143,48 @@ describe('ToolsTab', () => {
     ).toBeInTheDocument()
   })
 
-  it('enables and disables a whole server', async () => {
+  it('enables and disables every tool', async () => {
     render(<Harness initial={{}} />)
-    await screen.findByText('0 of 4 enabled')
-    fireEvent.click(
-      within(group('GitHub')).getByRole('button', { name: 'Enable all' }),
-    )
+    await screen.findAllByText('0 of 4 enabled')
+    fireEvent.click(screen.getByRole('button', { name: 'Enable all' }))
     expect(Object.keys(last()).sort()).toEqual([
-      'github.create_pull_request',
-      'github.read_file',
+      'imbi.create_project',
+      'imbi.delete_project',
+      'imbi.get_me',
+      'imbi.list_projects',
     ])
-    fireEvent.click(
-      within(group('GitHub')).getByRole('button', { name: 'Disable all' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Disable all' }))
     expect(last()).toEqual({})
   })
 
   it('lists an enabled tool that the catalog lacks, so it can be removed', async () => {
-    render(<Harness initial={{ 'gone.old_tool': {} as never }} />)
+    render(<Harness initial={{ 'zoekt.search': {} as never }} />)
     await screen.findByText('Not in the catalog')
     fireEvent.click(screen.getByRole('button', { name: /Not in the catalog/ }))
     expect(screen.getByText('Unavailable')).toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole('switch', { name: 'Enable gone.old_tool' }),
-    )
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable zoekt.search' }))
     expect(last()).toEqual({})
   })
 
   it('filters by search and enabled only', async () => {
-    render(<Harness initial={{ 'github.read_file': {} as never }} />)
-    await screen.findByText('1 of 4 enabled')
+    render(<Harness initial={{ 'imbi.get_me': {} as never }} />)
+    await screen.findAllByText('1 of 4 enabled')
     fireEvent.change(screen.getByLabelText('Search tools'), {
       target: { value: 'nothing matches this' },
     })
-    // The failed server stays, so its error stays visible.
-    expect(screen.queryByText('GitHub')).not.toBeInTheDocument()
-    expect(screen.getByText('Sentry')).toBeInTheDocument()
+    expect(screen.getByText('No tools match that search.')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Search tools'), {
       target: { value: '' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Enabled only' }))
-    expect(screen.getByText('github.read_file')).toBeInTheDocument()
-    expect(screen.queryByText('github.create_pull_request')).toBeNull()
-    expect(screen.queryByText('Imbi')).not.toBeInTheDocument()
+    expect(screen.getByText('imbi.get_me')).toBeInTheDocument()
+    expect(screen.queryByText('imbi.create_project')).toBeNull()
   })
 
   it('lists the tools again on refresh', async () => {
     render(<Harness initial={{}} />)
-    await screen.findByText('0 of 4 enabled')
+    await screen.findAllByText('0 of 4 enabled')
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh the tool list' }),
     )
@@ -215,23 +202,25 @@ describe('ToolsTab', () => {
       permissions: ['agent:read'],
     }
     render(<Harness initial={{}} />)
-    await screen.findByText('0 of 4 enabled')
+    await screen.findAllByText('0 of 4 enabled')
     expect(
       screen.queryByRole('button', { name: 'Refresh the tool list' }),
     ).toBeNull()
   })
 
   it.each([
-    ['auth_failed', 'the server did not accept the credentials.'],
-    ['unreachable', 'the server is not reachable.'],
+    ['auth_failed', 'the API did not accept the credentials.'],
+    ['timeout', 'the API did not answer in time.'],
+    ['unreachable', 'the API is not reachable.'],
   ] as const)('shows a message for %s', async (code, message) => {
-    const data = catalog()
-    data.groups[2].error = code
-    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(data)
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue({
+      ...catalog(),
+      error: code,
+      tools: [],
+    })
     render(<Harness initial={{}} />)
-    await screen.findByText('0 of 4 enabled')
-    expect(within(group('Sentry')).getByRole('alert')).toHaveTextContent(
-      `Could not list the tools of this server: ${message}`,
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `Could not list the tools: ${message}`,
     )
   })
 })

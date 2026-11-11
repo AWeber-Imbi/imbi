@@ -80,14 +80,10 @@ class CapabilityTestCase(unittest.TestCase):
 
 
 class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_only_the_imbi_group(self) -> None:
-        # The MCP servers in Admin > Assistant are not agent tools.
+    async def test_imbi_tools(self) -> None:
         catalog = await agent_tools.build_catalog(SPEC)
-        (group,) = catalog.groups
-        self.assertEqual(group.server.slug, 'imbi')
-        self.assertEqual(group.server.transport, 'internal')
-        self.assertIsNone(group.error)
-        tools = {t.key: t for t in group.tools}
+        self.assertIsNone(catalog.error)
+        tools = {t.key: t for t in catalog.tools}
         # Excluded: the auth route and the x-imbi-ai-tool: false route.
         self.assertEqual(
             sorted(tools),
@@ -104,12 +100,11 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
             tools['imbi.delete_project'].capability, 'destructive'
         )
 
-    async def test_imbi_group_error(self) -> None:
+    async def test_error(self) -> None:
         with self.assertLogs(agent_tools.LOGGER, 'ERROR'):
             catalog = await agent_tools.build_catalog({'paths': {}})
-        (group,) = catalog.groups
-        self.assertEqual(group.tools, [])
-        self.assertIsNotNone(group.error)
+        self.assertEqual(catalog.tools, [])
+        self.assertIsNotNone(catalog.error)
 
     def test_error_codes(self) -> None:
         request = httpx.Request('POST', 'https://mcp.example.com/mcp')
@@ -139,13 +134,6 @@ class CacheTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.valkey = mock.AsyncMock()
         self.catalog = agent_tools.AgentToolCatalog(
-            groups=[
-                agent_tools.AgentToolGroup(
-                    server=agent_tools.AgentToolServer(
-                        slug='imbi', name='Imbi', transport='internal'
-                    )
-                )
-            ],
             generated_at='2026-10-06T12:00:00Z',  # type: ignore[arg-type]
         )
         patcher = mock.patch.object(
@@ -186,33 +174,24 @@ class CacheTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_entry_with_error_text_is_replaced(self) -> None:
         # An entry from an earlier release can hold the error text.
         entry = json.loads(self.catalog.model_dump_json())
-        entry['groups'][0]['error'] = 'connection refused: 10.0.0.5'
+        entry['error'] = 'connection refused: 10.0.0.5'
         self.valkey.get.return_value = json.dumps(entry).encode()
         result = await agent_tools.get_catalog(self.valkey, self.spec)
         self.assertEqual(result, self.catalog)
         self.build.assert_awaited_once()
         self.valkey.set.assert_awaited_once()
 
-    async def test_entry_with_mcp_server_group_is_replaced(self) -> None:
-        # An entry from an earlier release can hold an MCP server group.
-        entry = json.loads(self.catalog.model_dump_json())
-        entry['groups'].append(
-            {
-                'server': {
-                    'slug': 'zoekt',
-                    'name': 'Zoekt',
-                    'transport': 'mcp/http',
-                },
-                'tools': [],
-            }
+    async def test_grouped_entry_is_replaced(self) -> None:
+        # An entry from an earlier release has the tools in groups.
+        self.valkey.get.return_value = (
+            b'{"groups": [], "generated_at": "2026-10-06T12:00:00Z"}'
         )
-        self.valkey.get.return_value = json.dumps(entry).encode()
         result = await agent_tools.get_catalog(self.valkey, self.spec)
         self.assertEqual(result, self.catalog)
         self.build.assert_awaited_once()
 
     async def test_malformed_entry_is_replaced(self) -> None:
-        self.valkey.get.return_value = b'{"groups": 1}'
+        self.valkey.get.return_value = b'{"tools": 1}'
         await agent_tools.get_catalog(self.valkey, self.spec)
         self.build.assert_awaited_once()
         self.valkey.set.assert_awaited_once()
