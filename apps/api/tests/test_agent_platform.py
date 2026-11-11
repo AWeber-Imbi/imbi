@@ -556,6 +556,93 @@ class NarrowingTests(unittest.TestCase):
         )
 
 
+HOOKS = {'PreToolUse': [{'hooks': [{'type': 'command', 'command': 'audit'}]}]}
+
+
+class ClaudeSettingsTests(unittest.TestCase):
+    def test_refuses_keys_not_on_the_allowlist(self) -> None:
+        for document in (
+            {'env': {'NODE_OPTIONS': '-r x'}},
+            {'permissions': {'defaultMode': 'bypassPermissions'}},
+            {'disableAllHooks': True},
+            {'hooks': {'PreToolUse': [{'hooks': [{'command': 'x', 'y': 1}]}]}},
+            {'hooks': {'NotAnEvent': []}},
+            {'permissions': {'allow': ['Bash(']}},
+            {'hooks': {'Stop': [{'hooks': [{'command': 'x' * 4097}]}]}},
+            {'permissions': {'allow': ['Read'] * 20_000}},
+        ):
+            with (
+                self.subTest(document=str(document)[:60]),
+                self.assertRaises(ValueError),
+            ):
+                models.ClaudeSettings.model_validate(document)
+
+    def test_normalizes_rules_and_leaves_out_unset_keys(self) -> None:
+        settings = models.ClaudeSettings.model_validate(
+            {'permissions': {'deny': ['  Bash(git push *) ']}}
+        )
+        self.assertEqual(
+            settings.model_dump(mode='json'),
+            {'permissions': {'deny': ['Bash(git push *)']}},
+        )
+
+    def test_older_hooks_become_enforced_settings(self) -> None:
+        config = platform.AgentPlatformConfig.model_validate({'hooks': HOOKS})
+        self.assertEqual(
+            config.claude_settings.model_dump(mode='json'), {'hooks': HOOKS}
+        )
+        self.assertEqual(config.enforced, ['hooks'])
+        config = platform.AgentPlatformConfig.model_validate({'hooks': {}})
+        self.assertEqual(config.enforced, [])
+
+    def test_enforced_paths_refuse_the_agent(self) -> None:
+        config = platform.AgentPlatformConfig(enforced=['permissions.deny'])
+        settings = models.AgentSettings(
+            claude_settings=models.ClaudeSettings.model_validate(
+                {'permissions': {'deny': [], 'allow': ['Bash(make *)']}}
+            )
+        )
+        self.assertEqual(
+            platform.widenings(config, settings),
+            ["the organization enforces claude_settings 'permissions.deny'"],
+        )
+
+    def test_merge_replaces_each_path_the_org_does_not_enforce(self) -> None:
+        config = platform.AgentPlatformConfig(
+            claude_settings=models.ClaudeSettings.model_validate(
+                {
+                    'permissions': {'deny': ['Bash(rm *)'], 'ask': ['Edit']},
+                    'hooks': HOOKS,
+                    'includeCoAuthoredBy': False,
+                }
+            ),
+            enforced=['hooks'],
+        )
+        settings = models.AgentSettings(
+            claude_settings=models.ClaudeSettings.model_validate(
+                {
+                    'permissions': {'deny': []},
+                    'hooks': {},
+                    'respectGitignore': False,
+                }
+            )
+        )
+        merged = platform.merge(config, settings)
+        self.assertEqual(
+            merged.claude_settings,
+            {
+                # A list is replaced, not joined: the agent removed the
+                # organization's deny rule.
+                'permissions': {'deny': [], 'ask': ['Edit']},
+                'hooks': HOOKS,
+                'includeCoAuthoredBy': False,
+                'respectGitignore': False,
+            },
+        )
+        self.assertEqual(merged.claude_settings_dropped, ['hooks'])
+        self.assertEqual(merged.hooks, HOOKS)
+
+
 class ModelUpstreamTests(unittest.TestCase):
     def test_http_base_url_needs_the_flag(self) -> None:
         def insecure(**data: typing.Any) -> bool:

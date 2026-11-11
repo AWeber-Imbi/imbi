@@ -3,8 +3,9 @@
 The organization sets the base Agent SDK configuration and its limits.
 An agent can only narrow them (plan section 5.1):
 
-- :func:`widenings` lists what an agent's settings try to widen. A save
-  that widens a limit is refused with 422.
+- :func:`widenings` lists what an agent's settings try to widen, and
+  each enforced ``claude_settings`` path that they set. A save with one
+  is refused with 422.
 - :func:`merge` applies the agent's settings over a pinned
   configuration. It always takes the stricter value, so an agent that
   was valid under an older configuration cannot widen a newer one.
@@ -76,13 +77,33 @@ class AgentPlatformConfig(pydantic.BaseModel):
     )
     #: Put before the agent's own system prompt.
     system_prompt_prefix: str = ''
-    #: Agent SDK hooks (audit, policy). Agents cannot change them.
-    hooks: dict[str, typing.Any] = {}
     #: Tools that need approval when the task origin is an automation.
     approval_tools: list[str] = []
+    #: Claude Code settings for every agent. An agent can replace each
+    #: path that is not in ``enforced``.
+    claude_settings: models.ClaudeSettings = pydantic.Field(
+        default_factory=models.ClaudeSettings
+    )
+    #: The ``claude_settings`` paths that an agent cannot set.
+    enforced: list[models.ClaudeSettingsPath] = []
+
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def _move_hooks(cls, data: object) -> object:
+        """Read the ``hooks`` field of an older version as enforced
+        ``claude_settings.hooks``: the UI said that agents cannot
+        change them."""
+        if not isinstance(data, dict) or 'hooks' not in data:
+            return data
+        moved = dict(typing.cast('dict[str, typing.Any]', data))
+        hooks = moved.pop('hooks')
+        if hooks and not moved.get('claude_settings'):
+            moved['claude_settings'] = {'hooks': hooks}
+            moved['enforced'] = sorted({*moved.get('enforced', []), 'hooks'})
+        return moved
 
     @pydantic.field_validator(
-        'allowed_marketplaces', 'denied_tools', 'approval_tools'
+        'allowed_marketplaces', 'denied_tools', 'approval_tools', 'enforced'
     )
     @classmethod
     def _sort(cls, value: list[str]) -> list[str]:
@@ -113,10 +134,16 @@ class MergedConfig(pydantic.BaseModel):
     permission_mode: models.AgentPermissionMode
     sandbox: models.AgentSandbox
     system_prompt_prefix: str
+    #: ``claude_settings.hooks``, for runners that do not read
+    #: ``claude_settings`` (2.45 and older).
     hooks: dict[str, typing.Any]
     approval_tools: list[str]
     secrets: list[SecretReference]
     github_app_binding: str | None
+    #: The organization settings with the agent's paths over them.
+    claude_settings: dict[str, typing.Any] = {}
+    #: The agent paths that the organization enforces: left out.
+    claude_settings_dropped: list[str] = []
 
 
 def check_reference(value: str, *, field: bool = True) -> None:
@@ -163,7 +190,18 @@ def widenings(
             problems.append(
                 f'marketplace {plugin.marketplace!r} is not allowed'
             )
+    problems.extend(
+        f'the organization enforces claude_settings {path!r}'
+        for path in _enforced(config, settings)
+    )
     return problems
+
+
+def _enforced(
+    config: AgentPlatformConfig, settings: models.AgentSettings
+) -> list[str]:
+    """The paths that the agent sets and the organization enforces."""
+    return sorted(set(settings.claude_settings.paths()) & set(config.enforced))
 
 
 def merge(
@@ -175,6 +213,10 @@ def merge(
     marketplace that ``config`` does not allow is left out. A default
     plugin wins over an agent plugin with the same name. The agent's
     model key replaces the key of the organization's model upstream.
+
+    ``claude_settings`` is the exception: each path that the agent sets
+    replaces the organization's value, a list too, unless the
+    organization enforces the path (settings plan 4.4).
     """
     mode = config.permission_mode
     if settings.permission_mode is not None and _strictness(
@@ -198,6 +240,12 @@ def merge(
         if plugin.marketplace in allowed and key not in seen:
             plugins.append(plugin)
             seen.add(key)
+    dropped = _enforced(config, settings)
+    agent = settings.claude_settings.paths()
+    for path in dropped:
+        del agent[path]
+    paths = config.claude_settings.paths() | agent
+    claude = models.ClaudeSettings.from_paths(paths).model_dump(mode='json')
     upstream = config.model_upstream
     if settings.model_key_ref is not None:
         upstream = upstream.model_copy(
@@ -211,12 +259,14 @@ def merge(
         permission_mode=mode,
         sandbox=sandbox,
         system_prompt_prefix=config.system_prompt_prefix,
-        hooks=config.hooks,
+        hooks=claude.get('hooks', {}),
         approval_tools=sorted(
             {*config.approval_tools, *settings.approval_tools}
         ),
         secrets=[SecretReference(reference=r) for r in settings.secrets],
         github_app_binding=settings.github_app_binding,
+        claude_settings=claude,
+        claude_settings_dropped=dropped,
     )
 
 
