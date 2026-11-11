@@ -169,8 +169,8 @@ each purpose:
 | `marketplace_fetch` | Fetch plugins from private marketplaces | `file_descriptor` |
 
 A missing purpose shows a **Grant** button. Click it to make a grant for
-this agent, this binding, and that purpose. For the App setup, see
-[Configure GitHub access](../deployment/agent-runners.md#6-configure-github-access).
+this agent, this binding, and that purpose. For the App setup, see the
+[GitHub App Runbook](github-app-runbook.md).
 
 **Secrets** lists the secrets that the agent can request with
 `run_with_secret`. Each secret goes into the environment of one command.

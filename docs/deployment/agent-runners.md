@@ -164,6 +164,9 @@ The runner clones project repositories and plugin marketplaces with a
 GitHub App token. The agent pushes and opens pull requests with a second
 token. Do these steps in each organization that the pool serves.
 
+For the full setup of one agent's App in GitHub, AWS, and Imbi, see the
+[GitHub App Runbook](../admin/github-app-runbook.md).
+
 1. Add a `github_app` binding with the allowed delivery modes
    `file_descriptor` and `environment`.
 2. Add a grant with the purposes `workspace_checkout` and
