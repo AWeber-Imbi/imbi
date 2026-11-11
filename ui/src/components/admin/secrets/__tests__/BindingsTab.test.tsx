@@ -167,7 +167,7 @@ describe('BindingsTab', () => {
     expect(screen.queryByRole('button', { name: 'Add as consumer' })).toBeNull()
   })
 
-  it('requires the key host when a consumer is set', async () => {
+  it('takes the key host and App id from a ticked consumer', async () => {
     vi.mocked(listSecretBindings).mockResolvedValue([
       { ...key, provider_key_usage: null },
       app,
@@ -175,10 +175,31 @@ describe('BindingsTab', () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled(),
-    )
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
+    expect(screen.getByLabelText(/Provider key App id/)).toHaveValue('42')
+    expect(screen.getByLabelText(/Provider key App id/)).toHaveAttribute(
+      'readonly',
+    )
+    expect(
+      screen.getByRole('combobox', { name: 'Provider key host' }),
+    ).toBeDisabled()
+    await save()
+    await waitFor(() =>
+      expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
+        provider_key_usage: { ...usage, consumers: ['app-1'] },
+      }),
+    )
+  })
+
+  it('requires the key App id when a host is picked', async () => {
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      { ...key, provider_key_usage: null },
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    fireEvent.click(screen.getByRole('combobox', { name: 'Provider key host' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'github.com' }))
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
@@ -186,7 +207,9 @@ describe('BindingsTab', () => {
     render(<BindingsTab orgSlug="acme" />)
     const edits = await screen.findAllByRole('button', { name: 'Edit' })
     fireEvent.click(edits[0])
-    expect(screen.getByLabelText(/Provider key host/)).toHaveValue('github.com')
+    expect(
+      screen.getByRole('combobox', { name: 'Provider key host' }),
+    ).toHaveTextContent('github.com')
     fireEvent.click(screen.getByLabelText('secret://dev/github_app'))
     await save()
     await waitFor(() =>
@@ -213,6 +236,58 @@ describe('BindingsTab', () => {
         description: 'new',
       }),
     )
+  })
+
+  it('drops saved consumers of deleted bindings', async () => {
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      { ...key, provider_key_usage: { ...usage, consumers: ['gone'] } },
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    expect(
+      screen.getByRole('combobox', { name: 'Provider key host' }),
+    ).toBeEnabled()
+    await save()
+    await waitFor(() =>
+      expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
+        provider_key_usage: usage,
+      }),
+    )
+  })
+
+  it('clears the key usage when the host is set to none', async () => {
+    vi.mocked(listSecretBindings).mockResolvedValue([key] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    fireEvent.click(screen.getByRole('combobox', { name: 'Provider key host' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'None' }))
+    fireEvent.change(screen.getByLabelText(/Provider key App id/), {
+      target: { value: '' },
+    })
+    await save()
+    await waitFor(() =>
+      expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
+        provider_key_usage: null,
+      }),
+    )
+  })
+
+  it('keeps a free-text host when no App provider exists', async () => {
+    vi.mocked(listSecretProviders).mockResolvedValue([
+      { config: {}, id: 'aws', name: 'aws', type: 'aws_secrets_manager' },
+    ] as never)
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      { ...key, provider_key_usage: null },
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    fireEvent.change(screen.getByLabelText(/Provider key host/), {
+      target: { value: 'g' },
+    })
+    expect(screen.getByLabelText(/Provider key host/)).toHaveValue('g')
   })
 
   it('offers only dynamic App bindings as consumers', async () => {

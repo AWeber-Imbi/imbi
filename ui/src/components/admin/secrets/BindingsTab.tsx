@@ -229,6 +229,7 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
       />
       {editing && (
         <BindingDialog
+          appHosts={[...appProviders.values()]}
           consumers={bindings
             .filter((b) => {
               const usage = row?.provider_key_usage as KeyUsage | undefined
@@ -247,7 +248,12 @@ export function BindingsTab({ orgSlug }: { orgSlug: string }) {
                   usage.app_id === String(b.locator.app_id))
               )
             })
-            .map((b) => ({ label: b.reference, value: b.id }))}
+            .map((b) => ({
+              appId: String(b.locator.app_id ?? ''),
+              host: appProviders.get(b.provider_id) ?? '',
+              label: b.reference,
+              value: b.id,
+            }))}
           error={saveMutation.error}
           isPending={saveMutation.isPending}
           onClose={() => setEditing(null)}

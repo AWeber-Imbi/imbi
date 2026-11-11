@@ -53,8 +53,10 @@ const CLASS_HELP: Record<string, string> = {
 }
 
 interface BindingDialogProps {
+  /** The hosts of the github_app providers. */
+  appHosts: string[]
   /** The github_app bindings that can sign with this key. */
-  consumers: { label: string; value: string }[]
+  consumers: KeyConsumer[]
   error?: unknown
   isPending: boolean
   onClose: () => void
@@ -66,6 +68,16 @@ interface BindingDialogProps {
   providerTypes: SecretProviderType[]
 }
 
+// A Select item value cannot be empty: this one clears the host.
+const NO_HOST = '__none__'
+
+interface KeyConsumer {
+  appId: string
+  host: string
+  label: string
+  value: string
+}
+
 interface KeyUsage {
   app_id: string
   consumers?: string[]
@@ -75,6 +87,7 @@ interface KeyUsage {
 /** The create or edit dialog for a binding. */
 // fallow-ignore-next-line complexity
 export function BindingDialog({
+  appHosts,
   consumers,
   error,
   isPending,
@@ -91,7 +104,10 @@ export function BindingDialog({
     allowed_delivery_targets: original?.allowed_delivery_targets ?? [],
     allowed_fields: original?.allowed_fields ?? [],
     app_id: usage?.app_id ?? '',
-    consumers: usage?.consumers ?? [],
+    // Drop saved ids of deleted bindings: no checkbox can clear them.
+    consumers: (usage?.consumers ?? []).filter((id) =>
+      consumers.some((c) => c.value === id),
+    ),
     credential_class: original?.credential_class ?? 'static',
     description: original?.description ?? '',
     host: usage?.host ?? '',
@@ -146,6 +162,19 @@ export function BindingDialog({
     form.app_id.trim() ||
     form.consumers.length
   )
+  // A ticked consumer sets the host and App id: the broker accepts the
+  // key only for the host and App id of each consumer.
+  const pinned = form.consumers.length > 0
+  const toggleConsumer = (c: KeyConsumer, on: boolean) =>
+    setForm((prev) => ({
+      ...prev,
+      app_id: on ? c.appId : prev.app_id,
+      consumers: on
+        ? [...prev.consumers, c.value]
+        : prev.consumers.filter((v) => v !== c.value),
+      host: on ? c.host : prev.host,
+    }))
+  const hosts = [...new Set([...appHosts, form.host].filter(Boolean))]
   const ttl = Number(form.max_ttl_seconds)
   const ready =
     (!!original || (/^[a-z0-9]/.test(form.path) && !!form.provider_id)) &&
@@ -378,11 +407,36 @@ export function BindingDialog({
                   label="Provider key host"
                   required={keyUsed}
                 >
-                  <Input
-                    id="binding-key-host"
-                    onChange={(e) => set('host', e.target.value)}
-                    value={form.host}
-                  />
+                  {appHosts.length ? (
+                    <Select
+                      disabled={pinned}
+                      onValueChange={(value) =>
+                        set('host', value === NO_HOST ? '' : value)
+                      }
+                      value={form.host}
+                    >
+                      <SelectTrigger
+                        aria-label="Provider key host"
+                        id="binding-key-host"
+                      >
+                        <SelectValue placeholder="Select a host" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_HOST}>None</SelectItem>
+                        {hosts.map((h) => (
+                          <SelectItem key={h} value={h}>
+                            {h}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="binding-key-host"
+                      onChange={(e) => set('host', e.target.value)}
+                      value={form.host}
+                    />
+                  )}
                 </Field>
                 <Field
                   htmlFor="binding-key-app"
@@ -392,6 +446,7 @@ export function BindingDialog({
                   <Input
                     id="binding-key-app"
                     onChange={(e) => set('app_id', e.target.value)}
+                    readOnly={pinned}
                     value={form.app_id}
                   />
                 </Field>
@@ -404,26 +459,30 @@ export function BindingDialog({
                       the github_app bindings that can sign with the key
                     </span>
                   </p>
-                  {consumers.map((c) => (
-                    <label
-                      className="flex items-center gap-2 font-mono text-xs"
-                      key={c.value}
-                    >
-                      <Checkbox
-                        aria-label={c.label}
-                        checked={form.consumers.includes(c.value)}
-                        onCheckedChange={(on) =>
-                          set(
-                            'consumers',
-                            on === true
-                              ? [...form.consumers, c.value]
-                              : form.consumers.filter((v) => v !== c.value),
-                          )
-                        }
-                      />
-                      {c.label}
-                    </label>
-                  ))}
+                  {consumers.map((c) => {
+                    const checked = form.consumers.includes(c.value)
+                    return (
+                      <label
+                        className="flex items-center gap-2 font-mono text-xs"
+                        key={c.value}
+                      >
+                        <Checkbox
+                          aria-label={c.label}
+                          checked={checked}
+                          // Another App or host cannot share the key.
+                          disabled={
+                            !checked &&
+                            pinned &&
+                            (c.host !== form.host || c.appId !== form.app_id)
+                          }
+                          onCheckedChange={(on) =>
+                            toggleConsumer(c, on === true)
+                          }
+                        />
+                        {c.label}
+                      </label>
+                    )
+                  })}
                 </div>
               )}
             </fieldset>
