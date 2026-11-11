@@ -54,6 +54,7 @@ def _ctx(
                 integration_slug='sentry',
                 identifier='demo',
                 canonical_url=_PROJECT_URL,
+                verified_identifier='demo',
             )
         ]
         if connected
@@ -209,6 +210,29 @@ class DoctorTests(_RespxCase):
         # The new team is added before the old one is removed.
         methods = [c.request.method for c in respx.calls]
         self.assertLess(methods.index('POST'), methods.index('DELETE'))
+
+    async def test_hand_set_identifier_gets_no_team_fix(self) -> None:
+        ctx = _ctx()
+        ctx.service_connections[0].verified_identifier = None
+        project = {**_PROJECT, 'teams': [{'slug': 'other'}]}
+        respx.get(_PROJECT_URL).respond(200, json=project)
+        respx.get(_ISSUES_URL).mock(side_effect=_issues)
+        items = {i.slug: i for i in await SentryDoctor().analyze(ctx, _CREDS)}
+        self.assertEqual('fail', items['sentry-team'].status)
+        self.assertIsNone(items['sentry-team'].remediation)
+        result = await SentryDoctor().remediate(ctx, _CREDS, 'set-team')
+        self.assertEqual('failed', result.status)
+        self.assertFalse(
+            any(c.request.method == 'DELETE' for c in respx.calls)
+        )
+
+    async def test_invalid_slug_makes_no_request(self) -> None:
+        ctx = _ctx()
+        ctx.service_connections[0].identifier = '../x'
+        items = await SentryDoctor().analyze(ctx, _CREDS)
+        self.assertEqual('warn', items[0].status)
+        self.assertIn('not a valid Sentry slug', items[0].description)
+        self.assertEqual(0, len(respx.calls))
 
     async def test_set_team_noop_when_correct(self) -> None:
         respx.get(_PROJECT_URL).respond(200, json=_PROJECT)

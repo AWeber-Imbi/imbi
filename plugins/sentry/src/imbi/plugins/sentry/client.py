@@ -1,6 +1,7 @@
 """Sentry REST API client, plus the settings every capability shares."""
 
 import importlib.metadata
+import re
 import typing
 import urllib.parse
 
@@ -24,6 +25,9 @@ DEFAULT_ISSUE_PERIOD = '14d'
 
 class SentryClientError(Exception):
     """Raised on non-2xx responses or transport errors."""
+
+
+_SLUG_RE = re.compile(r'[A-Za-z0-9_-]+')
 
 
 class Settings(typing.NamedTuple):
@@ -103,8 +107,20 @@ def writeback(
     )
 
 
+def _q(segment: str) -> str:
+    """Return a Sentry slug for a URL path, or raise.
+
+    Sentry slugs hold only letters, digits, ``-`` and ``_``. Anything
+    else (``..``, ``/``, encoded forms of either) could point a call at a
+    different API path, because httpx normalizes the path.
+    """
+    if not _SLUG_RE.fullmatch(segment):
+        raise SentryClientError(f'{segment!r} is not a valid Sentry slug')
+    return segment
+
+
 def canonical_url(s: Settings, slug: str) -> str:
-    return f'{s.base_url}/api/0/projects/{s.organization}/{slug}/'
+    return f'{s.base_url}/api/0/projects/{_q(s.organization)}/{_q(slug)}/'
 
 
 async def _request(
@@ -154,7 +170,9 @@ def _json(response: httpx.Response) -> dict[str, typing.Any]:
 
 async def get_project(s: Settings, slug: str) -> dict[str, typing.Any] | None:
     """Return the Sentry project ``slug``, or ``None`` when it is absent."""
-    response = await _request(s, 'GET', f'/projects/{s.organization}/{slug}/')
+    response = await _request(
+        s, 'GET', f'/projects/{_q(s.organization)}/{_q(slug)}/'
+    )
     if response.status_code == 404:
         return None
     return _json(response)
@@ -170,7 +188,7 @@ async def create_project(
     response = await _request(
         s,
         'POST',
-        f'/teams/{s.organization}/{team}/projects/',
+        f'/teams/{_q(s.organization)}/{_q(team)}/projects/',
         json={'name': name, 'slug': slug},
     )
     if response.status_code == 404:
@@ -202,10 +220,10 @@ async def set_team(
     then removes every other team. Returns the removed team slugs.
     """
     slug = str(project['slug'])
-    path = f'/projects/{s.organization}/{slug}/teams'
+    path = f'/projects/{_q(s.organization)}/{_q(slug)}/teams'
     current = team_slugs(project)
     if team not in current:
-        response = await _request(s, 'POST', f'{path}/{team}/')
+        response = await _request(s, 'POST', f'{path}/{_q(team)}/')
         if response.status_code == 404:
             raise SentryClientError(
                 f'Sentry team {team!r} does not exist; map the Imbi team to '
@@ -214,7 +232,7 @@ async def set_team(
         _raise_for_error(response)
     removed = [t for t in current if t != team]
     for other in removed:
-        _raise_for_error(await _request(s, 'DELETE', f'{path}/{other}/'))
+        _raise_for_error(await _request(s, 'DELETE', f'{path}/{_q(other)}/'))
     return removed
 
 
@@ -230,7 +248,7 @@ async def count_issues(
     response = await _request(
         s,
         'GET',
-        f'/organizations/{s.organization}/issues/',
+        f'/organizations/{_q(s.organization)}/issues/',
         params={
             'project': project_id,
             'query': query,

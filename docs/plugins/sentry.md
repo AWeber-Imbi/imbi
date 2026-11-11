@@ -111,7 +111,10 @@ The fixes:
 - **Set the Sentry team** makes the expected team (from `team_mapping`,
   or the Imbi team slug) the only owner of the Sentry project. It adds
   that team first, then removes all other teams, so those teams lose
-  access. You must confirm it, and it is not sweepable.
+  access. You must confirm it, and it is not sweepable. It is offered
+  only for the Sentry project with the Imbi project slug, linked by the
+  plugin itself. For an identifier that someone set by hand, change the
+  teams in Sentry.
 - **Sync issue counts from Sentry** writes each count to its fact. It is
   sweepable, so **Apply Sync Fixes** keeps the facts current.
 

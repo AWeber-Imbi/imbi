@@ -91,6 +91,22 @@ def _slug(ctx: PluginContext) -> str:
     return connection.identifier if connection else ctx.project_slug
 
 
+def _owns_sentry_project(ctx: PluginContext) -> bool:
+    """Return whether the project may change its Sentry project's teams.
+
+    Only for the Sentry project named after this project, through an edge
+    the plugin wrote itself (or no edge yet). An identifier set by hand
+    could name another team's Sentry project, and replacing its teams
+    would take that project away from them.
+    """
+    connection = _connection(ctx)
+    if connection is not None and (
+        connection.verified_identifier != connection.identifier
+    ):
+        return False
+    return _slug(ctx) == ctx.project_slug
+
+
 class SentryDoctor(AnalysisCapability):
     """Validate and repair the project's Sentry project binding."""
 
@@ -185,6 +201,15 @@ class SentryDoctor(AnalysisCapability):
                 'Sentry team',
                 'pass',
                 f'Sentry team {expected!r} owns the project.',
+            )
+        if not _owns_sentry_project(ctx):
+            return _item(
+                'sentry-team',
+                'Sentry team',
+                'fail',
+                f'The Sentry project is owned by {teams or "no team"}; '
+                f'expected only {expected!r}. Imbi did not link this Sentry '
+                'project itself, so change its teams in Sentry.',
             )
         return _item(
             'sentry-team',
@@ -290,6 +315,14 @@ class SentryDoctor(AnalysisCapability):
         s: client.Settings,
         project: dict[str, typing.Any],
     ) -> RemediationResult:
+        if not _owns_sentry_project(ctx):
+            return RemediationResult(
+                status='failed',
+                message=(
+                    'Imbi did not link this Sentry project itself; change '
+                    'its teams in Sentry.'
+                ),
+            )
         team = client.sentry_team(ctx)
         if team is None:
             return RemediationResult(
