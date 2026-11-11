@@ -998,7 +998,7 @@ async def step_agent_task(
     ):
         raise _task_key_conflict()
     summary = (
-        await tasks.last_agent_turn(task['id'])
+        await tasks.last_agent_turn(task)
         if task['status'] == 'closed'
         else None
     )

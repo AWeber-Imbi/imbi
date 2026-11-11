@@ -45,6 +45,17 @@ ORDER BY seq
 LIMIT {limit:UInt32}
 """
 
+_LAST_AGENT_TURN_QUERY = """
+SELECT JSONExtractString(payload, 'body') AS body
+FROM imbi.agent_task_events
+WHERE organization_id = {organization_id:String}
+  AND task_id = {task_id:String}
+  AND type = 'turn'
+  AND actor_kind = 'agent'
+ORDER BY seq DESC
+LIMIT 1
+"""
+
 _EVENT_COUNTS_QUERY = """
 SELECT task_id, uniqExact(seq) AS events, max(seq) AS max_seq
 FROM imbi.agent_task_events
@@ -231,6 +242,21 @@ async def archived_events(task: Row, after_seq: int, limit: int) -> list[Row]:
         }
         for row in rows
     ]
+
+
+async def last_archived_agent_turn(task: Row) -> str | None:
+    """Return the body of the newest agent ``turn`` of an archived task.
+
+    ``None`` when the agent wrote no turn.
+    """
+    rows = await clickhouse.query(
+        _LAST_AGENT_TURN_QUERY,
+        {
+            'organization_id': task['organization_id'],
+            'task_id': str(task['id']),
+        },
+    )
+    return str(rows[0]['body']) if rows else None
 
 
 async def event_counts(

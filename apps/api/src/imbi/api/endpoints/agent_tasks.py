@@ -116,6 +116,21 @@ class AgentTaskCreate(pydantic.BaseModel):
     )
 
 
+class AgentTaskRetry(pydantic.BaseModel):
+    note: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_TEXT_LENGTH,
+        description='What the agent should do differently this time.',
+    )
+    idempotency_key: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description='A repeat with the same key returns the first task.',
+    )
+
+
 class AgentTaskReassign(pydantic.BaseModel):
     owner: pydantic.EmailStr = pydantic.Field(
         description='The email of the new owner. Must be in the org.'
@@ -336,6 +351,12 @@ _AGENT_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{slug: {slug}}})
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN a
+"""
+
+_AGENT_SLUG_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+RETURN a.slug AS slug
 """
 
 _PROJECT_QUERY: typing.LiteralString = """
@@ -835,18 +856,56 @@ async def create_agent_task(
     origin = task_origin(
         auth, scheduled_task, webhook, delivery, scheduled_by, scheduled_org
     )
-    key = data.idempotency_key or idempotency_key
-    if key is not None and _STEP_KEY.match(key):
+    return await _create_task(
+        db,
+        store,
+        org_slug,
+        org_id,
+        data,
+        origin,
+        data.idempotency_key or idempotency_key,
+        response,
+        auth,
+    )
+
+
+async def _keyed_task(
+    store: agent_tasks.TaskStore,
+    org_id: str,
+    origin: TaskOrigin,
+    key: str | None,
+    response: fastapi.Response,
+) -> dict[str, typing.Any] | None:
+    """Return the task that has ``key``, and set status 200, if it exists."""
+    if key is None:
+        return None
+    if _STEP_KEY.match(key):
         raise _unprocessable(
             'The idempotency key has the shape of a workflow step key'
         )
-    if key is not None:
-        existing = await store.find_by_idempotency_key(
-            org_id, origin.kind, origin.id, key
-        )
-        if existing is not None:
-            response.status_code = 200
-            return existing
+    existing = await store.find_by_idempotency_key(
+        org_id, origin.kind, origin.id, key
+    )
+    if existing is not None:
+        response.status_code = 200
+    return existing
+
+
+async def _create_task(
+    db: graph.Graph,
+    store: agent_tasks.TaskStore,
+    org_slug: str,
+    org_id: str,
+    data: AgentTaskCreate,
+    origin: TaskOrigin,
+    key: str | None,
+    response: fastapi.Response,
+    auth: permissions.AuthContext,
+) -> dict[str, typing.Any]:
+    """Make a task, or return the task that has ``key`` with status 200."""
+    existing = await _keyed_task(store, org_id, origin, key, response)
+    if existing is not None:
+        return existing
     owner = await _owner(db, org_slug, auth, origin)
     task, created = await make_task(
         db, store, org_slug, org_id, data, origin, key, owner, _actor(auth)
@@ -1200,6 +1259,125 @@ async def acknowledge_agent_task(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is not closed'
         ) from e
+
+
+#: The most text of the last agent turn that a retry copies.
+RETRY_TURN_LIMIT = 16_000
+
+
+def retry_description(
+    task: dict[str, typing.Any],
+    last_turn: str | None,
+    note: str | None,
+    person: str,
+) -> str:
+    """Return the description of a retry of ``task``.
+
+    It is the description of the task, then what happened to it: the
+    outcome and the last agent turn. Then the note of the person.
+    """
+    outcome = f'`{task["outcome"]}`'
+    if task['outcome_reason']:
+        outcome += f': {task["outcome_reason"]}'
+    parts = [
+        task['description'],
+        '---',
+        '## Previous attempt',
+        f'This task retries {task["short_id"]}, which closed as {outcome}.',
+    ]
+    if last_turn:
+        if len(last_turn) > RETRY_TURN_LIMIT:
+            last_turn = last_turn[:RETRY_TURN_LIMIT] + ' …'
+        quoted = '\n'.join(f'> {line}' for line in last_turn.splitlines())
+        parts += ['The last message from the agent:', quoted]
+    if note:
+        parts += [f'## Note from {person}', note]
+    return '\n\n'.join(parts)
+
+
+@agent_tasks_router.post(
+    '/{short_id}/retry',
+    status_code=201,
+    response_model=AgentTaskResponse,
+    responses={
+        200: {
+            'model': AgentTaskResponse,
+            'description': (
+                'A task with this idempotency key exists; it is returned '
+                'unchanged.'
+            ),
+        },
+    },
+)
+async def retry_agent_task(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    data: AgentTaskRetry,
+    response: fastapi.Response,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:create')),
+    ],
+) -> dict[str, typing.Any]:
+    """Make a new task that does a closed task again.
+
+    The new task has the agent, title, and project of the closed task.
+    Its description adds what happened to the closed task, and the note
+    of the person. The closed task does not change. The caller also
+    needs ``agent_task:read``, because the new description shows the
+    log of the closed task.
+
+    Raises:
+        403: The caller is not a person, not a member of the org, or
+            cannot read tasks.
+        404: No such task.
+        409: The task is not closed, or its agent is disabled.
+        422: The agent or the project is no longer in the org.
+
+    """
+    user = auth.require_user
+    await _require_read(auth)
+    task = await _get_task(store, org_id, short_id)
+    if task['status'] != 'closed':
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Task {short_id!r} is not closed'
+        )
+    # A repeat returns the first retry before the agent and log reads,
+    # which can fail after the first retry succeeded.
+    origin = task_origin(auth)
+    existing = await _keyed_task(
+        store, org_id, origin, data.idempotency_key, response
+    )
+    if existing is not None:
+        return existing
+    records = await db.execute(
+        _AGENT_SLUG_QUERY,
+        {'id': task['agent_id'], 'org_slug': org_slug},
+        ['slug'],
+    )
+    if not records:
+        raise _unprocessable('The agent of the task is not in the org')
+    last_turn = await store.last_agent_turn(task)
+    create = AgentTaskCreate(
+        agent_slug=str(graph.parse_agtype(records[0]['slug'])),
+        title=task['title'],
+        description=retry_description(task, last_turn, data.note, user.email),
+        project_id=task['project_id'],
+    )
+    return await _create_task(
+        db,
+        store,
+        org_slug,
+        org_id,
+        create,
+        origin,
+        data.idempotency_key,
+        response,
+        auth,
+    )
 
 
 @agent_tasks_router.post(

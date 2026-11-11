@@ -54,6 +54,7 @@ import type {
   AgentTaskProject,
   AgentTaskRelations,
   AgentTaskResolve,
+  AgentTaskRetry,
   AgentTaskStatus,
   AgentToolCatalog,
   AgentUpdate,
@@ -3892,6 +3893,16 @@ export const controlAgentTask = (
 /** Mark a closed task as needing no more attention. */
 export const acknowledgeAgentTask = (orgSlug: string, shortId: string) =>
   apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/acknowledge`)
+
+/**
+ * Make a new task that does a closed task again, with what happened to
+ * it and an optional note.
+ */
+export const retryAgentTask = (
+  orgSlug: string,
+  shortId: string,
+  body: AgentTaskRetry,
+) => apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/retry`, body)
 
 export const reassignAgentTask = (
   orgSlug: string,

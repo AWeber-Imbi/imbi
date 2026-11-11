@@ -608,6 +608,8 @@ class ConfigTestCase(TaskTestCase):
         self.assertEqual(
             options.thinking, {'type': 'adaptive', 'display': 'summarized'}
         )
+        self.assertIsNone(options.effort)
+        self.assertNotIn('CLAUDE_CODE_MAX_OUTPUT_TOKENS', env)
         prompt = typing.cast('dict[str, str]', options.system_prompt)
         self.assertEqual(
             prompt['append'],
@@ -624,6 +626,39 @@ class ConfigTestCase(TaskTestCase):
         (matcher,) = options.hooks['PreToolUse']  # type: ignore[index]
         self.assertEqual(matcher.timeout, task.HOOK_TIMEOUT)
         self.assertEqual(self.make().options('u').permission_mode, 'dontAsk')
+
+    def test_options_model_params(self) -> None:
+        subject = self.make()
+        subject.bundle['prompt']['params'] = {
+            'effort': 'xhigh',
+            'max_tokens': 32000,
+            'prompt_cache_ttl': '1h',
+        }
+        options = subject.options('u')
+        self.assertEqual(options.effort, 'xhigh')
+        self.assertEqual(options.env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'], '32000')
+        self.assertEqual(options.env['ENABLE_PROMPT_CACHING_1H'], '1')
+        self.assertNotIn('FORCE_PROMPT_CACHING_5M', options.env)
+
+    def test_options_ignore_invalid_model_params(self) -> None:
+        subject = self.make()
+        subject.bundle['prompt']['params'] = {
+            'effort': ['high'],
+            'prompt_cache_ttl': {'ttl': '1h'},
+        }
+        options = subject.options('u')
+        self.assertIsNone(options.effort)
+        self.assertNotIn('ENABLE_PROMPT_CACHING_1H', options.env)
+        self.assertNotIn('FORCE_PROMPT_CACHING_5M', options.env)
+        subject.bundle['prompt']['params'] = {'effort': 'ultra'}
+        self.assertIsNone(subject.options('u').effort)
+
+    def test_options_five_minute_cache(self) -> None:
+        subject = self.make()
+        subject.bundle['prompt']['params'] = {'prompt_cache_ttl': '5m'}
+        env = subject.options('u').env
+        self.assertEqual(env['FORCE_PROMPT_CACHING_5M'], '1')
+        self.assertNotIn('ENABLE_PROMPT_CACHING_1H', env)
 
 
 class ModelKeyTestCase(TaskTestCase):

@@ -85,8 +85,10 @@ export function promptVersion(
     labels: ['stable'],
     messages: [{ content: 'Hello', role: 'user' }],
     model: 'claude-sonnet',
+    model_id: 'claude-sonnet-5-5',
     n: 2,
     params: {
+      effort: 'high',
       max_tokens: 8192,
       stop_sequences: ['END'],
       temperature: 0.5,

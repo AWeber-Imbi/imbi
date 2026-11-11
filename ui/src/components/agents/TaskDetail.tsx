@@ -20,9 +20,9 @@ import {
 import { ApiError } from '@/api/client'
 import {
   controlAgentTask,
-  createAgentTask,
   deleteAgentTask,
   reassignAgentTask,
+  retryAgentTask,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,12 +35,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { RichMarkdown } from '@/components/ui/rich-markdown'
+import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { Agent, AgentTask, AgentTaskEvent } from '@/types'
+import type { AgentTask, AgentTaskEvent } from '@/types'
 
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
@@ -96,11 +97,11 @@ export function TaskDetail({
   )
 
   if (task.isLoading) {
-    return <p className="p-6 text-sm text-tertiary">Loading…</p>
+    return <p className="text-tertiary p-6 text-sm">Loading…</p>
   }
   if (!task.data) {
     return (
-      <p className="p-6 text-sm text-secondary" role="alert">
+      <p className="text-secondary p-6 text-sm" role="alert">
         {task.error instanceof ApiError && task.error.status === 404
           ? `No task ${shortId} in this organization.`
           : `Could not load ${shortId}: ${task.error?.message ?? ''}`}
@@ -142,7 +143,7 @@ export function TaskDetail({
     <div className="flex min-h-0 flex-1 flex-col">
       <TaskHeader end={end} events={log} orgSlug={orgSlug} task={t} />
       <div
-        className="flex shrink-0 gap-1 border-b border-tertiary px-4"
+        className="border-tertiary flex shrink-0 gap-1 border-b px-4"
         role="tablist"
       >
         {tabs.map((x) => (
@@ -164,7 +165,7 @@ export function TaskDetail({
           >
             {x.label}
             {x.count !== undefined && (
-              <span className="ml-2 font-mono text-xs text-tertiary tabular-nums">
+              <span className="text-tertiary ml-2 font-mono text-xs tabular-nums">
                 {x.count}
               </span>
             )}
@@ -173,7 +174,7 @@ export function TaskDetail({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {events.error && (
-          <p className="px-6 pt-4 text-sm text-danger" role="alert">
+          <p className="text-danger px-6 pt-4 text-sm" role="alert">
             Could not load the task log: {events.error.message}
           </p>
         )}
@@ -206,7 +207,7 @@ export function TaskDetail({
 
 function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
   return (
-    <span className="flex items-center gap-1.5 text-sm text-secondary">
+    <span className="text-secondary flex items-center gap-1.5 text-sm">
       {icon}
       {children}
     </span>
@@ -272,7 +273,7 @@ function OverviewTab({
   return (
     <div className="flex flex-col gap-4 px-6 py-5">
       <Card className="p-5">
-        <h3 className="mb-4 text-overline text-tertiary uppercase">Details</h3>
+        <h3 className="text-overline text-tertiary mb-4 uppercase">Details</h3>
         <dl className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-3 xl:grid-cols-5">
           {rows.map((row) => (
             <div className="flex min-w-0 flex-col gap-1" key={row.name}>
@@ -287,7 +288,7 @@ function OverviewTab({
         </dl>
       </Card>
       <Card className="overflow-hidden p-0">
-        <div className="flex items-center justify-between border-b border-tertiary px-5 py-3">
+        <div className="border-tertiary flex items-center justify-between border-b px-5 py-3">
           <h3 className="text-overline text-tertiary uppercase">Description</h3>
           <Button
             onClick={() => setRaw((r) => !r)}
@@ -300,7 +301,7 @@ function OverviewTab({
         </div>
         <div className="p-5">
           {raw ? (
-            <pre className="font-mono text-sm wrap-break-word whitespace-pre-wrap text-primary">
+            <pre className="text-primary font-mono text-sm wrap-break-word whitespace-pre-wrap">
               {task.description}
             </pre>
           ) : (
@@ -312,14 +313,14 @@ function OverviewTab({
       </Card>
       {todos && todos.length > 0 && (
         <Card className="p-5">
-          <h3 className="mb-3 text-overline text-tertiary uppercase">Todos</h3>
+          <h3 className="text-overline text-tertiary mb-3 uppercase">Todos</h3>
           <ul className="flex flex-col gap-1">
             {todos.map((todo, i) => (
               <li className="flex items-center gap-2 text-sm" key={i}>
                 {todo.done ? (
-                  <Check className="size-3.5 text-success" />
+                  <Check className="text-success size-3.5" />
                 ) : (
-                  <Circle className="size-3.5 text-tertiary" />
+                  <Circle className="text-tertiary size-3.5" />
                 )}
                 <span className={todo.done ? 'text-secondary' : ''}>
                   {todo.title}
@@ -447,14 +448,14 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
             </Button>
           </form>
           {reassign.error && (
-            <p className="text-xs text-danger" role="alert">
+            <p className="text-danger text-xs" role="alert">
               {errorMessage(reassign.error)}
             </p>
           )}
         </PopoverContent>
       </Popover>
       {error && !open && (
-        <span className="text-xs text-danger" role="alert">
+        <span className="text-danger text-xs" role="alert">
           {errorMessage(error)}
         </span>
       )}
@@ -508,7 +509,7 @@ function TaskDelete({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         title={`Delete ${task.short_id}?`}
       />
       {remove.error && (
-        <span className="text-xs text-danger" role="alert">
+        <span className="text-danger text-xs" role="alert">
           {errorMessage(remove.error)}
         </span>
       )}
@@ -542,9 +543,9 @@ function TaskHeader({
     task.cache_write_tokens
   const phases = phaseTimeline(events, end)
   return (
-    <div className="flex shrink-0 flex-col gap-3 border-b border-tertiary px-6 pt-5 pb-4">
+    <div className="border-tertiary flex shrink-0 flex-col gap-3 border-b px-6 pt-5 pb-4">
       <div className="flex items-start gap-3">
-        <span className="pt-0.5 font-mono text-sm text-tertiary">
+        <span className="text-tertiary pt-0.5 font-mono text-sm">
           {task.short_id}
         </span>
         <h2 className="min-w-0 flex-1 text-lg font-medium text-pretty">
@@ -552,16 +553,14 @@ function TaskHeader({
         </h2>
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         <TaskControls orgSlug={orgSlug} task={task} />
-        {agent?.enabled && (
-          <TaskRetry agent={agent} orgSlug={orgSlug} task={task} />
-        )}
+        <TaskRetry orgSlug={orgSlug} task={task} />
         <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <Fact>
           {agent ? (
             <Link
-              className="font-medium text-primary hover:underline"
+              className="text-primary font-medium hover:underline"
               to={agentsPath('manage', agent.slug)}
             >
               {agent.name}
@@ -569,7 +568,7 @@ function TaskHeader({
           ) : (
             <span className="font-mono text-xs">{task.agent_id}</span>
           )}
-          <span className="font-mono text-xs text-tertiary">
+          <span className="text-tertiary font-mono text-xs">
             v{task.agent_version}
           </span>
         </Fact>
@@ -592,8 +591,8 @@ function TaskHeader({
             {formatElapsed(end - Date.parse(task.created_at))}
           </span>
         </Fact>
-        <span className="flex items-center gap-1.5 font-mono text-sm text-primary tabular-nums">
-          <Coins className="size-3.5 text-secondary" />
+        <span className="text-primary flex items-center gap-1.5 font-mono text-sm tabular-nums">
+          <Coins className="text-secondary size-3.5" />
           {formatTokens(tokens)} tok · {formatMoney(task.cost_total)}
           {task.budget != null && (
             <span className="text-tertiary">
@@ -610,19 +609,19 @@ function TaskHeader({
             return (
               <li className="flex items-center gap-2" key={`${p.at}-${i}`}>
                 {current ? (
-                  <Circle className="size-3.5 text-action" />
+                  <Circle className="text-action size-3.5" />
                 ) : (
-                  <Check className="size-3.5 text-action" />
+                  <Check className="text-action size-3.5" />
                 )}
                 <span
                   className={cn(
                     'text-sm',
-                    current ? 'font-medium text-primary' : 'text-secondary',
+                    current ? 'text-primary font-medium' : 'text-secondary',
                   )}
                 >
                   {p.phase}
                 </span>
-                <span className="font-mono text-xs text-tertiary tabular-nums">
+                <span className="text-tertiary font-mono text-xs tabular-nums">
                   {formatElapsed(p.ms)}
                 </span>
               </li>
@@ -635,60 +634,94 @@ function TaskHeader({
 }
 
 /**
- * Copy a failed task to a new task and open it. Hidden without
+ * Retry a failed task as a new task, with what happened to it and an
+ * optional note, then open the new task. Hidden without
  * `agent_task:create`.
  */
-function TaskRetry({
-  agent,
-  orgSlug,
-  task,
-}: {
-  agent: Agent
-  orgSlug: string
-  task: AgentTask
-}) {
+function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   const canCreate = useHasPermission('agent_task:create', orgSlug)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
   // Keep one key until a retry succeeds, so a repeat after a lost
   // response returns the first copy and does not make a second one.
   const [retryKey, setRetryKey] = useState(() => crypto.randomUUID())
   const retry = useMutation({
     mutationFn: () =>
-      createAgentTask(orgSlug, {
-        agent_slug: agent.slug,
-        description: task.description,
+      retryAgentTask(orgSlug, task.short_id, {
         idempotency_key: retryKey,
-        project_id: task.project_id,
-        title: task.title,
+        note: note.trim() || null,
       }),
     onSuccess: (copy) => {
       setRetryKey(crypto.randomUUID())
+      setOpen(false)
+      setNote('')
       void queryClient.invalidateQueries({
         queryKey: queryKeys.agentTasks(orgSlug),
       })
       navigate(agentsPath('tasks', orgSlug, copy.short_id))
     },
   })
+  // A 400 or 422 means the API did not make the task, so the note
+  // can change. Any other error can come after the task was made.
+  const rejected =
+    retry.error instanceof ApiError &&
+    (retry.error.status === 400 || retry.error.status === 422)
   if (!canCreate || !isFailed(task)) return null
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Button
-        aria-label="Retry task"
-        disabled={retry.isPending}
-        onClick={() => retry.mutate()}
-        size="sm"
-        title="Retry as a new task"
-        variant="outline"
-      >
-        <RotateCcw className="size-4" />
-      </Button>
-      {retry.error && (
-        <span className="text-xs text-danger" role="alert">
-          {errorMessage(retry.error)}
-        </span>
-      )}
-    </div>
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label="Retry task"
+          size="sm"
+          title="Retry as a new task"
+          variant="outline"
+        >
+          <RotateCcw className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="flex w-96 flex-col gap-3">
+        <p className="text-secondary text-sm">
+          Imbi makes a new task with the same agent and description, and adds
+          the outcome and the last agent message of {task.short_id}.
+        </p>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            retry.mutate()
+          }}
+        >
+          <Textarea
+            aria-label="Note for the retry"
+            maxLength={64 * 1024}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What should the agent do differently? (optional)"
+            // A failed retry can still have made the task, and a repeat
+            // with the same key returns it unchanged, so lock the note.
+            // Also lock it while the request runs.
+            readOnly={retry.isPending || (retry.isError && !rejected)}
+            rows={4}
+            value={note}
+          />
+          <Button
+            className="self-end"
+            disabled={retry.isPending}
+            size="sm"
+            type="submit"
+          >
+            Retry
+          </Button>
+        </form>
+        {retry.error && (
+          <p className="text-danger text-xs" role="alert">
+            {errorMessage(retry.error)}
+            {rejected ? '' : ' Retry again to send the same note.'}
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 

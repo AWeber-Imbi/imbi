@@ -513,6 +513,33 @@ def _extra_ca() -> dict[str, str]:
     return {'NODE_EXTRA_CA_CERTS': path} if path else {}
 
 
+_CACHE_TTL_ENV = {
+    '1h': 'ENABLE_PROMPT_CACHING_1H',
+    '5m': 'FORCE_PROMPT_CACHING_5M',
+}
+
+
+def _model_env(params: Body) -> dict[str, str]:
+    """The CLI settings for the prompt version's model parameters."""
+    env: dict[str, str] = {}
+    if params.get('max_tokens'):
+        env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(params['max_tokens'])
+    ttl = params.get('prompt_cache_ttl')
+    flag = _CACHE_TTL_ENV.get(ttl) if isinstance(ttl, str) else None
+    if flag:
+        env[flag] = '1'
+    return env
+
+
+_EFFORT_LEVELS: tuple[str, ...] = typing.get_args(sdk.EffortLevel)
+
+
+def _effort(params: Body) -> sdk.EffortLevel | None:
+    """The prompt version's effort level, or None when it is not one."""
+    effort = params.get('effort')
+    return effort if effort in _EFFORT_LEVELS else None
+
+
 def _json(path: pathlib.Path) -> Body:
     try:
         document = json.loads(path.read_text(encoding='utf-8'))
@@ -1449,6 +1476,7 @@ class TaskRun:
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
         allowed, denied = self.tools()
         prompt: Body = self.bundle.get('prompt') or {}
+        params: Body = prompt.get('params') or {}
         server = sdk.create_sdk_mcp_server(
             'imbi',
             tools=[
@@ -1478,6 +1506,7 @@ class TaskRun:
                 # agent-cli sets TMPDIR from this: glibc secure mode
                 # removes TMPDIR.
                 'HARNESS_TMPDIR': str(self.home / 'tmp'),
+                **_model_env(params),
                 **_extra_ca(),
                 **self.proxy_env,
             },
@@ -1522,6 +1551,7 @@ class TaskRun:
             ],
             model=prompt.get('model_id') or self.model,
             thinking={'type': 'adaptive', 'display': 'summarized'},
+            effort=_effort(params),
             # The SDK default (1 MiB) fails the task on one large message.
             max_buffer_size=SDK_BUFFER,
             stderr=_cli_stderr,
