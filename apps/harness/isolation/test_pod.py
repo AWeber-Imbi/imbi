@@ -459,7 +459,6 @@ class HandleTests(unittest.TestCase):
                 'context': {
                     'task_id': task_id or resolution['task_id'],
                     'agent_id': resolution['agent_id'],
-                    'project_id': resolution['project_id'],
                 },
                 'secrets': [
                     {
