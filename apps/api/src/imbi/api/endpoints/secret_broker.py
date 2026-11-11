@@ -765,11 +765,12 @@ async def _mark_key(
         )
     except pydantic.ValidationError as err:
         raise _invalid(str(err), 'provider_key_mismatch') from None
-    await secrets.update(
-        'bindings',
+    # A concurrent save can mark the key first. The store then writes
+    # nothing, and check_locator refuses a binding for another App.
+    await secrets.mark_provider_key(
         org_id,
         key['id'],
-        {'provider_key_usage': usage.model_dump(mode='json')},
+        usage.model_dump(mode='json'),
         event=_event('secret_binding_updated', auth, 'binding_id'),
     )
 
@@ -786,21 +787,14 @@ async def _add_consumer(
     if provider is None:  # pragma: no cover - the foreign key keeps it
         return
     key = await _key_binding(secrets, org_id, provider, binding['locator'])
-    if key is None or not (usage := key['provider_key_usage']):
+    if key is None or not key['provider_key_usage']:
         return
-    consumers: list[str] = usage.get('consumers', [])
-    if (
-        str(binding['id']) in consumers
-        or usage.get('host') != _host(provider)
-        or usage.get('app_id') != binding['locator'].get('app_id')
-    ):
-        return
-    consumers = [*consumers, str(binding['id'])]
-    await secrets.update(
-        'bindings',
+    await secrets.add_provider_key_consumer(
         org_id,
         key['id'],
-        {'provider_key_usage': usage | {'consumers': consumers}},
+        binding['id'],
+        host=_host(provider),
+        app_id=str(binding['locator'].get('app_id')),
         event=_event('secret_binding_updated', auth, 'binding_id'),
     )
 

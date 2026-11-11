@@ -402,7 +402,8 @@ export function BindingDialog({
               </legend>
               <p className="text-secondary text-xs">
                 Leave empty for a new key: the first github_app binding that
-                names it fills this in.
+                names it fills this in. This does not occur when a grant names
+                the key, so do not add the key to a grant first.
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <Field

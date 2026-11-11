@@ -576,6 +576,41 @@ class SecretEndpointTestCase(
             len(response_key.json()['provider_key_usage']['consumers']), 2
         )
 
+    async def test_provider_key_writes_are_atomic(self) -> None:
+        """A second mark writes nothing, and each consumer append keeps
+        the consumers that are already there."""
+        key_id = self.binding['id']
+        usage = {'host': 'github.com', 'app_id': '7', 'consumers': []}
+        # A key that a grant names is not marked.
+        self.assertIsNone(
+            await self.store.mark_provider_key(self.org, key_id, usage)
+        )
+        await self.store.delete('grants', self.org, self.grant['id'])
+        self.assertIsNotNone(
+            await self.store.mark_provider_key(self.org, key_id, usage)
+        )
+        self.assertIsNone(
+            await self.store.mark_provider_key(
+                self.org, key_id, usage | {'app_id': '8'}
+            )
+        )
+        first, second = uuid.uuid4(), uuid.uuid4()
+        for consumer in (first, second, first):
+            await self.store.add_provider_key_consumer(
+                self.org, key_id, consumer, host='github.com', app_id='7'
+            )
+        self.assertIsNone(
+            await self.store.add_provider_key_consumer(
+                self.org, key_id, uuid.uuid4(), host='github.com', app_id='8'
+            )
+        )
+        row = await self.store.get('bindings', self.org, key_id)
+        assert row is not None
+        self.assertEqual(
+            row['provider_key_usage'],
+            usage | {'consumers': [str(first), str(second)]},
+        )
+
     async def test_patch_provider_key_mark(self) -> None:
         """A key stays static while marked; an explicit null clears the
         mark, and an omitted field keeps it."""

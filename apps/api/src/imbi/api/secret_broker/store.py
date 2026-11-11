@@ -115,6 +115,79 @@ class SecretStore:
         """Whether a grant names the binding."""
         return bool(await self._all(_GRANTED, (binding_id,)))
 
+    async def _write_one(
+        self, query: str, params: typing.Any, event: AuditEvent | None
+    ) -> Row | None:
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(query, params)  # pyright: ignore[reportArgumentType]
+            row = await cur.fetchone()
+            await _audit(conn, event, row)
+            return row
+
+    async def mark_provider_key(
+        self,
+        organization_id: str,
+        binding_id: uuid.UUID,
+        usage: Row,
+        *,
+        event: AuditEvent | None = None,
+    ) -> Row | None:
+        """Set ``provider_key_usage`` of a key binding that has none and
+        that no grant names. One statement does the check and the
+        write, so of two concurrent marks only the first applies.
+        Return the row, or ``None`` when the mark was not written.
+        """
+        return await self._write_one(
+            'UPDATE secrets.bindings SET provider_key_usage = %s,'
+            ' updated_at = NOW()'
+            ' WHERE organization_id = %s AND id = %s'
+            ' AND provider_key_usage IS NULL'
+            ' AND NOT EXISTS (SELECT 1 FROM secrets.grants'
+            ' WHERE bindings.id = ANY(binding_ids)) RETURNING *',
+            (pg_json.Jsonb(usage), organization_id, binding_id),
+            event,
+        )
+
+    async def add_provider_key_consumer(
+        self,
+        organization_id: str,
+        binding_id: uuid.UUID,
+        consumer: uuid.UUID,
+        *,
+        host: str,
+        app_id: str,
+        event: AuditEvent | None = None,
+    ) -> Row | None:
+        """Append ``consumer`` to the consumers of a key binding marked
+        for ``host`` and ``app_id``. The append is one statement on the
+        stored value, so concurrent appends do not lose a consumer.
+        Return the row, or ``None`` when nothing changed.
+        """
+        return await self._write_one(
+            'UPDATE secrets.bindings SET provider_key_usage ='
+            " jsonb_set(provider_key_usage, '{consumers}',"
+            " COALESCE(provider_key_usage->'consumers', '[]')"
+            ' || to_jsonb(%s::text)), updated_at = NOW()'
+            ' WHERE organization_id = %s AND id = %s'
+            " AND provider_key_usage->>'host' = %s"
+            " AND provider_key_usage->>'app_id' = %s"
+            " AND NOT COALESCE(provider_key_usage->'consumers', '[]') ? %s"
+            ' RETURNING *',
+            (
+                str(consumer),
+                organization_id,
+                binding_id,
+                host,
+                app_id,
+                str(consumer),
+            ),
+            event,
+        )
+
     async def create(
         self,
         table: Table,
