@@ -160,6 +160,7 @@ items:
             - {name: work, mountPath: /work}
             - {name: executor-socket, mountPath: /run/executor}
             - {name: executor-credentials, mountPath: /run/creds}
+            - {name: plugins, mountPath: /run/plugins, readOnly: true}
       volumes:
         - name: work
           emptyDir: {}

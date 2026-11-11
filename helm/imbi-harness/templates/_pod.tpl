@@ -37,6 +37,8 @@ capabilities:
     - {name: work, mountPath: /work}
     - {name: executor-socket, mountPath: /run/executor}
     - {name: executor-credentials, mountPath: /run/creds}
+    # A run_with_secret command can run a published plugin script.
+    - {name: plugins, mountPath: /run/plugins, readOnly: true}
 {{- end }}
 
 {{- define "imbi-harness.podSpec" -}}

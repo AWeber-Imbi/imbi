@@ -1178,6 +1178,8 @@ class SettingsInjectionTests(unittest.TestCase):
             'home/.claude.json',
         ):
             self.assertIn(f'OK {name}', result)
+        self.assertIn('OK plugin-found', result)
+        self.assertNotIn('FAIL plugin-found', result)
         for name in ('plugin-hooks', 'plugin-mcp', 'plugin-rename'):
             self.assertIn(f'FAIL {name}', result)
             self.assertNotIn(f'OK {name}', result)

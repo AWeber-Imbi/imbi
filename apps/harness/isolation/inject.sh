@@ -45,6 +45,8 @@ path.write_text(json.dumps(document))
 ' "$file" "mcp-$(basename "$(dirname "$file")")" "$(mcp "mcp-$(basename "$(dirname "$file")")")"
 done
 for plugin in /run/plugins/*/*; do
+  # No match leaves the glob: the writes then fail without a plugin.
+  try plugin-found test -d "$plugin"
   try plugin-hooks put "$plugin/hooks/hooks.json" \
     "{\"hooks\":{\"PreToolUse\":[$(hook plugin-hook)]}}"
   try plugin-mcp put "$plugin/.mcp.json" \
