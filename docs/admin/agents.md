@@ -96,9 +96,13 @@ fields:
 
 | Field | What it does |
 |---|---|
-| LLM provider | Filters the model list by provider |
+| LLM provider | Filters the model list by provider. Changing it clears the model |
 | Model | An enabled generative model from [AI Models](ai-models.md). The list shows the context window and the price |
-| Max tokens, Extended thinking, Prompt caching, Temperature, Top K, Top P | Click **Show advanced controls**. A parameter that is off is not set, and the provider default applies |
+| Effort | Claude models only: `Low`, `Medium`, `High`, `Extra high`, or `Max`. Higher effort makes the model think more and use more tokens. A Claude model starts at `Medium`, and an agent with a Claude model always saves an effort level |
+| Max tokens, Prompt caching | Click **Show advanced controls**. A parameter that is off is not set, and the provider default applies |
+
+Agents expect Claude 5 models or later. A Claude 4 model can reject some
+effort levels.
 
 ### Tools and plugins
 

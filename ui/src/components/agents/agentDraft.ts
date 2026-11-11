@@ -46,20 +46,22 @@ export type KeptSettings = Partial<
   >
 >
 
-export type ParamKey =
-  | 'maxTokens'
-  | 'promptCaching'
-  | 'temperature'
-  | 'thinking'
-  | 'topK'
-  | 'topP'
+export type ParamKey = 'maxTokens' | 'promptCaching'
 
 export interface ParamState {
   on: boolean
   value: string
 }
 
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+
+export type Effort = (typeof EFFORT_LEVELS)[number]
+
+export const DEFAULT_EFFORT: Effort = 'medium'
+
 export interface PromptDraft {
+  /** Set for a Claude model, null for any other model. */
+  effort: Effort | null
   model: null | string
   params: Record<ParamKey, ParamState>
   system: string
@@ -92,32 +94,26 @@ export interface SettingsDraft {
 export const AGENT_PROMPT_NAMESPACE = 'agents'
 export const AGENT_PROMPT_LABEL = 'stable'
 
-// The prompt version `params` key for each editor control. `max_tokens`,
-// `temperature`, and `top_p` are PromptParams fields. The others are
-// pass-through keys: PromptParams accepts extra keys.
+// The prompt version `params` key for each editor control. `max_tokens`
+// is a PromptParams field. The others are pass-through keys: PromptParams
+// accepts extra keys.
 export const PARAM_FIELDS: Record<ParamKey, string> = {
   maxTokens: 'max_tokens',
   promptCaching: 'prompt_cache_ttl',
-  temperature: 'temperature',
-  thinking: 'thinking_budget',
-  topK: 'top_k',
-  topP: 'top_p',
 }
 
-// The select value for "Off" (Radix Select cannot use an empty value).
-export const PARAM_OFF = 'off'
+const EFFORT_FIELD = 'effort'
 
-const INTEGER_PARAMS = new Set<ParamKey>(['maxTokens', 'thinking', 'topK'])
-const NUMBER_PARAMS = new Set<ParamKey>(['temperature', 'topP'])
+// Keys that earlier versions of the editor wrote. The agent runtime
+// cannot send them, so a save removes them.
+const RETIRED_FIELDS = ['temperature', 'thinking_budget', 'top_k', 'top_p']
+
+const INTEGER_PARAMS = new Set<ParamKey>(['maxTokens'])
 
 // The value a control shows when it is first switched on.
 const PARAM_DEFAULTS: Record<ParamKey, string> = {
   maxTokens: '8192',
   promptCaching: '5m',
-  temperature: '1',
-  thinking: '4096',
-  topK: '40',
-  topP: '1',
 }
 
 export const SLA_OPTIONS: { label: string; value: ResponseSla }[] = [
@@ -154,11 +150,9 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
     errors.githubAppBinding = 'Use secret://<scope>/<path>'
   for (const key of Object.keys(PARAM_FIELDS) as ParamKey[]) {
     const p = draft.prompt.params[key]
-    if (!p.on || p.value === PARAM_OFF) continue
+    if (!p.on) continue
     if (INTEGER_PARAMS.has(key) && !/^[1-9]\d*$/.test(p.value))
       errors[`param.${key}`] = 'Enter a whole number above 0'
-    if (NUMBER_PARAMS.has(key) && !Number.isFinite(Number(p.value)))
-      errors[`param.${key}`] = 'Enter a number'
   }
   return errors
 }
@@ -272,6 +266,11 @@ export function formatMoney(value: number | string, maxDigits = 2): string {
   })}`
 }
 
+/** Whether a catalog `model_id` names a Claude model, which takes effort. */
+export function isClaudeModel(modelId: null | string | undefined): boolean {
+  return /claude/i.test(modelId ?? '')
+}
+
 export function isPromptChanged(
   draft: PromptDraft,
   baseline: null | PromptVersion,
@@ -280,6 +279,7 @@ export function isPromptChanged(
   return (
     draft.system !== before.system ||
     (draft.model ?? null) !== (before.model ?? null) ||
+    draft.effort !== storedEffort(baseline) ||
     JSON.stringify(managedParams(draft.params)) !==
       JSON.stringify(managedParams(before.params))
   )
@@ -292,11 +292,8 @@ export function managedParams(
   const out: Record<string, number | string> = {}
   for (const key of Object.keys(PARAM_FIELDS).sort() as ParamKey[]) {
     const p = params[key]
-    if (!p.on || p.value.trim() === '' || p.value === PARAM_OFF) continue
-    out[PARAM_FIELDS[key]] =
-      INTEGER_PARAMS.has(key) || NUMBER_PARAMS.has(key)
-        ? Number(p.value)
-        : p.value
+    if (!p.on || p.value.trim() === '') continue
+    out[PARAM_FIELDS[key]] = INTEGER_PARAMS.has(key) ? Number(p.value) : p.value
   }
   return out
 }
@@ -363,6 +360,9 @@ export function promptDraftFromVersion(
         : { on: true, value: String(stored) }
   }
   return {
+    effort: isClaudeModel(version?.model_id)
+      ? (storedEffort(version) ?? DEFAULT_EFFORT)
+      : null,
     model: version?.model ?? null,
     params,
     system: version?.system ?? '',
@@ -405,10 +405,16 @@ export function promptVersionBody(
   summary: string,
 ): PromptVersionCreate {
   const kept = { ...(baseline?.params ?? {}) } as Record<string, unknown>
-  for (const field of Object.values(PARAM_FIELDS)) delete kept[field]
+  for (const field of [
+    ...Object.values(PARAM_FIELDS),
+    EFFORT_FIELD,
+    ...RETIRED_FIELDS,
+  ])
+    delete kept[field]
   const params = {
     ...kept,
     ...managedParams(draft.params),
+    ...(draft.effort ? { [EFFORT_FIELD]: draft.effort } : {}),
     stop_sequences: baseline?.params?.stop_sequences ?? [],
   } as PromptParams
   return {
@@ -527,4 +533,12 @@ export function versionSummary(
 
 export function wordCount(text: string): number {
   return text.split(/\s+/).filter(Boolean).length
+}
+
+/** The effort level that a prompt version stores, if it is valid. */
+function storedEffort(version: null | PromptVersion): Effort | null {
+  const value = (version?.params as Record<string, unknown> | undefined)?.[
+    EFFORT_FIELD
+  ]
+  return EFFORT_LEVELS.find((level) => level === value) ?? null
 }

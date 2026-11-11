@@ -85,11 +85,11 @@ describe('saveAgent', () => {
     expect(body.model).toBe('claude-sonnet')
     // Content that the agent editor does not show is kept.
     expect(body.messages).toEqual(baseline.messages)
+    // Retired sampling keys are dropped.
     expect(body.params).toEqual({
+      effort: 'high',
       max_tokens: 8192,
       stop_sequences: ['END'],
-      temperature: 0.5,
-      top_k: 40,
     })
     const [, agentSlug, doc] = vi.mocked(endpoints.updateAgent).mock.calls[0]
     expect(agentSlug).toBe('mender')
@@ -125,22 +125,31 @@ describe('saveAgent', () => {
     const existing = agent()
     const baseline = promptVersion()
     const draft = draftFromAgent(existing, baseline)
-    draft.prompt.params.thinking = { on: true, value: '16384' }
+    draft.prompt.effort = 'max'
     draft.prompt.params.promptCaching = { on: true, value: '1h' }
-    draft.prompt.params.topP = { on: true, value: '0.95' }
-    draft.prompt.params.temperature = { on: false, value: '0.5' }
 
     await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
 
     const body = vi.mocked(endpoints.createPromptVersion).mock.calls[0][2]
     expect(body.params).toEqual({
+      effort: 'max',
       max_tokens: 8192,
       prompt_cache_ttl: '1h',
       stop_sequences: ['END'],
-      thinking_budget: 16384,
-      top_k: 40,
-      top_p: 0.95,
     })
+  })
+
+  it('stores no effort for a model that is not Claude', async () => {
+    const existing = agent()
+    const baseline = promptVersion()
+    const draft = draftFromAgent(existing, baseline)
+    draft.prompt.effort = null
+    draft.prompt.model = 'gpt'
+
+    await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
+
+    const body = vi.mocked(endpoints.createPromptVersion).mock.calls[0][2]
+    expect(body.params).toEqual({ max_tokens: 8192, stop_sequences: ['END'] })
   })
 
   it('skips the prompt when only agent fields change', async () => {

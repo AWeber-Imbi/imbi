@@ -26,14 +26,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { AIModel } from '@/types'
 
 import {
-  PARAM_OFF,
+  DEFAULT_EFFORT,
+  type Effort,
+  EFFORT_LEVELS,
+  isClaudeModel,
   type ParamKey,
   type ParamState,
   type PromptDraft,
@@ -48,25 +50,20 @@ interface ModelTabProps {
 type ParamControl =
   | { kind: 'field'; placeholder: string }
   | { kind: 'select'; options: { label: string; value: string }[] }
-  | { kind: 'slider'; step: number }
+
+const EFFORT_LABELS: Record<Effort, string> = {
+  high: 'High',
+  low: 'Low',
+  max: 'Max',
+  medium: 'Medium',
+  xhigh: 'Extra high',
+}
 
 const PARAMS: { control: ParamControl; key: ParamKey; label: string }[] = [
   {
     control: { kind: 'field', placeholder: '8192' },
     key: 'maxTokens',
     label: 'Max tokens',
-  },
-  {
-    control: {
-      kind: 'select',
-      options: [
-        { label: 'Off', value: PARAM_OFF },
-        { label: '4,096 budget', value: '4096' },
-        { label: '16,384 budget', value: '16384' },
-      ],
-    },
-    key: 'thinking',
-    label: 'Extended thinking',
   },
   {
     control: {
@@ -79,17 +76,6 @@ const PARAMS: { control: ParamControl; key: ParamKey; label: string }[] = [
     key: 'promptCaching',
     label: 'Prompt caching',
   },
-  {
-    control: { kind: 'slider', step: 0.1 },
-    key: 'temperature',
-    label: 'Temperature',
-  },
-  {
-    control: { kind: 'field', placeholder: '40' },
-    key: 'topK',
-    label: 'Top K',
-  },
-  { control: { kind: 'slider', step: 0.05 }, key: 'topP', label: 'Top P' },
 ]
 
 /**
@@ -127,6 +113,23 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
       params: { ...value.params, [key]: { ...value.params[key], ...patch } },
     })
 
+  const selectProvider = (next: string) => {
+    setProvider(next)
+    if (selected && selected.provider_name !== next)
+      onChange({ ...value, effort: null, model: null })
+  }
+
+  const selectModel = (slug: null | string) => {
+    const model = models.find((m) => m.slug === slug)
+    onChange({
+      ...value,
+      effort: isClaudeModel(model?.model_id)
+        ? (value.effort ?? DEFAULT_EFFORT)
+        : null,
+      model: slug,
+    })
+  }
+
   return (
     <div className="flex max-w-180 flex-col gap-4">
       <div>
@@ -136,7 +139,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
         >
           LLM provider
         </Label>
-        <Select onValueChange={setProvider} value={activeProvider}>
+        <Select onValueChange={selectProvider} value={activeProvider}>
           <SelectTrigger id="agent-provider">
             <SelectValue placeholder="No providers in the catalog" />
           </SelectTrigger>
@@ -154,7 +157,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
         <Label className="text-secondary mb-1.5 block text-sm">Model</Label>
         <ModelPicker
           models={models.filter((m) => m.provider_name === activeProvider)}
-          onChange={(model) => onChange({ ...value, model })}
+          onChange={selectModel}
           selected={selected}
           value={value.model}
         />
@@ -163,6 +166,38 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
           models in the AI Models catalog.
         </p>
       </div>
+
+      {value.effort && (
+        <div>
+          <Label
+            className="text-secondary mb-1.5 block text-sm"
+            htmlFor="agent-effort"
+          >
+            Effort
+          </Label>
+          <Select
+            onValueChange={(effort) =>
+              onChange({ ...value, effort: effort as Effort })
+            }
+            value={value.effort}
+          >
+            <SelectTrigger id="agent-effort">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EFFORT_LEVELS.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {EFFORT_LABELS[level]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-tertiary mt-1.5 text-xs">
+            How much the model thinks before it answers and acts. Higher effort
+            uses more tokens.
+          </p>
+        </div>
+      )}
 
       <div className="flex">
         <button
@@ -382,25 +417,6 @@ function ParamRow({
               ))}
             </SelectContent>
           </Select>
-        )}
-        {control.kind === 'slider' && (
-          <div className="flex items-center gap-3">
-            <Slider
-              aria-label={label}
-              className="flex-1"
-              disabled={disabled}
-              max={1}
-              min={0}
-              onValueChange={([v]) =>
-                onChange({ value: String(Math.round(v * 100) / 100) })
-              }
-              step={control.step}
-              value={[Number(state.value) || 0]}
-            />
-            <span className="border-input bg-card flex h-9 w-16.5 items-center rounded-md border px-2 font-mono text-sm tabular-nums">
-              {state.value}
-            </span>
-          </div>
         )}
       </div>
       {error && (

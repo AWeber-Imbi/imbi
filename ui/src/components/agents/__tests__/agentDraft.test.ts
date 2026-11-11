@@ -19,16 +19,40 @@ describe('agentDraft', () => {
   it('reads the prompt params into switched-on controls', () => {
     const draft = draftFromAgent(agent(), promptVersion())
     expect(draft.prompt.params.maxTokens).toEqual({ on: true, value: '8192' })
-    expect(draft.prompt.params.topK).toEqual({ on: true, value: '40' })
-    expect(draft.prompt.params.topP.on).toBe(false)
+    expect(draft.prompt.params.promptCaching.on).toBe(false)
+    expect(draft.prompt.effort).toBe('high')
     expect(draft.prompt.model).toBe('claude-sonnet')
     expect(isPromptChanged(draft.prompt, promptVersion())).toBe(false)
   })
 
   it('treats a switched-off control as a change', () => {
     const draft = draftFromAgent(agent(), promptVersion())
-    draft.prompt.params.topK = { on: false, value: '40' }
+    draft.prompt.params.maxTokens = { on: false, value: '8192' }
     expect(isPromptChanged(draft.prompt, promptVersion())).toBe(true)
+  })
+
+  it('gives a Claude model with no stored effort medium, as a change', () => {
+    const version = promptVersion({ params: { max_tokens: 8192 } })
+    const draft = draftFromAgent(agent(), version)
+    expect(draft.prompt.effort).toBe('medium')
+    expect(isPromptChanged(draft.prompt, version)).toBe(true)
+  })
+
+  it('gives a model that is not Claude no effort', () => {
+    const version = promptVersion({ model_id: 'gpt-5', params: {} })
+    const draft = draftFromAgent(agent(), version)
+    expect(draft.prompt.effort).toBeNull()
+    expect(isPromptChanged(draft.prompt, version)).toBe(false)
+  })
+
+  it('drops a stored effort for a model that is not Claude', () => {
+    const version = promptVersion({
+      model_id: 'gpt-5',
+      params: { effort: 'high' },
+    })
+    const draft = draftFromAgent(agent(), version)
+    expect(draft.prompt.effort).toBeNull()
+    expect(isPromptChanged(draft.prompt, version)).toBe(true)
   })
 
   it('round-trips the settings', () => {
