@@ -1349,6 +1349,7 @@ class PermissionTests(AgentTaskTestCase):
             ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
             ('agent_task:manage', 'POST', 'T-1/acknowledge', None),
             ('agent_task:create', 'POST', 'T-1/retry', {}),
+            ('agent_task:read', 'POST', 'T-1/retry', {}),
             ('agent_task:delete', 'DELETE', 'T-1', None),
             (
                 'agent_task:resolve',

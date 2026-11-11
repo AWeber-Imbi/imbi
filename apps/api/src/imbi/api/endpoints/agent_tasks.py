@@ -1312,16 +1312,20 @@ async def retry_agent_task(
 
     The new task has the agent, title, and project of the closed task.
     Its description adds what happened to the closed task, and the note
-    of the person. The closed task does not change.
+    of the person. The closed task does not change. The caller also
+    needs ``agent_task:read``, because the new description shows the
+    log of the closed task.
 
     Raises:
-        403: The caller is not a person, or not a member of the org.
+        403: The caller is not a person, not a member of the org, or
+            cannot read tasks.
         404: No such task.
         409: The task is not closed, or its agent is disabled.
         422: The agent or the project is no longer in the org.
 
     """
     user = auth.require_user
+    await _require_read(auth)
     task = await _get_task(store, org_id, short_id)
     if task['status'] != 'closed':
         raise fastapi.HTTPException(
