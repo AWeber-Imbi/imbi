@@ -26,7 +26,10 @@ from imbi.api.blueprint_compliance import (
     BLUEPRINT_PLUGIN_ID,
     BLUEPRINT_PLUGIN_SLUG,
     check_blueprint_compliance,
+    fetch_project_props,
     remediate_blueprint,
+    set_project_facts,
+    validate_project_facts,
 )
 from imbi.api.endpoints._helpers import (
     linked_identifier_resolver,
@@ -55,11 +58,9 @@ from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
-    LinkWriteback,
     PluginContext,
     RemediationOffer,
     RemediationResult,
-    ServiceWriteback,
 )
 from imbi.common.plugins.errors import PluginRemediationNotSupported
 
@@ -116,6 +117,7 @@ async def _build_context(
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
     service_connections = await lookup_project_exists_in(db, project_id)
     dependencies = await lookup_project_dependencies(db, project_id)
+    project_facts = await fetch_project_props(db, project_id)
     return PluginContext(
         project_id=project_id,
         project_slug=project_slug,
@@ -125,6 +127,7 @@ async def _build_context(
         integration_options=resolved.integration_options,
         capability_options=resolved.capability_options,
         project_links=project_links,
+        project_facts=project_facts,
         project_type_slugs=project_type_slugs,
         integration_slug=resolved.integration_slug,
         service_connections=service_connections,
@@ -633,18 +636,15 @@ async def _remediate_one(
     ctx = await _build_context(db, org_slug, project_id, resolved)
     ctx = await _hydrate_identity_optional(db, resolved, ctx, auth)
     handler = _handler(resolved)
-    captured_service: list[ServiceWriteback] = []
-    captured_link: list[LinkWriteback] = []
+    # The context of the last call carries the plugin's write-backs.
+    called: list[PluginContext] = []
 
     async def _do(c: PluginContext) -> RemediationResult:
         creds = await _resolve_credentials(resolved, c)
         res = await call_with_timeout(
             handler.remediate(c, creds, remediation_id)
         )
-        if c.service_writeback is not None:
-            captured_service.append(c.service_writeback)
-        if c.link_writeback is not None:
-            captured_link.append(c.link_writeback)
+        called.append(c)
         return res
 
     try:
@@ -663,19 +663,50 @@ async def _remediate_one(
             ),
         ) from exc
 
-    if captured_service:
-        refusal = await persist_service_writeback(
-            db,
-            ctx.model_copy(update={'service_writeback': captured_service[-1]}),
-            auth,
-        )
+    if called:
+        refusal = await _persist_writebacks(db, called[-1], auth)
         if refusal is not None:
             return RemediationResult(status='failed', message=refusal)
-    if captured_link:
-        await persist_link_writeback(
-            db, ctx.model_copy(update={'link_writeback': captured_link[-1]})
-        )
     return result
+
+
+async def _persist_writebacks(
+    db: graph.Graph, ctx: PluginContext, auth: permissions.AuthContext
+) -> str | None:
+    """Persist the write-backs a remediation set on ``ctx``.
+
+    Returns a refusal message when a write-back was refused. The facts
+    are validated first and a refused write-back stops the rest, so
+    nothing is half-applied.
+    """
+    type_slugs: list[str] = []
+    if ctx.fact_writeback is not None:
+        type_slugs = await lookup_project_type_slugs(db, ctx.project_id)
+        refusal = await validate_project_facts(
+            db, type_slugs, ctx.fact_writeback
+        )
+        if refusal is not None:
+            return refusal
+    if ctx.service_writeback is not None:
+        refusal = await persist_service_writeback(db, ctx, auth)
+        if refusal is not None:
+            return refusal
+    if ctx.link_writeback is not None:
+        await persist_link_writeback(db, ctx)
+    if ctx.fact_writeback is not None:
+        refusal = await set_project_facts(
+            db, ctx.project_id, type_slugs, ctx.fact_writeback
+        )
+        if refusal is not None:
+            return refusal
+        # A fact can flip a condition policy on a dependent project, as
+        # the project PATCH does for a changed attribute.
+        try:
+            client = common_valkey.get_client()
+        except RuntimeError:
+            client = None
+        await score_queue.enqueue_dependents(client, db, ctx.project_id)
+    return None
 
 
 @project_analysis_router.post('/remediate', response_model=RemediateResponse)

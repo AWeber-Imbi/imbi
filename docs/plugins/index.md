@@ -11,6 +11,7 @@ how to configure an integration of it, and what its Doctor checks.
 | [Logz.io](logzio.md) | `logzio` | Log search on the project **Logs** tab |
 | [OIDC](oidc.md) | `oidc` | Sign in with any OpenID Connect provider |
 | [PagerDuty](pagerduty.md) | `pagerduty` | One PagerDuty service for each project, incidents, escalation policy, and service dependency sync |
+| [Sentry](sentry.md) | `sentry` | Sentry projects for new projects, issue-count facts, and Doctor checks |
 | [SonarQube](sonarqube.md) | `sonarqube` | Project facts from SonarQube measures, and component Doctor checks |
 
 To enable a plugin and add an integration, see

@@ -48,7 +48,7 @@ integration. A project-scoped capability applies to projects, as
 
 Plugins are installed with the server. You cannot install or remove a
 plugin from the UI. The Imbi distribution includes these plugins:
-`aws`, `github`, `google`, `logzio`, `oidc`, `pagerduty`, and `sonarqube`.
+`aws`, `github`, `google`, `logzio`, `oidc`, `pagerduty`, `sentry`, and `sonarqube`.
 
 A plugin that Imbi finds for the first time is **disabled**. Enable it
 before you make an integration of it.

@@ -34,6 +34,7 @@ dependencies = [
   "imbi-plugin-oidc==2.45.0",
   "imbi-plugin-openai==2.45.0",
   "imbi-plugin-pagerduty==2.45.0",
+  "imbi-plugin-sentry==2.45.0",
   "imbi-plugin-sonarqube==2.45.0",
   "imbi-scheduler==2.45.0",
   "imbi-slackbot==2.45.0",
@@ -118,9 +119,10 @@ files = [
   "plugins/oidc/src",
   "plugins/openai/src",
   "plugins/pagerduty/src",
+  "plugins/sentry/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/anthropic/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/openai/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/harness/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:apps/workflows/src:plugins/anthropic/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/openai/src:plugins/pagerduty/src:plugins/sentry/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -166,6 +168,7 @@ extraPaths = [
   "plugins/oidc/src",
   "plugins/openai/src",
   "plugins/pagerduty/src",
+  "plugins/sentry/src",
   "plugins/sonarqube/src",
 ]
 exclude = [
@@ -578,6 +581,31 @@ reportUnknownVariableType = "none"
 reportUnusedFunction = "none"
 
 [[tool.pyright.executionEnvironments]]
+root = "plugins/sentry/tests"
+extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[[tool.pyright.executionEnvironments]]
 root = "plugins/sonarqube/tests"
 extraPaths = ["."]
 reportUnnecessaryIsInstance = "none"
@@ -826,6 +854,7 @@ imbi-plugin-logzio = { workspace = true }
 imbi-plugin-oidc = { workspace = true }
 imbi-plugin-openai = { workspace = true }
 imbi-plugin-pagerduty = { workspace = true }
+imbi-plugin-sentry = { workspace = true }
 imbi-plugin-sonarqube = { workspace = true }
 
 [[tool.uv.index]]

@@ -93,6 +93,7 @@ class _RemediablePlugin(AnalysisCapability):
             identifier='42',
             canonical_url='https://api.github.com/repositories/42',
         )
+        ctx.fact_writeback = {'open_issues': 3}
         return RemediationResult(
             status='fixed', message=f'fixed {remediation_id}'
         )
@@ -227,6 +228,18 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         )
         self.mocks['persist_link_writeback'] = self._start(
             mock.patch(f'{_MODULE}.persist_link_writeback')
+        )
+        self.mocks['fetch_project_props'] = self._start(
+            mock.patch(f'{_MODULE}.fetch_project_props', return_value={})
+        )
+        self.mocks['set_project_facts'] = self._start(
+            mock.patch(f'{_MODULE}.set_project_facts', return_value=None)
+        )
+        self.mocks['validate_project_facts'] = self._start(
+            mock.patch(f'{_MODULE}.validate_project_facts', return_value=None)
+        )
+        self.mocks['enqueue_dependents'] = self._start(
+            mock.patch(f'{_MODULE}.score_queue.enqueue_dependents')
         )
 
     def _start(self, patcher: typing.Any) -> mock.MagicMock:
@@ -425,6 +438,50 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual('fixed fix-it', body['result']['message'])
         self.assertIn('report', body)
         self.mocks['persist_service_writeback'].assert_awaited()
+        self.mocks['set_project_facts'].assert_awaited_once_with(
+            mock.ANY, 'proj-1', ['service'], {'open_issues': 3}
+        )
+        self.mocks['enqueue_dependents'].assert_awaited_once()
+
+    def test_remediate_reports_a_refused_fact_writeback(self) -> None:
+        self.mocks['set_project_facts'].return_value = 'bad fact'
+        with mock.patch(
+            f'{_MODULE}.resolve_all_capabilities',
+            return_value=[_resolved('p1', _RemediablePlugin)],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'p1',
+                        'finding_slug': 'fix-plugin:drift',
+                        'remediation_id': 'fix-it',
+                    },
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual('failed', resp.json()['result']['status'])
+        self.assertEqual('bad fact', resp.json()['result']['message'])
+
+    def test_remediate_validates_facts_before_other_writebacks(self) -> None:
+        self.mocks['validate_project_facts'].return_value = 'bad fact'
+        with mock.patch(
+            f'{_MODULE}.resolve_all_capabilities',
+            return_value=[_resolved('p1', _RemediablePlugin)],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'p1',
+                        'finding_slug': 'fix-plugin:drift',
+                        'remediation_id': 'fix-it',
+                    },
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual('failed', resp.json()['result']['status'])
+        self.mocks['persist_service_writeback'].assert_not_awaited()
+        self.mocks['set_project_facts'].assert_not_awaited()
+        self.mocks['enqueue_dependents'].assert_not_awaited()
 
     def test_remediate_reports_a_refused_writeback(self) -> None:
         self.mocks['persist_service_writeback'].return_value = 'refused'

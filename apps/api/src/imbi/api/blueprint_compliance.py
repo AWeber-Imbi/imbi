@@ -48,7 +48,7 @@ RETURN p{{.*}} AS props
 """
 
 
-async def _fetch_project_props(
+async def fetch_project_props(
     db: graph.Graph, project_id: str
 ) -> dict[str, typing.Any]:
     rows = await db.execute(
@@ -239,7 +239,7 @@ async def check_blueprint_compliance(
     type_slug_set = set(type_slugs)
     applicable = _applicable_blueprints(all_blueprints, type_slug_set)
 
-    props = await _fetch_project_props(db, project_id)
+    props = await fetch_project_props(db, project_id)
     findings: list[AnalysisResultItem] = []
 
     for bp in applicable:
@@ -326,6 +326,91 @@ def _blueprint_default(
     return default
 
 
+#: JSON Schema ``type`` -> the Python types a fact value may have.
+_JSON_TYPES: dict[str, tuple[type, ...]] = {
+    'integer': (int,),
+    'number': (int, float),
+    'string': (str,),
+    'boolean': (bool,),
+    'array': (list,),
+    'object': (dict,),
+}
+
+#: Core Project fields. A fact write-back never sets these, even when a
+#: blueprint defines a property with the same name (``SET p.id`` would
+#: change the node's identity).
+_CORE_PROJECT_FIELDS = frozenset(models.Project.model_fields)
+
+
+async def validate_project_facts(
+    db: graph.Graph, type_slugs: list[str], facts: dict[str, typing.Any]
+) -> str | None:
+    """Return a refusal message when a fact in ``facts`` is invalid.
+
+    A fact is invalid when it is a core Project field, is not a property
+    of an applicable blueprint, or its value does not have the blueprint
+    property's JSON type. Otherwise returns ``None``.
+    """
+    applicable = _applicable_blueprints(
+        await project_blueprints(db), set(type_slugs)
+    )
+    schemas = {
+        name: schema
+        for bp in applicable
+        for name, schema in (bp.json_schema.properties or {}).items()
+    }
+    errors: list[str] = []
+    for name, value in facts.items():
+        schema = schemas.get(name)
+        if (
+            schema is None
+            or name in _CORE_PROJECT_FIELDS
+            or not _SAFE_PROP_RE.match(name)
+        ):
+            errors.append(f'`{name}` is not a blueprint property')
+            continue
+        expected = _JSON_TYPES.get(str(getattr(schema, 'type', '')))
+        # bool is an int subclass; only a boolean property accepts it.
+        if expected is None or (
+            not isinstance(value, expected)
+            or (isinstance(value, bool) and bool not in expected)
+        ):
+            errors.append(f'`{name}` must be {schema.type}, got {value!r}')
+    if errors:
+        return 'Refusing to write facts: ' + '; '.join(errors) + '.'
+    return None
+
+
+async def set_project_facts(
+    db: graph.Graph,
+    project_id: str,
+    type_slugs: list[str],
+    facts: dict[str, typing.Any],
+) -> str | None:
+    """Set each fact in ``facts`` on the project node.
+
+    Persists a plugin's ``PluginContext.fact_writeback``. Returns the
+    :func:`validate_project_facts` refusal, and writes nothing, when a
+    fact is invalid. Otherwise sets every fact in one statement, so they
+    are written together, and returns ``None``.
+    """
+    refusal = await validate_project_facts(db, type_slugs, facts)
+    if refusal is not None or not facts:
+        return refusal
+    params: dict[str, typing.Any] = {'project_id': project_id}
+    assignments: list[str] = []
+    for i, (name, value) in enumerate(facts.items()):
+        params[f'v{i}'] = value
+        assignments.append(f'p.{name} = {{v{i}}}')
+    await db.execute(
+        'MATCH (p:Project {{id: {project_id}}}) '
+        f'SET {", ".join(assignments)} RETURN p.id AS id',
+        params,
+        ['id'],
+    )
+    return None
+
+
 async def remediate_blueprint(
     db: graph.Graph,
     project_id: str,
@@ -346,7 +431,7 @@ async def remediate_blueprint(
             message=f'Invalid blueprint remediation id {remediation_id!r}.',
         )
 
-    props = await _fetch_project_props(db, project_id)
+    props = await fetch_project_props(db, project_id)
 
     if action == _REMOVE_STALE:
         if _is_missing(props.get(prop_name, _SENTINEL)):

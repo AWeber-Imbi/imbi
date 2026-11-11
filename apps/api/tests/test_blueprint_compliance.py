@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from imbi.api import blueprint_compliance
-from imbi.common import graph
+from imbi.common import graph, models
 
 _MODULE = 'imbi.api.blueprint_compliance'
 
@@ -28,7 +28,7 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('failed', result.status)
 
     async def test_remove_stale_noop_when_absent(self) -> None:
-        with mock.patch(f'{_MODULE}._fetch_project_props', return_value={}):
+        with mock.patch(f'{_MODULE}.fetch_project_props', return_value={}):
             result = await blueprint_compliance.remediate_blueprint(
                 self.db, 'p1', ['service'], 'remove-stale:foo'
             )
@@ -38,7 +38,7 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_remove_stale_fixes_when_present(self) -> None:
         with (
             mock.patch(
-                f'{_MODULE}._fetch_project_props', return_value={'foo': 'v'}
+                f'{_MODULE}.fetch_project_props', return_value={'foo': 'v'}
             ),
             mock.patch(f'{_MODULE}.project_blueprints', return_value=[]),
             mock.patch(f'{_MODULE}._applicable_blueprints', return_value=[]),
@@ -57,7 +57,7 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
         # is now valid again -> must not be wiped.
         with (
             mock.patch(
-                f'{_MODULE}._fetch_project_props', return_value={'foo': 'v'}
+                f'{_MODULE}.fetch_project_props', return_value={'foo': 'v'}
             ),
             mock.patch(f'{_MODULE}.project_blueprints', return_value=[]),
             mock.patch(f'{_MODULE}._applicable_blueprints', return_value=[]),
@@ -73,7 +73,7 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_set_default_noop_when_set(self) -> None:
         with mock.patch(
-            f'{_MODULE}._fetch_project_props', return_value={'foo': 'v'}
+            f'{_MODULE}.fetch_project_props', return_value={'foo': 'v'}
         ):
             result = await blueprint_compliance.remediate_blueprint(
                 self.db, 'p1', ['service'], 'set-default:foo'
@@ -82,7 +82,7 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_set_default_fails_without_default(self) -> None:
         with (
-            mock.patch(f'{_MODULE}._fetch_project_props', return_value={}),
+            mock.patch(f'{_MODULE}.fetch_project_props', return_value={}),
             mock.patch(f'{_MODULE}.project_blueprints', return_value=[]),
             mock.patch(f'{_MODULE}._applicable_blueprints', return_value=[]),
             mock.patch(f'{_MODULE}._blueprint_default', return_value=None),
@@ -94,7 +94,7 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_set_default_fixes_when_missing(self) -> None:
         with (
-            mock.patch(f'{_MODULE}._fetch_project_props', return_value={}),
+            mock.patch(f'{_MODULE}.fetch_project_props', return_value={}),
             mock.patch(f'{_MODULE}.project_blueprints', return_value=[]),
             mock.patch(f'{_MODULE}._applicable_blueprints', return_value=[]),
             mock.patch(
@@ -106,3 +106,69 @@ class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual('fixed', result.status)
         self.db.execute.assert_awaited()
+
+
+class SetProjectFactsTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        blueprint = models.Blueprint.model_validate(
+            {
+                'name': 'Sentry',
+                'slug': 'sentry',
+                'type': 'Project',
+                'kind': 'node',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'open_issues': {'type': 'integer'},
+                        'new_issues': {'type': 'integer'},
+                        'tags': {'type': 'array'},
+                        'id': {'type': 'string'},
+                    },
+                },
+            }
+        )
+        patcher = mock.patch(
+            f'{_MODULE}.project_blueprints', return_value=[blueprint]
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_sets_each_fact(self) -> None:
+        refusal = await blueprint_compliance.set_project_facts(
+            self.db, 'p1', ['service'], {'open_issues': 3, 'new_issues': 1}
+        )
+        self.assertIsNone(refusal)
+        self.db.execute.assert_awaited_once()
+        query, params, _ = self.db.execute.await_args.args
+        self.assertIn('SET p.open_issues = {v0}, p.new_issues = {v1}', query)
+        self.assertEqual({'project_id': 'p1', 'v0': 3, 'v1': 1}, params)
+
+    async def test_refuses_core_project_field(self) -> None:
+        refusal = await blueprint_compliance.set_project_facts(
+            self.db, 'p1', ['service'], {'id': 'other-id'}
+        )
+        self.assertIn('`id` is not a blueprint property', refusal or '')
+        self.db.execute.assert_not_awaited()
+
+    async def test_refuses_wrong_array_type(self) -> None:
+        refusal = await blueprint_compliance.set_project_facts(
+            self.db, 'p1', ['service'], {'tags': 'not-a-list'}
+        )
+        self.assertIn('must be array', refusal or '')
+        self.db.execute.assert_not_awaited()
+
+    async def test_refuses_unknown_fact_and_writes_nothing(self) -> None:
+        refusal = await blueprint_compliance.set_project_facts(
+            self.db, 'p1', ['service'], {'open_issues': 1, 'p.x = 1 //': 2}
+        )
+        self.assertIn('p.x = 1 //', refusal or '')
+        self.db.execute.assert_not_awaited()
+
+    async def test_refuses_wrong_type(self) -> None:
+        for value in ('3', True, 1.5):
+            refusal = await blueprint_compliance.set_project_facts(
+                self.db, 'p1', ['service'], {'open_issues': value}
+            )
+            self.assertIn('must be integer', refusal or '', value)
+        self.db.execute.assert_not_awaited()
