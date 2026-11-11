@@ -535,7 +535,6 @@ class Executor:
                 'nonce': secrets.token_urlsafe(32),
                 'task_id': context.get('task_id'),
                 'agent_id': context.get('agent_id'),
-                'project_id': context.get('project_id'),
                 'purpose': secret.get('purpose'),
             },
         )

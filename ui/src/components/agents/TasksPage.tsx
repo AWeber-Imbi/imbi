@@ -354,7 +354,7 @@ function TaskRow({
       <span className="text-sm font-medium">{task.title}</span>
       <span className="flex items-center gap-2 text-xs">
         <span className="text-secondary truncate font-mono">
-          {task.project_slug ?? ''}
+          {task.projects.map((p) => p.project_slug).join(', ')}
         </span>
         <span className="text-tertiary ml-auto flex shrink-0 items-center gap-1">
           <TriggerIcon className="size-3" />

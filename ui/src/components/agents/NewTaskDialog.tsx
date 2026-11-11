@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Box, Check, Plus, Search } from 'lucide-react'
+import { Box, Check, Plus, Search, X } from 'lucide-react'
 
 import { createAgentTask, getProjectsSlim } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
@@ -47,14 +47,14 @@ export function NewTaskDialog({
   const orgSlug = agent?.organization.slug ?? selectedOrganization?.slug ?? ''
   const [request, setRequest] = useState('')
   const [agentSlug, setAgentSlug] = useState('')
-  const [projectId, setProjectId] = useState('')
+  const [projectIds, setProjectIds] = useState<string[]>([])
   const [query, setQuery] = useState('')
 
   useEffect(() => {
     if (!isOpen) return
     setRequest('')
     setAgentSlug(agent?.slug ?? '')
-    setProjectId('')
+    setProjectIds([])
     setQuery('')
   }, [agent, isOpen])
 
@@ -76,14 +76,21 @@ export function NewTaskDialog({
     queryFn: ({ signal }) => getProjectsSlim(orgSlug, signal),
     queryKey: ['projects', orgSlug, 'slim'],
   })
-  const project = projectList.find((p) => p.id === projectId)
+  const selected = projectIds
+    .map((id) => projectList.find((p) => p.id === id))
+    .filter((p) => !!p)
   const projects = useMemo(() => {
     const q = query.trim().toLowerCase()
     return projectList
-      .filter((p) => !p.archived && (!q || p.slug.includes(q)))
+      .filter(
+        (p) =>
+          !p.archived &&
+          !projectIds.includes(p.id) &&
+          (!q || p.slug.includes(q)),
+      )
       .sort((a, b) => a.slug.localeCompare(b.slug))
       .slice(0, PROJECTS_SHOWN)
-  }, [projectList, query])
+  }, [projectList, projectIds, query])
 
   const source = detectSource(request)
   const missing = [
@@ -96,7 +103,7 @@ export function NewTaskDialog({
       createAgentTask(orgSlug, {
         agent_slug: agentSlug,
         description: request.trim(),
-        project_id: projectId || null,
+        project_ids: projectIds,
         title: titleFrom(request),
       }),
     onSuccess: (task) => {
@@ -183,61 +190,71 @@ export function NewTaskDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Overline>Project (optional)</Overline>
-            {project ? (
-              <div className="border-secondary flex items-center gap-2 rounded-md border px-2.5 py-2">
-                <Box className="text-secondary size-3.5" />
-                <span className="font-mono text-[12.5px] font-medium">
-                  {project.slug}
-                </span>
-                <Button
-                  className="ml-auto h-7 px-2.5 text-xs"
-                  onClick={() => setProjectId('')}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <div className="border-secondary overflow-hidden rounded-md border">
-                <div className="border-tertiary bg-secondary flex h-8.5 items-center gap-2 border-b px-2.5">
-                  <Search className="text-tertiary size-3.5" />
-                  <input
-                    aria-label="Search projects"
-                    className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search projects"
-                    value={query}
-                  />
-                </div>
-                {projects.map((p) => (
-                  <button
-                    className="border-tertiary hover:bg-secondary flex w-full items-center gap-2 border-b px-3 py-2 text-left last:border-b-0"
+            <Overline>Projects (optional)</Overline>
+            {selected.length > 0 && (
+              <ul
+                aria-label="Selected projects"
+                className="flex flex-wrap gap-1.5"
+              >
+                {selected.map((p) => (
+                  <li
+                    className="border-secondary flex items-center gap-1.5 rounded-md border py-1 pr-1 pl-2"
                     key={p.id}
-                    onClick={() => {
-                      setProjectId(p.id)
-                      setQuery('')
-                    }}
-                    type="button"
                   >
-                    <Box className="text-tertiary size-3.25" />
-                    <span className="font-mono text-[12.5px]">{p.slug}</span>
-                    <span className="text-tertiary ml-auto text-[11.5px]">
-                      {p.project_types[0]?.name}
+                    <Box className="text-secondary size-3.25" />
+                    <span className="font-mono text-[12.5px] font-medium">
+                      {p.slug}
                     </span>
-                  </button>
+                    <button
+                      aria-label={`Remove project ${p.slug}`}
+                      className="text-tertiary hover:text-primary rounded p-0.5"
+                      onClick={() =>
+                        setProjectIds((ids) => ids.filter((id) => id !== p.id))
+                      }
+                      type="button"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </li>
                 ))}
-                {projects.length === 0 && (
-                  <p className="text-tertiary px-3 py-3 text-[12.5px]">
-                    {query.trim()
-                      ? `No projects match "${query.trim()}".`
-                      : 'No projects.'}
-                  </p>
-                )}
-              </div>
+              </ul>
             )}
+            <div className="border-secondary overflow-hidden rounded-md border">
+              <div className="border-tertiary bg-secondary flex h-8.5 items-center gap-2 border-b px-2.5">
+                <Search className="text-tertiary size-3.5" />
+                <input
+                  aria-label="Search projects"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search projects"
+                  value={query}
+                />
+              </div>
+              {projects.map((p) => (
+                <button
+                  className="border-tertiary hover:bg-secondary flex w-full items-center gap-2 border-b px-3 py-2 text-left last:border-b-0"
+                  key={p.id}
+                  onClick={() => {
+                    setProjectIds((ids) => [...ids, p.id])
+                    setQuery('')
+                  }}
+                  type="button"
+                >
+                  <Box className="text-tertiary size-3.25" />
+                  <span className="font-mono text-[12.5px]">{p.slug}</span>
+                  <span className="text-tertiary ml-auto text-[11.5px]">
+                    {p.project_types[0]?.name}
+                  </span>
+                </button>
+              ))}
+              {projects.length === 0 && (
+                <p className="text-tertiary px-3 py-3 text-[12.5px]">
+                  {query.trim()
+                    ? `No projects match "${query.trim()}".`
+                    : 'No projects.'}
+                </p>
+              )}
+            </div>
           </div>
 
           {create.error && (

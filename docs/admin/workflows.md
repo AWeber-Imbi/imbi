@@ -299,7 +299,7 @@ Gives an agent a task and waits for its outcome. See
 |---|---|---|
 | `agent_id` | An agent of the organization. It must be a literal id | Required |
 | `instruction` | What the agent must do. Templates are allowed | Required |
-| `project_id` | The primary project of the task. It must be a literal id | None |
+| `project_id` | The project of the task. It must be a literal id | None |
 | `budget` | A limit in USD. It cannot be more than the task budget of the agent | The task budget of the agent |
 
 The step takes `Succeeded` when the outcome is `done_acted`,

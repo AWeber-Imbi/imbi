@@ -335,14 +335,17 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
 class CreateTaskTests(AgentTaskTestCase):
     async def test_create_pins_versions_and_writes_event(self) -> None:
         agent_id = await self.make_agent(settings={'task_budget': '5'})
-        response = await self.create_task(project_id=self.project_id)
+        response = await self.create_task(project_ids=[self.project_id])
         self.assertEqual(response.status_code, 201, response.text)
         task = response.json()
         self.assertEqual(task['short_id'], 'T-1')
         self.assertEqual(task['agent_id'], agent_id)
         self.assertEqual(task['agent_version'], 3)
         self.assertEqual(task['prompt_version'], 7)
-        self.assertEqual(task['project_id'], self.project_id)
+        self.assertEqual(
+            task['projects'],
+            [{'project_id': self.project_id, 'project_slug': self.project_id}],
+        )
         self.assertEqual(task['status'], 'queued')
         self.assertEqual(task['control'], 'run')
         self.assertEqual(task['owner'], self.email)
@@ -424,11 +427,24 @@ class CreateTaskTests(AgentTaskTestCase):
         response = await self.create_task()
         self.assertEqual(response.status_code, 409, response.text)
 
+    async def test_legacy_project_id_is_one_project(self) -> None:
+        await self.make_agent()
+        response = await self.create_task(project_id=self.project_id)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [p['project_id'] for p in response.json()['projects']],
+            [self.project_id],
+        )
+        response = await self.create_task(
+            project_id=self.project_id, project_ids=[self.project_id]
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
     async def test_unknown_agent_or_project_is_refused(self) -> None:
         await self.make_agent()
         response = await self.create_task(agent_slug='nope')
         self.assertEqual(response.status_code, 422, response.text)
-        response = await self.create_task(project_id='nope')
+        response = await self.create_task(project_ids=['nope'])
         self.assertEqual(response.status_code, 422, response.text)
 
     async def test_unknown_org_is_404(self) -> None:
@@ -826,7 +842,7 @@ class ReadTaskTests(AgentTaskTestCase):
         await self.make_agent(org=self.other_org)
         await self.create_task(title='Fix the build')
         await self.create_task(
-            agent_slug='deploy', title='Ship it', project_id=self.project_id
+            agent_slug='deploy', title='Ship it', project_ids=[self.project_id]
         )
         await self.create_task(title='Rotate keys')
 
@@ -879,11 +895,14 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(await self.list_ids(owner=self.member), ['T-3'])
         self.assertEqual(await self.list_ids(mine='true'), ['T-2', 'T-1'])
 
-    async def test_project_slug(self) -> None:
+    async def test_projects(self) -> None:
         response = await self.client.get(self.url('T-2'))
-        self.assertEqual(response.json()['project_slug'], self.project_id)
+        self.assertEqual(
+            response.json()['projects'],
+            [{'project_id': self.project_id, 'project_slug': self.project_id}],
+        )
         response = await self.client.get(self.url('T-1'))
-        self.assertIsNone(response.json()['project_slug'])
+        self.assertEqual(response.json()['projects'], [])
 
     async def open_request(
         self,
@@ -1135,7 +1154,7 @@ class RetryTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         await self.make_agent()
-        await self.create_task(project_id=self.project_id)
+        await self.create_task(project_ids=[self.project_id])
 
     async def fail(
         self, turn: str | None = 'I could not read\nthe secret.'
@@ -1178,7 +1197,9 @@ class RetryTests(AgentTaskTestCase):
         task = response.json()
         self.assertEqual(task['short_id'], 'T-2')
         self.assertEqual(task['title'], 'Look at the build')
-        self.assertEqual(task['project_id'], self.project_id)
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']], [self.project_id]
+        )
         self.assertEqual(task['origin']['kind'], 'human')
         self.assertEqual(
             task['description'],
@@ -1493,7 +1514,6 @@ class StoreTests(AgentTaskTestCase):
             agent_version=1,
             prompt_version=None,
             service_account_id='sa-1',
-            project_id=None,
             title='Race',
             description='Two requests with one key.',
             origin_kind='human',
@@ -1529,7 +1549,6 @@ class MembershipTests(AgentTaskTestCase):
                 agent_version=1,
                 prompt_version=None,
                 service_account_id='sa-1',
-                project_id=None,
                 title='Secret',
                 description='Not for other orgs.',
                 origin_kind='human',

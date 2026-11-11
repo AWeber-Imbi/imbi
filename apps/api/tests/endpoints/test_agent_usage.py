@@ -27,7 +27,7 @@ def _task(org: str, task: str, agent: str) -> dict[str, typing.Any]:
         'short_id': task,
         'agent_id': agent,
         'agent_version': 1,
-        'project_id': None,
+        'projects': [],
     }
 
 

@@ -915,6 +915,11 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         )
         async with self.task_pool.connection() as conn:
             await conn.execute(
+                'DELETE FROM agent_runtime.task_projects'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+            await conn.execute(
                 'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1075,7 +1080,9 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         task = await self.tasks.get(self.org, response.json()['task_id'])
         assert task is not None
-        self.assertEqual(task['project_id'], self.project)
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']], [self.project]
+        )
 
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""
@@ -1086,8 +1093,6 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 agent_version=1,
                 prompt_version=None,
                 service_account_id='sa',
-                project_id=None,
-                project_slug=None,
                 title='Planted',
                 description='Planted',
                 origin_kind='human',

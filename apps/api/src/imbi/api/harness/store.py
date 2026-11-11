@@ -103,7 +103,8 @@ _CLAIMABLE: typing.LiteralString = ''.join(
 #: The oldest task that a runner may claim.
 _CLAIM_QUERY: typing.LiteralString = ''.join(
     (
-        'SELECT t.*',
+        'SELECT t.*, ',
+        task_store.PROJECTS,
         _CLAIMABLE,
         ' ORDER BY t.created_at, t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED',
     )
@@ -123,8 +124,10 @@ _QUEUED_QUERY: typing.LiteralString = ''.join(
     )
 )
 
-_CHAIN_CLAIM_QUERY: typing.LiteralString = """
-SELECT t.*
+_CHAIN_CLAIM_QUERY: typing.LiteralString = (
+    'SELECT t.*, '  # noqa: S608
+    + task_store.PROJECTS
+    + """
   FROM agent_runtime.tasks AS t
  WHERE t.chain_id = %(chain)s
    AND t.origin_kind = 'task'
@@ -136,6 +139,7 @@ SELECT t.*
  LIMIT 1
    FOR UPDATE OF t SKIP LOCKED
 """
+)
 
 #: The runners that are not offline, with the current labels of their
 #: pool, their chain, and its root task.

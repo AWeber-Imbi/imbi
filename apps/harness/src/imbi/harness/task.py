@@ -700,7 +700,6 @@ class TaskRun:
         return {
             'task_id': self.task['id'],
             'agent_id': self.task['agent_id'],
-            'project_id': self.task.get('project_id'),
         }
 
     # --- Lifecycle ----------------------------------------------------
@@ -1493,9 +1492,13 @@ class TaskRun:
                 'Your Imbi organization slug is the text in this block:\n'
                 + relay.untrusted(slug, 'organization_slug')
             )
-        project_id = str(self.task.get('project_id') or '')
-        if _IDENTIFIER.match(project_id):
-            lines.append(f'The task project id is `{project_id}`.')
+        project_ids = [
+            f'`{project_id}`'
+            for project in api.items(self.task, 'projects')
+            if _IDENTIFIER.match(project_id := str(project['project_id']))
+        ]
+        if project_ids:
+            lines.append(f'The task project ids are {", ".join(project_ids)}.')
         return ' '.join(lines)
 
     def instruction(self) -> str:

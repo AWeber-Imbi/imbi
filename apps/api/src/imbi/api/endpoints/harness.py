@@ -382,7 +382,6 @@ class SecretMaterializationCreate(pydantic.BaseModel):
     nonce: pydantic.SecretStr = pydantic.Field(min_length=16, max_length=128)
     task_id: uuid.UUID
     agent_id: str = pydantic.Field(min_length=1)
-    project_id: str | None = None
     purpose: secrets_api.Purpose
 
 
@@ -583,7 +582,8 @@ async def _rendered_prompt(
 
     The template gets the variables that it declares among
     ``organization``, ``agent``, ``task``, and ``project_slug`` (slugs and
-    the short id).
+    the short id). ``project_slug`` has the slugs of all projects of the
+    task, comma separated.
     """
     if bundle.prompt_ref is None or bundle.prompt_version is None:
         return None, None
@@ -599,7 +599,9 @@ async def _rendered_prompt(
             'organization': org_slug,
             'agent': bundle.agent_slug or '',
             'task': task['short_id'],
-            'project_slug': task.get('project_slug') or '',
+            'project_slug': ','.join(
+                project['project_slug'] for project in task['projects']
+            ),
         }
         rendered = await rendering.render(
             version,
@@ -631,14 +633,15 @@ async def _repositories(
     task: dict[str, typing.Any],
     settings: models.AgentSettings,
 ) -> list[BundleRepository]:
-    """Return the project repository: only the ``github-repository``
-    link, on the host of the agent's GitHub App provider (``github.com``
-    when the agent has none).
+    """Return the repository of each project of the task: only the
+    ``github-repository`` link, on the host of the agent's GitHub App
+    provider (``github.com`` when the agent has none). A repository that
+    two projects share is in the list one time.
 
     This tells the runner what to clone. It gives no access: the
-    ``github_app`` provider limits each token to the repository that
+    ``github_app`` provider limits each token to the repositories that
     the GitHub integration verified, whatever this link says."""
-    if not task.get('project_id'):
+    if not task['projects']:
         return []
     config: dict[str, typing.Any] = {}
     if settings.github_app_binding is not None:
@@ -647,20 +650,24 @@ async def _repositories(
         )
         if provider is not None and provider['type'] == 'github_app':
             config = provider['config'] or {}
-    url = (await _helpers.lookup_project_links(db, task['project_id'])).get(
-        _REPOSITORY_LINK
-    )
-    if url is None:
-        return []
-    try:
-        # The provider parses the link: an empty configuration is
-        # github.com.
-        found = providers.get('github_app').repository(config, url)
-    except providers.BrokerError:
-        return []
-    if found is None:
-        return []
-    return [BundleRepository(host=found[0], name=found[1], url=url)]
+    found: dict[tuple[str, str], BundleRepository] = {}
+    for project in task['projects']:
+        url = (
+            await _helpers.lookup_project_links(db, project['project_id'])
+        ).get(_REPOSITORY_LINK)
+        if url is None:
+            continue
+        try:
+            # The provider parses the link: an empty configuration is
+            # github.com.
+            repository = providers.get('github_app').repository(config, url)
+        except providers.BrokerError:
+            continue
+        if repository is not None and repository not in found:
+            found[repository] = BundleRepository(
+                host=repository[0], name=repository[1], url=url
+            )
+    return list(found.values())
 
 
 async def _identity(
@@ -705,7 +712,7 @@ async def _identity(
                         for row in await secrets.agent_references(
                             task['organization_id'],
                             task['agent_id'],
-                            task.get('project_id'),
+                            [p['project_id'] for p in task['projects']],
                         )
                     ]
                 }
@@ -1783,8 +1790,6 @@ async def create_harness_child_task(
                 agent_version=agent_version,
                 prompt_version=prompt_version,
                 service_account_id=service_account_id,
-                project_id=parent['project_id'],
-                project_slug=parent['project_slug'],
                 title=data.title,
                 description=data.description,
                 origin_kind='task',
@@ -1905,7 +1910,7 @@ async def create_harness_secret_resolution(
             broker.ResolutionContext(
                 organization_id=task['organization_id'],
                 agent_id=task['agent_id'],
-                project_id=task['project_id'],
+                project_ids=tuple(p['project_id'] for p in task['projects']),
                 task_id=task['id'],
                 runner_id=str(grant.runner_id),
             ),
@@ -1965,7 +1970,6 @@ async def create_harness_secret_materialization(
                 nonce=data.nonce.get_secret_value(),
                 task_id=data.task_id,
                 agent_id=data.agent_id,
-                project_id=data.project_id,
                 purpose=data.purpose,
             ),
         )

@@ -168,7 +168,8 @@ class ResolveContext:
 
     organization_id: str
     task_id: uuid.UUID
-    project_id: str | None
+    #: The projects of the task.
+    project_ids: tuple[str, ...]
     purpose: str
     ttl_seconds: int
     credential_class: CredentialClass

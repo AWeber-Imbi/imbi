@@ -97,7 +97,8 @@ polling, the UI's live view, and budgets read Postgres.
 - `agent_id`, `agent_version`, `prompt_version`: pinned at creation. The
   harness runs the pinned versions; editing the agent does not change a
   task that already exists.
-- `project_id`: optional primary project (F13).
+- `project_id`: optional primary project (F13). Replaced on 2026-11-11 by
+  a list of projects; see [Task relations and associated projects](#task-relations-and-associated-projects).
 - `origin`: set at creation and immutable (CC9). One of:
   - `human`, with the user id;
   - `schedule`, with the scheduler task id;
@@ -276,6 +277,10 @@ Added 2026-10-09.
 A task can depend on other tasks and can touch projects other than its
 primary project (F13). Two tables hold this state:
 
+Changed 2026-11-11: a task has no primary project. `task_projects` holds
+all the projects of a task, and `tasks.project_id` is not used. A grant
+that lists projects must list all the projects of the task.
+
 | Table | Holds |
 |---|---|
 | `task_dependencies` | One row per dependency: `organization_id`, `dependent_task_id`, `prerequisite_task_id`, `created_by_kind`, `created_by`, `created_at` |
@@ -297,9 +302,9 @@ primary project (F13). Two tables hold this state:
 - **Dependencies are information only.** A dependency does not change a
   task's status and does not affect dispatch. Before a dependency gates
   anything, cycle checks must come first.
-- **The primary project is not in `task_projects`.** Associating the
-  primary project is refused. A row stays when its project is deleted
-  from the graph; the UI shows the slug snapshot as no longer available.
+- **All projects are in `task_projects`.** A row stays when its project
+  is deleted from the graph; the UI shows the slug snapshot as no longer
+  available.
 - **Events.** Each change writes an event: `dependency.added`,
   `dependency.removed`, `project.associated`, `project.dissociated`. A
   dependency event is written on both tasks, in one transaction, with

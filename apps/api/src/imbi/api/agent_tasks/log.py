@@ -10,7 +10,7 @@ Both tables are ReplacingMergeTree tables keyed on the identity of the
 row, so a row that is published two times is stored one time.
 
 Request resolutions and terminal outcomes also go to the Operations Log
-(I9, N9), as a projection of their events: see :func:`opslog_row`.
+(I9, N9), as a projection of their events: see :func:`opslog_rows`.
 """
 
 import decimal
@@ -91,6 +91,11 @@ def _optional_str(value: typing.Any) -> str | None:
     return None if value is None else str(value)
 
 
+def _project_ids(task: Row) -> str:
+    """The ids of the projects of a task, comma separated."""
+    return ','.join(project['project_id'] for project in task['projects'])
+
+
 def event_row(task: Row, event: Row) -> Row:
     """Return the ``agent_task_events`` row of one Postgres event."""
     return {
@@ -99,7 +104,7 @@ def event_row(task: Row, event: Row) -> Row:
         'short_id': task['short_id'],
         'agent_id': task['agent_id'],
         'agent_version': task['agent_version'],
-        'project_id': task['project_id'] or '',
+        'project_id': _project_ids(task),
         'seq': event['seq'],
         'event_id': str(event['event_id']),
         'type': event['type'],
@@ -120,7 +125,7 @@ def usage_row(task: Row, ledger: Row) -> Row:
         'task_id': str(task['id']),
         'short_id': task['short_id'],
         'agent_id': task['agent_id'],
-        'project_id': task['project_id'] or '',
+        'project_id': _project_ids(task),
         'session_id': _optional_str(ledger['session_id']),
         'report_id': str(ledger['id']),
         'model_id': ledger['model_id'] or '',
@@ -147,17 +152,18 @@ def usage_row(task: Row, ledger: Row) -> Row:
     return row
 
 
-def opslog_row(task: Row, event: Row) -> Row | None:
-    """Return the ``operations_log`` row of an event, or ``None``.
+def opslog_rows(task: Row, event: Row) -> list[Row]:
+    """Return the ``operations_log`` rows of an event: one row for each
+    project of the task.
 
-    Only a resolution or an outcome of a task with a project has a row.
-    The Operations Log is project scoped, and its list is not scoped to
-    an organization, so a task with no project never goes there. The
-    description has no task, request, or reply text. The row id is the
-    event id, so a row that is published again collapses.
+    Only a resolution or an outcome has rows. The Operations Log is
+    project scoped, and its list is not scoped to an organization, so a
+    task with no project never goes there. The description has no task,
+    request, or reply text. The row id comes from the event id and the
+    project id, so a row that is published again collapses.
     """
-    if event['type'] not in OPSLOG_EVENT_TYPES or not task['project_slug']:
-        return None
+    if event['type'] not in OPSLOG_EVENT_TYPES:
+        return []
     payload = event['payload']
     if event['type'] == 'request.resolved':
         description = f'{task["short_id"]}: {payload["kind"]} request '
@@ -165,21 +171,24 @@ def opslog_row(task: Row, event: Row) -> Row | None:
     else:
         description = f'{task["short_id"]} closed: {payload["outcome"]}'
     actor = event['actor_id'] or 'imbi'
-    entry = models.OperationLog(
-        id=str(event['event_id']),
-        occurred_at=event['at'],
-        recorded_by=actor,
-        performed_by=actor,
-        completed_at=event['at'],
-        project_id=task['project_id'],
-        project_slug=task['project_slug'],
-        environment_slug='',
-        entry_type='Agent Task',
-        description=description,
-    )
-    row = entry.model_dump(by_alias=True, mode='python')
-    row['is_deleted'] = 0
-    return row
+    result: list[Row] = []
+    for project in task['projects']:
+        entry = models.OperationLog(
+            id=str(uuid.uuid5(event['event_id'], project['project_id'])),
+            occurred_at=event['at'],
+            recorded_by=actor,
+            performed_by=actor,
+            completed_at=event['at'],
+            project_id=project['project_id'],
+            project_slug=project['project_slug'],
+            environment_slug='',
+            entry_type='Agent Task',
+            description=description,
+        )
+        row = entry.model_dump(by_alias=True, mode='python')
+        row['is_deleted'] = 0
+        result.append(row)
+    return result
 
 
 async def publish(
@@ -193,9 +202,7 @@ async def publish(
     try:
         # Before the events: when this publish fails, the sweep finds
         # the events missing and publishes both again.
-        opslog = [
-            row for e in events if (row := opslog_row(task, e)) is not None
-        ]
+        opslog = [row for e in events for row in opslog_rows(task, e)]
         if opslog:
             await iggy.publish_rows(OPSLOG_STREAM, OPSLOG_TOPIC, opslog)
         if events:

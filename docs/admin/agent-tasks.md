@@ -9,7 +9,7 @@ A task has:
 - A title and a description. The description is the instruction for the
   agent.
 - An owner. The owner is a person, and the agent asks the owner for input.
-- A primary project. This is optional in the API.
+- Zero or more projects. The agent gets the repository of each project.
 - A budget in USD.
 - An event log. Each change to the task writes an event. Events are never
   changed.
@@ -106,13 +106,13 @@ POST /organizations/{org}/agent-tasks/
   "agent_slug": "triage",
   "title": "Check the failing build",
   "description": "Find why the main branch build fails, and open a fix.",
-  "project_id": "<project id>",
+  "project_ids": ["<project id>", "<project id>"],
   "budget": "2.50",
   "idempotency_key": "build-1234"
 }
 ```
 
-`project_id`, `budget`, and `idempotency_key` are optional. A repeat with
+`project_ids`, `budget`, and `idempotency_key` are optional. A repeat with
 the same `idempotency_key` returns the first task with `200`. A disabled
 agent returns `409`.
 
@@ -233,7 +233,7 @@ of the task.
 | Conversation | The whole task log in order: messages, thinking, tool calls, requests, and state changes. See [Read the conversation](#read-the-conversation) |
 | Signals and checks | The latest report of each check, with its value, baseline, and verdict. The tab count shows the failing checks |
 | Related tasks | Dependencies, the parent task, and child tasks |
-| Associated projects | The primary project and the other projects of the task |
+| Associated projects | The projects of the task |
 
 ### Read the conversation
 
@@ -325,9 +325,14 @@ A task cannot require itself. Parent and child rows come from delegation.
 You cannot change them.
 
 **Associated projects**: click **Link project** to add a project. The
-primary project is first, with the badge **Primary**. You cannot associate
-the primary project again. A deleted project shows its slug and "No longer
-available". You can still remove it.
+oldest project is first. You can remove each project, also a project that
+you set when you made the task. A deleted project shows its slug and "No
+longer available". You can still remove it.
+
+A secret grant that lists projects applies to a task only when the grant
+lists all the projects of the task. The GitHub token of a task covers the
+verified repositories of all its projects. The repositories must be in one
+GitHub App installation.
 
 When the log of a closed task moves to the archive, its relations and
 projects cannot change.

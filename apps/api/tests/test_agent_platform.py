@@ -803,7 +803,10 @@ class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_renders_the_pinned_version(self) -> None:
         prompt, error = await harness_api._rendered_prompt(
-            mock.Mock(), {'short_id': 'T-1'}, self.bundle, 'acme'
+            mock.Mock(),
+            {'short_id': 'T-1', 'projects': []},
+            self.bundle,
+            'acme',
         )
         self.assertIsNone(error)
         assert prompt is not None
@@ -818,18 +821,27 @@ class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):
         }
         prompt, error = await harness_api._rendered_prompt(
             mock.Mock(),
-            {'short_id': 'T-1', 'project_slug': 'billing'},
+            {
+                'short_id': 'T-1',
+                'projects': [
+                    {'project_id': 'p1', 'project_slug': 'billing'},
+                    {'project_id': 'p2', 'project_slug': 'search'},
+                ],
+            },
             self.bundle,
             'acme',
         )
         self.assertIsNone(error)
         assert prompt is not None
-        self.assertEqual(prompt.system, 'On billing.')
+        self.assertEqual(prompt.system, 'On billing,search.')
 
     async def test_a_render_error_is_returned(self) -> None:
         self.version.system = '{{ missing.attr }}'
         prompt, error = await harness_api._rendered_prompt(
-            mock.Mock(), {'short_id': 'T-1'}, self.bundle, 'acme'
+            mock.Mock(),
+            {'short_id': 'T-1', 'projects': []},
+            self.bundle,
+            'acme',
         )
         self.assertIsNone(prompt)
         self.assertTrue(error)

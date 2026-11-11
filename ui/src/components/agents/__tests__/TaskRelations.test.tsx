@@ -75,7 +75,6 @@ function project(overrides: Partial<AgentTaskProject>): AgentTaskProject {
     added_by_kind: 'human',
     available: true,
     name: 'Feed Proxy',
-    primary: false,
     project_id: 'p-2',
     project_slug: 'feedproxy',
     ...overrides,
@@ -88,7 +87,6 @@ const PROJECTS = [
     added_by: null,
     added_by_kind: null,
     name: 'Billing',
-    primary: true,
     project_id: 'proj-1',
     project_slug: 'billing',
   }),
@@ -322,14 +320,16 @@ describe('Associated projects', () => {
     vi.mocked(endpoints.setAgentTaskProject).mockResolvedValue(undefined)
   })
 
-  it('shows the primary and a deleted project, and removes one', async () => {
+  it('shows every project as removable, and removes one', async () => {
     render(<AssociatedProjectsTab orgSlug="acme" task={task()} />)
     const list = await screen.findByRole('list', {
       name: 'Associated projects',
     })
-    const [primary, second, gone] = await within(list).findAllByRole('listitem')
-    expect(within(primary).getByText('Primary')).toBeInTheDocument()
-    expect(within(primary).queryByRole('button')).toBeNull()
+    const [first, second, gone] = await within(list).findAllByRole('listitem')
+    expect(within(first).queryByText('Primary')).toBeNull()
+    expect(
+      within(first).getByRole('button', { name: 'Remove project billing' }),
+    ).toBeInTheDocument()
     expect(within(second).getByRole('link')).toHaveAttribute(
       'href',
       '/projects/p-2',

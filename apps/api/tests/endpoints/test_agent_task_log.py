@@ -6,8 +6,10 @@ ClickHouse that ``root:services`` boots.
 straight into its table, as the Iggy sink would.
 """
 
+import datetime
 import decimal
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -17,7 +19,7 @@ from apps.api.tests.endpoints import (
     test_agent_tasks,
 )
 from imbi.api import agent_tasks
-from imbi.api.agent_tasks import sweeper
+from imbi.api.agent_tasks import log, sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
 from scripts import agent_task_client
@@ -61,7 +63,7 @@ class ClickHouseTestCase(test_agent_tasks.AgentTaskTestCase):
 class PublishTests(ClickHouseTestCase):
     async def test_every_event_reaches_clickhouse_once(self) -> None:
         await self.make_agent()
-        task = (await self.create_task(project_id=self.project_id)).json()
+        task = (await self.create_task(project_ids=[self.project_id])).json()
         for action in ('pause', 'resume', 'cancel'):
             response = await self.client.post(self.url(f'T-1/{action}'))
             self.assertEqual(response.status_code, 200, response.text)
@@ -405,9 +407,12 @@ class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
 
     async def test_project_task_rows(self) -> None:
         self.act_as_user()
-        response = await self.create_task(project_id=self.project_id)
+        response = await self.create_task(project_ids=[self.project_id])
         self.act_as(self.account)
-        ids = await self.resolve_and_close('T-2')
+        ids = [
+            str(uuid.uuid5(uuid.UUID(event_id), self.project_id))
+            for event_id in await self.resolve_and_close('T-2')
+        ]
         rows = await self.opslog(ids)
         self.assertEqual(
             [
@@ -451,9 +456,14 @@ class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
         self.assertEqual(len(await self.opslog(ids)), 2)
 
     async def test_task_without_project_has_no_rows(self) -> None:
-        ids = await self.resolve_and_close('T-1')
+        with mock.patch.object(
+            iggy, 'publish_rows', wraps=iggy.publish_rows
+        ) as publish:
+            ids = await self.resolve_and_close('T-1')
         self.assertEqual(len(ids), 2)
-        self.assertEqual(await self.opslog(ids), [])
+        streams = [call.args[0] for call in publish.call_args_list]
+        self.assertIn(log.EVENTS_STREAM, streams)
+        self.assertNotIn(log.OPSLOG_STREAM, streams)
 
 
 class StaleSessionTests(
@@ -514,3 +524,31 @@ class StaleSessionTests(
         # The stale session no longer counts toward the limit.
         response = await self.post('sessions', {'session_key': 'c'}, 'T-3')
         self.assertEqual(response.status_code, 201, response.text)
+
+
+class OpsLogRowsTests(unittest.TestCase):
+    def test_one_row_for_each_project(self) -> None:
+        event_id = uuid.uuid4()
+        task = {
+            'short_id': 'T-1',
+            'projects': [
+                {'project_id': 'p1', 'project_slug': 'one'},
+                {'project_id': 'p2', 'project_slug': 'two'},
+            ],
+        }
+        event = {
+            'event_id': event_id,
+            'type': 'outcome.set',
+            'payload': {'outcome': 'done_acted'},
+            'actor_id': 'agent',
+            'at': datetime.datetime.now(datetime.UTC),
+        }
+        rows = log.opslog_rows(task, event)
+        self.assertEqual(
+            [(r['id'], r['project_id'], r['project_slug']) for r in rows],
+            [
+                (str(uuid.uuid5(event_id, 'p1')), 'p1', 'one'),
+                (str(uuid.uuid5(event_id, 'p2')), 'p2', 'two'),
+            ],
+        )
+        self.assertEqual(log.opslog_rows({**task, 'projects': []}, event), [])

@@ -37,6 +37,7 @@ import re
 import secrets
 import typing
 import uuid
+from collections import abc
 
 import orjson
 import psycopg
@@ -247,7 +248,8 @@ class ResolutionContext:
 
     organization_id: str
     agent_id: str
-    project_id: str | None
+    #: The projects of the task, in any order.
+    project_ids: tuple[str, ...]
     task_id: uuid.UUID
     runner_id: str
 
@@ -293,7 +295,6 @@ class MaterializeRequest:
     nonce: str = dataclasses.field(repr=False)
     task_id: uuid.UUID
     agent_id: str
-    project_id: str | None
     purpose: str
 
 
@@ -379,18 +380,26 @@ class Decision:
 # --- Policy ---------------------------------------------------------------
 
 #: The enabled grants of an organization that allow a binding for an
-#: agent, a project, a purpose, and a delivery mode. A grant with no
-#: project ids allows any project; a task with no project matches only
+#: agent, the projects of a task, a purpose, and a delivery mode. A
+#: grant with no project ids allows any project. A grant with project
+#: ids must list all the projects of the task; a task with no project
+#: matches only
 #: such a grant.
+#: The grant ``g`` allows the task projects ``%(projects)s``.
+PROJECTS_ALLOWED = (
+    '(cardinality(g.project_ids) = 0'
+    ' OR (cardinality(%(projects)s::TEXT[]) > 0'
+    ' AND %(projects)s::TEXT[] <@ g.project_ids))'
+)
+
 _GRANT_MATCH = (
-    'SELECT * FROM secrets.grants'
+    'SELECT * FROM secrets.grants AS g'  # noqa: S608
     ' WHERE organization_id = %(org)s AND enabled'
     ' AND %(binding)s = ANY(binding_ids)'
     ' AND %(agent)s = ANY(agent_ids)'
     ' AND %(purpose)s = ANY(purposes)'
     ' AND %(mode)s = ANY(delivery_modes)'
-    ' AND (cardinality(project_ids) = 0'
-    '      OR %(project)s::TEXT = ANY(project_ids))'
+    ' AND ' + PROJECTS_ALLOWED
 )
 
 
@@ -506,7 +515,7 @@ async def evaluate(
     conn: Conn,
     organization_id: str,
     agent_id: str,
-    project_id: str | None,
+    project_ids: abc.Sequence[str],
     reference: Reference,
     purpose: str,
     delivery_mode: str,
@@ -571,7 +580,7 @@ async def evaluate(
             'agent': agent_id,
             'purpose': purpose,
             'mode': delivery_mode,
-            'project': project_id,
+            'projects': list(project_ids),
         },
     )
     if not grants:
@@ -592,20 +601,38 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
     """
     task = await _fetch_one(
         conn,
-        'SELECT organization_id, agent_id, project_id, status'
+        'SELECT organization_id, agent_id, status'
         ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
         task['organization_id'],
         task['agent_id'],
-        task['project_id'],
-    ) != (context.organization_id, context.agent_id, context.project_id):
+        await _task_project_ids(
+            conn, context.organization_id, context.task_id
+        ),
+    ) != (context.organization_id, context.agent_id, set(context.project_ids)):
         raise providers.BrokerError(
             'resolution_context_mismatch', 'task_mismatch'
         )
     if task['status'] == 'closed':
         raise providers.BrokerError('secret_access_denied', 'task_closed')
+
+
+async def _task_project_ids(
+    conn: Conn, organization_id: str, task_id: uuid.UUID
+) -> set[str]:
+    """Return the project ids of a task.
+
+    Call it after the task row is locked, in a new statement, so it
+    sees a project change that committed while the lock waited.
+    """
+    cur = await conn.execute(
+        'SELECT project_id FROM agent_runtime.task_projects'
+        ' WHERE organization_id = %s AND task_id = %s',
+        (organization_id, task_id),
+    )
+    return {row[0] for row in await cur.fetchall()}
 
 
 def _event(
@@ -629,7 +656,7 @@ def _event(
         reason=reason,
         actor=actor or f'runner:{text("runner_id")}',
         agent_id=text('agent_id'),
-        project_id=text('project_id'),
+        project_id=','.join(row.get('project_ids') or ()),
         task_id=text('task_id'),
         runner_id=text('runner_id'),
         provider_id=text('provider_id'),
@@ -761,7 +788,7 @@ class Broker:
         context_row: Row = {
             'organization_id': context.organization_id,
             'agent_id': context.agent_id,
-            'project_id': context.project_id,
+            'project_ids': list(context.project_ids),
             'task_id': context.task_id,
             'runner_id': context.runner_id,
             'purpose': request.purpose,
@@ -841,7 +868,7 @@ class Broker:
                 conn,
                 context.organization_id,
                 context.agent_id,
-                context.project_id,
+                context.project_ids,
                 reference,
                 request.purpose,
                 request.delivery_mode,
@@ -852,7 +879,7 @@ class Broker:
                 conn,
                 'INSERT INTO secrets.resolutions (id, organization_id,'
                 ' binding_id, grant_id, provider_id, reference, field,'
-                ' agent_id, project_id, task_id, runner_id, purpose,'
+                ' agent_id, project_ids, task_id, runner_id, purpose,'
                 ' delivery_mode, delivery_target, ttl_seconds, handle_hash,'
                 ' idempotency_key, repository, expires_at) VALUES (%s, %s,'
                 ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
@@ -866,7 +893,7 @@ class Broker:
                     str(reference),
                     reference.field,
                     context.agent_id,
-                    context.project_id,
+                    list(context.project_ids),
                     context.task_id,
                     context.runner_id,
                     request.purpose,
@@ -902,6 +929,7 @@ class Broker:
             row['delivery_target'],
             row['ttl_seconds'],
             row['repository'],
+            set(row['project_ids']),
         ) != (
             context.runner_id,
             reference,
@@ -910,6 +938,7 @@ class Broker:
             check_delivery(request.delivery_mode, request.delivery_target),
             request.ttl_seconds,
             request.repository,
+            set(context.project_ids),
         ):
             raise providers.BrokerError(
                 'resolution_context_mismatch', 'idempotency_key_reused'
@@ -984,12 +1013,10 @@ class Broker:
         if row['runner_id'] != executor.runner_id or (
             row['task_id'],
             row['agent_id'],
-            row['project_id'],
             row['purpose'],
         ) != (
             request.task_id,
             request.agent_id,
-            request.project_id,
             request.purpose,
         ):
             raise providers.BrokerError('resolution_context_mismatch')
@@ -1017,7 +1044,7 @@ class Broker:
             ResolutionContext(
                 organization_id=row['organization_id'],
                 agent_id=row['agent_id'],
-                project_id=row['project_id'],
+                project_ids=tuple(row['project_ids']),
                 task_id=row['task_id'],
                 runner_id=row['runner_id'],
             ),
@@ -1060,7 +1087,7 @@ class Broker:
                 'agent': row['agent_id'],
                 'purpose': row['purpose'],
                 'mode': row['delivery_mode'],
-                'project': row['project_id'],
+                'projects': row['project_ids'],
                 'grant': row['grant_id'],
             },
         )
@@ -1087,7 +1114,7 @@ class Broker:
                 providers.ResolveContext(
                     organization_id=row['organization_id'],
                     task_id=row['task_id'],
-                    project_id=row['project_id'],
+                    project_ids=tuple(row['project_ids']),
                     purpose=row['purpose'],
                     ttl_seconds=row['ttl_seconds'],
                     credential_class=decision.binding['credential_class'],
@@ -1142,7 +1169,8 @@ class Broker:
         The resolution is locked ``FOR UPDATE``, and its task and runner
         ``FOR SHARE``, so a release, a task close, or fencing that ran
         during the provider call is seen here. When the resolution is
-        no longer ``active``, its task is closed, or its runner is not
+        no longer ``active``, its task is closed or has other projects
+        than at create, or its runner is not
         live (``idle`` or ``busy``, as for the executor credential), the
         new lease is revoked at once and the material is not returned.
         When the lease cannot be saved, it is revoked at once too. The
@@ -1651,7 +1679,7 @@ class Broker:
                 providers.ResolveContext(
                     organization_id=organization_id,
                     task_id=task_id or uuid.UUID(int=0),
-                    project_id=None,
+                    project_ids=(),
                     purpose='provider_key',
                     ttl_seconds=MAX_TTL_SECONDS,
                     credential_class=binding['credential_class'],
@@ -1722,6 +1750,11 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
         and resolution[0] == 'active'
         and task is not None
         and task[0] != 'closed'
+        # The projects can change while the provider call runs.
+        and await _task_project_ids(
+            conn, row['organization_id'], row['task_id']
+        )
+        == set(row['project_ids'])
         and runner is not None
         and runner[0] in ('idle', 'busy')
     )

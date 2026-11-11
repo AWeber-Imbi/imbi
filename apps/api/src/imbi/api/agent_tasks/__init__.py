@@ -30,7 +30,6 @@ from imbi.api.agent_tasks.store import (
     NewRequest,
     NewTask,
     Pool,
-    PrimaryProject,
     RequestKeyConflict,
     RequestNotFound,
     RequestNotOpen,
@@ -80,6 +79,7 @@ async def store_lifespan() -> abc.AsyncGenerator[TaskStore]:
     try:
         await pool.open()
         store = TaskStore(pool)
+        await store.move_legacy_projects()
         stop = asyncio.Event()
         sweep = asyncio.create_task(sweeper.run_sweeper(store, stop=stop))
         try:
@@ -112,7 +112,6 @@ __all__ = [
     'NewRequest',
     'NewTask',
     'Pool',
-    'PrimaryProject',
     'RequestKeyConflict',
     'RequestNotFound',
     'RequestNotOpen',

@@ -2,7 +2,7 @@
 
 These run against the live Postgres that ``root:services`` boots, like
 :mod:`apps.api.tests.endpoints.test_agent_tasks`. The org has the tasks
-``T-1`` (with the primary project), ``T-2``, and ``T-3``.
+``T-1`` (with a project), ``T-2``, and ``T-3``.
 """
 
 import typing
@@ -49,7 +49,7 @@ class RelationTestCase(test_agent_tasks.AgentTaskTestCase):
         )
         await self.make_agent()
         self.agent_tasks: dict[str, dict[str, typing.Any]] = {}
-        for body in ({'project_id': self.project_id}, {}, {}):
+        for body in ({'project_ids': [self.project_id]}, {}, {}):
             task = (await self.create_task(**body)).json()
             self.agent_tasks[task['short_id']] = task
 
@@ -289,7 +289,6 @@ class DependencyTests(RelationTestCase):
                 agent_version=1,
                 prompt_version=None,
                 service_account_id=parent['service_account_id'],
-                project_id=None,
                 title='Sub task',
                 description='Delegated.',
                 origin_kind='task',
@@ -303,6 +302,15 @@ class DependencyTests(RelationTestCase):
             {},
         )
         return child
+
+    async def test_child_gets_the_projects_of_its_parent(self) -> None:
+        response = await self.put(f'T-1/projects/{self.second_project}')
+        self.assertEqual(response.status_code, 204, response.text)
+        child = await self.delegate(self.agent_tasks['T-1'])
+        self.assertEqual(
+            {p['project_id'] for p in child['projects']},
+            {self.project_id, self.second_project},
+        )
 
     async def test_delegation_is_parent_and_children(self) -> None:
         child = await self.delegate(self.agent_tasks['T-2'])
@@ -345,17 +353,17 @@ class ProjectTests(RelationTestCase):
         self.assertEqual(added['added_by'], self.email)
         self.assertIn('operation_id', added)
 
-        primary, second = await self.projects('T-1')
-        self.assertEqual(primary['project_id'], self.project_id)
-        self.assertTrue(primary['primary'])
-        self.assertTrue(primary['available'])
-        self.assertEqual(primary['name'], 'Billing')
-        self.assertFalse(second['primary'])
+        first, second = await self.projects('T-1')
+        self.assertEqual(first['project_id'], self.project_id)
+        self.assertTrue(first['available'])
+        self.assertEqual(first['name'], 'Billing')
+        self.assertEqual(first['added_by'], self.email)
+        self.assertEqual(second['project_id'], self.second_project)
         self.assertTrue(second['available'])
         self.assertEqual(second['name'], 'Feed Proxy')
         self.assertEqual(second['added_by'], self.email)
         self.assertEqual(second['added_by_kind'], 'human')
-        # T-2 has no primary project.
+        # T-2 has no project.
         self.assertEqual(await self.projects('T-2'), [])
 
         for _ in range(2):
@@ -371,11 +379,38 @@ class ProjectTests(RelationTestCase):
             self.assertEqual(removed[key], added[key], key)
         self.assertEqual(len(await self.projects('T-1')), 1)
 
-    async def test_primary_project_is_refused(self) -> None:
+    async def test_project_from_create_can_be_removed(self) -> None:
         response = await self.put(f'T-1/projects/{self.project_id}')
-        self.assertEqual(response.status_code, 409, response.text)
-        self.assertEqual(response.json()['detail']['error'], 'primary_project')
+        self.assertEqual(response.status_code, 204, response.text)
         self.assertEqual(await self.last_seq('T-1'), 1)
+        response = await self.delete(f'T-1/projects/{self.project_id}')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.projects('T-1'), [])
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.json()['projects'], [])
+
+    async def test_create_with_many_projects(self) -> None:
+        response = await self.create_task(
+            project_ids=[
+                self.second_project,
+                self.project_id,
+                self.second_project,
+            ]
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [p['project_id'] for p in response.json()['projects']],
+            sorted([self.second_project, self.project_id]),
+        )
+        short_id = response.json()['short_id']
+        self.assertEqual(
+            {p['project_id'] for p in await self.projects(short_id)},
+            {self.second_project, self.project_id},
+        )
+        response = await self.create_task(
+            project_ids=[self.project_id, self.foreign_project]
+        )
+        self.assertEqual(response.status_code, 422, response.text)
 
     async def test_project_must_be_in_the_org(self) -> None:
         for project_id in (self.foreign_project, 'nope'):

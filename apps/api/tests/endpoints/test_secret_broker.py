@@ -660,7 +660,7 @@ class SecretEndpointTestCase(
 
         request = {
             'agent_id': self.agent,
-            'project_id': self.project,
+            'project_ids': [self.project],
             'reference': 'secret://production/github/token',
             'purpose': 'github_write',
             'delivery_mode': 'environment',

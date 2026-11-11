@@ -5335,15 +5335,18 @@ export interface paths {
          * Retry Agent Task
          * @description Make a new task that does a closed task again.
          *
-         *     The new task has the agent, title, and project of the closed task.
+         *     The new task has the agent, title, and projects of the closed task.
          *     Its description adds what happened to the closed task, and the note
-         *     of the person. The closed task does not change.
+         *     of the person. The closed task does not change. The caller also
+         *     needs ``agent_task:read``, because the new description shows the
+         *     log of the closed task.
          *
          *     Raises:
-         *         403: The caller is not a person, or not a member of the org.
+         *         403: The caller is not a person, not a member of the org, or
+         *             cannot read tasks.
          *         404: No such task.
          *         409: The task is not closed, or its agent is disabled.
-         *         422: The agent or the project is no longer in the org.
+         *         422: The agent or a project is no longer in the org.
          */
         post: operations["retry_agent_task_api_organizations__org_slug__agent_tasks__short_id__retry_post"];
         delete?: never;
@@ -5529,8 +5532,7 @@ export interface paths {
         };
         /**
          * List Agent Task Projects
-         * @description List the projects of a task: the primary project first, then the
-         *     associated projects, oldest first.
+         * @description List the projects of a task, oldest first.
          *
          *     The caller needs ``agent_task:read``, also the service account of the
          *     task's agent: the rows show who associated each project.
@@ -5566,8 +5568,7 @@ export interface paths {
          *         403: The caller is not a person, has no ``agent_task:manage``,
          *             or is not a member of the org.
          *         404: No such task.
-         *         409: ``task_archived``, or ``primary_project``: the project is
-         *             the primary project of the task.
+         *         409: ``task_archived``.
          *         422: The project is not in the org.
          */
         put: operations["associate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__put"];
@@ -10927,10 +10928,10 @@ export interface components {
              */
             description: string;
             /**
-             * Project Id
-             * @description The primary project of the task.
+             * Project Ids
+             * @description The projects of the task.
              */
-            project_id?: string | null;
+            project_ids?: string[];
             /**
              * Budget
              * @description USD. Defaults to the agent's task_budget. It cannot be more than that budget.
@@ -10998,10 +10999,8 @@ export interface components {
             platform_config_version?: number | null;
             /** Service Account Id */
             service_account_id: string;
-            /** Project Id */
-            project_id?: string | null;
-            /** Project Slug */
-            project_slug?: string | null;
+            /** Projects */
+            projects: components["schemas"]["TaskProject"][];
             /** Title */
             title: string;
             /** Description */
@@ -11170,10 +11169,8 @@ export interface components {
             platform_config_version?: number | null;
             /** Service Account Id */
             service_account_id: string;
-            /** Project Id */
-            project_id?: string | null;
-            /** Project Slug */
-            project_slug?: string | null;
+            /** Projects */
+            projects: components["schemas"]["TaskProject"][];
             /** Title */
             title: string;
             /** Description */
@@ -11540,11 +11537,6 @@ export interface components {
             name?: string | null;
             /** Available */
             available: boolean;
-            /**
-             * Primary
-             * @default false
-             */
-            primary: boolean;
             /** Added By Kind */
             added_by_kind?: ("human" | "agent" | "subagent" | "system") | null;
             /** Added By */
@@ -19104,6 +19096,11 @@ export interface components {
              * @description The trigger binding of the gateway rule that started a webhook run.
              */
             binding?: string | null;
+            /**
+             * Project Id
+             * @description The project that the gateway matched to the webhook delivery. Only a webhook run uses it.
+             */
+            project_id?: string | null;
         };
         /** RunDetail */
         RunDetail: {
@@ -20012,8 +20009,8 @@ export interface components {
         SecretGrantEvaluate: {
             /** Agent Id */
             agent_id: string;
-            /** Project Id */
-            project_id?: string | null;
+            /** Project Ids */
+            project_ids?: string[];
             /** Reference */
             reference: string;
             /** Purpose */
@@ -20128,8 +20125,6 @@ export interface components {
             task_id: string;
             /** Agent Id */
             agent_id: string;
-            /** Project Id */
-            project_id?: string | null;
             /** Purpose */
             purpose: string;
         };
@@ -20294,8 +20289,8 @@ export interface components {
             reference: string;
             /** Agent Id */
             agent_id: string;
-            /** Project Id */
-            project_id: string | null;
+            /** Project Ids */
+            project_ids: string[];
             /**
              * Task Id
              * Format: uuid
@@ -20725,6 +20720,13 @@ export interface components {
             relationships?: {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
+        };
+        /** TaskProject */
+        TaskProject: {
+            /** Project Id */
+            project_id: string;
+            /** Project Slug */
+            project_slug: string;
         };
         /**
          * TaskState

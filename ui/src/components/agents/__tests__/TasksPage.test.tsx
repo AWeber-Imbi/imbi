@@ -843,7 +843,7 @@ describe('Tasks', () => {
       expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
         description: 'Check the build\nFind why it fails.',
-        project_id: 'p-1',
+        project_ids: ['p-1'],
         title: 'Check the build',
       }),
     )

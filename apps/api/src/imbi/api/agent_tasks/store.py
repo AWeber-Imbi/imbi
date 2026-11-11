@@ -110,6 +110,22 @@ _OPEN_REQUESTS = sql.SQL(
     ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
 )
 
+#: The projects of task ``t`` (F13), oldest first, as a JSON list of
+#: ``project_id`` and ``project_slug``. Every task row has it.
+PROJECTS: typing.LiteralString = (
+    '(SELECT coalesce(jsonb_agg(jsonb_build_object('
+    "'project_id', p.project_id, 'project_slug', p.project_slug)"
+    " ORDER BY p.added_at, p.project_id), '[]'::jsonb)"
+    ' FROM agent_runtime.task_projects AS p'
+    ' WHERE p.organization_id = t.organization_id AND p.task_id = t.id)'
+    ' AS projects'
+)
+
+#: A task row with its projects. Continue it with a WHERE clause.
+_SELECT_TASKS: typing.LiteralString = (
+    'SELECT t.*, ' + PROJECTS + ' FROM agent_runtime.tasks AS t'  # noqa: S608
+)
+
 #: The tasks at the other end of the dependencies of a task, with the
 #: link. ``this`` is the column of the task, ``other`` the other column.
 _LINKED_TASKS = sql.SQL(
@@ -198,10 +214,6 @@ class SelfDependency(ValueError):
     """A task cannot depend on itself."""
 
 
-class PrimaryProject(ValueError):
-    """The project is the primary project of the task."""
-
-
 @dataclasses.dataclass(frozen=True)
 class Actor:
     """Who caused an event, and through which channel."""
@@ -220,7 +232,6 @@ class NewTask:
     agent_version: int
     prompt_version: int | None
     service_account_id: str
-    project_id: str | None
     title: str
     description: str
     origin_kind: str
@@ -229,7 +240,10 @@ class NewTask:
     idempotency_key: str | None
     owner: str
     budget: decimal.Decimal | None
-    project_slug: str | None = None
+    #: The ``(project_id, project_slug)`` of each project of the task.
+    #: A child task (origin ``task``) gets the projects of its parent
+    #: instead.
+    projects: abc.Sequence[tuple[str, str]] = ()
     #: The root task of the chain of a child task. ``None`` makes the
     #: task the root of its own chain.
     chain_id: uuid.UUID | None = None
@@ -437,6 +451,30 @@ class TaskStore:
         if write.task['status'] == 'closed':
             await _run_close_hooks(write.task)
 
+    async def move_legacy_projects(self) -> int:
+        """Move the old single project of each task (``tasks.project_id``)
+        to ``task_projects``, and clear it. Return the number of tasks.
+
+        A task had one primary project before it had a project list. A
+        second run moves nothing, so each start runs it.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            cursor = await conn.execute(
+                'WITH moved AS (UPDATE agent_runtime.tasks AS t'
+                ' SET project_id = NULL, project_slug = NULL'
+                ' FROM agent_runtime.tasks AS o'
+                ' WHERE o.id = t.id AND o.project_id IS NOT NULL'
+                ' RETURNING t.organization_id, t.id, t.created_at,'
+                ' o.project_id, o.project_slug)'
+                ' INSERT INTO agent_runtime.task_projects (organization_id,'
+                ' task_id, project_id, project_slug, added_by_kind,'
+                ' added_by, added_at)'
+                ' SELECT organization_id, id, project_id,'
+                " coalesce(project_slug, project_id), 'system', 'migration',"
+                ' created_at FROM moved ON CONFLICT DO NOTHING'
+            )
+            return cursor.rowcount
+
     async def find_by_idempotency_key(
         self, organization_id: str, origin_kind: str, origin_id: str, key: str
     ) -> Row | None:
@@ -444,8 +482,8 @@ class TaskStore:
         async with self._pool.connection() as conn:
             return await _fetch_one(
                 conn,
-                'SELECT * FROM agent_runtime.tasks'
-                ' WHERE organization_id = %s AND origin_kind = %s'
+                _SELECT_TASKS
+                + ' WHERE organization_id = %s AND origin_kind = %s'
                 ' AND origin_id = %s AND idempotency_key = %s',
                 (organization_id, origin_kind, origin_id, key),
             )
@@ -480,11 +518,11 @@ class TaskStore:
                 await conn.execute(
                     'INSERT INTO agent_runtime.tasks (id, organization_id,'
                     ' short_id, agent_id, agent_version, prompt_version,'
-                    ' service_account_id, project_id, project_slug, title,'
+                    ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
                     ' platform_config_version) VALUES (%s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
                     ' %s, %s, %s, (SELECT max(version)'
                     ' FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
@@ -496,8 +534,6 @@ class TaskStore:
                         task.agent_version,
                         task.prompt_version,
                         task.service_account_id,
-                        task.project_id,
-                        task.project_slug,
                         task.title,
                         task.description,
                         task.origin_kind,
@@ -510,6 +546,45 @@ class TaskStore:
                         task.organization_id,
                     ),
                 )
+                if task.origin_kind == 'task':
+                    # The parent row is locked, so its projects cannot
+                    # change until this commits.
+                    await conn.execute(
+                        'INSERT INTO agent_runtime.task_projects'
+                        ' (organization_id, task_id, project_id,'
+                        ' project_slug, added_by_kind, added_by)'
+                        ' SELECT organization_id, %s, project_id,'
+                        ' project_slug, %s, %s'
+                        ' FROM agent_runtime.task_projects'
+                        ' WHERE organization_id = %s AND task_id = %s::uuid',
+                        (
+                            task_id,
+                            actor.kind,
+                            actor.id,
+                            task.organization_id,
+                            task.origin_id,
+                        ),
+                    )
+                elif task.projects:
+                    async with conn.cursor() as cursor:
+                        await cursor.executemany(
+                            'INSERT INTO agent_runtime.task_projects'
+                            ' (organization_id, task_id, project_id,'
+                            ' project_slug, added_by_kind, added_by)'
+                            ' VALUES (%s, %s, %s, %s, %s, %s)'
+                            ' ON CONFLICT DO NOTHING',
+                            [
+                                (
+                                    task.organization_id,
+                                    task_id,
+                                    project_id,
+                                    project_slug,
+                                    actor.kind,
+                                    actor.id,
+                                )
+                                for project_id, project_slug in task.projects
+                            ],
+                        )
                 event = await _append_event(
                     conn, task_id, 'task.created', event_payload, actor
                 )
@@ -537,8 +612,8 @@ class TaskStore:
         async with self._pool.connection() as conn:
             return await _fetch_one(
                 conn,
-                'SELECT * FROM agent_runtime.tasks'
-                ' WHERE organization_id = %s AND short_id = %s',
+                _SELECT_TASKS
+                + ' WHERE organization_id = %s AND short_id = %s',
                 (organization_id, short_id),
             )
 
@@ -558,8 +633,8 @@ class TaskStore:
         """Return tasks in the organization, newest first.
 
         ``text`` matches the title or the short id. A task also matches
-        when its agent is in ``text_agent_ids`` or its project is in
-        ``text_project_ids``; the caller finds those in the graph.
+        when its agent is in ``text_agent_ids`` or one of its projects is
+        in ``text_project_ids``; the caller finds those in the graph.
         ``before`` is the ``(created_at, id)`` keyset of the last row of
         the previous page. Each row also has ``blocked_since``: for a
         task that waits on a person (see :data:`_OPEN_REQUESTS`), the
@@ -582,7 +657,10 @@ class TaskStore:
             conditions.append(
                 sql.SQL(
                     '(title ILIKE %s OR short_id ILIKE %s'
-                    ' OR agent_id = ANY(%s) OR project_id = ANY(%s))'
+                    ' OR agent_id = ANY(%s) OR EXISTS (SELECT 1'
+                    ' FROM agent_runtime.task_projects AS tp'
+                    ' WHERE tp.organization_id = t.organization_id'
+                    ' AND tp.task_id = t.id AND tp.project_id = ANY(%s)))'
                 )
             )
             params += [
@@ -595,7 +673,8 @@ class TaskStore:
             conditions.append(sql.SQL('(created_at, id) < (%s, %s)'))
             params += list(before)
         statement = sql.SQL(
-            "SELECT t.*, CASE WHEN t.status <> 'closed' THEN"
+            'SELECT t.*, ' + PROJECTS + ','  # noqa: S608
+            " CASE WHEN t.status <> 'closed' THEN"
             ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
             ' FROM agent_runtime.tasks AS t WHERE {where}'
             ' ORDER BY created_at DESC, id DESC LIMIT %s'
@@ -677,7 +756,8 @@ class TaskStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT t.*, (SELECT count(*) FROM agent_runtime.budget_ledger'
+                'SELECT t.*, ' + PROJECTS + ','  # noqa: S608
+                ' (SELECT count(*) FROM agent_runtime.budget_ledger'
                 ' AS l WHERE l.task_id = t.id) AS ledger_count'
                 ' FROM agent_runtime.tasks AS t'
                 ' WHERE t.log_archived_at IS NULL'
@@ -758,8 +838,8 @@ class TaskStore:
         async with self._pool.connection() as conn, conn.transaction():
             task = await _fetch_one(
                 conn,
-                'SELECT * FROM agent_runtime.tasks'
-                ' WHERE organization_id = %s AND short_id = %s FOR UPDATE',
+                _SELECT_TASKS
+                + ' WHERE organization_id = %s AND short_id = %s FOR UPDATE',
                 (organization_id, short_id),
             )
             if task is None:
@@ -904,11 +984,11 @@ class TaskStore:
         async with self._pool.connection() as conn:
             task = await _fetch_one(
                 conn,
-                'UPDATE agent_runtime.tasks'
+                'UPDATE agent_runtime.tasks AS t'  # noqa: S608
                 ' SET acknowledged_at = COALESCE(acknowledged_at, NOW()),'
                 ' acknowledged_by = COALESCE(acknowledged_by, %s)'
                 ' WHERE organization_id = %s AND short_id = %s'
-                " AND status = 'closed' RETURNING *",
+                " AND status = 'closed' RETURNING t.*, " + PROJECTS,
                 (actor_id, organization_id, short_id),
             )
             if task is not None:
@@ -1044,7 +1124,7 @@ class TaskStore:
         project_slug: str,
         actor: Actor,
     ) -> bool:
-        """Associate a project, other than the primary, with a task.
+        """Associate a project with a task.
 
         The caller checks that the project is in the organization. Write
         ``project.associated``. Return ``False`` and write no event when
@@ -1053,12 +1133,9 @@ class TaskStore:
         Raises:
             TaskNotFound: No such task.
             TaskArchived: The task is archived.
-            PrimaryProject: The project is the primary project.
 
         """
         async with self._relate(organization_id, [short_id]) as relate:
-            if relate.tasks[0]['project_id'] == project_id:
-                raise PrimaryProject(project_id)
             row = await _fetch_one(
                 relate.conn,
                 'INSERT INTO agent_runtime.task_projects (organization_id,'
@@ -1144,14 +1221,14 @@ class TaskStore:
             parent: Row | None = None
             if task['origin_kind'] == 'task':
                 await cursor.execute(
-                    'SELECT * FROM agent_runtime.tasks'
-                    ' WHERE organization_id = %s AND id::text = %s',
+                    _SELECT_TASKS
+                    + ' WHERE organization_id = %s AND id::text = %s',
                     (task['organization_id'], task['origin_id']),
                 )
                 parent = await cursor.fetchone()
             await cursor.execute(
-                'SELECT * FROM agent_runtime.tasks'
-                " WHERE organization_id = %s AND origin_kind = 'task'"
+                _SELECT_TASKS
+                + " WHERE organization_id = %s AND origin_kind = 'task'"
                 ' AND origin_id = %s ORDER BY created_at, id',
                 (task['organization_id'], str(task['id'])),
             )
@@ -1762,8 +1839,8 @@ class TaskStore:
         async with self._pool.connection() as conn:
             task = await _fetch_one(
                 conn,
-                'SELECT * FROM agent_runtime.tasks'
-                ' WHERE organization_id = %s AND short_id = %s',
+                _SELECT_TASKS
+                + ' WHERE organization_id = %s AND short_id = %s',
                 (organization_id, short_id),
             )
             if task is None:
@@ -1808,8 +1885,8 @@ async def requeue_chain(
     """
     async with conn.cursor(row_factory=rows.dict_row) as cursor:
         await cursor.execute(
-            'SELECT * FROM agent_runtime.tasks'
-            ' WHERE (chain_id = %s OR (chain_id IS NULL AND id = %s))'
+            _SELECT_TASKS
+            + ' WHERE (chain_id = %s OR (chain_id IS NULL AND id = %s))'
             " AND status <> 'closed' ORDER BY id FOR UPDATE",
             (chain_id, chain_id),
         )
@@ -1869,7 +1946,7 @@ async def append_event(
     """
     task = await _fetch_one(
         conn,
-        'SELECT * FROM agent_runtime.tasks WHERE id = %s'
+        _SELECT_TASKS + ' WHERE id = %s'
         ' AND organization_id = %s AND log_archived_at IS NULL FOR UPDATE',
         (task_id, organization_id),
     )
@@ -2086,7 +2163,7 @@ async def _fetch_task(
 ) -> Row:
     row = await _fetch_one(
         conn,
-        'SELECT * FROM agent_runtime.tasks WHERE id = %s',
+        _SELECT_TASKS + ' WHERE id = %s',
         (task_id,),
     )
     if row is None:  # pragma: no cover - read inside the write transaction
@@ -2102,8 +2179,8 @@ async def _lock_task(
     """Lock and return an open task, for a change in this transaction."""
     task = await _fetch_one(
         conn,
-        'SELECT * FROM agent_runtime.tasks'
-        ' WHERE organization_id = %s AND short_id = %s FOR UPDATE',
+        _SELECT_TASKS
+        + ' WHERE organization_id = %s AND short_id = %s FOR UPDATE',
         (organization_id, short_id),
     )
     if task is None:
@@ -2119,8 +2196,8 @@ async def _lock_tasks(
     """Lock and return tasks in task id order, closed or not."""
     async with conn.cursor(row_factory=rows.dict_row) as cursor:
         await cursor.execute(
-            'SELECT * FROM agent_runtime.tasks'
-            ' WHERE organization_id = %s AND short_id = ANY(%s)'
+            _SELECT_TASKS
+            + ' WHERE organization_id = %s AND short_id = ANY(%s)'
             ' ORDER BY id FOR UPDATE',
             (organization_id, short_ids),
         )
@@ -2169,8 +2246,8 @@ async def _update_task(
     changes: Row,
 ) -> Row:
     statement = sql.SQL(
-        'UPDATE agent_runtime.tasks SET {sets}, updated_at = NOW()'
-        ' WHERE id = %s RETURNING *'
+        'UPDATE agent_runtime.tasks AS t SET {sets}, updated_at = NOW()'  # noqa: S608
+        ' WHERE id = %s RETURNING t.*, ' + PROJECTS
     ).format(
         sets=sql.SQL(', ').join(
             sql.SQL('{col} = %s').format(col=sql.Identifier(col))

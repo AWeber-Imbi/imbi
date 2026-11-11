@@ -5,6 +5,7 @@ path (provider keys, release, fencing) is tested in imbi-api
 (``apps/api/tests/test_secret_github_app.py``).
 """
 
+import dataclasses
 import datetime
 import json
 import os
@@ -63,7 +64,7 @@ def _context(
     return secrets.ResolveContext(
         organization_id='org',
         task_id=uuid.uuid4(),
-        project_id='project',
+        project_ids=('project',),
         purpose=purpose,
         ttl_seconds=300,
         credential_class='dynamic',
@@ -181,6 +182,31 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(ValueError):
             APP.check_key_host('evil.example')
+
+    @respx.mock
+    async def test_token_covers_every_project(self) -> None:
+        route = _mock_github()
+        unverified = secrets.BrokerError(
+            'secret_access_denied', 'project_repository_unverified'
+        )
+        found = {'p1': [101], 'p3': [101]}
+
+        async def repository_ids(_host: str, project_id: str) -> list[int]:
+            if project_id not in found:
+                raise unverified
+            return found[project_id]
+
+        self.project_repository_ids.side_effect = repository_ids
+        context = dataclasses.replace(
+            _context('github_write'), project_ids=('p1', 'p2', 'p3')
+        )
+        await APP.resolve(CONFIG, LOCATOR, None, context)
+        body = json.loads(route.calls.last.request.content)
+        self.assertEqual(body['repository_ids'], [101])
+        found.clear()
+        with self.assertRaises(secrets.BrokerError) as ctx:
+            await APP.resolve(CONFIG, LOCATOR, None, context)
+        self.assertEqual(ctx.exception.reason, 'project_repository_unverified')
 
     @respx.mock
     async def test_scope_by_purpose(self) -> None:

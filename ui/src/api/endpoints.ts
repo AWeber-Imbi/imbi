@@ -3959,7 +3959,7 @@ export const setAgentTaskDependency = (
   return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
 }
 
-/** The primary project of a task first, then its associated projects. */
+/** The projects of a task, oldest association first. */
 export const listAgentTaskProjects = (
   orgSlug: string,
   shortId: string,

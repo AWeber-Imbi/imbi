@@ -162,7 +162,7 @@ class ReferenceTestCase(unittest.TestCase):
         )
         self.assertNotIn('imh_secret', repr(created))
         request = broker.MaterializeRequest(
-            'imh_secret', 'nonce-x', uuid.uuid4(), 'a', None, 'p'
+            'imh_secret', 'nonce-x', uuid.uuid4(), 'a', 'p'
         )
         self.assertNotIn('imh_secret', repr(request))
         self.assertNotIn('nonce-x', repr(request))
@@ -326,8 +326,8 @@ class CreateResolutionTestCase(secret_support.SecretCase):
     async def test_context_must_match_task(self) -> None:
         for change in (
             {'agent_id': 'other-agent'},
-            {'project_id': 'other-project'},
-            {'project_id': None},
+            {'project_ids': ('other-project',)},
+            {'project_ids': ()},
             {'organization_id': 'other-org'},
             {'task_id': uuid.uuid4()},
         ):
@@ -335,6 +335,25 @@ class CreateResolutionTestCase(secret_support.SecretCase):
                 await self._denied(
                     'resolution_context_mismatch', self.context(**change)
                 )
+
+    async def test_scoped_grant_needs_every_project(self) -> None:
+        task_id = await self.add_task()
+        async with self.pool.connection() as conn:
+            await self.add_task_project(conn, task_id, 'proj-other')
+        context = self.context(
+            project_ids=tuple(sorted((self.project, 'proj-other'))),
+            task_id=task_id,
+        )
+        # The default grant lists only self.project.
+        error = await self._denied('secret_access_denied', context)
+        self.assertEqual(error.reason, 'no_grant')
+        await self.store.update(
+            'grants',
+            self.org,
+            self.grant['id'],
+            {'project_ids': [self.project, 'proj-other']},
+        )
+        await self.broker.create_resolution(context, self.request())
 
     async def test_closed_task_is_denied(self) -> None:
         async with self.pool.connection() as conn:
@@ -354,7 +373,7 @@ class CreateResolutionTestCase(secret_support.SecretCase):
         no_project_task = await self.add_task(project=None)
         await self._denied(
             'secret_access_denied',
-            self.context(project_id=None, task_id=no_project_task),
+            self.context(project_ids=(), task_id=no_project_task),
         )
         await self._denied(
             'secret_access_denied', request=self.request(purpose='deploy')
@@ -652,6 +671,24 @@ class CreateResolutionTestCase(secret_support.SecretCase):
                 request=self.request(idempotency_key='key-1', **change),
             )
 
+    async def test_repeat_with_other_projects_is_refused(self) -> None:
+        request = self.request(idempotency_key='key-projects')
+        await self.broker.create_resolution(self.context(), request)
+        async with self.pool.connection() as conn:
+            await self.add_task_project(conn, self.task_id, 'proj-other')
+        await self.store.update(
+            'grants',
+            self.org,
+            self.grant['id'],
+            {'project_ids': [self.project, 'proj-other']},
+        )
+        error = await self._denied(
+            'resolution_context_mismatch',
+            self.context(project_ids=(self.project, 'proj-other')),
+            request,
+        )
+        self.assertEqual(error.reason, 'idempotency_key_reused')
+
     async def test_purpose_retired_after_create_is_refused(self) -> None:
         request = self.request(idempotency_key='key-retired')
         created = await self.broker.create_resolution(self.context(), request)
@@ -799,7 +836,6 @@ class MaterializeTestCase(secret_support.SecretCase):
         for change in (
             {'task_id': uuid.uuid4()},
             {'agent_id': 'other'},
-            {'project_id': None},
             {'purpose': 'checkout'},
         ):
             with self.subTest(change=change):
@@ -837,8 +873,6 @@ class MaterializeTestCase(secret_support.SecretCase):
         for column, value in (
             ('status', 'closed'),
             ('agent_id', 'other-agent'),
-            ('project_id', 'other-project'),
-            ('organization_id', 'other-org'),
         ):
             with self.subTest(column=column):
                 created = await self._create()
@@ -873,6 +907,25 @@ class MaterializeTestCase(secret_support.SecretCase):
                 await self.broker.materialize(
                     self.executor(), self.materialize_request(created.handle)
                 )
+
+    async def test_project_change_after_create_is_refused(self) -> None:
+        created = await self._create()
+        async with self.pool.connection() as conn:
+            await self.add_task_project(conn, self.task_id, 'other-project')
+        await self._refused(
+            'resolution_context_mismatch',
+            self.materialize_request(created.handle),
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM agent_runtime.task_projects'
+                ' WHERE task_id = %s AND project_id = %s',
+                (self.task_id, 'other-project'),
+            )
+        # The refusal used nothing: the handle still works.
+        await self.broker.materialize(
+            self.executor(), self.materialize_request(created.handle)
+        )
 
     async def test_sweep_releases_resolutions_of_closed_tasks(self) -> None:
         created = await self._create()
@@ -961,7 +1014,7 @@ class MaterializeTestCase(secret_support.SecretCase):
         )
         self.assertEqual(
             await self.store.agent_references(
-                self.org, self.agent, self.project
+                self.org, self.agent, [self.project]
             ),
             [
                 {
@@ -1171,6 +1224,14 @@ class LeaseTestCase(secret_support.SecretCase):
         # As if the close hook failed: the resolution is still active.
         await self._change_during_provider_call(
             "UPDATE agent_runtime.tasks SET status = 'closed' WHERE id = %s"
+        )
+
+    async def test_project_added_during_a_provider_call(self) -> None:
+        await self._change_during_provider_call(
+            'INSERT INTO agent_runtime.task_projects (organization_id,'
+            ' task_id, project_id, project_slug, added_by_kind, added_by)'
+            " SELECT organization_id, id, 'proj-late', 'late', 'human', 'test'"
+            ' FROM agent_runtime.tasks WHERE id = %s'
         )
 
     async def test_runner_fenced_during_a_provider_call(self) -> None:
