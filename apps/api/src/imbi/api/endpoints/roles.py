@@ -339,11 +339,11 @@ async def patch_role(
             detail=f'Role with slug {slug!r} not found',
         )
 
+    # System roles are editable, but the seed and memberships find them
+    # by slug, so a system role keeps its slug and its system flag.
+    readonly = json_patch.READONLY_PATHS | {'/is_system'}
     if existing.is_system:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='Cannot modify system role',
-        )
+        readonly |= {'/slug'}
 
     current = existing.model_dump(mode='json')
     current.pop('created_at', None)
@@ -351,7 +351,7 @@ async def patch_role(
     current.pop('permissions', None)
     current.pop('parent_role', None)
 
-    patched = json_patch.apply_patch(current, operations)
+    patched = json_patch.apply_patch(current, operations, readonly)
 
     try:
         role = models.Role(**patched)
@@ -472,14 +472,6 @@ async def grant_permission(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
         )
-    if role.is_system:
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail=(
-                f'Role {slug!r} is a system role; its permissions are '
-                'managed by the seed and cannot be changed via the API'
-            ),
-        )
 
     # Check if permission exists
     perm_results = await db.match(
@@ -543,14 +535,6 @@ async def revoke_permission(
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
-        )
-    if role.is_system:
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail=(
-                f'Role {slug!r} is a system role; its permissions are '
-                'managed by the seed and cannot be changed via the API'
-            ),
         )
 
     # Delete GRANTS relationship

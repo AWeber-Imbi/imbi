@@ -296,40 +296,58 @@ class RoleEndpointsTestCase(support.SharedAppTestCase):
             response.json()['detail'],
         )
 
-    def test_grant_permission_on_system_role_denied(self) -> None:
-        """Grant against a system role is rejected with 403."""
+    def test_grant_permission_on_system_role(self) -> None:
+        """System roles accept permission grants."""
         system_role = models.Role(
-            name='Administrator',
-            slug='admin',
-            priority=1000,
+            name='Developer',
+            slug='developer',
+            priority=500,
             is_system=True,
         )
-        self.mock_db.match.return_value = [system_role]
+        permission = models.Permission(
+            name='role:read',
+            resource_type='role',
+            action='read',
+            description='View roles',
+        )
+        self.mock_db.match.side_effect = [[system_role], [permission]]
+        self.mock_db.execute.return_value = []
 
         response = self.client.post(
-            '/roles/admin/permissions',
-            json={'permission_name': 'blueprint:read'},
+            '/roles/developer/permissions',
+            json={'permission_name': 'role:read'},
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertIn('system role', response.json()['detail'])
+        self.assertEqual(response.status_code, 204)
 
-    def test_revoke_permission_on_system_role_denied(self) -> None:
-        """Revoke against a system role is rejected with 403."""
+    def test_patch_system_role_slug_denied(self) -> None:
+        """A system role keeps its slug."""
         system_role = models.Role(
-            name='Administrator',
-            slug='admin',
-            priority=1000,
+            name='Developer',
+            slug='developer',
+            priority=500,
             is_system=True,
         )
         self.mock_db.match.return_value = [system_role]
 
-        response = self.client.delete(
-            '/roles/admin/permissions/blueprint:read'
+        response = self.client.patch(
+            '/roles/developer',
+            json=[{'op': 'replace', 'path': '/slug', 'value': 'dev'}],
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertIn('system role', response.json()['detail'])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('read-only', response.json()['detail'])
+
+    def test_patch_is_system_denied(self) -> None:
+        """The system flag cannot be patched."""
+        self.mock_db.match.return_value = [self.test_role]
+
+        response = self.client.patch(
+            '/roles/test-role',
+            json=[{'op': 'replace', 'path': '/is_system', 'value': True}],
+        )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_revoke_permission_success(self) -> None:
         """Test revoking permission from role."""
