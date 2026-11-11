@@ -9,7 +9,7 @@ import psycopg.errors
 from fastapi.testclient import TestClient
 
 from apps.api.tests import support
-from imbi.api import models
+from imbi.api import models, secret_broker
 from imbi.common import graph, iggy
 
 PROJECT_ID = 'abc123nanoid'
@@ -54,6 +54,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
+        )
+        self.secret_store = mock.AsyncMock(
+            spec=secret_broker.store.SecretStore
+        )
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.secret_store
         )
 
         # Stub ``dispatch_lifecycle`` so tests that don't care about
@@ -1400,7 +1406,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
     def test_delete_success(self) -> None:
         """Test deleting a project."""
-        self.mock_db.execute.return_value = [{'deleted': 1}]
+        self.mock_db.execute.return_value = [{'org_id': 'org-1'}]
 
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1416,6 +1422,25 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.delete_node_embeddings.assert_awaited_once_with(
             'Project', PROJECT_ID
         )
+        self.secret_store.remove_project.assert_awaited_once_with(
+            'org-1', PROJECT_ID, 'admin@example.com'
+        )
+
+    def test_delete_succeeds_when_grant_cleanup_raises(self) -> None:
+        """A grant cleanup failure must not turn the delete into a 500."""
+        self.mock_db.execute.return_value = [{'org_id': 'org-1'}]
+        self.secret_store.remove_project.side_effect = RuntimeError('down')
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'lifecycle_results': []})
 
     def test_delete_not_found(self) -> None:
         """Test deleting nonexistent project."""
@@ -1428,6 +1453,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
         self.mock_db.delete_node_embeddings.assert_not_awaited()
+        self.secret_store.remove_project.assert_not_awaited()
 
     def test_delete_succeeds_when_snapshot_raises(self) -> None:
         """A lifecycle snapshot failure must not abort the delete.
@@ -1437,7 +1463,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         a transient failure there must be logged, the delete must still
         proceed, and dispatch must be skipped (no complete snapshot).
         """
-        self.mock_db.execute.return_value = [{'deleted': 1}]
+        self.mock_db.execute.return_value = [{'org_id': 'org-1'}]
 
         with (
             mock.patch(
@@ -2224,7 +2250,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self,
     ) -> None:
         """``delete_repository=false`` short-circuits the dispatch."""
-        self.mock_db.execute.return_value = [{'deleted': 1}]
+        self.mock_db.execute.return_value = [{'org_id': 'org-1'}]
         # Nest fresh patches over the setUp ones -- the inner mock.patch
         # wins for the duration of the with-block; addCleanup handles
         # teardown of the outer patchers without a double-stop.
@@ -2286,7 +2312,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         async def _delete(*_a: typing.Any, **_k: typing.Any) -> list[dict]:
             order.append('delete')
-            return [{'deleted': 1}]
+            return [{'org_id': 'org-1'}]
 
         self.mock_db.execute.side_effect = _delete
 

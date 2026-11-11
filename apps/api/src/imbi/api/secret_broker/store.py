@@ -358,24 +358,52 @@ class SecretStore:
         """Remove a deleted agent from every grant of the organization.
 
         A grant left with no agent matches nothing, so it is deleted.
-        The audit events commit with the change.
         """
+        await self._remove_from_grants(
+            organization_id, 'agent', agent_id, actor
+        )
+
+    async def remove_project(
+        self, organization_id: str, project_id: str, actor: str
+    ) -> None:
+        """Remove a deleted project from every grant of the organization.
+
+        A grant left with no project is deleted: an empty
+        ``project_ids`` allows every project, so keeping it would widen
+        the grant.
+        """
+        await self._remove_from_grants(
+            organization_id, 'project', project_id, actor
+        )
+
+    async def _remove_from_grants(
+        self,
+        organization_id: str,
+        kind: typing.Literal['agent', 'project'],
+        value: str,
+        actor: str,
+    ) -> None:
+        """Remove ``value`` from ``<kind>_ids`` of every grant of the
+        organization, and delete each grant that it leaves empty. The
+        audit events commit with the change."""
         async with (
             self._pool.connection() as conn,
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
             await cur.execute(
-                'UPDATE secrets.grants'
-                ' SET agent_ids = array_remove(agent_ids, %(agent)s),'
-                ' updated_at = NOW()'
-                ' WHERE organization_id = %(org)s'
-                ' AND %(agent)s = ANY(agent_ids)'
-                ' RETURNING id, agent_ids',
-                {'agent': agent_id, 'org': organization_id},
+                sql.SQL(
+                    'UPDATE secrets.grants'
+                    ' SET {col} = array_remove({col}, %(value)s),'
+                    ' updated_at = NOW()'
+                    ' WHERE organization_id = %(org)s'
+                    ' AND %(value)s = ANY({col})'
+                    ' RETURNING id, {col} AS remaining'
+                ).format(col=sql.Identifier(f'{kind}_ids')),
+                {'value': value, 'org': organization_id},
             )
             changed = await cur.fetchall()
-            empty = [r['id'] for r in changed if not r['agent_ids']]
+            empty = [r['id'] for r in changed if not r['remaining']]
             if empty:
                 await cur.execute(
                     'DELETE FROM secrets.grants WHERE id = ANY(%s)', (empty,)
@@ -383,14 +411,16 @@ class SecretStore:
             await audit.write(
                 conn,
                 [
-                    audit.Event(
-                        organization_id=organization_id,
-                        type='secret_grant_deleted'
-                        if r['id'] in empty
-                        else 'secret_grant_updated',
-                        actor=actor,
-                        agent_id=agent_id,
-                        grant_id=str(r['id']),
+                    audit.Event.model_validate(
+                        {
+                            'organization_id': organization_id,
+                            'type': 'secret_grant_deleted'
+                            if r['id'] in empty
+                            else 'secret_grant_updated',
+                            'actor': actor,
+                            'grant_id': str(r['id']),
+                            f'{kind}_id': value,
+                        }
                     )
                     for r in changed
                 ],
