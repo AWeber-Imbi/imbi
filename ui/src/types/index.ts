@@ -833,6 +833,8 @@ export type AgentTaskRelations = Schemas['AgentTaskRelations']
 
 export type AgentTaskResolve = Schemas['AgentTaskRequestResolve']
 
+export type AgentTaskRetry = Schemas['AgentTaskRetry']
+
 export type AgentTaskStatus = AgentTask['status']
 
 // The Imbi tools that an agent can use, and the configuration of one
