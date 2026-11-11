@@ -650,15 +650,20 @@ function TaskRetry({
   const canCreate = useHasPermission('agent_task:create', orgSlug)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  // Keep one key until a retry succeeds, so a repeat after a lost
+  // response returns the first copy and does not make a second one.
+  const [retryKey, setRetryKey] = useState(() => crypto.randomUUID())
   const retry = useMutation({
     mutationFn: () =>
       createAgentTask(orgSlug, {
         agent_slug: agent.slug,
         description: task.description,
+        idempotency_key: retryKey,
         project_id: task.project_id,
         title: task.title,
       }),
     onSuccess: (copy) => {
+      setRetryKey(crypto.randomUUID())
       void queryClient.invalidateQueries({
         queryKey: queryKeys.agentTasks(orgSlug),
       })
