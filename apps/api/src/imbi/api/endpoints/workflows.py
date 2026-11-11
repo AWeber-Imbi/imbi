@@ -32,6 +32,7 @@ from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, registry, validation
+from imbi.common.workflows.registry import agent as agent_step
 
 LOGGER = logging.getLogger(__name__)
 
@@ -275,7 +276,8 @@ def _resource_ids(
             add('webhook', node.id, params.get('webhook_id'))
         elif node.type == 'agent':
             add('agent', node.id, params.get('agent_id'))
-            add('project', node.id, params.get('project_id'), literal=True)
+            if params.get('project_id') != agent_step.TRIGGER_PROJECT:
+                add('project', node.id, params.get('project_id'), literal=True)
         elif node.type == 'email':
             raw: typing.Any = params.get('to')
             if not isinstance(raw, list):
@@ -320,6 +322,7 @@ async def _validate(
                 node_id=node_id,
             )
         )
+    _check_trigger_project(wf_graph, result)
     for kind, refs in found.items():
         records = await db.execute(
             _ORG_RESOURCE_QUERIES[kind],
@@ -338,6 +341,34 @@ async def _validate(
                     )
                 )
     return result
+
+
+def _check_trigger_project(
+    wf_graph: wf.Graph, result: wf.ValidationResult
+) -> None:
+    """An agent step that takes the webhook's project needs every
+    trigger to be a webhook: other runs have no project.
+    """
+    if all(
+        n.type == 'webhook'
+        for n in wf_graph.nodes
+        if (step := registry.STEP_TYPES.get(n.type)) and step.trigger
+    ):
+        return
+    for node in wf_graph.nodes:
+        if (
+            node.type == 'agent'
+            and node.params.get('project_id') == agent_step.TRIGGER_PROJECT
+        ):
+            result.issues.append(
+                wf.ValidationIssue(
+                    severity='error',
+                    code='trigger_project_needs_webhook',
+                    message='Only a webhook trigger has a project. '
+                    'Remove the other triggers or choose a project.',
+                    node_id=node.id,
+                )
+            )
 
 
 def _version(row: workflows.Row) -> dict[str, typing.Any]:

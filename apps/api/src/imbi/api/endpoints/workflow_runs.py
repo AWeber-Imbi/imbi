@@ -67,6 +67,11 @@ class RunCreate(pydantic.BaseModel):
         description='The trigger binding of the gateway rule that '
         'started a webhook run.',
     )
+    project_id: str | None = pydantic.Field(
+        default=None,
+        description='The project that the gateway matched to the webhook '
+        'delivery. Only a webhook run uses it.',
+    )
 
 
 class StepRun(pydantic.BaseModel):
@@ -482,16 +487,25 @@ async def _pinned_agent_ids(
     """Return the agent id and project id of the node in the run's version.
 
     They come from the pinned version, not from the rendered step
-    input, so run input cannot choose the agent or the project.
+    input, so run input cannot choose the agent or the project. A
+    pinned :data:`agent_step.TRIGGER_PROJECT` is the project in the
+    run's origin, which only the gateway sets.
 
     Raises:
         422: ``agent_params_not_literal``: an id is a template.
+            ``trigger_project_missing``: the run's origin has no project.
 
     """
     wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
     node = next((n for n in wf_graph.nodes if n.id == node_id), None)
     params = node.params if node is not None else {}
     agent_id, project_id = params.get('agent_id'), params.get('project_id')
+    if project_id == agent_step.TRIGGER_PROJECT:
+        project_id = run['origin'].get('project_id')
+        if not project_id:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'trigger_project_missing'}
+            )
     if not isinstance(agent_id, str) or any(
         isinstance(value, str) and ('{{' in value or '{%' in value)
         for value in (agent_id, project_id)
@@ -643,6 +657,14 @@ async def start_run(
         )
         payload, origin_id = data.payload, origin.id
         idempotency_key = delivery or idempotency_key
+        if origin.kind == 'webhook' and data.project_id:
+            # The gateway calls once for each project that the delivery
+            # matches. Each project gets its own run.
+            payload = {**payload, 'project': data.project_id}
+            origin = origin._replace(
+                record={**origin.record, 'project_id': data.project_id}
+            )
+            idempotency_key = f'{idempotency_key}:{data.project_id}'
         if not idempotency_key:
             # The scheduler sends its run id, the same on every retry of
             # a firing; without it a retry would start a second run.
