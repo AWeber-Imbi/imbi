@@ -1091,6 +1091,45 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
 
+class AcknowledgeTests(AgentTaskTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.make_agent()
+        await self.create_task()
+
+    async def acknowledge(self, short_id: str = 'T-1') -> httpx.Response:
+        return await self.client.post(self.url(f'{short_id}/acknowledge'))
+
+    async def test_open_task_is_refused(self) -> None:
+        response = await self.acknowledge()
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_unknown_task_is_404(self) -> None:
+        response = await self.acknowledge('T-9')
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_closed_task_keeps_first_acknowledgement(self) -> None:
+        await self.client.post(self.url('T-1/cancel'))
+        response = await self.acknowledge('t-1')
+        self.assertEqual(response.status_code, 200, response.text)
+        first = response.json()
+        self.assertEqual(first['acknowledged_by'], self.email)
+        self.assertIsNotNone(first['acknowledged_at'])
+        response = await self.acknowledge()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json()['acknowledged_at'], first['acknowledged_at']
+        )
+        self.assertEqual(first['last_seq'], response.json()['last_seq'])
+
+    async def test_service_account_is_refused(self) -> None:
+        await self.client.post(self.url('T-1/cancel'))
+        await self.act_as_service_account(member=True)
+        response = await self.acknowledge()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('requires user authentication', response.text)
+
+
 class DeleteTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -1213,6 +1252,7 @@ class PermissionTests(AgentTaskTestCase):
                 {'owner': self.member},
             ),
             ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
+            ('agent_task:manage', 'POST', 'T-1/acknowledge', None),
             ('agent_task:delete', 'DELETE', 'T-1', None),
             (
                 'agent_task:resolve',
@@ -1409,6 +1449,7 @@ class MembershipTests(AgentTaskTestCase):
             ('POST', 'T-1/cancel', None),
             ('POST', 'T-1/reassign', {'owner': self.member}),
             ('POST', 'T-1/reply', {'body': 'Hi.'}),
+            ('POST', 'T-1/acknowledge', None),
             (
                 'POST',
                 f'T-1/requests/{uuid.uuid4()}/resolve',

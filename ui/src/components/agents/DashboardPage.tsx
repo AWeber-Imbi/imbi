@@ -2,21 +2,26 @@ import type { ReactNode } from 'react'
 
 import { Link } from 'react-router-dom'
 
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   Banknote,
   ChartColumn,
+  Check,
   Clock,
   Hourglass,
   type LucideIcon,
 } from 'lucide-react'
 
+import { acknowledgeAgentTask } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { AgentTaskListItem, AgentTaskStatus, AgentUsage } from '@/types'
 
@@ -38,7 +43,7 @@ import {
   statusLabel,
   statusVariant,
 } from './taskEvents'
-import { useAgentTasks, useWaitingTaskCount } from './taskQueries'
+import { errorMessage, useAgentTasks, useWaitingTaskCount } from './taskQueries'
 
 const OPEN: AgentTaskStatus[] = ['blocked', 'running', 'paused', 'queued']
 
@@ -65,6 +70,8 @@ interface AttentionItem {
   key: string
   kind: string
   meta: string
+  /** A closed task that a person can acknowledge. */
+  shortId?: string
   title: string
   to: string
   tone: 'danger' | 'warning'
@@ -222,6 +229,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
       .filter(
         (t) =>
           !!t.outcome &&
+          !t.acknowledged_at &&
           ATTENTION_OUTCOMES.has(t.outcome) &&
           since(t.closed_at) < WEEK_MS,
       )
@@ -234,6 +242,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
           meta: [t.short_id, nameOf(t.agent_id), t.outcome_reason]
             .filter(Boolean)
             .join(' · '),
+          shortId: t.short_id,
           title: t.title,
           to: agentsPath('tasks', orgSlug, t.short_id),
           tone: statusVariant(t) === 'danger' ? 'danger' : 'warning',
@@ -315,6 +324,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
         <NeedsAttention
           className="xl:col-span-2"
           items={attention}
+          orgSlug={orgSlug}
           runs={runs}
         />
         <BusiestAgents nameOf={nameOf} usage={usage.data} />
@@ -345,22 +355,41 @@ function median(values: number[]): number {
 
 /**
  * Tasks that wait on a person (oldest block first, O2), closed tasks
- * that failed or hit a cap in the last 7 days, and monthly cost caps.
+ * that failed or hit a cap in the last 7 days and that no one has
+ * acknowledged, and monthly cost caps.
  */
 function NeedsAttention({
   className,
   items,
+  orgSlug,
   runs,
 }: {
   className?: string
   items: AttentionItem[]
+  orgSlug: string
   runs: number
 }) {
+  const canManage = useHasPermission('agent_task:manage', orgSlug)
+  const queryClient = useQueryClient()
+  const acknowledge = useMutation({
+    mutationFn: (shortId: string) => acknowledgeAgentTask(orgSlug, shortId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentTasks(orgSlug),
+      }),
+  })
   return (
     <Card
       action={
-        <span className="text-tertiary font-mono text-xs tabular-nums">
-          {items.length} open
+        <span className="flex items-center gap-3">
+          {acknowledge.error && (
+            <span className="text-danger text-xs" role="alert">
+              {errorMessage(acknowledge.error)}
+            </span>
+          )}
+          <span className="text-tertiary font-mono text-xs tabular-nums">
+            {items.length} open
+          </span>
         </span>
       }
       className={className}
@@ -376,11 +405,11 @@ function NeedsAttention({
         <ul>
           {items.map((item) => (
             <li
-              className="border-border border-b last:border-b-0"
+              className="border-border hover:bg-secondary flex items-center border-b pr-3 transition-colors last:border-b-0"
               key={item.key}
             >
               <Link
-                className="hover:bg-secondary flex items-center gap-4 px-5 py-3 transition-colors"
+                className="flex min-w-0 flex-1 items-center gap-4 py-3 pr-2 pl-5"
                 to={item.to}
               >
                 <Badge variant={item.tone}>{item.kind}</Badge>
@@ -394,6 +423,21 @@ function NeedsAttention({
                   {item.age}
                 </span>
               </Link>
+              {canManage && item.shortId && (
+                <Button
+                  aria-label={`Acknowledge ${item.shortId}`}
+                  disabled={
+                    acknowledge.isPending &&
+                    acknowledge.variables === item.shortId
+                  }
+                  onClick={() => acknowledge.mutate(item.shortId!)}
+                  size="sm"
+                  title="Acknowledge: no more attention needed"
+                  variant="ghost"
+                >
+                  <Check className="size-4" />
+                </Button>
+              )}
             </li>
           ))}
         </ul>

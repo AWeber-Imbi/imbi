@@ -875,6 +875,40 @@ class TaskStore:
                 await write.update({'owner': owner})
         return write.task
 
+    async def acknowledge(
+        self, organization_id: str, short_id: str, actor_id: str | None
+    ) -> Row:
+        """Mark a closed task as seen by ``actor_id``, and return it.
+
+        The first acknowledgement stays. A closed task does not take
+        events, so this changes only the row.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskOpen: The task is not closed.
+
+        """
+        async with self._pool.connection() as conn:
+            task = await _fetch_one(
+                conn,
+                'UPDATE agent_runtime.tasks'
+                ' SET acknowledged_at = COALESCE(acknowledged_at, NOW()),'
+                ' acknowledged_by = COALESCE(acknowledged_by, %s)'
+                ' WHERE organization_id = %s AND short_id = %s'
+                " AND status = 'closed' RETURNING *",
+                (actor_id, organization_id, short_id),
+            )
+            if task is not None:
+                return task
+            cursor = await conn.execute(
+                'SELECT 1 FROM agent_runtime.tasks'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (organization_id, short_id),
+            )
+            if await cursor.fetchone() is None:
+                raise TaskNotFound(short_id)
+            raise TaskOpen(short_id)
+
     # --- Relations ----------------------------------------------------
 
     @contextlib.asynccontextmanager

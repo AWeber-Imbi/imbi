@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
-import { render, screen, within } from '@/test/utils'
+import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
 import { agent, usage } from './fixtures'
@@ -11,6 +11,7 @@ import { task } from './taskFixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
+  acknowledgeAgentTask: vi.fn(),
   countWaitingAgentTasks: vi.fn(),
   getAgentUsage: vi.fn(),
   listAdminUsers: vi.fn(),
@@ -158,6 +159,46 @@ describe('Dashboard', () => {
       expect.stringContaining('Mender is at 85% of its monthly cost cap'),
     ])
     expect(screen.getByText('6 open')).toBeInTheDocument()
+  })
+
+  it('acknowledges a failed task and leaves acknowledged ones out', async () => {
+    let acked = false
+    vi.mocked(endpoints.acknowledgeAgentTask).mockImplementation(async () => {
+      acked = true
+      return { ...RECENT[2], acknowledged_at: ago(0) }
+    })
+    vi.mocked(endpoints.listAgentTasks).mockImplementation(
+      async (_org, params) =>
+        params.status
+          ? OPEN
+          : RECENT.map((t) =>
+              t.id === 'T-9' || (acked && t.id === 'T-7')
+                ? { ...t, acknowledged_at: ago(0) }
+                : t,
+            ),
+    )
+    renderAt('/agents/dashboard')
+    const items = await links('Needs attention')
+    expect(items).not.toContainEqual(
+      expect.stringContaining('T-9 failed_external'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge T-7' }))
+    await waitFor(() =>
+      expect(endpoints.acknowledgeAgentTask).toHaveBeenCalledWith(
+        'acme',
+        'T-7',
+      ),
+    )
+    // The success refresh removes it before the next poll.
+    await waitFor(async () =>
+      expect(await links('Needs attention')).not.toContainEqual(
+        expect.stringContaining('T-7 exceeded_ceiling'),
+      ),
+    )
+    // Only closed tasks can be acknowledged.
+    expect(
+      screen.queryByRole('button', { name: 'Acknowledge T-3' }),
+    ).not.toBeInTheDocument()
   })
 
   it('ranks the busiest agents by runs', async () => {

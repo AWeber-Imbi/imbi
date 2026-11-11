@@ -64,6 +64,10 @@ chain_id = "UUID"
 # (`harness.platform_configs`) when the task was made. NULL when the
 # organization had no configuration: the defaults apply.
 platform_config_version = "INTEGER"
+# When a person marked a closed task as needing no more attention, and
+# the email of that person. The dashboard does not show it then.
+acknowledged_at = "TIMESTAMP WITH TIME ZONE"
+acknowledged_by = "TEXT"
 
 [tables.primary_key]
 columns = ["id"]
