@@ -153,7 +153,7 @@ function AgentsSidebar({
         <button
           aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
           className={cn(
-            'text-secondary hover:bg-secondary hover:text-primary flex h-10 w-full items-center gap-3 rounded-md text-sm',
+            'flex h-10 w-full items-center gap-3 rounded-md text-sm text-secondary hover:bg-secondary hover:text-primary',
             open ? 'px-3' : 'justify-center',
           )}
           onClick={() => setOpen(!open)}

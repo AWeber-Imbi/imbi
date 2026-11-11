@@ -10,7 +10,9 @@ import {
   normalizeTools,
   parseDuration,
   parseMoney,
+  parseSettingsText,
   settingsFromDraft,
+  settingsText,
   versionSummary,
 } from '../agentDraft'
 import { agent, promptVersion } from './fixtures'
@@ -29,6 +31,19 @@ describe('agentDraft', () => {
     const draft = draftFromAgent(agent(), promptVersion())
     draft.prompt.params.maxTokens = { on: false, value: '8192' }
     expect(isPromptChanged(draft.prompt, promptVersion())).toBe(true)
+  })
+
+  it('parses the Claude Code settings text', () => {
+    expect(parseSettingsText('')).toEqual({})
+    expect(parseSettingsText('{"respectGitignore": false}')).toEqual({
+      respectGitignore: false,
+    })
+    expect(parseSettingsText('[]')).toBeNull()
+    expect(parseSettingsText('{')).toBeNull()
+    expect(settingsText({})).toBe('')
+    const draft = draftFromAgent(agent(), null)
+    draft.settings.claudeSettings = '{'
+    expect(draftErrors(draft).claudeSettings).toBe('Enter a JSON object')
   })
 
   it('gives a Claude model with no stored effort medium, as a change', () => {
@@ -58,6 +73,7 @@ describe('agentDraft', () => {
   it('round-trips the settings', () => {
     const draft = draftFromAgent(agent(), null)
     expect(draft.settings).toEqual({
+      claudeSettings: '',
       egressDestinations: [],
       githubAppBinding: '',
       kept: { approval_tools: [], denied_tools: [] },
@@ -73,6 +89,7 @@ describe('agentDraft', () => {
     })
     const empty = {
       approval_tools: [],
+      claude_settings: {},
       denied_tools: [],
       egress_destinations: [],
       github_app_binding: null,

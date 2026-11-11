@@ -115,7 +115,7 @@ export function AssociatedProjectsTab({
             <Box className="text-tertiary size-4 shrink-0" />
             <span
               className={cn(
-                'min-w-44 max-w-72 truncate text-sm font-medium',
+                'max-w-72 min-w-44 truncate text-sm font-medium',
                 !p.available && 'text-tertiary',
               )}
             >

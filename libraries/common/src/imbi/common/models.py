@@ -11,6 +11,7 @@ import nanoid
 import pydantic
 import slugify
 from jsonschema_models import models as schema_models
+from pydantic import alias_generators
 
 from imbi.common import versioning
 
@@ -1066,6 +1067,154 @@ class AgentSandbox(pydantic.BaseModel):
     allow_unsandboxed_commands: bool = True
 
 
+class _ClaudeModel(pydantic.BaseModel):
+    """A part of the Claude Code settings: camelCase keys, and no key
+    that is not on the allowlist (settings plan 4.3)."""
+
+    model_config = pydantic.ConfigDict(
+        extra='forbid',
+        alias_generator=alias_generators.to_camel,
+        validate_by_name=True,
+        validate_by_alias=True,
+        serialize_by_alias=True,
+    )
+
+
+def _unset(**kwargs: typing.Any) -> typing.Any:
+    """An optional settings key: left out of a dump when not set, as
+    Claude Code does."""
+    return pydantic.Field(
+        default=None, exclude_if=lambda value: value is None, **kwargs
+    )
+
+
+#: ``Tool`` or ``Tool(specifier)``, for example ``Bash(git push *)``.
+_PERMISSION_RULE = re.compile(r'[A-Za-z0-9_*-]+(\([^\n]+\))?')
+
+
+def _rules(value: list[str] | None) -> list[str] | None:
+    """Strip each permission rule and check its form."""
+    if value is None:
+        return None
+    rules = [rule.strip() for rule in value]
+    for rule in rules:
+        if not _PERMISSION_RULE.fullmatch(rule):
+            raise ValueError(
+                f'Invalid permission rule {rule!r}: use Tool or '
+                'Tool(specifier)'
+            )
+    return rules
+
+
+#: The Claude Code hook events that a settings document can use.
+ClaudeHookEvent = typing.Literal[
+    'PreToolUse',
+    'PostToolUse',
+    'PostToolUseFailure',
+    'PermissionRequest',
+    'UserPromptSubmit',
+    'Notification',
+    'Stop',
+    'SubagentStart',
+    'SubagentStop',
+    'PreCompact',
+    'SessionStart',
+    'SessionEnd',
+]
+
+
+class ClaudePermissions(_ClaudeModel):
+    allow: list[str] | None = _unset()
+    deny: list[str] | None = _unset()
+    ask: list[str] | None = _unset()
+
+    _check = pydantic.field_validator('allow', 'deny', 'ask')(_rules)
+
+
+class ClaudeHookCommand(_ClaudeModel):
+    type: typing.Literal['command'] = 'command'
+    #: No length limit: an older version stored hooks with no limit,
+    #: and the settings document has a size limit.
+    command: str = pydantic.Field(min_length=1)
+    timeout: int | None = _unset(gt=0, le=3600)
+
+
+class ClaudeHookMatcher(_ClaudeModel):
+    matcher: str | None = _unset()
+    hooks: list[ClaudeHookCommand] = pydantic.Field(min_length=1)
+
+
+class ClaudeAttribution(_ClaudeModel):
+    commit: str | None = _unset()
+    pr: str | None = _unset()
+
+
+#: The largest settings document, in bytes of JSON.
+CLAUDE_SETTINGS_BYTES = 64 * 1024
+
+#: The settings paths that an organization can enforce. An agent cannot
+#: set an enforced path.
+ClaudeSettingsPath = typing.Literal[
+    'permissions.allow',
+    'permissions.deny',
+    'permissions.ask',
+    'hooks',
+    'attribution',
+    'includeCoAuthoredBy',
+    'respectGitignore',
+    'cleanupPeriodDays',
+]
+
+
+class ClaudeSettings(_ClaudeModel):
+    """The Claude Code settings that an organization or an agent sets.
+
+    An allowlist, not a list of refused keys: a key that Claude Code
+    adds is refused until it is added here. Keys that the harness sets
+    itself (``permissions.defaultMode``, ``model``, ``env``,
+    ``apiKeyHelper``, ``sandbox``, ``disableAllHooks``, ...) are not on
+    it.
+    """
+
+    permissions: ClaudePermissions | None = _unset()
+    hooks: dict[ClaudeHookEvent, list[ClaudeHookMatcher]] | None = _unset()
+    attribution: ClaudeAttribution | None = _unset()
+    include_co_authored_by: bool | None = _unset()
+    respect_gitignore: bool | None = _unset()
+    cleanup_period_days: int | None = _unset(ge=1)
+
+    @pydantic.model_validator(mode='after')
+    def _check_size(self) -> typing.Self:
+        size = len(self.model_dump_json().encode())
+        if size > CLAUDE_SETTINGS_BYTES:
+            raise ValueError(
+                f'The settings are larger than {CLAUDE_SETTINGS_BYTES} bytes'
+            )
+        return self
+
+    def paths(self) -> dict[str, typing.Any]:
+        """The JSON value of each :data:`ClaudeSettingsPath` that is
+        set."""
+        document = self.model_dump(mode='json')
+        for key, value in document.pop('permissions', {}).items():
+            document[f'permissions.{key}'] = value
+        return document
+
+    @staticmethod
+    def document(paths: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        """The settings document of the :meth:`paths` of valid
+        settings. Not validated again: two valid documents together can
+        be larger than :data:`CLAUDE_SETTINGS_BYTES`."""
+        document: dict[str, typing.Any] = {}
+        for path, value in paths.items():
+            head, _, key = path.partition('.')
+            if key:
+                document.setdefault(head, {})[key] = value
+            else:
+                document[path] = value
+        return document
+
+
 class AgentPlugin(pydantic.BaseModel):
     """A plugin from a registered marketplace (ADR 0022).
 
@@ -1132,6 +1281,11 @@ class AgentSettings(pydantic.BaseModel):
     #: Tools that need approval when the task origin is an automation,
     #: in addition to the organization's.
     approval_tools: list[str] = []
+    #: Claude Code settings. Each path that is set replaces the
+    #: organization's value, unless the organization enforces it.
+    claude_settings: ClaudeSettings = pydantic.Field(
+        default_factory=ClaudeSettings
+    )
 
     @pydantic.field_validator(
         'required_labels',

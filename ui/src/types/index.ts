@@ -884,6 +884,11 @@ export interface BlueprintCreate {
 // Blueprint types
 export type BlueprintFilter = Schemas['BlueprintFilter']
 
+// Claude Code settings of an organization or an agent: an allowlist.
+export type ClaudeSettings = Schemas['ClaudeSettings']
+
+export type ClaudeSettingsPath = AgentPlatformConfig['enforced'][number]
+
 export type ClientCredential = Schemas['ClientCredentialResponse']
 
 export type ClientCredentialCreate = Schemas['ClientCredentialCreate']

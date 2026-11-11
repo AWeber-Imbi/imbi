@@ -24,6 +24,7 @@ import {
 } from './agentDraft'
 import { usePromptResolution } from './agentQueries'
 import { agentsPath } from './agentsNav'
+import { ClaudeSettingsSection } from './ClaudeSettingsSection'
 import { ModelTab } from './ModelTab'
 import { OverviewTab } from './OverviewTab'
 import { PluginsSection } from './PluginsSection'
@@ -167,11 +168,13 @@ function AgentEditorForm({
       setTab(
         first.startsWith('param.')
           ? 'model'
-          : SETTINGS_FIELDS.has(first)
-            ? 'settings'
-            : ACCESS_FIELDS.has(first)
-              ? 'access'
-              : 'overview',
+          : first === 'claudeSettings'
+            ? 'tools'
+            : SETTINGS_FIELDS.has(first)
+              ? 'settings'
+              : ACCESS_FIELDS.has(first)
+                ? 'access'
+                : 'overview',
       )
       return
     }
@@ -266,6 +269,12 @@ function AgentEditorForm({
             onChange={(tools) => update({ tools })}
             orgSlug={orgSlug}
             value={draft.tools}
+          />
+          <ClaudeSettingsSection
+            error={errors.claudeSettings}
+            onChange={(settings) => update({ settings })}
+            orgSlug={orgSlug}
+            value={draft.settings}
           />
         </div>
       )}

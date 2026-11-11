@@ -203,7 +203,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
           />
         ))}
         {filtering && views.length === 0 && (
-          <div className="bg-card border-border text-tertiary rounded-lg border p-8 text-center text-sm">
+          <div className="border-border bg-card text-tertiary rounded-lg border p-8 text-center text-sm">
             No tools match that search.
           </div>
         )}
@@ -217,7 +217,7 @@ function chip(on: boolean, size: string): string {
     'rounded-md border text-xs',
     size,
     on
-      ? 'border-action bg-amber-bg text-amber-text font-medium'
+      ? 'border-action bg-amber-bg font-medium text-amber-text'
       : 'border-input text-secondary hover:bg-secondary',
   )
 }
@@ -332,7 +332,7 @@ function ToolGroupCard({
   const shown = view.rows.slice(0, ROW_LIMIT)
   const Chevron = isOpen ? ChevronDown : ChevronRight
   return (
-    <div className="bg-card border-border overflow-hidden rounded-lg border">
+    <div className="border-border bg-card overflow-hidden rounded-lg border">
       <div className="border-border flex items-center gap-3 border-b px-5 py-3">
         <button
           aria-expanded={isOpen}
@@ -372,7 +372,7 @@ function ToolGroupCard({
       </div>
       {view.error && (
         <div
-          className="text-danger border-border flex items-center gap-2 border-b px-5 py-3 text-sm"
+          className="border-border text-danger flex items-center gap-2 border-b px-5 py-3 text-sm"
           role="alert"
         >
           <AlertCircle className="size-4 shrink-0" />

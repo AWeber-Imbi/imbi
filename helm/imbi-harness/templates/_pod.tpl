@@ -37,6 +37,8 @@ capabilities:
     - {name: work, mountPath: /work}
     - {name: executor-socket, mountPath: /run/executor}
     - {name: executor-credentials, mountPath: /run/creds}
+    # A run_with_secret command can run a published plugin script.
+    - {name: plugins, mountPath: /run/plugins, readOnly: true}
 {{- end }}
 
 {{- define "imbi-harness.podSpec" -}}
@@ -119,6 +121,7 @@ containers:
       - {name: work, mountPath: /work}
       - {name: executor-socket, mountPath: /run/executor}
       - {name: runner-credentials, mountPath: /run/creds}
+      - {name: plugins, mountPath: /run/plugins}
       - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
       {{- if .Values.extraCaCerts.configMap }}
       - {name: extra-ca, mountPath: /etc/imbi-harness/ca, readOnly: true}
@@ -144,6 +147,10 @@ volumes:
     emptyDir: {medium: Memory}
   - name: runner-credentials
     emptyDir: {medium: Memory}
+  # The published plugin copies: uid 0 owns them, agent only reads them.
+  - name: plugins
+    emptyDir:
+      sizeLimit: {{ .Values.plugins.sizeLimit }}
   - name: executor-credentials
     emptyDir: {medium: Memory}
   # Owned by uid 0, mode 0400: only the runner's uid 0 reads them.

@@ -273,6 +273,32 @@ class AgentFieldTests(PlatformTestCase):
         )
         self.assertEqual(response.status_code, 422, response.text)
 
+    async def test_claude_settings(self) -> None:
+        response = await self.put_config(
+            claude_settings={'permissions': {'deny': ['Bash(rm *)']}},
+            enforced=['permissions.deny'],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json()['config']['claude_settings'],
+            {'permissions': {'deny': ['Bash(rm *)']}},
+        )
+        response = await self.put_config(claude_settings={'env': {}})
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.create_agent(
+            claude_settings={'permissions': {'deny': []}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('permissions.deny', response.text)
+        response = await self.create_agent(
+            claude_settings={'permissions': {'allow': ['Bash(make *)']}}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            response.json()['settings']['claude_settings'],
+            {'permissions': {'allow': ['Bash(make *)']}},
+        )
+
     async def test_plugins_are_pinned_in_the_version(self) -> None:
         await self.add_marketplace(SHA_1)
         await self.put_config(allowed_marketplaces=['claude-code'])

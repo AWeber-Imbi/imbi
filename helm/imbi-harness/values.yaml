@@ -76,6 +76,10 @@ terminationGracePeriodSeconds: 30
 work:
   sizeLimit: 10Gi
 
+# The read-only plugin copies that the CLI loads (/run/plugins).
+plugins:
+  sizeLimit: 1Gi
+
 resources:
   runner:
     requests:

@@ -767,8 +767,9 @@ class TaskFlowTests(unittest.TestCase):
         self.assertIn('helper = /usr/local/libexec/git-credential-env', text)
         self.assertNotIn('ghs_', text)
         self.assertNotIn('x-access-token', text)
-        self.assertIn('settings.json', text)
-        self.assertIn('CLAUDE.md', text)
+        # Settings and rules are not files (settings plan 4.1).
+        self.assertNotIn('settings.json', text)
+        self.assertNotIn('CLAUDE.md', text)
 
     def test_setup_secrets_were_used_once_and_released(self) -> None:
         for purpose in (
@@ -797,7 +798,11 @@ class TaskFlowTests(unittest.TestCase):
         )
         paths = [p['path'] for p in init['data']['plugins']]
         self.assertTrue(
-            any(p.endswith('/plugins/hello') for p in paths), paths
+            any(
+                p.startswith(f'/run/plugins/{self.task["chain_id"]}/tools-')
+                for p in paths
+            ),
+            paths,
         )
 
     def test_tool_and_todo_events(self) -> None:
@@ -1121,6 +1126,96 @@ class ChildTaskTests(unittest.TestCase):
             r for r in runners if self.task['chain_id'] in r['claims']
         ]
         self.assertEqual(runner['claims'], [self.task['chain_id']])
+
+
+MARKS = 'ls "$CLAUDE_CONFIG_DIR/../../../marks"; echo end-of-marks'
+
+
+class SettingsInjectionTests(unittest.TestCase):
+    """The model writes every file that the CLI could read, and tries
+    to change the published plugins (settings plan 4.1, P1). Nothing
+    that it writes takes effect, in its own session or in a child task.
+    """
+
+    task: typing.ClassVar[Row]
+    child: typing.ClassVar[Row]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        write = {
+            'name': 'Write',
+            'input': {'file_path': '/work/injected-write', 'content': 'x'},
+        }
+        # In the session, outside the tool map.
+        cron = {'name': 'CronList', 'input': {}}
+        cls.task = queue(
+            {
+                'repository': True,
+                'plugin': True,
+                'binding': True,
+                'child': {'script': [bash(MARKS), write, cron]},
+                'script': [
+                    bash('sh /opt/isolation/inject.sh'),
+                    # The CLI reloads a changed settings file.
+                    bash(f'sleep 3; {MARKS}'),
+                    write,
+                    cron,
+                    child_task(),
+                    bash(MARKS),
+                ],
+            }
+        )
+        run_task_until_done(cls.task, 300)
+        (cls.child,) = children_of(cls.task)
+
+    def test_config_files_were_written_and_plugins_were_not(self) -> None:
+        result = tool_results(self.task)[0]
+        for name in (
+            'settings.json',
+            'CLAUDE.md',
+            'skills',
+            '.claude/.claude.json',
+            'home/.claude.json',
+        ):
+            self.assertIn(f'OK {name}', result)
+        self.assertIn('OK plugin-found', result)
+        self.assertNotIn('FAIL plugin-found', result)
+        for name in ('plugin-hooks', 'plugin-mcp', 'plugin-rename'):
+            self.assertIn(f'FAIL {name}', result)
+            self.assertNotIn(f'OK {name}', result)
+        self.assertIn('FAIL plugins-rename', result)
+
+    def test_no_injected_hook_or_mcp_server_ran(self) -> None:
+        for task in (self.task, self.child):
+            for result in tool_results(task):
+                if 'end-of-marks' in result:
+                    self.assertEqual(result.strip(), 'end-of-marks', task)
+
+    def test_no_injected_instruction_reached_the_model(self) -> None:
+        for task in (self.task, self.child):
+            requests = json.dumps(
+                fake_api(
+                    'GET', f'/test/model-requests?task={task["short_id"]}'
+                )
+            )
+            self.assertNotIn('INJ_', requests)
+            self.assertNotIn('injskill', requests)
+            self.assertNotIn('injagent', requests)
+            self.assertNotIn('injcmd', requests)
+
+    def test_injected_allow_rule_does_not_widen(self) -> None:
+        for task in (self.task, self.child):
+            for tool in ('Write', 'CronList'):
+                (call,) = [c for c in tool_calls(task) if c['tool'] == tool]
+                self.assertTrue(call['is_error'], call)
+        self.assertFalse(pathlib.Path('/work/injected-write').exists())
+
+    def test_the_policy_hook_saw_every_call(self) -> None:
+        for task in (self.task, self.child):
+            for call in tool_calls(task):
+                # A denied tool is not in the session: no call to check.
+                if 'No such tool available' not in call['result']:
+                    self.assertIn('policy', call, call['tool'])
 
 
 class SwappedWorkspaceTests(unittest.TestCase):

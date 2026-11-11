@@ -271,8 +271,8 @@ function Chip({
         'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs',
         pressed
           ? danger
-            ? 'bg-danger text-danger border-transparent'
-            : 'bg-secondary text-primary border-transparent'
+            ? 'border-transparent bg-danger text-danger'
+            : 'border-transparent bg-secondary text-primary'
           : 'border-secondary text-tertiary',
       )}
       onClick={onClick}
@@ -469,12 +469,12 @@ function Pane({ children, dark }: { children: ReactNode; dark?: boolean }) {
     <div
       className={cn(
         'overflow-x-auto rounded-md',
-        dark ? 'bg-terminal' : 'border-tertiary bg-tertiary border',
+        dark ? 'bg-terminal' : 'border border-tertiary bg-tertiary',
       )}
     >
       <pre
         className={cn(
-          'px-3 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap',
+          'px-3 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap',
           dark && 'text-terminal',
         )}
       >
@@ -534,7 +534,7 @@ function Row({
       <div className="relative">
         <span
           className={cn(
-            'absolute left-[11px] w-0.5 bg-(--ds-border-tertiary)',
+            'absolute left-tab-y w-0.5 bg-(--ds-border-tertiary)',
             first ? 'top-4' : 'top-0',
             last ? 'h-4' : 'bottom-0',
           )}
@@ -542,7 +542,7 @@ function Row({
         <span
           className={cn(
             'absolute rounded-full bg-current ring-3 ring-(--ds-bg-tertiary)',
-            small ? 'top-[11px] left-2 size-2' : 'top-[13px] left-1.5 size-3',
+            small ? 'top-tab-y left-2 size-2' : 'top-3.25 left-1.5 size-3',
             dotOf(entry),
           )}
         />
@@ -646,7 +646,7 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
   return (
     <Collapsible
       className={cn(
-        'bg-primary overflow-hidden rounded-lg border shadow-xs',
+        'overflow-hidden rounded-lg border bg-primary shadow-xs',
         isError(entry) ? 'border-danger' : 'border-tertiary',
       )}
       disabled={!e}
@@ -656,7 +656,7 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
       <CollapsibleTrigger className="hover:bg-tertiary flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm">
         <ChevronRight
           className={cn(
-            'text-tertiary size-3.5 shrink-0 transition-transform',
+            'size-3.5 shrink-0 text-tertiary transition-transform',
             open && 'rotate-90',
             !e && 'invisible',
           )}

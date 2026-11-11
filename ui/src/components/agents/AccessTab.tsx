@@ -164,7 +164,7 @@ export function AccessTab({
           />
         </Field>
         {github && agent && canRead && (
-          <ul className="border-tertiary divide-tertiary divide-y rounded-lg border">
+          <ul className="divide-tertiary border-tertiary divide-y rounded-lg border">
             {GITHUB_PURPOSES.map(({ label, mode, purpose }) => {
               const ok = covers(mine, github.id, purpose, mode)
               return (

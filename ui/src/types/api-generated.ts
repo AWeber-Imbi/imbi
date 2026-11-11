@@ -10595,17 +10595,21 @@ export interface components {
              */
             system_prompt_prefix: string;
             /**
-             * Hooks
-             * @default {}
-             */
-            hooks: {
-                [key: string]: unknown;
-            };
-            /**
              * Approval Tools
              * @default []
              */
             approval_tools: string[];
+            claude_settings?: components["schemas"]["ClaudeSettings"];
+            /**
+             * Enforced
+             * @default []
+             */
+            enforced: ("permissions.allow" | "permissions.deny" | "permissions.ask" | "hooks" | "attribution" | "includeCoAuthoredBy" | "respectGitignore" | "cleanupPeriodDays")[];
+            /**
+             * Allow Agent Hooks
+             * @default false
+             */
+            allow_agent_hooks: boolean;
         };
         /**
          * AgentPlugin
@@ -10765,6 +10769,7 @@ export interface components {
              * @default []
              */
             approval_tools: string[];
+            claude_settings?: components["schemas"]["ClaudeSettings"];
         };
         /**
          * AgentSettings
@@ -10818,6 +10823,7 @@ export interface components {
              * @default []
              */
             approval_tools: string[];
+            claude_settings?: components["schemas"]["ClaudeSettings"];
         };
         /**
          * AgentSnapshot
@@ -12185,6 +12191,66 @@ export interface components {
             egress: components["schemas"]["Grant"][];
             /** Proxy Token */
             proxy_token?: string | null;
+        };
+        /** ClaudeAttribution */
+        ClaudeAttribution: {
+            /** Commit */
+            commit?: string | null;
+            /** Pr */
+            pr?: string | null;
+        };
+        /** ClaudeHookCommand */
+        ClaudeHookCommand: {
+            /**
+             * Type
+             * @default command
+             * @constant
+             */
+            type: "command";
+            /** Command */
+            command: string;
+            /** Timeout */
+            timeout?: number | null;
+        };
+        /** ClaudeHookMatcher */
+        ClaudeHookMatcher: {
+            /** Matcher */
+            matcher?: string | null;
+            /** Hooks */
+            hooks: components["schemas"]["ClaudeHookCommand"][];
+        };
+        /** ClaudePermissions */
+        ClaudePermissions: {
+            /** Allow */
+            allow?: string[] | null;
+            /** Deny */
+            deny?: string[] | null;
+            /** Ask */
+            ask?: string[] | null;
+        };
+        /**
+         * ClaudeSettings
+         * @description The Claude Code settings that an organization or an agent sets.
+         *
+         *     An allowlist, not a list of refused keys: a key that Claude Code
+         *     adds is refused until it is added here. Keys that the harness sets
+         *     itself (``permissions.defaultMode``, ``model``, ``env``,
+         *     ``apiKeyHelper``, ``sandbox``, ``disableAllHooks``, ...) are not on
+         *     it.
+         */
+        ClaudeSettings: {
+            permissions?: components["schemas"]["ClaudePermissions"] | null;
+            /** Hooks */
+            hooks?: {
+                [key: string]: components["schemas"]["ClaudeHookMatcher"][];
+            } | null;
+            attribution?: components["schemas"]["ClaudeAttribution"] | null;
+            /** Includecoauthoredby */
+            includeCoAuthoredBy?: boolean | null;
+            /** Respectgitignore */
+            respectGitignore?: boolean | null;
+            /** Cleanupperioddays */
+            cleanupPeriodDays?: number | null;
         };
         /**
          * ClientCredentialCreate
@@ -15786,6 +15852,18 @@ export interface components {
             secrets: components["schemas"]["SecretReference"][];
             /** Github App Binding */
             github_app_binding: string | null;
+            /**
+             * Claude Settings
+             * @default {}
+             */
+            claude_settings: {
+                [key: string]: unknown;
+            };
+            /**
+             * Claude Settings Dropped
+             * @default []
+             */
+            claude_settings_dropped: string[];
         };
         /**
          * MetricSeries

@@ -39,7 +39,13 @@ import type {
   AgentPlatformConfigResponse,
 } from '@/types'
 
-import { parseLabels } from './agentDraft'
+import {
+  parseLabels,
+  parseSettingsText,
+  SETTINGS_HELP,
+  SETTINGS_PATHS,
+  settingsText,
+} from './agentDraft'
 import { Field } from './OverviewTab'
 
 const MODES: AgentPlatformConfig['permission_mode'][] = [
@@ -54,9 +60,9 @@ const onError = (err: unknown) => toast.error(extractApiErrorDetail(err))
 interface ConfigForm {
   allowedTools: string
   approvalTools: string
+  claudeSettings: string
   config: AgentPlatformConfig
   deniedTools: string
-  hooks: string
 }
 
 /**
@@ -286,11 +292,11 @@ function ConfigCard({
         ? ''
         : csv(stored.config.allowed_tools),
     approvalTools: csv(stored.config.approval_tools),
+    claudeSettings: settingsText(stored.config.claude_settings),
     config: stored.config,
     deniedTools: csv(stored.config.denied_tools),
-    hooks: JSON.stringify(stored.config.hooks ?? {}, null, 2),
   }))
-  const [hooksError, setHooksError] = useState('')
+  const [settingsError, setSettingsError] = useState('')
   const config = form.config
   const setConfig = (patch: Partial<AgentPlatformConfig>) =>
     setForm((f) => ({ ...f, config: { ...f.config, ...patch } }))
@@ -305,6 +311,7 @@ function ConfigCard({
   }
   const allowed = new Set(config.allowed_marketplaces ?? [])
   const defaults = config.default_plugins ?? []
+  const enforced = config.enforced ?? []
 
   const save = useMutation({
     mutationFn: (body: AgentPlatformConfig) =>
@@ -317,22 +324,20 @@ function ConfigCard({
   })
 
   const onSave = () => {
-    let hooks: Record<string, unknown>
-    try {
-      hooks = form.hooks.trim() ? JSON.parse(form.hooks) : {}
-    } catch {
-      setHooksError('Enter a JSON object')
+    const claudeSettings = parseSettingsText(form.claudeSettings)
+    if (claudeSettings === null) {
+      setSettingsError('Enter a JSON object')
       return
     }
-    setHooksError('')
+    setSettingsError('')
     save.mutate({
       ...config,
       allowed_tools: form.allowedTools.trim()
         ? parseLabels(form.allowedTools)
         : null,
       approval_tools: parseLabels(form.approvalTools),
+      claude_settings: claudeSettings,
       denied_tools: parseLabels(form.deniedTools),
-      hooks,
     })
   }
 
@@ -542,18 +547,49 @@ function ConfigCard({
           />
         </Field>
         <Field
-          error={hooksError}
-          help="Agent SDK hooks, as JSON. Agents cannot change them."
-          htmlFor="hooks"
-          label="Hooks"
+          error={settingsError}
+          help={SETTINGS_HELP}
+          htmlFor="claude-settings"
+          label="Claude Code settings"
         >
           <Textarea
             className="font-mono text-xs"
-            id="hooks"
-            onChange={(e) => setForm((f) => ({ ...f, hooks: e.target.value }))}
+            id="claude-settings"
+            onChange={(e) =>
+              setForm((f) => ({ ...f, claudeSettings: e.target.value }))
+            }
+            placeholder="{}"
             rows={5}
-            value={form.hooks}
+            value={form.claudeSettings}
           />
+          <label className="flex items-center gap-2 pt-2 text-sm">
+            <Switch
+              checked={!!config.allow_agent_hooks}
+              onCheckedChange={(on) => setConfig({ allow_agent_hooks: on })}
+            />
+            Let agents set hooks (a hook runs shell commands outside the sandbox
+            and the tool map)
+          </label>
+          <div className="pt-2 text-xs">
+            <span className="text-tertiary">Enforce (agents cannot set):</span>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1">
+              {SETTINGS_PATHS.map((path) => (
+                <label className="flex items-center gap-2 font-mono" key={path}>
+                  <Checkbox
+                    checked={enforced.includes(path)}
+                    onCheckedChange={(on) =>
+                      setConfig({
+                        enforced: on
+                          ? [...enforced, path]
+                          : enforced.filter((p) => p !== path),
+                      })
+                    }
+                  />
+                  {path}
+                </label>
+              ))}
+            </div>
+          </div>
         </Field>
       </fieldset>
       <section className="flex flex-col gap-2">

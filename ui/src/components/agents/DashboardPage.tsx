@@ -161,7 +161,7 @@ function Card({
   return (
     <section
       aria-label={title}
-      className={cn('border-border bg-card rounded-lg border', className)}
+      className={cn('rounded-lg border border-border bg-card', className)}
     >
       <div className="border-border flex items-center justify-between gap-4 border-b px-5 py-4">
         <div>
@@ -553,7 +553,7 @@ function Tile({
             {spark.map((s, i) => (
               <span
                 className={cn(
-                  'bg-action flex-1 rounded-[1px]',
+                  'flex-1 rounded-[1px] bg-action',
                   i < spark.length - 1 && 'opacity-30',
                 )}
                 key={i}

@@ -349,7 +349,8 @@ class Runner:
         )
 
     def remove_old_workspaces(self) -> None:
-        """Remove the workspace of a chain that a crash left behind."""
+        """Remove the workspace and the published plugins of a chain
+        that a crash left behind."""
         for path in WORK.iterdir():
             try:
                 uuid.UUID(path.name)
@@ -358,10 +359,13 @@ class Runner:
             LOGGER.warning('Removing the old workspace %s', path)
             with privilege.effective(privilege.AGENT):
                 shutil.rmtree(path, ignore_errors=True)
+        with privilege.effective():
+            for path in task.PUBLISHED_PLUGINS.iterdir():
+                shutil.rmtree(path, ignore_errors=True)
 
     async def end_chain(self, workspace: pathlib.Path) -> None:
         """Kill every ``agent`` process in both containers, then remove
-        the workspace as ``agent``."""
+        the workspace as ``agent`` and its published plugins as root."""
         privilege.kill_agent()
         try:
             await ipc.call({'op': 'end_chain'})
@@ -370,6 +374,10 @@ class Runner:
             LOGGER.warning('end_chain failed: %s', err)
         with privilege.effective(privilege.AGENT):
             shutil.rmtree(workspace, ignore_errors=True)
+        with privilege.effective():
+            shutil.rmtree(
+                task.PUBLISHED_PLUGINS / workspace.name, ignore_errors=True
+            )
         if workspace.exists():
             LOGGER.error('Could not remove %s', workspace)
 
@@ -512,6 +520,8 @@ def main() -> None:
         privilege.read_root_file(f'{POOL_CREDENTIAL}/client_secret'),
     )
     credentials = privilege.make_private_dir(CREDENTIALS, privilege.RUNNER)
+    # An emptyDir is mode 0777: agent could rename a published plugin.
+    task.PUBLISHED_PLUGINS.chmod(0o755)
     privilege.drop(privilege.RUNNER)
     # Read from the runner's own environment, which the CLI inherits.
     os.environ['CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK'] = '1'

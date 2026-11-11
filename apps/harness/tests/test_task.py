@@ -106,7 +106,8 @@ class TaskTestCase(unittest.IsolatedAsyncioTestCase):
         self.run_task = self.make()
 
     def make(self, **config: typing.Any) -> task.TaskRun:
-        layout = task.Layout(self.tmp / 'chain')
+        (self.tmp / 'published').mkdir(exist_ok=True)
+        layout = task.Layout(self.tmp / 'chain', self.tmp / 'published')
         layout.make()
         return task.TaskRun(
             self.client,
@@ -397,24 +398,90 @@ class ConfigTestCase(TaskTestCase):
         subject = self.make(allowed_tools=['Read', 'WebFetch'])
         self.assertEqual(subject.tools()[0], ['Read', *task.IMBI_TOOLS])
 
-    def test_writes_settings_and_rules(self) -> None:
+    def test_settings_and_rules_are_not_files(self) -> None:
         subject = self.make(
             hooks={'PreToolUse': []},
             sandbox={'enabled': True, 'allow_unsandboxed_commands': False},
         )
         subject.layout.make_task('t')
         subject.write_config()
+        # The model can write CLAUDE_CONFIG_DIR: nothing there is read.
         config = self.tmp / 'chain' / 'tasks' / 't' / '.claude'
-        settings = json.loads((config / 'settings.json').read_text())
+        self.assertEqual(list(config.iterdir()), [])
+        options = subject.options('u')
+        self.assertEqual(options.setting_sources, [])
+        settings = json.loads(typing.cast('str', options.settings))
+        self.assertEqual(settings, subject.settings())
         self.assertEqual(settings['permissions']['deny'], ['WebFetch'])
         self.assertEqual(settings['hooks'], {'PreToolUse': []})
         self.assertEqual(
             settings['sandbox'],
             {'enabled': True, 'allowUnsandboxedCommands': False},
         )
-        rules = (config / 'CLAUDE.md').read_text()
+        rules = subject.instructions()
         self.assertIn('`secret://production/github/token`', rules)
-        self.assertNotIn('\n@', rules)  # No repository: no import.
+        self.assertIn(rules, subject.system_prompt())
+
+    def test_settings_put_the_harness_over_claude_settings(self) -> None:
+        hooks = {'Stop': [{'hooks': [{'type': 'command', 'command': 'x'}]}]}
+        subject = self.make(
+            hooks={'PreToolUse': []},
+            claude_settings={
+                'permissions': {
+                    'deny': ['Bash(rm *)', 'mcp__imbi__report_outcome'],
+                    'ask': ['Edit'],
+                },
+                'hooks': hooks,
+                'includeCoAuthoredBy': False,
+            },
+        )
+        settings = subject.settings()
+        allowed, denied = subject.tools()
+        self.assertEqual(
+            settings['permissions'],
+            {
+                'deny': ['Bash(rm *)', *denied],
+                'ask': ['Edit'],
+                'allow': allowed,
+            },
+        )
+        # claude_settings wins over the field for older runners.
+        self.assertEqual(settings['hooks'], hooks)
+        self.assertFalse(settings['includeCoAuthoredBy'])
+        # The configuration is not changed.
+        self.assertEqual(
+            subject.config['claude_settings']['permissions']['deny'],
+            ['Bash(rm *)', 'mcp__imbi__report_outcome'],
+        )
+
+    def test_settings_argument_is_bounded_utf8(self) -> None:
+        # 23,000 characters of 2 UTF-8 bytes; escaped, 138,000 bytes.
+        subject = self.make(
+            claude_settings={'attribution': {'commit': 'é' * 23000}}
+        )
+        value = subject.settings_argument()
+        self.assertIn('é', value)
+        self.assertLessEqual(len(value.encode()), task.PROMPT_BYTES)
+        subject = self.make(
+            claude_settings={'attribution': {'commit': 'é' * 70000}}
+        )
+        with self.assertRaises(task.Failed) as caught:
+            subject.settings_argument()
+        self.assertEqual(caught.exception.reason, 'settings_too_large')
+
+    def test_dropped_settings_are_a_warning(self) -> None:
+        self.run_task.note_dropped_settings()
+        self.assertEqual(self.run_task.recorder.take(), [])
+        subject = self.make(claude_settings_dropped=['hooks', 'attribution'])
+        subject.note_dropped_settings()
+        (event,) = subject.recorder.take()
+        self.assertEqual(event['payload']['kind'], 'warning')
+        self.assertIn('hooks, attribution', event['payload']['body'])
+
+    def test_settings_from_an_older_api_use_its_hooks(self) -> None:
+        subject = self.make(hooks={'PreToolUse': []})
+        subject.config.pop('claude_settings', None)
+        self.assertEqual(subject.settings()['hooks'], {'PreToolUse': []})
 
     def test_rules_give_the_hints_of_each_secret(self) -> None:
         subject = self.make(
@@ -428,11 +495,7 @@ class ConfigTestCase(TaskTestCase):
                 {'reference': 'secret://plain/key', 'description': ''},
             ]
         )
-        subject.layout.make_task('t')
-        subject.write_config()
-        rules = (
-            self.tmp / 'chain' / 'tasks' / 't' / '.claude' / 'CLAUDE.md'
-        ).read_text()
+        rules = subject.instructions()
         self.assertIn('  - `secret://production/github/token`\n', rules)
         # The description stays on one line.
         self.assertIn(
@@ -442,17 +505,39 @@ class ConfigTestCase(TaskTestCase):
         )
         self.assertIn('  - `secret://plain/key`\n', rules)
 
-    def test_imports_the_repository_instructions(self) -> None:
+    def test_instructions_skip_a_file_that_is_not_regular(self) -> None:
+        fifo = self.tmp / 'CLAUDE.md'
+        os.mkfifo(fifo)
+        self.assertEqual(task._instruction_file(fifo), '')
+        self.assertEqual(task._instruction_file(self.tmp / 'missing'), '')
+
+    def test_includes_the_repository_instructions(self) -> None:
         repo = self.tmp / 'chain' / 'repos' / 'app'
         repo.mkdir()
-        (repo / 'CLAUDE.md').write_text('repo rules')
-        self.run_task.layout.make_task('t')
-        self.run_task.write_config()
-        rules = (
-            self.tmp / 'chain' / 'tasks' / 't' / '.claude' / 'CLAUDE.md'
-        ).read_text()
-        self.assertIn(f'\n@{repo}/CLAUDE.md\n', rules)
-        self.assertNotIn('AGENTS.md', rules)
+        (repo / 'CLAUDE.md').write_text('repo rules\n')
+        (repo / 'AGENTS.md').write_text('x' * (task.INSTRUCTION_BYTES + 1))
+        rules = self.run_task.instructions()
+        self.assertIn(
+            f'\n\n# Instructions from {repo}/CLAUDE.md\n\nrepo rules\n\n',
+            rules,
+        )
+        self.assertTrue(
+            rules.endswith(
+                'x' * task.INSTRUCTION_BYTES
+                + '\n\n[Truncated by the harness.]'
+            )
+        )
+
+    def test_instructions_fit_in_the_prompt_budget(self) -> None:
+        for name in ('app', 'lib'):
+            repo = self.tmp / 'chain' / 'repos' / name
+            repo.mkdir()
+            for file in ('CLAUDE.md', 'AGENTS.md'):
+                (repo / file).write_text('\u00e9' * task.INSTRUCTION_BYTES)
+        subject = self.make(system_prompt_prefix='p' * 4096)
+        prompt = subject.system_prompt()
+        self.assertLessEqual(len(prompt.encode()), task.PROMPT_BYTES)
+        self.assertIn('[Truncated by the harness.]', prompt)
 
     def gitconfig(self, task_id: str, slug: str | None, name: str) -> str:
         """Write the config of a task, then read its identity with git."""
@@ -538,7 +623,7 @@ class ConfigTestCase(TaskTestCase):
         options = subject.options('http://127.0.0.1:1')
         self.assertEqual(options.cli_path, task.CLI_WRAPPER)
         self.assertEqual(options.permission_mode, 'plan')
-        self.assertEqual(options.setting_sources, ['user'])
+        self.assertEqual(options.setting_sources, [])
         self.assertEqual(options.max_buffer_size, task.SDK_BUFFER)
         self.assertEqual(options.model, 'claude-x')
         self.assertEqual(
@@ -557,7 +642,7 @@ class ConfigTestCase(TaskTestCase):
         prompt = typing.cast('dict[str, str]', options.system_prompt)
         self.assertEqual(
             prompt['append'],
-            'Org rules.\n\nYou fix bugs.\n\n'
+            f'Org rules.\n\nYou fix bugs.\n\n{subject.instructions()}\n\n'
             'Your Imbi organization slug is the text in this block:\n'
             '<untrusted source="organization_slug">\norg\n</untrusted> '
             'The task project id is `p`.\n\n'
@@ -965,8 +1050,10 @@ class WorkspaceTestCase(TaskTestCase):
         dest = pathlib.Path(request['dest'])
         self.assertEqual(dest.parent, self.tmp / 'chain' / 'plugins')
         self.assertTrue(dest.name.startswith('tools-'))
+        published = self.tmp / 'published' / 'chain'
         self.assertEqual(
-            subject.plugins, [dest / 'plugins' / 'hello', dest / 'bye']
+            subject.plugins,
+            [published / f'{dest.name}-0', published / f'{dest.name}-1'],
         )
 
     def marketplace(self, *entries: dict[str, typing.Any]) -> pathlib.Path:
@@ -1011,6 +1098,45 @@ class WorkspaceTestCase(TaskTestCase):
         self.assertFalse((path / '.git').exists())
         # The clone itself is left as it was.
         self.assertFalse((clone / '.claude-plugin' / 'plugin.json').exists())
+
+    def test_publish_copies_the_plugin_read_only(self) -> None:
+        source = self.tmp / 'clone'
+        (source / '.git').mkdir(parents=True)
+        (source / '.git' / 'HEAD').write_text('ref')
+        (source / 'hooks').mkdir()
+        (source / 'hooks' / 'hooks.json').write_text('{}')
+        run = source / 'hooks' / 'run.sh'
+        run.write_text('#!/bin/sh')
+        run.chmod(0o700)
+        (source / 'inside').symlink_to('hooks/hooks.json')
+        (self.tmp / 'secret').write_text('no')
+        (source / 'outside').symlink_to(self.tmp / 'secret')
+        (source / 'linked').symlink_to(source / 'hooks')
+        dest = task._publish(source, self.tmp / 'published' / 'p')
+        files = sorted(
+            str(p.relative_to(dest)) for p in dest.rglob('*') if p.is_file()
+        )
+        self.assertEqual(files, ['hooks/hooks.json', 'hooks/run.sh', 'inside'])
+        self.assertEqual((dest / 'inside').read_text(), '{}')
+        self.assertFalse((dest / 'inside').is_symlink())
+        self.assertEqual((dest / 'hooks').stat().st_mode & 0o777, 0o755)
+        self.assertEqual(
+            (dest / 'hooks' / 'hooks.json').stat().st_mode & 0o777, 0o644
+        )
+        self.assertEqual(
+            (dest / 'hooks' / 'run.sh').stat().st_mode & 0o777, 0o755
+        )
+
+    def test_publish_refuses_a_large_plugin(self) -> None:
+        source = self.tmp / 'clone'
+        source.mkdir()
+        (source / 'big').write_bytes(b'x' * 11)
+        with (
+            mock.patch.object(task, 'PLUGIN_BYTES', 10),
+            self.assertRaises(task.Failed) as ctx,
+        ):
+            task._publish(source, self.tmp / 'published' / 'p')
+        self.assertEqual(ctx.exception.reason, 'plugin_too_large')
 
     def test_plugin_servers(self) -> None:
         plugin = self.tmp / 'p'
@@ -1678,11 +1804,7 @@ class ChildTaskTestCase(RoutedTestCase):
         self.assertEqual(self.posted('/children'), [])
 
     def test_rules_list_the_slugs(self) -> None:
-        self.run_task.layout.make_task('t')
-        self.run_task.write_config()
-        rules = (
-            self.tmp / 'chain' / 'tasks' / 't' / '.claude' / 'CLAUDE.md'
-        ).read_text()
+        rules = self.run_task.instructions()
         self.assertIn('another agent: `reviewer` (Review.), `a`.', rules)
 
     async def test_runs_the_child_and_returns_its_summary(self) -> None:

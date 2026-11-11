@@ -193,7 +193,10 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
         workspace = pathlib.Path(tmp.name) / 'chain'
         (workspace / 'home').mkdir(parents=True)
         (workspace / 'home' / 'file').write_text('x')
+        published = pathlib.Path(tmp.name) / 'published'
+        (published / 'chain' / 'p').mkdir(parents=True)
         with (
+            mock.patch.object(runner.task, 'PUBLISHED_PLUGINS', published),
             mock.patch.object(privilege, 'kill_agent') as kill,
             mock.patch.object(
                 privilege, 'effective', return_value=contextlib.nullcontext()
@@ -203,8 +206,11 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
             await subject.end_chain(workspace)
         kill.assert_called_once_with()
         call.assert_awaited_once_with({'op': 'end_chain'})
-        effective.assert_called_once_with(privilege.AGENT)
+        self.assertEqual(
+            effective.call_args_list, [mock.call(privilege.AGENT), mock.call()]
+        )
         self.assertFalse(workspace.exists())
+        self.assertEqual(list(published.iterdir()), [])
 
     async def test_end_chain_without_executor(self) -> None:
         subject = make_runner()
