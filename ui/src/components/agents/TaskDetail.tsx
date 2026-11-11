@@ -663,6 +663,11 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
       navigate(agentsPath('tasks', orgSlug, copy.short_id))
     },
   })
+  // A 400 or 422 means the API did not make the task, so the note
+  // can change. Any other error can come after the task was made.
+  const rejected =
+    retry.error instanceof ApiError &&
+    (retry.error.status === 400 || retry.error.status === 422)
   if (!canCreate || !isFailed(task)) return null
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -690,11 +695,12 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         >
           <Textarea
             aria-label="Note for the retry"
+            maxLength={64 * 1024}
             onChange={(e) => setNote(e.target.value)}
             placeholder="What should the agent do differently? (optional)"
             // A failed retry can still have made the task, and a repeat
             // with the same key returns it unchanged, so lock the note.
-            readOnly={retry.isError}
+            readOnly={retry.isError && !rejected}
             rows={4}
             value={note}
           />
@@ -709,7 +715,8 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         </form>
         {retry.error && (
           <p className="text-danger text-xs" role="alert">
-            {errorMessage(retry.error)} Retry again to send the same note.
+            {errorMessage(retry.error)}
+            {rejected ? '' : ' Retry again to send the same note.'}
           </p>
         )}
       </PopoverContent>

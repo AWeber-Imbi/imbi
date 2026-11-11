@@ -710,6 +710,23 @@ describe('Tasks', () => {
     expect(second).toBe(first)
   })
 
+  it('keeps the note editable after a rejected retry', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+      ...closedTask(1),
+      outcome: 'failed_error',
+    })
+    vi.mocked(endpoints.retryAgentTask).mockRejectedValue(
+      new ApiError(422, 'Unprocessable Entity'),
+    )
+    renderAt('/agents/tasks/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await screen.findByRole('alert')
+    expect(screen.getByLabelText('Note for the retry')).not.toHaveAttribute(
+      'readonly',
+    )
+  })
+
   it('has no Retry for a task that did not fail', async () => {
     vi.mocked(endpoints.getAgentTask).mockResolvedValue(closedTask(1))
     renderAt('/agents/tasks/acme/T-11')
