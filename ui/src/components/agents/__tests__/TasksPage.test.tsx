@@ -662,6 +662,33 @@ describe('Tasks', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('retries a failed task as a new task', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+      ...closedTask(1),
+      outcome: 'failed_error',
+    })
+    vi.mocked(endpoints.createAgentTask).mockResolvedValue(task())
+    renderAt('/agents/tasks/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    await waitFor(() =>
+      expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+        agent_slug: agent().slug,
+        description: 'Find why the build fails.',
+        project_id: 'proj-1',
+        title: 'Closed 1',
+      }),
+    )
+  })
+
+  it('has no Retry for a task that did not fail', async () => {
+    vi.mocked(endpoints.getAgentTask).mockResolvedValue(closedTask(1))
+    renderAt('/agents/tasks/acme/T-11')
+    await screen.findByRole('button', { name: 'Delete task' })
+    expect(
+      screen.queryByRole('button', { name: 'Retry task' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('returns focus to Cancel when the confirm closes', async () => {
     renderAt('/agents/tasks/acme/T-3/conversation')
     const button = await screen.findByRole('button', { name: 'Cancel task' })
