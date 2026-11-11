@@ -93,9 +93,11 @@ class AgentPlatformConfig(pydantic.BaseModel):
         """Read the ``hooks`` field of an older version as enforced
         ``claude_settings.hooks``: the UI said that agents cannot
         change them."""
-        if not isinstance(data, dict) or 'hooks' not in data:
+        if not isinstance(data, dict):
             return data
         moved = dict(typing.cast('dict[str, typing.Any]', data))
+        if 'hooks' not in moved:
+            return moved
         hooks = moved.pop('hooks')
         if hooks and not moved.get('claude_settings'):
             moved['claude_settings'] = {'hooks': hooks}
