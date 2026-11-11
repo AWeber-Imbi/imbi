@@ -158,7 +158,7 @@ it.
 | `user:update` | Update user information | yes |  |  |  |  |  |  |  |  |
 | `user:delete` | Delete users | yes |  |  |  |  |  |  |  |  |
 | `role:create` | Create new roles | yes |  |  |  |  |  |  |  |  |
-| `role:read` | View role information | yes |  | yes | yes | yes |  |  |  |  |
+| `role:read` | View role information | yes | yes | yes | yes | yes |  |  |  |  |
 | `role:update` | Update role information | yes |  |  |  |  |  |  |  |  |
 | `role:delete` | Delete roles | yes |  |  |  |  |  |  |  |  |
 | `organization:create` | Create organizations | yes |  |  |  |  |  |  |  |  |
@@ -175,7 +175,7 @@ it.
 | `project:create` | Create projects | yes | yes |  |  |  |  |  |  |  |
 | `project:read` | View projects | yes | yes | yes | yes | yes | yes | yes |  |  |
 | `project:write` | Update projects | yes | yes |  |  |  | yes |  |  |  |
-| `project:delete` | Delete projects | yes |  |  |  |  |  |  |  |  |
+| `project:delete` | Delete projects | yes | yes |  |  |  |  |  |  |  |
 | `link_definition:create` | Create link definitions | yes |  |  |  |  |  |  |  |  |
 | `link_definition:read` | View link definitions | yes | yes | yes | yes | yes |  |  |  |  |
 | `link_definition:write` | Update link definitions | yes | yes |  |  |  |  |  |  |  |
@@ -214,21 +214,21 @@ it.
 | `webhook:delete` | Delete webhooks | yes |  |  |  |  |  |  |  |  |
 | `upload:create` | Upload files | yes | yes |  |  |  |  |  |  |  |
 | `upload:read` | View and download uploads | yes | yes | yes | yes | yes |  |  |  |  |
-| `upload:delete` | Delete uploads | yes |  |  |  |  |  |  |  |  |
+| `upload:delete` | Delete uploads | yes | yes |  |  |  |  |  |  |  |
 | `service_account:create` | Create service accounts | yes |  |  |  |  |  |  |  |  |
-| `service_account:read` | View service accounts | yes |  |  |  |  |  |  |  |  |
+| `service_account:read` | View service accounts | yes | yes |  |  |  |  |  |  |  |
 | `service_account:update` | Update service accounts | yes |  |  |  |  |  |  |  |  |
 | `service_account:delete` | Delete service accounts | yes |  |  |  |  |  |  |  |  |
-| `operations_log:create` | Create operations log entries | yes |  |  |  |  |  |  |  |  |
+| `operations_log:create` | Create operations log entries | yes | yes |  |  |  |  |  |  |  |
 | `operations_log:read` | View operations log entries | yes | yes | yes | yes | yes |  |  |  |  |
-| `operations_log:update` | Update operations log entries | yes |  |  |  |  |  |  |  |  |
-| `operations_log:delete` | Delete operations log entries | yes |  |  |  |  |  |  |  |  |
+| `operations_log:update` | Update operations log entries | yes | yes |  |  |  |  |  |  |  |
+| `operations_log:delete` | Delete operations log entries | yes | yes |  |  |  |  |  |  |  |
 | `component:read` | View package governance and the package reports | yes | yes | yes | yes |  |  |  |  |  |
 | `component:write` | Mark packages, record advisories, and add package notes | yes |  |  |  |  |  |  |  |  |
 | `tag:create` | Create tags | yes | yes |  |  |  |  |  |  |  |
 | `tag:read` | View tags | yes | yes | yes | yes | yes |  |  |  |  |
 | `tag:write` | Update tags | yes | yes |  |  |  |  |  |  |  |
-| `tag:delete` | Delete tags | yes |  |  |  |  |  |  |  |  |
+| `tag:delete` | Delete tags | yes | yes |  |  |  |  |  |  |  |
 | `document:create` | Create project documents | yes | yes |  |  |  |  |  |  |  |
 | `document:read` | View project documents | yes | yes | yes | yes | yes |  |  |  |  |
 | `document:write` | Update project documents | yes | yes |  |  |  |  |  |  |  |
@@ -240,7 +240,7 @@ it.
 | `comment:delete` | Delete document comments | yes | yes |  |  |  |  |  |  |  |
 | `auth_providers:read` | View login auth provider configuration | yes |  |  |  |  |  |  |  |  |
 | `auth_providers:write` | Create, update, and delete login auth provider configuration | yes |  |  |  |  |  |  |  |  |
-| `scoring_policy:read` | View scoring policies | yes |  |  |  |  |  |  |  |  |
+| `scoring_policy:read` | View scoring policies | yes | yes |  |  |  |  |  |  |  |
 | `scoring_policy:write` | Create/update scoring policies | yes |  |  |  |  |  |  |  |  |
 | `scoring_policy:delete` | Delete scoring policies | yes |  |  |  |  |  |  |  |  |
 | `scoring_policy:rescore` | Trigger rescore for a single project | yes | yes | yes |  |  |  |  |  |  |
@@ -274,14 +274,14 @@ it.
 | `secret_resolution:read` | View secret resolutions | yes |  |  |  |  |  |  |  |  |
 | `secret_resolution:manage` | Release secret resolutions and revoke provider leases | yes |  |  |  |  |  |  |  |  |
 | `secret_audit:read` | View secret audit events | yes |  |  |  |  |  |  |  |  |
-| `admin:plugins:read` | View installed plugins | yes |  |  |  |  |  |  |  |  |
+| `admin:plugins:read` | View installed plugins | yes | yes |  |  |  |  |  |  |  |
 | `admin:plugins:manage` | Install and uninstall plugins | yes |  |  |  |  |  |  |  |  |
 | `admin:maintenance:read` | View global maintenance operations | yes |  |  |  |  |  |  |  |  |
 | `admin:maintenance:manage` | Run and cancel global maintenance operations | yes |  |  |  |  |  |  |  |  |
-| `project:configuration:read` | Read project configuration via plugins | yes |  |  |  |  |  |  |  |  |
-| `project:configuration:read_secrets` | Read secret configuration values via plugins | yes |  |  |  |  |  |  |  |  |
-| `project:configuration:write` | Write project configuration via plugins | yes |  |  |  |  |  |  |  |  |
-| `project:logs:read` | Read project logs via plugins | yes |  |  |  |  |  |  |  |  |
+| `project:configuration:read` | Read project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
+| `project:configuration:read_secrets` | Read secret configuration values via plugins | yes | yes |  |  |  |  |  |  |  |
+| `project:configuration:write` | Write project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
+| `project:logs:read` | Read project logs via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:deployment:read` | Read project deployment state via plugins | yes | yes | yes | yes |  |  | yes |  |  |
 | `project:deployment:write` | Trigger deployments and promotions via plugins | yes | yes |  |  |  |  | yes |  |  |
 | `project:commits:read` | Read commit history synced via plugins | yes | yes | yes | yes |  |  |  |  |  |
