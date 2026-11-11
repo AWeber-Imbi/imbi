@@ -684,7 +684,15 @@ async def _locator(
     provider_id: uuid.UUID,
     locator: dict[str, typing.Any],
     credential_class: providers.CredentialClass,
+    auth: permissions.AuthContext | None = None,
 ) -> dict[str, typing.Any]:
+    """Validate and check a locator.
+
+    With ``auth`` (a save), the first ``github_app`` binding of a key
+    binding marks the key as a provider key for its host and App id.
+    Without ``auth`` (a check), nothing is written. A key that a grant
+    names is not marked: the mark would take it away from tasks.
+    """
     provider = await secrets.get('providers', org_id, provider_id)
     if provider is None:
         raise _invalid('The provider is not in the organization')
@@ -696,10 +704,105 @@ async def _locator(
         )
     try:
         locator = plugin.validate_locator(locator, credential_class)
+        key = await _key_binding(secrets, org_id, provider, locator)
+        if (
+            key is not None
+            and not key['provider_key_usage']
+            and not await secrets.binding_granted(key['id'])
+        ):
+            if auth is None:
+                return locator  # The save marks the key.
+            # ponytail: not in the binding's transaction. A save that
+            # fails later leaves the key marked with no consumer, the
+            # state an admin made by hand before. Use one transaction
+            # if that matters.
+            await _mark_key(secrets, org_id, key, provider, locator, auth)
         await plugin.check_locator(provider['config'], locator, org_id)
     except providers.InvalidConfiguration as err:
         raise _invalid(str(err), err.code) from None
     return locator
+
+
+async def _key_binding(
+    secrets: store.SecretStore,
+    org_id: str,
+    provider: store.Row,
+    locator: dict[str, typing.Any],
+) -> store.Row | None:
+    """The non-dynamic key binding that a ``github_app`` locator names
+    in ``private_key``, or ``None``."""
+    if provider['type'] != 'github_app':
+        return None
+    key = await secrets.binding_by_reference(
+        org_id, broker.parse_reference(locator['private_key']).binding
+    )
+    return None if key is None or key['credential_class'] == 'dynamic' else key
+
+
+def _host(provider: store.Row) -> str:
+    """The GitHub host of a ``github_app`` provider."""
+    return str(provider['config'].get('host', 'github.com'))
+
+
+async def _mark_key(
+    secrets: store.SecretStore,
+    org_id: str,
+    key: store.Row,
+    provider: store.Row,
+    locator: dict[str, typing.Any],
+    auth: permissions.AuthContext,
+) -> None:
+    """Mark a key binding as the provider key of a ``github_app``
+    binding: the host of its provider and the App id of its locator.
+
+    The host comes from the stored provider configuration, so a change
+    to the provider later fails :func:`update_provider` as before.
+    """
+    try:
+        usage = ProviderKeyUsage(
+            host=_host(provider),
+            app_id=locator['app_id'],
+        )
+    except pydantic.ValidationError as err:
+        raise _invalid(str(err), 'provider_key_mismatch') from None
+    await secrets.update(
+        'bindings',
+        org_id,
+        key['id'],
+        {'provider_key_usage': usage.model_dump(mode='json')},
+        event=_event('secret_binding_updated', auth, 'binding_id'),
+    )
+
+
+async def _add_consumer(
+    secrets: store.SecretStore,
+    org_id: str,
+    binding: store.Row,
+    auth: permissions.AuthContext,
+) -> None:
+    """Add a saved ``github_app`` binding to the consumers of its key,
+    when the key is for the same host and App id."""
+    provider = await secrets.get('providers', org_id, binding['provider_id'])
+    if provider is None:  # pragma: no cover - the foreign key keeps it
+        return
+    key = await _key_binding(secrets, org_id, provider, binding['locator'])
+    if key is None or not (usage := key['provider_key_usage']):
+        return
+    consumers: list[str] = usage.get('consumers', [])
+    if (
+        str(binding['id']) in consumers
+        or usage.get('host') != _host(provider)
+        or usage.get('app_id') != binding['locator'].get('app_id')
+    ):
+        return
+    consumers = [*consumers, str(binding['id'])]
+    await secrets.update(
+        'bindings',
+        org_id,
+        key['id'],
+        {'provider_key_usage': usage | {'consumers': consumers}},
+        event=_event('secret_binding_updated', auth, 'binding_id'),
+    )
 
 
 def _key_usage(
@@ -737,7 +840,7 @@ async def _check_consumers(
         if (
             provider is None
             or provider['type'] != 'github_app'
-            or provider['config'].get('host', 'github.com') != usage['host']
+            or _host(provider) != usage['host']
             or consumer['locator'].get('app_id') != usage['app_id']
         ):
             raise _invalid(
@@ -775,7 +878,12 @@ async def create_binding(
     values = data.model_dump()
     values['reference'] = str(reference)
     values['locator'] = await _locator(
-        secrets, org_id, data.provider_id, data.locator, data.credential_class
+        secrets,
+        org_id,
+        data.provider_id,
+        data.locator,
+        data.credential_class,
+        auth,
     )
     values['provider_key_usage'] = _key_usage(
         data.provider_key_usage, data.credential_class
@@ -789,6 +897,7 @@ async def create_binding(
             values,
             event=_event('secret_binding_created', auth, 'binding_id'),
         )
+    await _add_consumer(secrets, org_id, row, auth)
     return row
 
 
@@ -838,6 +947,7 @@ async def update_binding(
                 providers.CredentialClass,
                 changes.get('credential_class', current['credential_class']),
             ),
+            auth,
         )
     credential_class = str(
         changes.get('credential_class', current['credential_class'])
@@ -861,6 +971,8 @@ async def update_binding(
         event=_event('secret_binding_updated', auth, 'binding_id'),
         detail='Binding not found',
     )
+    if 'locator' in changes:
+        await _add_consumer(secrets, org_id, row, auth)
     return row
 
 

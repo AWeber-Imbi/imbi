@@ -500,6 +500,82 @@ class SecretEndpointTestCase(
             response.json()['detail']['error'], 'provider_key_mismatch'
         )
 
+    async def test_github_app_binding_marks_its_key(self) -> None:
+        """The first github_app binding of an unmarked key marks it for
+        its host and App id and becomes a consumer. A check writes
+        nothing, and a later binding cannot move the mark."""
+        patcher = mock.patch.object(secret_broker, '_broker', self.broker)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        response = await self._post(
+            '/secret-providers/',
+            {'name': 'gh', 'type': 'github_app', 'config': {}},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        provider_id = response.json()['id']
+        response = await self._post(
+            '/secret-bindings/',
+            {
+                'reference': 'secret://production/gh/key',
+                'provider_id': str(self.provider['id']),
+                'credential_class': 'static',
+                'locator': {'key': 'plain'},
+                'allowed_delivery_modes': ['stdin'],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        key_url = self.base + f'/secret-bindings/{response.json()["id"]}'
+        app: dict[str, typing.Any] = {
+            'reference': 'secret://production/gh/app',
+            'provider_id': provider_id,
+            'credential_class': 'dynamic',
+            'allowed_delivery_modes': ['stdin'],
+            'locator': {
+                'app_id': '7',
+                'private_key': 'secret://production/gh/key',
+            },
+        }
+        check = {k: app[k] for k in ('provider_id', 'credential_class')}
+        response = await self._post(
+            '/secret-bindings/locator-check',
+            check | {'locator': app['locator']},
+        )
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.get(key_url)
+        self.assertIsNone(response.json()['provider_key_usage'])
+        response = await self._post('/secret-bindings/', app)
+        self.assertEqual(response.status_code, 201, response.text)
+        response_key = await self.client.get(key_url)
+        self.assertEqual(
+            response_key.json()['provider_key_usage'],
+            {
+                'host': 'github.com',
+                'app_id': '7',
+                'consumers': [response.json()['id']],
+            },
+        )
+        response = await self._post(
+            '/secret-bindings/',
+            app
+            | {
+                'reference': 'secret://production/gh/other',
+                'locator': app['locator'] | {'app_id': '8'},
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'provider_key_mismatch'
+        )
+        response = await self._post(
+            '/secret-bindings/',
+            app | {'reference': 'secret://production/gh/second'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response_key = await self.client.get(key_url)
+        self.assertEqual(
+            len(response_key.json()['provider_key_usage']['consumers']), 2
+        )
+
     async def test_patch_provider_key_mark(self) -> None:
         """A key stays static while marked; an explicit null clears the
         mark, and an omitted field keeps it."""

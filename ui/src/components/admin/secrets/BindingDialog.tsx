@@ -400,6 +400,10 @@ export function BindingDialog({
                   only for a key that signs, such as a GitHub App private key
                 </span>
               </legend>
+              <p className="text-secondary text-xs">
+                Leave empty for a new key: the first github_app binding that
+                names it fills this in.
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <Field
                   help="github.com, <tenant>.ghe.com, or a GHES host"

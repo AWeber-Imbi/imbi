@@ -100,6 +100,21 @@ class SecretStore:
         )
         return found[0] if found else None
 
+    async def binding_by_reference(
+        self, organization_id: str, reference: str
+    ) -> Row | None:
+        """The binding of ``reference`` (without a field), or ``None``."""
+        found = await self._all(
+            'SELECT * FROM secrets.bindings'
+            ' WHERE organization_id = %s AND reference = %s',
+            (organization_id, reference),
+        )
+        return found[0] if found else None
+
+    async def binding_granted(self, binding_id: uuid.UUID) -> bool:
+        """Whether a grant names the binding."""
+        return bool(await self._all(_GRANTED, (binding_id,)))
+
     async def create(
         self,
         table: Table,
@@ -458,6 +473,9 @@ class SecretStore:
             return row is not None
 
 
+_GRANTED = 'SELECT 1 FROM secrets.grants WHERE %s = ANY(binding_ids) LIMIT 1'
+
+
 async def _check_binding_unused(
     conn: broker.Conn, organization_id: str, binding_id: uuid.UUID
 ) -> None:
@@ -466,10 +484,7 @@ async def _check_binding_unused(
         ' WHERE organization_id = %s AND id = %s FOR UPDATE',
         (organization_id, binding_id),
     )
-    cur = await conn.execute(
-        'SELECT 1 FROM secrets.grants WHERE %s = ANY(binding_ids) LIMIT 1',
-        (binding_id,),
-    )
+    cur = await conn.execute(_GRANTED, (binding_id,))
     if await cur.fetchone() is not None:
         raise InUse('A grant uses the binding')
     cur = await conn.execute(
