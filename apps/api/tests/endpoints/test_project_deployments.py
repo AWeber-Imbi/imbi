@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import datetime
 import json
+import logging
 import typing
 import unittest
 import uuid
@@ -3592,9 +3593,16 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
                 )
             )
         )
-        response = self._promote()
+        with self.assertLogs(
+            'imbi.api.endpoints.project_deployments', level='WARNING'
+        ) as logs:
+            response = self._promote()
         self.assertEqual(response.status_code, 503)
         self.assertEqual('Plugin timed out', response.json()['detail'])
+        # An expected answer: a warning, not an error for Sentry.
+        self.assertFalse(
+            [r for r in logs.records if r.levelno >= logging.ERROR]
+        )
         # Still abandoned: no build was accepted.
         self.assertEqual(1, len(self._deletes()))
 

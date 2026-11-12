@@ -15,6 +15,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
+    PluginRateLimited,
     PluginTimeoutError,
     PluginUnavailableError,
 )
@@ -51,8 +52,8 @@ _SSM_ERROR_MAP: dict[str, type[Exception]] = {
     'InvalidSignatureException': PluginCredentialsMissing,
     'AccessDeniedException': PluginCredentialsMissing,
     'UnauthorizedOperation': PluginCredentialsMissing,
-    'ThrottlingException': PluginUnavailableError,
-    'RequestLimitExceeded': PluginUnavailableError,
+    'ThrottlingException': PluginRateLimited,
+    'RequestLimitExceeded': PluginRateLimited,
     'InternalServerError': PluginUnavailableError,
     'ParameterAlreadyExists': ValueError,
     'ValidationException': ValueError,

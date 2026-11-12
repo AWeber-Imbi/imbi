@@ -11,7 +11,10 @@ from imbi.common.plugins.base import (
     IdentityCredentials,
     PluginContext,
 )
-from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.common.plugins.errors import (
+    PluginCredentialsMissing,
+    PluginInstallationMissing,
+)
 from imbi.plugins.aws import identity
 from imbi.plugins.aws.errors import (
     IamIcAuthorizationPending,
@@ -368,6 +371,30 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.extra['aws_session_token'], 'session-token')
         # Original IAM IC token should be unchanged.
         self.assertEqual(result.access_token, 'iam-ic-token')
+
+    @respx.mock
+    async def test_no_access_raises_installation_missing(self) -> None:
+        respx.get(
+            'https://portal.sso.us-east-1.amazonaws.com/federation/credentials'
+        ).mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    'message': 'No access',
+                    '__type': 'com.amazonaws.switchboard.portal'
+                    '#ForbiddenException',
+                },
+            )
+        )
+        connection = IdentityCredentials(
+            access_token='iam-ic-token',
+            extra={
+                'aws_account_id': '111111111111',
+                'aws_role_name': 'PowerUserAccess',
+            },
+        )
+        with self.assertRaises(PluginInstallationMissing):
+            await AWSIdentity().materialize(_ctx(), {}, connection)
 
     async def test_missing_account_or_role_raises(self) -> None:
         plugin = AWSIdentity()

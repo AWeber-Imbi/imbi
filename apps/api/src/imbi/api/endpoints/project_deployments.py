@@ -51,7 +51,11 @@ from imbi.api.identity.host_integration import (
     call_with_identity_retry,
 )
 from imbi.api.llm.dependencies import InjectAnthropicClient
-from imbi.api.plugins import call_with_timeout, release_dispatch
+from imbi.api.plugins import (
+    call_with_timeout,
+    host_retry_after,
+    release_dispatch,
+)
 from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
 from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
@@ -970,24 +974,6 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
-def _host_retry_after(response: httpx.Response) -> str:
-    """Seconds the source host asks a caller to wait, for ``Retry-After``.
-
-    The host's ``Retry-After``, else the wait until ``x-ratelimit-reset``
-    once ``x-ratelimit-remaining`` is 0 (GitHub's primary rate limit),
-    else 5.
-    """
-    headers = response.headers
-    retry_after = str(headers.get('retry-after', ''))
-    if retry_after.isdigit():
-        return retry_after
-    reset = str(headers.get('x-ratelimit-reset', ''))
-    if headers.get('x-ratelimit-remaining') == '0' and reset.isdigit():
-        now = int(datetime.datetime.now(datetime.UTC).timestamp())
-        return str(max(1, int(reset) - now))
-    return '5'
-
-
 async def _compare_refs(
     handler: DeploymentCapability,
     ctx: PluginContext,
@@ -1002,7 +988,7 @@ async def _compare_refs(
     same answer: GitHub's 404 (a ref, or the repo, it cannot find) or 422
     (a comparison it will not compute).  Any other host or transport
     failure is the host failing to answer: 503, with the host's own wait
-    as ``Retry-After`` (see :func:`_host_retry_after`).
+    as ``Retry-After`` (see :func:`host_retry_after`).
     """
     try:
         return await call_with_timeout(
@@ -1033,7 +1019,7 @@ async def _compare_refs(
             status_code=503,
             detail=f'Could not reach the source host to compare {base}...'
             f'{head}',
-            headers={'Retry-After': _host_retry_after(exc.response)},
+            headers={'Retry-After': host_retry_after(exc.response)},
         ) from exc
     except httpx.HTTPError as exc:
         LOGGER.warning(
@@ -4176,7 +4162,14 @@ async def _dispatch_release_build(
         # Anything else the remote or the transport raises: the build was
         # never accepted, so the release does not exist in any sense.
         await _abandon()
-        LOGGER.exception(
+        # An HTTPException (e.g. the plugin timeout's 503) already is
+        # the answer; it is expected, so do not log it as an error.
+        log = (
+            LOGGER.warning
+            if isinstance(exc, fastapi.HTTPException)
+            else LOGGER.exception
+        )
+        log(
             'create_deployment_artifact failed for project=%s tag=%s '
             'workflow=%s ref=%s',
             project_id,

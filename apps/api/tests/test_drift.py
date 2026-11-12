@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import fastapi
+import httpx
 
 from imbi.api import drift
 from imbi.common import graph
@@ -589,6 +590,33 @@ class SweepProjectTests(unittest.IsolatedAsyncioTestCase):
                 self.db, org_slug='org', project_id='p1'
             )
         self.assertEqual(1, stamped)
+
+    async def test_unknown_committish_skips_with_a_warning(self) -> None:
+        # The remote cannot resolve the SHA (404/422): an expected
+        # answer, so a warning and not an error for Sentry.
+        request = httpx.Request('GET', 'https://api.github.test/x')
+        for status in (404, 422):
+            with self.subTest(status=status):
+                self.db.execute.side_effect = [
+                    self._rows(),
+                    [{'id': '"rel-2"'}],
+                ]
+                self.handler.get_commit_note.side_effect = [
+                    httpx.HTTPStatusError(
+                        'nope',
+                        request=request,
+                        response=httpx.Response(status, request=request),
+                    ),
+                    '{"drift_detected": false}',
+                ]
+                with self.assertLogs(drift.LOGGER, level='WARNING') as logs:
+                    stamped = await drift.sweep_project(
+                        self.db, org_slug='org', project_id='p1'
+                    )
+                self.assertEqual(1, stamped)
+                self.assertEqual(
+                    ['WARNING'], [r.levelname for r in logs.records]
+                )
 
 
 class ResyncVerdictsTests(unittest.IsolatedAsyncioTestCase):

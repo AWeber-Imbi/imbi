@@ -38,6 +38,7 @@ import logging
 import typing
 
 import fastapi
+import httpx
 
 from imbi.api.auth import principals
 from imbi.common import clickhouse, graph, iggy
@@ -562,12 +563,25 @@ async def sweep_project(
             return None
         except plugin_errors.PluginRateLimited:
             raise
-        except Exception:
-            LOGGER.exception(
-                'drift sweep could not read the note for %s on project %s',
-                committish,
-                project_id,
-            )
+        except Exception as exc:
+            if isinstance(
+                exc, httpx.HTTPStatusError
+            ) and exc.response.status_code in (404, 422):
+                # The remote does not know the committish (e.g. a bad
+                # short SHA). Expected, so not an error.
+                LOGGER.warning(
+                    'drift sweep: the remote cannot resolve %s on project '
+                    '%s (HTTP %s)',
+                    committish,
+                    project_id,
+                    exc.response.status_code,
+                )
+            else:
+                LOGGER.exception(
+                    'drift sweep could not read the note for %s on project %s',
+                    committish,
+                    project_id,
+                )
             continue
         await _stamp_release(
             db,
