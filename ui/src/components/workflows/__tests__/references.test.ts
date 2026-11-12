@@ -115,7 +115,7 @@ describe('referenceGroups', () => {
       { path: 'triage.result', type: 'object | null' },
       { path: 'triage.result.risk', type: 'string' },
       { path: 'triage.result.owner', type: 'object | null' },
-      { path: 'triage.result.owner.team', type: 'string' },
+      { path: 'triage.result.owner.team', type: 'string | null' },
       { path: 'triage.result.rows', type: 'array<object>' },
       { path: 'triage.task_id', type: 'string' },
     ])

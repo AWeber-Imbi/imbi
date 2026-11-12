@@ -148,7 +148,11 @@ function resultReferences(
         type: typeLabel(nullable ? { ...field, required: false } : field),
       },
       ...(field.type === 'object'
-        ? resultReferences(field.fields ?? [], path, nullable)
+        ? resultReferences(
+            field.fields ?? [],
+            path,
+            nullable || field.required === false,
+          )
         : []),
     ]
   })
