@@ -306,7 +306,7 @@ async def _project_exists(
 
 
 async def _fetch_release(
-    db: graph.Graph,
+    execute: graph.CypherExecute,
     org_slug: str,
     project_id: str,
     release_id: str,
@@ -319,7 +319,7 @@ async def _fetch_release(
     MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     RETURN r{{.*}} AS release
     """
-    rows = await db.execute(
+    rows = await execute(
         query,
         {
             'project_id': project_id,
@@ -382,6 +382,11 @@ RETURN r.id AS id
 """
 
 
+def release_lock_key(project_id: str) -> str:
+    """Return the advisory lock key of every Release create in a project."""
+    return f'release-create:{project_id}'
+
+
 class _ExistingRelease(typing.NamedTuple):
     """A release a create would duplicate, and how it was matched."""
 
@@ -392,7 +397,7 @@ class _ExistingRelease(typing.NamedTuple):
 
 
 async def _find_existing_release(
-    db: graph.Graph,
+    execute: graph.CypherExecute,
     *,
     project_id: str,
     tag: str | None,
@@ -400,7 +405,7 @@ async def _find_existing_release(
 ) -> _ExistingRelease | None:
     """Return the release this create would duplicate, if any."""
     if tag:
-        rows = await db.execute(
+        rows = await execute(
             _RELEASE_BY_TAG,
             {'project_id': project_id, 'tag': tag},
             ['id'],
@@ -409,7 +414,7 @@ async def _find_existing_release(
             return _ExistingRelease(
                 str(graph.parse_agtype(rows[0]['id'])), True
             )
-    rows = await db.execute(
+    rows = await execute(
         _RELEASE_BY_COMMITTISH,
         {'project_id': project_id, 'committish': committish},
         ['id'],
@@ -420,13 +425,13 @@ async def _find_existing_release(
 
 
 async def _adopt_release_tag(
-    db: graph.Graph,
+    execute: graph.CypherExecute,
     *,
     release_id: str,
     tag: str,
 ) -> bool:
     """Name an untagged release; return whether this call named it."""
-    rows = await db.execute(
+    rows = await execute(
         _RELEASE_ADOPT_TAG,
         {
             'release_id': release_id,
@@ -872,42 +877,6 @@ async def create_release(
                 ),
             )
 
-    match = await _find_existing_release(
-        db, project_id=project_id, tag=data.tag, committish=committish
-    )
-    if match is not None:
-        # A tagged create that matched an untagged node adopts it: the
-        # deployment webhook records the commit before the release
-        # webhook names it, and leaving them apart is what produces the
-        # duplicate this endpoint exists to avoid.
-        adopted_tag = None if match.by_tag else (data.tag or None)
-        adopted = adopted_tag is not None and await _adopt_release_tag(
-            db, release_id=match.id, tag=adopted_tag
-        )
-        existing = await _fetch_release(db, org_slug, project_id, match.id)
-        if existing is not None:
-            if adopted and existing.get('tag') == adopted_tag:
-                # The untagged create dispatched without a tag, which a
-                # tag-based version skips; send the event again now that
-                # the tag is known. Capabilities treat a repeat as an
-                # update (Sentry upserts the release). Only the request
-                # whose adopt wrote the tag sends it, so a concurrent
-                # create that lost the adopt sends no event.
-                release_dispatch.schedule_release_created(
-                    db,
-                    project_id,
-                    TrackedRelease(
-                        id=match.id,
-                        tag=adopted_tag,
-                        committish=existing['committish'],
-                        created_by=existing.get('created_by'),
-                    ),
-                )
-            response.status_code = 200
-            return _release_to_response(existing, project_id)
-        # Raced with a delete between the two reads; fall through and
-        # create the node rather than 404 a create.
-
     # Spec calls for ``auth.user.username``; the User model uses
     # ``email`` as the principal identity (no ``username`` field).
     # ``principal_name`` returns the user's email or the service
@@ -919,8 +888,20 @@ async def create_release(
     # tag) so the release-history UI shows the "What's Changed" markdown.
     # Best-effort: a missing capability / release / credential yields None
     # and the release is still created (identified by committish + tag).
+    # The fetch runs before the lock, so no network I/O holds it; the
+    # unlocked lookup skips it for a release that already exists.
     description = data.description
-    if data.tag and not description:
+    if (
+        data.tag
+        and not description
+        and await _find_existing_release(
+            db.execute,
+            project_id=project_id,
+            tag=data.tag,
+            committish=committish,
+        )
+        is None
+    ):
         description = await fetch_release_notes_for_tag(
             db,
             org_slug=org_slug,
@@ -957,17 +938,73 @@ async def create_release(
     CREATE (p)-[:HAS_RELEASE]->(r)
     RETURN r{{.*}} AS release
     """
-    rows = await db.execute(
-        create_query,
-        {'project_id': project_id, **props},
-        ['release'],
+
+    async def find_or_create(
+        execute: graph.CypherExecute,
+    ) -> tuple[dict[str, typing.Any] | None, bool, str | None]:
+        """Return ``(release, created, adopted_tag)`` under the lock.
+
+        ``release`` is None when the project is gone. ``adopted_tag``
+        is the tag this call wrote on an untagged node, else None.
+        """
+        match = await _find_existing_release(
+            execute, project_id=project_id, tag=data.tag, committish=committish
+        )
+        if match is not None:
+            # A tagged create that matched an untagged node adopts it:
+            # the deployment webhook records the commit before the
+            # release webhook names it, and leaving them apart is what
+            # produces the duplicate this endpoint exists to avoid.
+            adopted_tag = None if match.by_tag else (data.tag or None)
+            adopted = adopted_tag is not None and await _adopt_release_tag(
+                execute, release_id=match.id, tag=adopted_tag
+            )
+            existing = await _fetch_release(
+                execute, org_slug, project_id, match.id
+            )
+            if existing is not None:
+                return existing, False, adopted_tag if adopted else None
+            # Raced with a delete between the two reads; fall through
+            # and create the node rather than 404 a create.
+        rows = await execute(
+            create_query,
+            {'project_id': project_id, **props},
+            ['release'],
+        )
+        if not rows:
+            return None, False, None
+        return graph.parse_agtype(rows[0]['release']), True, None
+
+    # Keyed on the project, not the tag: the adopt path matches by
+    # committish, so a tag key would not serialize an untagged create
+    # against a tagged one. AGE has no unique constraint to do this.
+    release_data, created, adopted_tag = await db.locked(
+        release_lock_key(project_id), find_or_create
     )
-    if not rows:
+    if release_data is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
-    release_data = graph.parse_agtype(rows[0]['release'])
+    if not created:
+        if adopted_tag is not None:
+            # The untagged create dispatched without a tag, which a
+            # tag-based version skips; send the event again now that
+            # the tag is known. Capabilities treat a repeat as an
+            # update (Sentry upserts the release). Only the request
+            # whose adopt wrote the tag sends it.
+            release_dispatch.schedule_release_created(
+                db,
+                project_id,
+                TrackedRelease(
+                    id=release_data['id'],
+                    tag=adopted_tag,
+                    committish=release_data['committish'],
+                    created_by=release_data.get('created_by'),
+                ),
+            )
+        response.status_code = 200
+        return _release_to_response(release_data, project_id)
     background_tasks.add_task(
         _search_index.index,
         db,
@@ -1319,7 +1356,7 @@ async def get_release(
     """Get a single release by id."""
     data = await fetch_or_404(
         _fetch_release,
-        db,
+        db.execute,
         org_slug,
         project_id,
         release_id,
@@ -1346,7 +1383,7 @@ async def patch_release(
     ],
 ) -> ReleaseResponse:
     """Apply a JSON Patch (RFC 6902) to a release."""
-    data = await _fetch_release(db, org_slug, project_id, release_id)
+    data = await _fetch_release(db.execute, org_slug, project_id, release_id)
     if data is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -1643,7 +1680,9 @@ async def append_deployment_event(
     late webhook landing after the sweeper expired a deployment is
     auditable rather than a silent overwrite.
     """
-    release = await _fetch_release(db, org_slug, project_id, release_id)
+    release = await _fetch_release(
+        db.execute, org_slug, project_id, release_id
+    )
     if release is None:
         return 'no_release'
     env, existing = await _fetch_deployment_edge(
@@ -2062,7 +2101,9 @@ async def list_deployment_edges(
     ],
 ) -> list[ReleaseEnvironmentEdgeResponse]:
     """List every environment edge for a release."""
-    release = await _fetch_release(db, org_slug, project_id, release_id)
+    release = await _fetch_release(
+        db.execute, org_slug, project_id, release_id
+    )
     if release is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -2142,7 +2183,9 @@ async def get_deployment_edge(
     ],
 ) -> ReleaseEnvironmentEdgeResponse:
     """Get a single deployment edge by environment slug."""
-    release = await _fetch_release(db, org_slug, project_id, release_id)
+    release = await _fetch_release(
+        db.execute, org_slug, project_id, release_id
+    )
     if release is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -2258,7 +2301,10 @@ async def put_release_sbom(
     ``Component`` / ``ComponentRelease`` / ``ComponentIdentifier``
     nodes are MERGE-ed so other projects keep their references.
     """
-    if await _fetch_release(db, org_slug, project_id, release_id) is None:
+    if (
+        await _fetch_release(db.execute, org_slug, project_id, release_id)
+        is None
+    ):
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
@@ -2306,7 +2352,10 @@ async def list_release_dependencies(
     common bootstrap case, not an error. ``404`` is returned only
     when the release itself is unknown.
     """
-    if await _fetch_release(db, org_slug, project_id, release_id) is None:
+    if (
+        await _fetch_release(db.execute, org_slug, project_id, release_id)
+        is None
+    ):
         raise fastapi.HTTPException(
             status_code=404,
             detail=(

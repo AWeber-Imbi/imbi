@@ -4,6 +4,8 @@ import asyncio
 import datetime
 import json
 import typing
+import unittest
+import uuid
 from unittest import mock
 
 import fastapi.testclient
@@ -96,6 +98,10 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+
+        # ``locked`` runs its work on the mocked ``execute``, so the
+        # query sequence of a create is the same with or without it.
+        support.lock_on_execute(self.mock_db)
         # The background search-index task re-reads the release it just
         # wrote, so give every test a node for that lookup to return.
         self.persisted_release = models.Release.model_construct(
@@ -194,6 +200,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
     def test_create_with_explicit_created_by(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [],  # pre-lock check, by tag
+            [],  # pre-lock check, by committish
             [],
             [],
             [{'release': _release_row(created_by='deploy-bot')}],
@@ -226,6 +234,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         # UI's release history shows the "What's Changed" markdown.
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],  # project_exists
+            [],  # pre-lock check, by tag
+            [],  # pre-lock check, by committish
             [],  # existing-by-tag
             [],  # existing-by-committish
             [{'release': _release_row()}],  # create
@@ -258,7 +268,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         enrich.assert_awaited_once()
         self.assertEqual(enrich.await_args.kwargs['tag'], '3.23.4')
         # The fetched body is what gets persisted as the node description.
-        create_params = self.mock_db.execute.call_args_list[3].args[1]
+        create_params = self.mock_db.execute.call_args_list[5].args[1]
         self.assertEqual(create_params['description'], notes)
 
     def test_create_does_not_enrich_when_description_supplied(self) -> None:
@@ -323,6 +333,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [{'id': RELEASE_ID}],  # pre-lock check: exists, skip the notes
             [{'id': RELEASE_ID}],  # duplicate, matched on the tag
             [{'release': _release_row()}],  # re-read for the response
         ]
@@ -340,8 +351,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['id'], RELEASE_ID)
-        # No CREATE ran: project_exists, by-tag, re-read.
-        self.assertEqual(self.mock_db.execute.await_count, 3)
+        # No CREATE ran: project_exists, pre-lock by-tag, by-tag, re-read.
+        self.assertEqual(self.mock_db.execute.await_count, 4)
 
     def test_create_dedupes_on_the_tag_not_the_committish(self) -> None:
         """The tag identifies the release; the commit it points at moves.
@@ -352,6 +363,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [{'id': RELEASE_ID}],  # pre-lock check
             [{'id': RELEASE_ID}],  # matched on the tag alone
             [{'release': _release_row()}],
         ]
@@ -368,7 +380,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
                 },
             )
         self.assertEqual(response.status_code, 200, response.text)
-        query, params, _ = self.mock_db.execute.call_args_list[1].args
+        query, params, _ = self.mock_db.execute.call_args_list[2].args
         self.assertIn('r.tag = {tag}', query)
         self.assertEqual('2.45.3', params['tag'])
         self.dispatch_release.assert_not_called()
@@ -383,6 +395,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [],  # pre-lock check, by tag
+            [{'id': RELEASE_ID}],  # pre-lock check, by committish
             [],  # nothing carries this tag yet
             [{'id': RELEASE_ID}],  # but an untagged node has the commit
             [{'id': RELEASE_ID}],  # adopt the tag
@@ -403,7 +417,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['id'], RELEASE_ID)
         adopt_query, adopt_params, _ = self.mock_db.execute.call_args_list[
-            3
+            5
         ].args
         self.assertIn("WHERE COALESCE(r.tag, '') = ''", adopt_query)
         self.assertEqual('5.0.2', adopt_params['tag'])
@@ -425,6 +439,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [],
+            [{'id': RELEASE_ID}],
             [],
             [{'id': RELEASE_ID}],
             [],  # adopt: another create already named the release
@@ -478,6 +494,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """Uniqueness is per-project: another project may reuse 1.2.3."""
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [],  # pre-lock check, by tag
+            [],  # pre-lock check, by committish
             [],  # no existing release under THIS project, by tag
             [],  # nor by committish
             [{'release': _release_row()}],
@@ -519,6 +537,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             ],
             # Second create: tagged
             [{'id': PROJECT_ID}],
+            [],
+            [],
             [],
             [],
             [
@@ -573,6 +593,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],  # project_exists
+            [],  # pre-lock check, by tag
+            [],  # pre-lock check, by committish
             [],  # existing-by-tag
             [],  # existing-by-committish
             [{'release': _release_row(tag='5.0.2')}],  # create
@@ -606,7 +628,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         )
         self.assertEqual(
             '9b2356a',
-            self.mock_db.execute.call_args_list[3].args[1]['committish'],
+            self.mock_db.execute.call_args_list[5].args[1]['committish'],
         )
 
     def test_create_unresolvable_tag_is_422(self) -> None:
@@ -688,6 +710,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [],  # pre-lock check, by tag
+            [{'id': RELEASE_ID}],  # pre-lock check, by committish
             [],  # nothing carries this tag
             [{'id': RELEASE_ID}],  # an ''-tagged node has the commit
             [{'id': RELEASE_ID}],  # adopt
@@ -706,8 +730,107 @@ class CreateReleaseTestCase(_ReleasesTestBase):
                 },
             )
         self.assertEqual(response.status_code, 200, response.text)
-        adopt_query, _params, _ = self.mock_db.execute.call_args_list[3].args
+        adopt_query, _params, _ = self.mock_db.execute.call_args_list[5].args
         self.assertIn("WHERE COALESCE(r.tag, '') = ''", adopt_query)
+
+
+class CreateReleaseConcurrencyTestCase(unittest.IsolatedAsyncioTestCase):
+    """Concurrent creates against the real graph."""
+
+    async def asyncSetUp(self) -> None:
+        from imbi.api.auth import permissions
+
+        suffix = uuid.uuid4().hex[:10]
+        self.org = f'rc-{suffix}'
+        self.project_id = f'proj-{suffix}'
+        self.team_id = f'team-{suffix}'
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self.graph.close)
+        await self.graph.execute(
+            """
+            CREATE (o:Organization {{id: {org}, slug: {org}}}),
+                   (t:Team {{id: {team}, slug: {team}}}),
+                   (p:Project {{id: {project}}}),
+                   (p)-[:OWNED_BY]->(t),
+                   (t)-[:BELONGS_TO]->(o)
+            RETURN 1 AS ok
+            """,
+            {
+                'org': self.org,
+                'team': self.team_id,
+                'project': self.project_id,
+            },
+            ['ok'],
+        )
+        self.addAsyncCleanup(self._cleanup)
+        self.auth = permissions.AuthContext(
+            user=models.User(
+                email='alice@example.com',
+                display_name='Alice',
+                password_hash='$argon2id$hashed',
+                is_active=True,
+                is_admin=True,
+                is_service_account=False,
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:write'},
+        )
+        dispatch = mock.patch(
+            'imbi.api.plugins.release_dispatch.schedule_release_created'
+        )
+        self.dispatch_release = dispatch.start()
+        self.addCleanup(dispatch.stop)
+
+    async def _cleanup(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project}}})
+            OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
+            DETACH DELETE r
+            RETURN 1 AS ok
+            """,
+            {'project': self.project_id},
+            ['ok'],
+        )
+        await self.graph.execute(
+            'MATCH (n) WHERE n.id IN {ids} DETACH DELETE n RETURN 1 AS ok',
+            {'ids': [self.org, self.team_id, self.project_id]},
+            ['ok'],
+        )
+
+    async def _create(self) -> releases.ReleaseResponse:
+        return await releases.create_release(
+            self.org,
+            self.project_id,
+            releases.ReleaseCreate(
+                tag='1.0.0',
+                committish=DEFAULT_COMMITTISH,
+                title='x',
+                description='notes',
+            ),
+            self.graph,
+            fastapi.Response(),
+            fastapi.BackgroundTasks(),
+            self.auth,
+        )
+
+    async def test_concurrent_same_tag_creates_make_one_node(self) -> None:
+        created = await asyncio.gather(*(self._create() for _ in range(5)))
+        rows = await self.graph.execute(
+            """
+            MATCH (:Project {{id: {project}}})-[:HAS_RELEASE]->(r:Release)
+            RETURN r.id AS id
+            """,
+            {'project': self.project_id},
+            ['id'],
+        )
+        self.assertEqual(1, len(rows))
+        self.assertEqual(1, len({r.id for r in created}))
+        self.dispatch_release.assert_called_once()
 
 
 class ListGetReleaseTestCase(_ReleasesTestBase):
