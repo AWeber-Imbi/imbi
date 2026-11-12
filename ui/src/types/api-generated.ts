@@ -3438,7 +3438,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Project
-         * @description Delete a project.
+         * @description Delete a project, and remove it from the secret grants.
          *
          *     When ``delete_repository`` is true (the default), each assigned
          *     lifecycle plugin's ``on_project_deleted`` hook is also invoked so
@@ -4949,7 +4949,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Agent
-         * @description Delete an agent, every version of it, and its service account.
+         * @description Delete an agent, every version of it, and its service account,
+         *     and remove it from the secret grants.
          *
          *     Raises:
          *         404: No such agent.

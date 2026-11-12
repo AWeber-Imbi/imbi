@@ -80,10 +80,12 @@ uv run --frozen --env-file .env.test pytest apps/api/tests/test_foo.py::TestClas
 ```
 
 UI tooling is npm scripts in `ui/` (oxlint, oxfmt, vitest): `npm run lint`,
-`npm run test`, `npm run dev`. API client types are generated — after
-changing API endpoints/schemas, regenerate with `npm run codegen:fetch`
-(needs the API running on :8000) or `npm run codegen` from an existing
-`ui/openapi.json`.
+`npm run test`, `npm run dev`. API client types
+(`ui/src/types/api-generated.ts`) are generated — never edit them by hand.
+After changing API endpoints/schemas, run `scripts/regen-api-types.sh` and
+commit the result. It needs no running API or database (on macOS it runs the
+dump in a Linux container), and the `root:api-types` CI task fails on a stale
+file.
 
 Run the prod image locally with `docker compose up --build` (compose.yaml).
 
