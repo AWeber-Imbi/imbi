@@ -7,6 +7,7 @@ and :func:`persist_service_writeback` in
 
 import asyncio
 import json
+import typing
 import unittest
 import unittest.mock as mock
 
@@ -24,6 +25,17 @@ def _ctx(**kwargs: object) -> PluginContext:
     }
     base.update(kwargs)
     return PluginContext(**base)  # type: ignore[arg-type]
+
+
+def _db() -> mock.AsyncMock:
+    """Return a mock graph whose ``locked`` runs the work."""
+    db = mock.AsyncMock()
+
+    async def locked(_key: str, work: typing.Any) -> typing.Any:
+        return await work(db.execute)
+
+    db.locked.side_effect = locked
+    return db
 
 
 class LookupProjectExistsInTestCase(unittest.TestCase):
@@ -113,12 +125,12 @@ class MergeProjectLinksTestCase(unittest.TestCase):
 
 class PersistServiceWritebackTestCase(unittest.TestCase):
     def test_noop_when_no_writeback(self) -> None:
-        db = mock.AsyncMock()
+        db = _db()
         asyncio.run(_helpers.persist_service_writeback(db, _ctx(), _ADMIN))
         db.execute.assert_not_awaited()
 
     def test_skips_without_bound_slug(self) -> None:
-        db = mock.AsyncMock()
+        db = _db()
         ctx = _ctx(
             service_writeback=ServiceWriteback(
                 identifier='1', canonical_url='https://api/1'
@@ -128,7 +140,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
         db.execute.assert_not_awaited()
 
     def test_upsert_path(self) -> None:
-        db = mock.AsyncMock()
+        db = _db()
         ctx = _ctx(
             integration_slug='github-enterprise-cloud',
             service_writeback=ServiceWriteback(
@@ -149,7 +161,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
         ):
             asyncio.run(_helpers.persist_service_writeback(db, ctx, _ADMIN))
         merge_edge.assert_awaited_once_with(
-            db,
+            db.execute,
             'org-1',
             'proj-1',
             'github-enterprise-cloud',
@@ -164,7 +176,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
         )
 
     def test_upsert_path_passes_webhook_secret(self) -> None:
-        db = mock.AsyncMock()
+        db = _db()
         ctx = _ctx(
             integration_slug='pagerduty',
             service_writeback=ServiceWriteback(
@@ -188,7 +200,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
         self.assertEqual(merge_edge.await_args.args[6], 'gAAAAAB-ciphertext')
 
     def test_remove_path(self) -> None:
-        db = mock.AsyncMock()
+        db = _db()
         ctx = _ctx(
             integration_slug='github-enterprise-cloud',
             service_writeback=ServiceWriteback(
@@ -218,7 +230,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
         )
 
     def test_write_failure_is_swallowed(self) -> None:
-        db = mock.AsyncMock()
+        db = _db()
         ctx = _ctx(
             integration_slug='github',
             service_writeback=ServiceWriteback(
@@ -239,7 +251,12 @@ class MergeExistsInTestCase(unittest.TestCase):
         db = mock.AsyncMock()
         asyncio.run(
             _helpers._merge_exists_in(
-                db, 'org-1', 'proj-1', 'pagerduty', 'PSVC1', 'https://api/1'
+                db.execute,
+                'org-1',
+                'proj-1',
+                'pagerduty',
+                'PSVC1',
+                'https://api/1',
             )
         )
         query, params = db.execute.await_args.args[:2]
@@ -250,7 +267,7 @@ class MergeExistsInTestCase(unittest.TestCase):
         db = mock.AsyncMock()
         asyncio.run(
             _helpers._merge_exists_in(
-                db,
+                db.execute,
                 'org-1',
                 'proj-1',
                 'pagerduty',

@@ -297,6 +297,13 @@ class PluginManifest(pydantic.BaseModel):
     auth_type: typing.Literal[
         'api_token', 'oauth2', 'oidc', 'aws-iam-ic', 'none'
     ] = 'api_token'
+    #: Whether several projects in an organization can share one
+    #: ``EXISTS_IN`` identifier for the same Integration. ``True`` suits
+    #: a monorepo where several projects map to one GitHub repository.
+    #: ``False`` makes the host refuse a :class:`ServiceWriteback` whose
+    #: identifier another project already holds, because a lookup by
+    #: identifier (for example a gateway delivery) must find one project.
+    shareable_service_identifier: bool = True
     #: Integration-level options — asked ONCE per Integration
     #: (e.g. github: flavor, host; aws: region, default_role_name).
     options: list[PluginOption] = []

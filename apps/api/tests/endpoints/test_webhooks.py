@@ -1689,6 +1689,11 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             self.mock_db
         )
 
+        async def locked(_key: str, work: typing.Any) -> typing.Any:
+            return await work(self.mock_db.execute)
+
+        self.mock_db.locked.side_effect = locked
+
         self.client = testclient.TestClient(self.test_app)
 
         self.service_record: dict[str, str | None] = {
