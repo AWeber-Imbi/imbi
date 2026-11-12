@@ -13,7 +13,6 @@ from the Imbi OpenAPI spec); the two managers run side by side.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import re
@@ -174,7 +173,7 @@ class ExternalMCPManager:
     """
 
     def __init__(self) -> None:
-        self._exit_stack = contextlib.AsyncExitStack()
+        self._tasks: list[asyncio.Task[None]] = []
         self._sessions: dict[str, mcp.ClientSession] = {}
         self._tools: list[dict[str, typing.Any]] = []
         # registered tool name -> (server slug, original tool name)
@@ -226,9 +225,15 @@ class ExternalMCPManager:
                 err,
             )
             return
+        if self._sessions.get(server.slug) is not session:
+            LOGGER.warning(
+                'MCP server %r session closed during tool discovery',
+                server.slug,
+            )
+            return
         prefix = _tool_prefix(server)
         for tool in result.tools:
-            self._register_tool(server, session, tool, prefix)
+            self._register_tool(server, tool, prefix)
 
     async def _open_session(
         self,
@@ -252,24 +257,63 @@ class ExternalMCPManager:
                 verify=False,  # noqa: S501
             )
 
-        result = await self._exit_stack.enter_async_context(
-            streamable_http.streamable_http_client(
-                str(server.url),
-                http_client=http_client,
-            )
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[mcp.ClientSession] = loop.create_future()
+        task = asyncio.create_task(
+            self._run_session(server, http_client, ready),
+            name=f'external-mcp-{server.slug}',
         )
-        read_stream, write_stream = result[0], result[1]
-        session = await self._exit_stack.enter_async_context(
-            mcp.ClientSession(read_stream, write_stream)
-        )
-        await session.initialize()
-        self._sessions[server.slug] = session
-        return session
+        self._tasks.append(task)
+        try:
+            return await ready
+        except BaseException:
+            task.cancel()
+            raise
+
+    async def _run_session(
+        self,
+        server: common_models.MCPServer,
+        http_client: httpx.AsyncClient,
+        ready: asyncio.Future[mcp.ClientSession],
+    ) -> None:
+        """Hold one server's client contexts open in a dedicated task.
+
+        The MCP client runs its I/O in an anyio task group. When a child
+        task fails (for example on an HTTP 502), the group cancels the
+        task that entered it. That task must be this one, not the caller,
+        so a failure stops only this server and never the app lifespan.
+
+        """
+        try:
+            async with (
+                http_client,
+                streamable_http.streamable_http_client(
+                    str(server.url),
+                    http_client=http_client,
+                ) as (read_stream, write_stream, _),
+                mcp.ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                self._sessions[server.slug] = session
+                ready.set_result(session)
+                await asyncio.get_running_loop().create_future()
+        except Exception as err:  # noqa: BLE001
+            if ready.done():
+                LOGGER.error(
+                    'External MCP server %r session failed: %r',
+                    server.slug,
+                    err,
+                )
+            else:
+                ready.set_exception(err)
+        finally:
+            self._sessions.pop(server.slug, None)
+            if not ready.done():
+                ready.cancel()
 
     def _register_tool(
         self,
         server: common_models.MCPServer,
-        session: mcp.ClientSession,
         tool: mcp_types.Tool,
         prefix: str,
     ) -> None:
@@ -306,19 +350,17 @@ class ExternalMCPManager:
                 server.slug,
             )
             return
-        self._sessions.setdefault(server.slug, session)
         self._tool_routes[registered_name] = (server.slug, tool.name)
         self._tools.append(_mcp_tool_to_anthropic(tool, registered_name))
 
     async def aclose(self) -> None:
         """Close all server connections."""
-        try:
-            await self._exit_stack.aclose()
-        except RuntimeError, OSError:
-            # The MCP library uses anyio cancel scopes internally that
-            # may raise when exiting across tasks during teardown.
-            LOGGER.debug('Error closing external MCP connections')
-        self._exit_stack = contextlib.AsyncExitStack()
+        for task in self._tasks:
+            task.cancel()
+        # Each session task logs its own failure; teardown errors here
+        # must not escape into the caller's (lifespan) unwind.
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
         self._sessions.clear()
         self._tool_routes.clear()
         self._tools = []
