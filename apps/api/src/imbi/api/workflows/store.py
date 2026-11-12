@@ -319,8 +319,9 @@ class WorkflowStore:
     ) -> int:
         """Return how many workflows use the agent.
 
-        A workflow uses the agent when an agent step names it in its
-        latest or active version, or in the pinned version of a run
+        A workflow uses the agent when an agent step or a
+        ``task_completed`` trigger names it in its latest or active
+        version, or in the pinned version of a run
         that is not closed. Other versions cannot run.
         """
         row = await self._one(
@@ -333,7 +334,7 @@ class WorkflowStore:
             ' AND NOT (r.status = ANY(%s))))'
             ' AND EXISTS (SELECT 1'
             " FROM jsonb_array_elements(v.graph->'nodes') AS n"
-            " WHERE n->>'type' = 'agent'"
+            " WHERE n->>'type' IN ('agent', 'task_completed')"
             " AND n->'params'->>'agent_id' = %s)",
             (organization_id, list(runtime.CLOSED), agent_id),
         )

@@ -650,3 +650,15 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(
             await self.store.agent_references(self.org, foreign), 0
         )
+        # A task_completed trigger that names the agent also uses it.
+        response = await self._create(
+            name='Task chain',
+            graph={
+                'nodes': [
+                    _node('start', 'task_completed', {'agent_id': agent})
+                ],
+                'edges': [],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(await self.store.agent_references(self.org, agent), 2)
