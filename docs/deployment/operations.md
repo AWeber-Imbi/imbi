@@ -343,8 +343,23 @@ off. The fields that show an API key or a client secret one time are not
 recorded at all. The UI removes the query string from every URL that it
 sends.
 
-The container does not upload UI source maps to PostHog, so UI stack
-frames show the bundled code.
+To show UI stack frames as source code, upload the source maps. Set these
+on the container (`all` or `ui` mode). It uploads the maps in the
+background when it starts. A failed upload writes a log line and does not
+stop the container.
+
+| Variable | What it does |
+|---|---|
+| `POSTHOG_CLI_API_KEY` | A PostHog personal API key with the `error_tracking:write` scope. Not the project key |
+| `POSTHOG_CLI_PROJECT_ID` | The project ID, for example `2` in `https://us.posthog.com/project/2` |
+| `POSTHOG_CLI_HOST` | The PostHog app host. The default is `https://us.posthog.com`. For the EU region, use `https://eu.posthog.com` |
+
+The image build writes a chunk ID into each UI bundle, so the maps match
+the files that Caddy serves. The build step runs without network access.
+During the upload, `posthog-cli` also sends its own usage data (the
+command, the CLI version, and the project ID) to PostHog. It has no
+setting to turn this off. Caddy serves the `.map` files only when
+`SERVE_SOURCE_MAPS` is `true`; the upload does not need that.
 
 ## Logging
 

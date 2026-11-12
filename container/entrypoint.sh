@@ -202,11 +202,31 @@ upload_sourcemaps() {
     echo "Source maps uploaded."
 }
 
+# --------------------------------------------------------------------------
+# Optional: upload source maps to PostHog
+# --------------------------------------------------------------------------
+# Runs when POSTHOG_CLI_API_KEY (a personal API key with
+# error_tracking:write) and POSTHOG_CLI_PROJECT_ID are set. POSTHOG_CLI_HOST
+# selects the region (default https://us.posthog.com). The image build
+# already wrote the chunk ids into the bundles. The upload runs in the
+# background so the services start at once, and a failure only logs: the UI
+# works without it.
+
+upload_posthog_sourcemaps() {
+    if [ -z "${POSTHOG_CLI_API_KEY:-}" ] || \
+       [ -z "${POSTHOG_CLI_PROJECT_ID:-}" ]; then
+        return
+    fi
+    echo "Uploading source maps to PostHog..."
+    posthog-cli --no-fail sourcemap upload --directory /srv/ui/assets &
+}
+
 # Only `all` and `ui` modes serve the UI via the bundled Caddy, so only upload
 # there. Single-service replicas (api, gateway, mcp, ...) would otherwise
 # redundantly re-upload the same maps on every start/restart.
 if [ "$IMBI_SERVICE" = "all" ] || [ "$IMBI_SERVICE" = "ui" ]; then
     upload_sourcemaps
+    upload_posthog_sourcemaps
 fi
 
 # --------------------------------------------------------------------------

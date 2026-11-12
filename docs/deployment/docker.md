@@ -321,7 +321,9 @@ mode. See [Operations: Sentry](operations.md#sentry).
 Set `POSTHOG_API_KEY` to send errors to PostHog, and `VITE_POSTHOG_KEY`
 for the UI. Session replay, web analytics, MCP analytics, AI
 observability, and OpenTelemetry traces and logs each have their own
-switch. See [Operations: PostHog](operations.md#posthog).
+switch. To upload the UI source maps when the container starts, set
+`POSTHOG_CLI_API_KEY` and `POSTHOG_CLI_PROJECT_ID` in `all` or `ui` mode.
+See [Operations: PostHog](operations.md#posthog).
 
 ## Upgrading
 

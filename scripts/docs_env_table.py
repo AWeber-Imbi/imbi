@@ -211,6 +211,26 @@ CONTAINER: list[Row] = [
     ('SENTRY_PROJECT', 'str', 'none', 'Sentry project for the upload'),
     ('SENTRY_RELEASE', 'str', 'none', 'Sentry release for the upload'),
     ('SENTRY_URL', 'str', 'none', 'Sentry server URL for the upload'),
+    (
+        'POSTHOG_CLI_API_KEY',
+        'str',
+        'none',
+        'With `POSTHOG_CLI_PROJECT_ID`, the `all` and `ui` modes upload the '
+        'UI source maps to PostHog at start. A personal API key with '
+        '`error_tracking:write`',
+    ),
+    (
+        'POSTHOG_CLI_PROJECT_ID',
+        'str',
+        'none',
+        'PostHog project for the upload',
+    ),
+    (
+        'POSTHOG_CLI_HOST',
+        'str',
+        '`https://us.posthog.com`',
+        'PostHog app host for the upload',
+    ),
 ]
 
 DESCRIPTIONS: dict[str, str] = {

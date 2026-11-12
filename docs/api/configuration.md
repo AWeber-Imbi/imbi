@@ -396,6 +396,9 @@ unset.
 | `SENTRY_PROJECT` | str | none | Sentry project for the upload |
 | `SENTRY_RELEASE` | str | none | Sentry release for the upload |
 | `SENTRY_URL` | str | none | Sentry server URL for the upload |
+| `POSTHOG_CLI_API_KEY` | str | none | With `POSTHOG_CLI_PROJECT_ID`, the `all` and `ui` modes upload the UI source maps to PostHog at start. A personal API key with `error_tracking:write` |
+| `POSTHOG_CLI_PROJECT_ID` | str | none | PostHog project for the upload |
+| `POSTHOG_CLI_HOST` | str | `https://us.posthog.com` | PostHog app host for the upload |
 | `IMBI_API_UPSTREAM` | str | `127.0.0.1:8000` | Caddy upstream of imbi-api (`ui` mode) |
 | `IMBI_ASSISTANT_UPSTREAM` | str | `127.0.0.1:8002` | Caddy upstream of imbi-assistant |
 | `IMBI_GATEWAY_UPSTREAM` | str | `127.0.0.1:8003` | Caddy upstream of imbi-gateway |
