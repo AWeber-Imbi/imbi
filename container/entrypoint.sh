@@ -213,8 +213,10 @@ upload_sourcemaps() {
 # works without it.
 
 upload_posthog_sourcemaps() {
-    if [ -z "${POSTHOG_CLI_API_KEY:-}" ] || \
-       [ -z "${POSTHOG_CLI_PROJECT_ID:-}" ]; then
+    # posthog-cli also reads the legacy names POSTHOG_CLI_TOKEN and
+    # POSTHOG_CLI_ENV_ID, so accept them here too.
+    if [ -z "${POSTHOG_CLI_API_KEY:-${POSTHOG_CLI_TOKEN:-}}" ] || \
+       [ -z "${POSTHOG_CLI_PROJECT_ID:-${POSTHOG_CLI_ENV_ID:-}}" ]; then
         return
     fi
     echo "Uploading source maps to PostHog..."
