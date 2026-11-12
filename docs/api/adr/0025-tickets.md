@@ -192,8 +192,11 @@ these hold:
 - the ticket has no open manager task
 - the ticket is under its budget (see Guardrails)
 
-When a manager task closes, imbi-api checks for a wake event newer than
-the task. If there is one, it creates the next manager task.
+When a manager task closes, imbi-api looks for a wake event that the
+task did not write and did not read. An event is read when `get_ticket`
+returned it to the task. A task that read nothing has read only the
+event that woke it. If there is such an event and the ticket is under
+its budget, imbi-api creates the next manager task.
 
 **Each run starts from the ticket, not from memory.** A manager task
 reads the ticket, its log, its tasks, its asks, and its pull request and
@@ -311,7 +314,8 @@ of their open asks.
 ### Pull requests and deploys
 
 - **Linking.** A pull request is linked to a ticket when its title,
-  branch, or body contains the ticket's short id. Work tasks are told
+  branch, or body contains the ticket's short id as a whole identifier.
+  `TK-1` does not match inside `TK-10`. Work tasks are told
   to put the short id in the branch name. A person can link or unlink
   one by hand. Linking adds the pull request's project to the ticket.
 - **Changes.** When `pr-sync` records a change to a linked pull request,
@@ -345,22 +349,29 @@ from organization settings. They stop a manager that keeps starting
 implement tasks against a check that never passes, and a ticket whose
 events keep waking the manager.
 
-- `budget` is the total cost of every task on the ticket: manager tasks
-  and work tasks, child tasks included.
-- `max_tasks` is the number of work tasks, child tasks included. Manager
-  tasks do not count toward it. The budget bounds them.
+- `budget` limits the total cost of every task on the ticket: manager
+  tasks and work tasks, child tasks included.
+- `max_tasks` limits the number of work tasks, child tasks included.
+  Manager tasks do not count toward it. The budget bounds them.
+- A closed task that Follow up linked to the ticket counts toward
+  neither ceiling. Its cost was spent before the ticket existed.
 - **Every path that creates a task on a ticket checks the ceilings.**
   The paths are `start_ticket_task`, `create_child_task`, a person
   starting a task from the ticket page, and the manager task that
   imbi-api creates on a wake event.
-- Past the budget, no task is created on the ticket, manager tasks
-  included. Past `max_tasks`, no work task is created. The manager still
-  runs, so it can close a ticket whose work is finished.
-- The first time a ticket passes a ceiling, imbi-api writes
-  `ceiling.reached` and opens an ask for the owner. The owner raises the
-  ceiling or cancels the ticket. Raising it writes `field.changed`,
-  which wakes the manager. The manager reads what it missed from the
-  log.
+- A ticket is under its budget while its total cost is less than
+  `budget`. Once the cost reaches `budget`, no task is created on the
+  ticket, manager tasks included.
+- A work task is refused when the ticket already has `max_tasks` work
+  tasks. The manager still runs, so it can close a ticket whose work is
+  finished.
+- When a ceiling refuses a task and the ticket has no open ask about
+  that ceiling, imbi-api writes `ceiling.reached` and opens an ask for
+  the owner. The owner raises the ceiling or cancels the ticket.
+- Raising a ceiling closes its ask and writes `field.changed`, which
+  wakes the manager. The manager reads what it missed from the log. If
+  the ticket reaches the raised ceiling later, the next refusal opens a
+  new ask.
 - Tasks that are already open keep running, each within its own task
   budget (ADR 0020). A ticket can pass its budget by at most the
   remaining budgets of the tasks open at that moment.
