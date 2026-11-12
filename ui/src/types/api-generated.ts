@@ -34426,6 +34426,8 @@ export interface operations {
         parameters: {
             query?: {
                 source?: string | null;
+                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                tz?: string;
             };
             header?: never;
             path: {
@@ -34531,7 +34533,10 @@ export interface operations {
     };
     get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                tz?: string;
+            };
             header?: never;
             path: {
                 org_slug: string;
