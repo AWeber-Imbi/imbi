@@ -554,6 +554,33 @@ class GitHubLifecycle(LifecycleCapability):
             display=identifier,
         )
 
+    async def check_archive_access(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> str | None:
+        """Refuse when the caller is not an admin of the repository.
+
+        GitHub answers an archive or unarchive ``PATCH`` from a non-admin
+        with ``403``.  The repo payload carries the caller's
+        ``permissions`` for a user token; when it is absent (an App
+        installation token), allow the request.
+        """
+        host = self._resolve_host(ctx)
+        owner, repo = resolve_owner_repo(ctx, host, 'GitHub lifecycle plugin')
+        async with self._client(ctx, credentials) as client:
+            current = await self._get_repo(client, owner, repo)
+        perms = typing.cast(
+            dict[str, object] | None, current.get('permissions')
+        )
+        if perms is not None and not perms.get('admin'):
+            return (
+                'You need admin access to the GitHub repository '
+                f'{current.get("full_name") or f"{owner}/{repo}"} '
+                'to archive or restore this project'
+            )
+        return None
+
     async def on_project_archived(
         self,
         ctx: PluginContext,

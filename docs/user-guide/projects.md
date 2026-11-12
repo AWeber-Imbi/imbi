@@ -271,6 +271,10 @@ for example a plugin with its own release process.
 To restore the project, open it by its URL and click **Restore project**
 on the same tab.
 
+If a lifecycle plugin would refuse the change, Imbi refuses the archive or
+restore before it changes the project. For example, with the GitHub plugin
+you need admin access to the repository.
+
 ### Delete
 
 1. Open the **Project Settings** tab.
