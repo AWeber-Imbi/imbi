@@ -74,6 +74,13 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Next release
+
+1. Run `imbi-api setup-permissions`. It adds `workflow:recover` and gives
+   it to the `admin` role. The new **Calls with an unknown outcome**
+   section on the Workflows page needs it. See
+   [Workflows](../admin/workflows.md#calls-with-an-unknown-outcome).
+
 ## 2.47.0
 
 No setup command is required.

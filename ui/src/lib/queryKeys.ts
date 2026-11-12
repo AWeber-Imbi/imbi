@@ -115,6 +115,8 @@ export const queryKeys = {
   workflowRuns: (orgSlug: string, slug: string) =>
     ['workflows', orgSlug, slug, 'runs'] as const,
   workflows: (orgSlug: string) => ['workflows', orgSlug] as const,
+  workflowSideEffects: (orgSlug: string) =>
+    ['workflowSideEffects', orgSlug] as const,
   workflowStepTypes: (orgSlug: string) =>
     ['workflowStepTypes', orgSlug] as const,
 } as const
