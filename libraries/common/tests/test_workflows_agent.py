@@ -81,6 +81,22 @@ class OutputFieldsTestCase(unittest.TestCase):
                 }
             ],
             'name with a space': [{'name': 'a b', 'type': 'string'}],
+            'name of a dict method': [
+                {'name': 'items', 'type': 'array', 'items': 'string'}
+            ],
+            'nested name of a dict method': [
+                {
+                    'name': 'a',
+                    'type': 'object',
+                    'fields': [{'name': 'keys', 'type': 'string'}],
+                }
+            ],
+            'empty enum value': [
+                {'name': 'a', 'type': 'string', 'enum': ['']}
+            ],
+            'enum values that differ in case': [
+                {'name': 'a', 'type': 'string', 'enum': ['High', 'high']}
+            ],
             'duplicate names': [
                 {'name': 'a', 'type': 'string'},
                 {'name': 'a', 'type': 'integer'},

@@ -69,6 +69,9 @@ StringFormat = typing.Literal[
 MAX_FIELDS = 50
 #: The most optional fields of one schema that structured output takes.
 MAX_OPTIONAL_FIELDS = 24
+#: A template resolves ``result.items`` to the method of the dict, not
+#: to a field, so no field takes the name of one.
+RESERVED_NAMES = frozenset(n for n in dir(dict) if not n.startswith('_'))
 
 
 def _unique_names(fields: list[typing.Any]) -> None:
@@ -77,17 +80,27 @@ def _unique_names(fields: list[typing.Any]) -> None:
         raise ValueError('field names must be unique')
 
 
+def _unreserved(name: str) -> str:
+    if name in RESERVED_NAMES:
+        raise ValueError(f'{name!r} is a reserved name')
+    return name
+
+
 class _Field(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    name: str = pydantic.Field(pattern=graph.KEY_PATTERN, max_length=64)
+    name: typing.Annotated[
+        str,
+        pydantic.Field(pattern=graph.KEY_PATTERN, max_length=64),
+        pydantic.AfterValidator(_unreserved),
+    ]
     description: str = pydantic.Field(default='', max_length=500)
     #: An optional field can be left out. Each one makes the grammar
     #: of the schema larger, so there is a limit.
     required: bool = True
     #: The allowed values of a string, or of each string of an array.
-    enum: list[str] | None = pydantic.Field(
-        default=None, min_length=1, max_length=50
+    enum: list[typing.Annotated[str, pydantic.Field(min_length=1)]] | None = (
+        pydantic.Field(default=None, min_length=1, max_length=50)
     )
     format: StringFormat | None = None
 
@@ -96,6 +109,10 @@ class _Field(pydantic.BaseModel):
             raise ValueError('enum and format apply to strings only')
         if self.enum and self.format:
             raise ValueError('a field has an enum or a format, not both')
+        if self.enum and len({e.casefold() for e in self.enum}) < len(
+            self.enum
+        ):
+            raise ValueError('enum values must differ in more than case')
 
 
 class ObjectField(_Field):

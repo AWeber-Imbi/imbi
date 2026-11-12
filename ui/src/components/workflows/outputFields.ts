@@ -18,6 +18,21 @@ export const STRING_FORMATS = [
 
 export const MAX_OPTIONAL_FIELDS = 24
 
+/** A template resolves these to methods of the result, not to fields. */
+const RESERVED_NAMES = new Set([
+  'clear',
+  'copy',
+  'fromkeys',
+  'get',
+  'items',
+  'keys',
+  'pop',
+  'popitem',
+  'setdefault',
+  'update',
+  'values',
+])
+
 /**
  * A field of an agent step's structured output. A sub-field of an
  * object takes a scalar type and no `items` or `fields`.
@@ -57,6 +72,9 @@ export function nameError(
 ): string | undefined {
   if (!KEY_PATTERN.test(field.name)) {
     return 'Use lower case letters, digits, and _, starting with a letter.'
+  }
+  if (RESERVED_NAMES.has(field.name)) {
+    return 'This name is reserved.'
   }
   if (siblings.filter((sibling) => sibling.name === field.name).length > 1) {
     return 'Another field has this name.'

@@ -28,6 +28,8 @@ describe('nameError', () => {
     expect(nameError(fields[0], fields)).toBe('Another field has this name.')
     expect(nameError(fields[2], fields)).toMatch(/lower case letters/)
     expect(nameError(fields[0], [fields[0]])).toBeUndefined()
+    const items = { name: 'items', type: 'string' as const }
+    expect(nameError(items, [items])).toBe('This name is reserved.')
   })
 })
 
