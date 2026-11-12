@@ -521,7 +521,8 @@ DESCRIPTIONS: dict[str, str] = {
     'VITE_POSTHOG_REPLAY_SAMPLE_RATE': 'Share of sessions that record, '
     '`0` to `1`. Default: `1`.',
     'VITE_POSTHOG_PERSON_PROFILES': '`identified_only` identifies each user '
-    'by a hash of their email. Default: `never`.',
+    'by a hash of their email and names the person by the email local '
+    'part. Default: `never`.',
     'VITE_DRIFT_STALE_AFTER': 'Drift that waits longer than this '
     '(`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: '
     'never.',
