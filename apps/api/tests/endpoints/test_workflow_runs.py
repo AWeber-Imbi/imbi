@@ -953,6 +953,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'outcome': None,
                 'reason': None,
                 'summary': None,
+                'result': None,
             },
         )
         self.assertEqual(await self._count(), 1)
@@ -978,6 +979,39 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             (response.json()['status'], response.json()['outcome']),
             ('closed', 'cancelled_by_human'),
         )
+
+    async def test_output_fields_make_the_schema(self) -> None:
+        await self._agent_step(
+            {
+                'agent_id': self.agent,
+                'instruction': 'Go.',
+                'output_fields': [{'name': 'n', 'type': 'integer'}],
+            }
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task_id = response.json()['task_id']
+        task = await self.tasks.get(self.org, task_id)
+        assert task is not None
+        self.assertEqual(
+            task['output_schema'],
+            {
+                'type': 'object',
+                'properties': {'n': {'type': 'integer'}},
+                'required': ['n'],
+                'additionalProperties': False,
+            },
+        )
+        await self.tasks.set_outcome(
+            self.org,
+            task_id,
+            'done_acted',
+            None,
+            agent_tasks.Actor('agent', self.agent, 'harness'),
+            {'n': 3},
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.json()['result'], {'n': 3})
 
     async def test_malformed_input_is_422(self) -> None:
         # Not a 500: the engine would retry it, and it fails each time.
@@ -1151,6 +1185,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                             'outcome': 'failed_external',
                             'reason': 'secret_reason',
                             'summary': 'Secret summary.',
+                            'result': {'secret': True},
                         }
                     ),
                     self.run_id,
@@ -1184,6 +1219,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         overrides[permissions.get_current_user] = reader
         self.assertEqual((await output())['summary'], 'Secret summary.')
         self.assertEqual((await output())['reason'], 'secret_reason')
+        self.assertEqual((await output())['result'], {'secret': True})
 
     async def test_open_run_keeps_the_agent_in_use(self) -> None:
         # The run is open on version 1. Version 2 has no agent step.

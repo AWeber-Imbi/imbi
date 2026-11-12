@@ -231,6 +231,9 @@ class NewTask:
     #: The root task of the chain of a child task. ``None`` makes the
     #: task the root of its own chain.
     chain_id: uuid.UUID | None = None
+    #: The JSON Schema of the structured output that the agent must
+    #: return. ``None``: the task asks for none.
+    output_schema: Row | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -505,9 +508,9 @@ class TaskStore:
                     ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
-                    ' platform_config_version) VALUES (%s,'
+                    ' output_schema, platform_config_version) VALUES (%s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, (SELECT max(version)'
+                    ' %s, %s, %s, %s, (SELECT max(version)'
                     ' FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -527,6 +530,7 @@ class TaskStore:
                         task.owner,
                         task.budget,
                         task.chain_id or task_id,
+                        _jsonb(task.output_schema),
                         task.organization_id,
                     ),
                 )
@@ -1849,8 +1853,11 @@ class TaskStore:
         outcome: Outcome,
         reason: str | None,
         actor: Actor,
+        structured_output: Row | None = None,
     ) -> Row:
         """Close the task with ``outcome``; see :func:`_close`.
+
+        Keep the ``structured_output`` that the agent returned, if any.
 
         Raises:
             TaskNotFound: No such task.
@@ -1859,6 +1866,10 @@ class TaskStore:
         """
         async with self._write(organization_id, short_id) as write:
             await _close(write, outcome, reason, actor)
+            if structured_output is not None:
+                await write.update(
+                    {'structured_output': _jsonb(structured_output)}
+                )
         return write.task
 
 

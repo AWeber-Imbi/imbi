@@ -26,6 +26,7 @@ from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
 from imbi.common import graph, iggy, sentry
 from imbi.common.auth import encryption
+from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history
 from imbi.workflows import app, engine, executors, settings, store
 
@@ -1401,6 +1402,7 @@ class AgentStepTestCase(EngineTestCase):
                 'outcome': 'done_acted',
                 'reason': None,
                 'summary': 'Version 1.2 is fine.',
+                'result': None,
             },
         )
         self.assertEqual(
@@ -1413,6 +1415,38 @@ class AgentStepTestCase(EngineTestCase):
             },
         )
         self.assertEqual(len(await self._org_tasks()), 1)
+
+    async def test_structured_output_is_the_result(self) -> None:
+        fields = [
+            {'name': 'subjects', 'type': 'array', 'items': 'string'},
+            {'name': 'note', 'type': 'string', 'required': False},
+        ]
+        run_id = await self._start(
+            await self._agent_workflow(
+                params={
+                    'agent_id': self.agent_id,
+                    'instruction': 'Triage.',
+                    'output_fields': fields,
+                }
+            ),
+            {'version': '1'},
+        )
+        task = await self._task(run_id)
+        self.assertEqual(task['output_schema']['required'], ['subjects'])
+        await self.tasks.set_outcome(
+            self.org,
+            task['short_id'],
+            'done_acted',
+            None,
+            self._agent(),
+            {'subjects': ['Hi']},
+        )
+        run = await self._drive(run_id)
+        ask = run['steps']['ask']
+        self.assertEqual((ask['status'], ask['port']), ('succeeded', 0))
+        self.assertEqual(
+            ask['output']['result'], {'subjects': ['Hi'], 'note': None}
+        )
 
     async def test_failed_outcome_takes_failed(self) -> None:
         run_id = await self._start(
@@ -1585,6 +1619,73 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class RenderTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_agent_results(self) -> None:
+        fields = [
+            {'name': 'subjects', 'type': 'array', 'items': 'string'},
+            {
+                'name': 'sender',
+                'type': 'object',
+                'fields': [{'name': 'email', 'type': 'string'}],
+            },
+        ]
+        nodes = {
+            node_id: wf.Node.model_validate(
+                _node(
+                    node_id,
+                    'agent',
+                    {
+                        'agent_id': 'a1',
+                        'instruction': 'Triage.',
+                        'output_fields': fields,
+                    },
+                )
+            )
+            for node_id in ('a', 'b')
+        }
+        steps = {
+            'a': {
+                'node_key': 'a',
+                'node_type': 'agent',
+                'status': 'succeeded',
+                'output': {
+                    'result': {
+                        'subjects': ['Hi', 'Bye'],
+                        'sender': {'email': 'a@example.com'},
+                    }
+                },
+            },
+            'b': {
+                'node_key': 'b',
+                'node_type': 'agent',
+                'status': 'skipped',
+                'output': None,
+            },
+        }
+        with mock.patch.dict(
+            'os.environ', {'IMBI_PROMPT_RENDER_INPROCESS': 'true'}
+        ):
+            rendered = await engine._render(
+                {
+                    'whole': '{{ a.result.subjects }}',
+                    'loop': '{% for s in a.result.subjects %}{{ s }};'
+                    '{% endfor %}',
+                    'nested': '{{ a.result.sender.email }}',
+                    'skipped': '[{{ b.result.sender.email }}]',
+                },
+                steps,
+                {},
+                nodes,
+            )
+        self.assertEqual(
+            rendered,
+            {
+                'whole': ['Hi', 'Bye'],
+                'loop': 'Hi;Bye;',
+                'nested': 'a@example.com',
+                'skipped': '[]',
+            },
+        )
+
     async def test_references(self) -> None:
         steps = {
             'a': {
@@ -1614,6 +1715,7 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                 },
                 steps,
                 {'count': 3},
+                {},
             )
         self.assertEqual(
             rendered,

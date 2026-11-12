@@ -16,6 +16,7 @@ import re
 import typing
 from collections import abc
 
+import pydantic
 from psycopg import sql
 from psycopg.types import json as pg_json
 
@@ -24,6 +25,7 @@ from imbi.common.prompts import pool as render_pool
 from imbi.common.prompts import rendering
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import registry, runtime, walk
+from imbi.common.workflows.registry import agent as agent_step
 from imbi.workflows import executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
@@ -228,7 +230,12 @@ class Engine:
         node_id = ready[0]
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         try:
-            params = await _render(node.params, steps, run['payload'])
+            params = await _render(
+                node.params,
+                steps,
+                run['payload'],
+                {n.id: n for n in wf_graph.nodes},
+            )
         except rendering.RenderError as e:
             LOGGER.info('Run %s: %s: %s', run['id'], node.key, e)
             async with self.store.write(run['id']) as conn:
@@ -617,8 +624,29 @@ async def _step_event(
 # --- References ----------------------------------------------------------
 
 
+def _blank_output(
+    node: wf.Node | None, node_type: str
+) -> dict[str, typing.Any]:
+    """Return empty text for each output field of a skipped node.
+
+    The ``result`` of an agent step has empty text for each of its
+    output fields too.
+    """
+    output = registry.STEP_TYPES[node_type].output
+    blank: dict[str, typing.Any] = dict.fromkeys(output.model_fields, '')
+    if node is not None and node_type == agent_step.STEP.type:
+        try:
+            params = agent_step.Params.model_validate(node.params)
+        except pydantic.ValidationError:
+            return blank
+        blank['result'] = agent_step.blank_result(params.output_fields)
+    return blank
+
+
 def _scope(
-    steps: dict[str, store.Row], payload: dict[str, typing.Any]
+    steps: dict[str, store.Row],
+    payload: dict[str, typing.Any],
+    nodes: abc.Mapping[str, wf.Node],
 ) -> tuple[dict[str, typing.Any], dict[str, dict[str, typing.Any]]]:
     """Return the values that references can name: typed, and for text.
 
@@ -627,14 +655,13 @@ def _scope(
     """
     typed: dict[str, typing.Any] = {'trigger': payload}
     text: dict[str, dict[str, typing.Any]] = {'trigger': payload}
-    for step in steps.values():
+    for node_id, step in steps.items():
         key = step['node_key']
         if step['status'] in ('succeeded', 'failed'):
             typed[key] = text[key] = step['output'] or {}
         elif step['status'] == 'skipped':
             typed[key] = None
-            output = registry.STEP_TYPES[step['node_type']].output
-            text[key] = dict.fromkeys(output.model_fields, '')
+            text[key] = _blank_output(nodes.get(node_id), step['node_type'])
     return typed, text
 
 
@@ -651,6 +678,7 @@ async def _render(
     params: dict[str, typing.Any],
     steps: dict[str, store.Row],
     payload: dict[str, typing.Any],
+    nodes: abc.Mapping[str, wf.Node],
 ) -> dict[str, typing.Any]:
     """Resolve the references in ``params`` (ADR 0021, References).
 
@@ -661,7 +689,7 @@ async def _render(
         rendering.RenderError: A template fails.
 
     """
-    scope, variables = _scope(steps, payload)
+    scope, variables = _scope(steps, payload, nodes)
     sources: dict[str, str] = {}
 
     def collect(value: typing.Any, path: str) -> typing.Any:

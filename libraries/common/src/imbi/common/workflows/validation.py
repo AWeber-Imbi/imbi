@@ -11,9 +11,11 @@ import typing
 
 import jinja2
 import jinja2.meta
+import jinja2.nodes
 import pydantic
 
 from imbi.common.workflows import graph, registry
+from imbi.common.workflows.registry import agent as agent_step
 
 MAX_NODES = 100
 MAX_EDGES = 200
@@ -82,6 +84,48 @@ def _references(value: typing.Any) -> set[str]:
         mapping = typing.cast(dict[str, typing.Any], value)
         return set().union(*(_references(v) for v in mapping.values()))
     return set()
+
+
+def _attribute_path(node: jinja2.nodes.Getattr) -> list[str] | None:
+    """Return ``a.b.c`` of a dotted name as ``['a', 'b', 'c']``."""
+    path: list[str] = []
+    current: jinja2.nodes.Node = node
+    while isinstance(current, jinja2.nodes.Getattr):
+        path.insert(0, current.attr)
+        current = current.node
+    if not isinstance(current, jinja2.nodes.Name):
+        return None
+    return [current.name, *path]
+
+
+def _attribute_paths(value: typing.Any) -> list[list[str]]:
+    """Return each dotted name in the templates of ``value``.
+
+    Call it after :func:`_references`, which reports a template that
+    does not parse.
+    """
+    if isinstance(value, str):
+        if '{{' not in value and '{%' not in value:
+            return []
+        found = _JINJA.parse(value).find_all(jinja2.nodes.Getattr)
+        return [p for p in map(_attribute_path, found) if p]
+    if isinstance(value, list):
+        items: list[typing.Any] = value
+        return [p for v in items for p in _attribute_paths(v)]
+    if isinstance(value, dict):
+        mapping = typing.cast(dict[str, typing.Any], value)
+        return [p for v in mapping.values() for p in _attribute_paths(v)]
+    return []
+
+
+def _output_fields(node: graph.Node) -> list[agent_step.OutputField] | None:
+    """Return the output fields of an agent node with valid params."""
+    if node.type != agent_step.STEP.type:
+        return None
+    try:
+        return agent_step.Params.model_validate(node.params).output_fields
+    except pydantic.ValidationError:
+        return None
 
 
 def _check_params(node: graph.Node, issues: _Issues) -> None:
@@ -400,6 +444,31 @@ class _Validator:
                         'this one',
                         node_id=node_id,
                     )
+            self._check_result_fields(node)
+
+    def _check_result_fields(self, node: graph.Node) -> None:
+        """Report a reference to a field that an agent step lacks."""
+        reported: set[str] = set()
+        for path in _attribute_paths(node.params):
+            source_id = self.by_key.get(path[0])
+            if len(path) < 3 or path[1] != 'result' or source_id is None:
+                continue
+            fields = _output_fields(self.nodes[source_id])
+            missing = (
+                None
+                if fields is None
+                else agent_step.unknown_field(fields, path[2:])
+            )
+            reference = '.'.join(path)
+            if missing is None or reference in reported:
+                continue
+            reported.add(reference)
+            self.issues.add(
+                'error',
+                'unknown_output_field',
+                f'{node.title}: {path[0]}.result has no field {missing!r}',
+                node_id=node.id,
+            )
 
     def _check_any_joins(self, order: list[str]) -> None:
         """Warn about ``any`` joins whose inputs can both arrive in a run.
