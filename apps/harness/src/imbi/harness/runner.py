@@ -522,6 +522,8 @@ def main() -> None:
     credentials = privilege.make_private_dir(CREDENTIALS, privilege.RUNNER)
     # An emptyDir is mode 0777: agent could rename a published plugin.
     task.PUBLISHED_PLUGINS.chmod(0o755)
+    # The sticky bit: a user cannot remove or rename the files of another.
+    task.SHARED_TMP.chmod(0o1777)
     privilege.drop(privilege.RUNNER)
     # Read from the runner's own environment, which the CLI inherits.
     os.environ['CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK'] = '1'

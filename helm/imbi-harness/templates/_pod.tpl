@@ -122,6 +122,7 @@ containers:
       - {name: executor-socket, mountPath: /run/executor}
       - {name: runner-credentials, mountPath: /run/creds}
       - {name: plugins, mountPath: /run/plugins}
+      - {name: tmp, mountPath: /tmp}
       - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
       {{- if .Values.extraCaCerts.configMap }}
       - {name: extra-ca, mountPath: /etc/imbi-harness/ca, readOnly: true}
@@ -151,6 +152,10 @@ volumes:
   - name: plugins
     emptyDir:
       sizeLimit: {{ .Values.plugins.sizeLimit }}
+  # The shared /tmp of the runner container: the runner makes it 1777.
+  - name: tmp
+    emptyDir:
+      sizeLimit: {{ .Values.tmp.sizeLimit }}
   - name: executor-credentials
     emptyDir: {medium: Memory}
   # Owned by uid 0, mode 0400: only the runner's uid 0 reads them.
