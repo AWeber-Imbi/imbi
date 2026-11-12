@@ -311,9 +311,14 @@ async def set_configuration_value(
             handler.set_value(c, credentials, key, body)
         )
 
-    result_key = await call_with_identity_retry(
-        db, ctx, resolved, auth, fn=_set_value
-    )
+    try:
+        result_key = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_set_value
+        )
+    except ValueError as exc:
+        # The plugin's backend refused the value (e.g. SSM rejects an
+        # empty value), so the request is bad.
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
 
     await _invalidate_cache(resolved.integration_id, project_id)
     project_slug = await _lookup_project_slug(db, project_id)

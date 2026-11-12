@@ -1,6 +1,9 @@
 import logging
+import math
+import time
 
 import fastapi
+import httpx
 from fastapi import responses
 from fastapi.middleware import cors
 from uvicorn.middleware import proxy_headers
@@ -11,6 +14,7 @@ from imbi.api import (
     harness,
     lifespans,
     openapi,
+    plugins,
     secret_broker,
     settings,
     version,
@@ -31,6 +35,8 @@ from imbi.common.auth import permissions as common_permissions
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginInstallationMissing,
+    PluginRateLimited,
+    PluginUnavailableError,
 )
 from imbi.common.prompts import pool as prompt_pool
 
@@ -142,6 +148,73 @@ def create_app() -> fastapi.FastAPI:
                     'integration_slug': exc.integration_slug,
                 }
             },
+        )
+
+    # An upstream host (GitHub, AWS, ...) refused a plugin call and the
+    # endpoint did not map the refusal itself. Answer with the nearest
+    # status instead of a 500: the request or ref is bad (422), the
+    # credential has no access (403), the host rate limits us (503 with
+    # Retry-After), or the host failed (502).
+    @app.exception_handler(httpx.HTTPStatusError)
+    async def _upstream_status_error(  # pyright: ignore[reportUnusedFunction]
+        _request: fastapi.Request,
+        exc: httpx.HTTPStatusError,
+    ) -> responses.JSONResponse:
+        upstream = exc.response.status_code
+        LOGGER.warning(
+            'Upstream %s %s answered HTTP %s',
+            exc.request.method,
+            exc.request.url,
+            upstream,
+        )
+        headers: dict[str, str] = {}
+        rate_limited = upstream == 429 or (
+            upstream == 403
+            and (
+                exc.response.headers.get('x-ratelimit-remaining') == '0'
+                or 'retry-after' in exc.response.headers
+            )
+        )
+        if upstream in (404, 422):
+            status = 422
+        elif rate_limited:
+            status = 503
+            headers['Retry-After'] = plugins.host_retry_after(exc.response)
+        elif upstream == 403:
+            status = 403
+        else:
+            status = 502
+        return responses.JSONResponse(
+            status_code=status,
+            content={
+                'detail': f'The upstream service answered HTTP {upstream}'
+            },
+            headers=headers,
+        )
+
+    @app.exception_handler(PluginUnavailableError)
+    async def _plugin_unavailable(  # pyright: ignore[reportUnusedFunction]
+        _request: fastapi.Request,
+        exc: PluginUnavailableError,
+    ) -> responses.JSONResponse:
+        LOGGER.warning('Plugin unavailable: %s', exc)
+        return responses.JSONResponse(
+            status_code=503,
+            content={'detail': str(exc)},
+            headers={'Retry-After': '5'},
+        )
+
+    @app.exception_handler(PluginRateLimited)
+    async def _plugin_rate_limited(  # pyright: ignore[reportUnusedFunction]
+        _request: fastapi.Request,
+        exc: PluginRateLimited,
+    ) -> responses.JSONResponse:
+        LOGGER.warning('Plugin rate limited: %s', exc)
+        wait = max(1, math.ceil(exc.retry_at - time.time()))
+        return responses.JSONResponse(
+            status_code=503,
+            content={'detail': str(exc)},
+            headers={'Retry-After': str(wait)},
         )
 
     # Phase 5: Setup rate limiting middleware

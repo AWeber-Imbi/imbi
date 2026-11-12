@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import datetime
 import json
+import logging
 import typing
 import unittest
 import uuid
@@ -347,6 +348,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # any caller that treats a non-empty result as a hit (e.g. the
         # release-block gate).  Tests needing rows set their own side_effect.
         self.mock_db.execute = mock.AsyncMock(return_value=[])
+        support.lock_on_execute(self.mock_db)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
@@ -2108,6 +2110,16 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(upsert_call.kwargs['committish'], '2668cd0')
         self.assertEqual(upsert_call.kwargs['notes_markdown'], notes)
 
+    def test_resync_skips_an_ambiguous_retagged_commit(self) -> None:
+        """A commit with two tags is skipped with a warning, not an error."""
+        self._arm([self._observed(ref='main')], release_exists=True)
+        self.mocks['existing_tag'].side_effect = ValueError('ambiguous')
+        with self.assertLogs(project_deployments.LOGGER, 'WARNING') as logs:
+            summary = self._run_resync()
+        self.assertEqual(summary.errors, [])
+        self.mocks['upsert_release_node'].assert_not_called()
+        self.assertFalse(any('ERROR' in line for line in logs.output))
+
     def test_resync_400_when_plugin_opts_out(self) -> None:
         # Override the resolved plugin to advertise the no-sync flavor.
         self.mocks['resolve_capability'].return_value = _make_resolved(
@@ -3592,9 +3604,16 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
                 )
             )
         )
-        response = self._promote()
+        with self.assertLogs(
+            'imbi.api.endpoints.project_deployments', level='WARNING'
+        ) as logs:
+            response = self._promote()
         self.assertEqual(response.status_code, 503)
         self.assertEqual('Plugin timed out', response.json()['detail'])
+        # An expected answer: a warning, not an error for Sentry.
+        self.assertFalse(
+            [r for r in logs.records if r.levelno >= logging.ERROR]
+        )
         # Still abandoned: no build was accepted.
         self.assertEqual(1, len(self._deletes()))
 
@@ -4281,7 +4300,7 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_upsert_merges_the_tagged_node(self) -> None:
         """One statement, keyed on the tag -- not check-then-create."""
-        db = mock.AsyncMock()
+        db = support.lock_on_execute(mock.AsyncMock())
         db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-1'}])
         with mock.patch(
             f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
@@ -4297,6 +4316,11 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
                 created_by='a@b.c',
             )
         self.assertEqual('rel-1', rid)
+        # Same lock as ``releases.create_release``, so the two writers
+        # serialize against each other.
+        self.assertEqual(
+            releases.release_lock_key('p1'), db.locked.await_args.args[0]
+        )
         db.execute.assert_awaited_once()
         query, params, _ = db.execute.await_args.args
         self.assertIn(
@@ -4310,7 +4334,7 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_upsert_falls_back_to_the_committish_when_untagged(
         self,
     ) -> None:
-        db = mock.AsyncMock()
+        db = support.lock_on_execute(mock.AsyncMock())
         db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-2'}])
         with mock.patch(
             f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
@@ -4330,7 +4354,7 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('r.tag', query)
 
     async def _upsert_schedules(self, rid: str | None) -> mock.MagicMock:
-        db = mock.AsyncMock()
+        db = support.lock_on_execute(mock.AsyncMock())
         db.execute = mock.AsyncMock(return_value=[{'rid': rid}])
         with (
             mock.patch(
@@ -7567,6 +7591,35 @@ class ExistingTagForCommittishTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_raises_when_commit_has_multiple_tags(self) -> None:
         db = self._db([{'tag': 'v1.0.0'}, {'tag': 'v2.0.0'}])
+        with self.assertRaises(ValueError):
+            await project_deployments._existing_tag_for_committish(
+                db, project_id='pid', committish='deadbeef'
+            )
+
+    async def test_prefers_the_exact_committish_match(self) -> None:
+        """IMBI-41: one Release holds the commit, one was promoted from it.
+
+        The Release whose own committish is the commit wins over the one
+        that only carries it as ``promoted_committish``.
+        """
+        db = self._db(
+            [
+                {'tag': 'v1.0.0', 'exact': True},
+                {'tag': 'v1.1.0', 'exact': False},
+            ]
+        )
+        result = await project_deployments._existing_tag_for_committish(
+            db, project_id='pid', committish='deadbeef'
+        )
+        self.assertEqual(result, 'v1.0.0')
+
+    async def test_raises_when_exact_matches_disagree(self) -> None:
+        db = self._db(
+            [
+                {'tag': 'v1.0.0', 'exact': True},
+                {'tag': 'v2.0.0', 'exact': True},
+            ]
+        )
         with self.assertRaises(ValueError):
             await project_deployments._existing_tag_for_committish(
                 db, project_id='pid', committish='deadbeef'

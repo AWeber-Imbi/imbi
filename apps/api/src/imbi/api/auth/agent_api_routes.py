@@ -133,6 +133,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/webhooks/',
         'GET /organizations/{org_slug}/webhooks/{webhook}',
         'GET /organizations/{org_slug}/workflow-runs/attention',
+        'GET /organizations/{org_slug}/workflow-runs/side-effects',
         'GET /organizations/{org_slug}/workflow-step-types/',
         'GET /organizations/{org_slug}/workflows/',
         'GET /organizations/{org_slug}/workflows/{slug}',
@@ -294,6 +295,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task',
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task/cancel',
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/email',
+        'POST /organizations/{org_slug}/workflow-runs/side-effects/resolve',
         'POST /organizations/{org_slug}/workflows/{slug}/test-runs',
         'PUT /organizations/{org_slug}/workflows/{slug}',
         # Global configuration writes: they change every organization (and are also governance). Component and component release status and advisories are global marks by design.

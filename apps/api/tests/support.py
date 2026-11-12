@@ -95,6 +95,16 @@ def registry_entry(
     )
 
 
+def lock_on_execute(db: mock.AsyncMock) -> mock.AsyncMock:
+    """Make a mock graph's ``locked`` run its work on ``db.execute``."""
+
+    async def locked(_key: str, work: typing.Any) -> typing.Any:
+        return await work(db.execute)
+
+    db.locked.side_effect = locked
+    return db
+
+
 def _reset(case: unittest.TestCase, test_app: fastapi.FastAPI) -> None:
     """Clear shared-app state and close any per-test TestClient."""
     test_app.dependency_overrides.clear()

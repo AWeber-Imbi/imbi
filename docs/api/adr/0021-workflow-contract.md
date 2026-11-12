@@ -174,6 +174,15 @@ endpoint and no public API.
   and rollback look up the deployment by idempotency key. A type that
   cannot reconcile and is not idempotent fails the step with
   `outcome_unknown` and does not retry.
+  imbi-api never expires a side-effect key with no response. An operator
+  with `workflow:recover` resolves a stale one (clear it, or mark it
+  done) and can retry its step; until then a run that it failed is not archived.
+  Only the step that failed the run can run again, and only when the run
+  has no cancel request. A step whose `Failed` edge the run took cannot.
+  A deployment marked done cannot run again, because Imbi does not know
+  its deployment run. To retry a deployment, first examine the deployment
+  provider for a deployment of that version that started at the time of
+  the call. If there is none, clear its key.
 - **At least once.** A crash between a side effect and its record repeats
   the step. Each side-effecting step passes the idempotency key
   `<run_id>:<node_key>` to the API it calls. The key does not change

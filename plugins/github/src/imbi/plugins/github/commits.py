@@ -813,6 +813,16 @@ async def _fetch_all_commits(
         resp = await _request(
             client, 'GET', '/commits', params=params, max_wait=max_wait
         )
+        # GHES 404s a deep page it just linked to as ``next``.  Keep the
+        # history read so far rather than drop the whole sync.
+        if resp.status_code == 404 and page > 1:
+            LOGGER.warning(
+                'github-commit-sync got 404 for commits page %d (%d '
+                'commits read); older commits will not be recorded',
+                page,
+                len(out),
+            )
+            return out
         resp.raise_for_status()
         out.extend(typing.cast('list[dict[str, typing.Any]]', resp.json()))
         next_url = _next_page_url(resp.headers.get('link'))

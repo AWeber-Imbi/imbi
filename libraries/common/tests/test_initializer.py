@@ -44,3 +44,45 @@ class UniqueIndexTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await initializer._create_vlabel_indexes(cur, 'imbi', SCHEMATA)
         self.assertFalse(any('CREATE' in q for q in executed(cur)))
+
+
+class InitializeLockTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_ddl_runs_under_an_advisory_lock(self) -> None:
+        """Services that start together must not race on the DDL.
+
+        Concurrent ``CREATE OR REPLACE FUNCTION`` fails with "tuple
+        concurrently updated" (IMBI-5Q).
+        """
+        calls: list[str] = []
+        conn = mock.AsyncMock()
+        conn.__aenter__.return_value = conn
+        conn.execute.side_effect = lambda q, *a: calls.append(str(q))
+        conn.cursor = mock.MagicMock()
+        steps = [
+            '_create_extensions',
+            '_create_graph',
+            '_create_vlabels',
+            '_create_vlabel_indexes',
+            '_create_embeddings_table',
+            '_create_functions',
+        ]
+        with (
+            mock.patch.object(
+                initializer.psycopg.AsyncConnection,
+                'connect',
+                new=mock.AsyncMock(return_value=conn),
+            ),
+            mock.patch.multiple(
+                initializer,
+                **{
+                    name: mock.AsyncMock(
+                        side_effect=lambda *a, n=name: calls.append(n)
+                    )
+                    for name in steps
+                },
+            ),
+        ):
+            await initializer.initialize()
+        locks = [i for i, q in enumerate(calls) if 'advisory_lock' in q]
+        self.assertTrue(locks, calls)
+        self.assertLess(locks[0], calls.index('_create_extensions'))

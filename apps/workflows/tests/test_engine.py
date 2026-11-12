@@ -826,6 +826,33 @@ class StoreTestCase(EngineTestCase):
             )
             self.assertEqual(await cur.fetchone(), (before[0], 'b'))
 
+    async def test_start_waits_for_a_reopened_run_of_the_key(self) -> None:
+        nodes = [_node('start', 'manual')]
+        workflow_id = await self._workflow(nodes, [])
+        queued = await self._start(workflow_id)
+        reopened = await self._start(workflow_id)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET concurrency_key = 'k'"
+                ' WHERE id IN (%s, %s)',
+                (queued, reopened),
+            )
+        run = await self.engine.store.claim(datetime.timedelta(seconds=60))
+        assert run is not None
+        self.assertEqual(run['id'], queued)
+        # An operator reopens the other run between the claim and start.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'running'"
+                ' WHERE id = %s',
+                (reopened,),
+            )
+        await self.engine._start(  # pyright: ignore[reportPrivateUsage]
+            run, engine.wf.Graph.model_validate({'nodes': nodes})
+        )
+        state = await self._run(queued)
+        self.assertEqual((state['status'], state['steps']), ('queued', {}))
+
 
 class CrashTestCase(EngineTestCase):
     async def _crash_on(self, run_id: uuid.UUID, node_id: str) -> None:

@@ -2972,7 +2972,11 @@ class ImbiClientPutSbomTests(helpers.TestCase):
         mock_put.assert_awaited_once_with(
             '/organizations/myorg/projects/proj-1/releases/rel-1/sbom',
             json=sbom_doc,
+            timeout=actions._SBOM_TIMEOUT,
         )
+        # The API parses large SBoMs slowly; the default 5 s read
+        # timeout is not sufficient.
+        self.assertGreater(actions._SBOM_TIMEOUT.read, 5)
 
     async def test_error_response_logs_warning(self) -> None:
         with (

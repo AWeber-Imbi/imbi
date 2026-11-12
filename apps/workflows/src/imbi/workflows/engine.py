@@ -251,7 +251,9 @@ class Engine:
                 input=params,
                 started_at=_now(),
             )
-            await _step_event(conn, run['id'], node_id, 'step.started')
+            await runtime.append_step_event(
+                conn, run['id'], node_id, 'step.started'
+            )
         return _now()
 
     async def _activator_allowed(
@@ -312,8 +314,26 @@ class Engine:
         return required <= held
 
     async def _start(self, run: store.Row, wf_graph: wf.Graph) -> None:
-        """Write a step row per node and mark the run ``running``."""
+        """Write a step row per node and mark the run ``running``.
+
+        The run stays ``queued`` when a run of its concurrency key became
+        ``running`` after the claim: an operator reopened it
+        (``imbi.api.workflows.runs._reopen``, which takes the same lock).
+        """
         async with self.store.write(run['id']) as conn:
+            if run['concurrency_key'] is not None:
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s || ':' || %s))",
+                    (str(run['workflow_id']), run['concurrency_key']),
+                )
+                cur = await conn.execute(
+                    'SELECT 1 FROM workflow_runtime.runs'
+                    ' WHERE workflow_id = %s AND concurrency_key = %s'
+                    " AND id <> %s AND status = 'running'",
+                    (run['workflow_id'], run['concurrency_key'], run['id']),
+                )
+                if await cur.fetchone() is not None:
+                    return
             for node in wf_graph.nodes:
                 started = node.id == run['trigger_node_id']
                 trigger = registry.STEP_TYPES[node.type].trigger
@@ -351,7 +371,7 @@ class Engine:
             for node in wf_graph.nodes:
                 if registry.STEP_TYPES[node.type].trigger:
                     started = node.id == run['trigger_node_id']
-                    await _step_event(
+                    await runtime.append_step_event(
                         conn,
                         run['id'],
                         node.id,
@@ -484,7 +504,7 @@ class Engine:
                 call_started_at=None,
                 started_at=_now(),
             )
-            await _step_event(
+            await runtime.append_step_event(
                 conn, run['id'], step['node_id'], 'step.started', retry_of=code
             )
         return _now() + datetime.timedelta(
@@ -518,7 +538,9 @@ class Engine:
             call_started_at=None,
             finished_at=_now(),
         )
-        await _step_event(conn, run['id'], step['node_id'], f'step.{status}')
+        await runtime.append_step_event(
+            conn, run['id'], step['node_id'], f'step.{status}'
+        )
 
     # --- Close ---------------------------------------------------------
 
@@ -592,33 +614,6 @@ class Engine:
                 run['id'],
                 exc_info=True,
             )
-
-
-# --- Events --------------------------------------------------------------
-
-
-async def _step_event(
-    conn: store.Conn,
-    run_id: typing.Any,
-    node_id: str,
-    event_type: str,
-    **extra: typing.Any,
-) -> None:
-    """Write a step event that holds a snapshot of the step row.
-
-    History rebuilds the step records from these snapshots alone
-    (ADR 0021), so read the row after the change it records.
-    """
-    cur = await conn.execute(
-        "SELECT to_jsonb(s) - ARRAY['run_id', 'state', 'call_started_at']"
-        ' FROM workflow_runtime.step_runs AS s'
-        ' WHERE run_id = %s AND node_id = %s',
-        (run_id, node_id),
-    )
-    row = await cur.fetchone()
-    if row is None:
-        raise LookupError(f'Run {run_id} has no step {node_id}')
-    await runtime.append_event(conn, run_id, event_type, {**row[0], **extra})
 
 
 # --- References ----------------------------------------------------------

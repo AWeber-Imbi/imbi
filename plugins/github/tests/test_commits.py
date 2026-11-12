@@ -1794,6 +1794,46 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
 
     @respx.mock
+    async def test_deep_page_404_ends_history(self) -> None:
+        """IMBI-2K: GHES 404s a deep commits page; keep what was read."""
+        self._mock_default_branch()
+        url = f'{self._REPO}/commits'
+        respx.get(url).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[_commit('1' * 40)],
+                    headers={'link': f'<{url}?page=2>; rel="next"'},
+                ),
+                httpx.Response(404, json={'message': 'Not Found'}),
+            ]
+        )
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
+                (
+                    commits_recorded,
+                    _,
+                ) = await commits.GitHubCommitSync().sync_all_history(
+                    ctx=self._ctx(), credentials=_CREDS
+                )
+        self.assertEqual(1, commits_recorded)
+        self.assertTrue(any('page 2' in x for x in cm.output))
+
+    @respx.mock
+    async def test_first_page_404_still_raises(self) -> None:
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        with self.assertRaises(httpx.HTTPStatusError):
+            await commits.GitHubCommitSync().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+
+    @respx.mock
     async def test_history_truncation_logs(self) -> None:
         self._mock_default_branch()
         url = f'{self._REPO}/commits'

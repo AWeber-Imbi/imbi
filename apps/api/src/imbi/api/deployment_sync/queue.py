@@ -27,7 +27,10 @@ from imbi.api.deployment_sync.service import (
     set_status,
 )
 from imbi.common import graph
-from imbi.common.plugins.errors import PluginRateLimited
+from imbi.common.plugins.errors import (
+    PluginInstallationMissing,
+    PluginRateLimited,
+)
 
 STREAM = 'imbi:deployment-sync'
 GROUP = 'deployment-sync-workers'
@@ -120,8 +123,9 @@ async def _process_message(db: graph.Graph, fields: dict[str, str]) -> None:
     )
     try:
         summary = await run_resync(db, org_slug, project_id, limit)
-    except DeploymentSyncUnavailable as exc:
-        # Misconfiguration, not transient: record and don't retry.
+    except (DeploymentSyncUnavailable, PluginInstallationMissing) as exc:
+        # Misconfiguration (e.g. the GitHub App is not installed on the
+        # repository), not transient: record and don't retry.
         LOGGER.warning(
             'deployment-sync unavailable for %s: %s', project_id, exc
         )

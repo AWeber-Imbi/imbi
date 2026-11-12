@@ -6,6 +6,7 @@ import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 
+import { StaleSideEffects } from './StaleSideEffects'
 import { WorkflowEditor } from './WorkflowEditor'
 import { WorkflowList } from './WorkflowList'
 import {
@@ -58,6 +59,7 @@ export function WorkflowsManagement() {
 
   return (
     <div className="p-8">
+      <StaleSideEffects orgSlug={orgSlug} />
       <WorkflowList
         attention={attention.data ?? []}
         error={list.error}

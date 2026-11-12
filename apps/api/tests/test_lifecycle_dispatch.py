@@ -11,6 +11,7 @@ import unittest
 import unittest.mock as mock
 
 import fastapi
+import httpx
 
 from imbi.api.plugins import lifecycle_dispatch
 from imbi.api.plugins.lifecycle_dispatch import (
@@ -152,6 +153,11 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         is_admin: bool = True,
     ) -> tuple[list[LifecycleInvocation], mock.AsyncMock]:
         mock_db = mock.AsyncMock()
+
+        async def locked(_key: str, work: typing.Any) -> typing.Any:
+            return await work(mock_db.execute)
+
+        mock_db.locked.side_effect = locked
         auth = _make_auth()
         auth.is_admin = is_admin
         with (
@@ -333,7 +339,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
             results, _ = self._run([resolved])
         self.assertEqual(results[0].status, 'ok')
         merge_edge.assert_awaited_once()
-        # _merge_exists_in(db, org, project, slug, identifier, canonical_url)
+        # _merge_exists_in(execute, org, project, slug, identifier, url)
         args = merge_edge.await_args.args
         self.assertEqual(args[1], 'org-1')
         self.assertEqual(args[2], 'proj-1')
@@ -463,6 +469,27 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         results, _ = self._run([_resolved(broken)])
         self.assertEqual(results[0].status, 'failed')
         self.assertIn('identity_required', results[0].message or '')
+
+    def test_upstream_refusal_fails_with_a_warning(self) -> None:
+        # e.g. the remote refuses a repo transfer: expected, so a
+        # warning and not an error for Sentry.
+        class _Raises(LifecycleCapability):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                request = httpx.Request('POST', 'https://api.github.test/x')
+                raise httpx.HTTPStatusError(
+                    'HTTP 403',
+                    request=request,
+                    response=httpx.Response(403, request=request),
+                )
+
+        broken = _entry('gh', _Raises)
+        with self.assertLogs(lifecycle_dispatch.LOGGER, 'WARNING') as logs:
+            results, _ = self._run([_resolved(broken)])
+        self.assertEqual(results[0].status, 'failed')
+        self.assertIn('HTTPStatusError', results[0].message or '')
+        self.assertEqual(['WARNING'], [r.levelname for r in logs.records])
 
     def test_clickhouse_failure_does_not_poison_response(self) -> None:
         entry = _make_lifecycle_entry('gh')

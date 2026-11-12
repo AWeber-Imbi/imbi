@@ -44,6 +44,7 @@ from imbi.api.endpoints.releases import (
     ReleaseEnvironmentEdgeResponse,
     append_deployment_event,
     reconcile_current_release,
+    release_lock_key,
 )
 from imbi.api.identity import attribution
 from imbi.api.identity.host_integration import (
@@ -51,7 +52,11 @@ from imbi.api.identity.host_integration import (
     call_with_identity_retry,
 )
 from imbi.api.llm.dependencies import InjectAnthropicClient
-from imbi.api.plugins import call_with_timeout, release_dispatch
+from imbi.api.plugins import (
+    call_with_timeout,
+    host_retry_after,
+    release_dispatch,
+)
 from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
 from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
@@ -970,24 +975,6 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
-def _host_retry_after(response: httpx.Response) -> str:
-    """Seconds the source host asks a caller to wait, for ``Retry-After``.
-
-    The host's ``Retry-After``, else the wait until ``x-ratelimit-reset``
-    once ``x-ratelimit-remaining`` is 0 (GitHub's primary rate limit),
-    else 5.
-    """
-    headers = response.headers
-    retry_after = str(headers.get('retry-after', ''))
-    if retry_after.isdigit():
-        return retry_after
-    reset = str(headers.get('x-ratelimit-reset', ''))
-    if headers.get('x-ratelimit-remaining') == '0' and reset.isdigit():
-        now = int(datetime.datetime.now(datetime.UTC).timestamp())
-        return str(max(1, int(reset) - now))
-    return '5'
-
-
 async def _compare_refs(
     handler: DeploymentCapability,
     ctx: PluginContext,
@@ -1002,7 +989,7 @@ async def _compare_refs(
     same answer: GitHub's 404 (a ref, or the repo, it cannot find) or 422
     (a comparison it will not compute).  Any other host or transport
     failure is the host failing to answer: 503, with the host's own wait
-    as ``Retry-After`` (see :func:`_host_retry_after`).
+    as ``Retry-After`` (see :func:`host_retry_after`).
     """
     try:
         return await call_with_timeout(
@@ -1033,7 +1020,7 @@ async def _compare_refs(
             status_code=503,
             detail=f'Could not reach the source host to compare {base}...'
             f'{head}',
-            headers={'Retry-After': _host_retry_after(exc.response)},
+            headers={'Retry-After': host_retry_after(exc.response)},
         ) from exc
     except httpx.HTTPError as exc:
         LOGGER.warning(
@@ -1389,25 +1376,32 @@ async def _existing_tag_for_committish(
     version bump), while a resync of the *testing* deployment that
     preceded it still carries the promoted commit.  Matching only the
     current committish would strand those late observations on an
-    untagged sibling.
+    untagged sibling.  A Release whose own ``committish`` is the commit
+    wins over one that only carries it as ``promoted_committish``: the
+    commit then matches both the Release built on it and the one
+    promoted from it, and that is not a retag.
     """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
     WHERE r.tag IS NOT NULL
       AND (r.committish = {committish}
            OR r.promoted_committish = {committish})
-    RETURN r.tag AS tag
+    RETURN r.tag AS tag, r.committish = {committish} AS exact
     """
     rows = await db.execute(
         query,
         {'project_id': project_id, 'committish': committish},
-        ['tag'],
+        ['tag', 'exact'],
     )
     tags: set[str] = set()
+    exact_tags: set[str] = set()
     for row in rows:
         tag = graph.parse_agtype(row.get('tag'))
         if tag:
             tags.add(str(tag))
+            if graph.parse_agtype(row.get('exact')) is True:
+                exact_tags.add(str(tag))
+    tags = exact_tags or tags
     if len(tags) == 1:
         return tags.pop()
     if len(tags) > 1:
@@ -2099,9 +2093,19 @@ async def _apply_remote_deployment(
     # onto the existing tagged Release for this commit (the node the UI
     # reads, keyed by tag) instead of spawning a duplicate untagged node.
     if tag is None:
-        tag = await _existing_tag_for_committish(
-            db, project_id=project_id, committish=committish
-        )
+        try:
+            tag = await _existing_tag_for_committish(
+                db, project_id=project_id, committish=committish
+            )
+        except ValueError:
+            LOGGER.warning(
+                'Resync for project=%s env=%s committish=%s: several'
+                ' tagged Releases carry that commit; not recorded',
+                project_id,
+                observed.environment,
+                committish,
+            )
+            return
     # Prefer notes the plugin already fetched from the deployment ref; when
     # absent but the tag is now known, ask the remote for the body by tag.
     notes = observed.release_notes
@@ -4176,7 +4180,14 @@ async def _dispatch_release_build(
         # Anything else the remote or the transport raises: the build was
         # never accepted, so the release does not exist in any sense.
         await _abandon()
-        LOGGER.exception(
+        # An HTTPException (e.g. the plugin timeout's 503) already is
+        # the answer; it is expected, so do not log it as an error.
+        log = (
+            LOGGER.warning
+            if isinstance(exc, fastapi.HTTPException)
+            else LOGGER.exception
+        )
+        log(
             'create_deployment_artifact failed for project=%s tag=%s '
             'workflow=%s ref=%s',
             project_id,
@@ -4678,26 +4689,27 @@ async def _upsert_release_node(
     query: typing.LiteralString = (
         _RELEASE_UPSERT_BY_TAG if tag else _RELEASE_UPSERT_BY_COMMITTISH
     ) + _RELEASE_UPSERT_SET
-    rows = await db.execute(
-        query,
-        {
-            'project_id': project_id,
-            'committish': committish,
-            'tag': tag,
-            'id': new_id,
-            'title': title,
-            'description': notes_markdown,
-            'links': links_json,
-            'created_by': created_by,
-            'author': (
-                ''
-                if principals.is_process_principal(created_by)
-                else created_by
-            ),
-            'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
-            'now': now,
-        },
-        ['rid'],
+    params: dict[str, typing.Any] = {
+        'project_id': project_id,
+        'committish': committish,
+        'tag': tag,
+        'id': new_id,
+        'title': title,
+        'description': notes_markdown,
+        'links': links_json,
+        'created_by': created_by,
+        'author': (
+            '' if principals.is_process_principal(created_by) else created_by
+        ),
+        'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
+        'now': now,
+    }
+    # The same lock as ``releases.create_release``: the lookup and the
+    # create in one statement are not atomic in AGE, which has no unique
+    # constraint, so two writers could both create the node.
+    rows = await db.locked(
+        release_lock_key(project_id),
+        lambda execute: execute(query, params, ['rid']),
     )
     if rows:
         rid = graph.parse_agtype(rows[0].get('rid'))

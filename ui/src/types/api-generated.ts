@@ -6397,6 +6397,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stale Side Effects
+         * @description Return the side effects of runs that started and did not finish.
+         *
+         *     A repeat of such a key gets ``409 outcome_unknown``, so its step
+         *     fails. Only an operator resolves one; keys never expire (ADR 0021,
+         *     unknown-outcome reconciliation).
+         */
+        get: operations["list_stale_side_effects_api_organizations__org_slug__workflow_runs_side_effects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Side Effect
+         * @description Clear a stale side effect, or mark it done, and retry its step.
+         *
+         *     Raises:
+         *         404: No stale side effect with the key in the organization.
+         *         409: The resolution or the retry does not apply to it, or it
+         *             changed.
+         */
+        post: operations["resolve_side_effect_api_organizations__org_slug__workflow_runs_side_effects_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/secret-providers/types": {
         parameters: {
             query?: never;
@@ -11811,7 +11860,10 @@ export interface components {
              */
             priority: number;
             filter?: components["schemas"]["BlueprintFilter"] | null;
-            json_schema: components["schemas"]["Schema-Input"];
+            /** Json Schema */
+            json_schema: {
+                [key: string]: unknown;
+            };
             /**
              * Version
              * @default 0
@@ -11862,6 +11914,7 @@ export interface components {
              */
             priority: number;
             filter?: string | null;
+            /** Json Schema */
             json_schema: string;
             /**
              * Version
@@ -14230,12 +14283,6 @@ export interface components {
             /** Dashboard Url */
             dashboard_url?: string | null;
         };
-        /**
-         * FormatType
-         * @description JSON Schema format enumeration for string validation.
-         * @enum {string}
-         */
-        FormatType: "date-time" | "date" | "time" | "duration" | "email" | "idn-email" | "hostname" | "idn-hostname" | "ipv4" | "ipv6" | "uri" | "uri-reference" | "iri" | "iri-reference" | "uuid" | "uri-template" | "json-pointer" | "relative-json-pointer" | "regex";
         /** GlobalScoreEvent */
         GlobalScoreEvent: {
             /** Timestamp */
@@ -19378,284 +19425,6 @@ export interface components {
             chain?: components["schemas"]["RunnerChain"] | null;
         };
         /**
-         * Schema
-         * @description JSON Schema Draft 2020-12 schema object.
-         */
-        "Schema-Input": {
-            /** $Schema */
-            $schema?: string | null;
-            /** $Id */
-            $id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Default */
-            default?: unknown | null;
-            /** Deprecated */
-            deprecated?: boolean | null;
-            /** Readonly */
-            readOnly?: boolean | null;
-            /** Writeonly */
-            writeOnly?: boolean | null;
-            /** Examples */
-            examples?: unknown[] | null;
-            /** $Comment */
-            $comment?: string | null;
-            /** Type */
-            type?: components["schemas"]["SchemaType"] | components["schemas"]["SchemaType"][] | null;
-            /** Enum */
-            enum?: unknown[] | null;
-            /** Const */
-            const?: unknown | null;
-            /**
-             * Multipleof
-             * @description Must be greater than 0
-             */
-            multipleOf?: number | null;
-            /** Maximum */
-            maximum?: number | null;
-            /** Exclusivemaximum */
-            exclusiveMaximum?: number | null;
-            /** Minimum */
-            minimum?: number | null;
-            /** Exclusiveminimum */
-            exclusiveMinimum?: number | null;
-            /** Maxlength */
-            maxLength?: number | null;
-            /** Minlength */
-            minLength?: number | null;
-            /** Pattern */
-            pattern?: string | null;
-            /** Format */
-            format?: components["schemas"]["FormatType"] | string | null;
-            items?: components["schemas"]["Schema-Input"] | null;
-            /**
-             * Additionalitems
-             * @deprecated
-             */
-            additionalItems?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Maxitems */
-            maxItems?: number | null;
-            /** Minitems */
-            minItems?: number | null;
-            /** Uniqueitems */
-            uniqueItems?: boolean | null;
-            contains?: components["schemas"]["Schema-Input"] | null;
-            /** Mincontains */
-            minContains?: number | null;
-            /** Maxcontains */
-            maxContains?: number | null;
-            /** Maxproperties */
-            maxProperties?: number | null;
-            /** Minproperties */
-            minProperties?: number | null;
-            /** Required */
-            required?: string[] | null;
-            /** Properties */
-            properties?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Patternproperties */
-            patternProperties?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Additionalproperties */
-            additionalProperties?: boolean | components["schemas"]["Schema-Input"] | null;
-            propertyNames?: components["schemas"]["Schema-Input"] | null;
-            /** Unevaluateditems */
-            unevaluatedItems?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Unevaluatedproperties */
-            unevaluatedProperties?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Allof */
-            allOf?: components["schemas"]["Schema-Input"][] | null;
-            /** Anyof */
-            anyOf?: components["schemas"]["Schema-Input"][] | null;
-            /** Oneof */
-            oneOf?: components["schemas"]["Schema-Input"][] | null;
-            not?: components["schemas"]["Schema-Input"] | null;
-            if?: components["schemas"]["Schema-Input"] | null;
-            then?: components["schemas"]["Schema-Input"] | null;
-            else?: components["schemas"]["Schema-Input"] | null;
-            /** Dependentrequired */
-            dependentRequired?: {
-                [key: string]: string[];
-            } | null;
-            /** Dependentschemas */
-            dependentSchemas?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** $Ref */
-            $ref?: string | null;
-            /** $Defs */
-            $defs?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Contentmediatype */
-            contentMediaType?: string | null;
-            /** Contentencoding */
-            contentEncoding?: string | null;
-            contentSchema?: components["schemas"]["Schema-Input"] | null;
-            /** $Anchor */
-            $anchor?: string | null;
-            /** $Dynamicanchor */
-            $dynamicAnchor?: string | null;
-            /** $Dynamicref */
-            $dynamicRef?: string | null;
-            /** $Vocabulary */
-            $vocabulary?: {
-                [key: string]: boolean;
-            } | null;
-            /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * Schema
-         * @description JSON Schema Draft 2020-12 schema object.
-         */
-        "Schema-Output": {
-            /** $Schema */
-            $schema?: string | null;
-            /** $Id */
-            $id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Default */
-            default?: unknown | null;
-            /** Deprecated */
-            deprecated?: boolean | null;
-            /** Readonly */
-            readOnly?: boolean | null;
-            /** Writeonly */
-            writeOnly?: boolean | null;
-            /** Examples */
-            examples?: unknown[] | null;
-            /** $Comment */
-            $comment?: string | null;
-            /** Type */
-            type?: components["schemas"]["SchemaType"] | components["schemas"]["SchemaType"][] | null;
-            /** Enum */
-            enum?: unknown[] | null;
-            /** Const */
-            const?: unknown | null;
-            /**
-             * Multipleof
-             * @description Must be greater than 0
-             */
-            multipleOf?: number | null;
-            /** Maximum */
-            maximum?: number | null;
-            /** Exclusivemaximum */
-            exclusiveMaximum?: number | null;
-            /** Minimum */
-            minimum?: number | null;
-            /** Exclusiveminimum */
-            exclusiveMinimum?: number | null;
-            /** Maxlength */
-            maxLength?: number | null;
-            /** Minlength */
-            minLength?: number | null;
-            /** Pattern */
-            pattern?: string | null;
-            /** Format */
-            format?: components["schemas"]["FormatType"] | string | null;
-            items?: components["schemas"]["Schema-Output"] | null;
-            /**
-             * Additionalitems
-             * @deprecated
-             */
-            additionalItems?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Maxitems */
-            maxItems?: number | null;
-            /** Minitems */
-            minItems?: number | null;
-            /** Uniqueitems */
-            uniqueItems?: boolean | null;
-            contains?: components["schemas"]["Schema-Output"] | null;
-            /** Mincontains */
-            minContains?: number | null;
-            /** Maxcontains */
-            maxContains?: number | null;
-            /** Maxproperties */
-            maxProperties?: number | null;
-            /** Minproperties */
-            minProperties?: number | null;
-            /** Required */
-            required?: string[] | null;
-            /** Properties */
-            properties?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Patternproperties */
-            patternProperties?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Additionalproperties */
-            additionalProperties?: boolean | components["schemas"]["Schema-Output"] | null;
-            propertyNames?: components["schemas"]["Schema-Output"] | null;
-            /** Unevaluateditems */
-            unevaluatedItems?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Unevaluatedproperties */
-            unevaluatedProperties?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Allof */
-            allOf?: components["schemas"]["Schema-Output"][] | null;
-            /** Anyof */
-            anyOf?: components["schemas"]["Schema-Output"][] | null;
-            /** Oneof */
-            oneOf?: components["schemas"]["Schema-Output"][] | null;
-            not?: components["schemas"]["Schema-Output"] | null;
-            if?: components["schemas"]["Schema-Output"] | null;
-            then?: components["schemas"]["Schema-Output"] | null;
-            else?: components["schemas"]["Schema-Output"] | null;
-            /** Dependentrequired */
-            dependentRequired?: {
-                [key: string]: string[];
-            } | null;
-            /** Dependentschemas */
-            dependentSchemas?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** $Ref */
-            $ref?: string | null;
-            /** $Defs */
-            $defs?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Contentmediatype */
-            contentMediaType?: string | null;
-            /** Contentencoding */
-            contentEncoding?: string | null;
-            contentSchema?: components["schemas"]["Schema-Output"] | null;
-            /** $Anchor */
-            $anchor?: string | null;
-            /** $Dynamicanchor */
-            $dynamicAnchor?: string | null;
-            /** $Dynamicref */
-            $dynamicRef?: string | null;
-            /** $Vocabulary */
-            $vocabulary?: {
-                [key: string]: boolean;
-            } | null;
-            /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * SchemaType
-         * @description JSON Schema type enumeration.
-         * @enum {string}
-         */
-        SchemaType: "array" | "boolean" | "integer" | "null" | "number" | "object" | "string";
-        /**
          * ScoreBreakdown
          * @description Result of scoring a project across all applicable policies.
          */
@@ -20553,6 +20322,62 @@ export interface components {
              * @enum {string}
              */
             on_failure: "notify_owner_team" | "none";
+        };
+        /** SideEffectResolve */
+        SideEffectResolve: {
+            /** Key */
+            key: string;
+            /**
+             * Resolution
+             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_done`` records that the call acted, so a repeat does not act. A deployment marked done cannot be retried: Imbi does not know its deployment run.
+             * @enum {string}
+             */
+            resolution: "clear" | "mark_done";
+            /**
+             * Retry
+             * @description Open the run again and run the step again.
+             * @default false
+             */
+            retry: boolean;
+        };
+        /**
+         * StaleSideEffect
+         * @description A side effect of a run that started and did not finish.
+         */
+        StaleSideEffect: {
+            /** Key */
+            key: string;
+            /** Action */
+            action: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Run Status
+             * @enum {string}
+             */
+            run_status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Run Error */
+            run_error: string | null;
+            /** Workflow Slug */
+            workflow_slug: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Node Key */
+            node_key: string | null;
+            /** Step Input */
+            step_input: {
+                [key: string]: unknown;
+            } | null;
+            /** Retryable */
+            retryable: boolean;
         };
         /** StatsResponse */
         StatsResponse: {
@@ -32630,6 +32455,70 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AttentionRun"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_stale_side_effects_api_organizations__org_slug__workflow_runs_side_effects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleSideEffect"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_side_effect_api_organizations__org_slug__workflow_runs_side_effects_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SideEffectResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

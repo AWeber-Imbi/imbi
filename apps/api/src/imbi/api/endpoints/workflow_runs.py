@@ -18,6 +18,10 @@ The two agent task routes are for the engine only too. They make,
 read, and cancel the agent task of a running ``agent`` step (ADR 0021,
 Agent tasks from workflows).
 
+The side-effect routes let an operator (``workflow:recover``) find the
+calls that started and did not finish, resolve each one, and retry its
+step (ADR 0021, unknown-outcome reconciliation).
+
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
@@ -121,6 +125,40 @@ class AttentionRun(Run):
     lease_expires_at: datetime.datetime | None
 
 
+class StaleSideEffect(pydantic.BaseModel):
+    """A side effect of a run that started and did not finish."""
+
+    key: str
+    action: str
+    created_at: datetime.datetime
+    run_id: uuid.UUID
+    run_status: RunStatus
+    run_error: str | None
+    workflow_slug: str
+    workflow_name: str
+    #: The step that made the call. ``None`` for a failure notice.
+    node_key: str | None
+    #: The step's parameters (the project, environment, and version of a
+    #: deployment). ``None`` when the step rows are archived.
+    step_input: dict[str, typing.Any] | None
+    #: The step can run again after the key is resolved.
+    retryable: bool
+
+
+class SideEffectResolve(pydantic.BaseModel):
+    key: str
+    resolution: typing.Literal['clear', 'mark_done'] = pydantic.Field(
+        description='``clear`` deletes the key, so a repeat of the call '
+        'acts again. ``mark_done`` records that the call acted, so a '
+        'repeat does not act. A deployment marked done cannot be retried: '
+        'Imbi does not know its deployment run.'
+    )
+    retry: bool = pydantic.Field(
+        default=False,
+        description='Open the run again and run the step again.',
+    )
+
+
 class TestRunCreate(pydantic.BaseModel):
     version: int | None = pydantic.Field(
         default=None, gt=0, description='Defaults to the latest version.'
@@ -182,7 +220,7 @@ RETURN u.email AS email
 """
 
 #: The service account of the engine (``auth/internal_services.py``).
-ENGINE_SERVICE_ACCOUNT = 'imbi-workflows'
+ENGINE_SERVICE_ACCOUNT = workflows.runs.ENGINE_PRINCIPAL
 
 _USER_EMAIL_QUERY: typing.LiteralString = """
 MATCH (u:User)-[:MEMBER_OF]->(:Organization {{id: {org}}})
@@ -581,6 +619,19 @@ RunAuth = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission('workflow:run')),
 ]
+#: The stored result of a deployment that an operator marked done. It
+#: has the shape of the deploy response, so a repeat of the key parses.
+_DEPLOYMENT_DONE: dict[str, typing.Any] = {
+    'run': {'run_id': '', 'status': 'unknown'},
+    'plugin_id': '',
+    'plugin_slug': '',
+    'warning': 'An operator marked this deployment done',
+}
+
+RecoverAuth = typing.Annotated[
+    permissions.AuthContext,
+    fastapi.Depends(permissions.require_permission('workflow:recover')),
+]
 EngineAuth = typing.Annotated[
     permissions.AuthContext, fastapi.Depends(_require_engine)
 ]
@@ -821,6 +872,63 @@ async def list_attention_runs(
     :meth:`imbi.api.workflows.RunStore.attention`.
     """
     return await runs.attention(org_id)
+
+
+@workflow_attention_router.get(
+    '/side-effects', response_model=list[StaleSideEffect]
+)
+async def list_stale_side_effects(
+    org_id: OrgId, runs: workflows.Runs, _: RecoverAuth
+) -> list[workflows.Row]:
+    """Return the side effects of runs that started and did not finish.
+
+    A repeat of such a key gets ``409 outcome_unknown``, so its step
+    fails. Only an operator resolves one; keys never expire (ADR 0021,
+    unknown-outcome reconciliation).
+    """
+    return await runs.stale_side_effects(org_id)
+
+
+@workflow_attention_router.post('/side-effects/resolve', status_code=204)
+async def resolve_side_effect(
+    org_id: OrgId,
+    body: SideEffectResolve,
+    runs: workflows.Runs,
+    _: RecoverAuth,
+) -> None:
+    """Clear a stale side effect, or mark it done, and retry its step.
+
+    Raises:
+        404: No stale side effect with the key in the organization.
+        409: The resolution or the retry does not apply to it, or it
+            changed.
+
+    """
+    found = await runs.stale_side_effects(org_id, body.key)
+    if not found:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No stale side effect with this key'
+        )
+    effect = found[0]
+    done = body.resolution == 'mark_done'
+    if body.retry and (
+        not effect['retryable'] or (done and effect['action'] == 'deployment')
+    ):
+        raise fastapi.HTTPException(
+            status_code=409, detail='The step of this key cannot run again'
+        )
+    response = None
+    if done:
+        response = (
+            _DEPLOYMENT_DONE
+            if effect['action'] == 'deployment'
+            else EmailResult(recipients=[]).model_dump()
+        )
+    retry = (effect['run_id'], effect['node_id']) if body.retry else None
+    if not await runs.resolve_side_effect(body.key, response, retry):
+        raise fastapi.HTTPException(
+            status_code=409, detail='The side effect or its run changed'
+        )
 
 
 @workflow_runs_router.post(

@@ -18,8 +18,11 @@ export interface JsonSchema {
   title?: string
   type?: string
 }
-
 export type RunStatus = WorkflowRun['status']
+
+export type SideEffectResolve = Schemas['SideEffectResolve']
+
+export type StaleSideEffect = Schemas['StaleSideEffect']
 export type StepCategory = StepType['category']
 export type StepRun = Schemas['StepRun']
 export type StepRunStatus = StepRun['status']

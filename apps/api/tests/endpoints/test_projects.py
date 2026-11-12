@@ -816,6 +816,93 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 400, response.text)
         self.assertIn('delivery_mode', response.json()['detail'])
 
+    def _patch_with_required_facts(
+        self, operations: list[dict[str, typing.Any]], **props: typing.Any
+    ) -> typing.Any:
+        """PATCH a project whose blueprint requires ``owner`` and
+        ``tier`` (an enum); ``props`` are the node's current facts."""
+        from imbi.common import blueprints
+
+        dynamic_model = blueprints.apply_blueprints(
+            models.Project,
+            [
+                models.Blueprint(
+                    name='facts',
+                    slug='facts',
+                    type='Project',
+                    json_schema=models.Schema.model_validate(
+                        {
+                            'type': 'object',
+                            'properties': {
+                                'owner': {'type': 'string'},
+                                'tier': {
+                                    'type': 'string',
+                                    'enum': ['gold', 'silver'],
+                                },
+                            },
+                            'required': ['owner', 'tier'],
+                        }
+                    ),
+                )
+            ],
+        )
+        existing = self._project_data(**props)
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=dynamic_model,
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            return self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=operations,
+            )
+
+    def test_patch_fact_ignores_unrelated_missing_required(self) -> None:
+        """A valid fact write succeeds although another required
+        property is missing (#640)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'gold'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertEqual(set_statement.params['tier'], 'gold')
+        self.assertNotIn('owner', set_statement.params)
+        self.assertNotIn('p.owner', set_statement.cypher)
+
+    def test_patch_add_ignores_unused_from(self) -> None:
+        """``add`` ignores ``from``, so a stray value must not 500."""
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'gold', 'from': 'x'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    def test_patch_fact_still_validates_patched_value(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'bronze'}]
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('tier', response.json()['detail'])
+
+    def test_patch_fact_refuses_clearing_required(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/owner', 'value': None}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('owner', response.json()['detail'])
+
     def test_list_slim_release_summaries_follow_delivery_mode(self) -> None:
         """Release summaries are fetched for projects that *resolve* to
         releasable: a releasable type unless the project overrides it,

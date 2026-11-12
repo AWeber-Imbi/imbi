@@ -20,6 +20,8 @@ import type {
 } from '@/components/admin/secrets/types'
 import type {
   AttentionRun,
+  SideEffectResolve,
+  StaleSideEffect,
   StepType,
   TestRunResult,
   ValidationResult,
@@ -215,7 +217,7 @@ import type {
   CreateThreadBody,
 } from '@/types/comments'
 
-import { apiClient, ApiError, apiUrl } from './client'
+import { apiClient, ApiError, apiUrl, refreshAccessToken } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -261,8 +263,11 @@ export const disableMfa = (
 ) => apiClient.delete<void>('/mfa/disable', undefined, body)
 
 // The refresh token is sent as an HttpOnly cookie (C2), not in the body.
-export const refreshToken = () =>
-  apiClient.post<TokenResponse>('/auth/token/refresh')
+// Use the shared refresh so that two callers (or two tabs) never send the
+// same cookie twice, which the API treats as token reuse.
+export const refreshToken = async (): Promise<
+  Pick<TokenResponse, 'access_token'>
+> => ({ access_token: await refreshAccessToken() })
 
 export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 
@@ -4111,6 +4116,26 @@ export const listWorkflowAttention = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+/** Side effects of runs that started and did not finish (#392). */
+export const listStaleSideEffects = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<StaleSideEffect[]> => {
+  const response = await apiClient.get<StaleSideEffect[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+/** Clear a stale side effect, or mark its email sent, and retry. */
+export const resolveSideEffect = (orgSlug: string, body: SideEffectResolve) =>
+  apiClient.post<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects/resolve`,
+    body,
+  )
 
 export const listWorkflowStepTypes = async (
   orgSlug: string,
