@@ -371,13 +371,13 @@ class FetchActionableCommitTimesTests(unittest.IsolatedAsyncioTestCase):
             await projects._fetch_actionable_commit_times(
                 {'p1': (_at(10), _at(20))}
             )
-        sql, params = query.await_args.args
+        (sql,) = query.await_args.args
         self.assertIn('COALESCE(c.committed_at, c.authored_at) >=', sql)
         self.assertIn('c.short_sha AS short_sha', sql)
         self.assertIn('c.pushed_at AS landed', sql)
         self.assertEqual(
-            {'project_ids': ['p1'], 'los': [_at(10)], 'his': [_at(20)]},
-            params,
+            [('p1', projects._ch_time(_at(10)), projects._ch_time(_at(20)))],
+            query.await_args.kwargs['project_ids'],
         )
 
     async def test_rows_come_back_as_actionable_commits(self) -> None:

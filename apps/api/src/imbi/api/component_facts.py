@@ -88,7 +88,7 @@ _BATCHES_BY_RELEASE = (
     'SELECT release_id,'
     "       argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id"
     '  FROM imbi.release_component_batches'
-    ' WHERE release_id IN {release_ids:Array(String)}'
+    ' WHERE release_id IN (SELECT id FROM release_ids)'
     ' GROUP BY release_id'
 )
 
@@ -111,9 +111,9 @@ def _by_project(select: str, where: str = '') -> str:
 def _by_release(select: str, where: str = '') -> str:
     """Compose a release-scoped read against the winning batches."""
     return (
-        f'{select} FROM imbi.release_components AS c'
+        f'{select} FROM imbi.release_components AS c'  # noqa: S608
         + _JOIN.format(batches=_BATCHES_BY_RELEASE)
-        + ' WHERE c.release_id IN {release_ids:Array(String)}'
+        + ' WHERE c.release_id IN (SELECT id FROM release_ids)'
         + where
     )
 
@@ -148,14 +148,16 @@ async def component_ids_in_org(
     if not project_ids or component_ids == []:
         return set()
     where = ''
-    params: dict[str, typing.Any] = {}
+    tables: dict[str, list[str]] = {}
     if component_ids is not None:
-        where = ' AND c.component_id IN {component_ids:Array(String)}'
-        params['component_ids'] = component_ids
+        # The candidates come from a catalog-wide name match, so a short
+        # query can name more ids than a bound parameter holds.
+        where = ' AND c.component_id IN (SELECT id FROM component_ids)'
+        tables['component_ids'] = component_ids
     rows = await clickhouse.query(
         _by_project('SELECT DISTINCT c.component_id AS component_id', where),
-        params,
         project_ids=project_ids,
+        tables=tables,
     )
     return {str(row['component_id']) for row in rows}
 
@@ -283,7 +285,8 @@ async def component_usage(
             ' c.version AS version',
             ' AND c.component_id = {component_id:String}',
         ),
-        {'release_ids': release_ids, 'component_id': component_id},
+        {'component_id': component_id},
+        tables={'release_ids': release_ids},
     )
     return [
         (
@@ -314,9 +317,9 @@ async def governed_usage(
             ' c.component_release_id AS component_release_id,'
             ' c.version AS version',
             ' AND c.component_release_id IN'
-            ' {component_release_ids:Array(String)}',
+            ' (SELECT id FROM component_release_ids)',
         ),
-        {
+        tables={
             'release_ids': release_ids,
             'component_release_ids': component_release_ids,
         },
@@ -350,6 +353,6 @@ async def release_components(
             ' c.scope AS scope,'
             ' c.groups AS groups',
         ),
-        {'release_ids': [release_id]},
+        tables={'release_ids': [release_id]},
     )
     return list(rows)
