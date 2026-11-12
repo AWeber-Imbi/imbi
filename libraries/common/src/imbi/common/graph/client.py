@@ -3,6 +3,7 @@ Apache AGE Database Interface
 
 """
 
+import asyncio
 import collections.abc
 import dataclasses
 import functools
@@ -58,13 +59,21 @@ _IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 #: code and fails the statement -- ``3`` is ``TM_Updated``.  Two writers
 #: on one node is ordinary here (a webhook and the release-train
 #: hydration both close out the same deployment), and the loser's write
-#: is simply dropped, so the statement is retried.
-_CONCURRENT_UPDATE_MESSAGE = 'Entity failed to be updated'
+#: is simply dropped, so the statement is retried.  AGE reports a row
+#: lock it cannot take (``TM_BeingModified`` and kin) as "could not be
+#: locked", which is the same race seen earlier.
+_CONCURRENT_UPDATE_MESSAGES = (
+    'Entity failed to be updated',
+    'Entity could not be locked for updating',
+)
+
+#: Total attempts for a statement that keeps losing update races.
+_CONCURRENT_UPDATE_ATTEMPTS = 3
 
 
 def _is_concurrent_update(err: BaseException) -> bool:
     """Is *err* AGE refusing a write another writer got in first?"""
-    return _CONCURRENT_UPDATE_MESSAGE in str(err)
+    return any(msg in str(err) for msg in _CONCURRENT_UPDATE_MESSAGES)
 
 
 def _dollar_quote_tag(body: str) -> str:
@@ -903,7 +912,7 @@ class Graph:
             collections.abc.Awaitable[RunResultT],
         ],
     ) -> RunResultT:
-        """Run *run*, retrying once on 42P01 or a lost update race.
+        """Run *run*, retrying on 42P01 or a lost update race.
 
         The retry cannot double a write: with autocommit on, a
         statement that raised committed nothing, and the batch path
@@ -914,30 +923,39 @@ class Graph:
         propagates.
 
         A concurrent-update failure (see
-        :data:`_CONCURRENT_UPDATE_MESSAGE`) is retried on the same
-        terms, and the connection is not discarded -- the backend is
-        healthy, it just lost a race.  The second attempt runs under a
-        new snapshot, so it reads the row the winner wrote.
+        :data:`_CONCURRENT_UPDATE_MESSAGES`) is retried on the same
+        terms, up to :data:`_CONCURRENT_UPDATE_ATTEMPTS` attempts with
+        a short backoff, and the connection is not discarded -- the
+        backend is healthy, it just lost a race.  Each new attempt runs
+        under a new snapshot, so it reads the row the winner wrote.
 
         """
-        try:
-            return await self._run_discarding_poisoned(run)
-        except psycopg.errors.UndefinedTable as err:
-            LOGGER.warning(
-                'graph query failed with UndefinedTable (%s); '
-                'discarded the connection and retrying once on a '
-                'fresh one',
-                err,
-            )
-            return await self._run_on_fresh_connection(run)
-        except psycopg.errors.InternalError as err:
-            if not _is_concurrent_update(err):
-                raise
-            LOGGER.warning(
-                'graph query lost an update race (%s); retrying once',
-                err,
-            )
-            return await self._run_discarding_poisoned(run)
+        for attempt in range(1, _CONCURRENT_UPDATE_ATTEMPTS + 1):
+            try:
+                try:
+                    return await self._run_discarding_poisoned(run)
+                except psycopg.errors.UndefinedTable as err:
+                    LOGGER.warning(
+                        'graph query failed with UndefinedTable (%s); '
+                        'discarded the connection and retrying once on '
+                        'a fresh one',
+                        err,
+                    )
+                    return await self._run_on_fresh_connection(run)
+            except psycopg.errors.InternalError as err:
+                if (
+                    not _is_concurrent_update(err)
+                    or attempt == _CONCURRENT_UPDATE_ATTEMPTS
+                ):
+                    raise
+                LOGGER.warning(
+                    'graph query lost an update race (%s); retry %d/%d',
+                    err,
+                    attempt,
+                    _CONCURRENT_UPDATE_ATTEMPTS - 1,
+                )
+                await asyncio.sleep(0.05 * attempt)
+        raise AssertionError('unreachable')  # pragma: no cover
 
     async def _execute_batch(
         self,

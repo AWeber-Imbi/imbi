@@ -603,11 +603,82 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([conns[0], conns[1]], seen)
         conns[0].close.assert_not_awaited()
 
-    async def test_a_second_lost_race_propagates(self) -> None:
-        """One retry, not a loop: two writers can keep colliding."""
+    async def test_retries_a_lock_failure(self) -> None:
+        """AGE reports a row lock it cannot take the same way."""
         g = graph.Graph()
         g.opened = True
         pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+        seen: list[typing.Any] = []
+
+        async def run(conn: typing.Any) -> str:
+            seen.append(conn)
+            if len(seen) == 1:
+                raise psycopg.errors.InternalError_(
+                    'Entity could not be locked for updating'
+                )
+            return 'ok'
+
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            result = await g._run_retrying_poisoned(run)
+        self.assertEqual('ok', result)
+        self.assertEqual([conns[0], conns[1]], seen)
+
+    async def test_two_lost_races_then_success(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(3)
+        g.pool = pool
+        seen: list[typing.Any] = []
+
+        async def run(conn: typing.Any) -> str:
+            seen.append(conn)
+            if len(seen) < 3:
+                raise psycopg.errors.InternalError_(
+                    'Entity failed to be updated: 3'
+                )
+            return 'ok'
+
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            result = await g._run_retrying_poisoned(run)
+        self.assertEqual('ok', result)
+        self.assertEqual(conns, seen)
+
+    async def test_lost_race_after_poisoned_retry_is_retried(
+        self,
+    ) -> None:
+        """IMBI-7D: the fresh-connection retry can lose a race too."""
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+        seen: list[typing.Any] = []
+
+        async def run(conn: typing.Any) -> str:
+            seen.append(conn)
+            if len(seen) == 1:
+                raise psycopg.errors.UndefinedTable(
+                    'relation "imbi.\x7f" does not exist'
+                )
+            if len(seen) == 2:
+                raise psycopg.errors.InternalError_(
+                    'Entity failed to be updated: 3'
+                )
+            return 'ok'
+
+        with (
+            _mock_fresh_conn() as fresh,
+            self.assertLogs(client.LOGGER, level='WARNING'),
+        ):
+            result = await g._run_retrying_poisoned(run)
+        self.assertEqual('ok', result)
+        self.assertEqual([conns[0], fresh, conns[1]], seen)
+
+    async def test_lost_races_stop_after_three_attempts(self) -> None:
+        """A bounded loop: two writers can keep colliding."""
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(3)
         g.pool = pool
         seen: list[typing.Any] = []
 
@@ -620,10 +691,10 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs(client.LOGGER, level='WARNING'):
             with self.assertRaises(psycopg.errors.InternalError_):
                 await g._run_retrying_poisoned(run)
-        self.assertEqual([conns[0], conns[1]], seen)
-        self.assertEqual(2, pool.connection.call_count)
-        conns[0].close.assert_not_awaited()
-        conns[1].close.assert_not_awaited()
+        self.assertEqual(conns, seen)
+        self.assertEqual(3, pool.connection.call_count)
+        for conn in conns:
+            conn.close.assert_not_awaited()
 
     async def test_other_internal_errors_do_not_retry(self) -> None:
         g = graph.Graph()
