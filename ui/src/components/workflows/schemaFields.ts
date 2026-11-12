@@ -13,14 +13,21 @@ export type FieldSource =
 
 export type ParamField =
   | (FieldBase & {
-      kind: 'boolean' | 'json' | 'list' | 'number' | 'recipients' | 'text'
-    })
-  | (FieldBase & {
       kind: 'checks' | 'select'
       options: { label: string; value: string }[]
     })
   | (FieldBase & { kind: 'multiline'; mono: boolean })
   | (FieldBase & { kind: 'source'; source: FieldSource })
+  | (FieldBase & {
+      kind:
+        | 'boolean'
+        | 'json'
+        | 'list'
+        | 'number'
+        | 'outputFields'
+        | 'recipients'
+        | 'text'
+    })
 
 interface FieldBase {
   description?: string
@@ -61,6 +68,7 @@ export function paramFields(schema: JsonSchema): ParamField[] {
       required: required.has(name),
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
+    if (name === 'output_fields') return { ...base, kind: 'outputFields' }
     if (prop.enum) {
       return { ...base, kind: 'select', options: enumOptions(prop.enum) }
     }

@@ -21,6 +21,7 @@ export interface View {
   zoom: number
 }
 
+export const KEY_PATTERN = /^[a-z][a-z0-9_]*$/
 export const NODE_W = 248
 export const GRID = 20
 const HEAD_H = 56

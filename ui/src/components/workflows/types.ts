@@ -4,7 +4,7 @@ import type { components } from '@/types/api-generated'
 
 export type AttentionRun = Schemas['AttentionRun']
 
-/** A JSON Schema object. The API types `params_schema` as `dict[str, Any]`. */
+/** A JSON Schema object. The API types the step schemas as `dict[str, Any]`. */
 export interface JsonSchema {
   $defs?: Record<string, JsonSchema>
   $ref?: string
@@ -24,7 +24,11 @@ export type StepCategory = StepType['category']
 export type StepRun = Schemas['StepRun']
 export type StepRunStatus = StepRun['status']
 
-export type StepType = Omit<Schemas['StepType'], 'params_schema'> & {
+export type StepType = Omit<
+  Schemas['StepType'],
+  'output_schema' | 'params_schema'
+> & {
+  output_schema: JsonSchema
   params_schema: JsonSchema
 }
 export type TestRunResult = Schemas['TestRunResult']
