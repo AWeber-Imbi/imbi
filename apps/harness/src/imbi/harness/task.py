@@ -58,6 +58,9 @@ CLI_WRAPPER = '/usr/local/bin/agent-cli'
 #: An emptyDir of the runner container only. The runner makes it mode
 #: 0755 at start, so ``agent`` cannot add, rename, or remove an entry.
 PUBLISHED_PLUGINS = pathlib.Path('/run/plugins')
+#: An emptyDir of the runner container only. The root filesystem is
+#: read-only, and the agent often writes to ``/tmp`` and not to TMPDIR.
+SHARED_TMP = pathlib.Path('/tmp')  # noqa: S108
 SESSION_HEARTBEAT = 10
 #: The largest CLI message line that the SDK reads.
 SDK_BUFFER = 64 * 1024 * 1024

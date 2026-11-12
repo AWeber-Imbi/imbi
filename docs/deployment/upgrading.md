@@ -89,7 +89,11 @@ each existing task into that table.
 2. **Deploy the `imbi-harness` chart together with the runner image.**
    The runner pod gets a new `plugins` emptyDir (`plugins.sizeLimit`,
    default `1Gi`), and a runner of this release fails at start when
-   `/run/plugins` is missing.
+   `/run/plugins` is missing. The runner container also gets a writable
+   `/tmp` emptyDir (`tmp.sizeLimit`, default `1Gi`). The runner sets
+   `/tmp` to mode `1777` at start, so a deployment that does not use the
+   chart and has a read-only root filesystem must also mount a writable
+   `/tmp` in the runner container.
 
 ## 2.45.0
 

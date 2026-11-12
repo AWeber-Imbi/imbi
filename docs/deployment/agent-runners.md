@@ -287,6 +287,7 @@ helm upgrade general helm/imbi-harness -n imbi-runners --reuse-values \
 |---|---|---|
 | `terminationGracePeriodSeconds` | `30` | Keep it above 20. The runner fences at 20 seconds after `SIGTERM` |
 | `work.sizeLimit` | `10Gi` | The size of `/work`: clones, plugins, and task directories |
+| `tmp.sizeLimit` | `1Gi` | The size of the runner's `/tmp`. The runner empties it at the end of each chain. |
 | `resources.runner` | 500m / 1Gi requests, 2 / 4Gi limits | The `runner` container |
 | `resources.executor` | 100m / 256Mi requests, 2 / 2Gi limits | The `executor` container |
 | `nodeSelector` | `{}` | |

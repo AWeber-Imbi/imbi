@@ -195,8 +195,11 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
         (workspace / 'home' / 'file').write_text('x')
         published = pathlib.Path(tmp.name) / 'published'
         (published / 'chain' / 'p').mkdir(parents=True)
+        shared_tmp = pathlib.Path(tmp.name) / 'tmp'
+        shared_tmp.mkdir()
         with (
             mock.patch.object(runner.task, 'PUBLISHED_PLUGINS', published),
+            mock.patch.object(runner.task, 'SHARED_TMP', shared_tmp),
             mock.patch.object(privilege, 'kill_agent') as kill,
             mock.patch.object(
                 privilege, 'effective', return_value=contextlib.nullcontext()
@@ -207,10 +210,77 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
         kill.assert_called_once_with()
         call.assert_awaited_once_with({'op': 'end_chain'})
         self.assertEqual(
-            effective.call_args_list, [mock.call(privilege.AGENT), mock.call()]
+            effective.call_args_list,
+            [
+                mock.call(privilege.AGENT),
+                mock.call(privilege.AGENT),
+                mock.call(),
+            ],
         )
         self.assertFalse(workspace.exists())
         self.assertEqual(list(published.iterdir()), [])
+
+    async def test_end_chain_empties_the_shared_tmp(self) -> None:
+        subject = make_runner()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = pathlib.Path(tmp.name)
+        outside = root / 'outside'
+        outside.write_text('keep')
+        shared_tmp = root / 'tmp'
+        (shared_tmp / 'dir' / 'sub').mkdir(parents=True)
+        (shared_tmp / 'dir' / 'sub' / 'file').write_text('x')
+        (shared_tmp / 'file').write_text('x')
+        (shared_tmp / 'link').symlink_to(outside)
+        published = root / 'published'
+        published.mkdir()
+        with (
+            mock.patch.object(runner.task, 'PUBLISHED_PLUGINS', published),
+            mock.patch.object(runner.task, 'SHARED_TMP', shared_tmp),
+            mock.patch.object(privilege, 'kill_agent'),
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ),
+            mock.patch.object(ipc, 'call', mock.AsyncMock()),
+        ):
+            await subject.end_chain(root / 'chain')
+        self.assertEqual(list(shared_tmp.iterdir()), [])
+        self.assertEqual(outside.read_text(), 'keep')
+
+    def test_clear_tmp_removes_read_only_directories(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        shared_tmp = pathlib.Path(tmp.name)
+        (shared_tmp / 'dir' / 'sub').mkdir(parents=True)
+        (shared_tmp / 'dir' / 'sub' / 'file').write_text('x')
+        (shared_tmp / 'dir' / 'sub').chmod(0o500)
+        (shared_tmp / 'dir').chmod(0o500)
+        with (
+            mock.patch.object(runner.task, 'SHARED_TMP', shared_tmp),
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ),
+            mock.patch.object(runner, '_fence') as fence,
+        ):
+            runner._clear_tmp()
+        self.assertEqual(list(shared_tmp.iterdir()), [])
+        fence.assert_not_called()
+
+    def test_clear_tmp_fences_when_a_file_stays(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        shared_tmp = pathlib.Path(tmp.name)
+        (shared_tmp / 'file').write_text('x')
+        with (
+            mock.patch.object(runner.task, 'SHARED_TMP', shared_tmp),
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ),
+            mock.patch.object(pathlib.Path, 'unlink'),
+            mock.patch.object(runner, '_fence') as fence,
+        ):
+            runner._clear_tmp()
+        fence.assert_called_once()
 
     async def test_end_chain_without_executor(self) -> None:
         subject = make_runner()
@@ -222,6 +292,7 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(
                 ipc, 'call', mock.AsyncMock(side_effect=FileNotFoundError)
             ),
+            mock.patch.object(runner, '_clear_tmp'),
             self.assertLogs('imbi.harness.runner', 'WARNING'),
         ):
             await subject.end_chain(pathlib.Path('/nonexistent/chain'))

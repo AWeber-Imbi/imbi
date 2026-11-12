@@ -80,6 +80,10 @@ work:
 plugins:
   sizeLimit: 1Gi
 
+# The shared /tmp of the runner container.
+tmp:
+  sizeLimit: 1Gi
+
 resources:
   runner:
     requests:

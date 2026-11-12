@@ -145,6 +145,7 @@ items:
             - {name: executor-socket, mountPath: /run/executor}
             - {name: runner-credentials, mountPath: /run/creds}
             - {name: plugins, mountPath: /run/plugins}
+            - {name: tmp, mountPath: /tmp}
             - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
             - name: service-account-token
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
@@ -170,6 +171,8 @@ items:
           emptyDir: {medium: Memory}
         - name: plugins
           emptyDir: {}
+        - name: tmp
+          emptyDir: {sizeLimit: 1Gi}
         - name: executor-credentials
           emptyDir: {medium: Memory}
         # Owned by uid 0, mode 0400: only the processes' uid 0 reads them.
