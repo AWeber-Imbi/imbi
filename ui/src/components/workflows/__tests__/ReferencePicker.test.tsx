@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen } from '@/test/utils'
+import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
 import { TemplateInput } from '../ReferencePicker'
 import type { ReferenceGroup } from '../references'
@@ -63,6 +63,13 @@ describe('TemplateInput', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Insert a reference' }))
     fireEvent.click(await screen.findByText('trigger.service'))
     expect(onChange).toHaveBeenCalledWith('Hello {{ trigger.service }}world')
+  })
+
+  it('returns focus to the field after the pick', async () => {
+    renderInput('Risk: ')
+    fireEvent.click(screen.getByRole('button', { name: 'Insert a reference' }))
+    fireEvent.click(await screen.findByText('trigger.service'))
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveFocus())
   })
 
   it('has no picker when nothing comes before the step', () => {

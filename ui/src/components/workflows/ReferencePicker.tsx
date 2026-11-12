@@ -1,4 +1,4 @@
-import { type ChangeEvent, type SyntheticEvent, useRef, useState } from 'react'
+import { type ChangeEvent, useRef, useState } from 'react'
 
 import { Braces } from 'lucide-react'
 
@@ -39,15 +39,18 @@ export function TemplateInput({
   value: string
 }) {
   const element = useRef<null | TextElement>(null)
+  const selected = useRef(false)
   const insert = (path: string) => {
     const target = element.current
     const next = insertReference(
       value,
       path,
-      target && [
-        target.selectionStart ?? value.length,
-        target.selectionEnd ?? value.length,
-      ],
+      target && selected.current
+        ? [
+            target.selectionStart ?? value.length,
+            target.selectionEnd ?? value.length,
+          ]
+        : null,
     )
     onChange(next.value)
     requestAnimationFrame(() => {
@@ -59,8 +62,11 @@ export function TemplateInput({
     className: cn(groups.length > 0 && 'pr-10', className),
     id,
     onChange: (event: ChangeEvent<TextElement>) => onChange(event.target.value),
-    onSelect: (event: SyntheticEvent<TextElement>) => {
-      element.current = event.currentTarget
+    onSelect: () => {
+      selected.current = true
+    },
+    ref: (node: null | TextElement) => {
+      element.current = node
     },
     value,
   }
