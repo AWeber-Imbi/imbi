@@ -218,7 +218,10 @@ upload_posthog_sourcemaps() {
         return
     fi
     echo "Uploading source maps to PostHog..."
-    posthog-cli --no-fail sourcemap upload --directory /srv/ui/assets &
+    # The subshell detaches the upload: `wait -n` at the end of this script
+    # waits only for the services, and an upload that ends must not stop
+    # the container.
+    (posthog-cli --no-fail sourcemap upload --directory /srv/ui/assets &)
 }
 
 # Only `all` and `ui` modes serve the UI via the bundled Caddy, so only upload
