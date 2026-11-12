@@ -202,11 +202,42 @@ upload_sourcemaps() {
     echo "Source maps uploaded."
 }
 
+# --------------------------------------------------------------------------
+# Optional: upload source maps to PostHog
+# --------------------------------------------------------------------------
+# Runs when POSTHOG_CLI_API_KEY (a personal API key with
+# error_tracking:write) and POSTHOG_CLI_PROJECT_ID are set. POSTHOG_CLI_HOST
+# selects the region (default https://us.posthog.com). The image build
+# already wrote the chunk ids into the bundles. The upload runs in the
+# background so the services start at once, and a failure only logs: the UI
+# works without it.
+
+upload_posthog_sourcemaps() {
+    # posthog-cli also reads the legacy names POSTHOG_CLI_TOKEN and
+    # POSTHOG_CLI_ENV_ID, so accept them here too.
+    if [ -z "${POSTHOG_CLI_API_KEY:-${POSTHOG_CLI_TOKEN:-}}" ] || \
+       [ -z "${POSTHOG_CLI_PROJECT_ID:-${POSTHOG_CLI_ENV_ID:-}}" ]; then
+        return
+    fi
+    echo "Uploading source maps to PostHog..."
+    # The subshell detaches the upload: `wait -n` at the end of this script
+    # waits only for the services, and an upload that ends must not stop
+    # the container. Without --host, posthog-cli 0.19.0 uses the ingestion
+    # host (https://us.i.posthog.com), so give the app host explicitly. The
+    # CLI prefers the canonical names even when they are empty, so give it
+    # the resolved values under those names.
+    (POSTHOG_CLI_API_KEY="${POSTHOG_CLI_API_KEY:-${POSTHOG_CLI_TOKEN:-}}" \
+        POSTHOG_CLI_PROJECT_ID="${POSTHOG_CLI_PROJECT_ID:-${POSTHOG_CLI_ENV_ID:-}}" \
+        posthog-cli --host "${POSTHOG_CLI_HOST:-https://us.posthog.com}" \
+        --no-fail sourcemap upload --directory /srv/ui/assets &)
+}
+
 # Only `all` and `ui` modes serve the UI via the bundled Caddy, so only upload
 # there. Single-service replicas (api, gateway, mcp, ...) would otherwise
 # redundantly re-upload the same maps on every start/restart.
 if [ "$IMBI_SERVICE" = "all" ] || [ "$IMBI_SERVICE" = "ui" ]; then
     upload_sourcemaps
+    upload_posthog_sourcemaps
 fi
 
 # --------------------------------------------------------------------------
