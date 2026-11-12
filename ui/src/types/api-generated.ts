@@ -11795,7 +11795,10 @@ export interface components {
              */
             priority: number;
             filter?: components["schemas"]["BlueprintFilter"] | null;
-            json_schema: components["schemas"]["Schema-Input"];
+            /** Json Schema */
+            json_schema: {
+                [key: string]: unknown;
+            };
             /**
              * Version
              * @default 0
@@ -11846,6 +11849,7 @@ export interface components {
              */
             priority: number;
             filter?: string | null;
+            /** Json Schema */
             json_schema: string;
             /**
              * Version
@@ -14214,12 +14218,6 @@ export interface components {
             /** Dashboard Url */
             dashboard_url?: string | null;
         };
-        /**
-         * FormatType
-         * @description JSON Schema format enumeration for string validation.
-         * @enum {string}
-         */
-        FormatType: "date-time" | "date" | "time" | "duration" | "email" | "idn-email" | "hostname" | "idn-hostname" | "ipv4" | "ipv6" | "uri" | "uri-reference" | "iri" | "iri-reference" | "uuid" | "uri-template" | "json-pointer" | "relative-json-pointer" | "regex";
         /** GlobalScoreEvent */
         GlobalScoreEvent: {
             /** Timestamp */
@@ -19354,284 +19352,6 @@ export interface components {
             lease_expires_at: string;
             chain?: components["schemas"]["RunnerChain"] | null;
         };
-        /**
-         * Schema
-         * @description JSON Schema Draft 2020-12 schema object.
-         */
-        "Schema-Input": {
-            /** $Schema */
-            $schema?: string | null;
-            /** $Id */
-            $id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Default */
-            default?: unknown | null;
-            /** Deprecated */
-            deprecated?: boolean | null;
-            /** Readonly */
-            readOnly?: boolean | null;
-            /** Writeonly */
-            writeOnly?: boolean | null;
-            /** Examples */
-            examples?: unknown[] | null;
-            /** $Comment */
-            $comment?: string | null;
-            /** Type */
-            type?: components["schemas"]["SchemaType"] | components["schemas"]["SchemaType"][] | null;
-            /** Enum */
-            enum?: unknown[] | null;
-            /** Const */
-            const?: unknown | null;
-            /**
-             * Multipleof
-             * @description Must be greater than 0
-             */
-            multipleOf?: number | null;
-            /** Maximum */
-            maximum?: number | null;
-            /** Exclusivemaximum */
-            exclusiveMaximum?: number | null;
-            /** Minimum */
-            minimum?: number | null;
-            /** Exclusiveminimum */
-            exclusiveMinimum?: number | null;
-            /** Maxlength */
-            maxLength?: number | null;
-            /** Minlength */
-            minLength?: number | null;
-            /** Pattern */
-            pattern?: string | null;
-            /** Format */
-            format?: components["schemas"]["FormatType"] | string | null;
-            items?: components["schemas"]["Schema-Input"] | null;
-            /**
-             * Additionalitems
-             * @deprecated
-             */
-            additionalItems?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Maxitems */
-            maxItems?: number | null;
-            /** Minitems */
-            minItems?: number | null;
-            /** Uniqueitems */
-            uniqueItems?: boolean | null;
-            contains?: components["schemas"]["Schema-Input"] | null;
-            /** Mincontains */
-            minContains?: number | null;
-            /** Maxcontains */
-            maxContains?: number | null;
-            /** Maxproperties */
-            maxProperties?: number | null;
-            /** Minproperties */
-            minProperties?: number | null;
-            /** Required */
-            required?: string[] | null;
-            /** Properties */
-            properties?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Patternproperties */
-            patternProperties?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Additionalproperties */
-            additionalProperties?: boolean | components["schemas"]["Schema-Input"] | null;
-            propertyNames?: components["schemas"]["Schema-Input"] | null;
-            /** Unevaluateditems */
-            unevaluatedItems?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Unevaluatedproperties */
-            unevaluatedProperties?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Allof */
-            allOf?: components["schemas"]["Schema-Input"][] | null;
-            /** Anyof */
-            anyOf?: components["schemas"]["Schema-Input"][] | null;
-            /** Oneof */
-            oneOf?: components["schemas"]["Schema-Input"][] | null;
-            not?: components["schemas"]["Schema-Input"] | null;
-            if?: components["schemas"]["Schema-Input"] | null;
-            then?: components["schemas"]["Schema-Input"] | null;
-            else?: components["schemas"]["Schema-Input"] | null;
-            /** Dependentrequired */
-            dependentRequired?: {
-                [key: string]: string[];
-            } | null;
-            /** Dependentschemas */
-            dependentSchemas?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** $Ref */
-            $ref?: string | null;
-            /** $Defs */
-            $defs?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Contentmediatype */
-            contentMediaType?: string | null;
-            /** Contentencoding */
-            contentEncoding?: string | null;
-            contentSchema?: components["schemas"]["Schema-Input"] | null;
-            /** $Anchor */
-            $anchor?: string | null;
-            /** $Dynamicanchor */
-            $dynamicAnchor?: string | null;
-            /** $Dynamicref */
-            $dynamicRef?: string | null;
-            /** $Vocabulary */
-            $vocabulary?: {
-                [key: string]: boolean;
-            } | null;
-            /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * Schema
-         * @description JSON Schema Draft 2020-12 schema object.
-         */
-        "Schema-Output": {
-            /** $Schema */
-            $schema?: string | null;
-            /** $Id */
-            $id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Default */
-            default?: unknown | null;
-            /** Deprecated */
-            deprecated?: boolean | null;
-            /** Readonly */
-            readOnly?: boolean | null;
-            /** Writeonly */
-            writeOnly?: boolean | null;
-            /** Examples */
-            examples?: unknown[] | null;
-            /** $Comment */
-            $comment?: string | null;
-            /** Type */
-            type?: components["schemas"]["SchemaType"] | components["schemas"]["SchemaType"][] | null;
-            /** Enum */
-            enum?: unknown[] | null;
-            /** Const */
-            const?: unknown | null;
-            /**
-             * Multipleof
-             * @description Must be greater than 0
-             */
-            multipleOf?: number | null;
-            /** Maximum */
-            maximum?: number | null;
-            /** Exclusivemaximum */
-            exclusiveMaximum?: number | null;
-            /** Minimum */
-            minimum?: number | null;
-            /** Exclusiveminimum */
-            exclusiveMinimum?: number | null;
-            /** Maxlength */
-            maxLength?: number | null;
-            /** Minlength */
-            minLength?: number | null;
-            /** Pattern */
-            pattern?: string | null;
-            /** Format */
-            format?: components["schemas"]["FormatType"] | string | null;
-            items?: components["schemas"]["Schema-Output"] | null;
-            /**
-             * Additionalitems
-             * @deprecated
-             */
-            additionalItems?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Maxitems */
-            maxItems?: number | null;
-            /** Minitems */
-            minItems?: number | null;
-            /** Uniqueitems */
-            uniqueItems?: boolean | null;
-            contains?: components["schemas"]["Schema-Output"] | null;
-            /** Mincontains */
-            minContains?: number | null;
-            /** Maxcontains */
-            maxContains?: number | null;
-            /** Maxproperties */
-            maxProperties?: number | null;
-            /** Minproperties */
-            minProperties?: number | null;
-            /** Required */
-            required?: string[] | null;
-            /** Properties */
-            properties?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Patternproperties */
-            patternProperties?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Additionalproperties */
-            additionalProperties?: boolean | components["schemas"]["Schema-Output"] | null;
-            propertyNames?: components["schemas"]["Schema-Output"] | null;
-            /** Unevaluateditems */
-            unevaluatedItems?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Unevaluatedproperties */
-            unevaluatedProperties?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Allof */
-            allOf?: components["schemas"]["Schema-Output"][] | null;
-            /** Anyof */
-            anyOf?: components["schemas"]["Schema-Output"][] | null;
-            /** Oneof */
-            oneOf?: components["schemas"]["Schema-Output"][] | null;
-            not?: components["schemas"]["Schema-Output"] | null;
-            if?: components["schemas"]["Schema-Output"] | null;
-            then?: components["schemas"]["Schema-Output"] | null;
-            else?: components["schemas"]["Schema-Output"] | null;
-            /** Dependentrequired */
-            dependentRequired?: {
-                [key: string]: string[];
-            } | null;
-            /** Dependentschemas */
-            dependentSchemas?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** $Ref */
-            $ref?: string | null;
-            /** $Defs */
-            $defs?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Contentmediatype */
-            contentMediaType?: string | null;
-            /** Contentencoding */
-            contentEncoding?: string | null;
-            contentSchema?: components["schemas"]["Schema-Output"] | null;
-            /** $Anchor */
-            $anchor?: string | null;
-            /** $Dynamicanchor */
-            $dynamicAnchor?: string | null;
-            /** $Dynamicref */
-            $dynamicRef?: string | null;
-            /** $Vocabulary */
-            $vocabulary?: {
-                [key: string]: boolean;
-            } | null;
-            /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * SchemaType
-         * @description JSON Schema type enumeration.
-         * @enum {string}
-         */
-        SchemaType: "array" | "boolean" | "integer" | "null" | "number" | "object" | "string";
         /**
          * ScoreBreakdown
          * @description Result of scoring a project across all applicable policies.

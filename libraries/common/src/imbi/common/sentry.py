@@ -6,6 +6,8 @@ import urllib.parse
 from collections import abc
 from typing import Any
 
+import httpx
+
 LOGGER = logging.getLogger(__name__)
 
 #: Routes whose requests, responses, and frame variables can hold
@@ -18,14 +20,38 @@ PRIVATE_PATH = re.compile(
 PRIVATE_MODULE_PREFIX = 'imbi.api.secret_broker'
 
 
-def _scrub(event: Any, _hint: Any) -> Any:
+def _is_tool_client_error(hint: Any) -> bool:
+    """Return ``True`` for an MCP tool error caused by an HTTP 4xx.
+
+    The Sentry MCP integration reports every tool error. When the API
+    refuses a bad call with a 4xx, the model gets the error and can
+    try again, so the event is not a bug (IMBI-3M).
+    """
+    error = ((hint or {}).get('exc_info') or (None, None, None))[1]
+    # By name: fastmcp is an optional extra of this library.
+    if type(error).__name__ != 'ToolError':
+        return False
+    while error is not None:
+        if (
+            isinstance(error, httpx.HTTPStatusError)
+            and error.response.is_client_error
+        ):
+            return True
+        error = error.__cause__
+    return False
+
+
+def _scrub(event: Any, hint: Any) -> Any:
     """Remove secrets from an error or transaction event.
 
-    For a private route (:data:`PRIVATE_PATH`), drop the request body,
-    the query string, and the local variables of every frame. For
-    every event, drop the local variables of frames in
+    Drop the event when :func:`_is_tool_client_error` matches. For a
+    private route (:data:`PRIVATE_PATH`), drop the request body, the
+    query string, and the local variables of every frame. For every
+    event, drop the local variables of frames in
     :data:`PRIVATE_MODULE_PREFIX`.
     """
+    if _is_tool_client_error(hint):
+        return None
     request = event.get('request') or {}
     path = urllib.parse.urlsplit(request.get('url') or '').path
     private = PRIVATE_PATH.search(path) is not None

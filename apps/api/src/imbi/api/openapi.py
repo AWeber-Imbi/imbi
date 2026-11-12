@@ -17,7 +17,9 @@ Usage:
 """
 
 import collections.abc
+import json
 import logging
+import re
 import threading
 import typing
 
@@ -333,6 +335,7 @@ def _build_schema(
         dict[str, typing.Any],
         openapi_schema['components']['schemas'],
     )
+    _drop_unreferenced_schemas(openapi_schema['paths'], schemas)
 
     had_failure = False
     # Names a blueprint model wanted but did not get. An operation must
@@ -494,6 +497,34 @@ def _mark_ai_excluded_operations(
             op = typing.cast(dict[str, typing.Any], operation)
             if AI_TOOL_EXCLUDED_TAGS.intersection(op.get('tags', ())):
                 op['x-imbi-ai-tool'] = False
+
+
+_COMPONENT_REF = re.compile(r'"#/components/schemas/([^"]+)"')
+
+
+def _drop_unreferenced_schemas(
+    paths: dict[str, typing.Any],
+    schemas: dict[str, typing.Any],
+) -> None:
+    """Remove the component schemas that no operation reaches.
+
+    FastAPI adds a component for each model that a field annotation
+    names, also when a validator gives the field a different schema
+    (``Blueprint.json_schema``). fastmcp parses each component, and
+    the ``Schema`` AST has fields named ``anyOf`` and ``$ref`` that it
+    reads as schema keywords (IMBI-2C).
+
+    """
+    pending = set(_COMPONENT_REF.findall(json.dumps(paths)))
+    reached: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in reached or name not in schemas:
+            continue
+        reached.add(name)
+        pending |= set(_COMPONENT_REF.findall(json.dumps(schemas[name])))
+    for name in set(schemas) - reached:
+        del schemas[name]
 
 
 def _hoist_defs_to_components(

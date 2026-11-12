@@ -270,6 +270,34 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
             schemas['TeamBlueprintResponse']['properties'],
         )
 
+    def test_blueprint_json_schema_does_not_break_fastmcp(self) -> None:
+        """The Schema AST does not reach the spec (IMBI-2C).
+
+        Its fields are named ``anyOf`` and ``$ref``. fastmcp parses
+        every component and reads them as schema keywords.
+        """
+        import fastmcp
+        import httpx
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+
+        @app.post('/blueprints')
+        async def create(
+            body: imbi.common.models.Blueprint,
+        ) -> imbi.common.models.Blueprint:
+            return body
+
+        spec = openapi.create_custom_openapi(app)()
+
+        schemas = set(spec['components']['schemas'])
+        self.assertNotIn('Schema-Input', schemas)
+        self.assertNotIn('Schema-Output', schemas)
+        with self.assertNoLogs('fastmcp', 'ERROR'):
+            fastmcp.FastMCP.from_openapi(
+                openapi_spec=spec,
+                client=httpx.AsyncClient(base_url='http://localhost'),
+            )
+
     def test_custom_openapi_caches_result(self) -> None:
         """Test that the schema is cached."""
         import fastapi

@@ -155,9 +155,11 @@ class MCPManager:
                     f'Bearer {auth_token}'
                 )
             try:
+                # A tool error goes back to the model, not to Sentry.
                 result = await self._client.call_tool(
                     tool_name,
                     tool_input,
+                    raise_on_error=False,
                 )
                 parts: list[str] = []
                 for block in result.content:
