@@ -1395,6 +1395,24 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         call.assert_not_called()
         project_deployments.DeploymentTriggerResponse.model_validate(stored)
 
+    async def test_person_key_with_run_id_is_not_listed(self) -> None:
+        person = workflows.runs.side_effect_key(
+            'a@example.com', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key, created_at)'
+                " VALUES (%s, NOW() - INTERVAL '1 hour')",
+                (person,),
+            )
+        response = await self.client.get(self.recover)
+        self.assertNotIn(person, [e['key'] for e in response.json()])
+        response = await self.client.post(
+            self.recover + '/resolve',
+            json={'key': person, 'resolution': 'clear'},
+        )
+        self.assertEqual(response.status_code, 404)
+
     async def test_other_org_cannot_see_the_key(self) -> None:
         self.test_app.dependency_overrides[organizations.member_org_id] = (
             lambda: 'another-org'

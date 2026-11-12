@@ -218,7 +218,7 @@ RETURN u.email AS email
 """
 
 #: The service account of the engine (``auth/internal_services.py``).
-ENGINE_SERVICE_ACCOUNT = 'imbi-workflows'
+ENGINE_SERVICE_ACCOUNT = workflows.runs.ENGINE_PRINCIPAL
 
 _USER_EMAIL_QUERY: typing.LiteralString = """
 MATCH (u:User)-[:MEMBER_OF]->(:Organization {{id: {org}}})

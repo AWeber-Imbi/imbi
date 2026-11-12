@@ -36,7 +36,7 @@ export function StaleSideEffects({ orgSlug }: { orgSlug: string }) {
     queryFn: ({ signal }) => listStaleSideEffects(orgSlug, signal),
     queryKey: queryKeys.workflowSideEffects(orgSlug),
   })
-  if (!canRecover || !effects.data?.length) return null
+  if (!canRecover || (!effects.isError && !effects.data?.length)) return null
   return (
     <section className="border-tertiary mb-6 rounded-lg border">
       <header className="border-tertiary flex items-baseline gap-2 border-b px-4 py-2.5">
@@ -47,9 +47,26 @@ export function StaleSideEffects({ orgSlug }: { orgSlug: string }) {
           happened, then resolve each one.
         </span>
       </header>
-      {effects.data.map((effect) => (
-        <EffectRow effect={effect} key={effect.key} orgSlug={orgSlug} />
-      ))}
+      {effects.isError ? (
+        <div className="flex items-center gap-3 px-4 py-2 text-sm">
+          <span className="text-danger">
+            Failed to load the calls: {extractApiErrorDetail(effects.error)}
+          </span>
+          <Button
+            className="h-7 px-2 text-xs"
+            disabled={effects.isFetching}
+            onClick={() => void effects.refetch()}
+            size="sm"
+            variant="outline"
+          >
+            Retry
+          </Button>
+        </div>
+      ) : (
+        effects.data?.map((effect) => (
+          <EffectRow effect={effect} key={effect.key} orgSlug={orgSlug} />
+        ))
+      )}
     </section>
   )
 }
@@ -108,8 +125,11 @@ function EffectRow({
     },
   })
   // Imbi does not know the run of a deployment marked done.
+  // A later list can find the step no longer retryable.
   const willRetry =
-    retry && !(pending === 'mark_done' && effect.action === 'deployment')
+    retry &&
+    effect.retryable &&
+    !(pending === 'mark_done' && effect.action === 'deployment')
   const input = Object.entries(effect.step_input ?? {})
     .filter(([, value]) => ['number', 'string'].includes(typeof value))
     .map(([name, value]) => `${name}: ${String(value)}`)

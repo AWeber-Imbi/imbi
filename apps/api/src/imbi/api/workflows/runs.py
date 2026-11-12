@@ -21,11 +21,17 @@ from imbi.common.workflows import history, runtime
 #: stopped (ADR 0021, unknown-outcome reconciliation).
 STALE_AFTER = '15 minutes'
 
+#: The principal of the engine: the slug of its service account
+#: (``auth/internal_services.py``).
+ENGINE_PRINCIPAL = 'imbi-workflows'
+
 #: The stale side effects of runs of an organization. A key is
 #: ``[principal, action, caller key]`` (:func:`side_effect_key`), and the
 #: engine's caller key is ``<run_id>:<node_key>`` for a step, or
-#: ``<run_id>/failure-notice``. A key of another caller (a person who
-#: deploys with an ``Idempotency-Key``) names no run and is not listed.
+#: ``<run_id>/failure-notice``. Only keys of the engine principal are
+#: listed: a key of another caller (a person who deploys with an
+#: ``Idempotency-Key``) is not a workflow call, also when it starts
+#: with a run ID.
 #: ``retryable``: the step failed the run with ``outcome_unknown``, the
 #: run is not archived, and its deadline has not passed.
 _STALE = """
@@ -35,6 +41,7 @@ WITH e AS (
          CASE WHEN key LIKE '[%%' THEN key::jsonb ->> 2 END AS caller_key
     FROM workflow_runtime.side_effects
    WHERE response IS NULL AND created_at < NOW() - %(stale)s::interval
+     AND CASE WHEN key LIKE '[%%' THEN key::jsonb ->> 0 END = %(principal)s
 )
 SELECT e.key, e.action, e.created_at, r.id AS run_id,
        r.status AS run_status, r.error AS run_error,
@@ -422,7 +429,12 @@ class RunStore:
             _STALE,
             typing.cast(
                 typing.Any,
-                {'stale': STALE_AFTER, 'org': organization_id, 'key': key},
+                {
+                    'stale': STALE_AFTER,
+                    'org': organization_id,
+                    'key': key,
+                    'principal': ENGINE_PRINCIPAL,
+                },
             ),
         )
 
