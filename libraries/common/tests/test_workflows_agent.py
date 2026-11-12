@@ -234,6 +234,8 @@ class ResultTestCase(unittest.TestCase):
             ('count',): None,
             ('sender', 'email'): None,
             ('sender', 'phone'): 'phone',
+            ('sender', 'items'): None,
+            ('get',): None,
             ('subjects', 'anything'): None,
             ('nope',): 'nope',
         }
@@ -299,6 +301,8 @@ class ResultReferenceTestCase(unittest.TestCase):
             "{{ triage.result['sender']['email'] }}",
             '{{ triage.result.subjects[0] }}',
             "{% set f = 'nope' %}{{ triage.result[f] }}",
+            '{{ triage.result.sender.items() }}',
+            "{{ triage.result.get('count') }}",
         ):
             with self.subTest(reference):
                 self.assertEqual(_issues(reference, FIELDS), [])

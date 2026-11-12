@@ -258,10 +258,11 @@ def unknown_field(
 ) -> str | None:
     """Return the first name in ``path`` that is not a field, if any.
 
-    The check stops at a value that is not an object: a name after it
-    can be a method of the value, such as ``upper`` of a string.
+    The check stops at a method of a dict, such as ``items``, and at a
+    value that is not an object: a name after it can be a method of
+    the value, such as ``upper`` of a string.
     """
-    if not path:
+    if not path or path[0] in RESERVED_NAMES:
         return None
     field = next((f for f in fields if f.name == path[0]), None)
     if field is None:
