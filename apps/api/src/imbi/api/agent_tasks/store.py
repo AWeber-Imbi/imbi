@@ -64,7 +64,7 @@ def unregister_close_hook(hook: CloseHook) -> None:
         _close_hooks.remove(hook)
 
 
-async def _run_close_hooks(task: Row) -> None:
+async def run_close_hooks(task: Row) -> None:
     """Call every close hook. A failure is logged; the task stays
     closed."""
     for hook in list(_close_hooks):
@@ -433,7 +433,7 @@ class TaskStore:
         await log.publish(write.task, write.events, write.ledger)
         # The lock refuses a closed task, so this write closed it.
         if write.task['status'] == 'closed':
-            await _run_close_hooks(write.task)
+            await run_close_hooks(write.task)
 
     async def move_legacy_projects(self) -> int:
         """Move the old single project of each task (``tasks.project_id``)
