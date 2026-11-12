@@ -74,6 +74,24 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## 2.47.0
+
+No setup command is required.
+
+1. **Deploy the `imbi-harness` chart together with the runner image.**
+   The runner container gets a writable `/tmp` emptyDir (`tmp.sizeLimit`,
+   default `1Gi`), and a runner of this release fails at start when
+   `/tmp` is not writable. A deployment that does not use the chart and
+   has a read-only root filesystem must mount a writable `/tmp` in the
+   runner container.
+2. **Sentry integrations now create a Sentry release for each new Imbi
+   release.** The `release-tracking` capability is on by default. Give
+   the Sentry token the **Release: Admin** scope, and set
+   `version_format` to the `release` value that the Sentry SDK of the
+   application sends. If you do not want Sentry releases, turn the
+   capability off on the Integration. See
+   [Sentry](../plugins/sentry.md#release-tracking).
+
 ## 2.46.0
 
 Run `imbi-api setup-permissions`. It gives the `developer` role
@@ -89,11 +107,7 @@ each existing task into that table.
 2. **Deploy the `imbi-harness` chart together with the runner image.**
    The runner pod gets a new `plugins` emptyDir (`plugins.sizeLimit`,
    default `1Gi`), and a runner of this release fails at start when
-   `/run/plugins` is missing. The runner container also gets a writable
-   `/tmp` emptyDir (`tmp.sizeLimit`, default `1Gi`). The runner sets
-   `/tmp` to mode `1777` at start, so a deployment that does not use the
-   chart and has a read-only root filesystem must also mount a writable
-   `/tmp` in the runner container.
+   `/run/plugins` is missing.
 
 ## 2.45.0
 
