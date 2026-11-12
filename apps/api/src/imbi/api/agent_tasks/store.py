@@ -33,6 +33,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.agent_tasks import log
+from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -82,24 +83,7 @@ Status = typing.Literal['queued', 'running', 'blocked', 'paused', 'closed']
 Control = typing.Literal['run', 'pause', 'cancel']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
-#: The closed F5 set of terminal outcomes.
-Outcome = typing.Literal[
-    'done_acted',
-    'done_nothing_to_act_on',
-    'no_reason_to_run',
-    'partial_capped',
-    'suppressed_duplicate',
-    'superseded',
-    'cancelled_by_human',
-    'interrupted_by_operator',
-    'failed_at_gate',
-    'failed_external',
-    'unmapped_subject',
-    'exceeded_ceiling',
-    'unhandled_no_actor',
-    'request_expired',
-    'refused_rate_ceiling',
-]
+Outcome = agent_step.Outcome
 
 #: The open requests of the task ``t`` that a person can still resolve.
 #: A task that is not closed and has one waits on a person (O1), also

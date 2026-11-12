@@ -12,6 +12,25 @@ import pydantic
 
 from imbi.common.workflows import step_type
 
+#: The closed F5 set of terminal outcomes of an agent task (ADR 0020).
+Outcome = typing.Literal[
+    'done_acted',
+    'done_nothing_to_act_on',
+    'no_reason_to_run',
+    'partial_capped',
+    'suppressed_duplicate',
+    'superseded',
+    'cancelled_by_human',
+    'interrupted_by_operator',
+    'failed_at_gate',
+    'failed_external',
+    'unmapped_subject',
+    'exceeded_ceiling',
+    'unhandled_no_actor',
+    'request_expired',
+    'refused_rate_ceiling',
+]
+
 #: The outcomes that take the ``Succeeded`` port. Every other outcome
 #: takes ``Failed``.
 SUCCEEDED = frozenset(

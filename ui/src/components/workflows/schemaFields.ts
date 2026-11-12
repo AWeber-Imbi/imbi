@@ -15,11 +15,11 @@ export type ParamField =
   | (FieldBase & {
       kind: 'boolean' | 'json' | 'list' | 'number' | 'recipients' | 'text'
     })
-  | (FieldBase & { kind: 'multiline'; mono: boolean })
   | (FieldBase & {
-      kind: 'select'
+      kind: 'checks' | 'select'
       options: { label: string; value: string }[]
     })
+  | (FieldBase & { kind: 'multiline'; mono: boolean })
   | (FieldBase & { kind: 'source'; source: FieldSource })
 
 interface FieldBase {
@@ -62,11 +62,7 @@ export function paramFields(schema: JsonSchema): ParamField[] {
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (prop.enum) {
-      const options = prop.enum.map((v) => ({
-        label: humanize(String(v)),
-        value: String(v),
-      }))
-      return { ...base, kind: 'select', options }
+      return { ...base, kind: 'select', options: enumOptions(prop.enum) }
     }
     if (prop.type === 'boolean') return { ...base, kind: 'boolean' }
     if (prop.type === 'integer' || prop.type === 'number') {
@@ -74,6 +70,9 @@ export function paramFields(schema: JsonSchema): ParamField[] {
     }
     if (prop.type === 'array' && prop.items) {
       const item = resolve(schema, prop.items)
+      if (item.enum) {
+        return { ...base, kind: 'checks', options: enumOptions(item.enum) }
+      }
       if (item.type === 'string') return { ...base, kind: 'list' }
       if (item.properties?.kind && item.properties.id) {
         return { ...base, kind: 'recipients' }
@@ -105,6 +104,10 @@ export function paramSummary(params: Record<string, unknown>): string {
     if (parts.length === 2) break
   }
   return parts.join(' · ')
+}
+
+function enumOptions(values: unknown[]): { label: string; value: string }[] {
+  return values.map((v) => ({ label: humanize(String(v)), value: String(v) }))
 }
 
 function humanize(name: string): string {

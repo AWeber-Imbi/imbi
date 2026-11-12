@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
 
 import { listTeams } from '@/api/endpoints'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox } from '@/components/ui/combobox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
@@ -111,6 +112,39 @@ export function SelectField({
   )
 }
 
+/** A list of enum values, as one checkbox per option. */
+function ChecksField({
+  id,
+  onChange,
+  options,
+  value,
+}: {
+  id: string
+  onChange: (value: string[]) => void
+  options: { label: string; value: string }[]
+  value: string[]
+}) {
+  return (
+    <div className="flex flex-col gap-1.5" id={id}>
+      {options.map((o) => (
+        <label className="flex items-center gap-2 text-sm" key={o.value}>
+          <Checkbox
+            checked={value.includes(o.value)}
+            onCheckedChange={(checked) =>
+              onChange(
+                checked
+                  ? [...value, o.value]
+                  : value.filter((v) => v !== o.value),
+              )
+            }
+          />
+          {o.label}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 function FieldControl({
   field,
   id,
@@ -135,6 +169,15 @@ function FieldControl({
           checked={value === true}
           id={id}
           onCheckedChange={(checked) => onChange(checked)}
+        />
+      )
+    case 'checks':
+      return (
+        <ChecksField
+          id={id}
+          onChange={onChange}
+          options={field.options}
+          value={Array.isArray(value) ? value.map(String) : []}
         />
       )
     case 'json':
@@ -192,6 +235,7 @@ function FieldControl({
         <SourceField
           id={id}
           onChange={onChange}
+          optional={!field.required}
           orgSlug={orgSlug}
           source={field.source}
           value={typeof value === 'string' ? value : ''}
@@ -393,13 +437,15 @@ function RecipientsField({
 function SourceField({
   id,
   onChange,
+  optional,
   orgSlug,
   source,
   value,
   webhookProject,
 }: {
   id: string
-  onChange: (value: string) => void
+  onChange: (value: string | undefined) => void
+  optional: boolean
   orgSlug: string
   source: FieldSource
   value: string
@@ -411,15 +457,15 @@ function SourceField({
     <>
       <Combobox
         id={id}
-        onChange={onChange}
-        options={
-          detect
-            ? [
-                { label: 'Detected from webhook', value: TRIGGER_PROJECT },
-                ...options,
-              ]
-            : options
-        }
+        // The "None" option clears an optional field.
+        onChange={(v) => onChange(v || undefined)}
+        options={[
+          ...(optional ? [{ label: 'None', value: '' }] : []),
+          ...(detect
+            ? [{ label: 'Detected from webhook', value: TRIGGER_PROJECT }]
+            : []),
+          ...options,
+        ]}
         placeholder={loading ? 'Loading…' : 'Choose…'}
         value={value}
       />

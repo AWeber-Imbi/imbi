@@ -15,6 +15,8 @@ leaves nothing half made: the next pass tries again.
   the Webhook that the trigger names. A pause keeps it, because the run
   endpoint refuses a paused workflow with ``409`` and the gateway records
   that delivery as no effect.
+- A ``task_completed`` binding has nothing to write: imbi-api reads the
+  binding itself when a task closes. It is marked ``synced``.
 """
 
 import asyncio
@@ -133,6 +135,8 @@ class Reconciler:
             try:
                 if binding['type'] == 'schedule':
                     target_id = await self._schedule(binding)
+                elif binding['type'] == 'task_completed':
+                    target_id = None
                 else:
                     target_id = await self._webhook(binding)
             except Exception as e:  # noqa: BLE001 -- recorded on the binding

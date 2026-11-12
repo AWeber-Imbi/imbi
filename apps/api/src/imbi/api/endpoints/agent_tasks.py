@@ -161,12 +161,16 @@ class AgentTaskOrigin(pydantic.BaseModel):
     """What started a task. It does not change.
 
     A ``schedule`` origin also has ``scheduled_task_id``. A ``webhook``
-    origin also has ``webhook_id`` and ``delivery_id``.
+    origin also has ``webhook_id`` and ``delivery_id``. A
+    ``task_completed`` origin is a workflow run that a closed task
+    started; it also has ``task_id``.
     """
 
     model_config = pydantic.ConfigDict(extra='allow')
 
-    kind: typing.Literal['human', 'schedule', 'webhook', 'task']
+    kind: typing.Literal[
+        'human', 'schedule', 'webhook', 'task', 'task_completed'
+    ]
     #: The email of the person, for a ``human`` origin.
     user: str | None = None
 
