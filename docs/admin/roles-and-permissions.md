@@ -268,7 +268,7 @@ it.
 | `agent_platform_config:write` | Change the base agent configuration and the plugin marketplaces | yes |  |  |  |  |  |  |  |  |
 | `secret_provider:read` | View secret providers | yes |  |  |  |  |  |  |  |  |
 | `secret_provider:write` | Create, change, delete, and test secret providers | yes |  |  |  |  |  |  |  |  |
-| `secret_binding:read` | View secret bindings | yes |  |  |  |  |  |  |  |  |
+| `secret_binding:read` | View secret bindings | yes | yes |  |  |  |  |  |  |  |
 | `secret_binding:write` | Create, change, delete, and validate secret bindings | yes |  |  |  |  |  |  |  |  |
 | `secret_grant:read` | View secret grants and evaluate them | yes |  |  |  |  |  |  |  |  |
 | `secret_grant:write` | Create, change, and delete secret grants | yes |  |  |  |  |  |  |  |  |
