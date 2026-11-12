@@ -588,6 +588,16 @@ class CheckArchiveAccessTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('admin', reason or '')
         self.assertEqual(patch_route.calls.call_count, 0)
 
+    async def test_allows_404_on_fallback_target(self) -> None:
+        with respx.mock:
+            respx.get('https://api.github.com/repos/octo/demo').mock(
+                return_value=httpx.Response(404, json={})
+            )
+            reason = await GitHubLifecycle().check_archive_access(
+                _ctx(project_links={}, project_type_slugs=['octo']), _CREDS
+            )
+        self.assertIsNone(reason)
+
 
 class HostResolutionTestCase(unittest.TestCase):
     def test_github_com_resolves_from_connection(self) -> None:

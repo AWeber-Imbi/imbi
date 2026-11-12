@@ -566,13 +566,19 @@ class GitHubLifecycle(LifecycleCapability):
         ``permissions`` for a user token; when it is absent (an App
         installation token), allow the request.  GitHub answers ``404``
         for a private repository the caller cannot see, so refuse that
-        too: the hook after the write would fail the same way.
+        too, but only for a linked repo: a project-type fallback guess
+        carries no authority, so its ``404`` does not block.
         """
         host = self._resolve_host(ctx)
-        owner, repo = resolve_owner_repo(ctx, host, 'GitHub lifecycle plugin')
+        target = resolve_repository_target(
+            ctx, host, 'GitHub lifecycle plugin'
+        )
+        owner, repo = target.owner, target.repo
         async with self._client(ctx, credentials) as client:
             current = await self._get_repo_or_none(client, owner, repo)
         if current is None:
+            if target.source != 'link':
+                return None
             return (
                 f'The GitHub repository {owner}/{repo} is not accessible '
                 'with your GitHub identity, so this project cannot be '
