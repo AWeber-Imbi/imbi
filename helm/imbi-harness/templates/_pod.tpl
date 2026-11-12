@@ -151,11 +151,11 @@ volumes:
   # The published plugin copies: uid 0 owns them, agent only reads them.
   - name: plugins
     emptyDir:
-      sizeLimit: {{ .Values.plugins.sizeLimit }}
+      sizeLimit: {{ dig "sizeLimit" "1Gi" (.Values.plugins | default dict) }}
   # The shared /tmp of the runner container: the runner makes it 1777.
   - name: tmp
     emptyDir:
-      sizeLimit: {{ .Values.tmp.sizeLimit }}
+      sizeLimit: {{ dig "sizeLimit" "1Gi" (.Values.tmp | default dict) }}
   - name: executor-credentials
     emptyDir: {medium: Memory}
   # Owned by uid 0, mode 0400: only the runner's uid 0 reads them.
