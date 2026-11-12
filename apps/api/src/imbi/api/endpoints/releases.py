@@ -883,11 +883,13 @@ async def create_release(
             await _adopt_release_tag(db, release_id=match.id, tag=adopted_tag)
         existing = await _fetch_release(db, org_slug, project_id, match.id)
         if existing is not None:
-            if adopted_tag:
+            if adopted_tag and existing.get('tag') == adopted_tag:
                 # The untagged create dispatched without a tag, which a
                 # tag-based version skips; send the event again now that
                 # the tag is known. Capabilities treat a repeat as an
-                # update (Sentry upserts the release).
+                # update (Sentry upserts the release). A concurrent create
+                # can adopt a different tag first; the adopt query keeps
+                # that tag, so this request then sends no event.
                 release_dispatch.schedule_release_created(
                     db,
                     project_id,

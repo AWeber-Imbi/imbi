@@ -416,6 +416,35 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(DEFAULT_COMMITTISH, tracked.committish)
         self.assertEqual('alice@example.com', tracked.created_by)
 
+    def test_create_losing_adopt_race_does_not_dispatch(self) -> None:
+        """A create whose tag lost the adopt race sends no event.
+
+        A concurrent create adopted ``5.0.1`` first; the adopt query
+        keeps it, so dispatching ``5.0.2`` would name a release Imbi
+        did not store.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],
+            [{'id': RELEASE_ID}],
+            [{'id': RELEASE_ID}],
+            [{'release': _release_row(tag='5.0.1')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '5.0.2',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.dispatch_release.assert_not_called()
+
     def test_create_untagged_does_not_claim_a_tagged_release(self) -> None:
         """An untagged create never adopts a tagged node.
 
