@@ -455,7 +455,9 @@ runs. Runs that already started continue.
 
 Activation, pause, and delete write a trigger binding for each schedule
 and webhook trigger. imbi-workflows syncs each binding when imbi-api tells
-it, and every 5 minutes (`IMBI_WORKFLOWS_RECONCILE_INTERVAL`).
+it, and every 5 minutes (`IMBI_WORKFLOWS_RECONCILE_INTERVAL`). After a
+failed sync it tries again after 5, 15, 30, and then every 60 seconds,
+until the binding syncs.
 
 - **Schedule:** imbi-workflows makes the imbi-scheduler task
   `workflow-<binding id>`. The task runs as the `imbi-scheduler` service
@@ -476,7 +478,7 @@ The workflow from `GET /organizations/{org}/workflows/{slug}` has a
 |---|---|
 | `pending` | imbi-workflows did not sync it yet |
 | `synced` | The task or the rule exists. The trigger starts runs |
-| `failed` | The sync failed. `error` has the cause. The next pass tries again |
+| `failed` | The sync failed. `error` has the cause. imbi-workflows tries again within a minute |
 
 A trigger whose binding is not `synced` starts no runs. A bad cron
 expression gives a `failed` binding with the error from imbi-scheduler.
