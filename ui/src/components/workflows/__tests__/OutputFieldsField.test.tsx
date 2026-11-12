@@ -14,6 +14,7 @@ function renderField(initial: OutputField[] = []) {
     return (
       <OutputFieldsField
         id="fields"
+        label="Output fields"
         onChange={(next) => {
           setValue(next)
           onChange(next)
@@ -27,6 +28,13 @@ function renderField(initial: OutputField[] = []) {
 }
 
 describe('OutputFieldsField', () => {
+  it('names the group of fields', () => {
+    renderField()
+    expect(
+      screen.getByRole('group', { name: 'Output fields' }),
+    ).toBeInTheDocument()
+  })
+
   it('adds a required string field', () => {
     const onChange = renderField()
     fireEvent.click(screen.getByRole('button', { name: 'Add field' }))

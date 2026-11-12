@@ -48,16 +48,23 @@ const VALUE_RULES = [
 
 export function OutputFieldsField({
   id,
+  label,
   onChange,
   value,
 }: {
   id: string
+  label: string
   onChange: (value: OutputField[]) => void
   value: OutputField[]
 }) {
   const optional = optionalCount(value)
   return (
-    <div className="flex flex-col gap-2" id={id}>
+    <div
+      aria-label={label}
+      className="flex flex-col gap-2"
+      id={id}
+      role="group"
+    >
       <FieldList fields={value} id={id} label="Field " onChange={onChange} />
       {optional > 0 && (
         <p

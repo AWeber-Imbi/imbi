@@ -236,6 +236,7 @@ function FieldControl({
       return (
         <OutputFieldsField
           id={id}
+          label={field.label}
           onChange={onChange}
           value={Array.isArray(value) ? (value as OutputField[]) : []}
         />
