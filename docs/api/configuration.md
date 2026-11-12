@@ -414,7 +414,7 @@ unset.
 | `VITE_POSTHOG_WEB_ANALYTICS` | str | none | `true` sends pageviews, page leaves, and web vitals |
 | `VITE_POSTHOG_SESSION_REPLAY` | str | none | `true` records sessions. All text and inputs are always masked. |
 | `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | str | none | Share of sessions that record, `0` to `1`. Default: `1`. |
-| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email. Default: `never`. |
+| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email and names the person by the email local part. Default: `never`. |
 
 <!-- END GENERATED -->
 
