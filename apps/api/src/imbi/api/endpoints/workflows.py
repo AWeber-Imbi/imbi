@@ -40,8 +40,9 @@ OrgId = organizations.MemberOrgId
 
 Status = typing.Literal['draft', 'active', 'paused']
 
-#: Trigger types that need a scheduler task or a gateway rule.
-BOUND_TRIGGERS = ('schedule', 'webhook')
+#: Trigger types that get a binding: a scheduler task, a gateway rule,
+#: or (``task_completed``) only the binding, which the close hook reads.
+BOUND_TRIGGERS = ('schedule', 'webhook', 'task_completed')
 
 
 # --- Schemas -----------------------------------------------------------
@@ -274,9 +275,18 @@ def _resource_ids(
             add('project', node.id, params.get('project_id'))
         elif node.type == 'webhook':
             add('webhook', node.id, params.get('webhook_id'))
-        elif node.type == 'agent':
-            add('agent', node.id, params.get('agent_id'))
-            if params.get('project_id') != agent_step.TRIGGER_PROJECT:
+        elif node.type in ('agent', 'task_completed'):
+            # A trigger's agent filter cannot be a template.
+            add(
+                'agent',
+                node.id,
+                params.get('agent_id'),
+                literal=node.type == 'task_completed',
+            )
+            if (
+                node.type == 'agent'
+                and params.get('project_id') != agent_step.TRIGGER_PROJECT
+            ):
                 add('project', node.id, params.get('project_id'), literal=True)
         elif node.type == 'email':
             raw: typing.Any = params.get('to')

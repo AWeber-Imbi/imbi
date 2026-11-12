@@ -59,6 +59,12 @@ describe('SecretsManagement', () => {
         id: 'binding-1',
         reference: 'secret://production/github/token',
       } as never,
+      {
+        allowed_delivery_modes: ['stdin'],
+        id: 'key-1',
+        provider_key_usage: { app_id: '7', host: 'github.com' },
+        reference: 'secret://production/github/app-key',
+      } as never,
     ])
     vi.mocked(getProjectsSlim).mockResolvedValue([
       { id: 'p-1', name: 'Billing', project_types: [] } as never,
@@ -73,6 +79,10 @@ describe('SecretsManagement', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'New grant' }))
     fireEvent.click(await screen.findByLabelText('Release bot'))
     expect(screen.getByLabelText('File')).toBeEnabled()
+    // A provider key is never given to a task, so it is not offered.
+    expect(
+      screen.queryByLabelText('secret://production/github/app-key'),
+    ).toBeNull()
     fireEvent.click(screen.getByLabelText('secret://production/github/token'))
     // The binding does not allow a file, so the grant cannot use one,
     // and the modes that it allows are selected.

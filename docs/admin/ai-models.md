@@ -49,8 +49,8 @@ as a greyed row with a **Set up** action.
 1. Click **Add provider**, or click **Set up** on a driver row.
 2. Select the driver. The description below the field explains what it calls.
 3. Enter a name. The name identifies this provider in every model list.
-4. Enter the base URL. Leave the prefilled default for Anthropic and OpenAI.
-   OpenAI-compatible requires a URL.
+4. Enter the base URL. Leave it empty to use the driver default, which the
+   field shows as a hint. OpenAI-compatible requires a URL.
 5. Enter the region for AWS Bedrock, or the region and project ID for Google
    Vertex AI.
 6. Paste an API key. This field is optional. You can set the key later.
@@ -58,7 +58,9 @@ as a greyed row with a **Set up** action.
 8. Click **Create provider**.
 
 The base URL must use `http` or `https`, must include a host, and must not
-embed a username or a password. Imbi rejects any other URL.
+embed a username or a password. Imbi rejects any other URL. Imbi stores
+the driver default as no base URL, and the provider row shows it with
+`(default)`.
 
 Configure one provider for each credential. To run two Anthropic keys, create
 two Anthropic providers, such as "Anthropic Production" and "Anthropic

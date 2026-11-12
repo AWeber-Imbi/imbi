@@ -71,7 +71,9 @@ services to the provider:
 - `graph()` — the graph of imbi-api
 - `provider_key(...)` — read a provider key: a binding that only imbi-api
   reads, for example the private key of a GitHub App. No grant gives a
-  provider key to a task.
+  provider key to a task. The API refuses a grant that names a provider
+  key (422), and refuses to set or clear the mark of a binding that a grant
+  names (409).
 - `check_provider_key(...)` — check that a binding is a provider key for
   a host and App id, without reading it
 

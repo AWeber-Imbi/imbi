@@ -464,6 +464,24 @@ describe('AIModelsManagement', () => {
     )
   })
 
+  it('shows the driver default base URL as a hint, not a value', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listAIProviders).mockResolvedValue([
+      { ...provider, base_url: null },
+    ])
+    await mountAt('/admin/ai-models/prov-1/edit-provider')
+
+    await waitFor(() =>
+      expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
+    )
+    const input = screen.getByLabelText(/^base url/i)
+    expect(input).toHaveValue('')
+    expect(input).toHaveAttribute('placeholder', 'https://api.anthropic.com')
+    expect(
+      screen.getByText('https://api.anthropic.com (default)'),
+    ).toBeInTheDocument()
+  })
+
   it('blocks provider deletion while it still serves models', async () => {
     await mountAt('/admin/ai-models/prov-1/edit-provider')
 

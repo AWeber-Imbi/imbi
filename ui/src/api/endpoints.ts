@@ -2726,9 +2726,13 @@ export const draftReleaseNotes = (
   body: DraftReleaseNotesRequest,
   source?: string,
 ): Promise<DraftReleaseNotesResponse> => {
-  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  // The browser's zone, so a calendar version uses the user's date.
+  const search = new URLSearchParams({
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  })
+  if (source) search.set('source', source)
   return apiClient.post<DraftReleaseNotesResponse>(
-    `${deploymentsBase(orgSlug, projectId)}/draft-release-notes${search}`,
+    `${deploymentsBase(orgSlug, projectId)}/draft-release-notes?${search}`,
     body,
   )
 }

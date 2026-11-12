@@ -147,8 +147,9 @@ export function ProviderTable({
                 const name = row.provider?.name ?? row.driver?.name ?? row.key
                 const description =
                   row.provider?.description ?? row.driver?.description ?? null
+                const customBaseUrl = row.provider?.base_url ?? null
                 const baseUrl =
-                  row.provider?.base_url ?? row.driver?.default_base_url ?? null
+                  customBaseUrl ?? row.driver?.default_base_url ?? null
                 // Discovery needs a configured provider, a stored key
                 // or workload identity, and a driver whose list-models
                 // API Imbi can call.
@@ -195,10 +196,14 @@ export function ProviderTable({
                       </TableCell>
                       <TableCell>
                         <span
-                          className="text-secondary block max-w-[16rem] truncate font-mono text-xs"
+                          className={cn(
+                            'block max-w-[16rem] truncate font-mono text-xs',
+                            customBaseUrl ? 'text-secondary' : 'text-tertiary',
+                          )}
                           title={baseUrl ?? undefined}
                         >
                           {baseUrl ?? '—'}
+                          {baseUrl && !customBaseUrl && ' (default)'}
                         </span>
                       </TableCell>
                       <TableCell>
