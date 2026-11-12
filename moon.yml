@@ -177,6 +177,7 @@ tasks:
       - '/apps/*/src/**/*'
       - '/libraries/*/src/**/*'
       - '/plugins/*/src/**/*'
+      - '/uv.lock'
       - '/ui/src/types/api-generated.ts'
       - '/ui/package.json'
       - '/ui/package-lock.json'

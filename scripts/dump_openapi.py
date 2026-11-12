@@ -25,7 +25,7 @@ class _NoBlueprints:
 
 def main() -> None:
     # The routes get the /api prefix only when IMBI_API_URL has it.
-    os.environ.setdefault('IMBI_API_URL', 'http://localhost:8000/api')
+    os.environ['IMBI_API_URL'] = 'http://localhost:8000/api'
     asyncio.run(
         openapi.refresh_blueprint_models(
             typing.cast('typing.Any', _NoBlueprints())

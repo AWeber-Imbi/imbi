@@ -27,11 +27,12 @@ else
     uv --directory "$root" run --frozen python scripts/dump_openapi.py > "$spec"
 fi
 
-npm --prefix "$root/ui" run --silent codegen
-
 if [ "${1:-}" = "--check" ]; then
-    git -C "$root" diff --exit-code -- ui/src/types/api-generated.ts || {
+    # Compare without writing, so UI tasks never read a half-written file.
+    npm --prefix "$root/ui" run --silent codegen -- --check || {
         echo "ui/src/types/api-generated.ts is stale. Run scripts/regen-api-types.sh and commit the result." >&2
         exit 1
     }
+else
+    npm --prefix "$root/ui" run --silent codegen
 fi
