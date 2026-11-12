@@ -46,7 +46,11 @@ export function referenceGroups(
     .map((node) => ({
       key: node.key,
       mayNotRun: reaches(graph, triggerIds, nodeId, node.id),
-      references: stepReferences(node, types[node.type]?.output_schema),
+      references: stepReferences(
+        node,
+        types[node.type]?.output_schema,
+        afterFailure(graph, node, types[node.type]?.ports ?? [], nodeId),
+      ),
       title: node.title,
     }))
   if (triggers.length === 0) return steps
@@ -59,6 +63,21 @@ export function referenceGroups(
       title: 'Trigger',
     },
   ]
+}
+
+/** The node is reached through the step's `Failed` port, where an
+ * agent step has no result. */
+function afterFailure(
+  graph: WorkflowGraph,
+  step: WorkflowNode,
+  ports: string[],
+  nodeId: string,
+): boolean {
+  const port = ports.indexOf('Failed')
+  const targets = graph.edges
+    .filter((edge) => edge.source === step.id && edge.port === port)
+    .map((edge) => edge.target)
+  return reaches(graph, targets, nodeId, step.id)
 }
 
 function ancestorDistances(
@@ -116,13 +135,20 @@ function reaches(
   return false
 }
 
-function resultReferences(fields: OutputField[], prefix: string): Reference[] {
+function resultReferences(
+  fields: OutputField[],
+  prefix: string,
+  nullable: boolean,
+): Reference[] {
   return fields.flatMap((field) => {
     const path = `${prefix}.${field.name}`
     return [
-      { path, type: typeLabel(field) },
+      {
+        path,
+        type: typeLabel(nullable ? { ...field, required: false } : field),
+      },
       ...(field.type === 'object'
-        ? resultReferences(field.fields ?? [], path)
+        ? resultReferences(field.fields ?? [], path, nullable)
         : []),
     ]
   })
@@ -143,11 +169,15 @@ function schemaType(schema: JsonSchema): string {
   return schema.type ?? (schema.$ref ? 'object' : 'any')
 }
 
-function stepReferences(node: WorkflowNode, schema?: JsonSchema): Reference[] {
+function stepReferences(
+  node: WorkflowNode,
+  schema: JsonSchema | undefined,
+  failed: boolean,
+): Reference[] {
   const fields = outputFieldsOf(node)
   return schemaReferences(node.key, schema).flatMap((reference) =>
     reference.path === `${node.key}.result`
-      ? [reference, ...resultReferences(fields, reference.path)]
+      ? [reference, ...resultReferences(fields, reference.path, failed)]
       : [reference],
   )
 }

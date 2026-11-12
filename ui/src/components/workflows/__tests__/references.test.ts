@@ -16,6 +16,7 @@ const types = {
         task_id: { type: 'string' },
       },
     },
+    ports: ['Succeeded', 'Failed'],
     type: 'agent',
   }),
   model_decision: {
@@ -118,6 +119,41 @@ describe('referenceGroups', () => {
       { path: 'triage.result.rows', type: 'array<object>' },
       { path: 'triage.task_id', type: 'string' },
     ])
+  })
+
+  it("makes the result fields nullable after an agent's Failed port", () => {
+    const graph: WorkflowGraph = {
+      ...GRAPH,
+      edges: [
+        ...GRAPH.edges,
+        { port: 1, source: 'triage', target: 'alert' },
+        { port: 0, source: 'alert', target: 'page' },
+      ],
+      nodes: [
+        ...GRAPH.nodes,
+        node({ id: 'alert', key: 'alert', title: 'Alert' }),
+        node({ id: 'page', key: 'page', title: 'Page' }),
+      ],
+    }
+    const triage = referenceGroups(graph, types, 'page').find(
+      (group) => group.key === 'triage',
+    )
+    expect(triage?.references).toContainEqual({
+      path: 'triage.result.risk',
+      type: 'string | null',
+    })
+    expect(triage?.references).toContainEqual({
+      path: 'triage.result.owner.team',
+      type: 'string | null',
+    })
+    expect(referenceGroups(GRAPH, types, 'report')).toContainEqual(
+      expect.objectContaining({
+        key: 'triage',
+        references: expect.arrayContaining([
+          { path: 'triage.result.risk', type: 'string' },
+        ]),
+      }),
+    )
   })
 
   it("lists a manual trigger's inputs and other triggers' output", () => {
