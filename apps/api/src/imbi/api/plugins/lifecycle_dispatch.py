@@ -501,7 +501,14 @@ async def check_archive_access(
             reason = await call_with_identity_retry(
                 db, ctx, resolved, auth, fn=_call
             )
-        except Exception:
+        except Exception as exc:
+            # An identity 401 must reach the client: the hook after
+            # the write needs the same identity and would fail.
+            if (
+                isinstance(exc, fastapi.HTTPException)
+                and exc.status_code == 401
+            ):
+                raise
             LOGGER.exception(
                 'Archive access check of %s failed for project %s',
                 resolved.plugin_slug,

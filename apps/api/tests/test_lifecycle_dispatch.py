@@ -596,6 +596,16 @@ class CheckArchiveAccessTestCase(unittest.TestCase):
 
         self._run([_resolved(_entry('gh', self._cls(_boom)))])
 
+    def test_identity_401_is_raised(self) -> None:
+        def _unauthorized() -> None:
+            raise fastapi.HTTPException(
+                status_code=401, detail={'error': 'identity_required'}
+            )
+
+        with self.assertRaises(fastapi.HTTPException) as caught:
+            self._run([_resolved(_entry('gh', self._cls(_unauthorized)))])
+        self.assertEqual(caught.exception.status_code, 401)
+
     def test_plugin_without_check_is_not_asked(self) -> None:
         bundle = self._run([_resolved(_make_lifecycle_entry('pd'))])
         bundle.assert_not_awaited()
