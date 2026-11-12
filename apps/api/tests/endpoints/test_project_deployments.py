@@ -347,6 +347,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # any caller that treats a non-empty result as a hit (e.g. the
         # release-block gate).  Tests needing rows set their own side_effect.
         self.mock_db.execute = mock.AsyncMock(return_value=[])
+        support.lock_on_execute(self.mock_db)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
@@ -4281,7 +4282,7 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_upsert_merges_the_tagged_node(self) -> None:
         """One statement, keyed on the tag -- not check-then-create."""
-        db = mock.AsyncMock()
+        db = support.lock_on_execute(mock.AsyncMock())
         db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-1'}])
         with mock.patch(
             f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
@@ -4297,6 +4298,11 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
                 created_by='a@b.c',
             )
         self.assertEqual('rel-1', rid)
+        # Same lock as ``releases.create_release``, so the two writers
+        # serialize against each other.
+        self.assertEqual(
+            releases.release_lock_key('p1'), db.locked.await_args.args[0]
+        )
         db.execute.assert_awaited_once()
         query, params, _ = db.execute.await_args.args
         self.assertIn(
@@ -4310,7 +4316,7 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_upsert_falls_back_to_the_committish_when_untagged(
         self,
     ) -> None:
-        db = mock.AsyncMock()
+        db = support.lock_on_execute(mock.AsyncMock())
         db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-2'}])
         with mock.patch(
             f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
@@ -4330,7 +4336,7 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('r.tag', query)
 
     async def _upsert_schedules(self, rid: str | None) -> mock.MagicMock:
-        db = mock.AsyncMock()
+        db = support.lock_on_execute(mock.AsyncMock())
         db.execute = mock.AsyncMock(return_value=[{'rid': rid}])
         with (
             mock.patch(

@@ -44,6 +44,7 @@ from imbi.api.endpoints.releases import (
     ReleaseEnvironmentEdgeResponse,
     append_deployment_event,
     reconcile_current_release,
+    release_lock_key,
 )
 from imbi.api.identity import attribution
 from imbi.api.identity.host_integration import (
@@ -4678,26 +4679,27 @@ async def _upsert_release_node(
     query: typing.LiteralString = (
         _RELEASE_UPSERT_BY_TAG if tag else _RELEASE_UPSERT_BY_COMMITTISH
     ) + _RELEASE_UPSERT_SET
-    rows = await db.execute(
-        query,
-        {
-            'project_id': project_id,
-            'committish': committish,
-            'tag': tag,
-            'id': new_id,
-            'title': title,
-            'description': notes_markdown,
-            'links': links_json,
-            'created_by': created_by,
-            'author': (
-                ''
-                if principals.is_process_principal(created_by)
-                else created_by
-            ),
-            'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
-            'now': now,
-        },
-        ['rid'],
+    params: dict[str, typing.Any] = {
+        'project_id': project_id,
+        'committish': committish,
+        'tag': tag,
+        'id': new_id,
+        'title': title,
+        'description': notes_markdown,
+        'links': links_json,
+        'created_by': created_by,
+        'author': (
+            '' if principals.is_process_principal(created_by) else created_by
+        ),
+        'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
+        'now': now,
+    }
+    # The same lock as ``releases.create_release``: the lookup and the
+    # create in one statement are not atomic in AGE, which has no unique
+    # constraint, so two writers could both create the node.
+    rows = await db.locked(
+        release_lock_key(project_id),
+        lambda execute: execute(query, params, ['rid']),
     )
     if rows:
         rid = graph.parse_agtype(rows[0].get('rid'))
