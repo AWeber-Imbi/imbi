@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import email.utils
 import json
 import os
 import typing
@@ -58,16 +59,23 @@ async def call_with_timeout[T](coro: Awaitable[T]) -> T:
 def host_retry_after(response: httpx.Response) -> str:
     """Seconds the source host asks a caller to wait, for ``Retry-After``.
 
-    The host's ``Retry-After``, else the wait until ``x-ratelimit-reset``
-    once ``x-ratelimit-remaining`` is 0 (GitHub's primary rate limit),
-    else 5.
+    The host's ``Retry-After`` (seconds or an HTTP-date), else the wait
+    until ``x-ratelimit-reset`` once ``x-ratelimit-remaining`` is 0
+    (GitHub's primary rate limit), else 5.
     """
     headers = response.headers
     retry_after = str(headers.get('retry-after', ''))
     if retry_after.isdigit():
         return retry_after
+    now = int(datetime.datetime.now(datetime.UTC).timestamp())
+    try:
+        when = email.utils.parsedate_to_datetime(retry_after)
+    except (TypeError, ValueError):
+        pass
+    else:
+        if when.tzinfo is not None:
+            return str(max(1, int(when.timestamp()) - now))
     reset = str(headers.get('x-ratelimit-reset', ''))
     if headers.get('x-ratelimit-remaining') == '0' and reset.isdigit():
-        now = int(datetime.datetime.now(datetime.UTC).timestamp())
         return str(max(1, int(reset) - now))
     return '5'

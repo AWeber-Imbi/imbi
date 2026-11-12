@@ -1,3 +1,4 @@
+import email.utils
 import os
 import pathlib
 import tempfile
@@ -187,6 +188,11 @@ class UpstreamErrorHandlerTestCase(unittest.TestCase):
     def test_rate_limit_forwards_retry_after(self) -> None:
         response = self._get(self._status_error(429, {'Retry-After': '42'}))
         self.assertEqual(response.headers['retry-after'], '42')
+
+    def test_rate_limit_converts_http_date_retry_after(self) -> None:
+        when = email.utils.formatdate(time.time() + 120, usegmt=True)
+        response = self._get(self._status_error(429, {'Retry-After': when}))
+        self.assertTrue(110 <= int(response.headers['retry-after']) <= 120)
 
     def test_plugin_unavailable_is_503(self) -> None:
         response = self._get(plugin_errors.PluginUnavailableError('down'))
