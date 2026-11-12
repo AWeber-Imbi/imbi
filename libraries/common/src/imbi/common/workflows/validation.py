@@ -86,13 +86,25 @@ def _references(value: typing.Any) -> set[str]:
     return set()
 
 
-def _attribute_path(node: jinja2.nodes.Getattr) -> list[str] | None:
-    """Return ``a.b.c`` of a dotted name as ``['a', 'b', 'c']``."""
+def _name_of(node: jinja2.nodes.Node) -> str | None:
+    """Return the name that ``.name`` or ``['name']`` looks up."""
+    if isinstance(node, jinja2.nodes.Getattr):
+        return node.attr
+    if isinstance(node, jinja2.nodes.Getitem) and isinstance(
+        node.arg, jinja2.nodes.Const
+    ):
+        key: typing.Any = node.arg.value
+        return key if isinstance(key, str) else None
+    return None
+
+
+def _attribute_path(node: jinja2.nodes.Node) -> list[str] | None:
+    """Return ``a.b['c']`` as ``['a', 'b', 'c']``."""
     path: list[str] = []
-    current: jinja2.nodes.Node = node
-    while isinstance(current, jinja2.nodes.Getattr):
-        path.insert(0, current.attr)
-        current = current.node
+    current = node
+    while (name := _name_of(current)) is not None:
+        path.insert(0, name)
+        current = typing.cast('jinja2.nodes.Getattr', current).node
     if not isinstance(current, jinja2.nodes.Name):
         return None
     return [current.name, *path]
@@ -101,13 +113,16 @@ def _attribute_path(node: jinja2.nodes.Getattr) -> list[str] | None:
 def _attribute_paths(value: typing.Any) -> list[list[str]]:
     """Return each dotted name in the templates of ``value``.
 
+    A subscript with a string literal counts as a dot.
     Call it after :func:`_references`, which reports a template that
     does not parse.
     """
     if isinstance(value, str):
         if '{{' not in value and '{%' not in value:
             return []
-        found = _JINJA.parse(value).find_all(jinja2.nodes.Getattr)
+        found = _JINJA.parse(value).find_all(
+            (jinja2.nodes.Getattr, jinja2.nodes.Getitem)
+        )
         return [p for p in map(_attribute_path, found) if p]
     if isinstance(value, list):
         items: list[typing.Any] = value

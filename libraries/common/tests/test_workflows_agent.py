@@ -296,6 +296,9 @@ class ResultReferenceTestCase(unittest.TestCase):
             '{{ triage.result.priority.upper() }}',
             '{% for s in triage.result.subjects %}{{ s }}{% endfor %}',
             '{{ triage.summary }}',
+            "{{ triage.result['sender']['email'] }}",
+            '{{ triage.result.subjects[0] }}',
+            "{% set f = 'nope' %}{{ triage.result[f] }}",
         ):
             with self.subTest(reference):
                 self.assertEqual(_issues(reference, FIELDS), [])
@@ -304,6 +307,8 @@ class ResultReferenceTestCase(unittest.TestCase):
         for reference, missing in (
             ('{{ triage.result.nope }}', 'nope'),
             ('v{{ triage.result.sender.phone }}', 'phone'),
+            ("{{ triage.result['phone'] }}", 'phone'),
+            ("{{ triage['result'].sender['phone'] }}", 'phone'),
         ):
             with self.subTest(reference):
                 issues = _issues(reference, FIELDS)
