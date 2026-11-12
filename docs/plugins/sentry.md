@@ -63,6 +63,10 @@ Each Imbi project links to one Sentry project. The link is the
 project has no edge, the plugin uses the Imbi project slug. An identifier
 on an existing edge always wins.
 
+Two projects in an organization cannot link to the same Sentry project.
+When another project already holds the slug, Imbi refuses the link and
+the lifecycle result or Doctor fix shows the name of that project.
+
 The plugin also writes the `sentry` project link. It opens the issues of
 the project in Sentry, for the `issue_period`.
 

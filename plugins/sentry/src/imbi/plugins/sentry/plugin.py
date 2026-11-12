@@ -60,6 +60,8 @@ class SentryPlugin(plugins.Plugin):
                 'release.'
             ),
             'auth_type': 'api_token',
+            # A gateway delivery finds its project by Sentry slug.
+            'shareable_service_identifier': False,
             'options': [
                 {
                     'name': 'service_url',

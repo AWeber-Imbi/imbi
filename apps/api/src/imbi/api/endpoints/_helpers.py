@@ -15,6 +15,8 @@ from imbi.api.auth import permissions
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common import patch as json_patch
+from imbi.common.plugins import errors as plugin_errors
+from imbi.common.plugins import registry as plugin_registry
 from imbi.common.plugins.base import (
     PluginContext,
     ProjectDependency,
@@ -796,6 +798,53 @@ async def _repoint_refusal(
     return None
 
 
+#: Another project in the organization with an ``EXISTS_IN`` edge to
+#: the same Integration and identifier.
+_IDENTIFIER_HOLDER: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(:Team)'
+    '<-[:OWNED_BY]-(p:Project)-[ei:EXISTS_IN]->'
+    '(i:Integration {{slug: {integration_slug}}})-[:BELONGS_TO]->(o) '
+    'WHERE ei.identifier = {identifier} AND p.id <> {project_id} '
+    'RETURN i.plugin AS plugin, p.slug AS project_slug LIMIT 1'
+)
+
+
+async def _shared_identifier_refusal(
+    db: graph.Graph, ctx: PluginContext, slug: str, identifier: str
+) -> str | None:
+    """Return why ``identifier`` cannot be shared, or ``None``.
+
+    Refuses when another project in the organization already holds
+    ``identifier`` for the same Integration and the plugin declares
+    ``shareable_service_identifier = False`` (issue #639). A plugin
+    that is not loaded is treated as shareable.
+    """
+    records = await db.execute(
+        _IDENTIFIER_HOLDER,
+        {
+            'org_slug': ctx.org_slug,
+            'integration_slug': slug,
+            'identifier': identifier,
+            'project_id': ctx.project_id,
+        },
+        ['plugin', 'project_slug'],
+    )
+    for row in records:
+        plugin = str(graph.parse_agtype(row.get('plugin')))
+        try:
+            entry = plugin_registry.get_plugin(plugin)
+        except plugin_errors.PluginNotFoundError:
+            return None
+        if entry.manifest.shareable_service_identifier:
+            return None
+        holder = graph.parse_agtype(row.get('project_slug'))
+        return (
+            f'Refusing to link {identifier!r}: project {holder!r} is '
+            f'already linked to it in the {slug!r} integration.'
+        )
+    return None
+
+
 async def persist_service_writeback(
     db: graph.Graph, ctx: PluginContext, auth: permissions.AuthContext
 ) -> str | None:
@@ -812,7 +861,9 @@ async def persist_service_writeback(
 
     Returns a refusal message, and writes nothing, when a caller that
     is not an admin would change the verified identifier of a GitHub
-    edge to a different repository. Otherwise returns ``None``.
+    edge to a different repository, or when another project already
+    holds an identifier the plugin declares not shareable. Otherwise
+    returns ``None``.
     """
     writeback = ctx.service_writeback
     if writeback is None:
@@ -826,10 +877,16 @@ async def persist_service_writeback(
         )
         return None
     try:
-        if not writeback.remove and not auth.is_admin:
-            refusal = await _repoint_refusal(
-                db, ctx, slug, writeback.identifier
-            )
+        if not writeback.remove:
+            refusal = None
+            if not auth.is_admin:
+                refusal = await _repoint_refusal(
+                    db, ctx, slug, writeback.identifier
+                )
+            if refusal is None:
+                refusal = await _shared_identifier_refusal(
+                    db, ctx, slug, writeback.identifier
+                )
             if refusal is not None:
                 LOGGER.warning(
                     'Refused service writeback for project %s (%s): %s',

@@ -191,6 +191,9 @@ class GitHubPlugin(Plugin):
   `'oauth2'`, `'oidc'`, `'aws-iam-ic'`, or `'none'`. OAuth
   `client_id` / `client_secret` are ordinary named fields in
   `credentials`.
+- **`shareable_service_identifier`** (default `True`) declares whether
+  several projects in an organization can share one `EXISTS_IN`
+  identifier. See [Lifecycle](lifecycle.md).
 - **`options`** are the integration-level option values collected once
   per Integration (e.g. GitHub `flavor` / `host`, AWS `region`). Five
   field types are supported: the four scalars (`string`, `integer`,

@@ -120,6 +120,14 @@ carries no slug and a capability cannot write an edge to an arbitrary
 Integration. Read the current relationship from
 [`ctx.service_connections`][imbi.common.plugins.ServiceConnection].
 
+By default several projects in an organization can hold the same
+identifier for one Integration (for example, a monorepo where several
+projects map to one GitHub repository). Set
+`shareable_service_identifier=False` on the `PluginManifest` when a
+lookup by identifier must find one project. The host then refuses a
+writeback whose identifier another project already holds, and returns
+the refusal as the result message. The Sentry plugin sets it.
+
 ## Hints
 
 - **`supports_lifecycle_sync`** — `on_project_updated` is a safe upsert
