@@ -805,7 +805,13 @@ _IDENTIFIER_HOLDER: typing.LiteralString = (
     '<-[:OWNED_BY]-(p:Project)-[ei:EXISTS_IN]->'
     '(i:Integration {{slug: {integration_slug}}})-[:BELONGS_TO]->(o) '
     'WHERE ei.identifier = {identifier} AND p.id <> {project_id} '
+)
+_IDENTIFIER_HOLDER_RETURN: typing.LiteralString = (
     'RETURN i.plugin AS plugin, p.slug AS project_slug LIMIT 1'
+)
+#: Only a holder whose edge the plugin verified from the remote API.
+_VERIFIED_HOLDER: typing.LiteralString = (
+    'AND ei.verified_identifier = ei.identifier '
 )
 
 
@@ -822,6 +828,8 @@ async def claim_identifier(
     write: collections.abc.Callable[
         [graph.CypherExecute], collections.abc.Awaitable[T]
     ],
+    *,
+    verified: bool = False,
 ) -> T:
     """Run ``write`` unless :func:`shared_identifier_refusal` refuses.
 
@@ -837,7 +845,7 @@ async def claim_identifier(
 
     async def claim(execute: graph.CypherExecute) -> T:
         refusal = await shared_identifier_refusal(
-            execute, org_slug, project_id, slug, identifier
+            execute, org_slug, project_id, slug, identifier, verified=verified
         )
         if refusal is not None:
             raise SharedIdentifierRefused(refusal)
@@ -852,6 +860,8 @@ async def shared_identifier_refusal(
     project_id: str,
     slug: str,
     identifier: str,
+    *,
+    verified: bool = False,
 ) -> str | None:
     """Return why ``identifier`` cannot be shared, or ``None``.
 
@@ -859,9 +869,19 @@ async def shared_identifier_refusal(
     ``identifier`` for the same Integration and the plugin declares
     ``shareable_service_identifier = False`` (issue #639). A plugin
     that is not loaded is treated as shareable.
+
+    Set ``verified`` for a plugin writeback that verified
+    ``identifier`` from the remote API. Then only a verified holder
+    refuses, so a manual link made first cannot squat the identifier.
+    A manual link is refused by any holder.
     """
+    query: typing.LiteralString = (
+        _IDENTIFIER_HOLDER
+        + (_VERIFIED_HOLDER if verified else '')
+        + _IDENTIFIER_HOLDER_RETURN
+    )
     records = await execute(
-        _IDENTIFIER_HOLDER,
+        query,
         {
             'org_slug': org_slug,
             'integration_slug': slug,
@@ -946,6 +966,7 @@ async def persist_service_writeback(
                             writeback.canonical_url,
                             writeback.webhook_secret_enc,
                         ),
+                        verified=True,
                     )
                 except SharedIdentifierRefused as exc:
                     refusal = str(exc)

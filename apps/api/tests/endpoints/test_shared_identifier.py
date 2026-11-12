@@ -127,3 +127,21 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
         )
         self.assertEqual(response.status_code, 409, response.text)
         self.assertIn(self.project_id, response.json()['detail'])
+
+    async def test_manual_link_cannot_squat_a_verified_writeback(self) -> None:
+        self.permissions |= {'project:write'}
+        response = await self.client.post(
+            f'/organizations/{self.org}/projects/{self.other_project}'
+            '/services/',
+            json={
+                'integration_slug': self.integrations['sentry'],
+                'identifier': 'shared-id',
+                'canonical_url': 'https://api/x',
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(await self.link(self.project_id, 'sentry'))
+        edges = await _helpers.lookup_project_exists_in(
+            self.graph, self.project_id
+        )
+        self.assertEqual([e.verified_identifier for e in edges], ['shared-id'])
