@@ -125,6 +125,7 @@ function ReferencePicker({
                 {group.references.map((reference) => (
                   <CommandItem
                     key={reference.path}
+                    keywords={[group.title]}
                     onSelect={() => {
                       onPick(reference.path)
                       setOpen(false)

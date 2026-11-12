@@ -45,6 +45,16 @@ describe('TemplateInput', () => {
     expect(onChange).toHaveBeenCalledWith('Risk: {{ triage.result.risk }}')
   })
 
+  it('finds references by the title of their step', async () => {
+    renderInput('', [{ ...GROUPS[0], title: 'Security review' }, GROUPS[1]])
+    fireEvent.click(screen.getByRole('button', { name: 'Insert a reference' }))
+    fireEvent.change(await screen.findByPlaceholderText('Search references…'), {
+      target: { value: 'security' },
+    })
+    expect(await screen.findByText('triage.result.risk')).toBeInTheDocument()
+    expect(screen.queryByText('trigger.service')).not.toBeInTheDocument()
+  })
+
   it('inserts at the caret', async () => {
     const onChange = renderInput('Hello world')
     const input = screen.getByRole('textbox')
