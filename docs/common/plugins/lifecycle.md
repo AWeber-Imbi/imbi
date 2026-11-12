@@ -126,7 +126,8 @@ projects map to one GitHub repository). Set
 `shareable_service_identifier=False` on the `PluginManifest` when a
 lookup by identifier must find one project. The host then refuses a
 writeback whose identifier another project already holds, and returns
-the refusal as the result message. The Sentry plugin sets it.
+the refusal as the result message. A manual edit of the project services
+gets HTTP 409 for the same reason. The Sentry plugin sets it.
 
 ## Hints
 

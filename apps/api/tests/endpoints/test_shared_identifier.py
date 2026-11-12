@@ -104,3 +104,18 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             self.graph, self.other_project
         )
         self.assertEqual([e.identifier for e in edges], ['shared-id'])
+
+    async def test_manual_link_is_refused(self) -> None:
+        self.permissions |= {'project:write'}
+        self.assertIsNone(await self.link(self.project_id, 'sentry'))
+        response = await self.client.post(
+            f'/organizations/{self.org}/projects/{self.other_project}'
+            '/services/',
+            json={
+                'integration_slug': self.integrations['sentry'],
+                'identifier': 'shared-id',
+                'canonical_url': 'https://api/x',
+            },
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn(self.project_id, response.json()['detail'])

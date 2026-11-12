@@ -809,8 +809,12 @@ _IDENTIFIER_HOLDER: typing.LiteralString = (
 )
 
 
-async def _shared_identifier_refusal(
-    db: graph.Graph, ctx: PluginContext, slug: str, identifier: str
+async def shared_identifier_refusal(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    slug: str,
+    identifier: str,
 ) -> str | None:
     """Return why ``identifier`` cannot be shared, or ``None``.
 
@@ -822,10 +826,10 @@ async def _shared_identifier_refusal(
     records = await db.execute(
         _IDENTIFIER_HOLDER,
         {
-            'org_slug': ctx.org_slug,
+            'org_slug': org_slug,
             'integration_slug': slug,
             'identifier': identifier,
-            'project_id': ctx.project_id,
+            'project_id': project_id,
         },
         ['plugin', 'project_slug'],
     )
@@ -884,8 +888,12 @@ async def persist_service_writeback(
                     db, ctx, slug, writeback.identifier
                 )
             if refusal is None:
-                refusal = await _shared_identifier_refusal(
-                    db, ctx, slug, writeback.identifier
+                refusal = await shared_identifier_refusal(
+                    db,
+                    ctx.org_slug,
+                    ctx.project_id,
+                    slug,
+                    writeback.identifier,
                 )
             if refusal is not None:
                 LOGGER.warning(
