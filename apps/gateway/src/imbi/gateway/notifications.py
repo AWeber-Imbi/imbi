@@ -9,6 +9,7 @@ import typing
 
 import celpy
 import fastapi
+import httpx
 import jsonpointer
 import pydantic
 
@@ -326,8 +327,10 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
         ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
         resolved = ptr.resolve(body)
     except jsonpointer.JsonPointerException:
-        LOGGER.exception(
-            'failed to select project identifier %r for webhook_id=%r'
+        # Some events (e.g. installation_repositories) do not carry the
+        # identifier; they match no project.
+        LOGGER.debug(
+            'project identifier %r not in body for webhook_id=%r'
             ' integration=%r',
             sel['identifier_selector'],
             webhook_id,
@@ -939,15 +942,21 @@ async def _run_handlers(  # noqa: PLR0913
                 action_config=config,
                 event=event,
             )
-        except Exception as err:
-            LOGGER.exception(
+        except Exception as err:  # noqa: BLE001 -- logged below
+            # A network failure (API restart, slow upstream) is
+            # transient; log it without a traceback.
+            transient = isinstance(err, httpx.TransportError)
+            LOGGER.log(
+                logging.WARNING if transient else logging.ERROR,
                 'Failure executing rule %r (webhook_id=%r integration=%r'
-                ' project=%s/%s)',
+                ' project=%s/%s): %r',
                 rule.handler,
                 webhook_id,
                 integration_slug,
                 org_slug,
                 project_id,
+                err,
+                exc_info=not transient,
                 extra={
                     'webhook_id': webhook_id,
                     'integration_slug': integration_slug,
@@ -1020,16 +1029,27 @@ async def _resolve_identity(
 
     Queries ``/users/by-identity`` for each candidate identity
     Integration slug and returns the single matching user's email.
-    Returns ``None`` when nothing matches, or -- defensively -- when two
+    Returns ``None`` when nothing matches, when the API is unreachable
+    (logged as a warning), or -- defensively -- when two
     or more candidates resolve to *different* users (logged as an error;
     the actor is left unattributed rather than mis-attributed).
     """
     matches: set[str] = set()
-    async with actions.ImbiClient() as client:
-        for slug in identity_slugs:
-            user_id = await client.find_user_by_identity(slug, subject)
-            if user_id is not None:
-                matches.add(user_id)
+    try:
+        async with actions.ImbiClient() as client:
+            for slug in identity_slugs:
+                user_id = await client.find_user_by_identity(slug, subject)
+                if user_id is not None:
+                    matches.add(user_id)
+    except httpx.TransportError as err:
+        LOGGER.warning(
+            'Imbi API unreachable resolving identity subject %r: %r'
+            ' -- leaving unattributed (webhook_id=%r)',
+            subject,
+            err,
+            webhook_id,
+        )
+        return None
     if len(matches) > 1:
         LOGGER.error(
             'Identity subject %r resolved to multiple Imbi users via '
