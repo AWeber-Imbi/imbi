@@ -564,12 +564,20 @@ class GitHubLifecycle(LifecycleCapability):
         GitHub answers an archive or unarchive ``PATCH`` from a non-admin
         with ``403``.  The repo payload carries the caller's
         ``permissions`` for a user token; when it is absent (an App
-        installation token), allow the request.
+        installation token), allow the request.  GitHub answers ``404``
+        for a private repository the caller cannot see, so refuse that
+        too: the hook after the write would fail the same way.
         """
         host = self._resolve_host(ctx)
         owner, repo = resolve_owner_repo(ctx, host, 'GitHub lifecycle plugin')
         async with self._client(ctx, credentials) as client:
-            current = await self._get_repo(client, owner, repo)
+            current = await self._get_repo_or_none(client, owner, repo)
+        if current is None:
+            return (
+                f'The GitHub repository {owner}/{repo} is not accessible '
+                'with your GitHub identity, so this project cannot be '
+                'archived or restored'
+            )
         perms = typing.cast(
             dict[str, object] | None, current.get('permissions')
         )

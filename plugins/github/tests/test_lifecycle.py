@@ -575,6 +575,19 @@ class CheckArchiveAccessTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_allows_when_permissions_absent(self) -> None:
         self.assertIsNone(await self._check({'full_name': 'octo/demo'}))
 
+    async def test_refuses_when_repo_not_visible(self) -> None:
+        with respx.mock:
+            respx.get('https://api.github.com/repos/octo/demo').mock(
+                return_value=httpx.Response(404, json={})
+            )
+            patch_route = respx.patch('https://api.github.com/repos/octo/demo')
+            reason = await GitHubLifecycle().check_archive_access(
+                _ctx(), _CREDS
+            )
+        self.assertIn('not accessible', reason or '')
+        self.assertNotIn('admin', reason or '')
+        self.assertEqual(patch_route.calls.call_count, 0)
+
 
 class HostResolutionTestCase(unittest.TestCase):
     def test_github_com_resolves_from_connection(self) -> None:
