@@ -26,6 +26,12 @@ raising `NotImplementedError`, which the host dispatcher maps to
 it actually handles via the `lifecycle_events` hint so the UI can gate
 the matching affordances (e.g. "Also delete the repository").
 
+`check_archive_access` is optional too. The host calls it before the
+Imbi write of an archive or unarchive, with the credentials the hook
+gets. Return a message to refuse the request with `403`; Imbi then does
+not change the project. The default returns `None` (allow). A check that
+raises does not block the request.
+
 | Hook | `lifecycle_events` value | Notes |
 | --- | --- | --- |
 | `on_project_created` | `created` | Provision the remote; set `ctx.link_writeback` with the canonical link. |

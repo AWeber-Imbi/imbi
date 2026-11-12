@@ -554,6 +554,47 @@ class GitHubLifecycle(LifecycleCapability):
             display=identifier,
         )
 
+    async def check_archive_access(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> str | None:
+        """Refuse when the caller is not an admin of the repository.
+
+        GitHub answers an archive or unarchive ``PATCH`` from a non-admin
+        with ``403``.  The repo payload carries the caller's
+        ``permissions`` for a user token; when it is absent (an App
+        installation token), allow the request.  GitHub answers ``404``
+        for a private repository the caller cannot see, so refuse that
+        too, but only for a linked repo: a project-type fallback guess
+        carries no authority, so its ``404`` does not block.
+        """
+        host = self._resolve_host(ctx)
+        target = resolve_repository_target(
+            ctx, host, 'GitHub lifecycle plugin'
+        )
+        owner, repo = target.owner, target.repo
+        async with self._client(ctx, credentials) as client:
+            current = await self._get_repo_or_none(client, owner, repo)
+        if current is None:
+            if target.source != 'link':
+                return None
+            return (
+                f'The GitHub repository {owner}/{repo} is not accessible '
+                'with your GitHub identity, so this project cannot be '
+                'archived or restored'
+            )
+        perms = typing.cast(
+            dict[str, object] | None, current.get('permissions')
+        )
+        if perms is not None and not perms.get('admin'):
+            return (
+                'You need admin access to the GitHub repository '
+                f'{current.get("full_name") or f"{owner}/{repo}"} '
+                'to archive or restore this project'
+            )
+        return None
+
     async def on_project_archived(
         self,
         ctx: PluginContext,

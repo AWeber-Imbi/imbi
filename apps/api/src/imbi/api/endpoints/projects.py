@@ -34,6 +34,7 @@ from imbi.api.plugins import assignments as plugin_assignments
 from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
     build_lifecycle_context_bundle,
+    check_archive_access,
     dispatch_lifecycle,
 )
 from imbi.api.plugins.resolution import resolve_all_capabilities
@@ -3995,8 +3996,24 @@ async def _set_archived_state(
     archived: bool,
     request: fastapi.Request,
     db: graph.Pool,
+    auth: permissions.AuthContext,
 ) -> ProjectResponse:
     """Toggle archived state on a project and return the updated entity."""
+    # The lifecycle hooks run after the write; refuse first when a
+    # remote would refuse them, so Imbi and the remote stay in step.
+    # Find the project in this organization first: the check runs the
+    # plugins with the project's own bindings and can return their
+    # reason to the caller.
+    if not await db.execute(
+        _UPDATE_MATCH_FRAGMENT + ' RETURN p.id',
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
+    ):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+    await check_archive_access(db, project_id, org_slug, auth)
     now = datetime.datetime.now(datetime.UTC).isoformat()
     archived_at: str | None = now if archived else None
     # Write and read back as separate statements: AGE aborts a query
@@ -4065,7 +4082,7 @@ async def archive_project(
 ) -> ArchiveProjectResponse:
     """Archive a project (soft-hide from default listings)."""
     project = await _set_archived_state(
-        org_slug, project_id, True, request, db
+        org_slug, project_id, True, request, db, auth
     )
     # State change is already committed; never let an unexpected
     # dispatcher failure turn a successful archive into a 500.
@@ -4100,7 +4117,7 @@ async def unarchive_project(
 ) -> ArchiveProjectResponse:
     """Restore an archived project to the active state."""
     project = await _set_archived_state(
-        org_slug, project_id, False, request, db
+        org_slug, project_id, False, request, db, auth
     )
     # State change is already committed; never let an unexpected
     # dispatcher failure turn a successful unarchive into a 500.

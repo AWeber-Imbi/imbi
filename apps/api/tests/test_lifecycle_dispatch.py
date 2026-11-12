@@ -551,6 +551,93 @@ async def _passthrough_identity_retry(
     return await fn(ctx)
 
 
+class CheckArchiveAccessTestCase(unittest.TestCase):
+    """The pre-flight refuses before the Imbi write of an archive."""
+
+    @staticmethod
+    def _cls(probe: typing.Any) -> type[LifecycleCapability]:
+        class _Probe(LifecycleCapability):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del ctx, credentials
+                return LifecycleResult(status='ok')
+
+            async def check_archive_access(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> str | None:
+                del ctx, credentials
+                return probe()
+
+        return _Probe
+
+    def _run(self, resolved_list: list[ResolvedCapability]) -> mock.AsyncMock:
+        bundle = mock.AsyncMock(
+            return_value=LifecycleContextBundle(
+                project_slug='p-slug',
+                team_slug=None,
+                project_links={},
+                project_type_slugs=[],
+            )
+        )
+        with (
+            mock.patch.object(
+                lifecycle_dispatch,
+                'resolve_all_capabilities',
+                mock.AsyncMock(return_value=resolved_list),
+            ),
+            mock.patch.object(
+                lifecycle_dispatch, 'build_lifecycle_context_bundle', bundle
+            ),
+            mock.patch.object(
+                lifecycle_dispatch,
+                'call_with_identity_retry',
+                new=_passthrough_identity_retry,
+            ),
+            mock.patch.object(
+                lifecycle_dispatch,
+                'resolve_credentials',
+                mock.Mock(return_value={'access_token': 'tok'}),
+            ),
+        ):
+            asyncio.run(
+                lifecycle_dispatch.check_archive_access(
+                    mock.AsyncMock(), 'proj-1', 'org-1', _make_auth()
+                )
+            )
+        return bundle
+
+    def test_refusal_raises_403(self) -> None:
+        cls = self._cls(lambda: 'no admin')
+        with self.assertRaises(fastapi.HTTPException) as caught:
+            self._run([_resolved(_entry('gh', cls))])
+        self.assertEqual(caught.exception.status_code, 403)
+        self.assertEqual(caught.exception.detail, 'no admin')
+
+    def test_allowed_passes(self) -> None:
+        self._run([_resolved(_entry('gh', self._cls(lambda: None)))])
+
+    def test_probe_error_does_not_block(self) -> None:
+        def _boom() -> None:
+            raise RuntimeError('network')
+
+        self._run([_resolved(_entry('gh', self._cls(_boom)))])
+
+    def test_identity_401_is_raised(self) -> None:
+        def _unauthorized() -> None:
+            raise fastapi.HTTPException(
+                status_code=401, detail={'error': 'identity_required'}
+            )
+
+        with self.assertRaises(fastapi.HTTPException) as caught:
+            self._run([_resolved(_entry('gh', self._cls(_unauthorized)))])
+        self.assertEqual(caught.exception.status_code, 401)
+
+    def test_plugin_without_check_is_not_asked(self) -> None:
+        bundle = self._run([_resolved(_make_lifecycle_entry('pd'))])
+        bundle.assert_not_awaited()
+
+
 class ResolveCredentialsTestCase(unittest.TestCase):
     """Credential gating honors the manifest's declared field names."""
 

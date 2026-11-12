@@ -30,6 +30,7 @@ from imbi.api.identity.host_integration import call_with_identity_retry
 from imbi.api.plugins import call_with_timeout
 from imbi.api.plugins.resolution import (
     ResolvedCapability,
+    build_plugin_context,
     resolve_all_capabilities,
 )
 from imbi.api.settings import get_server_config
@@ -463,6 +464,78 @@ async def _invoke_one(
         message=result.message,
         artifacts=result.artifacts,
     )
+
+
+async def check_archive_access(
+    db: graph.Graph,
+    project_id: str,
+    org_slug: str,
+    auth: permissions.AuthContext,
+) -> None:
+    """Refuse an archive or restore that a lifecycle remote would refuse.
+
+    Call it before the Imbi write.  Each lifecycle plugin that
+    overrides :meth:`LifecycleCapability.check_archive_access` is asked
+    with the credentials its hook would get.  The first refusal raises
+    ``403``.  A probe that fails for any other reason does not block
+    the request: the hook then reports the failure, as before.
+    """
+    resolved_list = [
+        resolved
+        for resolved in await resolve_all_capabilities(
+            db, project_id, 'lifecycle'
+        )
+        if typing.cast(
+            type[LifecycleCapability], resolved.capability_cls
+        ).check_archive_access
+        is not LifecycleCapability.check_archive_access
+    ]
+    if not resolved_list:
+        return
+    bundle = await build_lifecycle_context_bundle(db, project_id)
+    for resolved in resolved_list:
+        handler = typing.cast(LifecycleCapability, resolved.capability_cls())
+        ctx = build_plugin_context(
+            resolved,
+            project_id=project_id,
+            project_slug=bundle.project_slug,
+            org_slug=org_slug,
+            team_slug=bundle.team_slug,
+            project_links=bundle.project_links,
+            project_type_slugs=bundle.project_type_slugs,
+        )
+
+        async def _call(
+            c: PluginContext,
+            handler: LifecycleCapability = handler,
+            resolved: ResolvedCapability = resolved,
+        ) -> str | None:
+            return await call_with_timeout(
+                handler.check_archive_access(
+                    c, resolve_credentials(c, resolved)
+                )
+            )
+
+        try:
+            reason = await call_with_identity_retry(
+                db, ctx, resolved, auth, fn=_call
+            )
+        except Exception as exc:
+            # An identity 401 must reach the client: the hook after
+            # the write needs the same identity and would fail.
+            if (
+                isinstance(exc, fastapi.HTTPException)
+                and exc.status_code == 401
+            ):
+                raise
+            LOGGER.exception(
+                'Archive access check of %s failed for project %s',
+                resolved.plugin_slug,
+                project_id,
+            )
+            continue
+        if reason:
+            raise fastapi.HTTPException(status_code=403, detail=reason)
 
 
 def resolve_credentials(

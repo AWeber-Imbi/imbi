@@ -551,6 +551,54 @@ class UnarchiveTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(patch_route.calls.call_count, 0)
 
 
+class CheckArchiveAccessTestCase(unittest.IsolatedAsyncioTestCase):
+    async def _check(self, payload: dict[str, object]) -> str | None:
+        with respx.mock:
+            respx.get('https://api.github.com/repos/octo/demo').mock(
+                return_value=httpx.Response(200, json=payload)
+            )
+            return await GitHubLifecycle().check_archive_access(_ctx(), _CREDS)
+
+    async def test_refuses_non_admin(self) -> None:
+        reason = await self._check(
+            {
+                'full_name': 'octo/demo',
+                'permissions': {'admin': False, 'push': True, 'pull': True},
+            }
+        )
+        self.assertIn('admin access', reason or '')
+        self.assertIn('octo/demo', reason or '')
+
+    async def test_allows_admin(self) -> None:
+        self.assertIsNone(await self._check({'permissions': {'admin': True}}))
+
+    async def test_allows_when_permissions_absent(self) -> None:
+        self.assertIsNone(await self._check({'full_name': 'octo/demo'}))
+
+    async def test_refuses_when_repo_not_visible(self) -> None:
+        with respx.mock:
+            respx.get('https://api.github.com/repos/octo/demo').mock(
+                return_value=httpx.Response(404, json={})
+            )
+            patch_route = respx.patch('https://api.github.com/repos/octo/demo')
+            reason = await GitHubLifecycle().check_archive_access(
+                _ctx(), _CREDS
+            )
+        self.assertIn('not accessible', reason or '')
+        self.assertNotIn('admin', reason or '')
+        self.assertEqual(patch_route.calls.call_count, 0)
+
+    async def test_allows_404_on_fallback_target(self) -> None:
+        with respx.mock:
+            respx.get('https://api.github.com/repos/octo/demo').mock(
+                return_value=httpx.Response(404, json={})
+            )
+            reason = await GitHubLifecycle().check_archive_access(
+                _ctx(project_links={}, project_type_slugs=['octo']), _CREDS
+            )
+        self.assertIsNone(reason)
+
+
 class HostResolutionTestCase(unittest.TestCase):
     def test_github_com_resolves_from_connection(self) -> None:
         plugin = GitHubLifecycle()

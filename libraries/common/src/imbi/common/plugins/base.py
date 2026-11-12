@@ -1867,6 +1867,21 @@ class LifecycleCapability(CapabilityHandler):
         credentials: dict[str, str],
     ) -> LifecycleResult: ...
 
+    async def check_archive_access(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> str | None:
+        """Return why the remote would refuse to archive or restore.
+
+        Optional.  The host calls it *before* the Imbi write of an
+        archive or unarchive, with the credentials the matching hook
+        gets.  A returned message refuses the request with ``403`` and
+        leaves Imbi unchanged; ``None`` (the default) allows it.
+        """
+        del ctx, credentials
+        return None
+
     async def on_project_unarchived(
         self,
         ctx: PluginContext,
