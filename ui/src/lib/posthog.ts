@@ -164,7 +164,10 @@ function trackIdentity(posthog: PostHog): void {
       return
     }
     void distinctId(subject).then((id) => {
-      if (current === subject) posthog.identify(id)
+      // The email local part names the person; the full email stays out.
+      if (current === subject) {
+        posthog.identify(id, { name: subject.split('@')[0] })
+      }
     })
   }
   sync()
