@@ -177,6 +177,8 @@ endpoint and no public API.
   imbi-api never expires a side-effect key with no response. An operator
   with `workflow:recover` resolves a stale one (clear it, or mark it
   done) and can retry its step; until then a run that it failed is not archived.
+  Only the step that failed the run can run again, and only when the run
+  has no cancel request. A step whose `Failed` edge the run took cannot.
   A deployment marked done cannot run again, because Imbi does not know
   its deployment run. To retry a deployment, first examine the deployment
   provider for a deployment of that version that started at the time of
