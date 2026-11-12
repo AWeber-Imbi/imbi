@@ -4,7 +4,7 @@ import { Bot } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
-import { isSinglePort, NODE_W } from './graph'
+import { isSinglePort, NODE_W, runsAgent } from './graph'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type { StepType, WorkflowNode } from './types'
 
@@ -91,11 +91,13 @@ export function CanvasNode({
           </span>
         </div>
       </div>
-      <div className="flex h-9 flex-col px-3 text-xs leading-4.5">
-        {summary.agent && (
-          <span className="flex min-w-0 items-center gap-1">
-            <Bot className="size-3 shrink-0" />
-            <span className="truncate">{summary.agent}</span>
+      <div className="flex flex-col px-3 pb-3 text-xs leading-4.5">
+        {runsAgent(node) && (
+          <span className="flex min-w-0 items-center gap-1.5 font-medium">
+            <Bot className="text-tertiary size-3.5 shrink-0" />
+            <span className={cn('truncate', !summary.agent && 'text-tertiary')}>
+              {summary.agent ?? 'Agent'}
+            </span>
           </span>
         )}
         <span className={cn('truncate', SUMMARY_TONE[summary.tone])}>

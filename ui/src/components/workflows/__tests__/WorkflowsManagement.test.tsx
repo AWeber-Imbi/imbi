@@ -385,6 +385,7 @@ describe('WorkflowsManagement', () => {
     )
     expect(screen.getByText('Triage the issue')).toBeInTheDocument()
     expect(screen.getByText('Follow up')).toBeInTheDocument()
+    expect(screen.getByText('Agent')).toBeInTheDocument()
   })
 
   it('marks steps that need configuration', async () => {

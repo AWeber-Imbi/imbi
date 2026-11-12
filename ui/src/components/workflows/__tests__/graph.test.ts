@@ -163,8 +163,16 @@ describe('canvas math', () => {
 
   it('puts labelled ports in rows under the summary', () => {
     const d = node({ type: 'deploy' })
-    expect(outPoint(d, ['Succeeded', 'Failed'], 1)).toEqual({ x: 248, y: 141 })
+    expect(outPoint(d, ['Succeeded', 'Failed'], 1)).toEqual({ x: 248, y: 135 })
     expect(outPoint(node(), [''], 0)).toEqual({ x: 248, y: 28 })
+  })
+
+  it('makes room for the agent line of an agent step', () => {
+    const step = node({ params: { agent_id: 'agt-1' }, type: 'agent' })
+    expect(outPoint(step, ['Succeeded', 'Failed'], 1)).toEqual({
+      x: 248,
+      y: 153,
+    })
   })
 
   it('places a palette step after the first free port of the selection', () => {
