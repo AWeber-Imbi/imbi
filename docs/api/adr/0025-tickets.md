@@ -79,7 +79,7 @@ A new Postgres schema, `tickets`, managed with the same tooling as
 
 | Table | Holds |
 |---|---|
-| `tickets` | One row per ticket: identity, fields, status, stage, owner, origin, ceilings, `last_seq` |
+| `tickets` | One row per ticket: identity, fields, status, stage, owner, origin, budgets, `last_seq` |
 | `events` | The append-only log of each ticket |
 | `asks` | One row per question put to a person, and its answer |
 | `ticket_projects` | One row per ticket and project, with what added it |
@@ -112,7 +112,7 @@ Postgres, because a ticket can reopen. There is no archive sweep in v1.
 - `origin`: how the ticket was created. Set at creation and immutable.
   One of `human` (with the channel), `webhook`, `schedule`, or `task`
   (an agent created it).
-- `budget`, `manager_budget`, and `max_tasks`: see Guardrails.
+- `budget` and `manager_budget`: see Guardrails.
 - `closed_at`, `closed_by`.
 
 ### Events
@@ -135,7 +135,7 @@ Ticket events use the envelope of ADR 0020's `TaskEvent` without
 | `task.started` | Task short id, agent, who started it |
 | `task.closed` | Task short id, agent, outcome, the task's result summary |
 | `ask.opened` / `ask.answered` / `ask.cancelled` | Ask id, holder, question, answer |
-| `ceiling.reached` | Which ceiling, the value |
+| `budget.reached` | Which budget, the value |
 | `timer.fired` | Why |
 
 Readers ignore types they do not know.
@@ -192,45 +192,67 @@ these hold:
 - the ticket has no open manager task
 - the ticket is under its manager budget (see Guardrails)
 
-When a manager task closes, imbi-api looks for a wake event that the
-task did not write and did not read. An event is read when `get_ticket`
-returned it to the task. A task that read nothing has read only the
-event that woke it. If there is such an event and the ticket is under
-its manager budget, imbi-api creates the next manager task.
+When a manager task closes without failing, imbi-api looks for an
+unread wake event. If there is one and the ticket is under its manager
+budget, imbi-api creates the next manager task.
+
+**What counts as read.** An event is read when `get_ticket` returned it
+to a manager task that then closed without failing. A manager task
+fails when it closes with any outcome other than `done_acted` or
+`done_nothing_to_act_on`. Events returned to a task that failed stay
+unread, and the next manager task gets them again. An event that a
+manager task wrote counts as read.
 
 **Each run starts from the ticket, not from memory.** A manager task
-reads the ticket's current state: its fields, tasks, asks, and pull
-request and deploy state. It also gets the events written since the
-last manager run read the log. It does the next thing and reports an
-outcome. A missed event or a second run on the same state does no harm,
-because the second run finds nothing to do and closes with
-`done_nothing_to_act_on`.
+reads the ticket's current state and its unread events. It does the
+next thing and reports an outcome. A missed event or a second run on
+the same state does no harm, because the second run finds nothing to do
+and closes with `done_nothing_to_act_on`.
 
 **A run's cost does not grow with the ticket's age.** `get_ticket`
-returns older events only when the manager asks for them, for example
-on a reopen. A manager that read the whole log on every run would pass
-its task budget (ADR 0020) on a long ticket, and then fail the same way
-on every later run.
+returns only what a run needs:
+
+- the ticket's fields and its deploy state
+- the unread events. Older events come only on request, for example on
+  a reopen
+- open work tasks and open asks. Closed tasks, answered asks, and
+  manager tasks are not listed. They are in the events
+- linked pull requests that are open or merged
+
+Each list comes one page at a time, with a fixed page size. The manager
+asks for the next page when it needs one. A manager that read
+everything on every run would pass its task budget (ADR 0020) on a long
+ticket, and then fail the same way on every later run.
 
 **A manager task has no projects and clones nothing.** Work that needs
 the code is a task for another agent.
 
 **A failed manager task changes nothing on the ticket.** The ticket page
-shows the failure. The next wake event runs the manager again, and a
-person can run it by hand. After three failed manager tasks in a row,
+shows the failure. imbi-api does not start the next manager task at
+once, because a manager that fails every time would then run in a loop.
+A new wake event runs the manager again, a person can run it by hand,
+and the timer retries it. After three failed manager tasks in a row,
 imbi-api opens an ask for the owner, if the ticket has no open ask about
-manager failures. The next manager task that succeeds closes that ask.
+manager failures, and the timer stops retrying. The next manager task
+that succeeds closes that ask.
 
-**A timer covers silence.** A scheduler job writes `timer.fired` on each
-open ticket that has had no event, no open task, and no open ask for a
-set time. The manager then decides whether anything is stuck.
+**A timer covers silence and retries.** A scheduler job writes
+`timer.fired` on an open ticket in two cases:
+
+- **Silence.** The ticket has had no event, no open task, and no open
+  ask for a set time. The manager then decides whether anything is
+  stuck.
+- **Retry.** For a set time the ticket has had an unread wake event and
+  no open manager task. The ticket must be under its manager budget and
+  have fewer than three failed manager tasks in a row. An open ask does
+  not block this case.
 
 **Manager tools.** A manager task gets these Imbi tools. Its token
 allows them for the ticket in its origin only.
 
 | Tool | Does |
 |---|---|
-| `get_ticket` | Reads the ticket's fields, tasks, asks, pull requests, and deploy state, with the events since the last manager run read the log. Returns older events on request |
+| `get_ticket` | Reads the ticket's fields, open work tasks, open asks, linked pull requests, deploy state, and unread events. Returns older events and further pages on request |
 | `update_ticket` | Sets stage, labels, priority, and projects |
 | `comment_on_ticket` | Adds a comment |
 | `start_ticket_task` | Starts a task for a named agent on named projects, with an instruction and a budget |
@@ -354,8 +376,9 @@ depend on it:
 - Cancelling a ticket cancels its open work tasks and asks.
 - A manager task can act on its own ticket only.
 
-**Ceilings.** A ticket has three ceilings: `budget`, `manager_budget`,
-and `max_tasks`. All three default from organization settings. The
+**Budgets.** A ticket has two budgets, `budget` and `manager_budget`.
+Both default from organization settings. A person with `ticket:write`
+can set them on one ticket, and the manager cannot change them. The
 defaults are generous. They exist to stop runaway cost, such as a
 manager that keeps starting implement tasks against a check that never
 passes, or a ticket whose events keep waking the manager. They are not
@@ -364,29 +387,29 @@ for planning what a ticket should cost.
 - `budget` limits the total cost of the ticket's work tasks, child
   tasks included.
 - `manager_budget` limits the total cost of the ticket's manager tasks.
-- `max_tasks` limits the number of work tasks, child tasks included.
-- Each ceiling is a total for the whole ticket. Every task also keeps
+- Each budget is a total for the whole ticket. Every task also keeps
   its own task budget (ADR 0020).
-- A closed task that Follow up linked to the ticket counts toward no
-  ceiling. Its cost was spent before the ticket existed.
-- **Every path that creates a task on a ticket checks the ceilings.**
+- **Nothing limits the number of tasks.** Cost is what matters. A work
+  task that fails before it costs anything still costs a manager run to
+  notice, so the manager budget bounds that loop.
+- A closed task that Follow up linked to the ticket counts toward
+  neither budget. Its cost was spent before the ticket existed.
+- **Every path that creates a task on a ticket checks the budgets.**
   The paths are `start_ticket_task`, `create_child_task`, a person
   starting a task from the ticket page, and the manager task that
   imbi-api creates on a wake event.
-- A work task is refused once the cost of work tasks reaches `budget`,
-  or when the ticket already has `max_tasks` work tasks. The manager
-  still runs. It can close a ticket whose work is finished, cancel asks
-  that no longer matter, and comment on why work stopped.
+- A work task is refused once the cost of work tasks reaches `budget`.
+  The manager still runs. It can close a ticket whose work is finished,
+  cancel asks that no longer matter, and comment on why work stopped.
 - A manager task is refused once the cost of manager tasks reaches
   `manager_budget`. A ticket is under its manager budget while that
   cost is less. Past it, the ticket waits for the owner.
-- When a ceiling refuses a task and the ticket has no open ask about
-  that ceiling, imbi-api writes `ceiling.reached` and opens an ask for
-  the owner. The owner raises the ceiling or cancels the ticket.
-- Raising a ceiling closes its ask and writes `field.changed`, which
-  wakes the manager. The manager reads what it missed from the log. If
-  the ticket reaches the raised ceiling later, the next refusal opens a
-  new ask.
+- When a budget refuses a task and the ticket has no open ask about
+  that budget, imbi-api writes `budget.reached` and opens an ask for
+  the owner. The owner raises the budget or cancels the ticket.
+- Raising a budget closes its ask and writes `field.changed`, which
+  wakes the manager. If the ticket reaches the raised budget later, the
+  next refusal opens a new ask.
 - Tasks that are already open keep running, each within its own task
   budget. A ticket can pass a budget by at most the remaining task
   budgets of the tasks open at that moment.
