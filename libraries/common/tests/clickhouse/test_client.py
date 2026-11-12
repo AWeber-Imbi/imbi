@@ -3,6 +3,7 @@ import tomllib
 import unittest
 from unittest import mock
 
+from clickhouse_connect import common
 from clickhouse_connect.driver import exceptions
 
 from imbi.common import models
@@ -284,6 +285,13 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         instance1 = client.Clickhouse.get_instance()
         instance2 = client.Clickhouse.get_instance()
         self.assertIs(instance1, instance2)
+
+    async def test_disables_connection_pool_reset(self) -> None:
+        """The driver must not reset the shared aiohttp session."""
+        common.set_setting('max_connection_age', 600)
+        self.addCleanup(common.set_setting, 'max_connection_age', 600)
+        client.Clickhouse()
+        self.assertEqual(common.get_setting('max_connection_age'), 0)
 
     async def test_initialize(self) -> None:
         """Test clickhouse initialization."""

@@ -26,6 +26,7 @@ from collections import abc
 
 import clickhouse_connect.driver
 import pydantic
+from clickhouse_connect import common
 from clickhouse_connect.datatypes import format
 from clickhouse_connect.driver import asyncclient, exceptions
 from clickhouse_connect.driver.external import ExternalData
@@ -163,6 +164,12 @@ class Clickhouse:
         self._lock = asyncio.Lock()
         self._settings = settings.Clickhouse()
         format.set_read_format('IPv*', 'string')
+        # The async driver closes and replaces its shared aiohttp session
+        # when max_connection_age passes. That reset races with concurrent
+        # queries ("Session is closed") and two concurrent resets leak a
+        # session ("Unclosed client session"). Set 0 to disable the reset;
+        # aiohttp keepalive_timeout already closes idle connections.
+        common.set_setting('max_connection_age', 0)
 
     @classmethod
     def get_instance(cls) -> Clickhouse:
