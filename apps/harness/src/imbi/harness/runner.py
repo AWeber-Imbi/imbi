@@ -167,16 +167,36 @@ def _fence(reason: str) -> typing.NoReturn:
     os._exit(75)
 
 
+def _make_writable(top: pathlib.Path) -> None:
+    """Give ``agent`` full access to each directory in ``top``, so that
+    a directory without write permission does not stop ``rmtree``. Do
+    not follow symbolic links."""
+    with contextlib.suppress(OSError):
+        top.chmod(0o700)
+    for root, dirs, _ in os.walk(top):
+        for name in dirs:
+            path = pathlib.Path(root) / name
+            if not path.is_symlink():
+                with contextlib.suppress(OSError):
+                    path.chmod(0o700)
+
+
 def _clear_tmp() -> None:
     """Remove the files of the agent from ``/tmp``, so that they do
-    not go into the next chain. Do not follow symbolic links."""
+    not go into the next chain. Do not follow symbolic links. Fence
+    when a file of the agent stays."""
     with privilege.effective(privilege.AGENT):
         for path in task.SHARED_TMP.iterdir():
             if path.is_dir() and not path.is_symlink():
+                _make_writable(path)
                 shutil.rmtree(path, ignore_errors=True)
             else:
                 with contextlib.suppress(OSError):
                     path.unlink(missing_ok=True)
+    # Root has no CAP_CHOWN, so an entry of root has no agent data.
+    left = [p for p in task.SHARED_TMP.iterdir() if p.lstat().st_uid != 0]
+    if left:
+        _fence(f'Could not clear {task.SHARED_TMP}: {len(left)} left')
 
 
 class Runner:

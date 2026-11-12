@@ -247,6 +247,41 @@ class OneChainTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(shared_tmp.iterdir()), [])
         self.assertEqual(outside.read_text(), 'keep')
 
+    def test_clear_tmp_removes_read_only_directories(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        shared_tmp = pathlib.Path(tmp.name)
+        (shared_tmp / 'dir' / 'sub').mkdir(parents=True)
+        (shared_tmp / 'dir' / 'sub' / 'file').write_text('x')
+        (shared_tmp / 'dir' / 'sub').chmod(0o500)
+        (shared_tmp / 'dir').chmod(0o500)
+        with (
+            mock.patch.object(runner.task, 'SHARED_TMP', shared_tmp),
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ),
+            mock.patch.object(runner, '_fence') as fence,
+        ):
+            runner._clear_tmp()
+        self.assertEqual(list(shared_tmp.iterdir()), [])
+        fence.assert_not_called()
+
+    def test_clear_tmp_fences_when_a_file_stays(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        shared_tmp = pathlib.Path(tmp.name)
+        (shared_tmp / 'file').write_text('x')
+        with (
+            mock.patch.object(runner.task, 'SHARED_TMP', shared_tmp),
+            mock.patch.object(
+                privilege, 'effective', return_value=contextlib.nullcontext()
+            ),
+            mock.patch.object(pathlib.Path, 'unlink'),
+            mock.patch.object(runner, '_fence') as fence,
+        ):
+            runner._clear_tmp()
+        fence.assert_called_once()
+
     async def test_end_chain_without_executor(self) -> None:
         subject = make_runner()
         with (
