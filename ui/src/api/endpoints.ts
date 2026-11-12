@@ -215,7 +215,7 @@ import type {
   CreateThreadBody,
 } from '@/types/comments'
 
-import { apiClient, ApiError, apiUrl } from './client'
+import { apiClient, ApiError, apiUrl, refreshAccessToken } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -261,8 +261,11 @@ export const disableMfa = (
 ) => apiClient.delete<void>('/mfa/disable', undefined, body)
 
 // The refresh token is sent as an HttpOnly cookie (C2), not in the body.
-export const refreshToken = () =>
-  apiClient.post<TokenResponse>('/auth/token/refresh')
+// Use the shared refresh so that two callers (or two tabs) never send the
+// same cookie twice, which the API treats as token reuse.
+export const refreshToken = async (): Promise<
+  Pick<TokenResponse, 'access_token'>
+> => ({ access_token: await refreshAccessToken() })
 
 export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 

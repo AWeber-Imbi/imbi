@@ -1390,25 +1390,32 @@ async def _existing_tag_for_committish(
     version bump), while a resync of the *testing* deployment that
     preceded it still carries the promoted commit.  Matching only the
     current committish would strand those late observations on an
-    untagged sibling.
+    untagged sibling.  A Release whose own ``committish`` is the commit
+    wins over one that only carries it as ``promoted_committish``: the
+    commit then matches both the Release built on it and the one
+    promoted from it, and that is not a retag.
     """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
     WHERE r.tag IS NOT NULL
       AND (r.committish = {committish}
            OR r.promoted_committish = {committish})
-    RETURN r.tag AS tag
+    RETURN r.tag AS tag, r.committish = {committish} AS exact
     """
     rows = await db.execute(
         query,
         {'project_id': project_id, 'committish': committish},
-        ['tag'],
+        ['tag', 'exact'],
     )
     tags: set[str] = set()
+    exact_tags: set[str] = set()
     for row in rows:
         tag = graph.parse_agtype(row.get('tag'))
         if tag:
             tags.add(str(tag))
+            if graph.parse_agtype(row.get('exact')) is True:
+                exact_tags.add(str(tag))
+    tags = exact_tags or tags
     if len(tags) == 1:
         return tags.pop()
     if len(tags) > 1:
@@ -2100,9 +2107,19 @@ async def _apply_remote_deployment(
     # onto the existing tagged Release for this commit (the node the UI
     # reads, keyed by tag) instead of spawning a duplicate untagged node.
     if tag is None:
-        tag = await _existing_tag_for_committish(
-            db, project_id=project_id, committish=committish
-        )
+        try:
+            tag = await _existing_tag_for_committish(
+                db, project_id=project_id, committish=committish
+            )
+        except ValueError:
+            LOGGER.warning(
+                'Resync for project=%s env=%s committish=%s: several'
+                ' tagged Releases carry that commit; not recorded',
+                project_id,
+                observed.environment,
+                committish,
+            )
+            return
     # Prefer notes the plugin already fetched from the deployment ref; when
     # absent but the tag is now known, ask the remote for the body by tag.
     notes = observed.release_notes

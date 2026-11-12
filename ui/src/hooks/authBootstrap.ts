@@ -6,7 +6,7 @@ export interface BootstrapDeps {
   isTokenExpired: () => boolean
   onRedirect: () => void
   pathname: string
-  refreshTokenApi: () => Promise<TokenResponse>
+  refreshTokenApi: () => Promise<Pick<TokenResponse, 'access_token'>>
   search: string
   setTokens: (access: string) => void
 }

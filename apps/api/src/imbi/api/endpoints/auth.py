@@ -1210,7 +1210,10 @@ async def _handle_refresh_reuse(
     if cascade_rows:
         raw = graph.parse_agtype(cascade_rows[0].get('revoked_count'))
         cascaded = int(raw or 0)
-    LOGGER.error(
+    # Zero siblings means the family was already revoked: usually two
+    # tabs that sent the same cookie, not a leaked token.
+    LOGGER.log(
+        logging.ERROR if cascaded else logging.WARNING,
         'Refresh-token reuse detected (jti=%s, family_id=%s); '
         'revoked %d sibling tokens',
         jti,

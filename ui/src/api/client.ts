@@ -69,38 +69,63 @@ export class ApiError<T = unknown> extends Error {
 
 let refreshPromise: null | Promise<string> = null
 
-async function refreshAccessToken(): Promise<string> {
+// All tabs send the same refresh cookie. The API rotates it on each use and
+// treats a second use as token theft, which revokes the whole family. So
+// concurrent refreshes share one promise in this tab, and tabs take turns
+// through a Web Lock.
+export async function refreshAccessToken(): Promise<string> {
   if (refreshPromise) {
     return refreshPromise
   }
 
   refreshPromise = (async () => {
     try {
-      // The refresh token rides along as an HttpOnly cookie (C2), sent
-      // automatically via credentials:'include'; no request body needed.
-      const response = await fetch(`${API_BASE_URL}/auth/token/refresh`, {
-        credentials: 'include',
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        throw new ApiError(response.status, response.statusText)
-      }
-
-      const { access_token } = (await response.json()) as TokenResponse
-      useAuthStore.getState().setTokens(access_token)
-
-      return access_token
-    } catch (error) {
-      console.error('[API] Token refresh failed:', error)
-      useAuthStore.getState().clearTokens()
-      throw error
+      const staleToken = useAuthStore.getState().accessToken
+      if (!('locks' in navigator)) return await requestRefresh()
+      return await navigator.locks.request('imbi-refresh', () =>
+        refreshUnlessDone(staleToken),
+      )
     } finally {
       refreshPromise = null
     }
   })()
 
   return refreshPromise
+}
+
+// Another tab can refresh while this tab waits for the lock. It persists the
+// new token to localStorage, so read that before using the cookie again.
+async function refreshUnlessDone(staleToken: null | string): Promise<string> {
+  await useAuthStore.persist.rehydrate()
+  const { accessToken, isTokenExpired } = useAuthStore.getState()
+  if (accessToken && accessToken !== staleToken && !isTokenExpired()) {
+    return accessToken
+  }
+  return requestRefresh()
+}
+
+async function requestRefresh(): Promise<string> {
+  try {
+    // The refresh token rides along as an HttpOnly cookie (C2), sent
+    // automatically via credentials:'include'; no request body needed.
+    const response = await fetch(`${API_BASE_URL}/auth/token/refresh`, {
+      credentials: 'include',
+      method: 'POST',
+    })
+
+    if (!response.ok) {
+      throw new ApiError(response.status, response.statusText)
+    }
+
+    const { access_token } = (await response.json()) as TokenResponse
+    useAuthStore.getState().setTokens(access_token)
+
+    return access_token
+  } catch (error) {
+    console.error('[API] Token refresh failed:', error)
+    useAuthStore.getState().clearTokens()
+    throw error
+  }
 }
 
 const SKIP_AUTH_PATHS = [

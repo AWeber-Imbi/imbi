@@ -2109,6 +2109,16 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(upsert_call.kwargs['committish'], '2668cd0')
         self.assertEqual(upsert_call.kwargs['notes_markdown'], notes)
 
+    def test_resync_skips_an_ambiguous_retagged_commit(self) -> None:
+        """A commit with two tags is skipped with a warning, not an error."""
+        self._arm([self._observed(ref='main')], release_exists=True)
+        self.mocks['existing_tag'].side_effect = ValueError('ambiguous')
+        with self.assertLogs(project_deployments.LOGGER, 'WARNING') as logs:
+            summary = self._run_resync()
+        self.assertEqual(summary.errors, [])
+        self.mocks['upsert_release_node'].assert_not_called()
+        self.assertFalse(any('ERROR' in line for line in logs.output))
+
     def test_resync_400_when_plugin_opts_out(self) -> None:
         # Override the resolved plugin to advertise the no-sync flavor.
         self.mocks['resolve_capability'].return_value = _make_resolved(
@@ -7573,6 +7583,35 @@ class ExistingTagForCommittishTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_raises_when_commit_has_multiple_tags(self) -> None:
         db = self._db([{'tag': 'v1.0.0'}, {'tag': 'v2.0.0'}])
+        with self.assertRaises(ValueError):
+            await project_deployments._existing_tag_for_committish(
+                db, project_id='pid', committish='deadbeef'
+            )
+
+    async def test_prefers_the_exact_committish_match(self) -> None:
+        """IMBI-41: one Release holds the commit, one was promoted from it.
+
+        The Release whose own committish is the commit wins over the one
+        that only carries it as ``promoted_committish``.
+        """
+        db = self._db(
+            [
+                {'tag': 'v1.0.0', 'exact': True},
+                {'tag': 'v1.1.0', 'exact': False},
+            ]
+        )
+        result = await project_deployments._existing_tag_for_committish(
+            db, project_id='pid', committish='deadbeef'
+        )
+        self.assertEqual(result, 'v1.0.0')
+
+    async def test_raises_when_exact_matches_disagree(self) -> None:
+        db = self._db(
+            [
+                {'tag': 'v1.0.0', 'exact': True},
+                {'tag': 'v2.0.0', 'exact': True},
+            ]
+        )
         with self.assertRaises(ValueError):
             await project_deployments._existing_tag_for_committish(
                 db, project_id='pid', committish='deadbeef'
