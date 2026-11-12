@@ -33,7 +33,12 @@ ENGINE_PRINCIPAL = 'imbi-workflows'
 #: ``Idempotency-Key``) is not a workflow call, also when it starts
 #: with a run ID.
 #: ``retryable``: the step failed the run with ``outcome_unknown``, the
-#: run is not archived, and its deadline has not passed.
+#: run is not archived, has no cancel request, and its deadline has not
+#: passed. Only the step that failed the run can run again: its
+#: failure took no wired edge. A step whose ``Failed`` edge the run
+#: took is not retryable, because a retry would reset only that step
+#: and the step that failed the run would close it again. An operator
+#: can still clear such a key, or mark it done, with no retry.
 _STALE = """
 WITH e AS (
   SELECT key, created_at,
@@ -51,8 +56,12 @@ SELECT e.key, e.action, e.created_at, r.id AS run_id,
        s.node_id, s.input AS step_input,
        COALESCE(e.action IN ('deployment', 'step-email')
          AND r.status = 'failed' AND r.error = 'outcome_unknown'
-         AND r.log_archived_at IS NULL
+         AND r.log_archived_at IS NULL AND NOT r.cancel_requested
          AND s.status = 'failed' AND s.error = 'outcome_unknown'
+         AND NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(v.graph -> 'edges') AS ed
+            WHERE ed ->> 'source' = s.node_id
+              AND (ed ->> 'port')::int = s.port)
          AND r.created_at + make_interval(secs => COALESCE(
                (v.settings ->> 'max_run_time_seconds')::int, 7200))
              > NOW(), FALSE) AS retryable
@@ -495,14 +504,16 @@ async def _reopen(conn: typing.Any, run_id: uuid.UUID, node_id: str) -> int:
     Return the run's ``last_seq`` before the change.
 
     Raises:
-        _ChangedError: The run is not failed, is archived, has a running
-            run of its concurrency key, or the step did not fail with
-            ``outcome_unknown``.
+        _ChangedError: The run is not failed, is archived, has a cancel
+            request, has a running run of its concurrency key, or the
+            step did not fail with ``outcome_unknown``.
 
     """
-    # Serialize reopens of one concurrency key. Under READ COMMITTED two
-    # reopens of different runs can both pass the NOT EXISTS check below.
-    # A separate statement gives the UPDATE a snapshot after the lock.
+    # Serialize the transitions to ``running`` of one concurrency key:
+    # reopens, and the engine's start of a queued run, which takes the
+    # same lock. Under READ COMMITTED two of them can both pass the NOT
+    # EXISTS check below. A separate statement gives the UPDATE a
+    # snapshot after the lock.
     await conn.execute(
         'SELECT pg_advisory_xact_lock(hashtext(r.workflow_id::text'
         " || ':' || r.concurrency_key)) FROM workflow_runtime.runs AS r"
@@ -513,7 +524,7 @@ async def _reopen(conn: typing.Any, run_id: uuid.UUID, node_id: str) -> int:
         "UPDATE workflow_runtime.runs AS r SET status = 'running',"
         ' error = NULL, closed_at = NULL, due_at = NOW()'
         " WHERE r.id = %s AND r.status = 'failed'"
-        ' AND r.log_archived_at IS NULL'
+        ' AND r.log_archived_at IS NULL AND NOT r.cancel_requested'
         # The engine claims a running run before it checks the
         # concurrency key, so do not open a run beside a running one.
         ' AND NOT EXISTS (SELECT 1 FROM workflow_runtime.runs AS o'

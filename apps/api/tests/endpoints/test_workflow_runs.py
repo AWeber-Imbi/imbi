@@ -1480,3 +1480,50 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         response = await self._resolve(resolution='clear', retry=True)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(await self._state(), before)
+
+    async def test_cancel_request_blocks_a_retry(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET cancel_requested = TRUE'
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        [effect] = (await self.client.get(self.recover)).json()
+        self.assertFalse(effect['retryable'])
+        before = await self._state()
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(await self._state(), before)
+        # The transactional guard refuses too.
+        self.assertFalse(
+            await self.runs.resolve_side_effect(
+                self.key, None, (uuid.UUID(str(self.run_id)), 'tell')
+            )
+        )
+        self.assertEqual(await self._state(), before)
+
+    async def test_step_whose_failed_edge_was_taken_is_not_retryable(
+        self,
+    ) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET port = 1'
+                " WHERE run_id = %s AND node_id = 'tell'",
+                (self.run_id,),
+            )
+            await conn.execute(
+                'UPDATE workflows.workflow_versions AS v SET graph ='
+                " jsonb_set(v.graph, '{edges}', COALESCE(v.graph -> 'edges',"
+                ' \'[]\') || \'[{"source": "tell", "port": 1,'
+                ' "target": "hold"}]\'::jsonb)'
+                ' FROM workflow_runtime.runs AS r'
+                ' WHERE r.id = %s AND v.workflow_id = r.workflow_id'
+                ' AND v.version = r.version',
+                (self.run_id,),
+            )
+        [effect] = (await self.client.get(self.recover)).json()
+        self.assertFalse(effect['retryable'])
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        response = await self._resolve(resolution='clear')
+        self.assertEqual(response.status_code, 204, response.text)

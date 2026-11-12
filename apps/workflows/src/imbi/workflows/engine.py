@@ -307,8 +307,26 @@ class Engine:
         return required <= held
 
     async def _start(self, run: store.Row, wf_graph: wf.Graph) -> None:
-        """Write a step row per node and mark the run ``running``."""
+        """Write a step row per node and mark the run ``running``.
+
+        The run stays ``queued`` when a run of its concurrency key became
+        ``running`` after the claim: an operator reopened it
+        (``imbi.api.workflows.runs._reopen``, which takes the same lock).
+        """
         async with self.store.write(run['id']) as conn:
+            if run['concurrency_key'] is not None:
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s || ':' || %s))",
+                    (str(run['workflow_id']), run['concurrency_key']),
+                )
+                cur = await conn.execute(
+                    'SELECT 1 FROM workflow_runtime.runs'
+                    ' WHERE workflow_id = %s AND concurrency_key = %s'
+                    " AND id <> %s AND status = 'running'",
+                    (run['workflow_id'], run['concurrency_key'], run['id']),
+                )
+                if await cur.fetchone() is not None:
+                    return
             for node in wf_graph.nodes:
                 started = node.id == run['trigger_node_id']
                 trigger = registry.STEP_TYPES[node.type].trigger
