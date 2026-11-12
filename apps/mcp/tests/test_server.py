@@ -425,6 +425,7 @@ class PostHogInstrumentTestCase(unittest.TestCase):
         with mock.patch.object(server, 'get_access_token', return_value=user):
             identity = server._mcp_identity()
         self.assertEqual(identity.distinct_id, posthog.distinct_id('a@b.c'))
+        self.assertEqual(identity.properties, {'name': 'a'})
         for token in (api_key, None):
             with mock.patch.object(
                 server, 'get_access_token', return_value=token
