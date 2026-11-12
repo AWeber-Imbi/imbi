@@ -878,6 +878,13 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         set_statement = next(s for s in statements if 'SET p.' in s.cypher)
         self.assertEqual(set_statement.params['tier'], 'gold')
 
+    def test_patch_add_ignores_unused_from(self) -> None:
+        """``add`` ignores ``from``, so a stray value must not 500."""
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'gold', 'from': 'x'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
     def test_patch_fact_still_validates_patched_value(self) -> None:
         response = self._patch_with_required_facts(
             [{'op': 'add', 'path': '/tier', 'value': 'bronze'}]

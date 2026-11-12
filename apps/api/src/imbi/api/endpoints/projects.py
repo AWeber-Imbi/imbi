@@ -3749,7 +3749,10 @@ async def patch_project(
         {
             path.split('/')[1]
             for op in operations
-            for path in (op.path, op.from_)
+            for path in (
+                op.path,
+                op.from_ if op.op in ('move', 'copy') else None,
+            )
             if path
         },
     )
