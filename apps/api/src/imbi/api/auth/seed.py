@@ -518,6 +518,14 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'run',
         'Start manual and test runs of workflows, and cancel runs',
     ),
+    # Granted to no non-admin default role.
+    (
+        'workflow:recover',
+        'workflow',
+        'recover',
+        'Resolve workflow side effects with an unknown outcome, and retry'
+        ' their steps',
+    ),
     # Runner pools (ADR 0022). Only platform administrators
     # (`is_admin`) change pools. That is not a permission, because an
     # organization administrator could grant a permission to a role.
@@ -889,6 +897,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'upload:delete',
             'tag:delete',
             'service_account:read',
+            'secret_binding:read',
             'operations_log:create',
             'operations_log:update',
             'operations_log:delete',

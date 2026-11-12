@@ -572,6 +572,35 @@ result, so the step does not deploy or send two times. If the first call
 did not finish, imbi-api returns `409 outcome_unknown`, and the step fails
 without a retry.
 
+### Calls with an unknown outcome
+
+A call stays unknown until an operator resolves it. Imbi never expires one,
+because the first call may have acted. A run that an unknown call failed keeps its
+step records in Postgres, so its step can run again.
+
+The **Calls with an unknown outcome** section at the top of
+**Agents > Workflows** lists the calls that started more than 15 minutes
+ago and did not finish. You need `workflow:recover` to see it. For each
+call:
+
+1. Find out what happened. For a deployment, look in the deployment
+   provider (for example, the GitHub Deployments of the repository) for a
+   deployment of the step's version that started at that time. For an
+   email, ask the recipients.
+2. Select **Retry step** to open the run again and run the step again. The
+   box shows only when the step failed the run with `outcome_unknown`, the
+   run is not archived, and its max run time has not passed.
+3. Click **Clear** to make Imbi forget the call: a retry deploys or sends
+   again. Click **Mark done** to record that the call acted: a retry of a
+   step email sends nothing and the step succeeds. A deployment marked
+   done cannot run again, because Imbi does not know its deployment run.
+
+The row shows the step's parameters (for a deployment, the project, the
+environment, and the version) and links to the run.
+
+The API is `GET /organizations/{org}/workflow-runs/side-effects` and
+`POST /organizations/{org}/workflow-runs/side-effects/resolve`.
+
 ## Permissions
 
 | Permission | Allows |
@@ -581,6 +610,7 @@ without a retry.
 | `workflow:write` | Edit, activate, and pause workflows |
 | `workflow:delete` | Delete workflows |
 | `workflow:run` | Start manual and test runs, and cancel runs |
+| `workflow:recover` | Resolve calls with an unknown outcome, and retry their steps |
 
 The default roles get these permissions:
 
