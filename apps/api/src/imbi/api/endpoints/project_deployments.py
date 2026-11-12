@@ -2761,7 +2761,10 @@ async def resolve_commit(
     commit = await call_with_timeout(
         handler.resolve_committish(ctx, credentials, committish)
     )
-    await persist_link_writeback(db, ctx)
+    await asyncio.gather(
+        persist_link_writeback(db, ctx),
+        _annotate_commits(project_id, [commit]),
+    )
     return commit
 
 
