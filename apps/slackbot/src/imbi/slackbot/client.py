@@ -31,7 +31,7 @@ async def initialize() -> None:
     if slackbot_settings.api_token:
         _client = tokens.bearer_client(
             tokens.ServiceToken(
-                slackbot_settings.api_url, slackbot_settings.api_token
+                slackbot_settings.api_base_url, slackbot_settings.api_token
             )
         )
         LOGGER.info('Slack bot client uses the AI provider token')

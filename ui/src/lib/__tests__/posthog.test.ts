@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import posthog, { type CaptureResult } from 'posthog-js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { useAuthStore } from '@/stores/authStore'
+
 import {
   distinctId,
   initPostHog,
@@ -23,6 +25,7 @@ afterEach(() => {
   delete window.__IMBI_POSTHOG_WEB_ANALYTICS__
   delete window.__IMBI_POSTHOG_SESSION_REPLAY__
   delete window.__IMBI_POSTHOG_REPLAY_SAMPLE_RATE__
+  useAuthStore.setState({ accessToken: null })
   vi.clearAllMocks()
 })
 
@@ -111,6 +114,21 @@ describe('initPostHog', () => {
     await initPostHog()
     delete window.__IMBI_POSTHOG_PERSON_PROFILES__
     expect(posthog.reset).toHaveBeenCalledOnce()
+  })
+
+  it('names the person by the email local part', async () => {
+    const payload = btoa(JSON.stringify({ exp: 9999999999, sub: 'jo@x.io' }))
+    useAuthStore.setState({ accessToken: `e30.${payload}.sig` })
+    window.__IMBI_POSTHOG_KEY__ = 'phc_x'
+    window.__IMBI_POSTHOG_PERSON_PROFILES__ = 'identified_only'
+    await initPostHog()
+    delete window.__IMBI_POSTHOG_PERSON_PROFILES__
+    await vi.waitFor(() =>
+      expect(posthog.identify).toHaveBeenCalledWith(
+        createHash('sha256').update('jo@x.io').digest('hex'),
+        { name: 'jo' },
+      ),
+    )
   })
 
   it('keeps the anonymous identity when nobody is signed in', async () => {

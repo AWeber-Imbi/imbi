@@ -336,7 +336,7 @@ Caddy writes these values into the page when it serves the UI.
 | `VITE_POSTHOG_WEB_ANALYTICS` | `true` sends web analytics: a pageview on each route change, page leaves, and web vitals. The default is `false`. Autocapture of clicks stays off |
 | `VITE_POSTHOG_SESSION_REPLAY` | `true` records sessions. The default is `false` |
 | `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | The share of sessions that record, `0` to `1`. The default is `1` |
-| `VITE_POSTHOG_PERSON_PROFILES` | `identified_only` identifies each user by the SHA-256 hash of their email, the same ID as in the MCP and AI events. The default is `never`: events have no person |
+| `VITE_POSTHOG_PERSON_PROFILES` | `identified_only` identifies each user by the SHA-256 hash of their email, the same ID as in the MCP and AI events, and names the person by the local part of the email. The full email is not sent. The default is `never`: events have no person |
 
 Session replay always masks all text and all inputs. No setting turns this
 off. The fields that show an API key or a client secret one time are not
