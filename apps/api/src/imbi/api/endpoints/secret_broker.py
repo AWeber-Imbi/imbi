@@ -923,6 +923,8 @@ async def update_binding(
 
     Raises:
         404: No such binding.
+        409: The change sets or clears the provider key mark while a
+            grant uses the binding.
         422: The locator is not valid.
 
     """
@@ -956,15 +958,18 @@ async def update_binding(
         raise _invalid('A provider key binding cannot be dynamic')
     if not changes:
         return current
-    row = await fetch_or_404(
-        secrets.update,
-        'bindings',
-        org_id,
-        binding_id,
-        changes,
-        event=_event('secret_binding_updated', auth, 'binding_id'),
-        detail='Binding not found',
-    )
+    try:
+        row = await fetch_or_404(
+            secrets.update,
+            'bindings',
+            org_id,
+            binding_id,
+            changes,
+            event=_event('secret_binding_updated', auth, 'binding_id'),
+            detail='Binding not found',
+        )
+    except store.InUse as err:
+        raise fastapi.HTTPException(status_code=409, detail=str(err)) from None
     if 'locator' in changes:
         await _add_consumer(secrets, org_id, row, auth)
     return row
@@ -1058,10 +1063,6 @@ grants_router = fastapi.APIRouter(
 )
 
 
-def _unknown_bindings() -> fastapi.HTTPException:
-    return _invalid('A binding is not in the organization')
-
-
 def _check_setup_delivery(
     purposes: abc.Iterable[str], delivery_modes: abc.Iterable[str]
 ) -> None:
@@ -1101,8 +1102,9 @@ async def create_grant(
     """Create an allow rule with exact ids.
 
     Raises:
-        422: A binding is not in the organization, or a setup purpose
-            has a delivery mode other than ``file_descriptor``.
+        422: A binding is not in the organization or is a provider
+            key binding, or a setup purpose has a delivery mode other
+            than ``file_descriptor``.
 
     """
     _check_setup_delivery(data.purposes, data.delivery_modes)
@@ -1113,8 +1115,8 @@ async def create_grant(
             data.model_dump() | {'created_by': auth.principal_name},
             event=_event('secret_grant_created', auth, 'grant_id'),
         )
-    except store.UnknownBindings:
-        raise _unknown_bindings() from None
+    except (store.UnknownBindings, store.ProviderKeyBinding) as err:
+        raise _invalid(str(err)) from None
     return row
 
 
@@ -1175,8 +1177,9 @@ async def update_grant(
 
     Raises:
         404: No such grant.
-        422: A binding is not in the organization, or a setup purpose
-            has a delivery mode other than ``file_descriptor``.
+        422: A binding is not in the organization or is a provider
+            key binding, or a setup purpose has a delivery mode other
+            than ``file_descriptor``.
 
     """
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
@@ -1200,8 +1203,8 @@ async def update_grant(
             event=_event('secret_grant_updated', auth, 'grant_id'),
             detail='Grant not found',
         )
-    except store.UnknownBindings:
-        raise _unknown_bindings() from None
+    except (store.UnknownBindings, store.ProviderKeyBinding) as err:
+        raise _invalid(str(err)) from None
     return row
 
 

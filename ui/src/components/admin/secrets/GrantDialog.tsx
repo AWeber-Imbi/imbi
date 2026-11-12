@@ -183,10 +183,18 @@ export function GrantDialog({
                 <Picker
                   label="Bindings"
                   onChange={setBindings}
-                  options={bindings.map((b) => ({
-                    label: b.reference,
-                    value: b.id,
-                  }))}
+                  // The API refuses a grant on a provider key. A key
+                  // that an old grant names stays, so it can be removed.
+                  options={bindings
+                    .filter(
+                      (b) =>
+                        !b.provider_key_usage ||
+                        form.binding_ids.includes(b.id),
+                    )
+                    .map((b) => ({
+                      label: b.reference,
+                      value: b.id,
+                    }))}
                   selected={form.binding_ids}
                 />
               </div>
