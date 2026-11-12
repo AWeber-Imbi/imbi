@@ -116,6 +116,15 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         )
         self._notes_patch.start()
         self.addCleanup(self._notes_patch.stop)
+        # The create path fans the new release out to release-tracking
+        # plugins in a background task with its own DB calls.
+        self.dispatch_release = mock.MagicMock()
+        dispatch_patch = mock.patch(
+            'imbi.api.plugins.release_dispatch.schedule_release_created',
+            new=self.dispatch_release,
+        )
+        dispatch_patch.start()
+        self.addCleanup(dispatch_patch.stop)
         self.client = fastapi.testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
 
@@ -168,6 +177,11 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(body['project_id'], PROJECT_ID)
         self.assertEqual(body['id'], RELEASE_ID)
         self.assertEqual(body['created_by'], 'alice@example.com')
+        release = self.dispatch_release.call_args.args[2]
+        self.assertEqual(
+            (RELEASE_ID, '1.2.3', DEFAULT_COMMITTISH),
+            (release.id, release.tag, release.committish),
+        )
         # Releases are written as raw Cypher, so the endpoint owns
         # keeping them searchable. The task re-reads the release.
         self.mock_db.match.assert_awaited_once_with(
@@ -357,6 +371,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         query, params, _ = self.mock_db.execute.call_args_list[1].args
         self.assertIn('r.tag = {tag}', query)
         self.assertEqual('2.45.3', params['tag'])
+        self.dispatch_release.assert_not_called()
 
     def test_create_adopts_untagged_release_for_same_commit(self) -> None:
         """A tagged create claims the untagged node for its commit.
@@ -390,9 +405,45 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         adopt_query, adopt_params, _ = self.mock_db.execute.call_args_list[
             3
         ].args
-        self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
+        self.assertIn("WHERE COALESCE(r.tag, '') = ''", adopt_query)
         self.assertEqual('5.0.2', adopt_params['tag'])
         self.assertEqual(RELEASE_ID, adopt_params['release_id'])
+        # The untagged create dispatched without a tag; send it again.
+        self.dispatch_release.assert_called_once()
+        tracked = self.dispatch_release.call_args.args[2]
+        self.assertEqual(RELEASE_ID, tracked.id)
+        self.assertEqual('5.0.2', tracked.tag)
+        self.assertEqual(DEFAULT_COMMITTISH, tracked.committish)
+        self.assertEqual('alice@example.com', tracked.created_by)
+
+    def test_create_losing_adopt_race_does_not_dispatch(self) -> None:
+        """A create whose adopt wrote nothing sends no event.
+
+        A concurrent create adopted the tag first, so the guarded adopt
+        query matches no row. Dispatching here would send a second event
+        for the same release.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],
+            [{'id': RELEASE_ID}],
+            [],  # adopt: another create already named the release
+            [{'release': _release_row(tag='5.0.2')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '5.0.2',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.dispatch_release.assert_not_called()
 
     def test_create_untagged_does_not_claim_a_tagged_release(self) -> None:
         """An untagged create never adopts a tagged node.
@@ -656,7 +707,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 200, response.text)
         adopt_query, _params, _ = self.mock_db.execute.call_args_list[3].args
-        self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
+        self.assertIn("WHERE COALESCE(r.tag, '') = ''", adopt_query)
 
 
 class ListGetReleaseTestCase(_ReleasesTestBase):

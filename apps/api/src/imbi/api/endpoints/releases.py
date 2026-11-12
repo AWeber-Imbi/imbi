@@ -35,13 +35,13 @@ from imbi.api.endpoints.projects import (
     LatestDeployment,
     lookup_ops_log_performed_by,
 )
-from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins import call_with_timeout, release_dispatch
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.common import deployments as deployment_nodes
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
-from imbi.common.plugins.base import CheckStatus
+from imbi.common.plugins.base import CheckStatus, TrackedRelease
 
 LOGGER = logging.getLogger(__name__)
 
@@ -375,7 +375,8 @@ RETURN r.id AS id
 # that (or written by another client) still have to be nameable.
 _RELEASE_ADOPT_TAG: typing.Final[typing.LiteralString] = """
 MATCH (r:Release {{id: {release_id}}})
-SET r.tag = CASE WHEN COALESCE(r.tag, '') = '' THEN {tag} ELSE r.tag END,
+WHERE COALESCE(r.tag, '') = ''
+SET r.tag = {tag},
     r.updated_at = {now}
 RETURN r.id AS id
 """
@@ -423,9 +424,9 @@ async def _adopt_release_tag(
     *,
     release_id: str,
     tag: str,
-) -> None:
-    """Name an untagged release, leaving an already-tagged one alone."""
-    await db.execute(
+) -> bool:
+    """Name an untagged release; return whether this call named it."""
+    rows = await db.execute(
         _RELEASE_ADOPT_TAG,
         {
             'release_id': release_id,
@@ -434,6 +435,7 @@ async def _adopt_release_tag(
         },
         ['id'],
     )
+    return bool(rows)
 
 
 #: Alias kept for readers of this module; the map is shared with the
@@ -878,10 +880,29 @@ async def create_release(
         # deployment webhook records the commit before the release
         # webhook names it, and leaving them apart is what produces the
         # duplicate this endpoint exists to avoid.
-        if data.tag and not match.by_tag:
-            await _adopt_release_tag(db, release_id=match.id, tag=data.tag)
+        adopted_tag = None if match.by_tag else (data.tag or None)
+        adopted = adopted_tag is not None and await _adopt_release_tag(
+            db, release_id=match.id, tag=adopted_tag
+        )
         existing = await _fetch_release(db, org_slug, project_id, match.id)
         if existing is not None:
+            if adopted and existing.get('tag') == adopted_tag:
+                # The untagged create dispatched without a tag, which a
+                # tag-based version skips; send the event again now that
+                # the tag is known. Capabilities treat a repeat as an
+                # update (Sentry upserts the release). Only the request
+                # whose adopt wrote the tag sends it, so a concurrent
+                # create that lost the adopt sends no event.
+                release_dispatch.schedule_release_created(
+                    db,
+                    project_id,
+                    TrackedRelease(
+                        id=match.id,
+                        tag=adopted_tag,
+                        committish=existing['committish'],
+                        created_by=existing.get('created_by'),
+                    ),
+                )
             response.status_code = 200
             return _release_to_response(existing, project_id)
         # Raced with a delete between the two reads; fall through and
@@ -952,6 +973,16 @@ async def create_release(
         db,
         models.Release,
         props['id'],
+    )
+    release_dispatch.schedule_release_created(
+        db,
+        project_id,
+        TrackedRelease(
+            id=props['id'],
+            tag=data.tag,
+            committish=committish,
+            created_by=created_by,
+        ),
     )
     return _release_to_response(release_data, project_id)
 

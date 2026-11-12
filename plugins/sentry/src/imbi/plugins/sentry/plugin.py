@@ -5,6 +5,10 @@ from imbi.common.plugins.base import WebhookSignature
 from imbi.plugins.sentry import client
 from imbi.plugins.sentry.doctor import SentryDoctor
 from imbi.plugins.sentry.lifecycle import SentryLifecycle
+from imbi.plugins.sentry.releases import (
+    DEFAULT_VERSION_FORMAT,
+    SentryReleaseTracking,
+)
 
 
 class SentryWebhookActions(plugins.WebhookActionsCapability):
@@ -50,9 +54,10 @@ class SentryPlugin(plugins.Plugin):
             'name': 'Sentry',
             'icon': 'si-sentry',
             'description': (
-                'Create and link a Sentry project for each project, and keep '
+                'Create and link a Sentry project for each project, keep '
                 'issue-count facts in sync from Sentry webhooks and the '
-                'Project Doctor.'
+                'Project Doctor, and create a Sentry release for each Imbi '
+                'release.'
             ),
             'auth_type': 'api_token',
             'options': [
@@ -110,8 +115,9 @@ class SentryPlugin(plugins.Plugin):
                     'label': 'Sentry auth token',
                     'description': (
                         'Token of a Sentry internal integration with '
-                        'Project: Admin (to create projects) and Issue & '
-                        'Event: Read.'
+                        'Project: Admin (to create projects), Release: '
+                        'Admin (to create releases), and Issue & Event: '
+                        'Read.'
                     ),
                 }
             ],
@@ -142,6 +148,28 @@ class SentryPlugin(plugins.Plugin):
                         'facts against Sentry, with one-click repairs.'
                     ),
                     'handler': SentryDoctor,
+                },
+                {
+                    'kind': 'release-tracking',
+                    'label': 'Release tracking',
+                    'description': (
+                        'Create a Sentry release when Imbi records a release.'
+                    ),
+                    'options': [
+                        {
+                            'name': 'version_format',
+                            'label': 'Release version format',
+                            'description': (
+                                'Must match the `release` value the Sentry '
+                                'SDK sends. Placeholders: `${project_slug}`, '
+                                '`${tag}`, `${committish}`. A format with '
+                                '`${tag}` skips untagged releases.'
+                            ),
+                            'type': 'string',
+                            'default': DEFAULT_VERSION_FORMAT,
+                        }
+                    ],
+                    'handler': SentryReleaseTracking,
                 },
             ],
         }

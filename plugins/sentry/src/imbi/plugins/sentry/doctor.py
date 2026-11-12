@@ -74,7 +74,7 @@ def _item(
     )
 
 
-def _connection(ctx: PluginContext) -> ServiceConnection | None:
+def connection(ctx: PluginContext) -> ServiceConnection | None:
     return next(
         (
             c
@@ -85,10 +85,10 @@ def _connection(ctx: PluginContext) -> ServiceConnection | None:
     )
 
 
-def _slug(ctx: PluginContext) -> str:
+def linked_slug(ctx: PluginContext) -> str:
     """The edge's identifier wins over the project-slug convention."""
-    connection = _connection(ctx)
-    return connection.identifier if connection else ctx.project_slug
+    conn = connection(ctx)
+    return conn.identifier if conn else ctx.project_slug
 
 
 def _count_matches(value: object, count: int) -> bool:
@@ -105,7 +105,7 @@ def _may_link(ctx: PluginContext, project: dict[str, typing.Any]) -> bool:
     An existing edge is kept: someone already chose it. A new link follows
     the rule of :func:`find_or_create`.
     """
-    return _connection(ctx) is not None or client.may_link(
+    return connection(ctx) is not None or client.may_link(
         project, client.sentry_team(ctx)
     )
 
@@ -118,12 +118,10 @@ def _owns_sentry_project(ctx: PluginContext) -> bool:
     could name another team's Sentry project, and replacing its teams
     would take that project away from them.
     """
-    connection = _connection(ctx)
-    if connection is not None and (
-        connection.verified_identifier != connection.identifier
-    ):
+    conn = connection(ctx)
+    if conn is not None and (conn.verified_identifier != conn.identifier):
         return False
-    return _slug(ctx) == ctx.project_slug
+    return linked_slug(ctx) == ctx.project_slug
 
 
 class SentryDoctor(AnalysisCapability):
@@ -141,7 +139,7 @@ class SentryDoctor(AnalysisCapability):
                     'This capability is not bound to an Integration.',
                 )
             ]
-        slug = _slug(ctx)
+        slug = linked_slug(ctx)
         try:
             s = client.settings(ctx, credentials)
             project = await client.get_project(s, slug)
@@ -178,11 +176,12 @@ class SentryDoctor(AnalysisCapability):
         project: dict[str, typing.Any],
     ) -> AnalysisResultItem:
         expected = client.writeback(ctx, s, project)
-        connection = _connection(ctx)
+        conn = connection(ctx)
         if (
-            connection is not None
-            and connection.identifier == expected.identifier
-            and connection.canonical_url == expected.canonical_url
+            conn is not None
+            and conn.identifier == expected.identifier
+            and conn.verified_identifier == conn.identifier
+            and conn.canonical_url == expected.canonical_url
             and ctx.project_links.get(client.LINK_KEY)
             == expected.dashboard_links[client.LINK_KEY]
         ):
@@ -205,7 +204,7 @@ class SentryDoctor(AnalysisCapability):
         return _item(
             'exists-in',
             'Sentry project',
-            'warn' if connection is None else 'fail',
+            'warn' if conn is None else 'fail',
             f'Sentry project {expected.identifier!r} exists, but the '
             'project edge or issues link does not match it. Use the Fix '
             'action to link it.',
@@ -296,7 +295,7 @@ class SentryDoctor(AnalysisCapability):
     ) -> RemediationResult:
         if remediation_id not in (_CREATE, _LINK, _SYNC_FACTS, _SET_TEAM):
             return await super().remediate(ctx, credentials, remediation_id)
-        slug = _slug(ctx)
+        slug = linked_slug(ctx)
         try:
             s = client.settings(ctx, credentials)
             project: dict[str, typing.Any] | None

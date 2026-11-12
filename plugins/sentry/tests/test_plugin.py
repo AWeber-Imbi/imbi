@@ -8,10 +8,15 @@ import httpx
 import respx
 
 import imbi.plugins.sentry
-from imbi.common.plugins.base import PluginContext, ServiceConnection
+from imbi.common.plugins.base import (
+    PluginContext,
+    ServiceConnection,
+    TrackedRelease,
+)
 from imbi.plugins.sentry import actions, plugin
 from imbi.plugins.sentry.doctor import SentryDoctor
 from imbi.plugins.sentry.lifecycle import SentryLifecycle
+from imbi.plugins.sentry.releases import SentryReleaseTracking
 
 _API = 'https://sentry.io/api/0'
 _PROJECT_URL = f'{_API}/projects/acme/demo/'
@@ -81,7 +86,12 @@ class ManifestTests(unittest.TestCase):
     def test_capabilities(self) -> None:
         manifest = imbi.plugins.sentry.PLUGIN.manifest
         self.assertEqual('sentry', manifest.slug)
-        for kind in ('lifecycle', 'webhook-actions', 'analysis'):
+        for kind in (
+            'lifecycle',
+            'webhook-actions',
+            'analysis',
+            'release-tracking',
+        ):
             self.assertIsNotNone(manifest.get_capability(kind), kind)
         descriptor = plugin.SentryWebhookActions.actions()[0]
         self.assertIs(actions.sync_issue_counts, descriptor.callable)
@@ -197,6 +207,18 @@ class DoctorTests(_RespxCase):
         self.assertEqual('fail', items[0].status)
         result = await SentryDoctor().remediate(ctx, _CREDS, 'link-project')
         self.assertEqual('fixed', result.status)
+
+    async def test_unverified_link_offers_link_repair(self) -> None:
+        respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
+        ctx = _ctx()
+        ctx.service_connections[0].verified_identifier = None
+        items = await SentryDoctor().analyze(ctx, _CREDS)
+        self.assertEqual('fail', items[0].status)
+        remediation = items[0].remediation
+        self.assertIsNotNone(remediation)
+        assert remediation is not None
+        self.assertEqual('link-project', remediation.id)
 
     async def test_link_repair_never_creates(self) -> None:
         respx.get(_PROJECT_URL).respond(404)
@@ -343,3 +365,84 @@ class ActionTests(_RespxCase):
             event={},
         )
         self.assertEqual(1, len(respx.calls))
+
+
+_RELEASES_URL = f'{_API}/organizations/acme/releases/'
+
+
+class ReleaseTrackingTests(_RespxCase):
+    async def _run(
+        self,
+        tag: str | None = '1.2.0',
+        fmt: str | None = None,
+        ctx: PluginContext | None = None,
+    ) -> tuple[str, str | None]:
+        ctx = ctx or _ctx()
+        if fmt is not None:
+            ctx.capability_options = {'version_format': fmt}
+        result = await SentryReleaseTracking().on_release_created(
+            ctx,
+            _CREDS,
+            TrackedRelease(id='r1', tag=tag, committish='abc1234'),
+        )
+        return result.status, result.message
+
+    async def test_creates_release_with_default_version(self) -> None:
+        route = respx.post(_RELEASES_URL).respond(201, json={})
+        status, message = await self._run()
+        self.assertEqual('ok', status)
+        self.assertEqual("Created Sentry release 'demo@1.2.0'", message)
+        self.assertEqual(
+            b'{"version":"demo@1.2.0","projects":["demo"]}',
+            route.calls.last.request.content,
+        )
+
+    async def test_existing_release_is_ok(self) -> None:
+        respx.post(_RELEASES_URL).respond(208, json={})
+        status, message = await self._run(fmt='${committish}')
+        self.assertEqual('ok', status)
+        self.assertEqual("Updated existing Sentry release 'abc1234'", message)
+
+    async def test_unverified_link_skips(self) -> None:
+        route = respx.post(_RELEASES_URL)
+        ctx = _ctx()
+        ctx.service_connections[0].identifier = 'other-team'
+        status, message = await self._run(ctx=ctx)
+        self.assertEqual('skipped', status)
+        self.assertIn('not verified', message or '')
+        self.assertFalse(route.called)
+        self.assertEqual(0, len(respx.calls))
+
+    async def test_changed_organization_skips(self) -> None:
+        route = respx.post(f'{_API}/organizations/other/releases/')
+        ctx = _ctx()
+        ctx.integration_options['organization'] = 'other'
+        status, message = await self._run(ctx=ctx)
+        self.assertEqual('skipped', status)
+        self.assertIn('settings changed', message or '')
+        self.assertFalse(route.called)
+
+    async def test_no_link_skips(self) -> None:
+        route = respx.post(_RELEASES_URL)
+        status, _ = await self._run(ctx=_ctx(connected=False))
+        self.assertEqual('skipped', status)
+        self.assertFalse(route.called)
+
+    async def test_untagged_release_skips_tag_format(self) -> None:
+        route = respx.post(_RELEASES_URL)
+        status, _ = await self._run(tag=None)
+        self.assertEqual('skipped', status)
+        self.assertFalse(route.called)
+
+    async def test_unknown_placeholder_fails(self) -> None:
+        route = respx.post(_RELEASES_URL)
+        status, message = await self._run(fmt='${version}')
+        self.assertEqual('failed', status)
+        self.assertIn('version', message or '')
+        self.assertFalse(route.called)
+
+    async def test_sentry_error_fails(self) -> None:
+        respx.post(_RELEASES_URL).respond(403, text='forbidden')
+        status, message = await self._run()
+        self.assertEqual('failed', status)
+        self.assertIn('403', message or '')

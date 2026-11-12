@@ -10,6 +10,9 @@ _ALLOWED_VARS: frozenset[str] = frozenset(
         'environment',
         'project_id',
         'project_type_slug',
+        # Release templates (release-tracking capabilities).
+        'tag',
+        'committish',
     }
 )
 

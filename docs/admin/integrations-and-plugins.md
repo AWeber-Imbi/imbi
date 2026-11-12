@@ -38,6 +38,7 @@ work that Imbi can ask the plugin to do.
 | `incidents` | Shows incidents on the project **Incidents** tab |
 | `commit-sync` | Records commit and tag history |
 | `pr-sync` | Records pull request history |
+| `release-tracking` | Records each new Imbi release in the remote platform, for example a Sentry release |
 
 A capability is either *project-scoped* or *organization-wide*. An
 organization-wide capability, for example `identity`, applies to the full

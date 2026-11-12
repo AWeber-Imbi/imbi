@@ -17,9 +17,9 @@ from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleContextBundle,
     LifecycleEvent,
     LifecycleInvocation,
-    _resolve_credentials,
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
+    resolve_credentials,
 )
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common.plugins.base import (
@@ -190,7 +190,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_credentials',
                 mock.Mock(return_value={'access_token': 'tok'}),
             ),
             mock.patch.object(
@@ -498,7 +498,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch.object(
@@ -554,7 +554,7 @@ class ResolveCredentialsTestCase(unittest.TestCase):
             '.decrypt_integration_credentials',
             return_value=blob,
         ):
-            return _resolve_credentials(ctx, resolved)
+            return resolve_credentials(ctx, resolved)
 
     def test_api_key_credential_is_accepted(self) -> None:
         resolved = self._resolved_with(
@@ -664,7 +664,7 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch.object(
@@ -771,7 +771,7 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch.object(
@@ -947,7 +947,7 @@ class ContextHydrationTestCase(unittest.TestCase):
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_credentials',
                 mock.Mock(return_value={'access_token': 'tok'}),
             ),
             mock.patch.object(
