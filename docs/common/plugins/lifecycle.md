@@ -129,6 +129,11 @@ writeback whose identifier another project already holds, and returns
 the refusal as the result message. A manual edit of the project services
 gets HTTP 409 for the same reason. The Sentry plugin sets it.
 
+A writeback is refused only by a project whose edge the plugin verified.
+A manual link cannot block the real project's writeback. When an
+inbound webhook matches several projects and at least one edge is
+verified, the gateway drops the unverified matches.
+
 ## Hints
 
 - **`supports_lifecycle_sync`** — `on_project_updated` is a safe upsert

@@ -727,7 +727,9 @@ async def _resolve_project_and_verify(  # noqa: PLR0913
     row-order dependent. Integrations that don't sign deliveries store no
     secret and pass straight through. ``signature`` is the plugin's
     ``edge`` signature; with none, an edge that has a secret cannot
-    verify, so the delivery is dropped.
+    verify, so the delivery is dropped. When at least one matched edge
+    is verified (``verified_identifier`` equals ``external_id``), the
+    unverified matches are dropped.
     """
     project_records: list[dict[str, typing.Any]] = await db.execute(
         'MATCH (p:Project)'
@@ -736,10 +738,27 @@ async def _resolve_project_and_verify(  # noqa: PLR0913
         'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
         ' RETURN p.id AS project_id, p.slug AS project_slug,'
         '        t.slug AS team_slug,'
-        '        ei.webhook_secret_enc AS webhook_secret_enc',
+        '        ei.webhook_secret_enc AS webhook_secret_enc,'
+        '        ei.verified_identifier AS verified_identifier',
         {'external_id': external_id, 'integration_slug': integration_slug},
-        ['project_id', 'project_slug', 'team_slug', 'webhook_secret_enc'],
+        [
+            'project_id',
+            'project_slug',
+            'team_slug',
+            'webhook_secret_enc',
+            'verified_identifier',
+        ],
     )
+    # A project writer can link a non-shareable identifier by hand before
+    # the real project's plugin writeback verifies it. That manual edge
+    # stays, so prefer the verified edges when there are any.
+    verified = [
+        record
+        for record in project_records
+        if graph.parse_agtype(record.get('verified_identifier')) == external_id
+    ]
+    if verified:
+        project_records = verified
     if not project_records:
         LOGGER.warning(
             'Ignoring notification: no project found for external_id=%r'
