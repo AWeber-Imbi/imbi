@@ -140,6 +140,46 @@ describe('paramFields for the agent step', () => {
   })
 })
 
+describe('paramFields for the task completed trigger', () => {
+  it('takes an optional agent and checks for the outcomes', () => {
+    const fields = paramFields({
+      properties: {
+        agent_id: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+          default: null,
+          description: 'Empty means any agent.',
+        },
+        outcomes: {
+          default: [],
+          items: { enum: ['done_acted', 'failed_external'], type: 'string' },
+          type: 'array',
+        },
+      },
+      type: 'object',
+    })
+    expect(fields).toEqual([
+      {
+        description: 'Empty means any agent.',
+        kind: 'source',
+        label: 'Agent',
+        name: 'agent_id',
+        required: false,
+        source: 'agent',
+      },
+      {
+        kind: 'checks',
+        label: 'Outcomes',
+        name: 'outcomes',
+        options: [
+          { label: 'Done acted', value: 'done_acted' },
+          { label: 'Failed external', value: 'failed_external' },
+        ],
+        required: false,
+      },
+    ])
+  })
+})
+
 describe('paramSummary', () => {
   it('shows the first two values and skips ids', () => {
     expect(

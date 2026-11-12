@@ -290,6 +290,7 @@ unset.
 | `IMBI_ASSISTANT_PROMPT_REF` | str | `imbi-assistant/system@stable` | Prompt CMS reference of the system prompt |
 | `IMBI_ASSISTANT_API_TOKEN` | str | `''` | API key of the `imbi-assistant` service account. Set: the assistant uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_ASSISTANT_URL` | str | `''` | Public assistant URL. Its path is the route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
@@ -346,6 +347,7 @@ unset.
 | `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`) |
 | `SLACK_APP_TOKEN` | str | `''` | Slack app-level token for Socket Mode (`xapp-`) |
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
 
@@ -414,7 +416,7 @@ unset.
 | `VITE_POSTHOG_WEB_ANALYTICS` | str | none | `true` sends pageviews, page leaves, and web vitals |
 | `VITE_POSTHOG_SESSION_REPLAY` | str | none | `true` records sessions. All text and inputs are always masked. |
 | `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | str | none | Share of sessions that record, `0` to `1`. Default: `1`. |
-| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email. Default: `never`. |
+| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email and names the person by the email local part. Default: `never`. |
 
 <!-- END GENERATED -->
 

@@ -22,7 +22,8 @@ export const getReleaseDrift = (
 ): Promise<ReleaseDrift> =>
   apiClient.get<ReleaseDrift>(
     `${base(orgSlug, projectId)}/release-drift`,
-    undefined,
+    // The browser's zone, so a calendar version uses the user's date.
+    { tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
     signal,
   )
 

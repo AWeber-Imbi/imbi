@@ -19,6 +19,7 @@ import logging
 import re
 import textwrap
 import typing
+import zoneinfo
 
 import fastapi
 import httpx
@@ -2762,7 +2763,10 @@ async def resolve_commit(
     commit = await call_with_timeout(
         handler.resolve_committish(ctx, credentials, committish)
     )
-    await persist_link_writeback(db, ctx)
+    await asyncio.gather(
+        persist_link_writeback(db, ctx),
+        _annotate_commits(project_id, [commit]),
+    )
     return commit
 
 
@@ -5761,11 +5765,41 @@ def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
     return f'{prefix}{major}.{minor}.{patch + 1}'
 
 
+def _local_today(
+    tz: typing.Annotated[
+        str,
+        fastapi.Query(
+            description=(
+                'IANA time zone of the requester; calendar versions use '
+                'the date in this zone.'
+            ),
+        ),
+    ] = 'UTC',
+) -> datetime.date:
+    """Today's date in ``tz``, so a calendar version is the user's date.
+
+    An unknown zone is a 422: a silent UTC fallback would suggest
+    tomorrow's date to an evening release in the Americas.
+    """
+    try:
+        zone = zoneinfo.ZoneInfo(tz)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError) as err:
+        raise fastapi.HTTPException(
+            status_code=422, detail=f'Invalid time zone: {tz!r}'
+        ) from err
+    return datetime.datetime.now(zone).date()
+
+
+LocalToday = typing.Annotated[datetime.date, fastapi.Depends(_local_today)]
+
+
 def _suggest_version(
     last_tag: str | None,
     bump: SemverBump,
     patterns: collections.abc.Sequence[str],
     schemes: collections.abc.Sequence[str] = (),
+    *,
+    today: datetime.date | None = None,
 ) -> str:
     """The next tag to suggest, honouring the configured tag formats.
 
@@ -5777,9 +5811,10 @@ def _suggest_version(
     first-release defaults (``v0.1.0``, the first tag of each scheme,
     ``0.1.0``, then today's date).  With
     no policy configured the first candidate stands, which keeps the
-    historical ``v0.1.0`` answer for an untagged project.
+    historical ``v0.1.0`` answer for an untagged project.  ``today`` is
+    the requester's local date (see :func:`_local_today`); UTC if absent.
     """
-    today = datetime.datetime.now(datetime.UTC).date()
+    today = today or datetime.datetime.now(datetime.UTC).date()
     # A configured scheme knows its own counters, so it goes first: a tag
     # such as ``26.4.1`` is valid semver too, and a semver bump would miss
     # the reset when the month changes.
@@ -5879,6 +5914,8 @@ def _version_matches_bump(
     bump: SemverBump,
     schemes: collections.abc.Sequence[str] = (),
     patterns: collections.abc.Sequence[str] = (),
+    *,
+    today: datetime.date | None = None,
 ) -> bool:
     """Whether ``version`` is ``last_tag`` bumped by ``bump``.
 
@@ -5895,7 +5932,7 @@ def _version_matches_bump(
     The ``v`` prefix is not compared: the tag policy decides it, and
     ``_version_allowed`` checks that.
     """
-    today = datetime.datetime.now(datetime.UTC).date()
+    today = today or datetime.datetime.now(datetime.UTC).date()
     expected = {
         versioning.next_scheme_tag(scheme, last_tag, today, bump)
         for scheme in schemes
@@ -6088,7 +6125,10 @@ def _build_release_notes_prompt(
     tag_formats: collections.abc.Sequence[common_models.TagFormat] = (),
     suggested_version: str | None = None,
     dependency_changes: collections.abc.Sequence[str] | None = None,
+    *,
+    today: datetime.date | None = None,
 ) -> str:
+    today = today or datetime.datetime.now(datetime.UTC).date()
     capped = commits[:_PROMPT_COMMIT_CAP]
     omitted = len(commits) - len(capped)
     formats = (
@@ -6099,7 +6139,7 @@ def _build_release_notes_prompt(
         f'Project: {project_name}',
         f'Previous tag: {last_tag or "(none)"}',
         f'Allowed tag formats: {formats}',
-        f'Today: {datetime.datetime.now(datetime.UTC).date().isoformat()}',
+        f'Today: {today.isoformat()}',
         f'Suggested next version: {suggested_version or "(none)"}',
         f'Comparing: {base_sha or "(no prior release)"}..{head_sha}',
         f'Total commits: {len(commits)}'
@@ -6211,6 +6251,7 @@ async def draft_release_notes(
         ),
     ],
     anthropic: InjectAnthropicClient,
+    today: LocalToday,
     source: str | None = None,
 ) -> DraftReleaseNotesResponse:
     """Draft release notes for a tag promotion.
@@ -6249,7 +6290,7 @@ async def draft_release_notes(
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
         version=_suggest_version(
-            body.last_tag, fallback_bump, patterns, schemes
+            body.last_tag, fallback_bump, patterns, schemes, today=today
         ),
         reasoning=(
             'AI unavailable — bump and notes derived from '
@@ -6269,6 +6310,7 @@ async def draft_release_notes(
             await _dependency_changes(
                 db, project_id, body.last_tag, body.head_sha
             ),
+            today=today,
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
@@ -6285,12 +6327,17 @@ async def draft_release_notes(
     if not _version_allowed(
         notes.version, patterns
     ) or not _version_matches_bump(
-        body.last_tag, notes.version, notes.bump, schemes, patterns
+        body.last_tag,
+        notes.version,
+        notes.bump,
+        schemes,
+        patterns,
+        today=today,
     ):
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
-                    body.last_tag, notes.bump, patterns, schemes
+                    body.last_tag, notes.bump, patterns, schemes, today=today
                 )
             }
         )
@@ -6813,6 +6860,7 @@ async def get_release_drift(
             permissions.require_permission('project:deployment:read'),
         ),
     ],
+    today: LocalToday,
 ) -> ReleaseDriftResponse:
     """Commits awaiting a release: the delta from the latest tag to HEAD.
 
@@ -6866,7 +6914,7 @@ async def get_release_drift(
                 commits=[],
                 suggested_bump='patch',
                 suggested_tag=_suggest_version(
-                    latest_tag, 'patch', patterns, schemes
+                    latest_tag, 'patch', patterns, schemes, today=today
                 ),
             )
 
@@ -6908,7 +6956,9 @@ async def get_release_drift(
         commits_since_tag=commits_since_tag,
         commits=commits,
         suggested_bump=bump,
-        suggested_tag=_suggest_version(latest_tag, bump, patterns, schemes),
+        suggested_tag=_suggest_version(
+            latest_tag, bump, patterns, schemes, today=today
+        ),
     )
 
 

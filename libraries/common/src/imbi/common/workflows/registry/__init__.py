@@ -12,6 +12,7 @@ from imbi.common.workflows.registry import (
     model_decision,
     rollback,
     schedule,
+    task_completed,
     wait,
     webhook,
 )
@@ -23,6 +24,7 @@ STEP_TYPES: dict[str, StepType] = {
         manual,
         schedule,
         webhook,
+        task_completed,
         wait,
         model_decision,
         email,

@@ -293,8 +293,8 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self._ch_results([], [])
         self.client.get(self._components('/'), params={'q': 'express'})
         self.assertEqual(
-            self._ch_params(0)['component_ids'],
-            ['cmp-express', 'cmp-expressive'],
+            self.mock_ch.await_args_list[0].kwargs['tables'],
+            {'component_ids': ['cmp-express', 'cmp-expressive']},
         )
         self.assertEqual(
             self.mock_ch.await_args_list[0].kwargs['project_ids'],

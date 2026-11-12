@@ -5,6 +5,8 @@ import typing as t
 import fastapi
 import pydantic
 
+from imbi.common import graph
+
 router = fastapi.APIRouter()
 
 
@@ -32,10 +34,21 @@ class Status(pydantic.BaseModel):
     summary='Operational status',
     operation_id='getStatus',
 )
-def status_endpoint(*, request: fastapi.Request) -> Status:
+def status_endpoint(
+    *,
+    request: fastapi.Request,
+    response: fastapi.Response,
+    db: graph.Pool,
+) -> Status:
+    # A closed pool means the lifespan was torn down while the process
+    # kept serving; nothing reopens it, so report 503 and let the probe
+    # replace the pod. This checks local state only, never the database.
+    ok = db.opened
+    if not ok:
+        response.status_code = 503
     return Status(
         environment=os.environ.get('ENVIRONMENT', 'development'),
-        status='ok',
+        status='ok' if ok else 'failing',
         version=request.app.version,
         started_at=request.app.extra['started_at'],
     )
