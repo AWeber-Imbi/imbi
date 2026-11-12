@@ -861,9 +861,7 @@ export type AuthProvider = Schemas['AuthProvider']
 
 export type Blueprint = Schemas['Blueprint-Output']
 
-// `BlueprintCreate` stays hand-written: generated `Blueprint-Input` types
-// `json_schema` as the full `Schema-Input` AST, but the UI passes a
-// `Record<string, unknown>` (parsed JSON) and includes an `id`/timestamps
+// `BlueprintCreate` stays hand-written: the UI includes an `id`/timestamps
 // on read-round-trip shapes.
 export interface BlueprintCreate {
   description?: null | string

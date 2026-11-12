@@ -280,7 +280,14 @@ class Blueprint(Node):
             return None
         return value.model_dump_json()
 
-    @pydantic.field_validator('json_schema', mode='before')
+    # A plain validator keeps the Schema AST out of OpenAPI. Its fields
+    # are named ``anyOf`` and ``$ref``, and OpenAPI tools (fastmcp) read
+    # them as schema keywords.
+    @pydantic.field_validator(
+        'json_schema',
+        mode='plain',
+        json_schema_input_type=dict[str, typing.Any],
+    )
     @classmethod
     def validate_json_schema(
         cls,
