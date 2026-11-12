@@ -180,6 +180,7 @@ class SentryDoctor(AnalysisCapability):
         if (
             conn is not None
             and conn.identifier == expected.identifier
+            and conn.verified_identifier == conn.identifier
             and conn.canonical_url == expected.canonical_url
             and ctx.project_links.get(client.LINK_KEY)
             == expected.dashboard_links[client.LINK_KEY]

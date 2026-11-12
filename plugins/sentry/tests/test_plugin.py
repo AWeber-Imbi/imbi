@@ -208,6 +208,18 @@ class DoctorTests(_RespxCase):
         result = await SentryDoctor().remediate(ctx, _CREDS, 'link-project')
         self.assertEqual('fixed', result.status)
 
+    async def test_unverified_link_offers_link_repair(self) -> None:
+        respx.get(_PROJECT_URL).respond(200, json=_PROJECT)
+        respx.get(_ISSUES_URL).mock(side_effect=self._issues)
+        ctx = _ctx()
+        ctx.service_connections[0].verified_identifier = None
+        items = await SentryDoctor().analyze(ctx, _CREDS)
+        self.assertEqual('fail', items[0].status)
+        remediation = items[0].remediation
+        self.assertIsNotNone(remediation)
+        assert remediation is not None
+        self.assertEqual('link-project', remediation.id)
+
     async def test_link_repair_never_creates(self) -> None:
         respx.get(_PROJECT_URL).respond(404)
         result = await SentryDoctor().remediate(_ctx(), _CREDS, 'link-project')
@@ -400,6 +412,15 @@ class ReleaseTrackingTests(_RespxCase):
         self.assertIn('not verified', message or '')
         self.assertFalse(route.called)
         self.assertEqual(0, len(respx.calls))
+
+    async def test_changed_organization_skips(self) -> None:
+        route = respx.post(f'{_API}/organizations/other/releases/')
+        ctx = _ctx()
+        ctx.integration_options['organization'] = 'other'
+        status, message = await self._run(ctx=ctx)
+        self.assertEqual('skipped', status)
+        self.assertIn('settings changed', message or '')
+        self.assertFalse(route.called)
 
     async def test_no_link_skips(self) -> None:
         route = respx.post(_RELEASES_URL)

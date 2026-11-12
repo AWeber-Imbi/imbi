@@ -68,6 +68,14 @@ class SentryReleaseTracking(ReleaseTrackingCapability):
             )
         try:
             s = client.settings(ctx, credentials)
+            # The verified canonical URL holds the Sentry host and
+            # organization; a settings change since then is unverified.
+            if conn.canonical_url != client.canonical_url(s, conn.identifier):
+                return LifecycleResult(
+                    status='skipped',
+                    message='The Sentry settings changed after the project '
+                    'link was verified; run the Project Doctor to link it.',
+                )
             created = await client.create_release(s, name, conn.identifier)
         except client.SentryClientError as exc:
             return LifecycleResult(status='failed', message=str(exc))
