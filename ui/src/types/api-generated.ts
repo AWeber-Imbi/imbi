@@ -6557,6 +6557,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such binding.
+         *         409: The change sets or clears the provider key mark while a
+         *             grant uses the binding.
          *         422: The locator is not valid.
          */
         patch: operations["update_binding_api_organizations__org_slug__secret_bindings__binding_id__patch"];
@@ -6623,8 +6625,9 @@ export interface paths {
          * @description Create an allow rule with exact ids.
          *
          *     Raises:
-         *         422: A binding is not in the organization, or a setup purpose
-         *             has a delivery mode other than ``file_descriptor``.
+         *         422: A binding is not in the organization or is a provider
+         *             key binding, or a setup purpose has a delivery mode other
+         *             than ``file_descriptor``.
          */
         post: operations["create_grant_api_organizations__org_slug__secret_grants__post"];
         delete?: never;
@@ -6678,8 +6681,9 @@ export interface paths {
          *
          *     Raises:
          *         404: No such grant.
-         *         422: A binding is not in the organization, or a setup purpose
-         *             has a delivery mode other than ``file_descriptor``.
+         *         422: A binding is not in the organization or is a provider
+         *             key binding, or a setup purpose has a delivery mode other
+         *             than ``file_descriptor``.
          */
         patch: operations["update_grant_api_organizations__org_slug__secret_grants__grant_id__patch"];
         trace?: never;
@@ -34426,6 +34430,8 @@ export interface operations {
         parameters: {
             query?: {
                 source?: string | null;
+                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                tz?: string;
             };
             header?: never;
             path: {
@@ -34531,7 +34537,10 @@ export interface operations {
     };
     get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                tz?: string;
+            };
             header?: never;
             path: {
                 org_slug: string;
