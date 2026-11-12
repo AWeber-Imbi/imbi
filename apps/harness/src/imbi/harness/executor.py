@@ -423,7 +423,7 @@ class Executor:
                 command, cwd, env, timeout
             )
         except api.Refused as err:
-            return {'error': err.code}
+            return {'error': err.detail}
         except httpx.HTTPError:
             return {'error': 'imbi_unavailable'}
         finally:
@@ -486,7 +486,7 @@ class Executor:
                 pass_fds=(read,) if read >= 0 else (),
             )
         except api.Refused as err:
-            return {'error': err.code}
+            return {'error': err.detail}
         except httpx.HTTPError:
             return {'error': 'imbi_unavailable'}
         finally:
@@ -508,7 +508,7 @@ class Executor:
             )
             reply: Message = {'material': _material(body)}
         except api.Refused as err:
-            return {'error': err.code}
+            return {'error': err.detail}
         except httpx.HTTPError:
             return {'error': 'imbi_unavailable'}
         finally:
