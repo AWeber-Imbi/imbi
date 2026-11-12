@@ -500,6 +500,15 @@ async def _reopen(conn: typing.Any, run_id: uuid.UUID, node_id: str) -> int:
             ``outcome_unknown``.
 
     """
+    # Serialize reopens of one concurrency key. Under READ COMMITTED two
+    # reopens of different runs can both pass the NOT EXISTS check below.
+    # A separate statement gives the UPDATE a snapshot after the lock.
+    await conn.execute(
+        'SELECT pg_advisory_xact_lock(hashtext(r.workflow_id::text'
+        " || ':' || r.concurrency_key)) FROM workflow_runtime.runs AS r"
+        ' WHERE r.id = %s AND r.concurrency_key IS NOT NULL',
+        (run_id,),
+    )
     cur = await conn.execute(
         "UPDATE workflow_runtime.runs AS r SET status = 'running',"
         ' error = NULL, closed_at = NULL, due_at = NOW()'
