@@ -109,7 +109,9 @@ class ImbiTokenVerifier(TokenVerifier):
 def _mcp_identity(*_args: typing.Any) -> typing.Any:
     """Identify the caller by a hash of the token subject.
 
-    API keys are verified by the API, not here, so they stay anonymous.
+    The person is named by the email local part, as in the UI; the full
+    email stays out. API keys are verified by the API, not here, so they
+    stay anonymous.
     """
     # Optional dependency: import only when the switch is on.
     from posthog.mcp import UserIdentity  # noqa: PLC0415
@@ -117,7 +119,10 @@ def _mcp_identity(*_args: typing.Any) -> typing.Any:
     token = get_access_token()
     if token is None or not token.client_id or token.client_id == 'api-key':
         return None
-    return UserIdentity(distinct_id=posthog.distinct_id(token.client_id))
+    return UserIdentity(
+        distinct_id=posthog.distinct_id(token.client_id),
+        properties={'name': token.client_id.split('@')[0]},
+    )
 
 
 def _instrument(server: fastmcp.FastMCP) -> None:
