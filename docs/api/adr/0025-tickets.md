@@ -179,16 +179,16 @@ per task, and a service account. The organization names one agent as its
 manager. A ticket can name another, so different kinds of work can have
 different managers.
 
-**The manager runs when something happens.** After a ticket event
-commits, imbi-api creates a manager task for the ticket when all of
-these hold:
+**The manager runs when something happens.** A wake event is an event
+that no manager task wrote, of one of these types: `ticket.created`,
+`field.changed`, `comment.added`, `status.changed`, `project.added`,
+`project.removed`, `pull_request.linked`, `pull_request.unlinked`,
+`pull_request.changed`, `task.closed`, `ask.answered`, `deploy.reached`,
+`released`, or `timer.fired`.
 
-- the event is a wake type: `ticket.created`, `field.changed`,
-  `comment.added`, `status.changed`, `project.added`, `project.removed`,
-  `pull_request.linked`, `pull_request.unlinked`, `pull_request.changed`,
-  `task.closed`, `ask.answered`, `deploy.reached`, `released`, or
-  `timer.fired`
-- the manager's own task for this ticket did not write the event
+After a wake event commits, imbi-api creates a manager task for the
+ticket when both of these hold:
+
 - the ticket has no open manager task
 - the ticket is under its manager budget (see Guardrails)
 
@@ -196,12 +196,11 @@ When a manager task closes without failing, imbi-api looks for an
 unread wake event. If there is one and the ticket is under its manager
 budget, imbi-api creates the next manager task.
 
-**What counts as read.** An event is read when `get_ticket` returned it
-to a manager task that then closed without failing. A manager task
-fails when it closes with any outcome other than `done_acted` or
-`done_nothing_to_act_on`. Events returned to a task that failed stay
-unread, and the next manager task gets them again. An event that a
-manager task wrote counts as read.
+**What counts as read.** A manager task fails when it closes with any
+outcome other than `done_acted` or `done_nothing_to_act_on`. An event is
+read when a manager task that closed without failing either got it from
+`get_ticket` or wrote it. Events that a failed task got or wrote stay
+unread, and the next manager task gets them.
 
 **Each run starts from the ticket, not from memory.** A manager task
 reads the ticket's current state and its unread events. It does the
@@ -227,25 +226,44 @@ ticket, and then fail the same way on every later run.
 **A manager task has no projects and clones nothing.** Work that needs
 the code is a task for another agent.
 
-**A failed manager task changes nothing on the ticket.** The ticket page
-shows the failure. imbi-api does not start the next manager task at
-once, because a manager that fails every time would then run in a loop.
-A new wake event runs the manager again, a person can run it by hand,
-and the timer retries it. After three failed manager tasks in a row,
-imbi-api opens an ask for the owner, if the ticket has no open ask about
-manager failures, and the timer stops retrying. The next manager task
-that succeeds closes that ask.
+**A failed manager task keeps what it already did.** Each tool call
+commits when it is made, with its event. Nothing is deferred until the
+task closes, and nothing is undone when the task fails. A ticket the
+task closed stays closed, a stage it set stays set, and a work task it
+started keeps running.
+
+- This is safe because every call passes the guardrails on its own. A
+  `close_ticket` that succeeded was allowed, whatever the task did
+  next.
+- The next manager task reads the ticket as the failed task left it. It
+  also gets the events the failed task wrote, so it sees what was done
+  and continues from there.
+- The ticket page shows the failure.
+
+**A failed manager task is retried later, not at once.** A manager that
+fails every time would otherwise run in a loop. A new wake event runs
+the manager again, a person can run it by hand, and the timer retries
+it. After three failed manager tasks in a row, imbi-api opens an ask
+for the owner, if the ticket has no open ask about manager failures, and
+the timer stops retrying. The next manager task that succeeds closes
+that ask.
 
 **A timer covers silence and retries.** A scheduler job writes
-`timer.fired` on an open ticket in two cases:
+`timer.fired` in two cases:
 
-- **Silence.** The ticket has had no event, no open task, and no open
-  ask for a set time. The manager then decides whether anything is
+- **Silence.** An open ticket has had no event, no open task, and no
+  open ask for a set time. The manager then decides whether anything is
   stuck.
-- **Retry.** For a set time the ticket has had an unread wake event and
-  no open manager task. The ticket must be under its manager budget and
-  have fewer than three failed manager tasks in a row. An open ask does
-  not block this case.
+- **Retry.** For a set time a ticket, open or closed, has had an unread
+  wake event and no open manager task. The ticket must have fewer than
+  three failed manager tasks in a row and no open ask about its manager
+  budget. Other open asks do not block this case.
+
+The retry case does not check the manager budget. On a ticket that has
+spent it, the `timer.fired` event is refused a manager task like any
+other wake event. That refusal writes `budget.reached` and opens the
+ask for the owner (see Guardrails), and the open ask then stops the
+timer.
 
 **Manager tools.** A manager task gets these Imbi tools. Its token
 allows them for the ticket in its origin only.
