@@ -1,10 +1,13 @@
 """Tests for the external MCP server manager."""
 
 import asyncio
+import collections.abc
+import contextlib
 import json
 import unittest
 from unittest import mock
 
+import anyio
 import httpx
 
 from imbi.assistant import external_mcp
@@ -321,34 +324,50 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['detail'], 'down')
 
 
+class _FakeClientSession:
+    """Stand-in for ``mcp.ClientSession`` used as a context manager."""
+
+    def __init__(self, *_args: object) -> None:
+        self.initialize = mock.AsyncMock()
+        result = mock.MagicMock()
+        result.tools = [_make_tool('search')]
+        self.list_tools = mock.AsyncMock(return_value=result)
+
+    async def __aenter__(self) -> '_FakeClientSession':
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+
 class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
     """Test cases for _open_session transport wiring."""
 
     async def _run(self, server: common_models.MCPServer) -> None:
         manager = external_mcp.ExternalMCPManager()
-        session = mock.AsyncMock()
-
-        async def fake_enter(_ctx: object) -> object:
-            # First call returns the transport tuple; second the session.
-            if not getattr(fake_enter, 'called', False):
-                fake_enter.called = True  # type: ignore
-                return (mock.MagicMock(), mock.MagicMock(), mock.MagicMock())
-            return session
-
-        manager._exit_stack.enter_async_context = fake_enter  # type: ignore
+        transport = mock.MagicMock()
+        transport.__aenter__.return_value = (
+            mock.MagicMock(),
+            mock.MagicMock(),
+            mock.MagicMock(),
+        )
         with (
             mock.patch(
                 'imbi.assistant.external_mcp.streamable_http.'
-                'streamable_http_client'
+                'streamable_http_client',
+                return_value=transport,
             ) as mock_client_ctx,
             mock.patch(
                 'imbi.assistant.external_mcp.mcp.ClientSession',
+                _FakeClientSession,
             ),
         ):
             result = await manager._open_session(server)
-        self.assertIs(result, session)
-        session.initialize.assert_awaited_once()
-        self.assertIn(server.slug, manager._sessions)
+            self.assertIsInstance(result, _FakeClientSession)
+            result.initialize.assert_awaited_once()  # type: ignore
+            self.assertIn(server.slug, manager._sessions)
+            await manager.aclose()
+        transport.__aexit__.assert_awaited_once()
         # The HttpUrl must be coerced to a plain string for the client.
         passed_url = mock_client_ctx.call_args.args[0]
         self.assertIsInstance(passed_url, str)
@@ -366,6 +385,81 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         await self._run(_make_server(verify_ssl=False))
         mock_client.assert_called_once()
 
+    async def test_initialize_failure_propagates(self) -> None:
+        manager = external_mcp.ExternalMCPManager()
+        transport = mock.MagicMock()
+        transport.__aenter__.side_effect = httpx.ConnectError('refused')
+        with mock.patch(
+            'imbi.assistant.external_mcp.streamable_http.'
+            'streamable_http_client',
+            return_value=transport,
+        ):
+            with self.assertRaises(httpx.ConnectError):
+                await manager._open_session(_make_server())
+        self.assertEqual(manager._sessions, {})
+
+
+class SessionIsolationTestCase(unittest.IsolatedAsyncioTestCase):
+    """A failing MCP client child task must not cancel the caller (#287)."""
+
+    async def test_child_failure_does_not_cancel_lifespan_task(self) -> None:
+        fail = anyio.Event()
+
+        async def bad_gateway() -> None:
+            await fail.wait()
+            request = httpx.Request('POST', 'https://mcp.example.com/mcp')
+            raise httpx.HTTPStatusError(
+                '502 Bad Gateway',
+                request=request,
+                response=httpx.Response(502, request=request),
+            )
+
+        @contextlib.asynccontextmanager
+        async def fake_transport(
+            *_args: object, **_kwargs: object
+        ) -> collections.abc.AsyncGenerator[tuple[object, object, object]]:
+            # Mirrors streamable_http_client: a task group whose child
+            # raises from handle_request_async on a 502.
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(bad_gateway)
+                try:
+                    yield mock.MagicMock(), mock.MagicMock(), mock.MagicMock()
+                finally:
+                    tg.cancel_scope.cancel()
+
+        manager = external_mcp.ExternalMCPManager()
+
+        with (
+            mock.patch(
+                'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+                mock.AsyncMock(return_value=[_make_server()]),
+            ),
+            mock.patch(
+                'imbi.assistant.external_mcp.streamable_http.'
+                'streamable_http_client',
+                fake_transport,
+            ),
+            mock.patch(
+                'imbi.assistant.external_mcp.mcp.ClientSession',
+                _FakeClientSession,
+            ),
+            self.assertLogs('imbi.assistant.external_mcp', 'ERROR'),
+        ):
+            # This test task stands in for the ASGI lifespan task. Before
+            # the fix, the failing child cancelled it here.
+            await manager.initialize(mock.MagicMock())
+            self.assertTrue(manager.has_tool('mcp_example_search'))
+            fail.set()
+            for _ in range(20):
+                await asyncio.sleep(0)
+            # The failed server degrades on its own.
+            content, is_error = await manager.execute_tool(
+                'mcp_example_search', {}
+            )
+            self.assertTrue(is_error)
+            self.assertIn('not connected', content)
+            await manager.aclose()
+
 
 class AcloseTestCase(unittest.IsolatedAsyncioTestCase):
     """Test cases for aclose."""
@@ -382,10 +476,16 @@ class AcloseTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(manager.has_tool('x'))
 
     async def test_aclose_suppresses_teardown_errors(self) -> None:
+        async def broken() -> None:
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                raise ExceptionGroup('teardown', [RuntimeError('scope')])
+
         manager = external_mcp.ExternalMCPManager()
-        manager._exit_stack.aclose = mock.AsyncMock(  # type: ignore
-            side_effect=RuntimeError('cancel scope'),
-        )
+        task = asyncio.create_task(broken())
+        await asyncio.sleep(0)
+        manager._tasks.append(task)
         await manager.aclose()
         self.assertFalse(manager.is_initialized)
 
