@@ -333,8 +333,16 @@ class RunStore:
                 ' AND log_archived_at IS NULL AND last_seq = %s'
                 " AND (error IS DISTINCT FROM 'outcome_unknown'"
                 ' OR NOT EXISTS (SELECT 1 FROM workflow_runtime.side_effects'
-                ' WHERE response IS NULL AND strpos(key, %s) > 0))',
-                (run_id, list(runtime.CLOSED), last_seq, str(run_id)),
+                " WHERE response IS NULL AND CASE WHEN key LIKE '[%%'"
+                ' THEN key::jsonb ->> 0 = %s'
+                ' AND left(key::jsonb ->> 2, 36) = %s END))',
+                (
+                    run_id,
+                    list(runtime.CLOSED),
+                    last_seq,
+                    ENGINE_PRINCIPAL,
+                    str(run_id),
+                ),
             )
             if not cur.rowcount:
                 return False
@@ -487,15 +495,22 @@ async def _reopen(conn: typing.Any, run_id: uuid.UUID, node_id: str) -> int:
     Return the run's ``last_seq`` before the change.
 
     Raises:
-        _ChangedError: The run is not failed, is archived, or the step
-            did not fail with ``outcome_unknown``.
+        _ChangedError: The run is not failed, is archived, has a running
+            run of its concurrency key, or the step did not fail with
+            ``outcome_unknown``.
 
     """
     cur = await conn.execute(
-        "UPDATE workflow_runtime.runs SET status = 'running',"
+        "UPDATE workflow_runtime.runs AS r SET status = 'running',"
         ' error = NULL, closed_at = NULL, due_at = NOW()'
-        " WHERE id = %s AND status = 'failed'"
-        ' AND log_archived_at IS NULL RETURNING last_seq',
+        " WHERE r.id = %s AND r.status = 'failed'"
+        ' AND r.log_archived_at IS NULL'
+        # The engine claims a running run before it checks the
+        # concurrency key, so do not open a run beside a running one.
+        ' AND NOT EXISTS (SELECT 1 FROM workflow_runtime.runs AS o'
+        ' WHERE o.workflow_id = r.workflow_id'
+        ' AND o.concurrency_key = r.concurrency_key'
+        " AND o.status = 'running') RETURNING r.last_seq",
         (run_id,),
     )
     seq = await cur.fetchone()

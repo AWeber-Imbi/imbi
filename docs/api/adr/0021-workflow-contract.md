@@ -177,6 +177,8 @@ endpoint and no public API.
   imbi-api never expires a side-effect key with no response. An operator
   with `workflow:recover` resolves a stale one (clear it, or mark it
   done) and can retry its step; until then a run that it failed is not archived.
+  A deployment marked done cannot run again, because Imbi does not know
+  its deployment run: to retry a deployment, clear its key.
 - **At least once.** A crash between a side effect and its record repeats
   the step. Each side-effecting step passes the idempotency key
   `<run_id>:<node_key>` to the API it calls. The key does not change

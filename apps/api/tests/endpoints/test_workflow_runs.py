@@ -1434,3 +1434,49 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         self.assertFalse(await self.runs.archive(run_id, row[0]))
         await self._resolve(resolution='clear')
         self.assertTrue(await self.runs.archive(run_id, row[0]))
+
+    async def test_archive_ignores_a_person_key(self) -> None:
+        await self._resolve(resolution='clear')
+        person = workflows.runs.side_effect_key(
+            'a@example.com', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key) VALUES (%s)',
+                (person,),
+            )
+            self.addAsyncCleanup(self._drop_key, person)
+            cur = await conn.execute(
+                'SELECT last_seq FROM workflow_runtime.runs WHERE id = %s',
+                (self.run_id,),
+            )
+            row = await cur.fetchone()
+        assert row is not None
+        run_id = uuid.UUID(str(self.run_id))
+        self.assertTrue(await self.runs.archive(run_id, row[0]))
+
+    async def _drop_key(self, key: str) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM workflow_runtime.side_effects WHERE key = %s',
+                (key,),
+            )
+
+    async def test_retry_waits_for_a_running_run_of_the_key(self) -> None:
+        response = await self.client.post(
+            f'{self.base}/deploy-guard/runs', json={'inputs': {'version': '2'}}
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        other = response.json()['id']
+        self.addAsyncCleanup(self._forget, str(other))
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET concurrency_key = 'k',"
+                " status = CASE WHEN id = %s THEN 'running' ELSE status END"
+                ' WHERE id IN (%s, %s)',
+                (other, self.run_id, other),
+            )
+        before = await self._state()
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(await self._state(), before)
