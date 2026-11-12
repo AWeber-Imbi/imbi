@@ -7,14 +7,17 @@ agent and outcomes match. The task id and the trigger node id are the
 idempotency key, so a repeat starts no second run.
 
 A run that a closed task starts can give an agent a task, which can
-close and start a run again. :data:`MAX_DEPTH` stops such a chain: the
-run origin records its depth, and an agent step copies the run origin
-into its task.
+close (or delegate a child task that closes) and start a run again.
+:data:`MAX_DEPTH` stops such a chain: the run origin records its depth,
+an agent step copies the run origin into its task, and the depth is
+read from the root task of the closed task's chain, which every
+delegated child shares.
 """
 
 import logging
 import typing
 
+from imbi.api.agent_tasks import store as task_store
 from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import store
 from imbi.common.workflows import graph, validation
@@ -35,24 +38,31 @@ def _matches(params: dict[str, typing.Any], task: store.Row) -> bool:
     )
 
 
-def _depth(task: store.Row) -> int:
-    """Return the depth of a run that ``task`` starts."""
-    if task['origin_kind'] != KIND:
+def _depth(root: store.Row | None) -> int:
+    """Return the depth of a run that a task of the chain of ``root``
+    starts. A missing root counts as the deepest chain."""
+    if root is None:
+        return MAX_DEPTH + 1
+    if root['origin_kind'] != KIND:
         return 1
-    origin: dict[str, typing.Any] = task['origin'] or {}
+    origin: dict[str, typing.Any] = root['origin'] or {}
     return int(origin.get('depth', 0)) + 1
 
 
 class TaskTrigger:
     def __init__(
-        self, definitions: store.WorkflowStore, runs: runs_module.RunStore
+        self,
+        definitions: store.WorkflowStore,
+        runs: runs_module.RunStore,
+        tasks: task_store.TaskStore,
     ) -> None:
         self._definitions = definitions
         self._runs = runs
+        self._tasks = tasks
 
     async def __call__(self, task: store.Row) -> None:
         """Start a run for each trigger that the closed task matches."""
-        depth = _depth(task)
+        depth = _depth(await self._tasks.chain_root(task))
         if depth > MAX_DEPTH:
             LOGGER.warning(
                 'Task %s starts no workflow runs: the chain is %d deep',

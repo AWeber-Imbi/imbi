@@ -601,6 +601,16 @@ class TaskStore:
                 (organization_id, short_id),
             )
 
+    async def chain_root(self, task: Row) -> Row | None:
+        """Return the root task of the chain of ``task`` (ADR 0022)."""
+        chain_id = task['chain_id'] or task['id']
+        if chain_id == task['id']:
+            return task
+        async with self._pool.connection() as conn:
+            return await _fetch_one(
+                conn, _SELECT_TASKS + ' WHERE t.id = %s', (chain_id,)
+            )
+
     async def search(
         self,
         organization_id: str,

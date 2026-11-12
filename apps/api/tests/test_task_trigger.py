@@ -23,8 +23,22 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
         'outcome': 'failed_external',
         'origin_kind': 'human',
         'origin': {'kind': 'human'},
+        'chain_id': None,
         **changes,
     }
+
+
+class FakeTasks:
+    """Returns chain roots from a dict, as ``TaskStore.chain_root``."""
+
+    def __init__(self) -> None:
+        self.roots: dict[uuid.UUID, dict[str, typing.Any]] = {}
+
+    async def chain_root(
+        self, task: dict[str, typing.Any]
+    ) -> dict[str, typing.Any] | None:
+        chain_id = task['chain_id'] or task['id']
+        return task if chain_id == task['id'] else self.roots.get(chain_id)
 
 
 class ParamsTestCase(unittest.TestCase):
@@ -56,8 +70,11 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                 author='ops@example.com',
             ),
         )
+        self.tasks = FakeTasks()
         self.trigger = task_trigger.TaskTrigger(
-            self.definitions, HeldRunStore(self.pool)
+            self.definitions,
+            HeldRunStore(self.pool),
+            typing.cast(typing.Any, self.tasks),
         )
 
     async def _cleanup(self) -> None:
@@ -157,3 +174,30 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         await self.trigger(chained(task_trigger.MAX_DEPTH - 1))
         [run] = await self._runs()
         self.assertEqual(run['origin']['depth'], task_trigger.MAX_DEPTH)
+
+    async def test_delegated_child_keeps_the_chain_depth(self) -> None:
+        """A child task that an agent delegates has origin ``task``; its
+        depth comes from the root of its chain, so delegation cannot
+        reset the loop guard."""
+        await self._activate()
+        root = _task(
+            organization_id=self.org,
+            origin_kind='task_completed',
+            origin={'kind': 'task_completed', 'depth': task_trigger.MAX_DEPTH},
+        )
+        self.tasks.roots[root['id']] = root
+        child = _task(
+            organization_id=self.org,
+            origin_kind='task',
+            origin={'kind': 'task'},
+            chain_id=root['id'],
+        )
+        await self.trigger(child)
+        self.assertEqual(await self._runs(), [])
+
+    async def test_missing_chain_root_starts_nothing(self) -> None:
+        await self._activate()
+        await self.trigger(
+            _task(organization_id=self.org, chain_id=uuid.uuid4())
+        )
+        self.assertEqual(await self._runs(), [])

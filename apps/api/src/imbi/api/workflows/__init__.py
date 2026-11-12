@@ -63,11 +63,12 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         await pool.open()
         _runs = RunStore(pool)
         definitions = WorkflowStore(pool)
-        trigger = task_trigger.TaskTrigger(definitions, _runs)
+        tasks = TaskStore(pool)
+        trigger = task_trigger.TaskTrigger(definitions, _runs, tasks)
         task_store.register_close_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(
-            sweeper.run_sweeper(_runs, TaskStore(pool), stop=stop)
+            sweeper.run_sweeper(_runs, tasks, stop=stop)
         )
         try:
             yield definitions
