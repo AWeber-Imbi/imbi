@@ -4287,6 +4287,11 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
                 created_by='a@b.c',
             )
         self.assertEqual('rel-1', rid)
+        # Same lock as ``releases.create_release``, so the two writers
+        # serialize against each other.
+        self.assertEqual(
+            releases.release_lock_key('p1'), db.locked.await_args.args[0]
+        )
         db.execute.assert_awaited_once()
         query, params, _ = db.execute.await_args.args
         self.assertIn(
