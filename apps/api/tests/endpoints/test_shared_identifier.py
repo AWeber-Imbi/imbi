@@ -5,6 +5,7 @@ plugin manifest decides if projects can share an identifier: GitHub
 can (a monorepo), Sentry cannot.
 """
 
+import asyncio
 import json
 import uuid
 from unittest import mock
@@ -92,6 +93,13 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             self.graph, self.other_project
         )
         self.assertEqual(edges, [])
+
+    async def test_concurrent_claims_link_one_project(self) -> None:
+        results = await asyncio.gather(
+            self.link(self.project_id, 'sentry'),
+            self.link(self.other_project, 'sentry'),
+        )
+        self.assertEqual(sum(r is None for r in results), 1, results)
 
     async def test_own_edge_can_be_written_again(self) -> None:
         self.assertIsNone(await self.link(self.project_id, 'sentry'))

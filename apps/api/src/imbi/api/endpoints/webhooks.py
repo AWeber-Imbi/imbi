@@ -12,10 +12,11 @@ import pydantic
 from imbi.api.auth import permissions
 from imbi.api.domain import models
 from imbi.api.endpoints._helpers import (
+    SharedIdentifierRefused,
+    claim_identifier,
     conflict_on_unique_violation,
     lookup_project_links,
     merge_project_links,
-    shared_identifier_refusal,
 )
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph
@@ -59,19 +60,31 @@ def _compute_webhook_slug(
     return name_part[:64]
 
 
-async def _refuse_shared_identifier(
+async def _write_unshared_identifier(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
     integration_slug: str,
     identifier: str,
-) -> None:
-    """Raise 409 when the plugin forbids sharing ``identifier`` (#639)."""
-    refusal = await shared_identifier_refusal(
-        db, org_slug, project_id, integration_slug, identifier
-    )
-    if refusal is not None:
-        raise fastapi.HTTPException(status_code=409, detail=refusal)
+    query: typing.LiteralString,
+    params: dict[str, typing.Any],
+    columns: list[str],
+) -> list[dict[str, typing.Any]]:
+    """Run the ``EXISTS_IN`` write ``query`` through :func:`claim_identifier`.
+
+    Raise 409 when the plugin forbids sharing ``identifier`` (#639).
+    """
+    try:
+        return await claim_identifier(
+            db,
+            org_slug,
+            project_id,
+            integration_slug,
+            identifier,
+            lambda execute: execute(query, params, columns),
+        )
+    except SharedIdentifierRefused as exc:
+        raise fastapi.HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 async def _check_identifier_collision(
@@ -917,9 +930,6 @@ async def create_project_service(
     ],
 ) -> models.ExistsInResponse:
     """Add an EXISTS_IN link between a project and a service."""
-    await _refuse_shared_identifier(
-        db, org_slug, project_id, data.integration_slug, data.identifier
-    )
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
@@ -934,7 +944,12 @@ async def create_project_service(
            ei.identifier AS identifier,
            ei.canonical_url AS canonical_url
     """
-    records = await db.execute(
+    records = await _write_unshared_identifier(
+        db,
+        org_slug,
+        project_id,
+        data.integration_slug,
+        data.identifier,
         query,
         {
             'org_slug': org_slug,
@@ -1009,9 +1024,6 @@ async def update_project_service(
     authoritative for which link is updated. Clearing ``dashboard_url``
     (empty/absent) removes the mirrored ``Project.links`` entry.
     """
-    await _refuse_shared_identifier(
-        db, org_slug, project_id, service_slug, data.identifier
-    )
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
@@ -1025,7 +1037,12 @@ async def update_project_service(
            ei.identifier AS identifier,
            ei.canonical_url AS canonical_url
     """
-    records = await db.execute(
+    records = await _write_unshared_identifier(
+        db,
+        org_slug,
+        project_id,
+        service_slug,
+        data.identifier,
         query,
         {
             'org_slug': org_slug,

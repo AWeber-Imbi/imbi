@@ -152,6 +152,11 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         is_admin: bool = True,
     ) -> tuple[list[LifecycleInvocation], mock.AsyncMock]:
         mock_db = mock.AsyncMock()
+
+        async def locked(_key: str, work: typing.Any) -> typing.Any:
+            return await work(mock_db.execute)
+
+        mock_db.locked.side_effect = locked
         auth = _make_auth()
         auth.is_admin = is_admin
         with (
@@ -333,7 +338,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
             results, _ = self._run([resolved])
         self.assertEqual(results[0].status, 'ok')
         merge_edge.assert_awaited_once()
-        # _merge_exists_in(db, org, project, slug, identifier, canonical_url)
+        # _merge_exists_in(execute, org, project, slug, identifier, url)
         args = merge_edge.await_args.args
         self.assertEqual(args[1], 'org-1')
         self.assertEqual(args[2], 'proj-1')

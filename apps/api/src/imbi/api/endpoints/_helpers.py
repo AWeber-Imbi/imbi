@@ -809,8 +809,45 @@ _IDENTIFIER_HOLDER: typing.LiteralString = (
 )
 
 
-async def shared_identifier_refusal(
+class SharedIdentifierRefused(Exception):
+    """:func:`claim_identifier` refused the write; the message says why."""
+
+
+async def claim_identifier(
     db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    slug: str,
+    identifier: str,
+    write: collections.abc.Callable[
+        [graph.CypherExecute], collections.abc.Awaitable[T]
+    ],
+) -> T:
+    """Run ``write`` unless :func:`shared_identifier_refusal` refuses.
+
+    The holder check and ``write`` run in one transaction under an
+    advisory lock on the organization, Integration, and identifier.
+    Thus two projects that claim one unused identifier at the same
+    time cannot both get an ``EXISTS_IN`` edge to it: AGE has no
+    unique constraint that stops the second edge.
+
+    Raises :class:`SharedIdentifierRefused`, and writes nothing, when
+    the check refuses.
+    """
+
+    async def claim(execute: graph.CypherExecute) -> T:
+        refusal = await shared_identifier_refusal(
+            execute, org_slug, project_id, slug, identifier
+        )
+        if refusal is not None:
+            raise SharedIdentifierRefused(refusal)
+        return await write(execute)
+
+    return await db.locked(f'exists-in:{org_slug}:{slug}:{identifier}', claim)
+
+
+async def shared_identifier_refusal(
+    execute: graph.CypherExecute,
     org_slug: str,
     project_id: str,
     slug: str,
@@ -823,7 +860,7 @@ async def shared_identifier_refusal(
     ``shareable_service_identifier = False`` (issue #639). A plugin
     that is not loaded is treated as shareable.
     """
-    records = await db.execute(
+    records = await execute(
         _IDENTIFIER_HOLDER,
         {
             'org_slug': org_slug,
@@ -881,20 +918,37 @@ async def persist_service_writeback(
         )
         return None
     try:
-        if not writeback.remove:
+        if writeback.remove:
+            await _delete_exists_in(db, ctx.org_slug, ctx.project_id, slug)
+            await merge_project_links(
+                db, ctx.project_id, remove=writeback.dashboard_links.keys()
+            )
+        else:
             refusal = None
             if not auth.is_admin:
                 refusal = await _repoint_refusal(
                     db, ctx, slug, writeback.identifier
                 )
             if refusal is None:
-                refusal = await shared_identifier_refusal(
-                    db,
-                    ctx.org_slug,
-                    ctx.project_id,
-                    slug,
-                    writeback.identifier,
-                )
+                try:
+                    await claim_identifier(
+                        db,
+                        ctx.org_slug,
+                        ctx.project_id,
+                        slug,
+                        writeback.identifier,
+                        lambda execute: _merge_exists_in(
+                            execute,
+                            ctx.org_slug,
+                            ctx.project_id,
+                            slug,
+                            writeback.identifier,
+                            writeback.canonical_url,
+                            writeback.webhook_secret_enc,
+                        ),
+                    )
+                except SharedIdentifierRefused as exc:
+                    refusal = str(exc)
             if refusal is not None:
                 LOGGER.warning(
                     'Refused service writeback for project %s (%s): %s',
@@ -903,21 +957,6 @@ async def persist_service_writeback(
                     refusal,
                 )
                 return refusal
-        if writeback.remove:
-            await _delete_exists_in(db, ctx.org_slug, ctx.project_id, slug)
-            await merge_project_links(
-                db, ctx.project_id, remove=writeback.dashboard_links.keys()
-            )
-        else:
-            await _merge_exists_in(
-                db,
-                ctx.org_slug,
-                ctx.project_id,
-                slug,
-                writeback.identifier,
-                writeback.canonical_url,
-                writeback.webhook_secret_enc,
-            )
             await merge_project_links(
                 db, ctx.project_id, add=writeback.dashboard_links
             )
@@ -939,7 +978,7 @@ async def persist_service_writeback(
 
 
 async def _merge_exists_in(
-    db: graph.Graph,
+    execute: graph.CypherExecute,
     org_slug: str,
     project_id: str,
     integration_slug: str,
@@ -993,7 +1032,7 @@ async def _merge_exists_in(
     }
     if webhook_secret_enc is not None:
         params['webhook_secret_enc'] = webhook_secret_enc
-    await db.execute(query, params, ['identifier'])
+    await execute(query, params, ['identifier'])
 
 
 async def _delete_exists_in(
