@@ -100,7 +100,7 @@ export function CanvasNode({
             </span>
           </span>
         )}
-        <span className={cn('truncate', SUMMARY_TONE[summary.tone])}>
+        <span className={cn('min-h-4.5 truncate', SUMMARY_TONE[summary.tone])}>
           {summary.text}
         </span>
       </div>
