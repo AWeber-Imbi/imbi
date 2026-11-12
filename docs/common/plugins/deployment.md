@@ -87,7 +87,9 @@ class GitHubDeployment(DeploymentCapability):
   optionally filtered by `kind` and a `query` substring.
 - **`list_commits`** — list commits reachable from `ref`, newest first.
 - **`resolve_committish`** — hydrate a single branch / tag / SHA into a
-  `Commit`.
+  `Commit`. Set `ci_status` from the commit's checks and `is_head` when
+  the commit is the default branch's head. The API stamps
+  `drift_detected` and `tag` after the plugin answers.
 - **`compare`** — return a `CompareResult` for `base..head` (ahead /
   behind counts, commits, diffstat).
 - **`trigger_deployment`** — dispatch a CI workflow / pipeline run for

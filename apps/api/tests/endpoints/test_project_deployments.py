@@ -481,13 +481,24 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertTrue(data[0]['is_head'])
 
     def test_resolve_commit(self) -> None:
-        with testclient.TestClient(self.test_app) as client:
+        verdicts = mock.AsyncMock(return_value={'abc1234': False})
+        tags = mock.AsyncMock(return_value={'abc1234': 'v1.2.3'})
+        with (
+            mock.patch('imbi.api.drift.verdicts_by_sha', new=verdicts),
+            mock.patch(f'{_MODULE}._tags_by_sha', new=tags),
+            testclient.TestClient(self.test_app) as client,
+        ):
             response = client.get(
                 '/organizations/myorg/projects/proj1/deployments/'
                 'commits/abc1234'
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['sha'], 'abc1234')
+        data = response.json()
+        self.assertEqual(data['sha'], 'abc1234')
+        # Enriched like the commit list, not left at schema defaults.
+        self.assertFalse(data['drift_detected'])
+        self.assertEqual(data['tag'], 'v1.2.3')
+        verdicts.assert_awaited_once_with('proj1', ['abc1234'])
 
     def test_compare(self) -> None:
         with testclient.TestClient(self.test_app) as client:
@@ -5830,6 +5841,48 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             response.json()['suggested_tag'],
             f'{today.year}.{today.month}.{today.day}',
         )
+
+    def test_release_drift_calver_uses_the_requester_time_zone(
+        self,
+    ) -> None:
+        """8 PM in New York on 10 November is 2026.11.10, not .11 (UTC)."""
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$',
+            )
+        ]
+        now = datetime.datetime(2026, 11, 11, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [],  # no tags
+                [{'sha': 'headsha'}],
+                [self._commit_row('c1', message='feat: first feature')],
+                [{'c': 1}],
+            ]
+        )
+        with (
+            mock.patch.object(
+                project_deployments.datetime,
+                'datetime',
+                wraps=datetime.datetime,
+            ) as dt,
+            testclient.TestClient(self.test_app) as client,
+        ):
+            dt.now.side_effect = now.astimezone
+            response = client.get(
+                f'{self._BASE}/release-drift',
+                params={'tz': 'America/New_York'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['suggested_tag'], '2026.11.10')
+
+    def test_release_drift_rejects_an_unknown_time_zone(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                f'{self._BASE}/release-drift', params={'tz': 'Mars/Olympus'}
+            )
+        self.assertEqual(response.status_code, 422)
 
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:
         """A backported lower version must not out-rank the latest release.

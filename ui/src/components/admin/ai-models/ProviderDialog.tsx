@@ -90,9 +90,9 @@ export function ProviderDialog({
     provider?.driver ?? initialDriver?.slug ?? '',
   )
   const [name, setName] = useState(provider?.name ?? initialDriver?.name ?? '')
-  const [baseUrl, setBaseUrl] = useState(
-    provider?.base_url ?? initialDriver?.default_base_url ?? '',
-  )
+  // An empty field means "use the driver default", which is shown as
+  // the placeholder, so a cleared field looks cleared.
+  const [baseUrl, setBaseUrl] = useState(provider?.base_url ?? '')
   const [apiKey, setApiKey] = useState('')
   const [description, setDescription] = useState(provider?.description ?? '')
   const [region, setRegion] = useState(provider?.region ?? '')
@@ -112,7 +112,7 @@ export function ProviderDialog({
   const handleDriverChange = (slug: string) => {
     const next = drivers.find((d) => d.slug === slug)
     setDriverSlug(slug)
-    setBaseUrl(next?.default_base_url ?? '')
+    setBaseUrl('')
     if (name.trim() === '' || drivers.some((d) => d.name === name)) {
       setName(next?.name ?? '')
     }
@@ -196,7 +196,7 @@ export function ProviderDialog({
             description={
               baseUrlRequired
                 ? undefined
-                : 'Leave as-is to use the driver default.'
+                : 'Leave empty to use the driver default.'
             }
             htmlFor="ai-provider-base-url"
             label="Base URL"
@@ -206,6 +206,7 @@ export function ProviderDialog({
               className="font-mono"
               id="ai-provider-base-url"
               onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder={driver?.default_base_url ?? undefined}
               value={baseUrl}
             />
           </FormField>

@@ -174,6 +174,7 @@ async def query(
     parameters: dict[str, typing.Any] | None = None,
     project_ids: client.ProjectRows | None = None,
     columns: abc.Sequence[str] = ('project_id String',),
+    tables: abc.Mapping[str, abc.Sequence[str]] | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Query the Clickhouse database and return results as a list of dicts.
 
@@ -181,13 +182,16 @@ async def query(
     ``Array(String)`` parameter: ClickHouse rejects a bound parameter
     longer than 131072 bytes.  The IDs go as the ``project_ids``
     external table; read them with
-    ``project_id IN (SELECT project_id FROM project_ids)``.
+    ``project_id IN (SELECT project_id FROM project_ids)``.  Give
+    other ID lists as ``tables``, by table name; each is read as
+    ``x IN (SELECT id FROM <name>)``.
 
     Args:
        sql: SQL query string, possibly with parameter placeholders
        parameters: Optional dictionary of parameter values
        project_ids: Optional rows for the ``project_ids`` external table
        columns: The ``name Type`` of each external table column
+       tables: More external tables of IDs, by table name
 
     Returns:
        List of dictionaries mapping column names to values
@@ -196,8 +200,12 @@ async def query(
        DatabaseError: If there's an error executing the query
     """
     clickhouse = client.Clickhouse.get_instance()
-    if project_ids is None:
+    if project_ids is None and not tables:
         return await clickhouse.query(sql, parameters=parameters)
     return await clickhouse.query(
-        sql, parameters=parameters, project_ids=project_ids, columns=columns
+        sql,
+        parameters=parameters,
+        project_ids=project_ids,
+        columns=columns,
+        tables=tables,
     )

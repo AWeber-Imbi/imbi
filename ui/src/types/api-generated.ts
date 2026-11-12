@@ -3438,7 +3438,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Project
-         * @description Delete a project.
+         * @description Delete a project, and remove it from the secret grants.
          *
          *     When ``delete_repository`` is true (the default), each assigned
          *     lifecycle plugin's ``on_project_deleted`` hook is also invoked so
@@ -4949,7 +4949,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Agent
-         * @description Delete an agent, every version of it, and its service account.
+         * @description Delete an agent, every version of it, and its service account,
+         *     and remove it from the secret grants.
          *
          *     Raises:
          *         404: No such agent.
@@ -11068,14 +11069,16 @@ export interface components {
          * @description What started a task. It does not change.
          *
          *     A ``schedule`` origin also has ``scheduled_task_id``. A ``webhook``
-         *     origin also has ``webhook_id`` and ``delivery_id``.
+         *     origin also has ``webhook_id`` and ``delivery_id``. A
+         *     ``task_completed`` origin is a workflow run that a closed task
+         *     started; it also has ``task_id``.
          */
         AgentTaskOrigin: {
             /**
              * Kind
              * @enum {string}
              */
-            kind: "human" | "schedule" | "webhook" | "task";
+            kind: "human" | "schedule" | "webhook" | "task" | "task_completed";
             /** User */
             user?: string | null;
         } & {

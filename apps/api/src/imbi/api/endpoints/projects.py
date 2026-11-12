@@ -766,12 +766,12 @@ async def lookup_ops_log_performed_by(
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed'"
         ' AND is_deleted = 0'
-        ' AND project_id IN {project_ids:Array(String)}'
+        ' AND project_id IN (SELECT project_id FROM project_ids)'
         ' GROUP BY project_id, environment_slug, version'
     )
     try:
         rows = await ch_client.Clickhouse.get_instance().query(
-            sql, {'project_ids': project_ids}
+            sql, project_ids=project_ids
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
@@ -989,6 +989,12 @@ async def _fetch_current_releases(
     return CurrentReleaseState(current, in_flight)
 
 
+def _ch_time(value: datetime.datetime) -> str:
+    """Format a UTC time for a ``DateTime64(3, 'UTC')`` TSV column."""
+    utc = clickhouse.as_utc(value).astimezone(datetime.UTC)
+    return utc.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+
 class ActionableCommit(typing.NamedTuple):
     """One commit :func:`_fetch_actionable_commit_times` returned.
 
@@ -1040,30 +1046,30 @@ async def _fetch_actionable_commit_times(
     """
     if not windows:
         return {}
-    project_ids = list(windows)
     try:
         rows = await clickhouse.query(
             'SELECT c.project_id AS project_id, c.short_sha AS short_sha,'
             ' COALESCE(c.committed_at, c.authored_at) AS at,'
             ' c.pushed_at AS landed'
             ' FROM commits AS c FINAL'
+            ' INNER JOIN project_ids AS w ON w.project_id = c.project_id'
             ' LEFT ANTI JOIN (SELECT project_id, sha'
             ' FROM commit_drift FINAL'
             ' WHERE NOT drift_detected'
-            ' AND project_id IN {project_ids:Array(String)}) AS d'
+            ' AND project_id IN (SELECT project_id FROM project_ids)) AS d'
             ' ON d.project_id = c.project_id AND d.sha = c.sha'
-            ' WHERE c.project_id IN {project_ids:Array(String)}'
-            ' AND COALESCE(c.committed_at, c.authored_at) >='
-            ' mapFromArrays({project_ids:Array(String)},'
-            ' {los:Array(DateTime64(3))})[c.project_id]'
-            ' AND COALESCE(c.committed_at, c.authored_at) <='
-            ' mapFromArrays({project_ids:Array(String)},'
-            ' {his:Array(DateTime64(3))})[c.project_id]',
-            {
-                'project_ids': project_ids,
-                'los': [windows[pid][0] for pid in project_ids],
-                'his': [windows[pid][1] for pid in project_ids],
-            },
+            ' WHERE c.project_id IN (SELECT project_id FROM project_ids)'
+            ' AND COALESCE(c.committed_at, c.authored_at) >= w.lo'
+            ' AND COALESCE(c.committed_at, c.authored_at) <= w.hi',
+            project_ids=[
+                (pid, _ch_time(lo), _ch_time(hi))
+                for pid, (lo, hi) in windows.items()
+            ],
+            columns=(
+                'project_id String',
+                "lo DateTime64(3, 'UTC')",
+                "hi DateTime64(3, 'UTC')",
+            ),
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to fetch actionable commits', exc_info=True)
@@ -1096,9 +1102,10 @@ async def _fetch_commit_times(
             'SELECT project_id, short_sha,'
             ' COALESCE(committed_at, authored_at) AS at'
             ' FROM commits FINAL'
-            ' WHERE project_id IN {project_ids:Array(String)}'
-            ' AND short_sha IN {short_shas:Array(String)}',
-            {'project_ids': project_ids, 'short_shas': short_shas},
+            ' WHERE project_id IN (SELECT project_id FROM project_ids)'
+            ' AND short_sha IN (SELECT id FROM short_shas)',
+            project_ids=project_ids,
+            tables={'short_shas': short_shas},
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to resolve commit times', exc_info=True)

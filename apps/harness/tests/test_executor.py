@@ -246,6 +246,22 @@ class ExecutorTestCase(BaseTestCase):
         self.spawn.assert_not_called()
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
 
+    async def test_refusal_gives_the_reason(self) -> None:
+        await self.hello()
+        self.api.materialize.side_effect = api.Refused(
+            502,
+            'secret_materialization_failed',
+            reason='permission_or_repository_not_granted',
+        )
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(
+            reply,
+            {
+                'error': 'secret_materialization_failed'
+                ' (permission_or_repository_not_granted)'
+            },
+        )
+
     async def test_failed_release_is_logged(self) -> None:
         await self.hello()
         self.api.release.side_effect = api.Refused(404, 'not_found')

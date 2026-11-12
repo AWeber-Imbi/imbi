@@ -310,6 +310,7 @@ class RegistryTestCase(unittest.TestCase):
                 'manual',
                 'schedule',
                 'webhook',
+                'task_completed',
                 'wait',
                 'model_decision',
                 'email',

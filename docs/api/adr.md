@@ -455,6 +455,23 @@ Defines work items: the subject that people and agents move to done, native to I
 
 ---
 
+#### [ADR 0025: Tickets](adr/0025-tickets.md)
+
+*Date: 2026-11-12 | Status: Proposed*
+
+An alternative to ADR 0024. Defines tickets: the record of one piece of work that agents carry from report to verified change, moved forward by a manager agent. ADR 0021 is not changed.
+
+**Key Decisions:**
+
+- Tickets are a new entity in the Postgres `tickets` schema, with a coarse status that can reopen and a fixed list of stages: Analysis, Implementation, Review, Release, Verification
+- A manager agent runs briefly on each ticket event, reads the ticket and its log, and does the next thing. It keeps no state of its own
+- Agent tasks stay final. Rework and reopened tickets start a new task on the same ticket, as the root of its own chain
+- An ask puts one question to one person and ends the manager's task. Waiting on me is a person's open asks plus open requests on tasks they own
+- imbi-api enforces the guardrails: one manager task per ticket, no `done` with an open pull request or work task, and a work budget and a manager budget per ticket that every task-creation path checks
+- Jira is not synced, and work that only people do is out of scope
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:

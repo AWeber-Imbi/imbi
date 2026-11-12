@@ -1069,7 +1069,7 @@ class TaskRun:
         try:
             created = await self.api.create_resolution(body)
         except api.Refused as err:
-            LOGGER.warning('Refused %s secret: %s', purpose, err.code)
+            LOGGER.warning('Refused %s secret: %s', purpose, err.detail)
             return None
         return {
             'handle': created['handle'],
@@ -2011,7 +2011,7 @@ class TaskRun:
                 except api.Refused as err:
                     hint = f': {err.hint}' if err.hint else ''
                     return _tool_error(
-                        f'The secret request was refused: {err.code}{hint}'
+                        f'The secret request was refused: {err.detail}{hint}'
                     )
                 resolved.append(
                     {

@@ -14,6 +14,7 @@ from jsonschema_models import models as schema_models
 from pydantic import alias_generators
 
 from imbi.common import versioning
+from imbi.common.llm import drivers
 
 __all__ = [
     'AIModel',
@@ -766,7 +767,21 @@ class AIProvider(Node):
 
     @pydantic.model_validator(mode='after')
     def _validate_driver_requirements(self) -> typing.Self:
-        """``openai_compatible`` has no default endpoint to fall back on."""
+        """Store the driver default as ``None`` and check the driver.
+
+        The driver default is the same as no ``base_url``, so workload
+        identity (which needs the default endpoint) also accepts a
+        provider that names it. ``openai_compatible`` has no default
+        endpoint to fall back on.
+        """
+        info = drivers.get_driver(self.driver)
+        default = info.default_base_url if info else None
+        if (
+            self.base_url
+            and default
+            and self.base_url.rstrip('/') == default.rstrip('/')
+        ):
+            self.base_url = None
         if self.driver == 'openai_compatible' and not self.base_url:
             raise ValueError("driver 'openai_compatible' requires a base_url")
         if self.workload_identity is not None:

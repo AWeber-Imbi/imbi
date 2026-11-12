@@ -89,7 +89,9 @@ def _tsv(value: str) -> str:
 
 
 def external_table(
-    rows: ProjectRows, columns: abc.Sequence[str]
+    rows: ProjectRows | None,
+    columns: abc.Sequence[str],
+    tables: abc.Mapping[str, abc.Sequence[str]] | None = None,
 ) -> ExternalData:
     """Make the ``project_ids`` external table for a query.
 
@@ -100,13 +102,31 @@ def external_table(
     not raise the limit.  An external table goes as a file part of the
     request, which that setting does not limit.  Read it in SQL as
     ``project_id IN (SELECT project_id FROM project_ids)``.
+
+    Each entry of ``tables`` adds one more external table with that
+    name and one ``id String`` column, for a second ID list such as
+    release IDs: ``release_id IN (SELECT id FROM release_ids)``.
     """
+    data = ExternalData()
+    if rows is not None:
+        _add_table(data, 'project_ids', rows, columns)
+    for name, ids in (tables or {}).items():
+        _add_table(data, name, ids, ('id String',))
+    return data
+
+
+def _add_table(
+    data: ExternalData,
+    name: str,
+    rows: ProjectRows,
+    columns: abc.Sequence[str],
+) -> None:
     lines = (
         '\t'.join(_tsv(v) for v in ((row,) if isinstance(row, str) else row))
         for row in rows
     )
-    return ExternalData(
-        file_name='project_ids',
+    data.add_file(
+        file_name=name,
         data='\n'.join(lines).encode(),
         fmt='TSV',
         structure=list(columns),
@@ -209,6 +229,7 @@ class Clickhouse:
         parameters: dict[str, typing.Any] | None = None,
         project_ids: ProjectRows | None = None,
         columns: abc.Sequence[str] = ('project_id String',),
+        tables: abc.Mapping[str, abc.Sequence[str]] | None = None,
     ) -> list[dict[str, typing.Any]]:
         """Query the Clickhouse database and return results as a list of dicts.
 
@@ -218,6 +239,7 @@ class Clickhouse:
            project_ids: Optional rows for the ``project_ids`` external
               table (see :func:`external_table`)
            columns: The ``name Type`` of each external table column
+           tables: More external tables of IDs, by table name
 
         Returns:
            List of dictionaries mapping column names to values
@@ -232,8 +254,10 @@ class Clickhouse:
         LOGGER.debug('Clickhouse QUERY: %s', statement)
         LOGGER.debug('Clickhouse QUERY Parameters: %r', parameters)
         extra: dict[str, typing.Any] = {}
-        if project_ids is not None:
-            extra['external_data'] = external_table(project_ids, columns)
+        if project_ids is not None or tables:
+            extra['external_data'] = external_table(
+                project_ids, columns, tables
+            )
         with _translate_errors('query'):
             result = await self._clickhouse.query(
                 statement, parameters=parameters or {}, **extra
