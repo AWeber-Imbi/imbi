@@ -166,10 +166,16 @@ def _sign(request: httpx.Request, token: str) -> httpx.Request:
 
 
 def bearer_client(
-    source: TokenSource, **kwargs: typing.Any
+    source: TokenSource,
+    client_class: type[anthropic.AsyncAnthropic] = anthropic.AsyncAnthropic,
+    **kwargs: typing.Any,
 ) -> anthropic.AsyncAnthropic:
-    """An ``AsyncAnthropic`` client that sends the token of ``source``."""
-    return anthropic.AsyncAnthropic(
+    """An ``AsyncAnthropic`` client that sends the token of ``source``.
+
+    ``client_class`` is a subclass to use instead, such as the PostHog
+    wrapper for AI observability.
+    """
+    return client_class(
         # BearerAuth replaces it on each request.
         auth_token='imbi-ai-provider',
         http_client=anthropic.DefaultAsyncHttpxClient(auth=BearerAuth(source)),

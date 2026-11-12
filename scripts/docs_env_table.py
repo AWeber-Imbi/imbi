@@ -273,7 +273,19 @@ DESCRIPTIONS: dict[str, str] = {
     'SENTRY_DSN': 'Sentry DSN. Unset: Sentry is off.',
     'SENTRY_TRACES_SAMPLE_RATE': 'Trace sample rate, `0.0` to `1.0`. '
     '`/status` requests are never sampled.',
-    'SERVICE': 'Server name sent to Sentry',
+    'SERVICE': 'Server name sent to Sentry, and the `service` property '
+    'of PostHog events',
+    'POSTHOG_API_KEY': 'PostHog project key. Unset: PostHog is off.',
+    'POSTHOG_HOST': 'PostHog ingestion host. Default: '
+    '`https://us.i.posthog.com`.',
+    'POSTHOG_ERROR_TRACKING': '`false` stops sending exceptions to PostHog. '
+    'Default: `true`.',
+    'POSTHOG_MCP_ANALYTICS': '`true` sends a `$mcp_tool_call` event for '
+    'each MCP tool call, without arguments or results',
+    'POSTHOG_AI_OBSERVABILITY': '`true` sends a `$ai_generation` event for '
+    'each assistant LLM call',
+    'POSTHOG_AI_PRIVACY_MODE': '`false` puts prompt and output text in AI '
+    'events. Default: `true`.',
     'IMBI_PROMPT_WORKERS': 'Prompt render worker processes per service '
     'process',
     'IMBI_PROMPT_WORKER_MAX_RENDERS': 'Renders before a worker is replaced',
@@ -477,6 +489,19 @@ DESCRIPTIONS: dict[str, str] = {
     'VITE_API_URL': 'API URL that Caddy writes into `index.html` at request '
     'time. The UI does not start without it.',
     'VITE_SENTRY_DSN': 'Sentry DSN of the UI, written into `index.html`',
+    'VITE_POSTHOG_KEY': 'PostHog project key of the UI. Unset: the UI '
+    'sends nothing to PostHog.',
+    'VITE_POSTHOG_HOST': 'PostHog ingestion host of the UI',
+    'VITE_POSTHOG_ERROR_TRACKING': '`false` stops sending UI exceptions. '
+    'Default: `true`.',
+    'VITE_POSTHOG_WEB_ANALYTICS': '`true` sends pageviews, page leaves, '
+    'and web vitals',
+    'VITE_POSTHOG_SESSION_REPLAY': '`true` records sessions. All text and '
+    'inputs are always masked.',
+    'VITE_POSTHOG_REPLAY_SAMPLE_RATE': 'Share of sessions that record, '
+    '`0` to `1`. Default: `1`.',
+    'VITE_POSTHOG_PERSON_PROFILES': '`identified_only` identifies each user '
+    'by a hash of their email. Default: `never`.',
     'VITE_DRIFT_STALE_AFTER': 'Drift that waits longer than this '
     '(`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: '
     'never.',

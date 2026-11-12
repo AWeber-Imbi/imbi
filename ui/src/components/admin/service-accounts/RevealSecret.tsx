@@ -42,7 +42,8 @@ export function RevealSecretRow({
       {fieldLabel && (
         <span className="text-secondary text-xs font-medium">{fieldLabel}</span>
       )}
-      <div className="flex items-center gap-2">
+      {/* Session replay never records the secret (lib/posthog.ts). */}
+      <div className="flex items-center gap-2" data-ph-no-capture>
         <code className="border-input bg-secondary text-primary flex-1 rounded-lg border px-3 py-2 text-sm break-all">
           {value}
         </code>

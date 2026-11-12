@@ -4,7 +4,7 @@ import typing as t
 import typer
 from starlette.middleware import Middleware
 
-from imbi.common import access_log
+from imbi.common import access_log, posthog
 from imbi.common import logging as imbi_logging
 from imbi.common.sentry import init as init_sentry
 from imbi.mcp import server
@@ -86,7 +86,10 @@ def serve(  # noqa: PLR0913 - CLI options map 1:1 to parameters
         host=host,
         port=port,
         middleware=[
-            Middleware(access_log.AccessLogMiddleware, quiet_paths={'/status'})
+            Middleware(
+                access_log.AccessLogMiddleware, quiet_paths={'/status'}
+            ),
+            *posthog.middleware(),
         ],
         uvicorn_config={'access_log': False, 'log_config': log_config},
     )

@@ -23,7 +23,7 @@ classifiers = [
 dependencies = [
   "imbi-api==2.47.0",
   "imbi-assistant==2.47.0",
-  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.47.0",
+  "imbi-common[databases,llm,mcp,otel,posthog,sentry,server]==2.47.0",
   "imbi-gateway==2.47.0",
   "imbi-mcp==2.47.0",
   "imbi-plugin-anthropic==2.47.0",

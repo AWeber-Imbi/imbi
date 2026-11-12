@@ -227,10 +227,14 @@ async def _generate_title(
     user_message: str,
     assistant_response: str,
     model: str,
+    tracking: dict[str, typing.Any] | None = None,
 ) -> str:
     """Generate a short conversation title."""
     try:
         response = await api_client.messages.create(
+            **(tracking or {}),
+            # Explicit, so the checker picks the non-streaming overload.
+            stream=False,
             model=model,
             max_tokens=50,
             messages=[
@@ -636,6 +640,7 @@ async def _stream_response(
 ) -> collections.abc.AsyncIterator[str]:
     """Stream an SSE response from the Anthropic API."""
     api_client = client.get_client()
+    tracking = client.tracking(auth_ctx.require_user.email, conversation_id)
     assistant_settings = settings.get_assistant_settings()
     max_rounds = assistant_settings.max_tool_rounds
     mcp_manager = mcp.get_manager()
@@ -660,6 +665,7 @@ async def _stream_response(
         tool_use_blocks = []
 
         kwargs: dict[str, typing.Any] = {
+            **tracking,
             'model': model,
             'max_tokens': max_tokens,
             'system': system,
@@ -755,6 +761,7 @@ async def _stream_response(
             user_message_content,
             accumulated_text,
             model,
+            tracking,
         )
         await age_ops.update_conversation_title(
             db,

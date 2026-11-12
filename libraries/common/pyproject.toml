@@ -68,6 +68,9 @@ otel = [
   "opentelemetry-instrumentation-redis==0.62b1",
   "opentelemetry-sdk==1.41.1",
 ]
+posthog = [
+  "posthog==7.84.0",
+]
 sentry = [
   "sentry-sdk>=2.48.0",
 ]

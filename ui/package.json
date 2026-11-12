@@ -69,6 +69,7 @@
     "lucide-react": "^0.469.0",
     "match-sorter": "^8.3.0",
     "mdast-util-find-and-replace": "^3.0.2",
+    "posthog-js": "^1.446.3",
     "react": "^19.2.4",
     "react-day-picker": "^9.4.4",
     "react-dom": "^19.2.4",

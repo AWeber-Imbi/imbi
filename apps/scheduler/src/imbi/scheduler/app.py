@@ -9,6 +9,7 @@ from imbi.common import (
     graph,
     lifespan,
     metrics,
+    posthog,
     sentry,
     server,
 )
@@ -56,6 +57,7 @@ def create_app() -> fastapi.FastAPI:
         access_log.AccessLogMiddleware,
         quiet_paths={'/status', metrics.PATH},
     )
+    posthog.install(app)
     return app
 
 

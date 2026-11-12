@@ -24,11 +24,12 @@ from fastmcp.server.auth.auth import (
     RemoteAuthProvider,
     TokenVerifier,
 )
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_access_token, get_http_headers
 from pydantic import AnyHttpUrl
 from starlette.responses import JSONResponse
 
 import imbi.mcp
+from imbi.common import posthog
 from imbi.common.auth import core
 from imbi.common.mcp import (
     AccessLogContextMiddleware,
@@ -105,6 +106,47 @@ class ImbiTokenVerifier(TokenVerifier):
         )
 
 
+def _mcp_identity(*_args: typing.Any) -> typing.Any:
+    """Identify the caller by a hash of the token subject.
+
+    API keys are verified by the API, not here, so they stay anonymous.
+    """
+    # Optional dependency: import only when the switch is on.
+    from posthog.mcp import UserIdentity  # noqa: PLC0415
+
+    token = get_access_token()
+    if token is None or not token.client_id or token.client_id == 'api-key':
+        return None
+    return UserIdentity(distinct_id=posthog.distinct_id(token.client_id))
+
+
+def _instrument(server: fastmcp.FastMCP) -> None:
+    """Send ``$mcp_tool_call`` events when MCP analytics is on.
+
+    Tool schemas stay as the API defines them: no injected ``context``
+    or model arguments, and no conversation ids. The shared PostHog
+    scrubber removes tool arguments, results, and error text.
+    """
+    if not (posthog.mcp_analytics() and posthog.init()):
+        return
+    # Optional dependency: import only when the switch is on.
+    from posthog.mcp import (  # noqa: PLC0415
+        MCPAnalyticsOptions,
+        instrument,
+    )
+
+    instrument(
+        server,
+        options=MCPAnalyticsOptions(
+            context=False,
+            capture_model=False,
+            enable_conversation_id=False,
+            enable_exception_autocapture=False,
+            identify=_mcp_identity,
+        ),
+    )
+
+
 def _build_auth(
     public_url: str | None, auth_server_url: str | None
 ) -> RemoteAuthProvider | None:
@@ -177,6 +219,7 @@ def create_server(
     # Every tool call is a ``POST /mcp``; this names the tool in the
     # access log line so the log distinguishes them.
     mcp.add_middleware(AccessLogContextMiddleware())
+    _instrument(mcp)
 
     @mcp.custom_route('/status', methods=['GET'])
     async def status(_request: Request) -> JSONResponse:

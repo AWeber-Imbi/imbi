@@ -23,6 +23,7 @@ from imbi.common import (
     graph,
     lifespan,
     metrics,
+    posthog,
     sentry,
     valkey,
 )
@@ -160,4 +161,5 @@ def create_app() -> fastapi.FastAPI:
     # FastAPI pattern: override openapi method to customize schema
     app.openapi = openapi.create_custom_openapi(app)  # type: ignore[method-assign]
 
+    posthog.install(app)
     return app

@@ -17,7 +17,7 @@ import pydantic
 import typer
 
 import imbi.workflows
-from imbi.common import graph, iggy, lifespan, sentry, server
+from imbi.common import graph, iggy, lifespan, posthog, sentry, server
 from imbi.common import settings as common_settings
 from imbi.common.prompts import pool as prompt_pool
 from imbi.workflows import bindings, engine, executors, settings, store
@@ -123,6 +123,7 @@ def create_app() -> fastapi.FastAPI:
             started_at=request.app.extra['started_at'],
         )
 
+    posthog.install(app)
     return app
 
 

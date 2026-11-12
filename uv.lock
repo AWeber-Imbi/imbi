@@ -310,6 +310,15 @@ wheels = [
 ]
 
 [[package]]
+name = "backoff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001, upload-time = "2022-10-05T19:19:32.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148, upload-time = "2022-10-05T19:19:30.546Z" },
+]
+
+[[package]]
 name = "basedpyright"
 version = "1.39.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1250,7 +1259,7 @@ source = { editable = "." }
 dependencies = [
     { name = "imbi-api" },
     { name = "imbi-assistant" },
-    { name = "imbi-common", extra = ["databases", "llm", "mcp", "otel", "sentry", "server"] },
+    { name = "imbi-common", extra = ["databases", "llm", "mcp", "otel", "posthog", "sentry", "server"] },
     { name = "imbi-gateway" },
     { name = "imbi-mcp" },
     { name = "imbi-plugin-anthropic" },
@@ -1305,7 +1314,7 @@ docs = [
 requires-dist = [
     { name = "imbi-api", editable = "apps/api" },
     { name = "imbi-assistant", editable = "apps/assistant" },
-    { name = "imbi-common", extras = ["databases", "llm", "mcp", "otel", "sentry", "server"], editable = "libraries/common" },
+    { name = "imbi-common", extras = ["databases", "llm", "mcp", "otel", "posthog", "sentry", "server"], editable = "libraries/common" },
     { name = "imbi-gateway", editable = "apps/gateway" },
     { name = "imbi-mcp", editable = "apps/mcp" },
     { name = "imbi-plugin-anthropic", editable = "plugins/anthropic" },
@@ -1516,6 +1525,9 @@ otel = [
     { name = "opentelemetry-instrumentation-redis" },
     { name = "opentelemetry-sdk" },
 ]
+posthog = [
+    { name = "posthog" },
+]
 sentry = [
     { name = "sentry-sdk" },
 ]
@@ -1556,6 +1568,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = "==1.41.1" },
     { name = "orjson" },
     { name = "pgvector", marker = "extra == 'databases'", specifier = ">=0.3" },
+    { name = "posthog", marker = "extra == 'posthog'", specifier = "==7.84.0" },
     { name = "prometheus-client", specifier = ">=0.21" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'databases'", specifier = ">=3.3" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
@@ -1567,7 +1580,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.40.0" },
     { name = "valkey", marker = "extra == 'databases'", specifier = ">=6" },
 ]
-provides-extras = ["databases", "llm", "mcp", "otel", "sentry", "server"]
+provides-extras = ["databases", "llm", "mcp", "otel", "posthog", "sentry", "server"]
 
 [[package]]
 name = "imbi-gateway"
@@ -3130,6 +3143,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "posthog"
+version = "7.84.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "backoff" },
+    { name = "distro" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/88/a7/9821638098644f4124fb025aa508e7b24a31fa702575d6c53bd4f5bc57a3/posthog-7.84.0.tar.gz", hash = "sha256:20b539c5a47d62893c1477ca5c1f1632d0dec29fb930f0376d2cf15f05c76cc5", size = 904240, upload-time = "2026-11-05T12:23:29.695Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/5a/01b9d0a5542fbfdafdb19b0fa904c925b8c82e3f29dbd84ceaea16d58dfa/posthog-7.84.0-py3-none-any.whl", hash = "sha256:53a4c643877f9312f785eca93c8171019352ed5e2b1eb20242ffd680c9244cfd", size = 1047036, upload-time = "2026-11-05T12:23:27.796Z" },
 ]
 
 [[package]]

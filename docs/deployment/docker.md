@@ -316,6 +316,13 @@ UI. To upload the UI source maps when the container starts, set
 `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` in `all` or `ui`
 mode. See [Operations: Sentry](operations.md#sentry).
 
+## PostHog
+
+Set `POSTHOG_API_KEY` to send errors to PostHog, and `VITE_POSTHOG_KEY`
+for the UI. Session replay, web analytics, MCP analytics, AI
+observability, and OpenTelemetry traces and logs each have their own
+switch. See [Operations: PostHog](operations.md#posthog).
+
 ## Upgrading
 
 Change the image tag, then do the steps in [Upgrading](upgrading.md). With
