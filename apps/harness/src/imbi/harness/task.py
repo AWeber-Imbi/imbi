@@ -344,6 +344,17 @@ def structured_output(result: sdk.ResultMessage | None) -> Body | None:
     return typing.cast('Body', value) if isinstance(value, dict) else None
 
 
+def require_output(
+    done: tuple[str, str | None], task: Body, output: Body | None
+) -> tuple[str, str | None]:
+    """Fail a ``done_*`` outcome of a task with an output schema that
+    returned no structured output: later steps need the output."""
+    missing = bool(task.get('output_schema')) and output is None
+    if missing and done[0].startswith('done_'):
+        return 'failed_external', 'no_structured_output'
+    return done
+
+
 def _output_format(task: Body) -> Body | None:
     """The SDK ``output_format`` of a task with an output schema."""
     schema = task.get('output_schema')
@@ -757,8 +768,10 @@ class TaskRun:
         try:
             result = await self._work()
             self.structured_output = structured_output(result)
-            done = outcome(
-                result, self.reported, mutated=self.recorder.mutated
+            done = require_output(
+                outcome(result, self.reported, mutated=self.recorder.mutated),
+                self.task,
+                self.structured_output,
             )
         except Failed as err:
             done = ('failed_external', err.reason)
