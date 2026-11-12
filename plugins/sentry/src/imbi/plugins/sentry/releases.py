@@ -15,7 +15,7 @@ from imbi.common.plugins.base import (
     TrackedRelease,
 )
 from imbi.plugins.sentry import client
-from imbi.plugins.sentry.doctor import linked_slug
+from imbi.plugins.sentry.doctor import connection
 
 DEFAULT_VERSION_FORMAT = '${project_slug}@${tag}'
 
@@ -49,6 +49,14 @@ class SentryReleaseTracking(ReleaseTrackingCapability):
         credentials: dict[str, str],
         release: TrackedRelease,
     ) -> LifecycleResult:
+        # A hand-set identifier could name another team's Sentry project.
+        conn = connection(ctx)
+        if conn is None or conn.verified_identifier != conn.identifier:
+            return LifecycleResult(
+                status='skipped',
+                message='The Sentry project link is not verified; run the '
+                'Project Doctor to link it.',
+            )
         try:
             name = version(ctx, release)
         except ValueError as exc:
@@ -60,7 +68,7 @@ class SentryReleaseTracking(ReleaseTrackingCapability):
             )
         try:
             s = client.settings(ctx, credentials)
-            created = await client.create_release(s, name, linked_slug(ctx))
+            created = await client.create_release(s, name, conn.identifier)
         except client.SentryClientError as exc:
             return LifecycleResult(status='failed', message=str(exc))
         verb = 'Created' if created else 'Updated existing'

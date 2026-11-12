@@ -360,9 +360,12 @@ _RELEASES_URL = f'{_API}/organizations/acme/releases/'
 
 class ReleaseTrackingTests(_RespxCase):
     async def _run(
-        self, tag: str | None = '1.2.0', fmt: str | None = None
+        self,
+        tag: str | None = '1.2.0',
+        fmt: str | None = None,
+        ctx: PluginContext | None = None,
     ) -> tuple[str, str | None]:
-        ctx = _ctx()
+        ctx = ctx or _ctx()
         if fmt is not None:
             ctx.capability_options = {'version_format': fmt}
         result = await SentryReleaseTracking().on_release_created(
@@ -387,6 +390,22 @@ class ReleaseTrackingTests(_RespxCase):
         status, message = await self._run(fmt='${committish}')
         self.assertEqual('ok', status)
         self.assertEqual("Updated existing Sentry release 'abc1234'", message)
+
+    async def test_unverified_link_skips(self) -> None:
+        route = respx.post(_RELEASES_URL)
+        ctx = _ctx()
+        ctx.service_connections[0].identifier = 'other-team'
+        status, message = await self._run(ctx=ctx)
+        self.assertEqual('skipped', status)
+        self.assertIn('not verified', message or '')
+        self.assertFalse(route.called)
+        self.assertEqual(0, len(respx.calls))
+
+    async def test_no_link_skips(self) -> None:
+        route = respx.post(_RELEASES_URL)
+        status, _ = await self._run(ctx=_ctx(connected=False))
+        self.assertEqual('skipped', status)
+        self.assertFalse(route.called)
 
     async def test_untagged_release_skips_tag_format(self) -> None:
         route = respx.post(_RELEASES_URL)

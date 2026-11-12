@@ -137,7 +137,9 @@ The fixes:
 
 When Imbi creates a release for a project, the plugin creates a release
 in Sentry for the linked Sentry project. If the Sentry release exists,
-Sentry adds the project to it.
+Sentry adds the project to it. The plugin uses only a project link that
+it wrote itself (verified); it skips the release when the link was set by
+hand or no link exists.
 
 | Capability option | Default | Meaning |
 |---|---|---|
