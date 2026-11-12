@@ -467,7 +467,7 @@ An alternative to ADR 0024. Defines tickets: the record of one piece of work tha
 - A manager agent runs briefly on each ticket event, reads the ticket and its log, and does the next thing. It keeps no state of its own
 - Agent tasks stay final. Rework and reopened tickets start a new task on the same ticket, as the root of its own chain
 - An ask puts one question to one person and ends the manager's task. Waiting on me is a person's open asks plus open requests on tasks they own
-- imbi-api enforces the guardrails: one manager task per ticket, no `done` with an open pull request or task, and a budget and task ceiling per ticket
+- imbi-api enforces the guardrails: one manager task per ticket, no `done` with an open pull request or work task, and a budget and task ceiling per ticket that every task-creation path checks
 - Jira is not synced, and work that only people do is out of scope
 
 ---

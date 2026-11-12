@@ -184,10 +184,13 @@ commits, imbi-api creates a manager task for the ticket when all of
 these hold:
 
 - the event is a wake type: `ticket.created`, `field.changed`,
-  `comment.added`, `status.changed`, `task.closed`, `ask.answered`,
-  `pull_request.changed`, `deploy.reached`, `released`, or `timer.fired`
+  `comment.added`, `status.changed`, `project.added`, `project.removed`,
+  `pull_request.linked`, `pull_request.unlinked`, `pull_request.changed`,
+  `task.closed`, `ask.answered`, `deploy.reached`, `released`, or
+  `timer.fired`
 - the manager's own task for this ticket did not write the event
 - the ticket has no open manager task
+- the ticket is under its budget (see Guardrails)
 
 When a manager task closes, imbi-api checks for a wake event newer than
 the task. If there is one, it creates the next manager task.
@@ -220,6 +223,7 @@ allows them for the ticket in its origin only.
 | `start_ticket_task` | Starts a task for a named agent on named projects, with an instruction and a budget |
 | `open_ask` / `cancel_ask` | Puts a question to a person, or withdraws one |
 | `close_ticket` | Sets `done` or `cancelled`, with a reason |
+| `reopen_ticket` | Reopens a `done` or `cancelled` ticket, with a reason |
 
 The manager agent's settings list the agents it may start. Ticket text
 can come from outside the organization, so the manager must not be able
@@ -235,20 +239,26 @@ after that.
   `ticket`, with the ticket id and the manager task that started it. Its
   owner is the ticket's owner. A manager task has the same origin kind,
   with the ticket event that woke it.
-- **A ticket task is the root of its own chain.** A chain is a root task
-  and its `task` origin children (ADR 0022). A `ticket` origin is not a
-  child, so the manager's pod is not held while the work runs, and tasks
-  for several projects run on several runners. A ticket task can still
-  delegate with `create_child_task`, and its children copy `ticket_id`.
+- **Work tasks.** A work task is any task on a ticket that is not a
+  manager task: a task the manager starts, a child of one, or a task a
+  person starts on the ticket.
+- **A task with a `ticket` origin is the root of its own chain.** A
+  chain is a root task and its `task` origin children (ADR 0022). A
+  `ticket` origin is not a child, so the manager's pod is not held while
+  the work runs, and tasks for several projects run on several runners.
+  A work task can still delegate with `create_child_task`, and its
+  children copy `ticket_id`.
 - **More work is a new task.** A failed check, requested changes, a
   failed verification, and a reopened ticket all lead to the same
   action: the manager starts another task on the ticket. The new task
   gets its context from the ticket log and the pull request. Tasks stay
   final, and ADR 0020 does not change.
-- **One log across tasks.** When a ticket task closes, imbi-api writes
+- **One log across tasks.** When a work task closes, imbi-api writes
   `task.closed` on the ticket with the outcome and the task's result
-  summary. Each task's own log stays the full record of that task.
-- **Worker tools.** A ticket task gets `get_ticket` and
+  summary. Each task's own log stays the full record of that task. A
+  manager task writes no `task.started` or `task.closed` on the ticket,
+  so one manager run never wakes the next.
+- **Worker tools.** A work task gets `get_ticket` and
   `comment_on_ticket` for its ticket, and its prompt gets the ticket's
   short id.
 - **A person can start a task on a ticket** from the ticket page. The
@@ -301,7 +311,7 @@ of their open asks.
 ### Pull requests and deploys
 
 - **Linking.** A pull request is linked to a ticket when its title,
-  branch, or body contains the ticket's short id. Ticket tasks are told
+  branch, or body contains the ticket's short id. Work tasks are told
   to put the short id in the branch name. A person can link or unlink
   one by hand. Linking adds the pull request's project to the ticket.
 - **Changes.** When `pr-sync` records a change to a linked pull request,
@@ -325,15 +335,35 @@ depend on it:
 
 - A ticket has at most one open manager task.
 - `close_ticket` with `done` is refused while a linked pull request is
-  open or a ticket task is open.
-- Cancelling a ticket cancels its open tasks and asks.
-- **Ceilings.** A ticket has a `budget` (the total cost of its tasks)
-  and a `max_tasks`. Both default from organization settings. Past
-  either one, `start_ticket_task` is refused, and imbi-api writes
-  `ceiling.reached` and opens an ask for the owner. The owner raises the
-  ceiling or cancels the ticket. This stops a manager that keeps
-  starting implement tasks against a check that never passes.
+  open or a work task is open. The manager task that makes the call is
+  not a work task, so it does not block its own call.
+- Cancelling a ticket cancels its open work tasks and asks.
 - A manager task can act on its own ticket only.
+
+**Ceilings.** A ticket has a `budget` and a `max_tasks`. Both default
+from organization settings. They stop a manager that keeps starting
+implement tasks against a check that never passes, and a ticket whose
+events keep waking the manager.
+
+- `budget` is the total cost of every task on the ticket: manager tasks
+  and work tasks, child tasks included.
+- `max_tasks` is the number of work tasks, child tasks included. Manager
+  tasks do not count toward it. The budget bounds them.
+- **Every path that creates a task on a ticket checks the ceilings.**
+  The paths are `start_ticket_task`, `create_child_task`, a person
+  starting a task from the ticket page, and the manager task that
+  imbi-api creates on a wake event.
+- Past the budget, no task is created on the ticket, manager tasks
+  included. Past `max_tasks`, no work task is created. The manager still
+  runs, so it can close a ticket whose work is finished.
+- The first time a ticket passes a ceiling, imbi-api writes
+  `ceiling.reached` and opens an ask for the owner. The owner raises the
+  ceiling or cancels the ticket. Raising it writes `field.changed`,
+  which wakes the manager. The manager reads what it missed from the
+  log.
+- Tasks that are already open keep running, each within its own task
+  budget (ADR 0020). A ticket can pass its budget by at most the
+  remaining budgets of the tasks open at that moment.
 
 **Proof later.** Verification is a task, and its outcome is on the
 ticket log. A later decision can require proof with one more rule:
