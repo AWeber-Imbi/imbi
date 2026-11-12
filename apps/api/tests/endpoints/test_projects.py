@@ -877,6 +877,8 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         statements = self.mock_db._execute_batch.call_args.args[0]
         set_statement = next(s for s in statements if 'SET p.' in s.cypher)
         self.assertEqual(set_statement.params['tier'], 'gold')
+        self.assertNotIn('owner', set_statement.params)
+        self.assertNotIn('p.owner', set_statement.cypher)
 
     def test_patch_add_ignores_unused_from(self) -> None:
         """``add`` ignores ``from``, so a stray value must not 500."""

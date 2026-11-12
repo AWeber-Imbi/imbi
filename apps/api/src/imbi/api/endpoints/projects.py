@@ -3504,12 +3504,16 @@ async def _execute_project_update(
         else datetime.datetime.now(datetime.UTC)
     )
     project.updated_at = datetime.datetime.now(datetime.UTC)
+    # Leave the relaxed properties out of the write: their None is
+    # synthetic, and SET to null removes a value that a concurrent
+    # request can write.
     props = project.model_dump(
         mode='json',
         exclude={
             'team',
             'project_types',
             'environments',
+            *untouched_missing,
         },
     )
     props = serialize_json_fields(props, _PROJECT_JSON_FIELDS)
