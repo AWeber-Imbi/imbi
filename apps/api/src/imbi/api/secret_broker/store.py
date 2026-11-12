@@ -145,17 +145,34 @@ class SecretStore:
         that no grant names. One statement does the check and the
         write, so of two concurrent marks only the first applies.
         Return the row, or ``None`` when the mark was not written.
+
+        A grant write holds the binding ``FOR SHARE`` until it commits.
+        A separate ``FOR UPDATE`` lock first waits for that grant, so
+        the grant check of the ``UPDATE`` gets a new snapshot that
+        includes it.
         """
-        return await self._write_one(
-            'UPDATE secrets.bindings SET provider_key_usage = %s,'
-            ' updated_at = NOW()'
-            ' WHERE organization_id = %s AND id = %s'
-            ' AND provider_key_usage IS NULL'
-            ' AND NOT EXISTS (SELECT 1 FROM secrets.grants'
-            ' WHERE bindings.id = ANY(binding_ids)) RETURNING *',
-            (pg_json.Jsonb(usage), organization_id, binding_id),
-            event,
-        )
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'SELECT 1 FROM secrets.bindings'
+                ' WHERE organization_id = %s AND id = %s FOR UPDATE',
+                (organization_id, binding_id),
+            )
+            await cur.execute(
+                'UPDATE secrets.bindings SET provider_key_usage = %s,'
+                ' updated_at = NOW()'
+                ' WHERE organization_id = %s AND id = %s'
+                ' AND provider_key_usage IS NULL'
+                ' AND NOT EXISTS (SELECT 1 FROM secrets.grants'
+                ' WHERE bindings.id = ANY(binding_ids)) RETURNING *',
+                (pg_json.Jsonb(usage), organization_id, binding_id),
+            )
+            row = await cur.fetchone()
+            await _audit(conn, event, row)
+            return row
 
     async def add_provider_key_consumer(
         self,
