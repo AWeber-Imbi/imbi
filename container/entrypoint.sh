@@ -213,9 +213,13 @@ fi
 # Service startup
 # --------------------------------------------------------------------------
 
-# Exec a Python service. When OTEL_TRACES_EXPORTER or OTEL_METRICS_EXPORTER
-# names an exporter, run it under opentelemetry-instrument so the FastAPI,
-# httpx, MCP, psycopg and redis instrumentations in the image load.
+# Exec a Python service. When OTEL_TRACES_EXPORTER, OTEL_METRICS_EXPORTER, or
+# OTEL_LOGS_EXPORTER names an exporter, run it under opentelemetry-instrument
+# so the FastAPI, httpx, MCP, psycopg and redis instrumentations in the image
+# load. Exported logs carry every stdlib log record that the service's own
+# log levels pass, the same records that go to stdout. Only the OTLP HTTP
+# exporter is in the image, so OTEL_EXPORTER_OTLP_PROTOCOL defaults to
+# http/protobuf: "otlp" otherwise resolves to the missing gRPC exporter.
 # opentelemetry-distro sets every unset signal to "otlp", so an unset signal
 # is set to "none" here: only the signals that are configured are exported.
 # OTEL_SERVICE_NAME defaults to the command, so each service in 'all' mode
@@ -224,9 +228,14 @@ fi
 # scraper outside the container can then read /metrics.
 run_service() {
     if [ "${OTEL_TRACES_EXPORTER:-none}" = "none" ] &&
-        [ "${OTEL_METRICS_EXPORTER:-none}" = "none" ]; then
+        [ "${OTEL_METRICS_EXPORTER:-none}" = "none" ] &&
+        [ "${OTEL_LOGS_EXPORTER:-none}" = "none" ]; then
         exec "$@"
     fi
+    if [ "${OTEL_LOGS_EXPORTER:-none}" != "none" ]; then
+        export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="${OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED:-true}"
+    fi
+    export OTEL_EXPORTER_OTLP_PROTOCOL="${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}"
     OTEL_TRACES_EXPORTER="${OTEL_TRACES_EXPORTER:-none}" \
         OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-none}" \
         OTEL_LOGS_EXPORTER="${OTEL_LOGS_EXPORTER:-none}" \

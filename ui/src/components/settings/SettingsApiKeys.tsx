@@ -197,7 +197,8 @@ export function SettingsApiKeys() {
                 <p className="text-secondary text-[13.5px]">
                   Copy your API key now. You won't be able to see it again.
                 </p>
-                <div className="flex items-center gap-2">
+                {/* Session replay never records the key (lib/posthog.ts). */}
+                <div className="flex items-center gap-2" data-ph-no-capture>
                   <Input
                     className="font-mono text-[12px]"
                     readOnly

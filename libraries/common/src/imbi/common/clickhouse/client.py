@@ -30,7 +30,7 @@ from clickhouse_connect.datatypes import format
 from clickhouse_connect.driver import asyncclient, exceptions
 from clickhouse_connect.driver.external import ExternalData
 
-from imbi.common import helpers, settings
+from imbi.common import helpers, posthog, settings
 
 try:
     import sentry_sdk
@@ -122,7 +122,8 @@ def _translate_errors(operation: str) -> typing.Iterator[None]:
     """Translate clickhouse driver errors into `DatabaseError`.
 
     Logs the failure, reports it to Sentry when `sentry_sdk` is
-    installed, and re-raises as `DatabaseError` with a clear message.
+    installed and to PostHog when it is configured, and re-raises as
+    `DatabaseError` with a clear message.
     """
     try:
         yield
@@ -130,6 +131,7 @@ def _translate_errors(operation: str) -> typing.Iterator[None]:
         LOGGER.error('Error during clickhouse %s: %s', operation, err)
         if sentry_sdk is not None:
             sentry_sdk.capture_exception(err)
+        posthog.capture_exception(err)
         raise DatabaseError(f'Clickhouse {operation} failed: {err}') from err
 
 
@@ -352,5 +354,6 @@ class Clickhouse:
                 failed.append(query_obj.name)
                 if sentry_sdk:
                     sentry_sdk.capture_exception(err)
+                posthog.capture_exception(err)
         if failed:
             raise RuntimeError('Failed schemata queries: ' + ', '.join(failed))

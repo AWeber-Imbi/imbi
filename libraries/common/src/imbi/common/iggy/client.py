@@ -20,7 +20,7 @@ import prometheus_client
 import pydantic
 from apache_iggy import IggyClient, SendMessage
 
-from imbi.common import clickhouse, settings
+from imbi.common import clickhouse, posthog, settings
 
 if typing.TYPE_CHECKING:
     from apache_iggy import ConsumerGroupDetails, TopicDetails
@@ -132,9 +132,9 @@ def _translate_errors(
     """Translate Iggy SDK errors into `PublishError`.
 
     Logs the failure, reports it to Sentry when `sentry_sdk` is
-    installed, and re-raises as `PublishError` with a clear message. The
-    SDK signals every server-side and transport failure as a plain
-    `RuntimeError`.
+    installed and to PostHog when it is configured, and re-raises as
+    `PublishError` with a clear message. The SDK signals every server-side
+    and transport failure as a plain `RuntimeError`.
 
     When `owner` is given and the error says the connection is gone, the
     owner's cached client is discarded so the next call builds a new
@@ -153,6 +153,7 @@ def _translate_errors(
         LOGGER.error('Error during iggy %s: %s', operation, err)
         if sentry_sdk is not None:
             sentry_sdk.capture_exception(err)
+        posthog.capture_exception(err)
         if owner is not None and _connection_lost(err):
             LOGGER.warning(
                 'Discarding the Iggy client after %s: %s', operation, err

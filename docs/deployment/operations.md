@@ -269,6 +269,83 @@ To upload the UI source maps to Sentry, set `SENTRY_AUTH_TOKEN`,
 maps when it starts. Caddy serves the `.map` files only when
 `SERVE_SOURCE_MAPS` is `true`.
 
+## PostHog
+
+PostHog is optional. You can use it in place of Sentry, or with it. Each
+signal has its own switch. Set the project key, then turn on the signals
+that you want.
+
+### Errors, MCP analytics, and AI observability
+
+| Variable | What it does |
+|---|---|
+| `POSTHOG_API_KEY` | The project key. Unset: every service sends nothing to PostHog |
+| `POSTHOG_HOST` | The ingestion host. The default is `https://us.i.posthog.com`. For the EU region, use `https://eu.i.posthog.com` |
+| `POSTHOG_ERROR_TRACKING` | The default is `true`: with a key, every Python service sends its exceptions. `false` stops them |
+| `POSTHOG_MCP_ANALYTICS` | `true` makes imbi-mcp send a `$mcp_tool_call` event for each tool call. The default is `false` |
+| `POSTHOG_AI_OBSERVABILITY` | `true` makes imbi-assistant send a `$ai_generation` event for each LLM call, with the model, tokens, cost, and latency. The default is `false` |
+| `POSTHOG_AI_PRIVACY_MODE` | The default is `true`: AI events have no prompt or output text. `false` sends the text |
+| `SERVICE` | The `service` property of each event |
+
+An exception event has the method, the path, the user agent, the source
+lines of each stack frame, and the URL without its query string. It never
+has a request body, cookies, request headers, the client IP address, or
+the values of local variables.
+
+An MCP event has the tool name, the names of the arguments, the duration,
+and whether the call failed. It never has argument values, results, or
+error text. The tool schemas do not change.
+
+The user of an MCP or AI event is the SHA-256 hash of the email in the
+token. An MCP call with an API key has no user.
+
+### OpenTelemetry traces and logs
+
+The container sends OpenTelemetry data when `OTEL_TRACES_EXPORTER` or
+`OTEL_LOGS_EXPORTER` is `otlp` (see the container entrypoint). To send
+it to PostHog, use the per-signal endpoints:
+
+```sh
+OTEL_TRACES_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://us.i.posthog.com/i/v1/traces
+OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=https://us.i.posthog.com/i/v1/logs
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <project key>"
+```
+
+- Do not use `OTEL_EXPORTER_OTLP_ENDPOINT` for PostHog. The exporter adds
+  `/v1/traces` to it, which is the wrong path.
+- `OTEL_EXPORTER_OTLP_PROTOCOL` defaults to `http/protobuf`. The image has
+  no gRPC exporter.
+- Each signal goes to one endpoint. If you send traces to PostHog, they
+  stop going to another backend unless a collector sends them to both.
+- Exported logs carry every record that the service log levels let
+  through, the same records as standard output. Each record has the trace
+  ID of its request.
+- PostHog trace ingestion is in alpha. Its endpoint can change.
+
+### UI
+
+Caddy writes these values into the page when it serves the UI.
+
+| Variable | What it does |
+|---|---|
+| `VITE_POSTHOG_KEY` | The project key of the UI. Unset: the UI sends nothing to PostHog. The key is public in the page, so anyone can send events with it. Use a different PostHog project than the Python services if that is a problem |
+| `VITE_POSTHOG_HOST` | The ingestion host |
+| `VITE_POSTHOG_ERROR_TRACKING` | The default is `true`: with a key, the UI sends its exceptions |
+| `VITE_POSTHOG_WEB_ANALYTICS` | `true` sends web analytics: a pageview on each route change, page leaves, and web vitals. The default is `false`. Autocapture of clicks stays off |
+| `VITE_POSTHOG_SESSION_REPLAY` | `true` records sessions. The default is `false` |
+| `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | The share of sessions that record, `0` to `1`. The default is `1` |
+| `VITE_POSTHOG_PERSON_PROFILES` | `identified_only` identifies each user by the SHA-256 hash of their email, the same ID as in the MCP and AI events. The default is `never`: events have no person |
+
+Session replay always masks all text and all inputs. No setting turns this
+off. The fields that show an API key or a client secret one time are not
+recorded at all. The UI removes the query string from every URL that it
+sends.
+
+The container does not upload UI source maps to PostHog, so UI stack
+frames show the bundled code.
+
 ## Logging
 
 Each service writes its logs as text to standard output. The level is
@@ -370,7 +447,7 @@ Monitoring and recovery:
 
 - [ ] Scrape `/metrics` of imbi-api, imbi-gateway, imbi-scheduler, and
       iggy-connect, and add the alerts in [Metrics](#metrics).
-- [ ] Set `SENTRY_DSN`.
+- [ ] Set `SENTRY_DSN`, `POSTHOG_API_KEY`, or both. See [PostHog](#posthog).
 - [ ] Back up PostgreSQL and ClickHouse, and test a restore.
 - [ ] After each Iggy server restart, restart iggy-connect and look for
       ghost consumer-group members.

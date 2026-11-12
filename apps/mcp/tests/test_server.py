@@ -13,6 +13,7 @@ from starlette import testclient as starlette_testclient
 
 import imbi.mcp
 from imbi.common import mcp as common_mcp
+from imbi.common import posthog
 from imbi.mcp import server
 
 
@@ -389,3 +390,43 @@ class AccessLogContextWiringTests(unittest.TestCase):
             ),
             'AccessLogContextMiddleware was not installed',
         )
+
+
+class PostHogInstrumentTestCase(unittest.TestCase):
+    """MCP analytics (POSTHOG_MCP_ANALYTICS)."""
+
+    def _server(self) -> fastmcp.FastMCP:
+        return fastmcp.FastMCP('t')
+
+    @mock.patch('posthog.mcp.instrument')
+    def test_off_without_switch(self, instrument: mock.MagicMock) -> None:
+        with mock.patch.dict(
+            'os.environ', {'POSTHOG_API_KEY': 'k'}, clear=True
+        ):
+            server._instrument(self._server())
+        instrument.assert_not_called()
+
+    @mock.patch('posthog.mcp.instrument')
+    @mock.patch('imbi.common.posthog.init', return_value=True)
+    def test_on_keeps_tool_schemas(
+        self, _init: mock.MagicMock, instrument: mock.MagicMock
+    ) -> None:
+        env = {'POSTHOG_API_KEY': 'k', 'POSTHOG_MCP_ANALYTICS': 'true'}
+        with mock.patch.dict('os.environ', env, clear=True):
+            server._instrument(self._server())
+        options = instrument.call_args.kwargs['options']
+        self.assertFalse(options.context)
+        self.assertFalse(options.capture_model)
+        self.assertFalse(options.enable_conversation_id)
+
+    def test_identity(self) -> None:
+        user = AccessToken(token='t', client_id='a@b.c', scopes=[])
+        api_key = AccessToken(token='ik_1', client_id='api-key', scopes=[])
+        with mock.patch.object(server, 'get_access_token', return_value=user):
+            identity = server._mcp_identity()
+        self.assertEqual(identity.distinct_id, posthog.distinct_id('a@b.c'))
+        for token in (api_key, None):
+            with mock.patch.object(
+                server, 'get_access_token', return_value=token
+            ):
+                self.assertIsNone(server._mcp_identity())

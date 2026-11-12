@@ -6,7 +6,7 @@ import fastapi
 import typer
 
 import imbi.slackbot
-from imbi.common import graph, lifespan, sentry, server
+from imbi.common import graph, lifespan, posthog, sentry, server
 from imbi.common.prompts import pool as prompt_pool
 from imbi.slackbot import (
     app_status,
@@ -76,6 +76,7 @@ def create_app() -> fastapi.FastAPI:
         ),
     )
     app.include_router(app_status.router)
+    posthog.install(app)
     return app
 
 

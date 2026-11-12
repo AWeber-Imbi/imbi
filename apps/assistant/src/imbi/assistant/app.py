@@ -16,7 +16,7 @@ from imbi.assistant import (
     mcp,
     settings,
 )
-from imbi.common import graph, lifespan, sentry, server
+from imbi.common import graph, lifespan, posthog, sentry, server
 from imbi.common.prompts import pool as prompt_pool
 
 if TYPE_CHECKING:
@@ -90,6 +90,7 @@ def create_app() -> fastapi.FastAPI:
     prefix = settings.get_assistant_settings().api_prefix
     app.include_router(app_status.router)
     app.include_router(endpoints.assistant_router, prefix=prefix)
+    posthog.install(app)
     return app
 
 

@@ -181,13 +181,19 @@ unset.
 | `IMBI_CLIENT_API_BASE_URL` | HttpUrl | `http://imbi-api:8000/` | Imbi API URL for the `imbi.common.api` client |
 | `IMBI_CLIENT_API_TOKEN` | SecretStr | required | Bearer token for the `imbi.common.api` client |
 | `IMBI_CLIENT_USER_AGENT` | str | none | `User-Agent` for the `imbi.common.api` client. Unset: `imbi-common/<version>`. |
+| `POSTHOG_HOST` | str | none | PostHog ingestion host. Default: `https://us.i.posthog.com`. |
+| `POSTHOG_AI_PRIVACY_MODE` | str | none | `false` puts prompt and output text in AI events. Default: `true`. |
+| `SERVICE` | str | `unknown` | Server name sent to Sentry, and the `service` property of PostHog events |
+| `POSTHOG_ERROR_TRACKING` | str | none | `false` stops sending exceptions to PostHog. Default: `true`. |
+| `POSTHOG_MCP_ANALYTICS` | str | none | `true` sends a `$mcp_tool_call` event for each MCP tool call, without arguments or results |
+| `POSTHOG_AI_OBSERVABILITY` | str | none | `true` sends a `$ai_generation` event for each assistant LLM call |
+| `POSTHOG_API_KEY` | str | none | PostHog project key. Unset: PostHog is off. |
 | `IMBI_PROMPT_RENDER_INPROCESS` | str | `''` | `true` renders in the service process. For debugging only: it removes the isolation. |
 | `IMBI_PROMPT_WORKERS` | int | `2` | Prompt render worker processes per service process |
 | `IMBI_PROMPT_WORKER_MAX_RENDERS` | int | `500` | Renders before a worker is replaced |
 | `IMBI_PROMPT_WORKER_MEMORY_MB` | int | `256` | Address space in MiB that a worker can add after it starts. Linux only. |
 | `SENTRY_TRACES_SAMPLE_RATE` | float | `0.0` | Trace sample rate, `0.0` to `1.0`. `/status` requests are never sampled. |
 | `SENTRY_DSN` | str | none | Sentry DSN. Unset: Sentry is off. |
-| `SERVICE` | str | `unknown` | Server name sent to Sentry |
 | `IMBI_RELOAD_DIRS` | str | `''` | Extra directories to watch with `serve --dev`, separated by the OS path separator |
 | `ENVIRONMENT` | str | `development` | Anything other than `development` makes the auth and config encryption keys required and turns off the Mailpit auto-configuration. The status pages show it. |
 
@@ -399,6 +405,13 @@ unset.
 | `VITE_API_URL` | str | none | API URL that Caddy writes into `index.html` at request time. The UI does not start without it. |
 | `VITE_SENTRY_DSN` | str | none | Sentry DSN of the UI, written into `index.html` |
 | `VITE_DRIFT_STALE_AFTER` | str | none | Drift that waits longer than this (`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: never. |
+| `VITE_POSTHOG_KEY` | str | none | PostHog project key of the UI. Unset: the UI sends nothing to PostHog. |
+| `VITE_POSTHOG_HOST` | str | none | PostHog ingestion host of the UI |
+| `VITE_POSTHOG_ERROR_TRACKING` | str | none | `false` stops sending UI exceptions. Default: `true`. |
+| `VITE_POSTHOG_WEB_ANALYTICS` | str | none | `true` sends pageviews, page leaves, and web vitals |
+| `VITE_POSTHOG_SESSION_REPLAY` | str | none | `true` records sessions. All text and inputs are always masked. |
+| `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | str | none | Share of sessions that record, `0` to `1`. Default: `1`. |
+| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email. Default: `never`. |
 
 <!-- END GENERATED -->
 

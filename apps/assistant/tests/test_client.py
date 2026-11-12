@@ -1,8 +1,12 @@
 """Tests for assistant client module."""
 
+import hashlib
 import os
 import unittest
 from unittest import mock
+
+import anthropic
+import posthog
 
 from imbi.assistant import client, settings
 
@@ -171,3 +175,54 @@ class IsAvailableTestCase(unittest.TestCase):
         """Test is_available returns True."""
         client._client = mock.MagicMock()
         self.assertTrue(client.is_available())
+
+
+class ObservabilityTestCase(unittest.IsolatedAsyncioTestCase):
+    """AI observability swaps in the PostHog wrapper (POSTHOG_*)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        client._client = None
+        settings._assistant_settings = None
+
+    async def asyncTearDown(self) -> None:
+        if client._client is not None:
+            await client._client.close()
+        client._client = None
+        client._observed = False
+        posthog.default_client = None  # the wrapper made a global client
+        settings._assistant_settings = None
+        await super().asyncTearDown()
+
+    @mock.patch.dict(
+        os.environ,
+        {'ANTHROPIC_API_KEY': 'sk-test-key', 'POSTHOG_API_KEY': 'phc_x'},
+        clear=True,
+    )
+    async def test_plain_client_when_switch_off(self) -> None:
+        await client.initialize()
+        self.assertIs(type(client._client), anthropic.AsyncAnthropic)
+        self.assertEqual(client.tracking('a@b.c', 'conv'), {})
+
+    @mock.patch('imbi.common.posthog.init', return_value=True)
+    @mock.patch.dict(
+        os.environ,
+        {
+            'ANTHROPIC_API_KEY': 'sk-test-key',
+            'POSTHOG_API_KEY': 'phc_x',
+            'POSTHOG_AI_OBSERVABILITY': 'true',
+        },
+        clear=True,
+    )
+    async def test_wrapper_when_switch_on(self, _init: mock.MagicMock) -> None:
+        from posthog.ai.anthropic import AsyncAnthropic
+
+        await client.initialize()
+        self.assertIsInstance(client._client, AsyncAnthropic)
+        self.assertEqual(
+            client.tracking('A@B.c', 'conv'),
+            {
+                'posthog_distinct_id': hashlib.sha256(b'a@b.c').hexdigest(),
+                'posthog_trace_id': 'conv',
+            },
+        )
