@@ -66,7 +66,7 @@ async def initialize() -> None:
     if assistant_settings.api_token:
         _client = tokens.bearer_client(
             tokens.ServiceToken(
-                assistant_settings.api_url, assistant_settings.api_token
+                assistant_settings.api_base_url, assistant_settings.api_token
             ),
             client_class=client_class,
         )

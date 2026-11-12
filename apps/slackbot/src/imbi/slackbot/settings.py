@@ -2,6 +2,7 @@
 
 import logging
 import os
+import urllib.parse
 
 import pydantic
 import pydantic_settings
@@ -62,6 +63,12 @@ class Slackbot(pydantic_settings.BaseSettings):
         default='http://localhost:8000',
         validation_alias='IMBI_INTERNAL_API_URL',
     )
+    # imbi-api mounts its routes under the path of its public URL (for
+    # example ``/api``). ``IMBI_INTERNAL_API_URL`` is a bare origin, so
+    # calls to the routes must add that path. See :attr:`api_base_url`.
+    api_public_url: str = pydantic.Field(
+        default='', validation_alias='IMBI_API_URL'
+    )
 
     # Public base URL of the Imbi UI (no path component), used to build
     # absolute deep links to resources in replies. Shares the
@@ -82,6 +89,12 @@ class Slackbot(pydantic_settings.BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip('/')
+
+    @property
+    def api_base_url(self) -> str:
+        """The in-cluster imbi-api URL with the route prefix."""
+        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
+        return self.api_url.rstrip('/') + prefix
 
     @property
     def llms_base_url(self) -> str:
