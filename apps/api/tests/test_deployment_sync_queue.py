@@ -9,7 +9,10 @@ from unittest import mock
 
 from imbi.api.deployment_sync import queue
 from imbi.api.deployment_sync.service import DeploymentSyncUnavailable
-from imbi.common.plugins.errors import PluginRateLimited
+from imbi.common.plugins.errors import (
+    PluginInstallationMissing,
+    PluginRateLimited,
+)
 
 
 def _summary(**kwargs: int) -> mock.Mock:
@@ -100,6 +103,25 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
         ):
             await queue._process_message(db, {'project_id': 'p1'})
         self.assertEqual('failed', ss.await_args_list[-1].kwargs['status'])
+
+    async def test_app_not_installed_marks_failed_with_a_warning(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                queue,
+                'run_resync',
+                mock.AsyncMock(
+                    side_effect=PluginInstallationMissing('not installed')
+                ),
+            ),
+            mock.patch.object(queue, 'set_status', mock.AsyncMock()) as ss,
+            self.assertLogs(queue.LOGGER, 'WARNING') as logs,
+        ):
+            await queue._process_message(db, {'project_id': 'p1'})
+        self.assertEqual('failed', ss.await_args_list[-1].kwargs['status'])
+        self.assertEqual(['WARNING'], [r.levelname for r in logs.records])
 
     async def test_other_error_marks_failed_and_raises(self) -> None:
         db = mock.AsyncMock()

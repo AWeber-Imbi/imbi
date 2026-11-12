@@ -21,6 +21,7 @@ import logging
 import typing
 
 import fastapi
+import httpx
 import nanoid
 import pydantic
 
@@ -399,6 +400,24 @@ async def _invoke_one(
             plugin_slug=resolved.plugin_slug,
             status='failed',
             message=str(exc),
+        )
+    except httpx.HTTPStatusError as exc:
+        # The remote refused the change (e.g. a 403 on a repo
+        # transfer). The result tells the caller; it is not a bug.
+        LOGGER.warning(
+            'Lifecycle plugin %s (%s) on %s for project %s: remote '
+            'answered HTTP %s',
+            resolved.plugin_slug,
+            resolved.integration_id,
+            event,
+            ctx.project_id,
+            exc.response.status_code,
+        )
+        return LifecycleInvocation(
+            integration_id=resolved.integration_id,
+            plugin_slug=resolved.plugin_slug,
+            status='failed',
+            message=f'{type(exc).__name__}: {exc}',
         )
     except Exception as exc:
         LOGGER.exception(

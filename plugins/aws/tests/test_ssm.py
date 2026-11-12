@@ -15,7 +15,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
-    PluginUnavailableError,
+    PluginRateLimited,
 )
 from imbi.plugins.aws.ssm import SSMConfiguration
 
@@ -373,7 +373,7 @@ class DeleteKeyTestCase(unittest.IsolatedAsyncioTestCase):
             await plugin.delete_key(_ctx(), _creds(), 'k')
 
     @respx.mock
-    async def test_throttling_maps_to_unavailable(self) -> None:
+    async def test_throttling_maps_to_rate_limited(self) -> None:
         respx.post(_SSM_URL).mock(
             return_value=httpx.Response(
                 400,
@@ -384,5 +384,5 @@ class DeleteKeyTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         plugin = SSMConfiguration()
-        with self.assertRaises(PluginUnavailableError):
+        with self.assertRaises(PluginRateLimited):
             await plugin.delete_key(_ctx(), _creds(), 'k')

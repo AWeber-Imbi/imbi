@@ -18,7 +18,10 @@ from valkey import asyncio as valkey
 from imbi.api.maintenance import log, registry, state
 from imbi.api.maintenance.operations import MaintenanceItemFailed
 from imbi.common import graph
-from imbi.common.plugins.errors import PluginRateLimited
+from imbi.common.plugins.errors import (
+    PluginInstallationMissing,
+    PluginRateLimited,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -174,6 +177,13 @@ async def _tick_operation(
         await ctx.log.flush()
         return False
     except MaintenanceItemFailed as exc:
+        outcome, error = 'failed', str(exc)
+    except PluginInstallationMissing as exc:
+        # Misconfiguration (e.g. the GitHub App is not installed on the
+        # repository): expected, so not an error.
+        LOGGER.warning(
+            'maintenance %s skipped %s: %s', operation.slug, project_id, exc
+        )
         outcome, error = 'failed', str(exc)
     except Exception:
         LOGGER.exception(

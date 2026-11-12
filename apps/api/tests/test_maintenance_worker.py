@@ -10,7 +10,10 @@ from unittest import mock
 
 from imbi.api.maintenance import log, registry, worker
 from imbi.api.maintenance.operations import MaintenanceItemFailed
-from imbi.common.plugins.errors import PluginRateLimited
+from imbi.common.plugins.errors import (
+    PluginInstallationMissing,
+    PluginRateLimited,
+)
 
 
 def _operation(
@@ -132,6 +135,24 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         self.state['record_outcome'].assert_awaited_once_with(
             self.client, 'op', 'p1', 'failed', 'boom'
         )
+
+    async def test_app_not_installed_records_message_with_a_warning(
+        self,
+    ) -> None:
+        operation = _operation(
+            mock.AsyncMock(
+                side_effect=PluginInstallationMissing('not installed')
+            )
+        )
+        with self.assertLogs(worker.LOGGER, 'WARNING') as logs:
+            result = await worker._tick_operation(
+                self.client, self.db, operation
+            )
+        self.assertTrue(result)
+        self.state['record_outcome'].assert_awaited_once_with(
+            self.client, 'op', 'p1', 'failed', 'not installed'
+        )
+        self.assertEqual(['WARNING'], [r.levelname for r in logs.records])
 
     async def test_unexpected_error_records_generic_message(self) -> None:
         operation = _operation(
