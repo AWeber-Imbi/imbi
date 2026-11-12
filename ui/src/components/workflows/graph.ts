@@ -24,7 +24,8 @@ export interface View {
 export const NODE_W = 248
 export const GRID = 20
 const HEAD_H = 56
-const SUMMARY_H = 36
+const LINE_H = 18
+const BODY_PAD = 12
 const ROW_H = 30
 const ROWS_PAD = 4
 const MIN_ZOOM = 0.25
@@ -135,7 +136,7 @@ export function fitView(
     x0 = Math.min(x0, n.position.x)
     y0 = Math.min(y0, n.position.y)
     x1 = Math.max(x1, n.position.x + NODE_W)
-    y1 = Math.max(y1, n.position.y + nodeHeight(portsOf(n, types)))
+    y1 = Math.max(y1, n.position.y + nodeHeight(n, portsOf(n, types)))
   }
   const pad = 64
   const zoom = Math.max(
@@ -179,7 +180,7 @@ export function outPoint(
     y:
       node.position.y +
       HEAD_H +
-      SUMMARY_H +
+      bodyHeight(node) +
       ROWS_PAD +
       ROW_H * index +
       ROW_H / 2,
@@ -271,6 +272,11 @@ export function removeNode(graph: WorkflowGraph, id: string): WorkflowGraph {
   }
 }
 
+/** The node names an agent, so its card shows an agent line. */
+export function runsAgent(node: WorkflowNode): boolean {
+  return typeof node.params.agent_id === 'string' && !!node.params.agent_id
+}
+
 export function snap(value: number): number {
   return Math.round(value / GRID) * GRID
 }
@@ -319,6 +325,10 @@ export function zoomAt(view: View, at: Point, factor: number): View {
   }
 }
 
+function bodyHeight(node: WorkflowNode): number {
+  return LINE_H * (runsAgent(node) ? 2 : 1) + BODY_PAD
+}
+
 function defaultParams(schema: JsonSchema): Record<string, unknown> {
   const params: Record<string, unknown> = {}
   for (const [name, prop] of Object.entries(schema.properties ?? {})) {
@@ -327,7 +337,8 @@ function defaultParams(schema: JsonSchema): Record<string, unknown> {
   return params
 }
 
-function nodeHeight(ports: string[]): number {
-  if (isSinglePort(ports)) return HEAD_H + SUMMARY_H
-  return HEAD_H + SUMMARY_H + ROWS_PAD * 2 + ROW_H * ports.length
+function nodeHeight(node: WorkflowNode, ports: string[]): number {
+  const height = HEAD_H + bodyHeight(node)
+  if (isSinglePort(ports)) return height
+  return height + ROWS_PAD * 2 + ROW_H * ports.length
 }
