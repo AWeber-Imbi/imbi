@@ -288,8 +288,9 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_disables_connection_pool_reset(self) -> None:
         """The driver must not reset the shared aiohttp session."""
+        previous = common.get_setting('max_connection_age')
         common.set_setting('max_connection_age', 600)
-        self.addCleanup(common.set_setting, 'max_connection_age', 600)
+        self.addCleanup(common.set_setting, 'max_connection_age', previous)
         client.Clickhouse()
         self.assertEqual(common.get_setting('max_connection_age'), 0)
 
