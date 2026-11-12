@@ -165,6 +165,26 @@ tasks:
     outputs:
       - 'build/coverage.xml'
 
+  # Fail when ui/src/types/api-generated.ts no longer matches the API
+  # code, so a hand edit or a missed regeneration cannot merge. Fix with
+  # `scripts/regen-api-types.sh`.
+  api-types:
+    script: 'scripts/regen-api-types.sh --check'
+    deps:
+      - '~:setup-env'
+      - 'ui:install'
+    inputs:
+      - '/apps/*/src/**/*'
+      - '/libraries/*/src/**/*'
+      - '/plugins/*/src/**/*'
+      - '/ui/src/types/api-generated.ts'
+      - '/ui/package.json'
+      - '/ui/package-lock.json'
+      - '/scripts/dump_openapi.py'
+      - '/scripts/regen-api-types.sh'
+    options:
+      cache: false
+
   # Build the production Docker image (Dockerfile lives in container/) for
   # local use. CI validates the image via test.yml's Image job instead, which
   # exercises release.yml's docker/build-push-action configuration and writes
