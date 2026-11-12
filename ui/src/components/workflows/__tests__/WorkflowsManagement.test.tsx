@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { WorkflowsManagement } from '../WorkflowsManagement'
 import { node, RUN, STEP_TYPES, workflow } from './fixtures'
@@ -17,12 +17,14 @@ vi.mock('@/api/endpoints', () => ({
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
   getWorkflowVersion: vi.fn(),
+  listStaleSideEffects: vi.fn(),
   listTeams: vi.fn(),
   listWorkflowAttention: vi.fn(),
   listWorkflowRuns: vi.fn(),
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
   pauseWorkflow: vi.fn(),
+  resolveSideEffect: vi.fn(),
   startWorkflowRun: vi.fn(),
   testRunWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
@@ -82,6 +84,7 @@ describe('WorkflowsManagement', () => {
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({ issues: [] })
     vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([])
     vi.mocked(endpoints.listWorkflowRuns).mockResolvedValue([])
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([])
   })
 
   it('lists workflows with trigger, status, and empty run columns', async () => {
@@ -134,6 +137,59 @@ describe('WorkflowsManagement', () => {
     expect(
       screen.getByText('activator_lacks_permission').closest('a'),
     ).toHaveAttribute('href', `/agents/workflows/deploy-guard?run=${RUN.id}`)
+  })
+
+  it('resolves a call with an unknown outcome and retries the step', async () => {
+    const effect = {
+      action: 'step-email',
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      key: '["imbi-workflows", "step-email", "r1:tell"]',
+      node_key: 'tell',
+      retryable: true,
+      run_error: 'outcome_unknown',
+      run_id: RUN.id,
+      run_status: 'failed' as const,
+      workflow_name: 'Deploy guard',
+      workflow_slug: 'deploy-guard',
+    }
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([effect])
+    vi.mocked(endpoints.resolveSideEffect).mockResolvedValue(undefined)
+    renderAt('/agents/workflows')
+    expect(
+      await screen.findByText('Calls with an unknown outcome'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Step email')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeChecked()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark sent' }))
+    expect(
+      await screen.findByText(/does not send it again\. The run opens again/),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Mark sent',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.resolveSideEffect).toHaveBeenCalledWith('acme', {
+        key: effect.key,
+        resolution: 'mark_sent',
+        retry: true,
+      }),
+    )
+  })
+
+  it('hides calls with an unknown outcome without workflow:recover', async () => {
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['workflow:read'] },
+      ],
+      permissions: [],
+    }
+    renderAt('/agents/workflows')
+    expect(await screen.findByText('Deploy guard')).toBeInTheDocument()
+    expect(endpoints.listStaleSideEffects).not.toHaveBeenCalled()
   })
 
   it('test runs the workflow and shows a step output', async () => {

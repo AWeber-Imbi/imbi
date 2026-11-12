@@ -263,6 +263,7 @@ it.
 | `workflow:write` | Edit, activate, and pause workflows | yes | yes |  |  |  |  |  |  |  |
 | `workflow:delete` | Delete workflows | yes |  |  |  |  |  |  |  |  |
 | `workflow:run` | Start manual and test runs of workflows, and cancel runs | yes | yes |  |  | yes | yes |  |  |  |
+| `workflow:recover` | Resolve workflow side effects with an unknown outcome, and retry their steps | yes |  |  |  |  |  |  |  |  |
 | `harness_pool:read` | View the runner pools and runners that serve the organization | yes |  |  |  |  |  |  |  |  |
 | `agent_platform_config:write` | Change the base agent configuration and the plugin marketplaces | yes |  |  |  |  |  |  |  |  |
 | `secret_provider:read` | View secret providers | yes |  |  |  |  |  |  |  |  |

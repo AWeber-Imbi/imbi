@@ -18,6 +18,10 @@ The two agent task routes are for the engine only too. They make,
 read, and cancel the agent task of a running ``agent`` step (ADR 0021,
 Agent tasks from workflows).
 
+The side-effect routes let an operator (``workflow:recover``) find the
+calls that started and did not finish, resolve each one, and retry its
+step (ADR 0021, unknown-outcome reconciliation).
+
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
@@ -119,6 +123,36 @@ class AttentionRun(Run):
     reason: typing.Literal['failed', 'stuck']
     worker_id: str | None
     lease_expires_at: datetime.datetime | None
+
+
+class StaleSideEffect(pydantic.BaseModel):
+    """A side effect of a run that started and did not finish."""
+
+    key: str
+    action: str
+    created_at: datetime.datetime
+    run_id: uuid.UUID
+    run_status: RunStatus
+    run_error: str | None
+    workflow_slug: str
+    workflow_name: str
+    #: The step that made the call. ``None`` for a failure notice.
+    node_key: str | None
+    #: The step can run again after the key is resolved.
+    retryable: bool
+
+
+class SideEffectResolve(pydantic.BaseModel):
+    key: str
+    resolution: typing.Literal['clear', 'mark_sent'] = pydantic.Field(
+        description='``clear`` deletes the key, so a repeat of the call '
+        'acts again. ``mark_sent`` (``step-email`` only) records that the '
+        'message went out, so a repeat sends nothing.'
+    )
+    retry: bool = pydantic.Field(
+        default=False,
+        description='Open the run again and run the step again.',
+    )
 
 
 class TestRunCreate(pydantic.BaseModel):
@@ -578,6 +612,10 @@ RunAuth = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission('workflow:run')),
 ]
+RecoverAuth = typing.Annotated[
+    permissions.AuthContext,
+    fastapi.Depends(permissions.require_permission('workflow:recover')),
+]
 EngineAuth = typing.Annotated[
     permissions.AuthContext, fastapi.Depends(_require_engine)
 ]
@@ -818,6 +856,62 @@ async def list_attention_runs(
     :meth:`imbi.api.workflows.RunStore.attention`.
     """
     return await runs.attention(org_id)
+
+
+@workflow_attention_router.get(
+    '/side-effects', response_model=list[StaleSideEffect]
+)
+async def list_stale_side_effects(
+    org_id: OrgId, runs: workflows.Runs, _: RecoverAuth
+) -> list[workflows.Row]:
+    """Return the side effects of runs that started and did not finish.
+
+    A repeat of such a key gets ``409 outcome_unknown``, so its step
+    fails. Only an operator resolves one; keys never expire (ADR 0021,
+    unknown-outcome reconciliation).
+    """
+    return await runs.stale_side_effects(org_id)
+
+
+@workflow_attention_router.post('/side-effects/resolve', status_code=204)
+async def resolve_side_effect(
+    org_id: OrgId,
+    body: SideEffectResolve,
+    runs: workflows.Runs,
+    _: RecoverAuth,
+) -> None:
+    """Clear a stale side effect, or mark its message sent, and retry.
+
+    Raises:
+        404: No stale side effect with the key in the organization.
+        409: The resolution or the retry does not apply to it, or it
+            changed.
+
+    """
+    found = await runs.stale_side_effects(org_id, body.key)
+    if not found:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No stale side effect with this key'
+        )
+    effect = found[0]
+    if body.resolution == 'mark_sent' and effect['action'] != 'step-email':
+        raise fastapi.HTTPException(
+            status_code=409, detail='Only a step email can be marked sent'
+        )
+    if body.retry and not effect['retryable']:
+        raise fastapi.HTTPException(
+            status_code=409, detail='The step of this key cannot run again'
+        )
+    response = (
+        EmailResult(recipients=[]).model_dump()
+        if body.resolution == 'mark_sent'
+        else None
+    )
+    retry = (effect['run_id'], effect['node_id']) if body.retry else None
+    if not await runs.resolve_side_effect(body.key, response, retry):
+        raise fastapi.HTTPException(
+            status_code=409, detail='The side effect or its run changed'
+        )
 
 
 @workflow_runs_router.post(

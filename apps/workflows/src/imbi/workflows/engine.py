@@ -244,7 +244,9 @@ class Engine:
                 input=params,
                 started_at=_now(),
             )
-            await _step_event(conn, run['id'], node_id, 'step.started')
+            await runtime.append_step_event(
+                conn, run['id'], node_id, 'step.started'
+            )
         return _now()
 
     async def _activator_allowed(
@@ -344,7 +346,7 @@ class Engine:
             for node in wf_graph.nodes:
                 if registry.STEP_TYPES[node.type].trigger:
                     started = node.id == run['trigger_node_id']
-                    await _step_event(
+                    await runtime.append_step_event(
                         conn,
                         run['id'],
                         node.id,
@@ -477,7 +479,7 @@ class Engine:
                 call_started_at=None,
                 started_at=_now(),
             )
-            await _step_event(
+            await runtime.append_step_event(
                 conn, run['id'], step['node_id'], 'step.started', retry_of=code
             )
         return _now() + datetime.timedelta(
@@ -511,7 +513,9 @@ class Engine:
             call_started_at=None,
             finished_at=_now(),
         )
-        await _step_event(conn, run['id'], step['node_id'], f'step.{status}')
+        await runtime.append_step_event(
+            conn, run['id'], step['node_id'], f'step.{status}'
+        )
 
     # --- Close ---------------------------------------------------------
 
@@ -585,33 +589,6 @@ class Engine:
                 run['id'],
                 exc_info=True,
             )
-
-
-# --- Events --------------------------------------------------------------
-
-
-async def _step_event(
-    conn: store.Conn,
-    run_id: typing.Any,
-    node_id: str,
-    event_type: str,
-    **extra: typing.Any,
-) -> None:
-    """Write a step event that holds a snapshot of the step row.
-
-    History rebuilds the step records from these snapshots alone
-    (ADR 0021), so read the row after the change it records.
-    """
-    cur = await conn.execute(
-        "SELECT to_jsonb(s) - ARRAY['run_id', 'state', 'call_started_at']"
-        ' FROM workflow_runtime.step_runs AS s'
-        ' WHERE run_id = %s AND node_id = %s',
-        (run_id, node_id),
-    )
-    row = await cur.fetchone()
-    if row is None:
-        raise LookupError(f'Run {run_id} has no step {node_id}')
-    await runtime.append_event(conn, run_id, event_type, {**row[0], **extra})
 
 
 # --- References ----------------------------------------------------------

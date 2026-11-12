@@ -3,7 +3,6 @@ import type { components } from '@/types/api-generated'
 // Workflow API types (ADR 0021), from the generated OpenAPI schema.
 
 export type AttentionRun = Schemas['AttentionRun']
-
 /** A JSON Schema object. The API types `params_schema` as `dict[str, Any]`. */
 export interface JsonSchema {
   $defs?: Record<string, JsonSchema>
@@ -18,8 +17,11 @@ export interface JsonSchema {
   title?: string
   type?: string
 }
-
 export type RunStatus = WorkflowRun['status']
+
+export type SideEffectResolve = Schemas['SideEffectResolve']
+
+export type StaleSideEffect = Schemas['StaleSideEffect']
 export type StepCategory = StepType['category']
 export type StepRun = Schemas['StepRun']
 export type StepRunStatus = StepRun['status']

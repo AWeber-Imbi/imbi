@@ -174,6 +174,9 @@ endpoint and no public API.
   and rollback look up the deployment by idempotency key. A type that
   cannot reconcile and is not idempotent fails the step with
   `outcome_unknown` and does not retry.
+  imbi-api never expires a side-effect key with no response. An operator
+  with `workflow:recover` resolves a stale one (clear it, or mark a step
+  email sent) and can retry its step; until then a run that it failed is not archived.
 - **At least once.** A crash between a side effect and its record repeats
   the step. Each side-effecting step passes the idempotency key
   `<run_id>:<node_key>` to the API it calls. The key does not change

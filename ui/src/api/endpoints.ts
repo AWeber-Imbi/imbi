@@ -20,6 +20,8 @@ import type {
 } from '@/components/admin/secrets/types'
 import type {
   AttentionRun,
+  SideEffectResolve,
+  StaleSideEffect,
   StepType,
   TestRunResult,
   ValidationResult,
@@ -4111,6 +4113,26 @@ export const listWorkflowAttention = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+/** Side effects of runs that started and did not finish (#392). */
+export const listStaleSideEffects = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<StaleSideEffect[]> => {
+  const response = await apiClient.get<StaleSideEffect[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+/** Clear a stale side effect, or mark its email sent, and retry. */
+export const resolveSideEffect = (orgSlug: string, body: SideEffectResolve) =>
+  apiClient.post<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects/resolve`,
+    body,
+  )
 
 export const listWorkflowStepTypes = async (
   orgSlug: string,

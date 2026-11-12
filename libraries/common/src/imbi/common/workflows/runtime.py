@@ -65,3 +65,27 @@ async def append_event(
         ' VALUES (%s, %s, %s, %s, %s)',
         (run_id, row[0], uuid.uuid4(), event_type, pg_json.Jsonb(payload)),
     )
+
+
+async def append_step_event(
+    conn: psycopg.AsyncConnection[typing.Any],
+    run_id: typing.Any,
+    node_id: str,
+    event_type: str,
+    **extra: typing.Any,
+) -> None:
+    """Write a step event that holds a snapshot of the step row.
+
+    History rebuilds the step records from these snapshots alone
+    (ADR 0021), so read the row after the change it records.
+    """
+    cur = await conn.execute(
+        "SELECT to_jsonb(s) - ARRAY['run_id', 'state', 'call_started_at']"
+        ' FROM workflow_runtime.step_runs AS s'
+        ' WHERE run_id = %s AND node_id = %s',
+        (run_id, node_id),
+    )
+    row = await cur.fetchone()
+    if row is None:
+        raise LookupError(f'Run {run_id} has no step {node_id}')
+    await append_event(conn, run_id, event_type, {**row[0], **extra})

@@ -6397,6 +6397,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stale Side Effects
+         * @description Return the side effects of runs that started and did not finish.
+         *
+         *     A repeat of such a key gets ``409 outcome_unknown``, so its step
+         *     fails. Only an operator resolves one; keys never expire (ADR 0021,
+         *     unknown-outcome reconciliation).
+         */
+        get: operations["list_stale_side_effects_api_organizations__org_slug__workflow_runs_side_effects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Side Effect
+         * @description Clear a stale side effect, or mark its message sent, and retry.
+         *
+         *     Raises:
+         *         404: No stale side effect with the key in the organization.
+         *         409: The resolution or the retry does not apply to it, or it
+         *             changed.
+         */
+        post: operations["resolve_side_effect_api_organizations__org_slug__workflow_runs_side_effects_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/secret-providers/types": {
         parameters: {
             query?: never;
@@ -6557,6 +6606,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such binding.
+         *         409: The change sets or clears the provider key mark while a
+         *             grant uses the binding.
          *         422: The locator is not valid.
          */
         patch: operations["update_binding_api_organizations__org_slug__secret_bindings__binding_id__patch"];
@@ -6623,8 +6674,9 @@ export interface paths {
          * @description Create an allow rule with exact ids.
          *
          *     Raises:
-         *         422: A binding is not in the organization, or a setup purpose
-         *             has a delivery mode other than ``file_descriptor``.
+         *         422: A binding is not in the organization or is a provider
+         *             key binding, or a setup purpose has a delivery mode other
+         *             than ``file_descriptor``.
          */
         post: operations["create_grant_api_organizations__org_slug__secret_grants__post"];
         delete?: never;
@@ -6678,8 +6730,9 @@ export interface paths {
          *
          *     Raises:
          *         404: No such grant.
-         *         422: A binding is not in the organization, or a setup purpose
-         *             has a delivery mode other than ``file_descriptor``.
+         *         422: A binding is not in the organization or is a provider
+         *             key binding, or a setup purpose has a delivery mode other
+         *             than ``file_descriptor``.
          */
         patch: operations["update_grant_api_organizations__org_slug__secret_grants__grant_id__patch"];
         trace?: never;
@@ -20527,6 +20580,58 @@ export interface components {
              */
             on_failure: "notify_owner_team" | "none";
         };
+        /** SideEffectResolve */
+        SideEffectResolve: {
+            /** Key */
+            key: string;
+            /**
+             * Resolution
+             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_sent`` (``step-email`` only) records that the message went out, so a repeat sends nothing.
+             * @enum {string}
+             */
+            resolution: "clear" | "mark_sent";
+            /**
+             * Retry
+             * @description Open the run again and run the step again.
+             * @default false
+             */
+            retry: boolean;
+        };
+        /**
+         * StaleSideEffect
+         * @description A side effect of a run that started and did not finish.
+         */
+        StaleSideEffect: {
+            /** Key */
+            key: string;
+            /** Action */
+            action: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Run Status
+             * @enum {string}
+             */
+            run_status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Run Error */
+            run_error: string | null;
+            /** Workflow Slug */
+            workflow_slug: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Node Key */
+            node_key: string | null;
+            /** Retryable */
+            retryable: boolean;
+        };
         /** StatsResponse */
         StatsResponse: {
             /**
@@ -32611,6 +32716,70 @@ export interface operations {
             };
         };
     };
+    list_stale_side_effects_api_organizations__org_slug__workflow_runs_side_effects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleSideEffect"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_side_effect_api_organizations__org_slug__workflow_runs_side_effects_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SideEffectResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_provider_types_api_organizations__org_slug__secret_providers_types_get: {
         parameters: {
             query?: never;
@@ -34426,6 +34595,8 @@ export interface operations {
         parameters: {
             query?: {
                 source?: string | null;
+                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                tz?: string;
             };
             header?: never;
             path: {
@@ -34531,7 +34702,10 @@ export interface operations {
     };
     get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                tz?: string;
+            };
             header?: never;
             path: {
                 org_slug: string;
