@@ -3956,6 +3956,18 @@ async def _set_archived_state(
     """Toggle archived state on a project and return the updated entity."""
     # The lifecycle hooks run after the write; refuse first when a
     # remote would refuse them, so Imbi and the remote stay in step.
+    # Find the project in this organization first: the check runs the
+    # plugins with the project's own bindings and can return their
+    # reason to the caller.
+    if not await db.execute(
+        _UPDATE_MATCH_FRAGMENT + ' RETURN p.id',
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
+    ):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
     await check_archive_access(db, project_id, org_slug, auth)
     now = datetime.datetime.now(datetime.UTC).isoformat()
     archived_at: str | None = now if archived else None

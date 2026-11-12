@@ -143,7 +143,8 @@ you make it. Imbi cannot reduce it.
 The `lifecycle` capability uses the identity token of the acting user, or
 `access_token`. It never uses GitHub App credentials. Repository
 create, archive, and transfer need admin access to the repository. A
-transfer also needs admin access to the target organization. Before
+transfer also needs permission to create repositories in the target
+organization. Before
 an archive or a restore, Imbi reads the repository with the same token.
 If GitHub reports that the user is not an admin, Imbi refuses the request
 with `403` and does not change the project.

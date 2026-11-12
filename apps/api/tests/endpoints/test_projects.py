@@ -1560,9 +1560,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
+        # A project outside the organization never reaches the plugins.
+        self._access_check.assert_not_awaited()
 
     def test_archive_refused_by_remote_writes_nothing(self) -> None:
         """A remote refusal returns 403 before any graph write."""
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
         self._access_check.side_effect = fastapi.HTTPException(
             status_code=403, detail='You need admin access'
         )
@@ -1575,7 +1578,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             self.assertEqual(
                 response.json()['detail'], 'You need admin access'
             )
-        self.mock_db.execute.assert_not_awaited()
+        self.assertFalse(
+            any(
+                'SET p.archived' in call.args[0]
+                for call in self.mock_db.execute.call_args_list
+            )
+        )
 
     def test_archive_succeeds_when_dispatch_raises(self) -> None:
         """Dispatch failure must not poison a committed archive."""
