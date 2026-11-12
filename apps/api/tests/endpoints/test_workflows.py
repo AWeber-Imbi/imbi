@@ -593,6 +593,16 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
                 },
             )
             self.assertEqual(len(issues), expected, (agent_id, project))
+        # A task completed trigger filters on an agent of the org only.
+        for agent_id, expected in ((agent, 0), (foreign, 1)):
+            issues = await self._resource_issues(
+                'task_completed', {'agent_id': agent_id}
+            )
+            self.assertEqual(len(issues), expected, agent_id)
+        codes = await self._codes(
+            'task_completed', {'agent_id': '{{ trigger.agent }}'}
+        )
+        self.assertIn('invalid_reference', codes)
         # Run input must not choose the agent or the project.
         for params in (
             {'agent_id': '{{ trigger.agent }}'},
@@ -640,3 +650,15 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(
             await self.store.agent_references(self.org, foreign), 0
         )
+        # A task_completed trigger that names the agent also uses it.
+        response = await self._create(
+            name='Task chain',
+            graph={
+                'nodes': [
+                    _node('start', 'task_completed', {'agent_id': agent})
+                ],
+                'edges': [],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(await self.store.agent_references(self.org, agent), 2)

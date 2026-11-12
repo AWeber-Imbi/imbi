@@ -19,7 +19,8 @@ from collections import abc
 import fastapi
 
 from imbi.api.agent_tasks import TaskStore, create_pool
-from imbi.api.workflows import runs, sweeper
+from imbi.api.agent_tasks import store as task_store
+from imbi.api.workflows import runs, sweeper, task_trigger
 from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
     SCHEMA,
@@ -61,13 +62,18 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
     try:
         await pool.open()
         _runs = RunStore(pool)
+        definitions = WorkflowStore(pool)
+        tasks = TaskStore(pool)
+        trigger = task_trigger.TaskTrigger(definitions, _runs, tasks)
+        task_store.register_close_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(
-            sweeper.run_sweeper(_runs, TaskStore(pool), stop=stop)
+            sweeper.run_sweeper(_runs, tasks, stop=stop)
         )
         try:
-            yield WorkflowStore(pool)
+            yield definitions
         finally:
+            task_store.unregister_close_hook(trigger)
             stop.set()
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):

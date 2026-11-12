@@ -33,6 +33,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.agent_tasks import log
+from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -63,7 +64,7 @@ def unregister_close_hook(hook: CloseHook) -> None:
         _close_hooks.remove(hook)
 
 
-async def _run_close_hooks(task: Row) -> None:
+async def run_close_hooks(task: Row) -> None:
     """Call every close hook. A failure is logged; the task stays
     closed."""
     for hook in list(_close_hooks):
@@ -82,24 +83,7 @@ Status = typing.Literal['queued', 'running', 'blocked', 'paused', 'closed']
 Control = typing.Literal['run', 'pause', 'cancel']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
-#: The closed F5 set of terminal outcomes.
-Outcome = typing.Literal[
-    'done_acted',
-    'done_nothing_to_act_on',
-    'no_reason_to_run',
-    'partial_capped',
-    'suppressed_duplicate',
-    'superseded',
-    'cancelled_by_human',
-    'interrupted_by_operator',
-    'failed_at_gate',
-    'failed_external',
-    'unmapped_subject',
-    'exceeded_ceiling',
-    'unhandled_no_actor',
-    'request_expired',
-    'refused_rate_ceiling',
-]
+Outcome = agent_step.Outcome
 
 #: The open requests of the task ``t`` that a person can still resolve.
 #: A task that is not closed and has one waits on a person (O1), also
@@ -449,7 +433,7 @@ class TaskStore:
         await log.publish(write.task, write.events, write.ledger)
         # The lock refuses a closed task, so this write closed it.
         if write.task['status'] == 'closed':
-            await _run_close_hooks(write.task)
+            await run_close_hooks(write.task)
 
     async def move_legacy_projects(self) -> int:
         """Move the old single project of each task (``tasks.project_id``)
@@ -615,6 +599,16 @@ class TaskStore:
                 _SELECT_TASKS
                 + ' WHERE organization_id = %s AND short_id = %s',
                 (organization_id, short_id),
+            )
+
+    async def chain_root(self, task: Row) -> Row | None:
+        """Return the root task of the chain of ``task`` (ADR 0022)."""
+        chain_id = task['chain_id'] or task['id']
+        if chain_id == task['id']:
+            return task
+        async with self._pool.connection() as conn:
+            return await _fetch_one(
+                conn, _SELECT_TASKS + ' WHERE t.id = %s', (chain_id,)
             )
 
     async def search(

@@ -1,4 +1,10 @@
-import { CornerDownRight, Play, Timer, Webhook } from 'lucide-react'
+import {
+  CircleCheck,
+  CornerDownRight,
+  Play,
+  Timer,
+  Webhook,
+} from 'lucide-react'
 
 import type {
   AgentTaskEvent,
@@ -71,6 +77,7 @@ export const TRIGGERS = {
   human: { icon: Play, label: 'Manual' },
   schedule: { icon: Timer, label: 'Schedule' },
   task: { icon: CornerDownRight, label: 'Delegation' },
+  task_completed: { icon: CircleCheck, label: 'Task completed' },
   webhook: { icon: Webhook, label: 'Webhook' },
 } as const
 

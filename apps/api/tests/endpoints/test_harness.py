@@ -16,6 +16,7 @@ import httpx
 from apps.api.tests.endpoints import test_agent_task_harness
 from apps.api.tests.endpoints.test_agent_task_log import ClickHouseTestCase
 from imbi.api import models, secret_broker
+from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import password as password_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agent_task_harness
@@ -915,6 +916,29 @@ class FencingTests(RunnerTestCase):
             claim['agent_token'], 'POST', 'T-1/sessions', {'session_key': 's2'}
         )
         self.assertEqual(response.status_code, 201, response.text)
+
+    async def test_requeue_runs_close_hooks_for_a_cancelled_task(
+        self,
+    ) -> None:
+        closed: list[dict[str, typing.Any]] = []
+
+        async def hook(task: dict[str, typing.Any]) -> None:
+            closed.append(task)
+
+        task_store.register_close_hook(hook)
+        self.addCleanup(task_store.unregister_close_hook, hook)
+        self.fencer(True)
+        response = await self.as_user('POST', 'T-1/cancel')
+        self.assertEqual(response.status_code, 200, response.text)
+        await self.expire(self.runner)
+        await sweeper.sweep_once(self.harness)
+        await self.end_grace(self.chain_id)
+        await sweeper.sweep_once(self.harness)
+        self.assertEqual((await self.task_row())['status'], 'closed')
+        self.assertEqual(
+            [(t['short_id'], t['status']) for t in closed],
+            [('T-1', 'closed')],
+        )
 
     async def test_failing_fencer_keeps_the_chain_fenced(self) -> None:
         self.fencer(True)
