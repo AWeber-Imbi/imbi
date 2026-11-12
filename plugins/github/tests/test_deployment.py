@@ -677,6 +677,24 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(commit.is_head)
         self.assertEqual(commit.ci_status, 'unknown')
 
+    @respx.mock
+    async def test_resolve_committish_head_lookup_fails(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/commits/v1').mock(
+            return_value=httpx.Response(
+                200, json={'sha': 'abc', 'commit': {'message': 'fix'}}
+            )
+        )
+        respx.get('https://api.github.com/repos/octo/demo/commits/HEAD').mock(
+            side_effect=httpx.TimeoutException('timeout')
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(return_value=httpx.Response(404, json={}))
+        plugin = GitHubDeployment()
+        commit = await plugin.resolve_committish(_ctx(), _CREDS, 'v1')
+        self.assertEqual(commit.sha, 'abc')
+        self.assertFalse(commit.is_head)
+
 
 class CompareTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock

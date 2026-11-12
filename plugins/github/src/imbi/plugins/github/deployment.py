@@ -1069,19 +1069,30 @@ class GitHubDeployment(DeploymentCapability):
         ) as client:
             # ``HEAD`` resolves to the default branch's head commit; the
             # ``sha`` media type answers with the bare sha.
+            async def _head() -> httpx.Response | None:
+                try:
+                    return await client.get(
+                        '/commits/HEAD',
+                        headers={'Accept': 'application/vnd.github.sha'},
+                    )
+                except httpx.HTTPError:
+                    # Head detection is optional; keep the resolved commit.
+                    return None
+
             resp, head = await asyncio.gather(
                 client.get(
                     f'/commits/{urllib.parse.quote(committish, safe="")}'
                 ),
-                client.get(
-                    '/commits/HEAD',
-                    headers={'Accept': 'application/vnd.github.sha'},
-                ),
+                _head(),
             )
             resp.raise_for_status()
             payload = typing.cast(dict[str, typing.Any], resp.json())
             commit = _commit_from_payload(payload)
-        if head.status_code == 200 and head.text.strip() == commit.sha:
+        if (
+            head is not None
+            and head.status_code == 200
+            and head.text.strip() == commit.sha
+        ):
             commit = commit.model_copy(update={'is_head': True})
         host = self._resolve_host(ctx)
         owner, repo = self._owner_repo(ctx)
