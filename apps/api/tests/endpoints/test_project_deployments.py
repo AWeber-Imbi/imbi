@@ -481,13 +481,24 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertTrue(data[0]['is_head'])
 
     def test_resolve_commit(self) -> None:
-        with testclient.TestClient(self.test_app) as client:
+        verdicts = mock.AsyncMock(return_value={'abc1234': False})
+        tags = mock.AsyncMock(return_value={'abc1234': 'v1.2.3'})
+        with (
+            mock.patch('imbi.api.drift.verdicts_by_sha', new=verdicts),
+            mock.patch(f'{_MODULE}._tags_by_sha', new=tags),
+            testclient.TestClient(self.test_app) as client,
+        ):
             response = client.get(
                 '/organizations/myorg/projects/proj1/deployments/'
                 'commits/abc1234'
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['sha'], 'abc1234')
+        data = response.json()
+        self.assertEqual(data['sha'], 'abc1234')
+        # Enriched like the commit list, not left at schema defaults.
+        self.assertFalse(data['drift_detected'])
+        self.assertEqual(data['tag'], 'v1.2.3')
+        verdicts.assert_awaited_once_with('proj1', ['abc1234'])
 
     def test_compare(self) -> None:
         with testclient.TestClient(self.test_app) as client:

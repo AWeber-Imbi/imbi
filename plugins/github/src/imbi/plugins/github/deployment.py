@@ -1067,12 +1067,48 @@ class GitHubDeployment(DeploymentCapability):
         async with self._client(
             ctx, credentials, SCOPE_CONTENTS_READ
         ) as client:
-            resp = await client.get(
-                f'/commits/{urllib.parse.quote(committish, safe="")}'
+            # ``HEAD`` resolves to the default branch's head commit; the
+            # ``sha`` media type answers with the bare sha.
+            async def _head() -> httpx.Response | None:
+                try:
+                    return await client.get(
+                        '/commits/HEAD',
+                        headers={'Accept': 'application/vnd.github.sha'},
+                    )
+                except httpx.HTTPError:
+                    # Head detection is optional; keep the resolved commit.
+                    return None
+
+            resp, head = await asyncio.gather(
+                client.get(
+                    f'/commits/{urllib.parse.quote(committish, safe="")}'
+                ),
+                _head(),
             )
             resp.raise_for_status()
             payload = typing.cast(dict[str, typing.Any], resp.json())
-            return _commit_from_payload(payload)
+            commit = _commit_from_payload(payload)
+        if (
+            head is not None
+            and head.status_code == 200
+            and head.text.strip() == commit.sha
+        ):
+            commit = commit.model_copy(update={'is_head': True})
+        host = self._resolve_host(ctx)
+        owner, repo = self._owner_repo(ctx)
+        if _checks_disabled(credentials, host, owner, repo):
+            return commit
+        # A separate checks-scoped token: an App without ``checks: read``
+        # (a ``422`` on mint) still resolves, with ``ci_status`` unknown.
+        try:
+            async with self._client(
+                ctx, credentials, SCOPE_CHECKS_READ
+            ) as client:
+                return await self._hydrate_check_status(
+                    client, credentials, host, owner, repo, commit
+                )
+        except httpx.HTTPError:
+            return commit
 
     # -- Compare ------------------------------------------------------------
 
