@@ -1416,7 +1416,11 @@ class AgentStepTestCase(EngineTestCase):
         )
         self.assertEqual(len(await self._org_tasks()), 1)
 
-    async def test_structured_output_is_the_result(self) -> None:
+    async def _structured_step(
+        self, outcome: agent_tasks.Outcome, reason: str | None
+    ) -> dict[str, typing.Any]:
+        """Return the agent step of a task that closes with ``outcome``
+        and structured output."""
         fields = [
             {'name': 'subjects', 'type': 'array', 'items': 'string'},
             {'name': 'note', 'type': 'string', 'required': False},
@@ -1436,17 +1440,25 @@ class AgentStepTestCase(EngineTestCase):
         await self.tasks.set_outcome(
             self.org,
             task['short_id'],
-            'done_acted',
-            None,
+            outcome,
+            reason,
             self._agent(),
             {'subjects': ['Hi']},
         )
         run = await self._drive(run_id)
-        ask = run['steps']['ask']
+        return run['steps']['ask']
+
+    async def test_structured_output_is_the_result(self) -> None:
+        ask = await self._structured_step('done_acted', None)
         self.assertEqual((ask['status'], ask['port']), ('succeeded', 0))
         self.assertEqual(
             ask['output']['result'], {'subjects': ['Hi'], 'note': None}
         )
+
+    async def test_failed_outcome_has_no_result(self) -> None:
+        ask = await self._structured_step('failed_external', 'ci_down')
+        self.assertEqual((ask['status'], ask['port']), ('failed', 1))
+        self.assertIsNone(ask['output']['result'])
 
     async def test_failed_outcome_takes_failed(self) -> None:
         run_id = await self._start(

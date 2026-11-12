@@ -378,7 +378,9 @@ class Executors:
                 'outcome': task['outcome'],
                 'reason': task['reason'],
                 'summary': task['summary'],
-                'result': _result(params, task.get('result')),
+                'result': _result(params, task.get('result'))
+                if port == 0
+                else None,
             },
             port=port,
             failed=port == 1,
