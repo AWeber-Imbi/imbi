@@ -878,10 +878,26 @@ async def create_release(
         # deployment webhook records the commit before the release
         # webhook names it, and leaving them apart is what produces the
         # duplicate this endpoint exists to avoid.
-        if data.tag and not match.by_tag:
-            await _adopt_release_tag(db, release_id=match.id, tag=data.tag)
+        adopted_tag = None if match.by_tag else data.tag
+        if adopted_tag:
+            await _adopt_release_tag(db, release_id=match.id, tag=adopted_tag)
         existing = await _fetch_release(db, org_slug, project_id, match.id)
         if existing is not None:
+            if adopted_tag:
+                # The untagged create dispatched without a tag, which a
+                # tag-based version skips; send the event again now that
+                # the tag is known. Capabilities treat a repeat as an
+                # update (Sentry upserts the release).
+                release_dispatch.schedule_release_created(
+                    db,
+                    project_id,
+                    TrackedRelease(
+                        id=match.id,
+                        tag=adopted_tag,
+                        committish=existing['committish'],
+                        created_by=existing.get('created_by'),
+                    ),
+                )
             response.status_code = 200
             return _release_to_response(existing, project_id)
         # Raced with a delete between the two reads; fall through and

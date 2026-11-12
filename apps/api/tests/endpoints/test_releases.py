@@ -371,6 +371,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         query, params, _ = self.mock_db.execute.call_args_list[1].args
         self.assertIn('r.tag = {tag}', query)
         self.assertEqual('2.45.3', params['tag'])
+        self.dispatch_release.assert_not_called()
 
     def test_create_adopts_untagged_release_for_same_commit(self) -> None:
         """A tagged create claims the untagged node for its commit.
@@ -407,6 +408,13 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
         self.assertEqual('5.0.2', adopt_params['tag'])
         self.assertEqual(RELEASE_ID, adopt_params['release_id'])
+        # The untagged create dispatched without a tag; send it again.
+        self.dispatch_release.assert_called_once()
+        tracked = self.dispatch_release.call_args.args[2]
+        self.assertEqual(RELEASE_ID, tracked.id)
+        self.assertEqual('5.0.2', tracked.tag)
+        self.assertEqual(DEFAULT_COMMITTISH, tracked.committish)
+        self.assertEqual('alice@example.com', tracked.created_by)
 
     def test_create_untagged_does_not_claim_a_tagged_release(self) -> None:
         """An untagged create never adopts a tagged node.
