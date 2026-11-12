@@ -79,6 +79,9 @@ _COMMITTISH_PATTERN = re.compile(r'^[0-9a-f]{7}$')
 _DEPLOYMENT_WRITE_RETRIES = 2
 _DEPLOYMENT_WRITE_BACKOFF = 0.5
 _REPEATABLE_STATUSES = frozenset({'success', 'failed', 'rolled_back'})
+# The API parses and stores the SBoM before it responds; large SBoMs
+# take longer than the httpx default 5 s read timeout.
+_SBOM_TIMEOUT = httpx.Timeout(5.0, read=60.0)
 
 
 class UpdateProjectRule(pydantic.BaseModel):
@@ -387,7 +390,7 @@ class ImbiClient(httpx.AsyncClient):
             f'/releases/{release_id}/sbom'
         )
         LOGGER.debug('Putting SBoM %s', url)
-        response = await self.put(url, json=sbom)
+        response = await self.put(url, json=sbom, timeout=_SBOM_TIMEOUT)
         if response.is_error:
             LOGGER.warning('Failed to put SBoM %r: %s', url, response.text)
         return response
