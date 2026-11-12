@@ -13,6 +13,7 @@ import {
 import { queryKeys } from '@/lib/queryKeys'
 
 import { type SettingsDraft, SLA_OPTIONS } from './agentDraft'
+import { ClaudeSettingsSection } from './ClaudeSettingsSection'
 import { Field } from './OverviewTab'
 
 interface SettingsTabProps {
@@ -22,7 +23,10 @@ interface SettingsTabProps {
   value: SettingsDraft
 }
 
-/** Operational limits. An empty field means no limit. */
+/**
+ * Operational limits (an empty field means no limit) and the agent's
+ * Claude Code settings.
+ */
 export function SettingsTab({
   errors,
   onChange,
@@ -129,6 +133,12 @@ export function SettingsTab({
         onChange={(egressDestinations) => set({ egressDestinations })}
         orgSlug={orgSlug}
         value={value.egressDestinations}
+      />
+      <ClaudeSettingsSection
+        error={errors.claudeSettings}
+        onChange={onChange}
+        orgSlug={orgSlug}
+        value={value}
       />
     </div>
   )

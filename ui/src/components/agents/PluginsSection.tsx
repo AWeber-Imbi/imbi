@@ -1,8 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
+import { ChevronRight } from 'lucide-react'
 
 import { getAgentPlatformConfig, listAgentMarketplaces } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentMarketplace, AgentPlugin } from '@/types'
@@ -137,8 +143,12 @@ function MarketplacePlugins({
   selected: AgentPlugin[]
 }) {
   return (
-    <div className="border-tertiary rounded-lg border">
-      <div className="border-tertiary flex items-center gap-2 border-b px-3 py-2">
+    <Collapsible
+      className="border-tertiary group rounded-lg border"
+      defaultOpen
+    >
+      <CollapsibleTrigger className="border-tertiary flex w-full items-center gap-2 px-3 py-2 text-left group-data-[state=open]:border-b">
+        <ChevronRight className="text-tertiary size-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
         <span className="text-sm font-medium">{marketplace.slug}</span>
         <span className="text-tertiary truncate font-mono text-xs">
           {marketplace.url}
@@ -146,90 +156,96 @@ function MarketplacePlugins({
         <span className="text-tertiary ml-auto font-mono text-xs">
           {short(marketplace.head_sha) || 'not synced'}
         </span>
-      </div>
-      <ul className="divide-tertiary divide-y">
-        {(marketplace.plugins ?? []).map((plugin) => {
-          const isDefault = defaults.some(
-            (d) =>
-              d.marketplace === marketplace.slug && d.plugin === plugin.name,
-          )
-          const chosen = selected.find(
-            (p) =>
-              p.marketplace === marketplace.slug && p.plugin === plugin.name,
-          )
-          // An external plugin pins its own repository commit.
-          const external = plugin.path == null
-          const head = external ? plugin.repository_sha : marketplace.head_sha
-          const outside = external && !head
-          // Hide a plugin that runners cannot load, unless the agent
-          // already has it or it is a default (so that its state shows).
-          if (outside && !chosen && !isDefault) return null
-          const stale =
-            chosen?.sha &&
-            head &&
-            (chosen.sha !== head ||
-              (external && chosen.url !== plugin.repository_url))
-          return (
-            <li className="flex items-start gap-3 px-3 py-2" key={plugin.name}>
-              <Checkbox
-                aria-label={plugin.name}
-                checked={isDefault || !!chosen}
-                className="mt-0.5"
-                disabled={isDefault}
-                onCheckedChange={(on) =>
-                  onToggle(marketplace.slug, plugin.name, on === true)
-                }
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs">{plugin.name}</span>
-                  {plugin.version && (
-                    <span className="text-tertiary text-xs">
-                      {plugin.version}
-                    </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="divide-tertiary divide-y">
+          {(marketplace.plugins ?? []).map((plugin) => {
+            const isDefault = defaults.some(
+              (d) =>
+                d.marketplace === marketplace.slug && d.plugin === plugin.name,
+            )
+            const chosen = selected.find(
+              (p) =>
+                p.marketplace === marketplace.slug && p.plugin === plugin.name,
+            )
+            // An external plugin pins its own repository commit.
+            const external = plugin.path == null
+            const head = external ? plugin.repository_sha : marketplace.head_sha
+            const outside = external && !head
+            // Hide a plugin that runners cannot load, unless the agent
+            // already has it or it is a default (so that its state shows).
+            if (outside && !chosen && !isDefault) return null
+            const stale =
+              chosen?.sha &&
+              head &&
+              (chosen.sha !== head ||
+                (external && chosen.url !== plugin.repository_url))
+            return (
+              <li
+                className="flex items-start gap-3 px-3 py-2"
+                key={plugin.name}
+              >
+                <Checkbox
+                  aria-label={plugin.name}
+                  checked={isDefault || !!chosen}
+                  className="mt-0.5"
+                  disabled={isDefault}
+                  onCheckedChange={(on) =>
+                    onToggle(marketplace.slug, plugin.name, on === true)
+                  }
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs">{plugin.name}</span>
+                    {plugin.version && (
+                      <span className="text-tertiary text-xs">
+                        {plugin.version}
+                      </span>
+                    )}
+                    {isDefault && <Badge variant="outline">default</Badge>}
+                    {outside && (
+                      <Badge
+                        title="Runners cannot load this source, or the last sync did not resolve its commit"
+                        variant="neutral"
+                      >
+                        unsupported source
+                      </Badge>
+                    )}
+                    {chosen?.sha && (
+                      <span className="text-tertiary font-mono text-xs">
+                        pinned {short(chosen.sha)}
+                      </span>
+                    )}
+                    {stale && (
+                      <button
+                        className="text-action text-xs hover:underline"
+                        onClick={() => onRepin(chosen)}
+                        type="button"
+                      >
+                        Pin {short(head)}
+                      </button>
+                    )}
+                  </div>
+                  {plugin.description && (
+                    <p className="text-secondary mt-0.5 text-xs">
+                      {plugin.description}
+                    </p>
                   )}
-                  {isDefault && <Badge variant="outline">default</Badge>}
-                  {outside && (
-                    <Badge
-                      title="Runners cannot load this source, or the last sync did not resolve its commit"
-                      variant="neutral"
-                    >
-                      unsupported source
-                    </Badge>
-                  )}
-                  {chosen?.sha && (
-                    <span className="text-tertiary font-mono text-xs">
-                      pinned {short(chosen.sha)}
-                    </span>
-                  )}
-                  {stale && (
-                    <button
-                      className="text-action text-xs hover:underline"
-                      onClick={() => onRepin(chosen)}
-                      type="button"
-                    >
-                      Pin {short(head)}
-                    </button>
+                  {plugin.mcp_servers.length > 0 && (
+                    <p className="text-tertiary mt-0.5 text-xs">
+                      MCP {plugin.mcp_servers.length > 1 ? 'servers' : 'server'}
+                      :{' '}
+                      <span className="font-mono">
+                        {plugin.mcp_servers.join(', ')}
+                      </span>
+                    </p>
                   )}
                 </div>
-                {plugin.description && (
-                  <p className="text-secondary mt-0.5 text-xs">
-                    {plugin.description}
-                  </p>
-                )}
-                {plugin.mcp_servers.length > 0 && (
-                  <p className="text-tertiary mt-0.5 text-xs">
-                    MCP {plugin.mcp_servers.length > 1 ? 'servers' : 'server'}:{' '}
-                    <span className="font-mono">
-                      {plugin.mcp_servers.join(', ')}
-                    </span>
-                  </p>
-                )}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+              </li>
+            )
+          })}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
