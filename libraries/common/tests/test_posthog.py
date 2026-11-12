@@ -142,3 +142,19 @@ class PostHogTestCase(unittest.TestCase):
             posthog._scrub(message)['properties'],
             {'$mcp_tool_name': 'list_projects'},
         )
+
+    def test_scrub_redacts_emails_in_paths(self) -> None:
+        message = {
+            'event': '$exception',
+            'properties': {
+                '$request_path': '/api/users/a.b@example.com/tokens',
+                '$current_url': 'http://imbi/api/users/a%40example.com',
+            },
+        }
+        self.assertEqual(
+            posthog._scrub(message)['properties'],
+            {
+                '$request_path': '/api/users/[email]/tokens',
+                '$current_url': 'http://imbi/api/users/[email]',
+            },
+        )

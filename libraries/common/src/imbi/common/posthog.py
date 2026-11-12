@@ -20,6 +20,7 @@ Environment variables:
 import hashlib
 import logging
 import os
+import re
 import typing
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,9 @@ _DROPPED_PROPERTIES = (
     '$mcp_error_message',
     '$mcp_intent',
 )
+
+#: A path segment that holds an email, such as ``/users/{email}``.
+_EMAIL_SEGMENT = re.compile(r'[^/?#]*(?:@|%40)[^/?#]*', re.IGNORECASE)
 
 _started = False
 
@@ -81,6 +85,11 @@ def _scrub(message: dict[str, typing.Any]) -> dict[str, typing.Any]:
     properties = message.get('properties') or {}
     for name in _DROPPED_PROPERTIES:
         properties.pop(name, None)
+    # Routes such as /users/{email} put an email in the request path.
+    for name in ('$request_path', '$current_url'):
+        value = properties.get(name)
+        if isinstance(value, str):
+            properties[name] = _EMAIL_SEGMENT.sub('[email]', value)
     return message
 
 
