@@ -138,16 +138,20 @@ class StaleSideEffect(pydantic.BaseModel):
     workflow_name: str
     #: The step that made the call. ``None`` for a failure notice.
     node_key: str | None
+    #: The step's parameters (the project, environment, and version of a
+    #: deployment). ``None`` when the step rows are archived.
+    step_input: dict[str, typing.Any] | None
     #: The step can run again after the key is resolved.
     retryable: bool
 
 
 class SideEffectResolve(pydantic.BaseModel):
     key: str
-    resolution: typing.Literal['clear', 'mark_sent'] = pydantic.Field(
+    resolution: typing.Literal['clear', 'mark_done'] = pydantic.Field(
         description='``clear`` deletes the key, so a repeat of the call '
-        'acts again. ``mark_sent`` (``step-email`` only) records that the '
-        'message went out, so a repeat sends nothing.'
+        'acts again. ``mark_done`` records that the call acted, so a '
+        'repeat does not act. A deployment marked done cannot be retried: '
+        'Imbi does not know its deployment run.'
     )
     retry: bool = pydantic.Field(
         default=False,
@@ -612,6 +616,15 @@ RunAuth = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission('workflow:run')),
 ]
+#: The stored result of a deployment that an operator marked done. It
+#: has the shape of the deploy response, so a repeat of the key parses.
+_DEPLOYMENT_DONE: dict[str, typing.Any] = {
+    'run': {'run_id': '', 'status': 'unknown'},
+    'plugin_id': '',
+    'plugin_slug': '',
+    'warning': 'An operator marked this deployment done',
+}
+
 RecoverAuth = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission('workflow:recover')),
@@ -880,7 +893,7 @@ async def resolve_side_effect(
     runs: workflows.Runs,
     _: RecoverAuth,
 ) -> None:
-    """Clear a stale side effect, or mark its message sent, and retry.
+    """Clear a stale side effect, or mark it done, and retry its step.
 
     Raises:
         404: No stale side effect with the key in the organization.
@@ -894,19 +907,20 @@ async def resolve_side_effect(
             status_code=404, detail='No stale side effect with this key'
         )
     effect = found[0]
-    if body.resolution == 'mark_sent' and effect['action'] != 'step-email':
-        raise fastapi.HTTPException(
-            status_code=409, detail='Only a step email can be marked sent'
-        )
-    if body.retry and not effect['retryable']:
+    done = body.resolution == 'mark_done'
+    if body.retry and (
+        not effect['retryable'] or (done and effect['action'] == 'deployment')
+    ):
         raise fastapi.HTTPException(
             status_code=409, detail='The step of this key cannot run again'
         )
-    response = (
-        EmailResult(recipients=[]).model_dump()
-        if body.resolution == 'mark_sent'
-        else None
-    )
+    response = None
+    if done:
+        response = (
+            _DEPLOYMENT_DONE
+            if effect['action'] == 'deployment'
+            else EmailResult(recipients=[]).model_dump()
+        )
     retry = (effect['run_id'], effect['node_id']) if body.retry else None
     if not await runs.resolve_side_effect(body.key, response, retry):
         raise fastapi.HTTPException(

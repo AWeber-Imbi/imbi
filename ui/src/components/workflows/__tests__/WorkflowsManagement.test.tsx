@@ -149,6 +149,7 @@ describe('WorkflowsManagement', () => {
       run_error: 'outcome_unknown',
       run_id: RUN.id,
       run_status: 'failed' as const,
+      step_input: { subject: 'Shipped 1', to: [] },
       workflow_name: 'Deploy guard',
       workflow_slug: 'deploy-guard',
     }
@@ -159,21 +160,22 @@ describe('WorkflowsManagement', () => {
       await screen.findByText('Calls with an unknown outcome'),
     ).toBeInTheDocument()
     expect(screen.getByText('Step email')).toBeInTheDocument()
+    expect(screen.getByText('subject: Shipped 1')).toBeInTheDocument()
     expect(screen.getByRole('checkbox')).toBeChecked()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark sent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark done' }))
     expect(
-      await screen.findByText(/does not send it again\. The run opens again/),
+      await screen.findByText(/does not make it again\. The run opens again/),
     ).toBeInTheDocument()
     fireEvent.click(
       within(screen.getByRole('alertdialog')).getByRole('button', {
-        name: 'Mark sent',
+        name: 'Mark done',
       }),
     )
     await waitFor(() =>
       expect(endpoints.resolveSideEffect).toHaveBeenCalledWith('acme', {
         key: effect.key,
-        resolution: 'mark_sent',
+        resolution: 'mark_done',
         retry: true,
       }),
     )

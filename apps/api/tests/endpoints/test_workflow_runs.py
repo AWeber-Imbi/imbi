@@ -1305,6 +1305,7 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         self.assertEqual(effect['key'], self.key)
         self.assertEqual(effect['action'], 'step-email')
         self.assertEqual(effect['node_key'], 'tell')
+        self.assertEqual(effect['step_input'], {})
         self.assertTrue(effect['retryable'])
 
         self._grant()
@@ -1323,8 +1324,8 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         response = await self._resolve(resolution='clear')
         self.assertEqual(response.status_code, 404)
 
-    async def test_mark_sent_and_retry(self) -> None:
-        response = await self._resolve(resolution='mark_sent', retry=True)
+    async def test_mark_done_and_retry(self) -> None:
+        response = await self._resolve(resolution='mark_done', retry=True)
         self.assertEqual(response.status_code, 204, response.text)
         self.assertEqual(
             await self._state(),
@@ -1368,9 +1369,31 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
             )
         response = await self.client.post(
             self.recover + '/resolve',
-            json={'key': deploy, 'resolution': 'mark_sent'},
+            json={'key': deploy, 'resolution': 'mark_done', 'retry': True},
         )
         self.assertEqual(response.status_code, 409)
+
+    async def test_mark_deployment_done(self) -> None:
+        deploy = workflows.runs.side_effect_key(
+            'imbi-workflows', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key, created_at)'
+                " VALUES (%s, NOW() - INTERVAL '1 hour')",
+                (deploy,),
+            )
+        response = await self.client.post(
+            self.recover + '/resolve',
+            json={'key': deploy, 'resolution': 'mark_done'},
+        )
+        self.assertEqual(response.status_code, 204, response.text)
+        call = mock.AsyncMock()
+        stored = await self.runs.once(
+            'imbi-workflows', 'deployment', f'{self.run_id}:ship', call
+        )
+        call.assert_not_called()
+        project_deployments.DeploymentTriggerResponse.model_validate(stored)
 
     async def test_other_org_cannot_see_the_key(self) -> None:
         self.test_app.dependency_overrides[organizations.member_org_id] = (

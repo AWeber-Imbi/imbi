@@ -591,8 +591,12 @@ call:
    box shows only when the step failed the run with `outcome_unknown`, the
    run is not archived, and its max run time has not passed.
 3. Click **Clear** to make Imbi forget the call: a retry deploys or sends
-   again. For a step email, click **Mark sent** to record that the message
-   went out: a retry sends nothing and the step succeeds.
+   again. Click **Mark done** to record that the call acted: a retry of a
+   step email sends nothing and the step succeeds. A deployment marked
+   done cannot run again, because Imbi does not know its deployment run.
+
+The row shows the step's parameters (for a deployment, the project, the
+environment, and the version) and links to the run.
 
 The API is `GET /organizations/{org}/workflow-runs/side-effects` and
 `POST /organizations/{org}/workflow-runs/side-effects/resolve`.

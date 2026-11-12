@@ -41,7 +41,7 @@ SELECT e.key, e.action, e.created_at, r.id AS run_id,
        w.slug AS workflow_slug, w.name AS workflow_name,
        CASE WHEN substr(e.caller_key, 37, 1) = ':'
             THEN substr(e.caller_key, 38) END AS node_key,
-       s.node_id,
+       s.node_id, s.input AS step_input,
        COALESCE(e.action IN ('deployment', 'step-email')
          AND r.status = 'failed' AND r.error = 'outcome_unknown'
          AND r.log_archived_at IS NULL

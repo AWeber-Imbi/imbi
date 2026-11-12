@@ -6432,7 +6432,7 @@ export interface paths {
         put?: never;
         /**
          * Resolve Side Effect
-         * @description Clear a stale side effect, or mark its message sent, and retry.
+         * @description Clear a stale side effect, or mark it done, and retry its step.
          *
          *     Raises:
          *         404: No stale side effect with the key in the organization.
@@ -20586,10 +20586,10 @@ export interface components {
             key: string;
             /**
              * Resolution
-             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_sent`` (``step-email`` only) records that the message went out, so a repeat sends nothing.
+             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_done`` records that the call acted, so a repeat does not act. A deployment marked done cannot be retried: Imbi does not know its deployment run.
              * @enum {string}
              */
-            resolution: "clear" | "mark_sent";
+            resolution: "clear" | "mark_done";
             /**
              * Retry
              * @description Open the run again and run the step again.
@@ -20629,6 +20629,10 @@ export interface components {
             workflow_name: string;
             /** Node Key */
             node_key: string | null;
+            /** Step Input */
+            step_input: {
+                [key: string]: unknown;
+            } | null;
             /** Retryable */
             retryable: boolean;
         };

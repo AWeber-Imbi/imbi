@@ -61,8 +61,13 @@ function describe(
   retry: boolean,
 ): string {
   const parts =
-    resolution === 'mark_sent'
-      ? ['Imbi records that the message went out, and does not send it again.']
+    resolution === 'mark_done'
+      ? [
+          'Imbi records that the call acted, and does not make it again.' +
+            (effect.action === 'deployment'
+              ? ' The step cannot run again: Imbi does not know the deployment.'
+              : ''),
+        ]
       : effect.action === 'deployment'
         ? [
             'Imbi forgets the call. Check the deployment provider first: if ' +
@@ -102,18 +107,32 @@ function EffectRow({
       toast.success(body.retry ? 'Resolved. The step runs again.' : 'Resolved.')
     },
   })
+  // Imbi does not know the run of a deployment marked done.
+  const willRetry =
+    retry && !(pending === 'mark_done' && effect.action === 'deployment')
+  const input = Object.entries(effect.step_input ?? {})
+    .filter(([, value]) => ['number', 'string'].includes(typeof value))
+    .map(([name, value]) => `${name}: ${String(value)}`)
+    .join(', ')
   const runLink = `${agentsPath('workflows', effect.workflow_slug)}?run=${effect.run_id}`
   return (
     <div className="border-tertiary grid grid-cols-[120px_minmax(0,2fr)_100px_auto] items-center gap-3 border-b px-4 py-2 text-sm last:border-b-0">
       <span className="text-warning">
         {ACTION[effect.action] ?? effect.action}
       </span>
-      <Link className="hover:text-action min-w-0 truncate" to={runLink}>
-        <span className="font-medium">{effect.workflow_name}</span>
-        {effect.node_key && (
-          <span className="text-tertiary"> · {effect.node_key}</span>
+      <div className="flex min-w-0 flex-col">
+        <Link className="hover:text-action truncate" to={runLink}>
+          <span className="font-medium">{effect.workflow_name}</span>
+          {effect.node_key && (
+            <span className="text-tertiary"> · {effect.node_key}</span>
+          )}
+        </Link>
+        {input && (
+          <span className="text-tertiary truncate text-xs" title={input}>
+            {input}
+          </span>
         )}
-      </Link>
+      </div>
       <RelativeTime
         className="text-tertiary text-right text-xs"
         value={effect.created_at}
@@ -128,17 +147,15 @@ function EffectRow({
             Retry step
           </label>
         )}
-        {effect.action === 'step-email' && (
-          <Button
-            className="h-7 px-2 text-xs"
-            disabled={resolve.isPending}
-            onClick={() => setPending('mark_sent')}
-            size="sm"
-            variant="outline"
-          >
-            Mark sent
-          </Button>
-        )}
+        <Button
+          className="h-7 px-2 text-xs"
+          disabled={resolve.isPending}
+          onClick={() => setPending('mark_done')}
+          size="sm"
+          variant="outline"
+        >
+          Mark done
+        </Button>
         <Button
           className="h-7 px-2 text-xs"
           disabled={resolve.isPending}
@@ -150,15 +167,15 @@ function EffectRow({
         </Button>
       </div>
       <ConfirmDialog
-        confirmLabel={pending === 'mark_sent' ? 'Mark sent' : 'Clear'}
-        description={pending ? describe(effect, pending, retry) : undefined}
+        confirmLabel={pending === 'mark_done' ? 'Mark done' : 'Clear'}
+        description={pending ? describe(effect, pending, willRetry) : undefined}
         onCancel={() => setPending(null)}
         onConfirm={() => {
           if (pending) {
             resolve.mutate({
               key: effect.key,
               resolution: pending,
-              retry,
+              retry: willRetry,
             })
           }
           setPending(null)
