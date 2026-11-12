@@ -3360,6 +3360,7 @@ async def _execute_project_update(
     existing_types: list[str],
     request: fastapi.Request,
     db: graph.Pool,
+    touched: set[str],
 ) -> ProjectResponse:
     """Execute the shared update logic for the PATCH handler.
 
@@ -3375,6 +3376,10 @@ async def _execute_project_update(
         existing_team: Current team slug.
         existing_types: Current project-type slugs.
         db: Graph connection pool.
+        touched: Top-level fields the patch operations name. A
+            required blueprint property that is missing is refused
+            only when the patch touches it, so a valid write is not
+            blocked by an unrelated missing property (#640).
 
     """
     effective_team = data.team_slug or existing_team
@@ -3448,6 +3453,26 @@ async def _execute_project_update(
             if k not in _RESERVED_FIELDS
         }
     )
+
+    # Relax required blueprint properties that the node does not have
+    # and the patch does not touch: they are already missing, and this
+    # write does not make that worse. Values that are set still get
+    # the full validation.
+    untouched_missing: dict[str, typing.Any] = {
+        name: (typing.Any, None)
+        for name, field in dynamic_model.model_fields.items()
+        if field.is_required()
+        and name not in merged
+        and name not in extra_fields
+        and name not in touched
+        and name not in {'id', 'team', 'project_types', 'environments'}
+    }
+    if untouched_missing:
+        dynamic_model = pydantic.create_model(
+            dynamic_model.__name__,
+            __base__=dynamic_model,
+            **untouched_missing,
+        )
 
     try:
         project = dynamic_model(
@@ -3721,6 +3746,12 @@ async def patch_project(
         current_type_slugs,
         request,
         db,
+        {
+            path.split('/')[1]
+            for op in operations
+            for path in (op.path, op.from_)
+            if path
+        },
     )
     if response.name != project_data.get(
         'name'
