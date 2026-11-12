@@ -223,8 +223,12 @@ upload_posthog_sourcemaps() {
     # The subshell detaches the upload: `wait -n` at the end of this script
     # waits only for the services, and an upload that ends must not stop
     # the container. Without --host, posthog-cli 0.19.0 uses the ingestion
-    # host (https://us.i.posthog.com), so give the app host explicitly.
-    (posthog-cli --host "${POSTHOG_CLI_HOST:-https://us.posthog.com}" \
+    # host (https://us.i.posthog.com), so give the app host explicitly. The
+    # CLI prefers the canonical names even when they are empty, so give it
+    # the resolved values under those names.
+    (POSTHOG_CLI_API_KEY="${POSTHOG_CLI_API_KEY:-${POSTHOG_CLI_TOKEN:-}}" \
+        POSTHOG_CLI_PROJECT_ID="${POSTHOG_CLI_PROJECT_ID:-${POSTHOG_CLI_ENV_ID:-}}" \
+        posthog-cli --host "${POSTHOG_CLI_HOST:-https://us.posthog.com}" \
         --no-fail sourcemap upload --directory /srv/ui/assets &)
 }
 
