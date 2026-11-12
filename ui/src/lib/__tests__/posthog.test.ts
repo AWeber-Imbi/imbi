@@ -10,7 +10,12 @@ import {
 } from '../posthog'
 
 vi.mock('posthog-js', () => ({
-  default: { identify: vi.fn(), init: vi.fn(), reset: vi.fn() },
+  default: {
+    get_property: vi.fn(),
+    identify: vi.fn(),
+    init: vi.fn(),
+    reset: vi.fn(),
+  },
 }))
 
 afterEach(() => {
@@ -89,11 +94,59 @@ describe('initPostHog', () => {
       },
     })
   })
+
+  it('removes the query from recorded request URLs', async () => {
+    window.__IMBI_POSTHOG_KEY__ = 'phc_x'
+    await initPostHog()
+    const mask = vi.mocked(posthog.init).mock.calls[0][1]?.session_recording
+      ?.maskCapturedNetworkRequestFn
+    const request = { name: 'https://imbi/cb?code=secret#x' }
+    expect(mask?.(request as never)?.name).toBe('https://imbi/cb')
+  })
+
+  it('clears a restored identity when nobody is signed in', async () => {
+    window.__IMBI_POSTHOG_KEY__ = 'phc_x'
+    window.__IMBI_POSTHOG_PERSON_PROFILES__ = 'identified_only'
+    vi.mocked(posthog.get_property).mockReturnValue('identified')
+    await initPostHog()
+    delete window.__IMBI_POSTHOG_PERSON_PROFILES__
+    expect(posthog.reset).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the anonymous identity when nobody is signed in', async () => {
+    window.__IMBI_POSTHOG_KEY__ = 'phc_x'
+    window.__IMBI_POSTHOG_PERSON_PROFILES__ = 'identified_only'
+    vi.mocked(posthog.get_property).mockReturnValue('anonymous')
+    await initPostHog()
+    delete window.__IMBI_POSTHOG_PERSON_PROFILES__
+    expect(posthog.reset).not.toHaveBeenCalled()
+  })
+})
+
+describe('initPostHog with a token in the URL', () => {
+  afterEach(() => {
+    window.history.replaceState({}, '', '/')
+    vi.useRealTimers()
+  })
+
+  it('waits until the OAuth callback removes the token', async () => {
+    vi.useFakeTimers()
+    window.__IMBI_POSTHOG_KEY__ = 'phc_x'
+    window.history.replaceState({}, '', '/auth/callback#access_token=secret')
+    const done = initPostHog()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(posthog.init).not.toHaveBeenCalled()
+    window.history.replaceState({}, '', '/auth/callback')
+    await vi.advanceTimersByTimeAsync(200)
+    await done
+    expect(posthog.init).toHaveBeenCalledOnce()
+  })
 })
 
 describe('stripQueryStrings', () => {
   it('removes query strings and fragments from URL properties', () => {
     const event = {
+      $set_once: { $initial_current_url: 'https://imbi/x#access_token=t' },
       event: '$pageview',
       properties: {
         $current_url: 'https://imbi/oauth/callback?code=secret#x',
@@ -102,7 +155,11 @@ describe('stripQueryStrings', () => {
       },
       uuid: '1',
     } as unknown as CaptureResult
-    expect(stripQueryStrings(event)?.properties).toEqual({
+    const result = stripQueryStrings(event)
+    expect(result?.$set_once).toEqual({
+      $initial_current_url: 'https://imbi/x',
+    })
+    expect(result?.properties).toEqual({
       $current_url: 'https://imbi/oauth/callback',
       $referrer: 'https://idp/login',
       other: 'keep?this',

@@ -2,6 +2,8 @@ import type { CaptureResult, PostHog } from 'posthog-js'
 
 import { useAuthStore } from '@/stores/authStore'
 
+const TOKEN_IN_URL = /[#?&]access_token=/
+
 // The token subject is the user's email, which must not reach PostHog.
 // The backend hashes it the same way (imbi.common.posthog.distinct_id).
 export async function distinctId(subject: string): Promise<string> {
@@ -17,6 +19,13 @@ export async function distinctId(subject: string): Promise<string> {
 export async function initPostHog(): Promise<void> {
   const config = resolveConfig()
   if (!config.key) return
+
+  // The OAuth callback arrives as /auth/callback#access_token=...; the
+  // page removes it with replaceState. Start only after that, so no
+  // event, replay snapshot, or person property can hold the token.
+  while (TOKEN_IN_URL.test(window.location.href)) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
 
   const { default: posthog } = await import('posthog-js')
   posthog.init(config.key, {
@@ -43,6 +52,11 @@ export async function initPostHog(): Promise<void> {
     session_recording: {
       blockSelector: '[data-ph-no-capture]',
       maskAllInputs: true,
+      // The initial navigation entry holds the page URL: drop its query.
+      maskCapturedNetworkRequestFn: (request) => ({
+        ...request,
+        name: request.name.split(/[?#]/)[0],
+      }),
       maskTextSelector: '*',
       recordBody: false,
       recordHeaders: false,
@@ -99,17 +113,20 @@ export function resolveConfig() {
   }
 }
 
-// Query strings can hold OAuth codes and tokens: drop them from every URL
-// property (`$current_url`, `$referrer`, `$initial_referrer`, ...).
+// Query strings and fragments can hold OAuth codes and tokens: drop them
+// from every URL property (`$current_url`, `$referrer`,
+// `$initial_current_url`, ...), in the event and in its person updates.
 export function stripQueryStrings(event: CaptureResult | null) {
   if (!event) return event
-  for (const [name, value] of Object.entries(event.properties)) {
-    if (
-      typeof value === 'string' &&
-      /(url|referrer)$/i.test(name) &&
-      /[?#]/.test(value)
-    ) {
-      event.properties[name] = value.split(/[?#]/)[0]
+  for (const properties of [event.properties, event.$set, event.$set_once]) {
+    for (const [name, value] of Object.entries(properties ?? {})) {
+      if (
+        typeof value === 'string' &&
+        /(url|referrer)$/i.test(name) &&
+        /[?#]/.test(value)
+      ) {
+        properties![name] = value.split(/[?#]/)[0]
+      }
     }
   }
   return event
@@ -132,13 +149,18 @@ function runtime(
 }
 
 function trackIdentity(posthog: PostHog): void {
-  let current: null | string = null
+  // undefined = not synced yet, so the first sync also clears an identity
+  // that the SDK restored from persistence after a sign-out.
+  let current: null | string | undefined
   const sync = () => {
     const subject = useAuthStore.getState().getUsername()
     if (subject === current) return
     current = subject
     if (!subject) {
-      posthog.reset()
+      // Reset only an identified user, to keep one anonymous ID.
+      if (posthog.get_property('$user_state') === 'identified') {
+        posthog.reset()
+      }
       return
     }
     void distinctId(subject).then((id) => {
