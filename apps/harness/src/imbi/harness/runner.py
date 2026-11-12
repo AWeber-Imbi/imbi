@@ -167,6 +167,18 @@ def _fence(reason: str) -> typing.NoReturn:
     os._exit(75)
 
 
+def _clear_tmp() -> None:
+    """Remove the files of the agent from ``/tmp``, so that they do
+    not go into the next chain. Do not follow symbolic links."""
+    with privilege.effective(privilege.AGENT):
+        for path in task.SHARED_TMP.iterdir():
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                with contextlib.suppress(OSError):
+                    path.unlink(missing_ok=True)
+
+
 class Runner:
     def __init__(
         self,
@@ -362,6 +374,7 @@ class Runner:
         with privilege.effective():
             for path in task.PUBLISHED_PLUGINS.iterdir():
                 shutil.rmtree(path, ignore_errors=True)
+        _clear_tmp()
 
     async def end_chain(self, workspace: pathlib.Path) -> None:
         """Kill every ``agent`` process in both containers, then remove
@@ -374,6 +387,7 @@ class Runner:
             LOGGER.warning('end_chain failed: %s', err)
         with privilege.effective(privilege.AGENT):
             shutil.rmtree(workspace, ignore_errors=True)
+        _clear_tmp()
         with privilege.effective():
             shutil.rmtree(
                 task.PUBLISHED_PLUGINS / workspace.name, ignore_errors=True
