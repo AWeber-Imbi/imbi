@@ -24,7 +24,6 @@ import {
 } from './agentDraft'
 import { usePromptResolution } from './agentQueries'
 import { agentsPath } from './agentsNav'
-import { ClaudeSettingsSection } from './ClaudeSettingsSection'
 import { ModelTab } from './ModelTab'
 import { OverviewTab } from './OverviewTab'
 import { PluginsSection } from './PluginsSection'
@@ -59,6 +58,7 @@ const TABS: { key: TabKey; label: string }[] = [
 const ACCESS_FIELDS = new Set(['githubAppBinding'])
 
 const SETTINGS_FIELDS = new Set([
+  'claudeSettings',
   'maxConcurrentTasks',
   'monthlyCostCap',
   'requiredLabels',
@@ -168,13 +168,11 @@ function AgentEditorForm({
       setTab(
         first.startsWith('param.')
           ? 'model'
-          : first === 'claudeSettings'
-            ? 'tools'
-            : SETTINGS_FIELDS.has(first)
-              ? 'settings'
-              : ACCESS_FIELDS.has(first)
-                ? 'access'
-                : 'overview',
+          : SETTINGS_FIELDS.has(first)
+            ? 'settings'
+            : ACCESS_FIELDS.has(first)
+              ? 'access'
+              : 'overview',
       )
       return
     }
@@ -269,12 +267,6 @@ function AgentEditorForm({
             onChange={(tools) => update({ tools })}
             orgSlug={orgSlug}
             value={draft.tools}
-          />
-          <ClaudeSettingsSection
-            error={errors.claudeSettings}
-            onChange={(settings) => update({ settings })}
-            orgSlug={orgSlug}
-            value={draft.settings}
           />
         </div>
       )}
