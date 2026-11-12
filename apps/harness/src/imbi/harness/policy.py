@@ -29,6 +29,9 @@ HARNESS_TOOLS = frozenset(
 #: The model must always be able to report the outcome of its task: no
 #: deny rule, approval, or rate limit applies to it.
 REPORT_OUTCOME = 'mcp__imbi__report_outcome'
+#: The CLI's own tool that returns the structured output of a task
+#: with an output schema. The task fails without it, so the same holds.
+STRUCTURED_OUTPUT = 'StructuredOutput'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -73,7 +76,7 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     automation: bool,
     plugin_servers: list[str] | None = None,
 ) -> Check:
-    if name == REPORT_OUTCOME:
+    if name in (REPORT_OUTCOME, STRUCTURED_OUTPUT):
         return Check()
     key = tool_key(name)
     # A plugin that is on allows its MCP servers' tools (#445); a tool
