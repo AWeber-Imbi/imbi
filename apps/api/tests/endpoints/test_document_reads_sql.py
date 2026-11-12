@@ -96,6 +96,9 @@ class ReadAnalyticsSqlTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # An unfiltered aggregate returns its one all-zero row.
         self.assertEqual(1, len(summary))
+        # ``quantileIf`` over zero rows is NaN, which ``int()`` refuses.
+        self.assertEqual(0, summary[0]['median_engaged_ms'])
+        self.assertEqual(0, summary[0]['p90_engaged_ms'])
         self.assertEqual(
             [],
             await clickhouse.query(
