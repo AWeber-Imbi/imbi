@@ -6,6 +6,7 @@ import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
+import { agent } from '../../agents/__tests__/fixtures'
 import { WorkflowsManagement } from '../WorkflowsManagement'
 import { node, RUN, STEP_TYPES, workflow } from './fixtures'
 
@@ -17,6 +18,7 @@ vi.mock('@/api/endpoints', () => ({
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
   getWorkflowVersion: vi.fn(),
+  listAgents: vi.fn(),
   listTeams: vi.fn(),
   listWorkflowAttention: vi.fn(),
   listWorkflowRuns: vi.fn(),
@@ -78,6 +80,7 @@ describe('WorkflowsManagement', () => {
     ])
     vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue(STEP_TYPES)
     vi.mocked(endpoints.getWorkflow).mockResolvedValue(workflow())
+    vi.mocked(endpoints.listAgents).mockResolvedValue([])
     vi.mocked(endpoints.listTeams).mockResolvedValue([])
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({ issues: [] })
     vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([])
@@ -332,6 +335,56 @@ describe('WorkflowsManagement', () => {
       target: added.id,
     })
     expect(await screen.findByText('Saved · v3')).toBeInTheDocument()
+  })
+
+  it('shows each step key, and the type when the title differs', async () => {
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('settle')).toBeInTheDocument()
+    expect(screen.getByText('settle').parentElement).toHaveTextContent(
+      'settle · Wait',
+    )
+    expect(screen.getByText('start').parentElement).toHaveTextContent(
+      'start · Manual run',
+    )
+  })
+
+  it('shows the agent that an agent step runs', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
+    const base = workflow()
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue({
+      ...base,
+      version: {
+        ...base.version,
+        graph: {
+          edges: [],
+          nodes: [
+            node({
+              id: 'c',
+              key: 'triage',
+              params: { agent_id: 'agt-1', instruction: 'Triage the issue' },
+              title: 'Agent task',
+              type: 'agent',
+            }),
+            node({
+              id: 'd',
+              key: 'follow_up',
+              params: { agent_id: 'gone', instruction: 'Follow up' },
+              position: { x: 320, y: 0 },
+              title: 'Agent task',
+              type: 'agent',
+            }),
+          ],
+        },
+      },
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Mender')).toBeInTheDocument()
+    expect(screen.getAllByText('Mender')).toHaveLength(1)
+    expect(screen.getByText('triage').parentElement).toHaveTextContent(
+      /^triage$/,
+    )
+    expect(screen.getByText('Triage the issue')).toBeInTheDocument()
+    expect(screen.getByText('Follow up')).toBeInTheDocument()
   })
 
   it('marks steps that need configuration', async () => {

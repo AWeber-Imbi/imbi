@@ -60,7 +60,11 @@ import type {
   WorkflowGraph,
   WorkflowWrite,
 } from './types'
-import { useWorkflowRun, useWorkflowVersion } from './workflowQueries'
+import {
+  useSourceOptions,
+  useWorkflowRun,
+  useWorkflowVersion,
+} from './workflowQueries'
 import { StatusBadge } from './WorkflowStatusBadge'
 
 const NEW_SETTINGS: WorkflowWrite['settings'] = {
@@ -325,16 +329,19 @@ export function WorkflowEditor({
   }
 
   const nodeIssues = (id: string) => issues.filter((i) => i.node_id === id)
+  const agents = useSourceOptions(orgSlug, 'agent').options
   const summaries = useMemo(() => {
     const out: Record<string, NodeSummary> = {}
     for (const node of draft.graph.nodes) {
       const own = issues.filter((i) => i.node_id === node.id)
       const error = own.find((i) => i.severity === 'error')
+      const agent = agents.find((a) => a.value === node.params.agent_id)?.label
       out[node.id] = error
-        ? { text: error.message, tone: 'danger' }
+        ? { agent, text: error.message, tone: 'danger' }
         : own.length > 0
-          ? { text: 'Needs configuration', tone: 'warning' }
+          ? { agent, text: 'Needs configuration', tone: 'warning' }
           : {
+              agent,
               text:
                 paramSummary(node.params) ||
                 types[node.type]?.description ||
@@ -343,7 +350,7 @@ export function WorkflowEditor({
             }
     }
     return out
-  }, [draft.graph.nodes, issues, types])
+  }, [agents, draft.graph.nodes, issues, types])
   const edgeErrors = useMemo(
     () =>
       new Set(

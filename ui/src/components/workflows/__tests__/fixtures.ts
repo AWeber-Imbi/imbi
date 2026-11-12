@@ -48,6 +48,21 @@ export const STEP_TYPES: StepType[] = [
     ports: ['Succeeded', 'Failed'],
     type: 'deploy',
   }),
+  stepType({
+    category: 'agent',
+    description: 'Gives an agent a task and waits for its outcome.',
+    label: 'Agent task',
+    params_schema: {
+      properties: {
+        agent_id: { type: 'string' },
+        instruction: { type: 'string' },
+      },
+      required: ['agent_id', 'instruction'],
+      type: 'object',
+    },
+    ports: ['Succeeded', 'Failed'],
+    type: 'agent',
+  }),
 ]
 
 export const TYPES = Object.fromEntries(STEP_TYPES.map((t) => [t.type, t]))

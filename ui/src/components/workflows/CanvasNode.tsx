@@ -1,5 +1,7 @@
 import type { PointerEvent } from 'react'
 
+import { Bot } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 import { isSinglePort, NODE_W } from './graph'
@@ -7,6 +9,7 @@ import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type { StepType, WorkflowNode } from './types'
 
 export interface NodeSummary {
+  agent?: string
   text: string
   tone: 'danger' | 'normal' | 'warning'
 }
@@ -40,6 +43,7 @@ export function CanvasNode({
 }: CanvasNodeProps) {
   const Icon = stepIcon(node.type, type?.category)
   const single = isSinglePort(ports)
+  const label = typeLabel(node, type)
   const port = (i: number, className: string) => (
     <div
       aria-label={ports[i] ? `Connect from ${ports[i]}` : 'Connect'}
@@ -81,18 +85,22 @@ export function CanvasNode({
         </span>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium">{node.title}</span>
-          <span className="text-tertiary text-xs">
-            {type?.label ?? `Unknown type: ${node.type}`}
+          <span className="text-tertiary truncate text-xs">
+            <span className="font-mono">{node.key}</span>
+            {label && ` · ${label}`}
           </span>
         </div>
       </div>
-      <div
-        className={cn(
-          'h-9 truncate px-3 text-xs leading-4.5',
-          SUMMARY_TONE[summary.tone],
+      <div className="flex h-9 flex-col px-3 text-xs leading-4.5">
+        {summary.agent && (
+          <span className="flex min-w-0 items-center gap-1">
+            <Bot className="size-3 shrink-0" />
+            <span className="truncate">{summary.agent}</span>
+          </span>
         )}
-      >
-        {summary.text}
+        <span className={cn('truncate', SUMMARY_TONE[summary.tone])}>
+          {summary.text}
+        </span>
       </div>
       {single && port(0, 'top-5')}
       {!single && ports.length > 0 && (
@@ -110,4 +118,12 @@ export function CanvasNode({
       )}
     </div>
   )
+}
+
+function typeLabel(
+  node: WorkflowNode,
+  type: StepType | undefined,
+): null | string {
+  const label = type?.label ?? `Unknown type: ${node.type}`
+  return label === node.title ? null : label
 }
