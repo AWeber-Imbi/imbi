@@ -115,17 +115,24 @@ export function SelectField({
 /** A list of enum values, as one checkbox per option. */
 function ChecksField({
   id,
+  label,
   onChange,
   options,
   value,
 }: {
   id: string
+  label: string
   onChange: (value: string[]) => void
   options: { label: string; value: string }[]
   value: string[]
 }) {
   return (
-    <div className="flex flex-col gap-1.5" id={id}>
+    <div
+      aria-label={label}
+      className="flex flex-col gap-1.5"
+      id={id}
+      role="group"
+    >
       {options.map((o) => (
         <label className="flex items-center gap-2 text-sm" key={o.value}>
           <Checkbox
@@ -175,6 +182,7 @@ function FieldControl({
       return (
         <ChecksField
           id={id}
+          label={field.label}
           onChange={onChange}
           options={field.options}
           value={Array.isArray(value) ? value.map(String) : []}
