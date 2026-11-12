@@ -225,9 +225,15 @@ class ExternalMCPManager:
                 err,
             )
             return
+        if self._sessions.get(server.slug) is not session:
+            LOGGER.warning(
+                'MCP server %r session closed during tool discovery',
+                server.slug,
+            )
+            return
         prefix = _tool_prefix(server)
         for tool in result.tools:
-            self._register_tool(server, session, tool, prefix)
+            self._register_tool(server, tool, prefix)
 
     async def _open_session(
         self,
@@ -280,6 +286,7 @@ class ExternalMCPManager:
         """
         try:
             async with (
+                http_client,
                 streamable_http.streamable_http_client(
                     str(server.url),
                     http_client=http_client,
@@ -307,7 +314,6 @@ class ExternalMCPManager:
     def _register_tool(
         self,
         server: common_models.MCPServer,
-        session: mcp.ClientSession,
         tool: mcp_types.Tool,
         prefix: str,
     ) -> None:
@@ -344,7 +350,6 @@ class ExternalMCPManager:
                 server.slug,
             )
             return
-        self._sessions.setdefault(server.slug, session)
         self._tool_routes[registered_name] = (server.slug, tool.name)
         self._tools.append(_mcp_tool_to_anthropic(tool, registered_name))
 

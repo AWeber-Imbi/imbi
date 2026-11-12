@@ -450,8 +450,10 @@ class SessionIsolationTestCase(unittest.IsolatedAsyncioTestCase):
             await manager.initialize(mock.MagicMock())
             self.assertTrue(manager.has_tool('mcp_example_search'))
             fail.set()
-            for _ in range(20):
-                await asyncio.sleep(0)
+            await asyncio.wait_for(
+                asyncio.gather(*manager._tasks, return_exceptions=True),
+                timeout=5,
+            )
             # The failed server degrades on its own.
             content, is_error = await manager.execute_tool(
                 'mcp_example_search', {}
