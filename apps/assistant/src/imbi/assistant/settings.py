@@ -52,6 +52,12 @@ class Assistant(pydantic_settings.BaseSettings):
         default='http://localhost:8000',
         validation_alias='IMBI_INTERNAL_API_URL',
     )
+    # imbi-api mounts its routes under the path of its public URL (for
+    # example ``/api``). ``IMBI_INTERNAL_API_URL`` is a bare origin, so
+    # calls to the routes must add that path. See :attr:`api_base_url`.
+    api_public_url: str = pydantic.Field(
+        default='', validation_alias='IMBI_API_URL'
+    )
     # Public URL where the assistant is reachable (e.g.
     # ``https://imbi.example.com/assistant``). The path component is used
     # as the route prefix so routes match the Okteto ingress path.
@@ -76,6 +82,12 @@ class Assistant(pydantic_settings.BaseSettings):
     @classmethod
     def _normalize_url(cls, value: str) -> str:
         return value.rstrip('/')
+
+    @property
+    def api_base_url(self) -> str:
+        """The in-cluster imbi-api URL with the route prefix."""
+        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
+        return self.api_url.rstrip('/') + prefix
 
     @property
     def llms_base_url(self) -> str:

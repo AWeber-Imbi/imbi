@@ -34,6 +34,18 @@ class AssistantSettingsTestCase(unittest.TestCase):
 
     @mock.patch.dict(
         os.environ,
+        {
+            'IMBI_INTERNAL_API_URL': 'http://imbi-api:8000/',
+            'IMBI_API_URL': 'https://imbi.example.com/api/',
+        },
+        clear=True,
+    )
+    def test_api_base_url_adds_public_prefix(self) -> None:
+        s = settings.Assistant(_env_file=None)
+        self.assertEqual(s.api_base_url, 'http://imbi-api:8000/api')
+
+    @mock.patch.dict(
+        os.environ,
         {'ANTHROPIC_API_KEY': 'sk-test-123'},
         clear=True,
     )
