@@ -50,7 +50,7 @@ from imbi.api.identity.host_integration import (
     call_with_identity_retry,
 )
 from imbi.api.llm.dependencies import InjectAnthropicClient
-from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins import call_with_timeout, release_dispatch
 from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
 from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
@@ -4697,6 +4697,19 @@ async def _upsert_release_node(
     )
     if rows:
         rid = graph.parse_agtype(rows[0].get('rid'))
+        # ``COALESCE(r.id, new_id)`` kept ``new_id``: this call created
+        # the node.
+        if rid == new_id:
+            release_dispatch.schedule_release_created(
+                db,
+                project_id,
+                plugin_base.TrackedRelease(
+                    id=new_id,
+                    tag=tag,
+                    committish=committish,
+                    created_by=created_by,
+                ),
+            )
         if rid:
             return str(rid)
     return new_id

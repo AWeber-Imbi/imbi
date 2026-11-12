@@ -163,6 +163,7 @@ CapabilityKind = typing.Literal[
     'incidents',  # incidents tab               → ui, api
     'commit-sync',  # commit history ingestion    → api, webhook
     'pr-sync',  # pull-request ingestion      → api, webhook
+    'release-tracking',  # record releases remotely → api
     'tools',  # agent tools (reserved)      → tools
 ]
 
@@ -177,6 +178,7 @@ CAPABILITY_SURFACES: dict[str, frozenset[str]] = {
     'incidents': frozenset({'ui', 'api'}),
     'commit-sync': frozenset({'api', 'webhook'}),
     'pr-sync': frozenset({'api', 'webhook'}),
+    'release-tracking': frozenset({'api'}),
     'tools': frozenset({'tools'}),
 }
 
@@ -200,6 +202,7 @@ HINT_ALLOWLIST: dict[str, frozenset[str]] = {
     'incidents': _COMMON_HINTS,
     'commit-sync': _COMMON_HINTS,
     'pr-sync': _COMMON_HINTS,
+    'release-tracking': _COMMON_HINTS,
     'tools': _COMMON_HINTS,
 }
 
@@ -877,6 +880,15 @@ class ReleaseInfo(pydantic.BaseModel):
     url: str | None = None
     html_url: str | None = None
     prerelease: bool = False
+
+
+class TrackedRelease(pydantic.BaseModel):
+    """An Imbi ``Release`` node, as sent to a release-tracking capability."""
+
+    id: str
+    tag: str | None = None
+    committish: str
+    created_by: str | None = None
 
 
 class RemoteRelease(pydantic.BaseModel):
@@ -2245,6 +2257,24 @@ class PullRequestSyncCapability(CapabilityHandler):
         return True
 
 
+class ReleaseTrackingCapability(CapabilityHandler):
+    """Record each new Imbi release in a remote system (e.g. Sentry).
+
+    The host calls :meth:`on_release_created` once, after it creates a
+    ``Release`` node, for every Integration bound to the project for this
+    kind. The call is best-effort: a failure is recorded as an event and
+    never undoes the release.
+    """
+
+    @abc.abstractmethod
+    async def on_release_created(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        release: TrackedRelease,
+    ) -> LifecycleResult: ...
+
+
 class ToolsCapability(CapabilityHandler):
     """Reserved. Returns tool descriptors for imbi-assistant / imbi-mcp.
 
@@ -2272,6 +2302,7 @@ CAPABILITY_CONTRACTS: dict[str, type[CapabilityHandler]] = {
     'incidents': IncidentsCapability,
     'commit-sync': CommitSyncCapability,
     'pr-sync': PullRequestSyncCapability,
+    'release-tracking': ReleaseTrackingCapability,
     'tools': ToolsCapability,
 }
 

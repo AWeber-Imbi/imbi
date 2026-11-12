@@ -116,6 +116,15 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         )
         self._notes_patch.start()
         self.addCleanup(self._notes_patch.stop)
+        # The create path fans the new release out to release-tracking
+        # plugins in a background task with its own DB calls.
+        self.dispatch_release = mock.MagicMock()
+        dispatch_patch = mock.patch(
+            'imbi.api.plugins.release_dispatch.schedule_release_created',
+            new=self.dispatch_release,
+        )
+        dispatch_patch.start()
+        self.addCleanup(dispatch_patch.stop)
         self.client = fastapi.testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
 
@@ -168,6 +177,11 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(body['project_id'], PROJECT_ID)
         self.assertEqual(body['id'], RELEASE_ID)
         self.assertEqual(body['created_by'], 'alice@example.com')
+        release = self.dispatch_release.call_args.args[2]
+        self.assertEqual(
+            (RELEASE_ID, '1.2.3', DEFAULT_COMMITTISH),
+            (release.id, release.tag, release.committish),
+        )
         # Releases are written as raw Cypher, so the endpoint owns
         # keeping them searchable. The task re-reads the release.
         self.mock_db.match.assert_awaited_once_with(

@@ -4318,6 +4318,41 @@ class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('r:Release {{committish: {committish}}}', query)
         self.assertNotIn('r.tag', query)
 
+    async def _upsert_schedules(self, rid: str | None) -> mock.MagicMock:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'rid': rid}])
+        with (
+            mock.patch(
+                f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(f'{_MODULE}.nanoid.generate', return_value='new-id'),
+            mock.patch(
+                f'{_MODULE}.release_dispatch.schedule_release_created'
+            ) as schedule,
+        ):
+            await project_deployments._upsert_release_node(
+                db,
+                project_id='p1',
+                tag='2.45.3',
+                committish='27f2f81',
+                title='2.45.3',
+                notes_markdown='',
+                release_url=None,
+                created_by='a@b.c',
+            )
+        return schedule
+
+    async def test_upsert_dispatches_a_created_release(self) -> None:
+        schedule = await self._upsert_schedules('new-id')
+        release = schedule.call_args.args[2]
+        self.assertEqual(('new-id', '2.45.3'), (release.id, release.tag))
+
+    async def test_upsert_does_not_dispatch_an_existing_release(
+        self,
+    ) -> None:
+        schedule = await self._upsert_schedules('rel-1')
+        schedule.assert_not_called()
+
 
 class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
     """The Release adopts the commit its tag actually points at.

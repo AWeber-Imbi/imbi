@@ -10,6 +10,7 @@ things:
   `sentry_open_issues`.
 - In the project **Doctor**, it checks the link to the Sentry project and
   the issue-count facts, and offers fixes.
+- When Imbi records a release, it creates the release in Sentry.
 
 ## Capabilities
 
@@ -18,6 +19,7 @@ things:
 | `lifecycle` | Project lifecycle | On | Project-scoped |
 | `webhook-actions` | Webhook actions | On | Project-scoped |
 | `analysis` | Project doctor | On | Project-scoped |
+| `release-tracking` | Release tracking | On | Project-scoped |
 
 ## Configuration
 
@@ -51,6 +53,7 @@ Sentry. Give it these permissions:
 | Permission | Needed for |
 |---|---|
 | Project: Admin | The lifecycle and the Doctor fix that create Sentry projects |
+| Release: Admin | Release tracking |
 | Issue & Event: Read | The issue counts |
 
 ## Project link
@@ -129,6 +132,23 @@ The fixes:
 |---|---|
 | Created | Creates the Sentry project in the team from `team_mapping`, or links the project that exists. It does not link a Sentry project that only other teams own |
 | Deleted | Nothing in Sentry. Imbi removes the edge and the link with the project, and Sentry keeps the issue history |
+
+## Release tracking
+
+When Imbi creates a release for a project, the plugin creates a release
+in Sentry for the linked Sentry project. If the Sentry release exists,
+Sentry adds the project to it.
+
+| Capability option | Default | Meaning |
+|---|---|---|
+| `version_format` | `${project_slug}@${tag}` | The Sentry release version. Placeholders: `${project_slug}`, `${tag}`, `${committish}` (short SHA). An unknown placeholder makes the call fail |
+
+The version must be the same as the `release` value that the Sentry SDK
+of the application sends. If it is not, Sentry does not connect events to
+the release. If the format has `${tag}` and the release has no tag, the
+plugin skips the release.
+
+The plugin does not send commits or deploys to Sentry.
 
 ## Known limits
 

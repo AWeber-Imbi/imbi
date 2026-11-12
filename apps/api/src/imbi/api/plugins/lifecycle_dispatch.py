@@ -373,7 +373,7 @@ async def _invoke_one(
     captured_service_writeback: list[ServiceWriteback] = []
 
     async def _call(c: PluginContext) -> LifecycleResult:
-        credentials = _resolve_credentials(c, resolved)
+        credentials = resolve_credentials(c, resolved)
         method = getattr(handler, method_name)
         res: LifecycleResult = await call_with_timeout(method(c, credentials))
         if c.link_writeback is not None:
@@ -446,7 +446,7 @@ async def _invoke_one(
     )
 
 
-def _resolve_credentials(
+def resolve_credentials(
     ctx: PluginContext,
     resolved: ResolvedCapability,
 ) -> dict[str, str]:

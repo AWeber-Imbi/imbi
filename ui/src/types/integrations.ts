@@ -52,6 +52,7 @@ export type CapabilityKind =
   | 'lifecycle'
   | 'logs'
   | 'pr-sync'
+  | 'release-tracking'
   | 'tools'
   | 'webhook-actions'
 

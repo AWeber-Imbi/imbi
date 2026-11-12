@@ -85,7 +85,7 @@ def _connection(ctx: PluginContext) -> ServiceConnection | None:
     )
 
 
-def _slug(ctx: PluginContext) -> str:
+def linked_slug(ctx: PluginContext) -> str:
     """The edge's identifier wins over the project-slug convention."""
     connection = _connection(ctx)
     return connection.identifier if connection else ctx.project_slug
@@ -123,7 +123,7 @@ def _owns_sentry_project(ctx: PluginContext) -> bool:
         connection.verified_identifier != connection.identifier
     ):
         return False
-    return _slug(ctx) == ctx.project_slug
+    return linked_slug(ctx) == ctx.project_slug
 
 
 class SentryDoctor(AnalysisCapability):
@@ -141,7 +141,7 @@ class SentryDoctor(AnalysisCapability):
                     'This capability is not bound to an Integration.',
                 )
             ]
-        slug = _slug(ctx)
+        slug = linked_slug(ctx)
         try:
             s = client.settings(ctx, credentials)
             project = await client.get_project(s, slug)
@@ -296,7 +296,7 @@ class SentryDoctor(AnalysisCapability):
     ) -> RemediationResult:
         if remediation_id not in (_CREATE, _LINK, _SYNC_FACTS, _SET_TEAM):
             return await super().remediate(ctx, credentials, remediation_id)
-        slug = _slug(ctx)
+        slug = linked_slug(ctx)
         try:
             s = client.settings(ctx, credentials)
             project: dict[str, typing.Any] | None

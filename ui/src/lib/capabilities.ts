@@ -17,6 +17,7 @@ import {
   ScrollText,
   Siren,
   SlidersHorizontal,
+  Tag,
   Webhook,
   Wrench,
 } from 'lucide-react'
@@ -88,6 +89,12 @@ const CAPABILITY_META: Record<CapabilityKind, CapabilityMeta> = {
     projectScoped: true,
     surfaces: ['api', 'webhook'],
   },
+  'release-tracking': {
+    icon: Tag,
+    label: 'Release tracking',
+    projectScoped: true,
+    surfaces: ['api'],
+  },
   tools: {
     icon: Wrench,
     label: 'Agent tools',
@@ -112,6 +119,7 @@ const CAPABILITY_KINDS: CapabilityKind[] = [
   'incidents',
   'commit-sync',
   'pr-sync',
+  'release-tracking',
   'webhook-actions',
   'identity',
   'tools',

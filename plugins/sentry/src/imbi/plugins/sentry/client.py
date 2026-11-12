@@ -296,3 +296,19 @@ async def count_all(
         )
     )
     return dict(zip(facts, counts, strict=True))
+
+
+async def create_release(s: Settings, version: str, slug: str) -> bool:
+    """Create release ``version`` for the Sentry project ``slug``.
+
+    Returns ``False`` when the release already exists (Sentry answers
+    ``208`` and adds the project to it).
+    """
+    response = await _request(
+        s,
+        'POST',
+        f'/organizations/{_q(s.organization)}/releases/',
+        json={'version': version, 'projects': [_q(slug)]},
+    )
+    _raise_for_error(response)
+    return response.status_code != 208
