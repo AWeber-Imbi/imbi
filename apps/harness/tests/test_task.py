@@ -207,6 +207,17 @@ class RunWithSecretTestCase(TaskTestCase):
         )
         self.call.assert_not_called()
 
+    async def test_refusal_gives_the_reason(self) -> None:
+        self.client.create_resolution.side_effect = api.Refused(
+            403, 'secret_access_denied', reason='no_matching_grant'
+        )
+        result = await self.run_tool()
+        self.assertEqual(
+            result['content'][0]['text'],
+            'The secret request was refused: secret_access_denied '
+            '(no_matching_grant)',
+        )
+
     async def test_executor_error(self) -> None:
         self.call.return_value = {'error': 'resolution_expired'}
         result = await self.run_tool()
