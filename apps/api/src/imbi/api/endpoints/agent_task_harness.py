@@ -36,6 +36,7 @@ import uuid
 
 import fastapi
 import jsonschema
+import orjson
 import pydantic
 from referencing import exceptions as referencing_exceptions
 
@@ -871,9 +872,15 @@ def _check_structured_output(
     Later workflow steps use the output as the step result, so Imbi
     does not trust the harness to have validated it.
     """
-    tasks_api.check_payload_size(
-        'structured_output', output, MAX_STRUCTURED_OUTPUT_BYTES
-    )
+    try:
+        size = len(orjson.dumps(output))
+    except orjson.JSONEncodeError as err:  # e.g. an integer over 64 bits
+        raise _invalid_output(f'structured_output: {err}') from err
+    if size > MAX_STRUCTURED_OUTPUT_BYTES:
+        raise _invalid_output(
+            f'structured_output is {size} bytes;'
+            f' the limit is {MAX_STRUCTURED_OUTPUT_BYTES}'
+        )
     schema = task['output_schema']
     if schema is None:
         raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
@@ -910,12 +917,11 @@ async def set_agent_task_outcome(
         403: The caller is not the service account of the task's agent.
         404: No such task.
         409: ``task_closed``.
-        413: ``payload_too_large``: ``structured_output`` is larger
-            than :data:`MAX_STRUCTURED_OUTPUT_BYTES`.
         422: Not an F5 outcome, or no reason.
             ``invalid_structured_output``: ``structured_output`` does
-            not match the ``output_schema`` of the task, or the task
-            has no ``output_schema``.
+            not match the ``output_schema`` of the task, the task has
+            no ``output_schema``, or ``structured_output`` is larger
+            than :data:`MAX_STRUCTURED_OUTPUT_BYTES` or is not JSON.
 
     """
     if data.structured_output is not None:

@@ -5886,6 +5886,10 @@ export interface paths {
          *         404: No such task.
          *         409: ``task_closed``.
          *         422: Not an F5 outcome, or no reason.
+         *             ``invalid_structured_output``: ``structured_output`` does
+         *             not match the ``output_schema`` of the task, the task has
+         *             no ``output_schema``, or ``structured_output`` is larger
+         *             than :data:`MAX_STRUCTURED_OUTPUT_BYTES` or is not JSON.
          */
         post: operations["set_agent_task_outcome_api_organizations__org_slug__agent_tasks__short_id__outcome_post"];
         delete?: never;
