@@ -217,6 +217,29 @@ class ResultTestCase(unittest.TestCase):
         self.assertEqual(raised.exception.code, 'script_output_too_large')
         self.assertLess(time.perf_counter() - start, 1.0)
 
+    def test_completed_fields_count_toward_the_cap(self) -> None:
+        # Small as returned, but each row gets four empty fields.
+        params = _params(
+            output_fields=[
+                {
+                    'name': 'rows',
+                    'type': 'array',
+                    'items': 'object',
+                    'fields': [
+                        {
+                            'name': f'field_{n}_{"x" * 40}',
+                            'type': 'string',
+                            'required': False,
+                        }
+                        for n in range(4)
+                    ],
+                }
+            ]
+        )
+        with self.assertRaises(script_runner.ScriptError) as raised:
+            script_runner.result(params, {'rows': [{}] * 5000}, '')
+        self.assertEqual(raised.exception.code, 'script_output_too_large')
+
 
 class RunnerTestCase(unittest.IsolatedAsyncioTestCase):
     """Scripts in the real sandbox."""
@@ -288,6 +311,12 @@ class RunnerTestCase(unittest.IsolatedAsyncioTestCase):
                 _params(code='while True:\n    pass'), max_seconds=0.1
             )
         self.assertEqual(raised.exception.code, 'script_timeout')
+
+    async def test_sleep_does_not_wait(self) -> None:
+        start = time.perf_counter()
+        done = await self._run("import time\ntime.sleep(30)\n{'count': 1}")
+        self.assertEqual(done.output['result']['count'], 1)
+        self.assertLess(time.perf_counter() - start, 1.0)
 
     async def test_no_state_crosses_runs(self) -> None:
         await self._run("secret = 1\n{'count': secret}")

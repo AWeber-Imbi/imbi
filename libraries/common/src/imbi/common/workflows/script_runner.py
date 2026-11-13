@@ -98,7 +98,10 @@ class Runner:
                 limits={
                     'max_memory': self.max_memory,
                     'max_feed_duration_secs': seconds,
-                }
+                },
+                # The time limit does not count sleeps, so a sleep returns
+                # at once: the limit then bounds the wall-clock time too.
+                os_policy={'sleep': 'zero'},
             ) as session:
                 value = await session.feed_run(
                     params.code,
@@ -174,12 +177,7 @@ def result(params: script.Params, value: typing.Any, printed: str) -> Result:
     output = script.Output(
         result=found, branch=branch, stdout=printed[:MAX_STDOUT] or None
     ).model_dump()
-    size = len(json.dumps(output, ensure_ascii=False).encode())
-    if size > MAX_OUTPUT_BYTES:
-        raise ScriptError(
-            'script_output_too_large',
-            f'{size} bytes of JSON, more than {MAX_OUTPUT_BYTES}',
-        )
+    _check_size(output)
     schema = typing.cast(
         'dict[str, typing.Any]', agent.output_schema(params.output_fields)
     )
@@ -194,7 +192,18 @@ def result(params: script.Params, value: typing.Any, printed: str) -> Result:
     # After the check: the schema does not permit the None that this
     # sets for an optional field that the script left out.
     output['result'] = agent.complete_result(params.output_fields, found)
+    # Again: the fields that this adds can make the output larger.
+    _check_size(output)
     return Result(output=output, port=port)
+
+
+def _check_size(output: dict[str, typing.Any]) -> None:
+    size = len(json.dumps(output, ensure_ascii=False).encode())
+    if size > MAX_OUTPUT_BYTES:
+        raise ScriptError(
+            'script_output_too_large',
+            f'{size} bytes of JSON, more than {MAX_OUTPUT_BYTES}',
+        )
 
 
 def _invalid(message: str) -> ScriptError:

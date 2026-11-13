@@ -83,10 +83,12 @@ configuration.
   pool replaces it.
 - Limits: 64 MiB of memory and 5 seconds per call by default, never
   more than the step timeout. The pool kills a worker that does not
-  answer.
+  answer. A sleep returns at once, because the time limit does not
+  count sleeps.
 - The result is converted to JSON types. A key that is not a string, a
   float that is not finite, and a value with no JSON form fail the step.
-  The output is at most 64 KiB of JSON, checked before the schema check.
+  The output is at most 64 KiB of JSON, checked before the schema check
+  and again after the empty optional fields are added.
 
 | Cause | Error | Retry |
 |---|---|---|
