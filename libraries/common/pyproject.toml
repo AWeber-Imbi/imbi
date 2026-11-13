@@ -73,7 +73,7 @@ posthog = [
   "posthog==7.84.0",
 ]
 script = [
-  "jsonschema>=4.26",
+  "jsonschema[format-nongpl]>=4.26",
   "pydantic-monty~=1.5",
 ]
 sentry = [
