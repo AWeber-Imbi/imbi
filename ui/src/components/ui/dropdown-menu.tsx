@@ -25,7 +25,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
 >(({ children, className, inset, ...props }, ref) => (
   <DropdownMenuPrimitive.SubTrigger
     className={cn(
-      'flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-secondary data-[state=open]:bg-secondary',
+      'flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-secondary data-[state=open]:bg-secondary',
       inset && 'pl-8',
       className,
     )}
@@ -81,7 +81,7 @@ const DropdownMenuItem = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     className={cn(
-      'relative flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm transition-colors outline-none select-none focus:bg-secondary focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm transition-colors outline-none select-none focus:bg-secondary focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       inset && 'pl-8',
       className,
     )}
@@ -98,7 +98,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     checked={checked}
     className={cn(
-      'relative flex cursor-default items-center rounded-sm py-1.5 pr-2 pl-8 text-sm transition-colors outline-none select-none focus:bg-secondary focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-pointer items-center rounded-sm py-1.5 pr-2 pl-8 text-sm transition-colors outline-none select-none focus:bg-secondary focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className,
     )}
     ref={ref}
@@ -121,7 +121,7 @@ const DropdownMenuRadioItem = React.forwardRef<
 >(({ children, className, ...props }, ref) => (
   <DropdownMenuPrimitive.RadioItem
     className={cn(
-      'relative flex cursor-default items-center rounded-sm py-1.5 pr-2 pl-8 text-sm transition-colors outline-none select-none focus:bg-secondary focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-pointer items-center rounded-sm py-1.5 pr-2 pl-8 text-sm transition-colors outline-none select-none focus:bg-secondary focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className,
     )}
     ref={ref}
