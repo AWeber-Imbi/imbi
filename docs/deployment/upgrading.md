@@ -92,18 +92,29 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    that maintenance operation every 6 hours, and without the permission
    each run gets a `403`. See
    [System tasks](../scheduler/tasks.md#system-tasks).
-3. Run `imbi-api setup-clickhouse` to create the `cves` table, and
+3. **Before you deploy**, delete every scheduled task whose `api` target
+   path is under `/auth`. The scheduler now refuses those paths, and one
+   such task stops `GET /tasks` from listing any task. Find them with
+   the query below. It uses the default schema `scheduler`. If you set
+   `IMBI_SCHEDULER_SCHEMA`, use that schema instead.
+
+    ```sql
+    SELECT slug FROM scheduler.tasks
+     WHERE target->>'kind' = 'api'
+       AND target->>'path' ~ '^/auth([/?#]|$)';
+    ```
+4. Run `imbi-api setup-clickhouse` to create the `cves` table, and
    `imbi-api setup-permissions` to add `admin:maintenance:cve-sync` and
    give it to the `imbi-scheduler` role. Then restart iggy-connect (see
    [Where to run the commands](#where-to-run-the-commands)): the `cves`
    stream is new, and the sink reads the stream list only at startup.
-4. Give the API pods temporary disk for the CVE import. The first
+5. Give the API pods temporary disk for the CVE import. The first
    `cve-sync` imports the full CVE List (about 425 000 records) and needs
    about 1.5 GB of temporary disk in the API pod; later runs need the same
    disk but write only the changed records. In the hosted chart, mount an
    `emptyDir` with a `sizeLimit` of about 3 GiB at the temporary
    directory (`/tmp`, or the directory in `TMPDIR`).
-5. Start the first `cve-sync` from **Admin > Maintenance**. Do not wait
+6. Start the first `cve-sync` from **Admin > Maintenance**. Do not wait
    for the `cve-sync` system task, which runs daily at 01:30 UTC. See
    [CVE catalog](../user-guide/pull-requests-and-dependencies.md#cve-catalog).
 

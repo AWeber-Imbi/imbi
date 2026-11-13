@@ -916,6 +916,37 @@ class PathTraversalTests(unittest.TestCase):
         with self.assertRaises(pydantic.ValidationError):
             models.ApiTarget(method='POST', path='/../other-org/widgets')
 
+    def test_an_auth_route_is_refused(self) -> None:
+        # /auth routes act on the caller's session, which for a task is the
+        # scheduler's own: POST /auth/logout would revoke its token.
+        for path in (
+            '/auth',
+            '/auth/logout',
+            '/auth/token/refresh',
+            '/auth?x=1',
+            '/auth#fragment',
+            '/auth/logout?x=1',
+        ):
+            with self.subTest(path=path):
+                with self.assertRaises(pydantic.ValidationError):
+                    models.ApiTarget(method='POST', path=path)
+        # A route that only starts with the same letters is fine.
+        models.ApiTarget(method='GET', path='/authors')
+
+    def test_an_auth_route_from_a_template_is_refused(self) -> None:
+        task = helpers.build_task(organization=None)
+        target = models.ApiTarget.model_construct(
+            kind='api',
+            method='POST',
+            path='/{{ where }}/logout',
+            query={},
+            body=None,
+        )
+        with self.assertRaises(render.RenderError):
+            render.api_request(
+                task, target, render.Renderer({'where': 'auth'}), API_URL
+            )
+
     def test_the_model_is_what_keeps_a_rendered_path_rooted(self) -> None:
         """Why only traversal is re-checked on the rendered value.
 

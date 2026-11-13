@@ -160,7 +160,7 @@ def api_request(
     # what the render actually produced. Checked *before* `_scoped_to`,
     # because defeating that predicate is exactly what a traversal does.
     try:
-        models.ensure_no_traversal(path)
+        models.ensure_not_auth_route(models.ensure_no_traversal(path))
     except ValueError as err:
         raise RenderError(f'{target.path!r}: {err}') from err
     organization = target.organization or task.organization

@@ -64,9 +64,11 @@ The page has two tabs: **Operations** and **Activity**.
 
 <!-- END GENERATED -->
 
-The descriptions come from the code. Imbi runs no operation on a
-schedule, **Close Out Stuck Deployments** included. Deployments stay
-`pending` until an administrator runs it. See
+The descriptions come from the code. Imbi runs only **Sync Agent
+Marketplaces** and **Sync CVE Catalog** on a schedule, as system jobs
+(see [Scheduled jobs](scheduled-jobs.md)). It runs no other operation
+on a schedule, **Close Out Stuck Deployments** included. Deployments stay
+`pending` until an administrator runs it or schedules it. See
 [Run an operation](#run-an-operation).
 
 The **Report ... (dry run)** operations change nothing. Run them before
@@ -103,12 +105,16 @@ How a run works:
 A run has one of these states: `idle`, `running`, `completed`,
 `cancelled`, or `abandoned`.
 
-Imbi does not run an operation on a schedule by itself. The API endpoint
-is `POST /maintenance/operations/{slug}/run`, and the caller needs
-`admin:maintenance:manage`. A scheduled task cannot call it today: a
-`service_account` task runs as the scheduler's own account, and the
-`imbi-scheduler` role does not have that permission. A `delegated_user`
-task does not run yet. See [Scheduler tasks](../scheduler/tasks.md).
+The API endpoint is `POST /maintenance/operations/{slug}/run`. The
+caller needs `admin:maintenance:manage`, or `admin:maintenance:<slug>`
+for that one operation. The `imbi-scheduler` role has only
+`admin:maintenance:marketplace-sync` and `admin:maintenance:cve-sync`,
+for its system jobs. To run
+another operation on a schedule, an administrator makes a scheduled job
+that calls this endpoint: a scheduled job runs with the permissions of
+the person accountable for it, so the job works only when that person
+holds the permission. See [Scheduled jobs](scheduled-jobs.md) and
+[Scheduler tasks](../scheduler/tasks.md).
 
 ### Activity log
 

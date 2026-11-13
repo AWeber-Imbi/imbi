@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -37,6 +37,7 @@ import {
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useFollowBottom } from '@/hooks/useFollowBottom'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
@@ -94,6 +95,15 @@ export function TaskDetail({
   const conversationCount = useMemo(
     () => timeline(events.data ?? []).length,
     [events.data],
+  )
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const eventCount = events.data?.length ?? 0
+  useFollowBottom(
+    scrollRef,
+    eventCount,
+    !!task.data &&
+      eventCount > 0 &&
+      (tab === 'conversation' || tab === 'actions'),
   )
 
   if (task.isLoading) {
@@ -172,7 +182,7 @@ export function TaskDetail({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
         {events.error && (
           <p className="text-danger px-6 pt-4 text-sm" role="alert">
             Could not load the task log: {events.error.message}
