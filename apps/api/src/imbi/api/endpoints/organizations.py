@@ -9,13 +9,13 @@ import psycopg
 import pydantic
 from psycopg import sql
 
-from imbi.api import secret_broker
 from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.harness import auth as harness_auth
 from imbi.api.relationships import RelationshipSpec, build_relationships
-from imbi.common import graph, models
+from imbi.api.secret_broker import store as secret_store
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 
 from .agent_platform import (
@@ -736,21 +736,31 @@ async def list_organization_members(
     return [m for m in raw_members if m.get('email')]
 
 
-# Rows that block an organization delete, by the name the 409 shows.
-_ORG_BLOCKING_TABLES: dict[str, tuple[str, str]] = {
-    'workflows': ('workflows', 'workflows'),
-    'workflow trigger bindings': ('workflows', 'trigger_bindings'),
+# Rows that block an organization delete, by the name the 409 shows,
+# with the condition that makes a row block.
+_ORG_BLOCKING_ROWS: dict[str, tuple[tuple[str, str], typing.LiteralString]] = {
+    'workflows': (('workflows', 'workflows'), 'TRUE'),
+    'workflow trigger bindings': (('workflows', 'trigger_bindings'), 'TRUE'),
+    'secret providers': (('secrets', 'providers'), 'TRUE'),
+    'identity sources': (('secrets', 'identity_sources'), 'TRUE'),
+    'active secret resolutions or unrevoked provider leases': (
+        ('secrets', 'resolutions'),
+        secret_store.UNSETTLED_RESOLUTION,
+    ),
 }
 
 # Rows that an organization delete removes. Children come before the
 # tables that they refer to with ON DELETE RESTRICT. The other child
-# tables of tasks and runs cascade.
+# tables of tasks and runs cascade, and so do the nonces of
+# resolutions.
 _ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
     ('agent_runtime', 'task_dependencies'),
     ('agent_runtime', 'task_projects'),
     ('agent_runtime', 'tasks'),
     ('agent_runtime', 'task_id_sequences'),
     ('workflow_runtime', 'runs'),
+    ('secrets', 'grants'),
+    ('secrets', 'resolutions'),
 )
 
 
@@ -758,7 +768,6 @@ _ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
 async def delete_organization(
     slug: str,
     db: graph.Pool,
-    secrets: secret_broker.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -768,7 +777,8 @@ async def delete_organization(
 ) -> None:
     """Delete an empty organization.
 
-    Its memberships, agent tasks, and workflow runs go with it.
+    Its memberships, agent tasks, workflow runs, secret grants, and
+    settled secret resolutions go with it.
 
     Parameters:
         slug: Organization slug to delete.
@@ -779,7 +789,8 @@ async def delete_organization(
             agents, integrations, ...), secret providers, an
             identity source, workflows, or workflow trigger bindings.
             Delete them first, so that each delete does its own
-            cleanup.
+            cleanup. An active secret resolution or a provider lease
+            that is not revoked also blocks the delete.
 
     """
     records = await db.execute(
@@ -795,12 +806,6 @@ async def delete_organization(
     org_id = org_auth.organization_id(
         graph.parse_agtype(records[0]['id']), slug
     )
-    secrets_in_use = {
-        'secret providers': len(await secrets.list_all('providers', org_id)),
-        'identity sources': int(
-            await secrets.identity_source(org_id) is not None
-        ),
-    }
 
     async def check_and_delete(
         execute: graph.CypherExecute,
@@ -812,13 +817,16 @@ async def delete_organization(
             {'org_id': org_id},
             ['label', 'n'],
         )
-        in_use = dict(secrets_in_use)  # a retry runs this again
-        for r in contents:
-            in_use[str(graph.parse_agtype(r['label']))] = int(
+        in_use = {
+            str(graph.parse_agtype(r['label'])): int(
                 graph.parse_agtype(r['n'])
             )
-        for name, table in _ORG_BLOCKING_TABLES.items():
-            in_use[name] = await _count_org_rows(conn, table, org_id)
+            for r in contents
+        }
+        for name, (table, condition) in _ORG_BLOCKING_ROWS.items():
+            in_use[name] = await _count_org_rows(
+                conn, table, condition, org_id
+            )
         found = ', '.join(
             f'{name} ({n})' for name, n in sorted(in_use.items()) if n
         )
@@ -851,23 +859,24 @@ async def delete_organization(
                 detail=f'Organization {slug!r} changed during the delete',
             )
 
-    # ponytail: one transaction, but writers do not take this lock, so
-    # a node or row added during it can still be left behind; take the
-    # lock in those writers if that matters.
+    # The writers of the relational rows take this lock shared
+    # (relational.lock_organization_shared). ponytail: graph writers do
+    # not, so a node added during the delete can still be left behind.
     await db.locked_with_connection(
-        f'organization-delete:{org_id}', check_and_delete
+        relational.organization_delete_lock_key(org_id), check_and_delete
     )
 
 
 async def _count_org_rows(
     conn: psycopg.AsyncConnection[typing.Any],
     table: tuple[str, str],
+    condition: typing.LiteralString,
     org_id: str,
 ) -> int:
     cursor = await conn.execute(
-        sql.SQL('SELECT count(*) FROM {} WHERE organization_id = %s').format(
-            sql.Identifier(*table)
-        ),
+        sql.SQL(
+            'SELECT count(*) FROM {} WHERE organization_id = %s AND {}'
+        ).format(sql.Identifier(*table), sql.SQL(condition)),
         (org_id,),
     )
     row = await cursor.fetchone()

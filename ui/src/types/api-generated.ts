@@ -8414,7 +8414,8 @@ export interface paths {
          * Delete Organization
          * @description Delete an empty organization.
          *
-         *     Its memberships, agent tasks, and workflow runs go with it.
+         *     Its memberships, agent tasks, workflow runs, secret grants, and
+         *     settled secret resolutions go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
@@ -8425,7 +8426,8 @@ export interface paths {
          *             agents, integrations, ...), secret providers, an
          *             identity source, workflows, or workflow trigger bindings.
          *             Delete them first, so that each delete does its own
-         *             cleanup.
+         *             cleanup. An active secret resolution or a provider lease
+         *             that is not revoked also blocks the delete.
          */
         delete: operations["delete_organization_api_organizations__slug__delete"];
         options?: never;

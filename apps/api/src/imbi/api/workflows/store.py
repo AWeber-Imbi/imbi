@@ -14,6 +14,7 @@ import psycopg_pool
 from psycopg import rows
 from psycopg.types import json as pg_json
 
+from imbi.common import relational
 from imbi.common.workflows import runtime
 
 type Pool = psycopg_pool.AsyncConnectionPool[
@@ -109,6 +110,7 @@ class WorkflowStore:
         """
         workflow_id = uuid.uuid4()
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             await conn.execute(
                 'INSERT INTO workflows.workflows (id, organization_id,'
                 ' slug, name, description, owner_team_id, created_by)'
@@ -240,6 +242,7 @@ class WorkflowStore:
         imbi-workflows then writes the scheduler and the gateway.
         """
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
                 "UPDATE workflows.workflows SET status = 'active',"
                 ' active_version = %s, activated_by = %s,'

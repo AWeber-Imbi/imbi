@@ -608,6 +608,14 @@ class SecretStore:
 
 _GRANTED = 'SELECT 1 FROM secrets.grants WHERE %s = ANY(binding_ids) LIMIT 1'
 
+#: A resolution that is active, or whose provider lease is not revoked.
+#: The rows it needs (its binding, provider, and organization) must stay
+#: until it settles.
+UNSETTLED_RESOLUTION: typing.LiteralString = (
+    "(state IN ('pending', 'active')"
+    " OR revocation_state IN ('pending', 'failed'))"
+)
+
 
 async def _check_binding_unused(
     conn: broker.Conn, organization_id: str, binding_id: uuid.UUID
@@ -621,9 +629,10 @@ async def _check_binding_unused(
     if await cur.fetchone() is not None:
         raise InUse('A grant uses the binding')
     cur = await conn.execute(
-        'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
-        " AND (state IN ('pending', 'active')"
-        " OR revocation_state IN ('pending', 'failed')) LIMIT 1",
+        sql.SQL(
+            'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
+            ' AND {} LIMIT 1'
+        ).format(sql.SQL(UNSETTLED_RESOLUTION)),
         (binding_id,),
     )
     if await cur.fetchone() is not None:

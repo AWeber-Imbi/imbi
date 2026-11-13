@@ -74,6 +74,31 @@ async def initialize(
             )
 
 
+def organization_delete_lock_key(organization_id: str) -> str:
+    """The advisory lock key that an organization delete holds.
+
+    The delete holds it exclusively (``Graph.locked_with_connection``).
+    """
+    return f'organization-delete:{organization_id}'
+
+
+async def lock_organization_shared(
+    conn: psycopg.AsyncConnection[typing.Any], organization_id: str
+) -> None:
+    """Take the shared lock on the organization for this transaction.
+
+    A writer of rows that an organization delete counts or removes calls
+    this in its transaction before it writes. The writer waits while a
+    delete of the organization runs, and a delete waits for the writer
+    to commit, so a delete cannot miss the row. Writers do not wait for
+    each other.
+    """
+    await conn.execute(
+        'SELECT pg_advisory_xact_lock_shared(hashtextextended(%s, 0))',
+        (organization_delete_lock_key(organization_id),),
+    )
+
+
 async def _create_schema(
     cursor: psycopg.AsyncCursor[typing.Any], schema: str
 ) -> None:
