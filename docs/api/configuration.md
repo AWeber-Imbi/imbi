@@ -280,6 +280,8 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_ASSISTANT_ENABLED` | bool | `false` | Turn the assistant on. `ANTHROPIC_API_KEY` turns it on too. |
 | `IMBI_ASSISTANT_MODEL` | str | `claude-sonnet-4-6` | Claude model |
 | `IMBI_ASSISTANT_MAX_TOKENS` | int | `16384` | Maximum response tokens |
@@ -289,8 +291,6 @@ unset.
 | `IMBI_ASSISTANT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
 | `IMBI_ASSISTANT_PROMPT_REF` | str | `imbi-assistant/system@stable` | Prompt CMS reference of the system prompt |
 | `IMBI_ASSISTANT_API_TOKEN` | str | `''` | API key of the `imbi-assistant` service account. Set: the assistant uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
-| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
-| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_ASSISTANT_URL` | str | `''` | Public assistant URL. Its path is the route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
@@ -299,7 +299,7 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `IMBI_INTERNAL_API_URL` | HttpUrl | `http://localhost:8000/` | In-cluster origin of imbi-api |
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_GATEWAY_API_TOKEN` | str | required | API key of the `imbi-gateway` service account. Required. |
 
@@ -315,10 +315,10 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `IMBI_SCHEDULER_SCHEMA` | str | `scheduler` | Postgres schema of the task tables |
-| `IMBI_SCHEDULER_API_PREFIX` | str | `/api` | Route prefix of the task and run routes |
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `IMBI_SCHEDULER_SCHEMA` | str | `scheduler` | Postgres schema of the task tables |
+| `IMBI_SCHEDULER_API_PREFIX` | str | `/api` | Route prefix of the task and run routes |
 | `IMBI_SCHEDULER_GATEWAY_URL` | str | `http://localhost:8003` | imbi-gateway URL for gateway targets |
 | `IMBI_SCHEDULER_SA_SLUG` | str | `imbi-scheduler` | Slug of the scheduler service account |
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | Client ID of the scheduler service account |
@@ -332,6 +332,8 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_SLACKBOT_ENABLED` | bool | `false` | Turn the bot on. `ANTHROPIC_API_KEY` and both Slack tokens turn it on too. |
 | `IMBI_SLACKBOT_MODEL` | str | `claude-sonnet-4-6` | Claude model |
 | `IMBI_SLACKBOT_MAX_TOKENS` | int | `16384` | Maximum response tokens |
@@ -346,8 +348,6 @@ unset.
 | `IMBI_SLACKBOT_API_TOKEN` | str | `''` | API key of the `imbi-slackbot` service account. Set: the bot uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
 | `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`) |
 | `SLACK_APP_TOKEN` | str | `''` | Slack app-level token for Socket Mode (`xapp-`) |
-| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
-| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
 
