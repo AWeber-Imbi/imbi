@@ -105,7 +105,9 @@ Click empty canvas to see the workflow settings.
 | **Description** | Free text | Empty |
 | **Owner team** | A team in the organization | None. Required |
 | **Concurrency** | **Unlimited**, **One run at a time**, **One run per key** | **Unlimited** |
-| **Concurrency key** | One reference, for **One run per key** only | None |
+| **Concurrency key** | A key template, for **One run per key** only | None |
+| **Dedupe key** | A key template. A run that repeats the key of an earlier run is skipped. See [Dedupe](#dedupe) | None |
+| **Dedupe window (days)** | How long a key skips a repeat. Shows when a dedupe key is set | Empty (no limit) |
 | **Max run time (minutes)** | A run that runs longer stops as `timed_out` | 120 |
 | **When a run fails** | **Notify the owner team**, **Do nothing** | **Notify the owner team** |
 
@@ -382,18 +384,94 @@ one run.
 
 Runs that wait start in the order that Imbi made them.
 
-For **One run per key**, the **Concurrency key** must be one reference to
-a trigger value:
-
-- `{{ trigger.service }}`
-- `{{ trigger.payload.repository.name }}`
+For **One run per key**, the **Concurrency key** is a
+[key template](#key-templates).
 
 More rules for **One run per key**:
 
-- Each **Manual run** trigger must declare the input that the key uses.
+- Each **Manual run** trigger must declare each input that the key uses.
 - You cannot use it with a **Schedule** trigger.
 - When a run has no value for the key, Imbi refuses it with
   `422 concurrency_key_missing` and makes no run.
+
+### Key templates
+
+The **Concurrency key** and the **Dedupe key** are key templates: one or
+more references to trigger values, with optional literal text between
+them.
+
+- `{{ trigger.service }}`
+- `{{ trigger.payload.repository.name }}`
+- `{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}`
+
+A reference is `{{ trigger.<field> }}`, with `.` for nested fields. A
+webhook trigger's body is under `trigger.payload`. Filters such as
+`| upper`, `{% %}` tags, and references to other steps are not allowed.
+Each reference must name a value, not a list or an object. The key is the
+template with each reference replaced by its value, for example
+`octo/imbi:4f2a9c1`.
+
+## Dedupe
+
+Dedupe skips a run that repeats work an earlier run already did. Use it
+when a trigger fires more than once for the same thing and the payload
+cannot tell the repeats apart. For example, a scheduled job redeploys an
+unchanged commit, and each redeploy sends the same webhook.
+
+Set **Dedupe key** to a [key template](#key-templates) that names the
+thing a run works on. Set **Dedupe window (days)** to how long a key
+skips a repeat. Leave the window empty to skip repeats forever.
+
+When a **Webhook** or **Task completed** trigger starts a run, Imbi
+fills the key from the payload. If a run of the same workflow with the
+same key was made within the window, Imbi does not start the new run. It
+records it as `skipped`, with a link to the earlier run.
+
+Example: review each commit once in 14 days, for a webhook that receives
+GitHub `workflow_run` events:
+
+| Setting | Value |
+|---|---|
+| **Dedupe key** | `{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}` |
+| **Dedupe window (days)** | `14` |
+
+The API stores this as:
+
+```json
+{
+  "dedupe_key": "{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}",
+  "dedupe_window_seconds": 1209600
+}
+```
+
+Which runs count:
+
+| Earlier run | Counts |
+|---|---|
+| `queued`, `running`, `succeeded` | Yes |
+| `cancelled` after it started | Yes. Someone stopped it on purpose, so a repeat does not start it again |
+| `failed`, `timed_out` | No. The next matching delivery retries the work |
+| `cancelled` before it started | No |
+| `skipped` | No. The window counts from the last run that did work |
+
+More rules:
+
+- A run that a person starts with **Run** is never skipped. Its key still
+  counts, so a webhook run with the same key after it is skipped.
+- A run whose payload has no value for a reference in the key is never
+  skipped and stores no key.
+- When one webhook delivery starts a run for each project it matches,
+  each project dedupes on its own: only an earlier run of the same
+  project, or a run with no project such as a person's run, counts. A
+  run with no project matches any earlier run of the workflow with the
+  key.
+- Two deliveries with the same key at the same time start one run.
+- Dedupe works with any **Concurrency** mode.
+- You cannot use a dedupe key with a **Schedule** trigger.
+- A **Manual run** trigger does not have to declare the inputs that the
+  key uses. A manual run is never skipped, and one without a value for
+  the key stores no key.
+- A window without a key is an error.
 
 ## Validation
 
@@ -414,6 +492,7 @@ graph is too large.
 | Templates are valid, and references name earlier steps | `invalid_template`, `unknown_reference` |
 | Ids are literal where required, and exist in the organization | `invalid_reference`, `resource_not_in_organization` |
 | Concurrency key rules | `missing_concurrency_key` (warning), `invalid_concurrency_key`, `concurrency_key_with_schedule`, `concurrency_key_input_missing` |
+| Dedupe key rules | `invalid_dedupe_key`, `dedupe_key_with_schedule`, `dedupe_window_without_key` |
 | An **Any input arrives** step can get two inputs | `any_join_overlap` (warning) |
 
 ## Activate a workflow
@@ -515,6 +594,8 @@ first. Click a run to see each step: status, duration, branch, error,
 input, and output. Open runs refresh every 2 seconds.
 
 The workflow list shows **Runs 30d** and **Last run** for each workflow.
+Neither counts `skipped` runs, so a skipped repeat does not hide the
+outcome of the run before it.
 
 | Run status | Meaning |
 |---|---|
@@ -524,6 +605,7 @@ The workflow list shows **Runs 30d** and **Last run** for each workflow.
 | `failed` | A step failed and no connection handles the failure |
 | `cancelled` | A person cancelled it |
 | `timed_out` | It ran longer than the max run time |
+| `skipped` | It never ran: its dedupe key matches an earlier run. The run list shows **Duplicate of run** and the run links to the earlier run |
 
 The engine keeps the run log in Postgres until ClickHouse has every event of
 a closed run. Then run detail reads from ClickHouse. If ClickHouse is not

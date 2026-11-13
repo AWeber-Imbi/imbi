@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { Copy, Trash2 } from 'lucide-react'
 
@@ -11,7 +11,12 @@ import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
 import { ParamsForm, SelectField } from './ParamsForm'
 import { referenceGroups } from './references'
 import { StatusBadge } from './RunPanel'
-import { formatDuration, type StepResult } from './runs'
+import {
+  formatDuration,
+  type StepResult,
+  windowDays,
+  windowSeconds,
+} from './runs'
 import { paramFields } from './schemaFields'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type {
@@ -321,6 +326,34 @@ export function SettingsPanel({
             />
           </FormField>
         )}
+        <FormField
+          description="A webhook or task run whose key matches an earlier run is skipped, for example {{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}. A run that a person starts always runs."
+          htmlFor="workflow-dedupe-key"
+          label="Dedupe key"
+        >
+          <Input
+            className="font-mono text-xs"
+            id="workflow-dedupe-key"
+            onChange={(e) =>
+              setSettings({ dedupe_key: e.target.value || null })
+            }
+            value={settings.dedupe_key ?? ''}
+          />
+        </FormField>
+        {(!!settings.dedupe_key || !!settings.dedupe_window_seconds) && (
+          <FormField
+            description="How long a key skips a repeat. Leave it empty to skip repeats forever."
+            htmlFor="workflow-dedupe-window"
+            label="Dedupe window (days)"
+          >
+            <DedupeWindowInput
+              onChange={(seconds) =>
+                setSettings({ dedupe_window_seconds: seconds })
+              }
+              seconds={settings.dedupe_window_seconds ?? null}
+            />
+          </FormField>
+        )}
         <FormField htmlFor="workflow-max-run" label="Max run time (minutes)">
           <Input
             id="workflow-max-run"
@@ -350,6 +383,60 @@ export function SettingsPanel({
         </FormField>
       </fieldset>
     </>
+  )
+}
+
+/**
+ * The dedupe window in days. The typed text is kept as a draft, so a
+ * partial value such as `0.` or `1.` survives until it is a positive
+ * number; only a valid value or an empty field reaches the settings.
+ * On blur an invalid draft such as `0` or `-1` goes back to the saved
+ * value, so the field never shows a value that is not saved. Text the
+ * browser cannot parse as a number, such as `14e`, reads as empty but
+ * leaves the saved value alone.
+ */
+function DedupeWindowInput({
+  onChange,
+  seconds,
+}: {
+  onChange: (seconds: null | number) => void
+  seconds: null | number
+}) {
+  const [draft, setDraft] = useState(() => windowDays(seconds))
+  const [synced, setSynced] = useState(seconds)
+  if (seconds !== synced) {
+    // The settings changed outside this field: show the new value.
+    setSynced(seconds)
+    setDraft(windowDays(seconds))
+  }
+  return (
+    <Input
+      id="workflow-dedupe-window"
+      min={0}
+      onBlur={(e) => {
+        const saved = windowDays(seconds)
+        if (e.target.validity.badInput) {
+          // The browser reports incomplete text such as `14e` as an
+          // empty value, so the draft may already match: reset the
+          // field itself.
+          e.target.value = saved
+          setDraft(saved)
+        } else if (windowSeconds(draft) === undefined) setDraft(saved)
+      }}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        // Incomplete text such as `14e` reads as an empty value; it is
+        // not a cleared field, so keep the saved window.
+        if (e.target.validity.badInput) return
+        const value = windowSeconds(e.target.value)
+        if (value === undefined) return
+        setSynced(value)
+        onChange(value)
+      }}
+      step="any"
+      type="number"
+      value={draft}
+    />
   )
 }
 

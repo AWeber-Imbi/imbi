@@ -6157,6 +6157,13 @@ export interface paths {
          *     or the delivery id for a webhook. A repeat by the same origin
          *     returns the first run.
          *
+         *     A run that a service starts is written ``skipped``,
+         *     with ``duplicate_of``, when its dedupe key matches a run of the
+         *     workflow made within the dedupe window. For a webhook run of a
+         *     project, only a run of the same project or a run with no project
+         *     counts. A person's run always starts, and its key counts for later
+         *     runs of every project.
+         *
          *     Raises:
          *         403: The trigger's ``who`` does not include the caller, a person
          *             names an origin, the caller is a service account other than
@@ -11764,7 +11771,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
             /** Error */
             error: string | null;
             /** Cancel Requested */
@@ -11780,6 +11787,16 @@ export interface components {
             closed_at: string | null;
             /** Log Archived At */
             log_archived_at: string | null;
+            /**
+             * Dedupe Key
+             * @description The workflow's dedupe key filled with the payload.
+             */
+            dedupe_key: string | null;
+            /**
+             * Duplicate Of
+             * @description For a ``skipped`` run: the earlier run with the same dedupe key.
+             */
+            duplicate_of: string | null;
             /** Workflow Slug */
             workflow_slug: string;
             /** Workflow Name */
@@ -19275,7 +19292,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
             /** Error */
             error: string | null;
             /** Cancel Requested */
@@ -19291,6 +19308,16 @@ export interface components {
             closed_at: string | null;
             /** Log Archived At */
             log_archived_at: string | null;
+            /**
+             * Dedupe Key
+             * @description The workflow's dedupe key filled with the payload.
+             */
+            dedupe_key: string | null;
+            /**
+             * Duplicate Of
+             * @description For a ``skipped`` run: the earlier run with the same dedupe key.
+             */
+            duplicate_of: string | null;
         };
         /** RunCreate */
         RunCreate: {
@@ -19354,7 +19381,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
             /** Error */
             error: string | null;
             /** Cancel Requested */
@@ -19370,6 +19397,16 @@ export interface components {
             closed_at: string | null;
             /** Log Archived At */
             log_archived_at: string | null;
+            /**
+             * Dedupe Key
+             * @description The workflow's dedupe key filled with the payload.
+             */
+            dedupe_key: string | null;
+            /**
+             * Duplicate Of
+             * @description For a ``skipped`` run: the earlier run with the same dedupe key.
+             */
+            duplicate_of: string | null;
             /** Steps */
             steps: components["schemas"]["StepRun"][];
         };
@@ -20456,6 +20493,10 @@ export interface components {
             concurrency_mode: "unlimited" | "one_at_a_time" | "one_per_key";
             /** Concurrency Key */
             concurrency_key?: string | null;
+            /** Dedupe Key */
+            dedupe_key?: string | null;
+            /** Dedupe Window Seconds */
+            dedupe_window_seconds?: number | null;
             /**
              * Max Run Time Seconds
              * @default 7200
@@ -20513,7 +20554,7 @@ export interface components {
              * Run Status
              * @enum {string}
              */
-            run_status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            run_status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
             /** Run Error */
             run_error: string | null;
             /** Workflow Slug */

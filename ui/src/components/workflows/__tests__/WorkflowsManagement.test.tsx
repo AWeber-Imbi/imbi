@@ -402,6 +402,134 @@ describe('WorkflowsManagement', () => {
     )
   })
 
+  it('shows a skipped run as a duplicate and links to the first', async () => {
+    const first = { ...RUN, id: '9d8e7f6a-0000-4000-8000-000000000002' }
+    const skipped = {
+      ...RUN,
+      closed_at: RUN.created_at,
+      dedupe_key: 'octo/imbi:abc123',
+      duplicate_of: first.id,
+      origin_id: 'hook',
+      origin_kind: 'webhook',
+      status: 'skipped' as const,
+    }
+    vi.mocked(endpoints.listWorkflowRuns).mockResolvedValue([skipped, first])
+    vi.mocked(endpoints.getWorkflowRun).mockImplementation(
+      async (_o, _s, id) => ({
+        ...(id === first.id ? first : skipped),
+        steps: [],
+      }),
+    )
+    renderAt(`/agents/workflows/deploy-guard?run=${skipped.id}`)
+    const note = await screen.findByText(/^Skipped: duplicate of/)
+    expect(note).toHaveTextContent('octo/imbi:abc123')
+    expect(screen.queryByText('This run has no steps.')).not.toBeInTheDocument()
+    fireEvent.click(within(note).getByRole('button', { name: 'run 9d8e7f6a' }))
+    await waitFor(() =>
+      expect(
+        vi.mocked(endpoints.getWorkflowRun).mock.calls.map((c) => c[2]),
+      ).toContain(first.id),
+    )
+    expect(
+      await screen.findByText(`Run ${first.id.slice(0, 8)} · v2 · Queued`),
+    ).toBeInTheDocument()
+  })
+
+  it('saves a dedupe key and window from the settings', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    const key = await screen.findByLabelText('Dedupe key')
+    expect(screen.queryByLabelText('Dedupe window (days)')).toBeNull()
+    fireEvent.change(key, {
+      target: { value: '{{ trigger.payload.repository.full_name }}' },
+    })
+    fireEvent.change(screen.getByLabelText('Dedupe window (days)'), {
+      target: { value: '14' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.updateWorkflow).toHaveBeenCalled())
+    const body = vi.mocked(endpoints.updateWorkflow).mock.calls[0][2]
+    expect(body.settings).toMatchObject({
+      dedupe_key: '{{ trigger.payload.repository.full_name }}',
+      dedupe_window_seconds: 1_209_600,
+    })
+  })
+
+  it('keeps a partial dedupe window while it is typed', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.service }}' },
+    })
+    const field = screen.getByLabelText('Dedupe window (days)')
+    fireEvent.change(field, { target: { value: '0' } })
+    expect(field).toHaveValue(0)
+    fireEvent.change(field, { target: { value: '0.5' } })
+    expect(field).toHaveValue(0.5)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.updateWorkflow).toHaveBeenCalled())
+    const body = vi.mocked(endpoints.updateWorkflow).mock.calls[0][2]
+    expect(body.settings).toMatchObject({ dedupe_window_seconds: 43_200 })
+  })
+
+  it('resets an invalid dedupe window to the saved value on blur', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.service }}' },
+    })
+    const field = screen.getByLabelText('Dedupe window (days)')
+    fireEvent.change(field, { target: { value: '14' } })
+    fireEvent.change(field, { target: { value: '-1' } })
+    expect(field).toHaveValue(-1)
+    fireEvent.blur(field)
+    expect(field).toHaveValue(14)
+  })
+
+  it('keeps the saved dedupe window for unparsable input', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.service }}' },
+    })
+    const field = screen.getByLabelText('Dedupe window (days)')
+    fireEvent.change(field, { target: { value: '14' } })
+    // A browser reports text such as `14e` as an empty value with
+    // validity.badInput set; jsdom does not, so stub it.
+    Object.defineProperty(field, 'validity', {
+      configurable: true,
+      value: { badInput: true },
+    })
+    fireEvent.change(field, { target: { value: '' } })
+    fireEvent.blur(field)
+    expect(field).toHaveValue(14)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.updateWorkflow).toHaveBeenCalled())
+    const body = vi.mocked(endpoints.updateWorkflow).mock.calls[0][2]
+    expect(body.settings).toMatchObject({ dedupe_window_seconds: 1_209_600 })
+  })
+
+  it('shows a dedupe validation error in the settings', async () => {
+    vi.mocked(endpoints.validateWorkflow).mockResolvedValue({
+      issues: [
+        {
+          code: 'dedupe_window_without_key',
+          edge_index: null,
+          message: 'A dedupe window needs a dedupe key',
+          node_id: null,
+          severity: 'error',
+        },
+      ],
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.sha }}' },
+    })
+    expect(
+      await screen.findByText('A dedupe window needs a dedupe key'),
+    ).toBeInTheDocument()
+  })
+
   it('hides Cancel run after the API refuses it with 403', async () => {
     vi.mocked(endpoints.getWorkflow).mockResolvedValue(
       workflow({ active_version: 2, status: 'active' }),

@@ -4,6 +4,8 @@ export const RUN: WorkflowRun = {
   cancel_requested: false,
   closed_at: null,
   created_at: '2026-10-12T00:00:00Z',
+  dedupe_key: null,
+  duplicate_of: null,
   error: null,
   id: '3f1c2a9e-0000-4000-8000-000000000001',
   log_archived_at: null,
@@ -137,6 +139,8 @@ export function workflow(overrides: Partial<Workflow> = {}): Workflow {
       settings: {
         concurrency_key: null,
         concurrency_mode: 'unlimited',
+        dedupe_key: null,
+        dedupe_window_seconds: null,
         max_run_time_seconds: 3600,
         on_failure: 'notify_owner_team',
       },
