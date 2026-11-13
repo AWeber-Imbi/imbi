@@ -76,10 +76,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 ## Next release
 
-1. Run `imbi-api setup-permissions`. It gives the `imbi-scheduler` role
-   `admin:maintenance:manage`. The new `marketplace-sync` system task
-   starts a maintenance operation every hour, and without the permission
-   each run gets a `403`. See
+1. Run `imbi-api setup-permissions`. It adds
+   `admin:maintenance:marketplace-sync` and gives it to the
+   `imbi-scheduler` role. The new `marketplace-sync` system task starts
+   that maintenance operation every hour, and without the permission each
+   run gets a `403`. See
    [System tasks](../scheduler/tasks.md#system-tasks).
 
 ## 2.49.0

@@ -170,6 +170,25 @@ class MaintenanceEndpointTestCase(support.SharedAppTestCase):
             response = client.post('/maintenance/operations/rescore/run')
         self.assertEqual(403, response.status_code)
 
+    def test_run_allows_the_permission_of_one_operation(self) -> None:
+        # What the scheduler's account has for its system task: it starts
+        # that operation and no other.
+        self._use_non_admin()
+        self.auth_context.permissions = {'admin:maintenance:rescore'}
+        started = state.RunStatus(state='running', run_id='r1', total=1)
+        with (
+            mock.patch.object(
+                state, 'start_run', mock.AsyncMock(return_value=started)
+            ),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            allowed = client.post('/maintenance/operations/rescore/run')
+            refused = client.post(
+                '/maintenance/operations/orphan-release-purge/run'
+            )
+        self.assertEqual(202, allowed.status_code)
+        self.assertEqual(403, refused.status_code)
+
     def test_cancel_running_operation(self) -> None:
         cancelled = state.RunStatus(state='cancelled', run_id='r1', total=2)
         with (

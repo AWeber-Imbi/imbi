@@ -622,6 +622,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'maintenance:manage',
         'Run and cancel global maintenance operations',
     ),
+    (
+        'admin:maintenance:marketplace-sync',
+        'admin',
+        'maintenance:marketplace-sync',
+        'Start the marketplace-sync maintenance operation',
+    ),
     # Project plugin access
     (
         'project:configuration:read',
@@ -1002,9 +1008,11 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # `system` tasks belong to no user, so firing and managing
             # them is an :admin operation by definition.
             'scheduled_task:admin',
-            # System tasks start maintenance operations
-            # (POST /maintenance/operations/{slug}/run).
-            'admin:maintenance:manage',
+            # The marketplace-sync system task starts that one
+            # maintenance operation. Not admin:maintenance:manage: a user
+            # who can make a task that runs as this account could then
+            # start any operation, including the purges.
+            'admin:maintenance:marketplace-sync',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
