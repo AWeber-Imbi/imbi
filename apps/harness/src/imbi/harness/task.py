@@ -852,12 +852,16 @@ class TaskRun:
                     state = await self.api.set_outcome(
                         kind, reason, self.structured_output
                     )
-                except api.Refused as err:
-                    if err.code != _OUTPUT_REFUSED:
+                except (api.Refused, ValueError) as err:
+                    # ValueError: httpx cannot encode the output as JSON
+                    # (a lone surrogate, NaN), so imbi-api never sees it.
+                    if isinstance(err, api.Refused) and (
+                        err.code != _OUTPUT_REFUSED
+                    ):
                         raise
                     # Close the task without the output: an open task
                     # goes back to the queue and runs again.
-                    kind, reason = 'failed_external', err.code
+                    kind, reason = 'failed_external', _OUTPUT_REFUSED
                     state = await self.api.set_outcome(kind, reason)
             self.state = state
         except api.Refused as err:
