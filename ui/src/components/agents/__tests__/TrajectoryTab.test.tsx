@@ -1,9 +1,10 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { render, screen, within } from '@/test/utils'
+import { fireEvent, render, screen, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
+import { focusedBy, totalText } from '../TrajectoryOverview'
 import { TrajectoryTab } from '../TrajectoryTab'
 import { DURATION_KEY } from '../TrajectoryToolbar'
 import { event, task } from './taskFixtures'
@@ -205,5 +206,107 @@ describe('TrajectoryTab toolbar', () => {
       DURATION_KEY,
       'true',
     )
+  })
+})
+
+function spanBars() {
+  return [...track().querySelectorAll<HTMLElement>('[data-span]')]
+}
+
+function track() {
+  return screen.getByRole('application', { name: 'Timing overview' })
+}
+
+describe('TrajectoryTab overview', () => {
+  it('draws one span per record in three lanes', () => {
+    renderTab()
+    expect(screen.getByText('Input')).toBeInTheDocument()
+    expect(screen.getByText('Model')).toBeInTheDocument()
+    expect(screen.getByText('Tools')).toBeInTheDocument()
+    expect(spanBars()).toHaveLength(9)
+    expect(spanBars().map((s) => s.style.top)).toEqual([
+      '0px',
+      '0px',
+      '14px',
+      '28px',
+      '28px',
+      '14px',
+      '0px',
+      '14px',
+      '28px',
+    ])
+  })
+
+  it('selects a record when its span is clicked', () => {
+    renderTab()
+    const bar = spanBars()[3]
+    fireEvent.pointerDown(bar, { button: 0, clientX: 10 })
+    fireEvent.pointerUp(bar, { button: 0, clientX: 10 })
+    expect(rows()[3]).toHaveAttribute('aria-selected', 'true')
+    expect(spanBars()[3]).toHaveAttribute('data-current', 'true')
+  })
+
+  it('focuses the ledger on a dragged range, and Escape clears it', () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
+    fireEvent.pointerMove(track(), { button: 0, clientX: 150 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 150 })
+    expect(rows()[0]).toHaveAttribute('data-timeline-focus', 'inside')
+    expect(rows()[8]).toHaveAttribute('data-timeline-focus', 'outside')
+    expect(spanBars()[8]).toHaveAttribute('data-dim', 'range')
+    fireEvent.keyDown(track(), { key: 'Escape' })
+    expect(rows()[8]).not.toHaveAttribute('data-timeline-focus')
+  })
+
+  it('clears the range on a right click', () => {
+    renderTab()
+    fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 0 })
+    expect(rows()[0]).toHaveAttribute('data-timeline-focus')
+    fireEvent.pointerDown(track(), { button: 2, clientX: 0 })
+    fireEvent.pointerUp(track(), { button: 2, clientX: 0 })
+    expect(rows()[0]).not.toHaveAttribute('data-timeline-focus')
+  })
+
+  it('dims the spans that do not match the search', async () => {
+    renderTab()
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search trajectory' }),
+      'denied',
+    )
+    const dimmed = spanBars().filter((s) => s.dataset.dim === 'search')
+    expect(dimmed).toHaveLength(8)
+  })
+
+  it('says when there is no timing data', () => {
+    renderTab('closed', [])
+    expect(screen.getByText('No timing data')).toBeInTheDocument()
+  })
+})
+
+describe('overview helpers', () => {
+  it('focuses the records active at any point of a range', () => {
+    const spans = [
+      { end: 1, id: 'a', lane: 0 as const, start: 0 },
+      { end: 3, id: 'b', lane: 1 as const, start: 1 },
+      { end: 4, id: 'c', lane: 2 as const, start: 3.5 },
+    ]
+    expect([...focusedBy(spans, [1.5, 2])!]).toEqual(['b'])
+    expect(focusedBy(spans, null)).toBeNull()
+  })
+
+  it('formats totals with thousands separators', () => {
+    expect(totalText(1234.4)).toBe('Total 1,234 ms')
   })
 })

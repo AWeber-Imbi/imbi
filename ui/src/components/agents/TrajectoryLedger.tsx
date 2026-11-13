@@ -47,7 +47,8 @@ interface LedgerProps {
   onSelect: (selection: TrajectorySelection) => void
   requests: TrajectoryRequest[]
   rows: TrajectoryRow[]
-  scrollTo: null | string
+  /** A new object scrolls the ledger to that record. */
+  scrollTo: null | { id: string }
   selection: TrajectorySelection
   /** The turn number at the row where each turn starts. */
   turnStarts: Map<string, number>
@@ -103,9 +104,26 @@ export function TrajectoryLedger({
     if (!scrollTo) return
     const row = [
       ...(pane.current?.querySelectorAll<HTMLElement>('[data-record]') ?? []),
-    ].find((el) => el.dataset.record === scrollTo)
+    ].find((el) => el.dataset.record === scrollTo.id)
     row?.scrollIntoView?.({ block: 'nearest' })
   }, [scrollTo])
+
+  useEffect(() => {
+    const el = pane.current
+    if (!focused || !el) return
+    const inside = [
+      ...el.querySelectorAll<HTMLElement>('[data-timeline-focus="inside"]'),
+    ]
+    if (!inside.length) return
+    const last = inside[inside.length - 1]
+    const top = inside[0].offsetTop
+    const bottom = last.offsetTop + last.offsetHeight
+    const target =
+      bottom - top <= el.clientHeight
+        ? (top + bottom) / 2 - el.clientHeight / 2
+        : top
+    el.scrollTo?.({ behavior: 'smooth', top: Math.max(0, target) })
+  }, [focused])
 
   return (
     <div

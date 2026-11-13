@@ -13,9 +13,15 @@ import {
   type Folds,
   recordForSeq,
   rowsOf,
+  spansOf,
   type Trajectory,
   type TrajectoryRecord,
 } from './trajectoryModel'
+import {
+  focusedBy,
+  TrajectoryOverview,
+  type TrajectoryRange,
+} from './TrajectoryOverview'
 import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
 
 const SET_OF: Record<FoldButton, keyof Folds> = {
@@ -26,7 +32,8 @@ const SET_OF: Record<FoldButton, keyof Folds> = {
 
 /**
  * The Trajectory tab, after the DeepSeek Harness trajectory view: a
- * toolbar and a ledger of every record the task produced.
+ * toolbar, a timing overview, and a ledger of every record the task
+ * produced.
  */
 export function TrajectoryTab({
   events,
@@ -44,18 +51,42 @@ export function TrajectoryTab({
   )
   const [folds, setFolds] = useState<Folds>(emptyFolds)
   const [selection, setSelection] = useState<TrajectorySelection>(null)
-  const [scrollTo, setScrollTo] = useState<null | string>(null)
+  const [scrollTo, setScrollTo] = useState<null | { id: string }>(null)
   const [query, setQuery] = useState('')
   const [duration, setDuration] = useTrajectoryDuration()
+  const [range, setRange] = useState<null | TrajectoryRange>(null)
 
   const { records, requests, turns } = trajectory
+  const mode = duration ? 'duration' : 'sequence'
   const rows = useMemo(
     () => rowsOf(trajectory, folds, query),
     [trajectory, folds, query],
   )
+  const { domain, spans } = useMemo(
+    () => spansOf(records, mode),
+    [records, mode],
+  )
+  const focused = useMemo(() => focusedBy(spans, range), [spans, range])
+  const matches = useMemo(
+    () =>
+      query.trim()
+        ? new Set(
+            rows.flatMap((r) => (r.kind === 'record' ? [r.record.id] : [])),
+          )
+        : null,
+    [rows, query],
+  )
   const turnStarts = useMemo(
     () => new Map(turns.map((t) => [t.first, t.number])),
     [turns],
+  )
+  const boundaries = useMemo(
+    () =>
+      turns
+        .slice(1)
+        .flatMap((t) => spans.filter((s) => s.id === t.first))
+        .map((s) => s.start),
+    [turns, spans],
   )
   const byId = useMemo(() => new Map(records.map((r) => [r.id, r])), [records])
   const keys = useMemo(
@@ -74,6 +105,14 @@ export function TrajectoryTab({
     }),
   ) as Record<FoldButton, boolean | null>
 
+  const reveal = useCallback(
+    (record: TrajectoryRecord) => {
+      setFolds((prev) => unfoldFor(prev, record, trajectory))
+      setScrollTo({ id: record.id })
+    },
+    [trajectory],
+  )
+
   const linked = /^#e(\d+)$/.exec(hash)?.[1]
   useEffect(() => {
     if (!linked) return
@@ -84,20 +123,20 @@ export function TrajectoryTab({
         ? prev
         : { id: record.id, type: 'record' },
     )
-    setFolds((prev) => unfoldFor(prev, record, trajectory))
-    setScrollTo(record.id)
-  }, [linked, records, trajectory])
+    reveal(record)
+  }, [linked, records, reveal])
 
   const select = useCallback(
     (next: TrajectorySelection) => {
       setSelection(next)
       if (next?.type !== 'record') return
+      if (focused && !focused.has(next.id)) setRange(null)
       const record = byId.get(next.id)
       const seq = record?.seqs.length ? Math.min(...record.seqs) : null
       if (seq !== null && hash !== `#e${seq}`)
         navigate(`${pathname}#e${seq}`, { replace: true })
     },
-    [byId, hash, navigate, pathname],
+    [byId, focused, hash, navigate, pathname],
   )
 
   const toggle = (fold: Fold) =>
@@ -144,14 +183,35 @@ export function TrajectoryTab({
       <TrajectoryToolbar
         duration={duration}
         folded={folded}
-        onDuration={setDuration}
+        onDuration={(on) => {
+          setDuration(on)
+          setRange(null)
+        }}
         onFold={foldAll}
         onQuery={setQuery}
         query={query}
       />
+      <TrajectoryOverview
+        boundaries={boundaries}
+        domain={domain}
+        key={mode}
+        matches={matches}
+        mode={mode}
+        onRange={setRange}
+        onSelect={(id) => {
+          const record = byId.get(id)
+          if (!record) return
+          select({ id, type: 'record' })
+          reveal(record)
+        }}
+        range={range}
+        records={byId}
+        selected={selection?.type === 'record' ? selection.id : null}
+        spans={spans}
+      />
       <TrajectoryLedger
         activeTurn={activeTurn}
-        focused={null}
+        focused={focused}
         onClear={() => setSelection(null)}
         onDoubleClick={onDoubleClick}
         onFold={toggle}
