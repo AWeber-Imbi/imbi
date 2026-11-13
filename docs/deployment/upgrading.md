@@ -88,7 +88,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [Targets](../scheduler/tasks.md#targets).
 2. **Before you deploy**, delete every scheduled task whose `api` target
    path is under `/auth`. The scheduler now refuses those paths, and one
-   such task stops `GET /tasks` from listing any task. Find them with:
+   such task stops `GET /tasks` from listing any task. Find them with
+   the query below. It uses the default schema `scheduler`. If you set
+   `IMBI_SCHEDULER_SCHEMA`, use that schema instead.
 
     ```sql
     SELECT slug FROM scheduler.tasks
