@@ -48,6 +48,7 @@ import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
+import { turns } from './conversationTurns'
 import {
   checksFrom,
   formatElapsed,
@@ -95,10 +96,10 @@ export function TaskDetail({
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
-  const conversationCount = useMemo(
-    () => timeline(events.data ?? []).length,
-    [events.data],
-  )
+  const [conversationCount, logCount] = useMemo(() => {
+    const entries = timeline(events.data ?? [])
+    return [turns(entries, { live: false }).length, entries.length]
+  }, [events.data])
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventCount = events.data?.length ?? 0
   useEffect(() => {
@@ -143,7 +144,7 @@ export function TaskDetail({
       key: 'conversation',
       label: 'Conversation',
     },
-    { count: eventCount, key: 'log', label: 'Log' },
+    { count: logCount, key: 'log', label: 'Log' },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',

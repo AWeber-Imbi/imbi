@@ -8,6 +8,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
 import { EVENT_POLL_MS } from '../taskQueries'
+import { timeline } from '../taskTimeline'
 import { agent, catalog, promptVersion } from './fixtures'
 import { event, task } from './taskFixtures'
 
@@ -601,7 +602,7 @@ describe('Tasks', () => {
         '#e2',
       )
       expect(
-        screen.getByRole('tab', { name: `Log${log.length}` }),
+        screen.getByRole('tab', { name: `Log${timeline(log).length}` }),
       ).toHaveAttribute('aria-selected', 'true')
     })
 

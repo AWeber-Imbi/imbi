@@ -392,7 +392,7 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
     !canCollapseTurn(turn) ||
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
   const hasWork = turn.items.some((i) => i.kind === 'group')
-  const footer = hasWork ? turnFooter(turn) : null
+  const footer = turnFooter(turn)
   return (
     <MessageScrollerItem messageId={turn.id} scrollAnchor>
       <div className="flex flex-col gap-4">

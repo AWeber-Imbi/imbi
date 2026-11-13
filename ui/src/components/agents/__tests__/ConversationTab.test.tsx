@@ -122,6 +122,11 @@ describe('ConversationTab', () => {
     ).toBeInTheDocument()
   })
 
+  it('gives a reply-only turn a footer too', () => {
+    renderTab('closed', [LOG[0], event(2, 'turn', { body: 'Hi.' })])
+    expect(screen.getByText('1s')).toBeInTheDocument()
+  })
+
   it('has no footer while the turn runs', () => {
     renderTab('running', LOG.slice(0, 3))
     expect(screen.queryByText(/1 tool/)).not.toBeInTheDocument()
