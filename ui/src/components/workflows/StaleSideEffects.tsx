@@ -137,9 +137,7 @@ function Candidates({
     ))
   }
   return (
-    <div className="col-span-4 flex flex-col gap-1.5 pl-33 text-xs">
-      {body}
-    </div>
+    <div className="col-span-4 flex flex-col gap-1.5 pl-33 text-xs">{body}</div>
   )
 }
 
