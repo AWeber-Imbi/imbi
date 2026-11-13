@@ -1295,6 +1295,7 @@ dev = [
     { name = "ruff" },
     { name = "tomli-w" },
     { name = "types-croniter" },
+    { name = "types-jsonschema" },
     { name = "types-nanoid" },
     { name = "watchfiles" },
 ]
@@ -1350,6 +1351,7 @@ dev = [
     { name = "ruff", specifier = "~=0.14.6" },
     { name = "tomli-w", specifier = "~=1.2" },
     { name = "types-croniter", specifier = ">=6.0" },
+    { name = "types-jsonschema", specifier = ">=4.26" },
     { name = "types-nanoid", specifier = ">=2.0.0.20260408" },
     { name = "watchfiles" },
 ]
@@ -1382,6 +1384,7 @@ dependencies = [
     { name = "imbi-common", extra = ["databases", "llm", "mcp", "sentry", "server"] },
     { name = "jinja2" },
     { name = "jsonpatch" },
+    { name = "jsonschema" },
     { name = "limits" },
     { name = "mcp" },
     { name = "nanoid" },
@@ -1424,6 +1427,7 @@ requires-dist = [
     { name = "imbi-common", extras = ["databases", "llm", "mcp", "sentry", "server"], editable = "libraries/common" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
+    { name = "jsonschema", specifier = ">=4.26" },
     { name = "limits", specifier = ">=5,<6" },
     { name = "mcp", specifier = ">=1.26.0" },
     { name = "nanoid", specifier = ">=2.0.0" },
@@ -4115,6 +4119,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c0/e1/ef8900515a103efa41b29ce81e59efb18e72bc9642139c5a3a17f6022641/types_croniter-6.2.4.20260711.tar.gz", hash = "sha256:807793e109f4e0d51ec18f6277a1a5f1d133e425ac6bee3a7c3254ab1793e0ea", size = 12164, upload-time = "2026-07-11T04:51:18.624Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/3f/896a98180a55f855bd068b97e8c99fd4ce1885a4b43f68fd7b29641084f6/types_croniter-6.2.4.20260711-py3-none-any.whl", hash = "sha256:601b68139a47fe1b2177f433132cc81fd91155f3059a49c5cb63404c389dff01", size = 9746, upload-time = "2026-07-11T04:51:17.662Z" },
+]
+
+[[package]]
+name = "types-jsonschema"
+version = "4.26.0.20261006"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/d2/1f742605f5a6d39f993134885b8de41c98af606871d3ebddaf3e776bd1eb/types_jsonschema-4.26.0.20261006.tar.gz", hash = "sha256:3eb7db61b6819d40addfdaac7173e749071a7d4a9a4394f0c844598ec84b2500", size = 16843, upload-time = "2026-10-06T08:16:07.318Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8b/a0/4f2e3c0dc3d5cad958006f2e0307065cc8fe4fbf0393ff0b69d55ee9bbe5/types_jsonschema-4.26.0.20261006-py3-none-any.whl", hash = "sha256:29301f4e65e3928540cdf5e23ad716e38bb0c0b416a48dada213edd3d70206ec", size = 16113, upload-time = "2026-10-06T08:16:06.355Z" },
 ]
 
 [[package]]

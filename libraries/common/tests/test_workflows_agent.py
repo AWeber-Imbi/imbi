@@ -215,6 +215,22 @@ class ResultTestCase(unittest.TestCase):
             {'a': ['Hi', 'other']},
         )
 
+    def test_match_enum_case(self) -> None:
+        schema = agent.output_schema(_params(FIELDS).output_fields) or {}
+        output = {
+            'priority': 'HIGH',
+            'emails': [{'subject': 'Hi'}],
+            'extra': 'kept',
+        }
+        self.assertEqual(
+            agent.match_enum_case(schema, output),
+            {
+                'priority': 'High',
+                'emails': [{'subject': 'Hi'}],
+                'extra': 'kept',
+            },
+        )
+
     def test_blank_result(self) -> None:
         fields = _params(FIELDS).output_fields
         self.assertEqual(

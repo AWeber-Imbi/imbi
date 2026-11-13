@@ -35,6 +35,8 @@ import typing
 import uuid
 
 import fastapi
+import jsonschema
+import orjson
 import pydantic
 
 from imbi.api import agent_tasks, harness
@@ -44,6 +46,7 @@ from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import store as harness_store
 from imbi.common import graph, models
+from imbi.common.workflows.registry import agent as agent_step
 
 #: The largest inline event payload, in bytes of JSON.
 MAX_PAYLOAD_BYTES = tasks_api.MAX_PAYLOAD_BYTES
@@ -55,6 +58,8 @@ MAX_BATCH_PAYLOAD_BYTES = 4 * MAX_LARGE_PAYLOAD_BYTES
 LARGE_EVENT_TYPES = frozenset({'turn', 'tool.called'})
 #: The most continuation parts of one call.
 MAX_PARTS = 1000
+#: The largest ``structured_output`` of an outcome, in bytes of JSON.
+MAX_STRUCTURED_OUTPUT_BYTES = 256 * 1024
 
 #: The event types that a harness writes. Imbi writes all others.
 HarnessEventType = typing.Literal[
@@ -859,6 +864,45 @@ async def open_agent_task_request(
     )
 
 
+def _check_structured_output(
+    task: dict[str, typing.Any], output: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Return ``output`` with its enum values in the case of the schema.
+
+    Raise when ``output`` is too large or does not match the schema.
+    Later workflow steps use the output as the step result, so Imbi
+    does not trust the harness to have validated it. The ``format``
+    keyword is not checked, which matches what the Agent SDK accepts.
+    """
+    schema = task['output_schema']
+    if schema is None:
+        raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
+    # The SDK may not keep enum case (#689), so match it before checking.
+    # Measure after the match: a case change can make a string longer.
+    output = agent_step.match_enum_case(schema, output)
+    try:
+        size = len(orjson.dumps(output))
+    except orjson.JSONEncodeError as err:  # e.g. an integer over 64 bits
+        raise _invalid_output(f'structured_output: {err}') from err
+    if size > MAX_STRUCTURED_OUTPUT_BYTES:
+        raise _invalid_output(
+            f'structured_output is {size} bytes;'
+            f' the limit is {MAX_STRUCTURED_OUTPUT_BYTES}'
+        )
+    try:
+        jsonschema.validate(output, schema)
+    except (jsonschema.ValidationError, jsonschema.SchemaError) as err:
+        raise _invalid_output(f'structured_output: {err.message}') from err
+    return output
+
+
+def _invalid_output(message: str) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=422,
+        detail={'error': 'invalid_structured_output', 'message': message},
+    )
+
+
 @agent_task_harness_router.post(
     '/{short_id}/outcome', response_model=TaskState
 )
@@ -878,8 +922,15 @@ async def set_agent_task_outcome(
         404: No such task.
         409: ``task_closed``.
         422: Not an F5 outcome, or no reason.
+            ``invalid_structured_output``: ``structured_output`` does
+            not match the ``output_schema`` of the task, the task has
+            no ``output_schema``, or ``structured_output`` is larger
+            than :data:`MAX_STRUCTURED_OUTPUT_BYTES` or is not JSON.
 
     """
+    output = data.structured_output
+    if output is not None:
+        output = _check_structured_output(task, output)
     try:
         row = await store.set_outcome(
             org_id,
@@ -887,7 +938,7 @@ async def set_agent_task_outcome(
             data.outcome,
             data.reason,
             _agent_actor(task),
-            data.structured_output,
+            output,
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err

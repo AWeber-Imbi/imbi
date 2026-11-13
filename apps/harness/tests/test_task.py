@@ -1540,6 +1540,54 @@ class RunTestCase(TaskTestCase):
             ],
         )
 
+    async def test_fails_when_the_structured_output_is_refused(self) -> None:
+        result = FakeClient.messages[-1]
+        self.assertIsInstance(result, sdk.ResultMessage)
+        result = typing.cast(sdk.ResultMessage, result)
+        result.structured_output = {'subjects': 1}
+        post = self.client.post.side_effect
+        refusals = [api.Refused(422, 'invalid_structured_output')]
+
+        async def refuse_once(path: str, *args: typing.Any, **kw: typing.Any):
+            if path.endswith('/outcome') and refusals:
+                raise refusals.pop()
+            return await post(path, *args, **kw)
+
+        self.client.post.side_effect = refuse_once
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [
+                {
+                    'outcome': 'done_acted',
+                    'reason': None,
+                    'structured_output': {'subjects': 1},
+                },
+                {
+                    'outcome': 'failed_external',
+                    'reason': 'invalid_structured_output',
+                },
+            ],
+        )
+
+    async def test_fails_when_the_structured_output_cannot_encode(
+        self,
+    ) -> None:
+        result = FakeClient.messages[-1]
+        self.assertIsInstance(result, sdk.ResultMessage)
+        result = typing.cast(sdk.ResultMessage, result)
+        result.structured_output = {'subjects': ['\ud800']}
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [
+                {
+                    'outcome': 'failed_external',
+                    'reason': 'invalid_structured_output',
+                },
+            ],
+        )
+
     async def test_fails_without_the_structured_output(self) -> None:
         self.run_task.task['output_schema'] = {'type': 'object'}
         await self.run_task.run()

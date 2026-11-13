@@ -72,6 +72,9 @@ KEY_RETRY_MAX = 30.0
 #: The shortest wait between two successful refreshes.
 KEY_RENEW_MIN = 30.0
 ANTHROPIC_API = 'https://api.anthropic.com'
+#: The error code of an outcome that imbi-api refused for its
+#: structured output. The harness then ends the task without it.
+_OUTPUT_REFUSED = 'invalid_structured_output'
 #: The built-in tools when the organization allows all of them. The
 #: runner uses ``dontAsk``, so a tool must be listed to run: the CLI's
 #: default mode sends ``Bash`` to a classifier (P5a).
@@ -845,9 +848,25 @@ class TaskRun:
                     self.session_id, 'cancelled'
                 )
             else:
-                state = await self.api.set_outcome(
-                    kind, reason, self.structured_output
-                )
+                output = self.structured_output
+                try:
+                    # httpx encodes the body like this. A lone surrogate
+                    # or NaN fails here, before imbi-api sees the output.
+                    json.dumps(
+                        output, ensure_ascii=False, allow_nan=False
+                    ).encode()
+                except ValueError:
+                    output = None
+                    kind, reason = 'failed_external', _OUTPUT_REFUSED
+                try:
+                    state = await self.api.set_outcome(kind, reason, output)
+                except api.Refused as err:
+                    if err.code != _OUTPUT_REFUSED:
+                        raise
+                    # Close the task without the output: an open task
+                    # goes back to the queue and runs again.
+                    kind, reason = 'failed_external', _OUTPUT_REFUSED
+                    state = await self.api.set_outcome(kind, reason)
             self.state = state
         except api.Refused as err:
             if err.code != 'task_closed':
