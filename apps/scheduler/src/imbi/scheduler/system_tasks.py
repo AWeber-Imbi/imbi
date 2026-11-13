@@ -30,7 +30,7 @@ SYSTEM_TASKS: tuple[dict[str, typing.Any], ...] = (
             'Starts the marketplace-sync maintenance operation, which reads '
             'the catalog of every agent marketplace again.'
         ),
-        'trigger': {'kind': 'interval', 'hours': 1},
+        'trigger': {'kind': 'interval', 'hours': 6},
         'target': {
             'kind': 'api',
             'method': 'POST',

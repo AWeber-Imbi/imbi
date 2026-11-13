@@ -310,7 +310,7 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'Read the catalog of every agent marketplace in every '
                 'organization again at its default branch head. Agent '
                 'versions keep the commit they pinned. The scheduler runs '
-                'this every hour.'
+                'this every 6 hours.'
             ),
             pause_key=None,
             enumerate=operations.enumerate_marketplaces,

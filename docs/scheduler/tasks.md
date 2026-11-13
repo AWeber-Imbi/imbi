@@ -245,7 +245,7 @@ imbi-api as the scheduler's service account.
 
 | Slug | Fires | Calls |
 | --- | --- | --- |
-| `marketplace-sync` | Every hour | `POST /maintenance/operations/marketplace-sync/run` |
+| `marketplace-sync` | Every 6 hours | `POST /maintenance/operations/marketplace-sync/run` |
 
 At startup the scheduler creates each system task that does not exist. It
 never changes a task that exists, so a changed schedule or a pause stays after
