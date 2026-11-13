@@ -19,8 +19,9 @@ leaves nothing half made: the next pass tries again.
   binding itself when a task closes. It is marked ``synced``.
 
 A pass that leaves a binding ``failed`` schedules the next one early,
-after each of ``RETRY_DELAYS`` in turn, until a pass leaves nothing
-failed.
+after each of ``RETRY_DELAYS`` in turn. Once they run out, passes go back
+to the reconcile interval, so a binding that never syncs (a bad cron
+expression) does not re-sync every binding each minute.
 """
 
 import asyncio
@@ -46,8 +47,9 @@ SCHEDULER_ACCOUNT = 'imbi-scheduler'
 HTTP_NOT_FOUND = 404
 
 #: Seconds before the next pass after a pass that left a binding
-#: ``failed``, one per pass in a row; the last repeats. A delay longer
-#: than the reconcile interval waits the interval.
+#: ``failed``, one per pass in a row. After the last, failed passes wait
+#: the reconcile interval. A delay longer than the interval waits the
+#: interval.
 RETRY_DELAYS: tuple[float, ...] = (5.0, 15.0, 30.0, 60.0)
 
 _RULES: typing.LiteralString = """
@@ -140,15 +142,17 @@ class Reconciler:
     def _next_wait(self, failed: bool) -> float:
         """Return the seconds to wait after a pass.
 
-        A pass that failed waits the next of ``retry_delays``; one that
-        did not waits the reconcile interval and resets the delays.
+        A pass that failed waits the next of ``retry_delays``, and the
+        interval once they run out. A pass that did not fail waits the
+        interval and resets the delays.
         """
         interval = self.config.reconcile_interval
         if not failed:
             self._failed_passes = 0
             return interval
-        last = len(self.retry_delays) - 1
-        delay = self.retry_delays[min(self._failed_passes, last)]
+        if self._failed_passes >= len(self.retry_delays):
+            return interval
+        delay = self.retry_delays[self._failed_passes]
         self._failed_passes += 1
         return min(delay, interval)
 

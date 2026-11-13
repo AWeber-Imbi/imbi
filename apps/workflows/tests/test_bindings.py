@@ -506,6 +506,16 @@ class RetryTestCase(ReconcilerTestCase):
         ]
         self.assertEqual(waits, [5.0, 15.0, 30.0, 45.0, 45.0, 45.0, 5.0])
 
+    def test_permanent_failure_waits_the_interval(self) -> None:
+        """A binding that never syncs does not keep the passes early."""
+        self.reconciler.retry_delays = (5.0, 15.0)
+        self.reconciler.config.reconcile_interval = 300.0
+        waits = [
+            self.reconciler._next_wait(True)  # pyright: ignore[reportPrivateUsage]
+            for _ in range(5)
+        ]
+        self.assertEqual(waits, [5.0, 15.0, 300.0, 300.0, 300.0])
+
     async def test_failed_binding_is_retried_before_the_interval(
         self,
     ) -> None:

@@ -85,9 +85,10 @@ trigger bindings that it wants to `workflows.trigger_bindings`, then sends a
 The reconciler records each binding as `synced`, or as `failed` with the
 error. It also runs every `IMBI_WORKFLOWS_RECONCILE_INTERVAL` seconds
 (default `300`). After a pass that leaves a binding `failed`, it runs
-again sooner: after 5, 15, 30, and then every 60 seconds, but never later
-than the interval. A pass that leaves nothing `failed` goes back to the
-interval.
+again sooner: after 5, 15, 30, and 60 seconds, but never later than the
+interval. If the binding is still `failed` after that, the reconciler goes
+back to the interval, so a binding that can never sync (a bad cron
+expression) does not make it re-sync every binding each minute.
 
 A webhook binding whose filter or handler config changes, on the same
 Webhook, updates its rule in place. A binding that moves to another
