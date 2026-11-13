@@ -24,11 +24,11 @@ The same round cancels the agent tasks whose agent step has ended
 its step or its run ends, but only as best effort; this is what makes
 the cancel certain.
 
-It also starts again the ``task_completed`` runs of the tasks that
-closed in the last :data:`TASK_TRIGGER_WINDOW_SECONDS`
-(:func:`retry_task_triggers`). The close hook starts them once, after
-the commit, and a failure there is only logged. The run idempotency key
-makes a repeat start no second run.
+It also starts again the ``task_completed`` runs of the closed tasks
+that keep a ``trigger_outbox`` row (:func:`retry_task_triggers`). The
+close hook starts them once, after the commit, and a failure there is
+only logged. The run idempotency key makes a repeat start no second
+run.
 """
 
 import asyncio
@@ -51,8 +51,6 @@ _SWEEP_LOCK_KEY = 'imbi:workflows:log-sweeper'
 #: Runs read per page, so memory and each ClickHouse ``IN`` list stay
 #: bounded when the backlog grows.
 PAGE_SIZE = 500
-#: How far back :func:`retry_task_triggers` looks for closed tasks.
-TASK_TRIGGER_WINDOW_SECONDS = 600
 
 
 @dataclasses.dataclass
@@ -182,9 +180,9 @@ async def cancel_orphan_agent_tasks(
 async def retry_task_triggers(
     tasks: agent_tasks.TaskStore, trigger: task_store.CloseHook
 ) -> None:
-    """Call ``trigger`` again for each task that closed in the last
-    :data:`TASK_TRIGGER_WINDOW_SECONDS`."""
-    for task in await tasks.closed_since(TASK_TRIGGER_WINDOW_SECONDS):
+    """Call ``trigger`` again for each task with a ``trigger_outbox``
+    row."""
+    for task in await tasks.pending_triggers():
         try:
             await trigger(task)
         except Exception:  # noqa: BLE001 -- the next round tries again

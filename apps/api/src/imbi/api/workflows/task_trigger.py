@@ -6,6 +6,11 @@ workflows of the task's org, and starts a run for each trigger whose
 agent and outcomes match. The task id and the trigger node id are the
 idempotency key, so a repeat starts no second run.
 
+The transaction that closes a task writes a ``trigger_outbox`` row.
+The trigger deletes the row when no run failed to start; else the
+workflow sweep calls the trigger again
+(:func:`imbi.api.workflows.sweeper.retry_task_triggers`).
+
 A run that a closed task starts can give an agent a task, which can
 close (or delegate a child task that closes) and start a run again.
 :data:`MAX_DEPTH` stops such a chain: the run origin records its depth,
@@ -78,6 +83,7 @@ class TaskTrigger:
                 task['id'],
                 MAX_DEPTH,
             )
+            await self._tasks.triggers_started(task['id'])
             return
         payload = {
             'task_id': task['short_id'],
@@ -85,6 +91,7 @@ class TaskTrigger:
             'outcome': task['outcome'],
         }
         org = task['organization_id']
+        failed = False
         for binding in await self._definitions.active_bindings(org, KIND):
             if not _matches(binding, task):
                 continue
@@ -112,9 +119,13 @@ class TaskTrigger:
                         activated_by=binding['activated_by'],
                     )
                 )
-            except Exception:  # one workflow must not stop the rest
+            except Exception as error:  # one workflow must not stop the rest
+                # A workflow that is no longer active has no run to start.
+                failed = failed or not isinstance(error, runs_module.NotActive)
                 LOGGER.exception(
                     'Task %s did not start workflow %s',
                     task['id'],
                     workflow_id,
                 )
+        if not failed:
+            await self._tasks.triggers_started(task['id'])

@@ -7,11 +7,13 @@ import datetime
 import typing
 import unittest
 import uuid
+from unittest import mock
 
 import pydantic
 
 from apps.api.tests.endpoints.test_workflow_runs import HeldRunStore
 from imbi.api import workflows
+from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import task_trigger
 from imbi.common.workflows.registry import task_completed
 
@@ -35,12 +37,16 @@ class FakeTasks:
 
     def __init__(self) -> None:
         self.roots: dict[uuid.UUID, dict[str, typing.Any]] = {}
+        self.started: list[uuid.UUID] = []
 
     async def chain_root(
         self, task: dict[str, typing.Any]
     ) -> dict[str, typing.Any] | None:
         chain_id = task['chain_id'] or task['id']
         return task if chain_id == task['id'] else self.roots.get(chain_id)
+
+    async def triggers_started(self, task_id: uuid.UUID) -> None:
+        self.started.append(task_id)
 
 
 class ParamsTestCase(unittest.TestCase):
@@ -154,6 +160,32 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         await self.trigger(_task(organization_id=self.org, agent_id='other'))
         await self.trigger(_task(organization_id=self.org))
         self.assertEqual(await self._runs(), [])
+
+    async def test_outbox_row_stays_until_the_runs_start(self) -> None:
+        """A failed run start keeps the outbox row for the sweep."""
+        await self._activate()
+        task = _task(organization_id=self.org)
+        runs = typing.cast(typing.Any, self.trigger)._runs
+        with mock.patch.object(
+            runs, 'create', mock.AsyncMock(side_effect=RuntimeError('down'))
+        ):
+            await self.trigger(task)
+        self.assertEqual(self.tasks.started, [])
+        await self.trigger(task)
+        self.assertEqual(self.tasks.started, [task['id']])
+        self.assertEqual(len(await self._runs()), 1)
+
+    async def test_inactive_workflow_clears_the_outbox_row(self) -> None:
+        await self._activate()
+        task = _task(organization_id=self.org)
+        runs = typing.cast(typing.Any, self.trigger)._runs
+        with mock.patch.object(
+            runs,
+            'create',
+            mock.AsyncMock(side_effect=runs_module.NotActive('gone')),
+        ):
+            await self.trigger(task)
+        self.assertEqual(self.tasks.started, [task['id']])
 
     async def test_task_closed_before_activation_starts_nothing(self) -> None:
         """The sweep calls the trigger again after the task closed; a

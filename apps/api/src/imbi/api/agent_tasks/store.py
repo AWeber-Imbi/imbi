@@ -366,8 +366,19 @@ class _Write:
         return row
 
     async def update(self, changes: Row) -> Row:
-        """Change columns of the task and keep the new row."""
+        """Change columns of the task and keep the new row.
+
+        A change that closes the task also writes its ``trigger_outbox``
+        row, so its ``task_completed`` runs start even when the close
+        hook fails.
+        """
         self.task = await _update_task(self.conn, self.task['id'], changes)
+        if changes.get('status') == 'closed':
+            await self.conn.execute(
+                'INSERT INTO agent_runtime.trigger_outbox (task_id)'
+                ' VALUES (%s)',
+                (self.task['id'],),
+            )
         return self.task
 
 
@@ -744,18 +755,25 @@ class TaskStore:
             return await log.last_archived_agent_turn(task)
         return None if body is None else str(body)
 
-    async def closed_since(self, seconds: int) -> list[Row]:
-        """Return the tasks that closed in the last ``seconds``."""
+    async def pending_triggers(self) -> list[Row]:
+        """Return the closed tasks that have a ``trigger_outbox`` row."""
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                _SELECT_TASKS + " WHERE t.status = 'closed'"
-                ' AND t.closed_at > NOW() - make_interval(secs => %s)',
-                (seconds,),
+                _SELECT_TASKS + ' JOIN agent_runtime.trigger_outbox AS o'
+                ' ON o.task_id = t.id ORDER BY o.created_at'
             )
             return await cursor.fetchall()
+
+    async def triggers_started(self, task_id: uuid.UUID) -> None:
+        """Delete the ``trigger_outbox`` row of a task."""
+        async with self._pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM agent_runtime.trigger_outbox WHERE task_id = %s',
+                (task_id,),
+            )
 
     async def unarchived(self) -> list[Row]:
         """Return the tasks whose log is not archived, by organization.
@@ -843,7 +861,8 @@ class TaskStore:
             TaskNotFound: No such task.
             TaskOpen: The task, or a child or chain task, is not closed,
                 the log of the task is not archived, its harness chain
-                is not done, or it has open secret resolutions.
+                is not done, it has open secret resolutions, or it or a
+                task in its chain has a ``trigger_outbox`` row.
 
         """
         async with self._pool.connection() as conn, conn.transaction():
@@ -874,14 +893,19 @@ class TaskStore:
                 raise TaskOpen(short_id)
             # The lease sweep still needs the chain row of a root that
             # waits for its fencers, and Broker.sweep joins the open
-            # resolutions of a failed close hook to the task.
+            # resolutions of a failed close hook to the task. A pending
+            # trigger_outbox row of the task, or of a task in the chain
+            # of a root, needs the root for its depth (task_trigger).
             cursor = await conn.execute(
                 'SELECT 1 FROM harness.chains WHERE root_task_id = %s'
                 " AND state IN ('running', 'fencing', 'stuck')"
                 ' UNION ALL SELECT 1 FROM secrets.resolutions'
                 " WHERE task_id = %s AND state IN ('pending', 'active')"
+                ' UNION ALL SELECT 1 FROM agent_runtime.trigger_outbox AS o'
+                ' JOIN agent_runtime.tasks AS c ON c.id = o.task_id'
+                ' WHERE c.id = %s OR c.chain_id = %s'
                 ' LIMIT 1',
-                (task['id'], task['id']),
+                (task['id'], task['id'], task['id'], task['id']),
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
