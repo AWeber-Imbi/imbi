@@ -58,6 +58,7 @@ async def initialize() -> None:
         relational.load_schemata(SCHEMATA_PATH),
         f'imbi.api.initialize.{SCHEMA}',
     )
+    await relational.initialize_deleted_organizations()
 
 
 def create_pool() -> Pool:

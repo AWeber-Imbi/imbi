@@ -16,7 +16,7 @@ from apps.api.tests import secret_support, support
 from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
 from imbi.api.secret_broker import audit, identity, providers, store
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, graph, relational
 from imbi.common.clickhouse import client as ch_client
 
 ALL_PERMISSIONS = frozenset(
@@ -329,6 +329,29 @@ class SecretEndpointTestCase(
         self.assertEqual(
             (await self.audit_events())[-1].type, 'workload_identity_deleted'
         )
+
+    async def test_write_after_an_organization_delete_is_404(self) -> None:
+        """A delete that commits after the endpoint found the organization,
+        but before the write takes its lock, stops the write."""
+        lock = relational.lock_organization_shared
+
+        async def delete_then_lock(
+            conn: typing.Any, organization_id: str
+        ) -> None:
+            async with self.pool.connection() as other:
+                await relational.mark_organization_deleted(
+                    other, organization_id
+                )
+            await lock(conn, organization_id)
+
+        with mock.patch.object(
+            relational, 'lock_organization_shared', delete_then_lock
+        ):
+            response = await self.client.put(
+                self.base + '/workload-identity/', json={'type': 'fake'}
+            )
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertIsNone(await self.store.identity_source(self.org))
 
     async def test_binding_rules(self) -> None:
         body: dict[str, typing.Any] = {

@@ -74,6 +74,39 @@ async def initialize(
             )
 
 
+class OrganizationDeleted(Exception):
+    """The organization was deleted before the write took its lock."""
+
+
+async def initialize_deleted_organizations() -> None:
+    """Create the table of deleted organization ids.
+
+    Each module whose writers call :func:`lock_organization_shared` calls
+    this from its ``initialize``.
+    """
+    await initialize(
+        'organizations',
+        load_schemata(
+            pathlib.Path(__file__).parent / 'organizations_schemata.toml'
+        ),
+        'imbi.common.initialize.organizations',
+    )
+
+
+async def mark_organization_deleted(
+    conn: psycopg.AsyncConnection[typing.Any], organization_id: str
+) -> None:
+    """Record the delete, in the transaction that deletes the rows.
+
+    Call it while the delete lock is held exclusively.
+    """
+    await conn.execute(
+        'INSERT INTO organizations.deleted (organization_id) VALUES (%s)'
+        ' ON CONFLICT DO NOTHING',
+        (organization_id,),
+    )
+
+
 def organization_delete_lock_key(organization_id: str) -> str:
     """The advisory lock key that an organization delete holds.
 
@@ -92,11 +125,24 @@ async def lock_organization_shared(
     delete of the organization runs, and a delete waits for the writer
     to commit, so a delete cannot miss the row. Writers do not wait for
     each other.
+
+    Raises:
+        OrganizationDeleted: A delete of the organization committed
+            before this writer got the lock.
+
     """
     await conn.execute(
         'SELECT pg_advisory_xact_lock_shared(hashtextextended(%s, 0))',
         (organization_delete_lock_key(organization_id),),
     )
+    cursor = await conn.execute(
+        'SELECT 1 FROM organizations.deleted WHERE organization_id = %s',
+        (organization_id,),
+    )
+    if await cursor.fetchone():
+        raise OrganizationDeleted(
+            f'Organization {organization_id} was deleted'
+        )
 
 
 async def _create_schema(
