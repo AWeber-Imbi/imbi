@@ -1,13 +1,16 @@
 """Tests for organization CRUD endpoints."""
 
 import datetime
+import typing
+import uuid
 from unittest import mock
 
+import httpx
 import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
-from imbi.api import models, secret_broker
+from imbi.api import agent_tasks, models, secret_broker, workflows
 from imbi.common import graph
 
 
@@ -58,6 +61,21 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.secret_store.identity_source.return_value = None
         self.test_app.dependency_overrides[secret_broker._inject_store] = (
             lambda: self.secret_store
+        )
+        # The delete transaction: Cypher goes to mock_db.execute, and
+        # each relational count is 0.
+        cursor = mock.AsyncMock()
+        cursor.fetchone.return_value = (0,)
+        self.mock_conn = mock.AsyncMock()
+        self.mock_conn.execute.return_value = cursor
+
+        async def locked_with_connection(
+            _key: str, work: typing.Any
+        ) -> typing.Any:
+            return await work(self.mock_db.execute, self.mock_conn)
+
+        self.mock_db.locked_with_connection.side_effect = (
+            locked_with_connection
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -284,6 +302,18 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn(
             'DETACH DELETE o', self.mock_db.execute.await_args.args[0]
         )
+        self.assertEqual(
+            self.mock_db.execute.await_args.args[1], {'org_id': 'org-1'}
+        )
+
+    def test_delete_organization_changed_during_delete(self) -> None:
+        """A delete that matches no node is refused, not reported done."""
+        self.mock_db.execute.side_effect = [[{'id': 'org-1'}], [], []]
+
+        response = self.client.delete('/organizations/engineering')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('changed during the delete', response.json()['detail'])
 
     def test_delete_organization_not_empty(self) -> None:
         """Nodes or secret providers in the organization block the delete."""
@@ -560,3 +590,187 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
+    """The delete against the live Postgres that ``root:services`` boots."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        from imbi.api.auth import permissions
+
+        self.org = f'orgdel-{uuid.uuid4().hex[:10]}'
+        await graph.initialize()
+        await agent_tasks.initialize()
+        await workflows.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.pool = agent_tasks.create_pool()
+        await self.pool.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            'CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})'
+            ' RETURN o.id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        secrets = mock.AsyncMock(spec=secret_broker.store.SecretStore)
+        secrets.list_all.return_value = []
+        secrets.identity_source.return_value = None
+        admin = models.User(
+            email='admin@example.com',
+            display_name='Admin',
+            is_active=True,
+            is_admin=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        async def current_user() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                user=admin,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions={'organization:delete'},
+            )
+
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = current_user
+        overrides[graph._inject_graph] = lambda: self.graph
+        overrides[secret_broker._inject_store] = lambda: secrets
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.test_app),
+            base_url='http://test',
+        )
+
+    async def _cleanup(self) -> None:
+        await self.client.aclose()
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}}) DETACH DELETE o'
+            ' RETURN 1 AS ok',
+            {'org': self.org},
+            ['ok'],
+        )
+        async with self.pool.connection() as conn:
+            for table in (
+                'agent_runtime.task_dependencies',
+                'agent_runtime.task_projects',
+                'agent_runtime.tasks',
+                'agent_runtime.task_id_sequences',
+                'workflow_runtime.runs',
+                'workflows.trigger_bindings',
+                'workflows.workflows',
+            ):
+                await conn.execute(
+                    f'DELETE FROM {table} WHERE organization_id = %s',
+                    (self.org,),
+                )
+        await self.pool.close()
+        await self.graph.close()
+
+    async def _count(self, table: str) -> int:
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                f'SELECT count(*) FROM {table} WHERE organization_id = %s',
+                (self.org,),
+            )
+            row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    async def _insert_task(self, conn: typing.Any, short_id: str) -> uuid.UUID:
+        task_id = uuid.uuid4()
+        await conn.execute(
+            'INSERT INTO agent_runtime.tasks (id, organization_id, short_id,'
+            ' agent_id, agent_version, service_account_id, title,'
+            ' description, origin_kind, origin_id, origin, owner)'
+            " VALUES (%s, %s, %s, 'a', 1, 'sa', 't', 'd', 'human', 'u',"
+            " '{}', 'o')",
+            (task_id, self.org, short_id),
+        )
+        return task_id
+
+    async def test_task_history_and_runs_are_deleted(self) -> None:
+        async with self.pool.connection() as conn:
+            first = await self._insert_task(conn, 'T-1')
+            second = await self._insert_task(conn, 'T-2')
+            await conn.execute(
+                'INSERT INTO agent_runtime.task_dependencies (organization_id,'
+                ' dependent_task_id, prerequisite_task_id, created_by_kind,'
+                " created_by) VALUES (%s, %s, %s, 'human', 'u')",
+                (self.org, second, first),
+            )
+            await conn.execute(
+                'INSERT INTO agent_runtime.task_projects (organization_id,'
+                ' task_id, project_id, project_slug, added_by_kind,'
+                " added_by) VALUES (%s, %s, 'p', 'p', 'human', 'u')",
+                (self.org, first),
+            )
+            await conn.execute(
+                'INSERT INTO agent_runtime.events (task_id, seq, event_id,'
+                " type, actor_kind, channel) VALUES (%s, 1, %s, 'x', 'human',"
+                " 'c')",
+                (first, uuid.uuid4()),
+            )
+            await conn.execute(
+                'INSERT INTO agent_runtime.task_id_sequences'
+                ' (organization_id, last_value) VALUES (%s, 2)',
+                (self.org,),
+            )
+            await conn.execute(
+                'INSERT INTO workflow_runtime.runs (id, organization_id,'
+                ' workflow_id, version, trigger_node_id, origin_kind,'
+                " origin_id, activated_by) VALUES (%s, %s, %s, 1, 'n',"
+                " 'human', 'u', 'u')",
+                (uuid.uuid4(), self.org, uuid.uuid4()),
+            )
+
+        response = await self.client.delete(f'/organizations/{self.org}')
+
+        self.assertEqual(response.status_code, 204, response.text)
+        for table in (
+            'agent_runtime.tasks',
+            'agent_runtime.task_dependencies',
+            'agent_runtime.task_projects',
+            'agent_runtime.task_id_sequences',
+            'workflow_runtime.runs',
+        ):
+            self.assertEqual(await self._count(table), 0, table)
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT count(*) FROM agent_runtime.events WHERE task_id = %s',
+                (first,),
+            )
+            self.assertEqual(await cursor.fetchone(), (0,))
+        records = await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}}) RETURN o.id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        self.assertEqual(records, [])
+
+    async def test_workflows_and_bindings_block_the_delete(self) -> None:
+        workflow_id = uuid.uuid4()
+        async with self.pool.connection() as conn:
+            await self._insert_task(conn, 'T-1')
+            await conn.execute(
+                'INSERT INTO workflows.workflows (id, organization_id, slug,'
+                " name, owner_team_id, created_by) VALUES (%s, %s, 'w', 'W',"
+                " 't', 'u')",
+                (workflow_id, self.org),
+            )
+            await conn.execute(
+                'INSERT INTO workflows.trigger_bindings (id, workflow_id,'
+                ' organization_id, node_id, type, params) VALUES (%s, %s, %s,'
+                " 'n', 'schedule', '{}')",
+                (uuid.uuid4(), workflow_id, self.org),
+            )
+
+        response = await self.client.delete(f'/organizations/{self.org}')
+
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            f"Organization '{self.org}' is not empty: workflow trigger"
+            ' bindings (1), workflows (1). Delete these first.',
+        )
+        # Nothing was deleted.
+        self.assertEqual(await self._count('agent_runtime.tasks'), 1)
