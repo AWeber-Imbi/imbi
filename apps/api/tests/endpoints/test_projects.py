@@ -828,10 +828,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('delivery_mode', response.json()['detail'])
 
     def _patch_with_required_facts(
-        self, operations: list[dict[str, typing.Any]], **props: typing.Any
+        self,
+        operations: list[dict[str, typing.Any]],
+        required: tuple[str, ...] = ('owner', 'tier'),
+        **props: typing.Any,
     ) -> typing.Any:
-        """PATCH a project whose blueprint requires ``owner`` and
-        ``tier`` (an enum); ``props`` are the node's current facts."""
+        """PATCH a project whose blueprint requires ``required`` of
+        ``owner`` and ``tier`` (an enum); ``props`` are the node's
+        current facts."""
         from imbi.common import blueprints
 
         dynamic_model = blueprints.apply_blueprints(
@@ -851,7 +855,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                                     'enum': ['gold', 'silver'],
                                 },
                             },
-                            'required': ['owner', 'tier'],
+                            'required': list(required),
                         }
                     ),
                 )
@@ -913,6 +917,28 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(response.status_code, 400, response.text)
         self.assertIn('owner', response.json()['detail'])
+
+    def test_patch_fact_remove_refuses_required(self) -> None:
+        """``remove`` on a required property is refused (#675)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/owner'}], owner='ops', tier='gold'
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('owner', response.json()['detail'])
+
+    def test_patch_fact_remove_clears_optional(self) -> None:
+        """``remove`` clears an optional property (#675)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/owner'}],
+            required=('tier',),
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIsNone(set_statement.params['owner'])
+        self.assertEqual(set_statement.params['tier'], 'gold')
 
     def test_list_slim_release_summaries_follow_delivery_mode(self) -> None:
         """Release summaries are fetched for projects that *resolve* to

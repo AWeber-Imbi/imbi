@@ -3454,6 +3454,13 @@ async def _execute_project_update(
             if k not in _RESERVED_FIELDS
         }
     )
+    # A touched property that the patched document no longer has was
+    # removed: clear it, as ``replace`` with null does, instead of
+    # keeping the existing value (#675).
+    for name in touched & (
+        extra_fields.keys() - (data.model_extra or {}).keys()
+    ):
+        extra_fields[name] = None
 
     # Relax required blueprint properties that the node does not have
     # and the patch does not touch: they are already missing, and this
