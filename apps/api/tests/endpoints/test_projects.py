@@ -958,6 +958,38 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         set_statement = next(s for s in statements if 'SET p.' in s.cypher)
         self.assertIsNone(set_statement.params['description'])
 
+    def test_patch_replace_null_refuses_required_base_field(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/name', 'value': None}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('name', response.json()['detail'])
+
+    def test_patch_replace_null_clears_optional_base_field(self) -> None:
+        """``replace`` with null clears a base field (#699)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/description', 'value': None}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIsNone(set_statement.params['description'])
+
+    def test_patch_untouched_base_field_keeps_value(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/name', 'value': 'New'}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertEqual(set_statement.params['description'], 'An example API')
+
     def test_list_slim_release_summaries_follow_delivery_mode(self) -> None:
         """Release summaries are fetched for projects that *resolve* to
         releasable: a releasable type unless the project overrides it,
