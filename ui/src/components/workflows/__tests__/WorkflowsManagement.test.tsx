@@ -486,6 +486,29 @@ describe('WorkflowsManagement', () => {
     expect(field).toHaveValue(14)
   })
 
+  it('keeps the saved dedupe window for unparsable input', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.service }}' },
+    })
+    const field = screen.getByLabelText('Dedupe window (days)')
+    fireEvent.change(field, { target: { value: '14' } })
+    // A browser reports text such as `14e` as an empty value with
+    // validity.badInput set; jsdom does not, so stub it.
+    Object.defineProperty(field, 'validity', {
+      configurable: true,
+      value: { badInput: true },
+    })
+    fireEvent.change(field, { target: { value: '' } })
+    fireEvent.blur(field)
+    expect(field).toHaveValue(14)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.updateWorkflow).toHaveBeenCalled())
+    const body = vi.mocked(endpoints.updateWorkflow).mock.calls[0][2]
+    expect(body.settings).toMatchObject({ dedupe_window_seconds: 1_209_600 })
+  })
+
   it('shows a dedupe validation error in the settings', async () => {
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({
       issues: [

@@ -391,7 +391,9 @@ export function SettingsPanel({
  * partial value such as `0.` or `1.` survives until it is a positive
  * number; only a valid value or an empty field reaches the settings.
  * On blur an invalid draft such as `0` or `-1` goes back to the saved
- * value, so the field never shows a value that is not saved.
+ * value, so the field never shows a value that is not saved. Text the
+ * browser cannot parse as a number, such as `14e`, reads as empty but
+ * leaves the saved value alone.
  */
 function DedupeWindowInput({
   onChange,
@@ -411,11 +413,21 @@ function DedupeWindowInput({
     <Input
       id="workflow-dedupe-window"
       min={0}
-      onBlur={() => {
-        if (windowSeconds(draft) === undefined) setDraft(windowDays(seconds))
+      onBlur={(e) => {
+        const saved = windowDays(seconds)
+        if (e.target.validity.badInput) {
+          // The browser reports incomplete text such as `14e` as an
+          // empty value, so the draft may already match: reset the
+          // field itself.
+          e.target.value = saved
+          setDraft(saved)
+        } else if (windowSeconds(draft) === undefined) setDraft(saved)
       }}
       onChange={(e) => {
         setDraft(e.target.value)
+        // Incomplete text such as `14e` reads as an empty value; it is
+        // not a cleared field, so keep the saved window.
+        if (e.target.validity.badInput) return
         const value = windowSeconds(e.target.value)
         if (value === undefined) return
         setSynced(value)
