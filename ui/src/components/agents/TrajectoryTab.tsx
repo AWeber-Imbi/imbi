@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -116,17 +116,27 @@ export function TrajectoryTab({
   )
 
   const linked = /^#e(\d+)$/.exec(hash)?.[1]
+  const handled = useRef<null | string>(null)
   useEffect(() => {
-    if (!linked) return
+    if (!linked || handled.current === linked) return
     const record = recordForSeq(records, Number(linked))
     if (!record) return
+    handled.current = linked
     setSelection((prev) =>
       prev?.type === 'record' && prev.id === record.id
         ? prev
         : { id: record.id, type: 'record' },
     )
+    setQuery((q) =>
+      q.trim() &&
+      !rowsOf(trajectory, emptyFolds(), q).some(
+        (r) => r.kind === 'record' && r.record.id === record.id,
+      )
+        ? ''
+        : q,
+    )
     reveal(record)
-  }, [linked, records, reveal])
+  }, [linked, records, reveal, trajectory])
 
   const select = useCallback(
     (next: TrajectorySelection) => {
@@ -222,6 +232,7 @@ export function TrajectoryTab({
         <TrajectoryLedger
           activeTurn={activeTurn}
           focused={focused}
+          live={live}
           onClear={() => setSelection(null)}
           onDoubleClick={onDoubleClick}
           onFold={toggle}

@@ -290,6 +290,18 @@ describe('TrajectoryTab overview', () => {
     expect(dimmed).toHaveLength(8)
   })
 
+  it('clears the search when a span selects a record it hides', async () => {
+    renderTab()
+    const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
+    await userEvent.type(search, 'grep')
+    expect(rows()).toHaveLength(1)
+    const bar = spanBars()[3]
+    fireEvent.pointerDown(bar, { button: 0, clientX: 10 })
+    fireEvent.pointerUp(bar, { button: 0, clientX: 10 })
+    expect(search).toHaveValue('')
+    expect(rows()[3]).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('says when there is no timing data', () => {
     renderTab('closed', [])
     expect(screen.getByText('No timing data')).toBeInTheDocument()
