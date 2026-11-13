@@ -11,7 +11,12 @@ import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
 import { ParamsForm, SelectField } from './ParamsForm'
 import { referenceGroups } from './references'
 import { StatusBadge } from './RunPanel'
-import { formatDuration, type StepResult } from './runs'
+import {
+  formatDuration,
+  type StepResult,
+  windowDays,
+  windowSeconds,
+} from './runs'
 import { paramFields } from './schemaFields'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type {
@@ -318,6 +323,40 @@ export function SettingsPanel({
               id="workflow-concurrency-key"
               onChange={(e) => setSettings({ concurrency_key: e.target.value })}
               value={settings.concurrency_key ?? ''}
+            />
+          </FormField>
+        )}
+        <FormField
+          description="A webhook or task run whose key matches an earlier run is skipped, for example {{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}. A run that a person starts always runs."
+          htmlFor="workflow-dedupe-key"
+          label="Dedupe key"
+        >
+          <Input
+            className="font-mono text-xs"
+            id="workflow-dedupe-key"
+            onChange={(e) =>
+              setSettings({ dedupe_key: e.target.value || null })
+            }
+            value={settings.dedupe_key ?? ''}
+          />
+        </FormField>
+        {(!!settings.dedupe_key || !!settings.dedupe_window_seconds) && (
+          <FormField
+            description="How long a key skips a repeat. Leave it empty to skip repeats forever."
+            htmlFor="workflow-dedupe-window"
+            label="Dedupe window (days)"
+          >
+            <Input
+              id="workflow-dedupe-window"
+              min={0}
+              onChange={(e) => {
+                const seconds = windowSeconds(e.target.value)
+                if (seconds === undefined) return
+                setSettings({ dedupe_window_seconds: seconds })
+              }}
+              step="any"
+              type="number"
+              value={windowDays(settings.dedupe_window_seconds)}
             />
           </FormField>
         )}

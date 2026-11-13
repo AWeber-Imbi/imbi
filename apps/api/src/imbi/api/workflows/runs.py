@@ -11,6 +11,7 @@ import uuid
 from collections import abc
 
 import fastapi
+import psycopg
 from psycopg import rows
 from psycopg.types import json as pg_json
 
@@ -109,6 +110,14 @@ class NewRun:
     payload: dict[str, typing.Any]
     concurrency_key: str | None
     activated_by: str
+    #: The workflow's dedupe key filled with the payload. Stored on the
+    #: run, so a later run can match it.
+    dedupe_key: str | None = None
+    #: How far back a run with the same dedupe key makes this one a
+    #: duplicate. ``None``: no limit.
+    dedupe_window_seconds: int | None = None
+    #: Skip the run when it is a duplicate. A person's run is not.
+    skip_duplicate: bool = False
 
 
 class RunStore:
@@ -131,6 +140,10 @@ class RunStore:
         A repeat of an idempotency key for the same workflow returns
         the first run.
 
+        A duplicate (:func:`_duplicate_of`) is written ``skipped`` and
+        closed, with ``duplicate_of``, when ``run.skip_duplicate`` is
+        set. The engine never claims it.
+
         The workflow row is locked ``FOR SHARE`` first, so a delete,
         which locks it ``FOR UPDATE``, cannot pass between its open-run
         check and its ``DELETE`` while a run is written.
@@ -152,12 +165,20 @@ class RunStore:
             workflow = await cur.fetchone()
             if workflow is None or workflow['status'] != 'active':
                 raise NotActive(str(run.workflow_id))
+            duplicate_of = (
+                await _duplicate_of(cur, run)
+                if run.skip_duplicate and run.dedupe_key is not None
+                else None
+            )
+            status = 'queued' if duplicate_of is None else 'skipped'
             await cur.execute(
                 'INSERT INTO workflow_runtime.runs (id, organization_id,'
                 ' workflow_id, version, trigger_node_id, origin_kind,'
                 ' origin_id, origin, idempotency_key, payload,'
-                ' concurrency_key, activated_by) VALUES'
-                ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+                ' concurrency_key, activated_by, dedupe_key, duplicate_of,'
+                ' status, closed_at) VALUES'
+                ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' %s, CASE WHEN %s THEN NOW() END)'
                 ' ON CONFLICT (organization_id, workflow_id, origin_kind,'
                 ' origin_id, idempotency_key) DO NOTHING RETURNING *',
                 (
@@ -173,6 +194,10 @@ class RunStore:
                     pg_json.Jsonb(run.payload),
                     run.concurrency_key,
                     run.activated_by,
+                    run.dedupe_key,
+                    duplicate_of,
+                    status,
+                    duplicate_of is not None,
                 ),
             )
             created = await cur.fetchone()
@@ -197,7 +222,15 @@ class RunStore:
                 'run.created',
                 {'origin_kind': run.origin_kind, 'origin_id': run.origin_id},
             )
-            await conn.execute(f'NOTIFY {runtime.NOTIFY_CHANNEL}')
+            if duplicate_of is None:
+                await conn.execute(f'NOTIFY {runtime.NOTIFY_CHANNEL}')
+            else:
+                await runtime.append_event(
+                    conn,
+                    created['id'],
+                    'run.skipped',
+                    {'duplicate_of': str(duplicate_of)},
+                )
         await history.publish_since(self._pool, created['id'], 0)
         return created, True
 
@@ -497,6 +530,44 @@ class RunStore:
             return False
         await history.publish_since(self._pool, retry[0], seq)
         return True
+
+
+async def _duplicate_of(
+    cur: psycopg.AsyncCursor[store.Row], run: NewRun
+) -> uuid.UUID | None:
+    """Return the newest run that makes ``run`` a duplicate, if any.
+
+    That is a run of the workflow with the same dedupe key, made within
+    the window, that ran or can still run: ``queued``, ``running``,
+    ``succeeded``, ``failed``, ``timed_out``, or ``cancelled`` after it
+    started. A ``skipped`` run, or one cancelled before it started,
+    reviewed nothing, so it does not count.
+
+    Takes a transaction lock on the key first, so two runs with one key
+    serialize: under READ COMMITTED the second sees the first after the
+    first commits.
+    """
+    await cur.execute(
+        'SELECT pg_advisory_xact_lock(hashtext(%s))',
+        (f'dedupe:{run.workflow_id}:{run.dedupe_key}',),
+    )
+    await cur.execute(
+        'SELECT id FROM workflow_runtime.runs'
+        ' WHERE workflow_id = %s AND dedupe_key = %s'
+        " AND status <> 'skipped'"
+        " AND NOT (status = 'cancelled' AND started_at IS NULL)"
+        ' AND (%s::int IS NULL'
+        '      OR created_at > NOW() - make_interval(secs => %s))'
+        ' ORDER BY created_at DESC LIMIT 1',
+        (
+            run.workflow_id,
+            run.dedupe_key,
+            run.dedupe_window_seconds,
+            run.dedupe_window_seconds,
+        ),
+    )
+    found = await cur.fetchone()
+    return None if found is None else found['id']
 
 
 async def _reopen(conn: typing.Any, run_id: uuid.UUID, node_id: str) -> int:

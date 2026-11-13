@@ -5,13 +5,14 @@ endpoint takes runs from the scheduler and the gateway. The reconciler
 that syncs the bindings is tested in ``apps/workflows``.
 """
 
+import asyncio
 import typing
 import uuid
 
 import httpx
 
 from apps.api.tests.endpoints import test_workflow_runs as base
-from imbi.api import models
+from imbi.api import models, workflows
 from imbi.api.auth import organizations, permissions
 
 #: What activation needs on top of ``base.PERMISSIONS``: the trigger
@@ -453,6 +454,216 @@ class WebhookRunTestCase(TriggerTestCase):
         self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(
             response.json()['detail'], {'error': 'concurrency_key_missing'}
+        )
+
+
+#: Repository and head commit of a GitHub ``workflow_run`` delivery.
+DEDUPE_KEY = (
+    '{{ trigger.payload.repository.full_name }}:'
+    '{{ trigger.payload.workflow_run.head_sha }}'
+)
+WINDOW = 14 * 86400
+
+
+class DedupeTestCase(TriggerTestCase):
+    """A webhook run whose dedupe key repeats an earlier run is skipped."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        response = await self.client.put(
+            self.url,
+            json={
+                'name': 'Nightly',
+                'owner_team_slug': self.team,
+                'graph': {
+                    'nodes': [
+                        base._node(
+                            'hook', 'webhook', {'webhook_id': self.webhook}
+                        ),
+                        base._node('pause', 'wait', {'duration': '1m'}),
+                    ],
+                    'edges': [
+                        {'source': 'hook', 'port': 0, 'target': 'pause'}
+                    ],
+                },
+                'settings': {
+                    'dedupe_key': DEDUPE_KEY,
+                    'dedupe_window_seconds': WINDOW,
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.client.post(f'{self.url}/activate')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.binding = await self._sync('hook', self.webhook)
+        row = await self.store.get(self.org, 'nightly')
+        assert row is not None
+        self.workflow_id: uuid.UUID = row['id']
+        self.version: int = row['active_version']
+
+    async def _deliver(
+        self, delivery: str, sha: str | None = 'abc123'
+    ) -> dict[str, typing.Any]:
+        self._as('imbi-gateway')
+        run: dict[str, typing.Any] = {'repository': {'full_name': 'octo/a'}}
+        if sha is not None:
+            run['workflow_run'] = {'head_sha': sha}
+        response = await self.client.post(
+            f'{self.url}/runs',
+            json={
+                'trigger': 'hook',
+                'binding': self.binding,
+                'payload': {'payload': run},
+            },
+            headers={
+                'X-Imbi-Webhook': self.webhook,
+                'X-Imbi-Delivery': delivery,
+            },
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        return response.json()
+
+    async def _set(self, run_id: str, assignments: str) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                f'UPDATE workflow_runtime.runs SET {assignments}'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+
+    async def test_repeat_is_skipped_and_points_at_the_first(self) -> None:
+        first = await self._deliver('d-1')
+        self.assertEqual(first['status'], 'queued')
+        self.assertEqual(first['dedupe_key'], 'octo/a:abc123')
+        self.assertIsNone(first['duplicate_of'])
+
+        repeat = await self._deliver('d-2')
+        self.assertEqual(repeat['status'], 'skipped')
+        self.assertEqual(repeat['duplicate_of'], first['id'])
+        self.assertEqual(repeat['dedupe_key'], 'octo/a:abc123')
+        self.assertIsNotNone(repeat['closed_at'])
+        self.assertIsNone(repeat['started_at'])
+
+        # A redelivery of the skipped delivery returns the skipped run.
+        again = await self._deliver('d-2')
+        self.assertEqual(again['id'], repeat['id'])
+
+        other = await self._deliver('d-3', sha='def456')
+        self.assertEqual(other['status'], 'queued')
+        self.assertEqual(await self._run_count(), 3)
+
+        self._as_person()
+        response = await self.client.get(f'{self.url}/runs/{repeat["id"]}')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['duplicate_of'], first['id'])
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT type, payload FROM workflow_runtime.run_events'
+                ' WHERE run_id = %s ORDER BY seq',
+                (repeat['id'],),
+            )
+            events = await cur.fetchall()
+        self.assertEqual(
+            [e[0] for e in events], ['run.created', 'run.skipped']
+        )
+        self.assertEqual(events[1][1], {'duplicate_of': first['id']})
+
+    def _as_person(self) -> None:
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = self.user_auth
+        overrides.pop(organizations.member_org_id, None)
+
+    async def test_window_boundary(self) -> None:
+        first = await self._deliver('d-1')
+        await self._set(
+            first['id'],
+            f"created_at = NOW() - INTERVAL '{WINDOW + 60} seconds'",
+        )
+        outside = await self._deliver('d-2')
+        self.assertEqual(outside['status'], 'queued')
+        await self._set(
+            outside['id'],
+            f"created_at = NOW() - INTERVAL '{WINDOW - 60} seconds'",
+        )
+        inside = await self._deliver('d-3')
+        self.assertEqual(inside['status'], 'skipped')
+        self.assertEqual(inside['duplicate_of'], outside['id'])
+
+    async def test_runs_that_never_ran_do_not_count(self) -> None:
+        first = await self._deliver('d-1')
+        await self._set(first['id'], "status = 'cancelled'")
+        second = await self._deliver('d-2')
+        self.assertEqual(second['status'], 'queued')
+        # Cancelled after it started: it ran, so it counts.
+        await self._set(
+            second['id'], "status = 'cancelled', started_at = NOW()"
+        )
+        third = await self._deliver('d-3')
+        self.assertEqual(third['duplicate_of'], second['id'])
+        for status in ('failed', 'timed_out', 'succeeded', 'running'):
+            with self.subTest(status=status):
+                await self._set(second['id'], f"status = '{status}'")
+                run = await self._deliver(f'd-{status}')
+                self.assertEqual(run['status'], 'skipped')
+                self.assertEqual(run['duplicate_of'], second['id'])
+
+    async def test_skipped_run_does_not_extend_the_window(self) -> None:
+        first = await self._deliver('d-1')
+        skipped = await self._deliver('d-2')
+        self.assertEqual(skipped['status'], 'skipped')
+        await self._set(
+            first['id'],
+            f"created_at = NOW() - INTERVAL '{WINDOW + 60} seconds'",
+        )
+        self.assertEqual((await self._deliver('d-3'))['status'], 'queued')
+
+    async def test_payload_without_the_key_runs(self) -> None:
+        for delivery in ('d-1', 'd-2'):
+            run = await self._deliver(delivery, sha=None)
+            self.assertEqual(run['status'], 'queued')
+            self.assertIsNone(run['dedupe_key'])
+
+    async def test_no_window_skips_forever(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions'
+                " SET settings = settings - 'dedupe_window_seconds'"
+                ' WHERE workflow_id = %s',
+                (self.workflow_id,),
+            )
+        first = await self._deliver('d-1')
+        await self._set(
+            first['id'], "created_at = NOW() - INTERVAL '3650 days'"
+        )
+        self.assertEqual((await self._deliver('d-2'))['status'], 'skipped')
+
+    async def test_concurrent_deliveries_start_one_run(self) -> None:
+        def new_run(delivery: str) -> workflows.NewRun:
+            return workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=self.workflow_id,
+                version=self.version,
+                trigger_node_id='hook',
+                origin_kind='webhook',
+                origin_id=self.webhook,
+                origin={},
+                idempotency_key=delivery,
+                payload={},
+                concurrency_key=None,
+                activated_by=self.email,
+                dedupe_key='octo/a:abc123',
+                dedupe_window_seconds=WINDOW,
+                skip_duplicate=True,
+            )
+
+        made = await asyncio.gather(
+            *(self.runs.create(new_run(f'd-{i}')) for i in range(6))
+        )
+        statuses = sorted(row['status'] for row, _ in made)
+        self.assertEqual(statuses, ['queued'] + ['skipped'] * 5)
+        queued = next(row for row, _ in made if row['status'] == 'queued')
+        self.assertEqual(
+            {row['duplicate_of'] for row, _ in made} - {None}, {queued['id']}
         )
 
 

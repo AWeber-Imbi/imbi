@@ -70,6 +70,8 @@ import { StatusBadge } from './WorkflowStatusBadge'
 const NEW_SETTINGS: WorkflowWrite['settings'] = {
   concurrency_key: null,
   concurrency_mode: 'unlimited',
+  dedupe_key: null,
+  dedupe_window_seconds: null,
   max_run_time_seconds: 7200,
   on_failure: 'notify_owner_team',
 }

@@ -42,6 +42,14 @@ export interface StepResult {
   status: StepRunStatus
 }
 
+/** The id of the earlier run that a skipped run repeats. */
+export function duplicateOf(run: {
+  duplicate_of: null | string
+  status: RunStatus
+}): null | string {
+  return run.status === 'skipped' ? run.duplicate_of : null
+}
+
 export function durationMs(
   start: null | string | undefined,
   end: null | string | undefined,
@@ -130,4 +138,22 @@ export function testResults(result: TestRunResult): Record<string, StepResult> {
     }
   }
   return found
+}
+
+const DAY_SECONDS = 86400
+
+/** A dedupe window in days for the settings form. Empty: no limit. */
+export function windowDays(seconds: null | number | undefined): string {
+  return seconds ? String(seconds / DAY_SECONDS) : ''
+}
+
+/**
+ * The dedupe window in seconds of what the form holds: `null` for an
+ * empty field, `undefined` for a value that is not a positive number.
+ */
+export function windowSeconds(days: string): null | number | undefined {
+  if (days.trim() === '') return null
+  const value = Number(days)
+  if (!(value > 0)) return undefined
+  return Math.max(1, Math.round(value * DAY_SECONDS))
 }

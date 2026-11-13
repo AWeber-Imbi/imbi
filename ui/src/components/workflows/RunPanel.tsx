@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 
 import type { StepTypes } from './graph'
 import {
+  duplicateOf,
   durationMs,
   formatDuration,
   isOpen,
@@ -217,7 +218,13 @@ function RunList({ onRunId, open, orgSlug, slug, tab }: RunPanelProps) {
       <span className="text-tertiary truncate">
         <RelativeTime value={run.created_at} /> · {run.origin_id}
       </span>
-      <span className="text-danger truncate">{run.error}</span>
+      {duplicateOf(run) ? (
+        <span className="text-tertiary truncate">
+          Duplicate of run {duplicateOf(run)?.slice(0, 8)}
+        </span>
+      ) : (
+        <span className="text-danger truncate">{run.error}</span>
+      )}
       <Duration
         ms={durationMs(run.started_at ?? run.created_at, run.closed_at)}
       />
@@ -225,16 +232,37 @@ function RunList({ onRunId, open, orgSlug, slug, tab }: RunPanelProps) {
   ))
 }
 
-function RunSteps({ onSelectNode, results, run, types }: RunPanelProps) {
+function RunSteps({
+  onRunId,
+  onSelectNode,
+  results,
+  run,
+  types,
+}: RunPanelProps) {
   if (!run) return <Empty>Loading the run…</Empty>
+  const duplicate = duplicateOf(run)
   return (
     <>
+      {duplicate && (
+        <div className="bg-secondary text-secondary px-4 py-2 text-xs">
+          Skipped: duplicate of{' '}
+          <button
+            className="text-primary font-mono underline"
+            onClick={() => onRunId(duplicate)}
+            type="button"
+          >
+            run {duplicate.slice(0, 8)}
+          </button>
+          , which has the same dedupe key{' '}
+          <span className="font-mono">{run.dedupe_key}</span>.
+        </div>
+      )}
       {run.error && (
         <div className="bg-danger text-danger px-4 py-2 text-xs">
           The run {STATUS[run.status].label.toLowerCase()}: {run.error}
         </div>
       )}
-      {run.steps.length === 0 && (
+      {run.steps.length === 0 && !duplicate && (
         <Empty>
           {run.status === 'queued'
             ? 'Waiting for the workflow engine to start this run.'

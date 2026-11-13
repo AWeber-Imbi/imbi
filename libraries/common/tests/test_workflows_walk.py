@@ -118,3 +118,80 @@ class ConcurrencyKeyTestCase(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, 'concurrency_key_missing'),
             ):
                 validation.concurrency_key(settings, 'w', missing)
+
+    def test_two_references(self) -> None:
+        settings = graph.Settings(
+            concurrency_mode='one_per_key',
+            concurrency_key='{{ trigger.repo }}/{{ trigger.env }}',
+        )
+        self.assertEqual(
+            validation.concurrency_key(
+                settings, 'w', {'repo': 'imbi', 'env': 'testing'}
+            ),
+            'imbi/testing',
+        )
+        with self.assertRaisesRegex(ValueError, 'concurrency_key_missing'):
+            validation.concurrency_key(settings, 'w', {'repo': 'imbi'})
+
+
+#: A GitHub ``workflow_run`` delivery, as the gateway sends it.
+WORKFLOW_RUN = {
+    'payload': {
+        'repository': {'full_name': 'octo/imbi'},
+        'workflow_run': {'head_sha': 'abc123'},
+    },
+    'project': 'p-1',
+}
+
+
+class KeyTemplateTestCase(unittest.TestCase):
+    def test_key_paths(self) -> None:
+        self.assertEqual(
+            validation.key_paths('{{ trigger.service }}'), [['service']]
+        )
+        self.assertEqual(
+            validation.key_paths(
+                '{{trigger.payload.repository.full_name}}:'
+                '{{ trigger.payload.workflow_run.head_sha }}'
+            ),
+            [
+                ['payload', 'repository', 'full_name'],
+                ['payload', 'workflow_run', 'head_sha'],
+            ],
+        )
+        for key in (
+            None,
+            '',
+            'static',
+            '{{ service }}',
+            '{{ trigger.service | upper }}',
+            '{{ trigger.a }}{% if x %}{% endif %}',
+            '{{ trigger.a }} }}',
+            '{{ trigger.a }}{# note #}',
+        ):
+            with self.subTest(key=key):
+                self.assertIsNone(validation.key_paths(key))
+
+    def test_dedupe_key(self) -> None:
+        self.assertIsNone(
+            validation.dedupe_key(graph.Settings(), WORKFLOW_RUN)
+        )
+        settings = graph.Settings(
+            dedupe_key='{{ trigger.payload.repository.full_name }}:'
+            '{{ trigger.payload.workflow_run.head_sha }}'
+        )
+        self.assertEqual(
+            validation.dedupe_key(settings, WORKFLOW_RUN), 'octo/imbi:abc123'
+        )
+        # A run that lacks a value of the key is never a duplicate.
+        self.assertIsNone(
+            validation.dedupe_key(
+                settings, {'payload': {'repository': {'full_name': 'x'}}}
+            )
+        )
+        self.assertEqual(
+            validation.dedupe_key(
+                graph.Settings(dedupe_key='{{ trigger.n }}'), {'n': 7}
+            ),
+            '7',
+        )

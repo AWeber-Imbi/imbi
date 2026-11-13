@@ -1,9 +1,34 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDuration, manualTrigger, runResults, testResults } from '../runs'
+import {
+  duplicateOf,
+  formatDuration,
+  manualTrigger,
+  runResults,
+  testResults,
+  windowDays,
+  windowSeconds,
+} from '../runs'
 import { node, TYPES } from './fixtures'
 
 describe('runs', () => {
+  it('converts the dedupe window between days and seconds', () => {
+    expect(windowDays(null)).toBe('')
+    expect(windowDays(1_209_600)).toBe('14')
+    expect(windowDays(43_200)).toBe('0.5')
+    expect(windowSeconds('')).toBeNull()
+    expect(windowSeconds('14')).toBe(1_209_600)
+    expect(windowSeconds('0.5')).toBe(43_200)
+    expect(windowSeconds('0')).toBeUndefined()
+    expect(windowSeconds('-1')).toBeUndefined()
+  })
+
+  it('names the run that a skipped run repeats', () => {
+    expect(duplicateOf({ duplicate_of: 'abc', status: 'skipped' })).toBe('abc')
+    expect(duplicateOf({ duplicate_of: null, status: 'skipped' })).toBeNull()
+    expect(duplicateOf({ duplicate_of: 'abc', status: 'queued' })).toBeNull()
+  })
+
   it('formats durations', () => {
     expect(formatDuration(null)).toBe('—')
     expect(formatDuration(850)).toBe('850 ms')

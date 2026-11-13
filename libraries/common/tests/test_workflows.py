@@ -262,6 +262,95 @@ class ValidationTestCase(unittest.TestCase):
         )
         self.assertIn('concurrency_key_input_missing', codes)
 
+    def test_dedupe_key(self) -> None:
+        hook = _node('hook', 'webhook', {'webhook_id': 'wh-1'})
+        wait = _node('a', 'wait', {'duration': '1m'})
+        settings: dict[str, typing.Any] = {
+            'dedupe_key': '{{ trigger.payload.repository.full_name }}:'
+            '{{ trigger.payload.workflow_run.head_sha }}',
+            'dedupe_window_seconds': 14 * 86400,
+        }
+        self.assertEqual(
+            _check([hook, wait], [('hook', 0, 'a')], settings), []
+        )
+        # No window: the key skips a repeat forever.
+        self.assertEqual(
+            _check(
+                [hook, wait],
+                [('hook', 0, 'a')],
+                {'dedupe_key': settings['dedupe_key']},
+            ),
+            [],
+        )
+        # Dedupe does not depend on the concurrency mode.
+        settings['concurrency_mode'] = 'one_at_a_time'
+        self.assertEqual(
+            _check([hook, wait], [('hook', 0, 'a')], settings), []
+        )
+
+    def test_dedupe_key_rules(self) -> None:
+        settings = {'dedupe_key': '{{ trigger.repo }}@{{ trigger.sha }}'}
+        nodes = [
+            _node('start', 'manual', {'inputs': [{'name': 'repo'}]}),
+            _node('cron', 'schedule', {'cron': '0 * * * *'}),
+            _node('a', 'wait', {'duration': '1m'}),
+        ]
+        edges = [('start', 0, 'a'), ('cron', 0, 'a')]
+        issues = _check(nodes, edges, settings)
+        self.assertEqual(
+            sorted((i.code, i.node_id) for i in issues),
+            [
+                ('dedupe_key_input_missing', 'start'),
+                ('dedupe_key_with_schedule', 'cron'),
+            ],
+        )
+        self.assertIn("'sha'", issues[0].message + issues[1].message)
+        nodes = [
+            _node(
+                'start',
+                'manual',
+                {'inputs': [{'name': 'repo'}, {'name': 'sha'}]},
+            ),
+            _node('a', 'wait', {'duration': '1m'}),
+        ]
+        self.assertEqual(_check(nodes, [('start', 0, 'a')], settings), [])
+        for key in ('{{ repo }}', 'plain', '{{ trigger.repo | upper }}'):
+            with self.subTest(key=key):
+                self.assertEqual(
+                    _codes(
+                        _check(nodes, [('start', 0, 'a')], {'dedupe_key': key})
+                    ),
+                    {'invalid_dedupe_key'},
+                )
+
+    def test_dedupe_window_without_key(self) -> None:
+        nodes = [
+            _node('start', 'manual'),
+            _node('a', 'wait', {'duration': '1m'}),
+        ]
+        self.assertEqual(
+            _codes(
+                _check(
+                    nodes, [('start', 0, 'a')], {'dedupe_window_seconds': 60}
+                )
+            ),
+            {'dedupe_window_without_key'},
+        )
+
+    def test_one_per_key_with_two_references(self) -> None:
+        settings = {
+            'concurrency_mode': 'one_per_key',
+            'concurrency_key': '{{ trigger.repo }}/{{ trigger.env }}',
+        }
+        nodes = [
+            _node('start', 'manual', {'inputs': [{'name': 'repo'}]}),
+            _node('a', 'wait', {'duration': '1m'}),
+        ]
+        self.assertEqual(
+            _codes(_check(nodes, [('start', 0, 'a')], settings)),
+            {'concurrency_key_input_missing'},
+        )
+
     def test_size_limit(self) -> None:
         nodes = [_node('start', 'manual')] + [
             _node(f'n{i}', 'wait', {'duration': '1m'})

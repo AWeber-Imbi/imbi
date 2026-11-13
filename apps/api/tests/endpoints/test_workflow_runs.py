@@ -455,6 +455,42 @@ class ManualRunTestCase(WorkflowRunTestCase):
         )
         self.assertEqual(response.status_code, 422, response.text)
 
+    async def test_person_bypasses_dedupe_and_their_run_counts(self) -> None:
+        url = await self._workflow(
+            settings={'dedupe_key': 'v{{ trigger.version }}'}
+        )
+        made = []
+        for key in ('k1', 'k2'):
+            response = await self.client.post(
+                f'{url}/runs',
+                json={'inputs': {'version': '1.2.3'}},
+                headers={'Idempotency-Key': key},
+            )
+            self.assertEqual(response.status_code, 202, response.text)
+            made.append(response.json())
+        self.assertEqual([r['status'] for r in made], ['queued', 'queued'])
+        self.assertEqual(made[1]['dedupe_key'], 'v1.2.3')
+        # A later run that a service starts is a duplicate of it.
+        row, _ = await self.runs.create(
+            workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=await self._workflow_id(url),
+                version=1,
+                trigger_node_id='start',
+                origin_kind='schedule',
+                origin_id='task',
+                origin={},
+                idempotency_key='fire-1',
+                payload={'version': '1.2.3'},
+                concurrency_key=None,
+                activated_by=self.email,
+                dedupe_key='v1.2.3',
+                skip_duplicate=True,
+            )
+        )
+        self.assertEqual(row['status'], 'skipped')
+        self.assertEqual(str(row['duplicate_of']), made[1]['id'])
+
     async def test_cancel_needs_the_start_gate(self) -> None:
         url = await self._workflow()
         response = await self.client.post(

@@ -49,7 +49,13 @@ from imbi.common.workflows.registry import email as email_step
 OrgId = organizations.MemberOrgId
 
 RunStatus = typing.Literal[
-    'queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'
+    'queued',
+    'running',
+    'succeeded',
+    'failed',
+    'cancelled',
+    'timed_out',
+    'skipped',
 ]
 
 
@@ -113,6 +119,13 @@ class Run(pydantic.BaseModel):
     started_at: datetime.datetime | None
     closed_at: datetime.datetime | None
     log_archived_at: datetime.datetime | None
+    dedupe_key: str | None = pydantic.Field(
+        description="The workflow's dedupe key filled with the payload.",
+    )
+    duplicate_of: uuid.UUID | None = pydantic.Field(
+        description='For a ``skipped`` run: the earlier run with the same '
+        'dedupe key.',
+    )
 
 
 class RunDetail(Run):
@@ -687,6 +700,11 @@ async def start_run(
     or the delivery id for a webhook. A repeat by the same origin
     returns the first run.
 
+    A run that a service starts is written ``skipped``,
+    with ``duplicate_of``, when its dedupe key matches a run of the
+    workflow made within the dedupe window. A person's run always
+    starts, and its key counts for later runs.
+
     Raises:
         403: The trigger's ``who`` does not include the caller, a person
             names an origin, the caller is a service account other than
@@ -763,6 +781,9 @@ async def start_run(
                 payload=payload,
                 concurrency_key=key,
                 activated_by=workflow['activated_by'],
+                dedupe_key=validation.dedupe_key(settings, payload),
+                dedupe_window_seconds=settings.dedupe_window_seconds,
+                skip_duplicate=origin.kind != agent_tasks.HUMAN_ORIGIN,
             )
         )
     except workflows.NotActive as e:
