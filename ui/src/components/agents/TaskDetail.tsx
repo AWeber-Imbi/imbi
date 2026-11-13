@@ -47,6 +47,7 @@ import type { AgentTask, AgentTaskEvent } from '@/types'
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
+import { ConversationTab } from './ConversationTab'
 import {
   checksFrom,
   formatElapsed,
@@ -102,9 +103,7 @@ export function TaskDetail({
   useFollowBottom(
     scrollRef,
     eventCount,
-    !!task.data &&
-      eventCount > 0 &&
-      (tab === 'conversation' || tab === 'actions' || tab === 'log'),
+    !!task.data && eventCount > 0 && tab === 'log',
   )
 
   if (task.isLoading) {
@@ -184,34 +183,43 @@ export function TaskDetail({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
-        {events.error && (
-          <p className="text-danger px-6 pt-4 text-sm" role="alert">
-            Could not load the task log: {events.error.message}
-          </p>
-        )}
-        {current === 'overview' && (
-          <OverviewTab end={end} events={log} task={t} />
-        )}
-        {current === 'input' && (
-          <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
-        )}
-        {(current === 'conversation' || current === 'log') && (
-          <TaskLogTab
-            events={log}
-            orgSlug={orgSlug}
-            requests={requests}
-            task={t}
-          />
-        )}
-        {current === 'checks' && <ChecksTab events={log} />}
-        {current === 'related' && (
-          <RelatedTasksTab orgSlug={orgSlug} task={t} />
-        )}
-        {current === 'projects' && (
-          <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
-        )}
-      </div>
+      {events.error && (
+        <p className="text-danger shrink-0 px-6 pt-4 text-sm" role="alert">
+          Could not load the task log: {events.error.message}
+        </p>
+      )}
+      {current === 'conversation' ? (
+        <ConversationTab
+          events={log}
+          orgSlug={orgSlug}
+          requests={requests}
+          task={t}
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
+          {current === 'overview' && (
+            <OverviewTab end={end} events={log} task={t} />
+          )}
+          {current === 'input' && (
+            <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
+          )}
+          {current === 'log' && (
+            <TaskLogTab
+              events={log}
+              orgSlug={orgSlug}
+              requests={requests}
+              task={t}
+            />
+          )}
+          {current === 'checks' && <ChecksTab events={log} />}
+          {current === 'related' && (
+            <RelatedTasksTab orgSlug={orgSlug} task={t} />
+          )}
+          {current === 'projects' && (
+            <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
+          )}
+        </div>
+      )}
       {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
