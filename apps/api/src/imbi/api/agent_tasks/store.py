@@ -740,6 +740,19 @@ class TaskStore:
             return await log.last_archived_agent_turn(task)
         return None if body is None else str(body)
 
+    async def closed_since(self, seconds: int) -> list[Row]:
+        """Return the tasks that closed in the last ``seconds``."""
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                _SELECT_TASKS + " WHERE t.status = 'closed'"
+                ' AND t.closed_at > NOW() - make_interval(secs => %s)',
+                (seconds,),
+            )
+            return await cursor.fetchall()
+
     async def unarchived(self) -> list[Row]:
         """Return the tasks whose log is not archived, by organization.
 

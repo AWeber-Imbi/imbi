@@ -1082,6 +1082,17 @@ class ControlTests(AgentTaskTestCase):
             ['task.created', 'control.changed', 'control.changed'],
         )
 
+    async def test_closed_since_returns_recently_closed_tasks(self) -> None:
+        async def ids(seconds: int) -> set[str]:
+            return {
+                str(r['id']) for r in await self.store.closed_since(seconds)
+            }
+
+        self.assertNotIn(self.task['id'], await ids(60))
+        await self.post('cancel')
+        self.assertIn(self.task['id'], await ids(60))
+        self.assertNotIn(self.task['id'], await ids(0))
+
     async def test_closed_task_refuses_changes(self) -> None:
         await self.post('cancel')
         for action in ('pause', 'resume', 'cancel'):
