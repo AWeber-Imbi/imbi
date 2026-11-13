@@ -6,6 +6,7 @@ import {
   Blocks,
   Bot,
   Building2,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   FileCode2,
@@ -51,6 +52,7 @@ import { OrganizationManagement } from './admin/OrganizationManagement'
 import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
+import { ScheduledJobsManagement } from './admin/ScheduledJobsManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
 import { SecretsManagement } from './admin/secrets/SecretsManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
@@ -271,6 +273,15 @@ const SECTIONS: SectionDef[] = [
     icon: Wrench,
     id: 'maintenance',
     label: 'Maintenance',
+    scope: 'system',
+  },
+  {
+    component: ScheduledJobsManagement,
+    description: 'Jobs that imbi-scheduler fires on a schedule',
+    group: 'System',
+    icon: CalendarClock,
+    id: 'scheduled-jobs',
+    label: 'Scheduled jobs',
     scope: 'system',
   },
   {
