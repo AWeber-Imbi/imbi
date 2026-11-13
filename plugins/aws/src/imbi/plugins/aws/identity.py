@@ -54,7 +54,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
-    PluginInstallationMissing,
+    PluginIdentityAccessDenied,
 )
 from imbi.common.plugins.templates import expand_template
 from imbi.plugins.aws._helpers import template_vars
@@ -366,9 +366,10 @@ class AWSIdentity(IdentityCapability):
         if response.status_code == 403:
             # The actor has no IAM IC assignment for this account and
             # role. Retrying or refreshing does not change that.
-            raise PluginInstallationMissing(
-                f'IAM Identity Center gives no access to role '
-                f'{role_name!r} in account {account_id}'
+            raise PluginIdentityAccessDenied(
+                f'IAM Identity Center gives you no access to role '
+                f'{role_name!r} in account {account_id}. Ask an AWS '
+                f'administrator to assign you a permission set for it.'
             )
         if response.status_code != 200:
             raise ValueError(
