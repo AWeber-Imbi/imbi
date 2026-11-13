@@ -11,8 +11,8 @@ Environment variables:
 - ``POSTHOG_HOST``: the ingestion host (default ``DEFAULT_HOST``).
 - ``POSTHOG_ERROR_TRACKING``: send exceptions (default ``true``).
 - ``POSTHOG_MCP_ANALYTICS``: ``imbi-mcp`` tool calls (default ``false``).
-- ``POSTHOG_AI_OBSERVABILITY``: ``imbi-assistant`` LLM calls
-  (default ``false``).
+- ``POSTHOG_AI_OBSERVABILITY``: ``imbi-assistant`` and ``imbi-slackbot``
+  LLM calls (default ``false``).
 - ``POSTHOG_AI_PRIVACY_MODE``: leave prompt and output text out of AI
   events (default ``true``).
 """

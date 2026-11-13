@@ -283,7 +283,7 @@ that you want.
 | `POSTHOG_HOST` | The ingestion host. The default is `https://us.i.posthog.com`. For the EU region, use `https://eu.i.posthog.com` |
 | `POSTHOG_ERROR_TRACKING` | The default is `true`: with a key, every Python service sends its exceptions. `false` stops them |
 | `POSTHOG_MCP_ANALYTICS` | `true` makes imbi-mcp send a `$mcp_tool_call` event for each tool call. The default is `false` |
-| `POSTHOG_AI_OBSERVABILITY` | `true` makes imbi-assistant send a `$ai_generation` event for each LLM call, with the model, tokens, cost, and latency. The default is `false` |
+| `POSTHOG_AI_OBSERVABILITY` | `true` makes imbi-assistant and imbi-slackbot send a `$ai_generation` event for each LLM call, with the model, tokens, cost, and latency. The default is `false` |
 | `POSTHOG_AI_PRIVACY_MODE` | The default is `true`: AI events have no prompt or output text. `false` sends the text |
 | `SERVICE` | The `service` property of each event |
 
