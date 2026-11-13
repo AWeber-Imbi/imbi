@@ -390,6 +390,8 @@ export function SettingsPanel({
  * The dedupe window in days. The typed text is kept as a draft, so a
  * partial value such as `0.` or `1.` survives until it is a positive
  * number; only a valid value or an empty field reaches the settings.
+ * On blur an invalid draft such as `0` or `-1` goes back to the saved
+ * value, so the field never shows a value that is not saved.
  */
 function DedupeWindowInput({
   onChange,
@@ -409,6 +411,9 @@ function DedupeWindowInput({
     <Input
       id="workflow-dedupe-window"
       min={0}
+      onBlur={() => {
+        if (windowSeconds(draft) === undefined) setDraft(windowDays(seconds))
+      }}
       onChange={(e) => {
         setDraft(e.target.value)
         const value = windowSeconds(e.target.value)

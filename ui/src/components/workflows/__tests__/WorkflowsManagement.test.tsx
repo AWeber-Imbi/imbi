@@ -472,6 +472,20 @@ describe('WorkflowsManagement', () => {
     expect(body.settings).toMatchObject({ dedupe_window_seconds: 43_200 })
   })
 
+  it('resets an invalid dedupe window to the saved value on blur', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.service }}' },
+    })
+    const field = screen.getByLabelText('Dedupe window (days)')
+    fireEvent.change(field, { target: { value: '14' } })
+    fireEvent.change(field, { target: { value: '-1' } })
+    expect(field).toHaveValue(-1)
+    fireEvent.blur(field)
+    expect(field).toHaveValue(14)
+  })
+
   it('shows a dedupe validation error in the settings', async () => {
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({
       issues: [
