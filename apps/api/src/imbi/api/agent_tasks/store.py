@@ -861,7 +861,8 @@ class TaskStore:
             TaskNotFound: No such task.
             TaskOpen: The task, or a child or chain task, is not closed,
                 the log of the task is not archived, its harness chain
-                is not done, or it has open secret resolutions.
+                is not done, it has open secret resolutions, or it or a
+                task in its chain has a ``trigger_outbox`` row.
 
         """
         async with self._pool.connection() as conn, conn.transaction():
@@ -892,14 +893,19 @@ class TaskStore:
                 raise TaskOpen(short_id)
             # The lease sweep still needs the chain row of a root that
             # waits for its fencers, and Broker.sweep joins the open
-            # resolutions of a failed close hook to the task.
+            # resolutions of a failed close hook to the task. A pending
+            # trigger_outbox row of the task, or of a task in the chain
+            # of a root, needs the root for its depth (task_trigger).
             cursor = await conn.execute(
                 'SELECT 1 FROM harness.chains WHERE root_task_id = %s'
                 " AND state IN ('running', 'fencing', 'stuck')"
                 ' UNION ALL SELECT 1 FROM secrets.resolutions'
                 " WHERE task_id = %s AND state IN ('pending', 'active')"
+                ' UNION ALL SELECT 1 FROM agent_runtime.trigger_outbox AS o'
+                ' JOIN agent_runtime.tasks AS c ON c.id = o.task_id'
+                ' WHERE c.id = %s OR c.chain_id = %s'
                 ' LIMIT 1',
-                (task['id'], task['id']),
+                (task['id'], task['id'], task['id'], task['id']),
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
