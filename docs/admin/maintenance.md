@@ -19,6 +19,7 @@ is the first page that the Admin menu opens.
 |---|---|---|
 | `admin:maintenance:read` | View global maintenance operations | `admin` |
 | `admin:maintenance:manage` | Run and cancel global maintenance operations | `admin` |
+| `admin:maintenance:marketplace-sync` | Start the marketplace-sync maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:dashboard:read` | View the admin system-health dashboard | `admin` |
 
 <!-- END GENERATED -->
@@ -57,6 +58,7 @@ The page has two tabs: **Operations** and **Activity**.
 | **Sync Commits & Tags** | `commit-sync` | Backfill full commit and tag history for every project with a commit-sync integration; projects without one are skipped. Also points each tagged release at the commit its tag now names, repairing a release re-promoted from a new commit after a failed build. |
 | **Sync Pull Requests** | `pr-sync` | Backfill full pull-request history for every project with a PR-sync integration; projects without one are skipped. |
 | **Reindex Search** | `search-reindex` | Rebuild the vector search index for every searchable node -- documents, comments, releases, projects, and the rest -- from its current content. Run this after a bulk import or a change to the embedding model; ordinary saves index themselves. |
+| **Sync Agent Marketplaces** | `marketplace-sync` | Read the catalog of every agent marketplace in every organization again at its default branch head. Agent versions keep the commit they pinned. The scheduler runs this every 6 hours. |
 
 <!-- END GENERATED -->
 
