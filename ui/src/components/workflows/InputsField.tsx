@@ -45,11 +45,10 @@ export function InputsField({
   )
   const update = (next: Row[]) => {
     setRows(next)
-    onChange(
-      Object.fromEntries(
-        next.filter((row) => row.name).map((row) => [row.name, row.value]),
-      ),
-    )
+    const named = next.filter((row) => row.name)
+    // A repeated name stays local: a map would drop one of the values.
+    if (new Set(named.map((row) => row.name)).size !== named.length) return
+    onChange(Object.fromEntries(named.map((row) => [row.name, row.value])))
   }
   const set = (index: number, patch: Partial<Row>) =>
     update(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))

@@ -69,6 +69,18 @@ describe('InputsField', () => {
     ).toBeInTheDocument()
   })
 
+  it('does not send a map while two inputs have one name', () => {
+    const onChange = renderField({ a: 'first', b: 'second' })
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'b' },
+    })
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'c' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith({ b: 'second', c: 'first' })
+  })
+
   it('removes an input', () => {
     const onChange = renderField({ a: 1, b: 2 })
     fireEvent.click(screen.getByRole('button', { name: 'Remove input 1' }))

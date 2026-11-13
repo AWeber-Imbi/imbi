@@ -25,9 +25,10 @@ export function ScriptPreview({
   node: WorkflowNode
   orgSlug: string
 }) {
-  const [sample, setSample] = useState(() =>
-    JSON.stringify(sampleInputs(node.params.inputs), null, 2),
-  )
+  // Follows the step's inputs until the user edits it.
+  const [edited, setSample] = useState<null | string>(null)
+  const sample =
+    edited ?? JSON.stringify(sampleInputs(node.params.inputs), null, 2)
   const inputs = parseObject(sample)
   const run = useMutation({
     mutationFn: (body: ScriptPreviewRequest) => previewScript(orgSlug, body),

@@ -65,6 +65,25 @@ describe('ScriptPreview', () => {
     expect(screen.getByText('ValueError: nope')).toBeInTheDocument()
   })
 
+  it('follows the step inputs until the sample is edited', () => {
+    const step = (inputs: Record<string, unknown>) =>
+      node({ params: { code: 'n', inputs }, type: 'script' })
+    const { rerender } = render(
+      <ScriptPreview node={step({})} orgSlug="acme" />,
+    )
+    const sample = () =>
+      JSON.parse(
+        (screen.getByLabelText('Sample inputs') as HTMLTextAreaElement).value,
+      )
+    rerender(<ScriptPreview node={step({ n: 3 })} orgSlug="acme" />)
+    expect(sample()).toEqual({ n: 3 })
+    fireEvent.change(screen.getByLabelText('Sample inputs'), {
+      target: { value: '{"n": 9}' },
+    })
+    rerender(<ScriptPreview node={step({ n: 4 })} orgSlug="acme" />)
+    expect(sample()).toEqual({ n: 9 })
+  })
+
   it('does not run sample inputs that are not a JSON object', async () => {
     renderPreview()
     fireEvent.change(screen.getByLabelText('Sample inputs'), {
