@@ -3430,6 +3430,10 @@ async def _execute_project_update(
             or 'project-type'
         ),
     }
+    # A removed base field takes the model default; a required one
+    # then fails validation (#675).
+    for name in touched & (merged.keys() - data.model_fields_set):
+        del merged[name]
 
     # Merge blueprint extra fields: start from existing unknown keys,
     # then overlay any extras supplied by the caller.

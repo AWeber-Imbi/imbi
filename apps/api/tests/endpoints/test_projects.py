@@ -940,6 +940,24 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertIsNone(set_statement.params['owner'])
         self.assertEqual(set_statement.params['tier'], 'gold')
 
+    def test_patch_remove_refuses_required_base_field(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/name'}], owner='ops', tier='gold'
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('name', response.json()['detail'])
+
+    def test_patch_remove_clears_optional_base_field(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/description'}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIsNone(set_statement.params['description'])
+
     def test_list_slim_release_summaries_follow_delivery_mode(self) -> None:
         """Release summaries are fetched for projects that *resolve* to
         releasable: a releasable type unless the project overrides it,
