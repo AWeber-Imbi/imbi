@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Marker, MarkerContent } from '@/components/ui/marker'
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Message, MessageContent, MessageHeader } from '@/components/ui/message'
 import {
   MessageScroller,
@@ -205,11 +205,22 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
           />
         )}
         {entry.children.length > 0 && (
-          <Trace>
-            {entry.children.map((child) => (
-              <WorkRow ctx={ctx} entry={child} key={child.id} />
-            ))}
-          </Trace>
+          <div className="border-accent/40 flex flex-col gap-2 border-l-2 pl-3">
+            <Marker className="text-accent text-xs">
+              <MarkerIcon>
+                <Bot />
+              </MarkerIcon>
+              <MarkerContent>
+                {String(args.subagent_type ?? 'Subagent')} subagent ·{' '}
+                {entry.children.length} steps
+              </MarkerContent>
+            </Marker>
+            <Trace>
+              {entry.children.map((child) => (
+                <WorkRow ctx={ctx} entry={child} key={child.id} />
+              ))}
+            </Trace>
+          </div>
         )}
       </TraceCollapsibleContent>
     </TraceCollapsible>

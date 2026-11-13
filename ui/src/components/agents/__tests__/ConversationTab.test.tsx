@@ -125,6 +125,31 @@ describe('ConversationTab', () => {
     ).toBeInTheDocument()
   })
 
+  it('sets subagent work apart under its call', async () => {
+    const user = userEvent.setup()
+    renderTab('closed', [
+      LOG[0],
+      event(2, 'tool.called', {
+        arguments: { command: 'ls' },
+        call_id: 'c2',
+        parent_call_id: 'task-1',
+        result: 'a.py',
+        tool: 'Bash',
+      }),
+      event(3, 'tool.called', {
+        arguments: { description: 'look', subagent_type: 'search' },
+        call_id: 'task-1',
+        result: 'Found it.',
+        tool: 'Task',
+      }),
+      event(4, 'turn', { body: 'fixed' }),
+    ])
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    await user.click(screen.getByRole('button', { name: /Subagent search/ }))
+    expect(screen.getByText(/search subagent/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
+  })
+
   it('says when there is nothing yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()
