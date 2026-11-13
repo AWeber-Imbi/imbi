@@ -541,10 +541,12 @@ async def _duplicate_of(
     """Return the newest run that makes ``run`` a duplicate, if any.
 
     That is a run of the workflow with the same dedupe key, made within
-    the window, that ran or can still run: ``queued``, ``running``,
-    ``succeeded``, ``failed``, ``timed_out``, or ``cancelled`` after it
-    started. A ``skipped`` run, or one cancelled before it started,
-    reviewed nothing, so it does not count.
+    the window, that did the work or still can: ``queued``,
+    ``running``, ``succeeded``, or ``cancelled`` after it started. A
+    person stopped a cancelled run on purpose, so a repeat does not
+    start it again. A ``failed`` or ``timed_out`` run did not finish
+    the work, so the next repeat retries it. A ``skipped`` run, or one
+    cancelled before it started, did nothing, so it does not count.
 
     When ``run`` has a project, only a run of that project counts: one
     delivery that starts runs for several projects dedupes each project
@@ -561,8 +563,8 @@ async def _duplicate_of(
     await cur.execute(
         'SELECT id FROM workflow_runtime.runs'
         ' WHERE workflow_id = %s AND dedupe_key = %s'
-        " AND status <> 'skipped'"
-        " AND NOT (status = 'cancelled' AND started_at IS NULL)"
+        " AND (status IN ('queued', 'running', 'succeeded')"
+        "      OR (status = 'cancelled' AND started_at IS NOT NULL))"
         ' AND (%s::bigint IS NULL'
         '      OR created_at > NOW() - make_interval(secs => %s))'
         " AND (%s::text IS NULL OR origin->>'project_id' = %s)"

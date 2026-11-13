@@ -448,8 +448,9 @@ Which runs count:
 
 | Earlier run | Counts |
 |---|---|
-| `queued`, `running`, `succeeded`, `failed`, `timed_out` | Yes |
-| `cancelled` after it started | Yes |
+| `queued`, `running`, `succeeded` | Yes |
+| `cancelled` after it started | Yes. Someone stopped it on purpose, so a repeat does not start it again |
+| `failed`, `timed_out` | No. The next matching delivery retries the work |
 | `cancelled` before it started | No |
 | `skipped` | No. The window counts from the last run that did work |
 

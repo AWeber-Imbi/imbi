@@ -245,10 +245,13 @@ the concurrency mode. The key rules of `one_per_key` apply:
 imbi-api checks at run creation, in the transaction that writes the run,
 under a transaction advisory lock on the workflow and key, so two
 deliveries with one key at once start one run. A matching run is any
-run that ran or can still run: `queued`, `running`, `succeeded`,
-`failed`, `timed_out`, or `cancelled` after it started. A `skipped` run
-and a run cancelled before it started do not count, so the window
-measures from the last run that did work.
+run that did the work or still can: `queued`, `running`, `succeeded`,
+or `cancelled` after it started. A person cancels a run on purpose, so a
+repeat does not start it again. A `failed` or `timed_out` run did not
+finish the work, so it does not count and the next matching delivery
+retries it. A `skipped` run and a run cancelled before it started do
+not count either, so the window measures from the last run that did
+work.
 
 A webhook run of a project (one delivery can start a run for each
 project it matches) matches only runs of the same project, so each

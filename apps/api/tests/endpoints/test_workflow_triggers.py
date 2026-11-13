@@ -604,12 +604,28 @@ class DedupeTestCase(TriggerTestCase):
         )
         third = await self._deliver('d-3')
         self.assertEqual(third['duplicate_of'], second['id'])
-        for status in ('failed', 'timed_out', 'succeeded', 'running'):
+        for status in ('succeeded', 'running', 'queued'):
             with self.subTest(status=status):
                 await self._set(second['id'], f"status = '{status}'")
                 run = await self._deliver(f'd-{status}')
                 self.assertEqual(run['status'], 'skipped')
                 self.assertEqual(run['duplicate_of'], second['id'])
+
+    async def test_failed_run_is_retried(self) -> None:
+        for status in ('failed', 'timed_out'):
+            with self.subTest(status=status):
+                first = await self._deliver(f'{status}-1', sha=status)
+                await self._set(
+                    first['id'],
+                    f"status = '{status}', started_at = NOW(),"
+                    ' closed_at = NOW()',
+                )
+                retry = await self._deliver(f'{status}-2', sha=status)
+                self.assertEqual(retry['status'], 'queued')
+                self.assertIsNone(retry['duplicate_of'])
+                # The retry counts: the next repeat is skipped.
+                repeat = await self._deliver(f'{status}-3', sha=status)
+                self.assertEqual(repeat['duplicate_of'], retry['id'])
 
     async def test_skipped_run_does_not_extend_the_window(self) -> None:
         first = await self._deliver('d-1')
