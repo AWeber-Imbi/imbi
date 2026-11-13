@@ -1170,6 +1170,30 @@ class ProcessNotificationTests(helpers.TestCase):
         }
         self.assertEqual({self.proj_id, second_proj_id}, project_ids)
 
+    async def test_verified_edge_wins_over_unverified_match(self) -> None:
+        # A manual (unverified) link on a second project must not receive
+        # deliveries once the real project's edge is verified.
+        await self._add_rule(filter_expression='true')
+        await self._create_extra_project()
+        await self.g.execute(
+            'MATCH (:Project {{id: {pid}}})'
+            '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+            ' SET ei.verified_identifier = {ext_id} RETURN 1 AS r',
+            {'pid': self.proj_id, 'ext_id': self.ext_id},
+            ['r'],
+        )
+        response = await self._post(
+            self.webhook_id, {'repo': {'id': self.ext_id}}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(
+            [self.proj_id],
+            [
+                typing.cast('plugin_base.PluginContext', c['ctx']).project_id
+                for c in ACTION_CALLS
+            ],
+        )
+
     async def test_handlers_run_in_ordinal_order(self) -> None:
         # Ordering is load-bearing: ``add_deployment_event`` drops its
         # event when the release is missing, so it has to run after
