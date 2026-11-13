@@ -30,6 +30,7 @@ import type { ReferenceGroup } from './references'
 import {
   type FieldSource,
   isIdOrReference,
+  isRecord,
   type ParamField,
   TRIGGER_PROJECT,
 } from './schemaFields'
@@ -233,11 +234,7 @@ function FieldControl({
           label={field.label}
           onChange={onChange}
           references={references}
-          value={
-            value && typeof value === 'object' && !Array.isArray(value)
-              ? (value as Record<string, unknown>)
-              : {}
-          }
+          value={isRecord(value) ? value : {}}
         />
       )
     case 'json':

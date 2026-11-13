@@ -122,7 +122,7 @@ export function NodePanel({
   const type = types[node.type]
   const Icon = stepIcon(node.type, type?.category)
   const fields = useMemo(
-    () => (type ? paramFields(type.params_schema) : []),
+    () => (type ? paramFields(type.params_schema, type.raw_params) : []),
     [type],
   )
   const references = useMemo(

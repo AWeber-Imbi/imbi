@@ -58,7 +58,12 @@ const MULTILINE = new Set([
 ])
 const MONO = new Set(['filter'])
 
-export function paramFields(schema: JsonSchema): ParamField[] {
+/** `rawParams` names the params that are never templates (`raw_params`
+ * of the step type), such as a script's code. */
+export function paramFields(
+  schema: JsonSchema,
+  rawParams: readonly string[] = [],
+): ParamField[] {
   const required = new Set(schema.required ?? [])
   return Object.entries(schema.properties ?? {}).map(([name, raw]) => {
     const prop = resolve(schema, raw)
@@ -72,8 +77,7 @@ export function paramFields(schema: JsonSchema): ParamField[] {
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (name === 'output_fields') return { ...base, kind: 'outputFields' }
-    // A script's code is Python, never a template (ADR 0027).
-    if (name === 'code' && prop.type === 'string') {
+    if (rawParams.includes(name) && prop.type === 'string') {
       return { ...base, kind: 'code' }
     }
     // A script's inputs map names to values; a manual trigger's inputs
@@ -170,9 +174,15 @@ const TEMPLATE_MARKERS = ['{{', '{%', '{#']
 /** The project that the gateway matched to a webhook delivery. */
 export const TRIGGER_PROJECT = '{{ trigger.project }}'
 
+export function hasTemplate(value: string): boolean {
+  return TEMPLATE_MARKERS.some((m) => value.includes(m))
+}
+
 export function isIdOrReference(value: string): boolean {
-  return (
-    !TEMPLATE_MARKERS.some((m) => value.includes(m)) ||
-    PLAIN_REFERENCE.test(value)
-  )
+  return !hasTemplate(value) || PLAIN_REFERENCE.test(value)
+}
+
+/** A JSON object: not null, not a list. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

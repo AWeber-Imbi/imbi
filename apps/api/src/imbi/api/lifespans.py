@@ -165,11 +165,6 @@ async def anthropic_hook() -> abc.AsyncGenerator[AnthropicClient]:
         await client.aclose()
 
 
-#: Sandbox workers of the editor's script preview (ADR 0027). A preview
-#: is a person at the editor, and each worker is a process of imbi-api.
-SCRIPT_PREVIEW_PROCESSES = 2
-
-
 @contextlib.asynccontextmanager
 async def script_preview_hook() -> abc.AsyncGenerator[
     script_runner.Runner | None
@@ -183,7 +178,9 @@ async def script_preview_hook() -> abc.AsyncGenerator[
         try:
             runner = await stack.enter_async_context(
                 script_runner.open_runner(
-                    processes=SCRIPT_PREVIEW_PROCESSES,
+                    # Few: a preview is a person at the editor, and each
+                    # worker is a process of imbi-api.
+                    processes=2,
                     max_memory=script_runner.DEFAULT_MAX_MEMORY_MB
                     * 1024
                     * 1024,

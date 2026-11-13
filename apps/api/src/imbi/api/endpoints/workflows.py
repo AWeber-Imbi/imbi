@@ -153,6 +153,11 @@ class StepType(pydantic.BaseModel):
     idempotent: bool
     timeout_seconds: int | None
     retries: int
+    raw_params: list[str] = pydantic.Field(
+        default=[],
+        description='Params that are never templates, such as the code '
+        'of a script.',
+    )
 
 
 # --- Helpers -----------------------------------------------------------

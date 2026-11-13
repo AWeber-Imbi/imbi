@@ -10,9 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import { JsonBlock } from './JsonBlock'
+import { hasTemplate, isRecord } from './schemaFields'
 import type { ScriptPreviewRequest, WorkflowNode } from './types'
-
-const TEMPLATE_MARKERS = ['{{', '{%']
 
 /**
  * Run the node's script now with sample inputs (ADR 0027). The script
@@ -109,9 +108,7 @@ function parseObject(text: string): null | Record<string, unknown> {
   if (!text.trim()) return {}
   try {
     const value: unknown = JSON.parse(text)
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null
+    return isRecord(value) ? value : null
   } catch {
     return null
   }
@@ -119,14 +116,11 @@ function parseObject(text: string): null | Record<string, unknown> {
 
 /** The node's inputs, with `null` for each value that holds a template. */
 function sampleInputs(inputs: unknown): Record<string, unknown> {
-  if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return {}
+  if (!isRecord(inputs)) return {}
   return Object.fromEntries(
     Object.entries(inputs).map(([name, value]) => [
       name,
-      typeof value === 'string' &&
-      TEMPLATE_MARKERS.some((m) => value.includes(m))
-        ? null
-        : value,
+      typeof value === 'string' && hasTemplate(value) ? null : value,
     ]),
   )
 }

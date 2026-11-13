@@ -20831,6 +20831,12 @@ export interface components {
             timeout_seconds: number | null;
             /** Retries */
             retries: number;
+            /**
+             * Raw Params
+             * @description Params that are never templates, such as the code of a script.
+             * @default []
+             */
+            raw_params: string[];
         };
         /** SurfaceCount */
         SurfaceCount: {

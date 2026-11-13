@@ -137,6 +137,7 @@ export const SCRIPT: StepType = stepType({
     type: 'object',
   },
   ports: null,
+  raw_params: ['code'],
   type: 'script',
 })
 
@@ -168,6 +169,7 @@ export function stepType(overrides: Partial<StepType> = {}): StepType {
       type: 'object',
     },
     ports: [''],
+    raw_params: [],
     retries: 0,
     sample_output: {},
     side_effect: false,
