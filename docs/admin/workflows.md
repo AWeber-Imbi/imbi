@@ -462,8 +462,9 @@ More rules:
   skipped and stores no key.
 - When one webhook delivery starts a run for each project it matches,
   each project dedupes on its own: only an earlier run of the same
-  project counts. A run with no project matches any earlier run of the
-  workflow with the key.
+  project, or a run with no project such as a person's run, counts. A
+  run with no project matches any earlier run of the workflow with the
+  key.
 - Two deliveries with the same key at the same time start one run.
 - Dedupe works with any **Concurrency** mode.
 - You cannot use a dedupe key with a **Schedule** trigger.

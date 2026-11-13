@@ -6140,8 +6140,9 @@ export interface paths {
          *     A run that a service starts is written ``skipped``,
          *     with ``duplicate_of``, when its dedupe key matches a run of the
          *     workflow made within the dedupe window. For a webhook run of a
-         *     project, only a run of the same project counts. A person's run
-         *     always starts, and its key counts for later runs.
+         *     project, only a run of the same project or a run with no project
+         *     counts. A person's run always starts, and its key counts for later
+         *     runs of every project.
          *
          *     Raises:
          *         403: The trigger's ``who`` does not include the caller, a person

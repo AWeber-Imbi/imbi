@@ -491,6 +491,39 @@ class ManualRunTestCase(WorkflowRunTestCase):
         self.assertEqual(row['status'], 'skipped')
         self.assertEqual(str(row['duplicate_of']), made[1]['id'])
 
+    async def test_person_run_counts_for_a_webhook_run_of_a_project(
+        self,
+    ) -> None:
+        url = await self._workflow(
+            settings={'dedupe_key': 'v{{ trigger.version }}'}
+        )
+        response = await self.client.post(
+            f'{url}/runs', json={'inputs': {'version': '1.2.3'}}
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        person = response.json()
+        self.assertNotIn('project_id', person['origin'])
+        row, _ = await self.runs.create(
+            workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=await self._workflow_id(url),
+                version=1,
+                trigger_node_id='start',
+                origin_kind='webhook',
+                origin_id='hook',
+                origin={'kind': 'webhook', 'project_id': 'p1'},
+                idempotency_key='d-1:p1',
+                payload={'version': '1.2.3', 'project': 'p1'},
+                concurrency_key=None,
+                activated_by=self.email,
+                dedupe_key='v1.2.3',
+                skip_duplicate=True,
+                project_id='p1',
+            )
+        )
+        self.assertEqual(row['status'], 'skipped')
+        self.assertEqual(str(row['duplicate_of']), person['id'])
+
     async def test_manual_run_without_the_dedupe_value_stores_no_key(
         self,
     ) -> None:

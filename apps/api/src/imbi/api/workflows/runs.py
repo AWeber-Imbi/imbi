@@ -119,7 +119,8 @@ class NewRun:
     #: Skip the run when it is a duplicate. A person's run is not.
     skip_duplicate: bool = False
     #: The project of a webhook run, also in ``origin``. A duplicate
-    #: must be a run of the same project. ``None``: any run counts.
+    #: must be a run of the same project or a run with no project.
+    #: ``None``: any run counts.
     project_id: str | None = None
 
 
@@ -548,9 +549,11 @@ async def _duplicate_of(
     the work, so the next repeat retries it. A ``skipped`` run, or one
     cancelled before it started, did nothing, so it does not count.
 
-    When ``run`` has a project, only a run of that project counts: one
-    delivery that starts runs for several projects dedupes each project
-    on its own. A run with no project matches on workflow and key.
+    When ``run`` has a project, only a run of that project or a run
+    with no project counts: one delivery that starts runs for several
+    projects dedupes each project on its own, and a person's run counts
+    for every project. A run with no project matches on workflow and
+    key.
 
     Takes a transaction lock on the key first, so two runs with one key
     serialize: under READ COMMITTED the second sees the first after the
@@ -567,7 +570,8 @@ async def _duplicate_of(
         "      OR (status = 'cancelled' AND started_at IS NOT NULL))"
         ' AND (%s::bigint IS NULL'
         '      OR created_at > NOW() - make_interval(secs => %s))'
-        " AND (%s::text IS NULL OR origin->>'project_id' = %s)"
+        " AND (%s::text IS NULL OR origin->>'project_id' IS NULL"
+        "      OR origin->>'project_id' = %s)"
         ' ORDER BY created_at DESC LIMIT 1',
         (
             run.workflow_id,

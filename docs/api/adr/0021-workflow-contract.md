@@ -257,8 +257,9 @@ not count either, so the window measures from the last run that did
 work.
 
 A webhook run of a project (one delivery can start a run for each
-project it matches) matches only runs of the same project, so each
-project dedupes on its own. A run with no project matches on workflow
+project it matches) matches only runs of the same project and runs
+with no project, so each project dedupes on its own and a person's run
+counts for every project. A run with no project matches on workflow
 and key.
 
 A duplicate is written as a closed run: status `skipped`, `closed_at`
