@@ -599,7 +599,7 @@ describe('Tasks', () => {
       expect(row).toHaveAttribute('id', 'e2')
       expect(within(row).getByTitle('Link to this event')).toHaveAttribute(
         'href',
-        '#e2',
+        '/agents/tasks/acme/T-3/log#e2',
       )
       expect(
         screen.getByRole('tab', { name: `Log${timeline(log).length}` }),
