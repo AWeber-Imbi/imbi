@@ -381,6 +381,28 @@ class ReconnectTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await pending)
         opener.assert_not_awaited()
 
+    async def test_queued_reconnect_skips_during_aclose(self) -> None:
+        opener = mock.AsyncMock(return_value=self.session)
+        self.manager._open_session = opener  # type: ignore
+        lock = self.manager._reconnect_locks.setdefault('svc', asyncio.Lock())
+        await lock.acquire()
+
+        async def session_task() -> None:
+            # Release the lock while aclose() waits on this task.
+            try:
+                await asyncio.get_running_loop().create_future()
+            finally:
+                lock.release()
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+
+        self.manager._tasks.append(asyncio.create_task(session_task()))
+        pending = asyncio.create_task(self.manager._reconnect('svc'))
+        await asyncio.sleep(0)
+        await self.manager.aclose()
+        self.assertIsNone(await pending)
+        opener.assert_not_awaited()
+
 
 class _FakeClientSession:
     """Stand-in for ``mcp.ClientSession`` used as a context manager."""

@@ -367,6 +367,9 @@ class ExternalMCPManager:
 
     async def aclose(self) -> None:
         """Close all server connections."""
+        # Clear the servers first. A reconnect that gets its lock while
+        # this method waits below then finds no server and opens nothing.
+        self._servers.clear()
         for task in self._tasks:
             task.cancel()
         # Each session task logs its own failure; teardown errors here
@@ -375,7 +378,6 @@ class ExternalMCPManager:
         self._tasks = []
         self._sessions.clear()
         self._tool_routes.clear()
-        self._servers.clear()
         self._reconnect_after.clear()
         self._reconnect_locks.clear()
         self._tools = []
