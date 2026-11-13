@@ -127,19 +127,20 @@ function eventsOf(entry: TimelineEntry): TimelineEntry[] {
 }
 
 function finish(turn: Turn) {
-  const all = [
-    ...turn.opening,
-    ...turn.items.flatMap((item) =>
+  const work = turn.items.filter(isWork)
+  const entriesOf = (items: TurnItem[]) =>
+    items.flatMap((item) =>
       item.kind === 'group' ? item.entries : [item.entry],
-    ),
-  ].flatMap(eventsOf)
+    )
+  const all = [...turn.opening, ...entriesOf(turn.items)].flatMap(eventsOf)
+  const timed = [...turn.opening, ...entriesOf(work)].flatMap(eventsOf)
   for (const entry of all) {
     if (!entry.event || entry.event.type === 'tool.called') turn.stats.tools++
     if (isError(entry)) turn.stats.errors++
     if (entry.event?.type === 'usage.reported')
       turn.stats.tokens += tokensOf(entry)
   }
-  const times = all
+  const times = timed
     .map((entry) => (entry.event ? Date.parse(entry.event.at) : NaN))
     .filter((t) => !Number.isNaN(t))
   turn.stats.durationMs =

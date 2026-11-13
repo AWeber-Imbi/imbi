@@ -194,6 +194,18 @@ describe('turns', () => {
     expect(list[0].stats.durationMs).toBe(1000)
   })
 
+  it('times a turn by its work, not the notes after it', () => {
+    const [turn] = turns(
+      timeline([
+        human(1, 'Go.'),
+        reply(3, 'Done.'),
+        event(40, 'outcome.set', { outcome: 'done_acted' }),
+      ]),
+      { live: false },
+    )
+    expect(turn.stats.durationMs).toBe(2000)
+  })
+
   it('has no duration for a turn with one event', () => {
     const [turn] = turns(timeline([human(1, 'Go.')]), { live: true })
     expect(turn.stats.durationMs).toBeNull()
