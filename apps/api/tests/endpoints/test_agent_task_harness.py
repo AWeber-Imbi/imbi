@@ -9,6 +9,7 @@ import datetime
 import decimal
 import typing
 import uuid
+from unittest import mock
 
 import httpx
 from psycopg.types import json as pg_json
@@ -827,10 +828,12 @@ class OutcomeTests(HarnessTestCase):
         # A remote $ref is never fetched, and a self $ref cannot recurse.
         for schema in ({'$ref': 'http://127.0.0.1:9/schema'}, {'$ref': '#'}):
             await self.set_output_schema(schema)
-            response = await self.post(
-                'outcome',
-                {'outcome': 'done_acted', 'structured_output': {'n': 1}},
-            )
+            with mock.patch('urllib.request.urlopen') as urlopen:
+                response = await self.post(
+                    'outcome',
+                    {'outcome': 'done_acted', 'structured_output': {'n': 1}},
+                )
+            urlopen.assert_not_called()
             self.assertEqual(response.status_code, 422, response.text)
             self.assertEqual(
                 response.json()['detail']['error'],
