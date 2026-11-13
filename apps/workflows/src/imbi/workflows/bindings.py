@@ -17,6 +17,11 @@ leaves nothing half made: the next pass tries again.
   that delivery as no effect.
 - A ``task_completed`` binding has nothing to write: imbi-api reads the
   binding itself when a task closes. It is marked ``synced``.
+
+A pass that leaves a binding ``failed`` schedules the next one early,
+after each of ``RETRY_DELAYS`` in turn. Once they run out, passes go back
+to the reconcile interval, so a binding that never syncs (a bad cron
+expression) does not re-sync every binding each minute.
 """
 
 import asyncio
@@ -40,6 +45,12 @@ HANDLER = 'gateway-actions#start_workflow'
 SCHEDULER_ACCOUNT = 'imbi-scheduler'
 
 HTTP_NOT_FOUND = 404
+
+#: Seconds before the next pass after a pass that left a binding
+#: ``failed``, one per pass in a row. After the last, failed passes wait
+#: the reconcile interval. A delay longer than the interval waits the
+#: interval.
+RETRY_DELAYS: tuple[float, ...] = (5.0, 15.0, 30.0, 60.0)
 
 _RULES: typing.LiteralString = """
 MATCH (r:WebhookRule)-[:ACTIONS]->(w:Webhook)
@@ -66,6 +77,14 @@ CREATE (n:WebhookRule {{filter_expression: {filter}, handler: {handler},
 RETURN w.id AS id
 """
 
+_UPDATE_RULE: typing.LiteralString = """
+MATCH (r:WebhookRule)-[:ACTIONS]->(w:Webhook {{id: {webhook}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org}}})
+WHERE r.handler = {handler} AND r.handler_config CONTAINS {binding}
+SET r.filter_expression = {filter}, r.handler_config = {config}
+RETURN w.id AS id
+"""
+
 
 class SyncError(Exception):
     """The scheduler or the gateway did not take the binding."""
@@ -88,7 +107,10 @@ class Reconciler:
         #: production, syncs every binding. Tests that share one
         #: database with other engines set it, as for ``store.Store``.
         self.organization_id = organization_id
+        self.retry_delays = RETRY_DELAYS
         self._wake = asyncio.Event()
+        #: Passes in a row that left a binding failed.
+        self._failed_passes = 0
 
     def notify(self) -> None:
         """Start the next pass now."""
@@ -98,9 +120,10 @@ class Reconciler:
         while not stop.is_set():
             self._wake.clear()
             try:
-                await self.reconcile()
+                failed = await self.reconcile()
             except Exception:
                 LOGGER.exception('Trigger reconcile failed; continuing')
+                failed = True
             waiters = [
                 asyncio.create_task(stop.wait()),
                 asyncio.create_task(self._wake.wait()),
@@ -108,7 +131,7 @@ class Reconciler:
             try:
                 await asyncio.wait(
                     waiters,
-                    timeout=self.config.reconcile_interval,
+                    timeout=self._next_wait(failed),
                     return_when=asyncio.FIRST_COMPLETED,
                 )
             finally:
@@ -116,8 +139,25 @@ class Reconciler:
                     waiter.cancel()
                 await asyncio.gather(*waiters, return_exceptions=True)
 
-    async def reconcile(self) -> None:
-        """Sync every binding once."""
+    def _next_wait(self, failed: bool) -> float:
+        """Return the seconds to wait after a pass.
+
+        A pass that failed waits the next of ``retry_delays``, and the
+        interval once they run out. A pass that did not fail waits the
+        interval and resets the delays.
+        """
+        interval = self.config.reconcile_interval
+        if not failed:
+            self._failed_passes = 0
+            return interval
+        if self._failed_passes >= len(self.retry_delays):
+            return interval
+        delay = self.retry_delays[self._failed_passes]
+        self._failed_passes += 1
+        return min(delay, interval)
+
+    async def reconcile(self) -> bool:
+        """Sync every binding once. Return whether any failed."""
         async with (
             self.pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cur,
@@ -131,6 +171,7 @@ class Reconciler:
                 {'org': self.organization_id},
             )
             bindings = await cur.fetchall()
+        failed = False
         for binding in bindings:
             try:
                 if binding['type'] == 'schedule':
@@ -144,8 +185,10 @@ class Reconciler:
                     'Trigger binding %s failed: %s', binding['id'], e
                 )
                 await self._record(binding, None, str(e) or type(e).__name__)
+                failed = True
             else:
                 await self._record(binding, target_id, None)
+        return failed
 
     async def _record(
         self, binding: store.Row, target_id: str | None, error: str | None
@@ -298,6 +341,23 @@ class Reconciler:
         ]
         if current == [(params['webhook_id'], rule_filter, config)]:
             return str(params['webhook_id'])
+        values = {
+            **marker,
+            'webhook': params['webhook_id'],
+            'org': binding['organization_id'],
+            'filter': rule_filter,
+            'config': json.dumps(config),
+        }
+        # One rule on the right webhook is changed in place. A delete
+        # is the statement that AGE 1.7.0 fails on a backend with a
+        # corrupt label cache (see the graph client), so a filter
+        # change must not need one. The match through the organization
+        # keeps the org check of the create; a rule it does not find
+        # falls through to the replace, which reports that.
+        if [webhook for webhook, *_ in current] == [
+            params['webhook_id']
+        ] and await self.steps.db.execute(_UPDATE_RULE, values, ['id']):
+            return str(params['webhook_id'])
         # One transaction, delete first: the gateway never sees the
         # webhook without the rule, and a webhook outside the org rolls
         # the delete back.
@@ -305,17 +365,7 @@ class Reconciler:
             await self.steps.db._execute_batch(  # pyright: ignore[reportPrivateUsage]
                 [
                     cypher.Statement(_DELETE_RULES, marker),
-                    cypher.Statement(
-                        _CREATE_RULE,
-                        {
-                            **marker,
-                            'webhook': params['webhook_id'],
-                            'org': binding['organization_id'],
-                            'filter': rule_filter,
-                            'config': json.dumps(config),
-                        },
-                        expect_rows=True,
-                    ),
+                    cypher.Statement(_CREATE_RULE, values, expect_rows=True),
                 ]
             )
         except graph.StatementMatchedNothing as e:

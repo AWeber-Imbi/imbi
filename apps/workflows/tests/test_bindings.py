@@ -4,10 +4,12 @@ These run against the live Postgres and graph that ``root:services``
 boots. imbi-scheduler is a fake behind ``httpx.MockTransport``.
 """
 
+import asyncio
 import json
 import typing
 import unittest
 import uuid
+from unittest import mock
 
 import httpx
 
@@ -377,6 +379,183 @@ class WebhookTestCase(ReconcilerTestCase):
             "'elsewhere' is not in the organization", binding['error']
         )
         self.assertEqual(await self._rules(), [])
+
+    def _spy(self) -> mock.MagicMock:
+        """Record the Cypher of every graph statement from here on."""
+        spy = mock.patch.object(
+            self.graph,
+            '_execute_on',
+            wraps=self.graph._execute_on,  # pyright: ignore[reportPrivateUsage]
+        ).start()
+        self.addCleanup(mock.patch.stopall)
+        return spy
+
+    @staticmethod
+    def _deleted(spy: mock.MagicMock) -> bool:
+        return any('DETACH DELETE' in c.args[1] for c in spy.call_args_list)
+
+    async def _node(self, label: str, node_id: str) -> None:
+        """Make a node that the test removes after."""
+        await self.graph.execute(
+            'CREATE (n:' + label + ' {{id: {id}, slug: {id}, name: {id}}})'
+            ' RETURN n.id AS id',
+            {'id': node_id},
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            """
+            MATCH (n {{id: {id}}})
+            OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(n)
+            DETACH DELETE r, n
+            RETURN 1 AS ok
+            """,
+            {'id': node_id},
+            ['ok'],
+        )
+
+    async def test_filter_change_updates_the_rule_in_place(self) -> None:
+        """A changed filter is a SET on the rule: no delete to fail."""
+        await self._activate(self._trigger())
+        await self.reconciler.reconcile()
+        before = await self._rule_ids()
+        self.assertEqual(len(before), 1)
+        await self._activate(self._trigger('payload.action == "opened"'))
+        spy = self._spy()
+        self.assertFalse(await self.reconciler.reconcile())
+        self.assertFalse(self._deleted(spy))
+        self.assertEqual(await self._rule_ids(), before)
+        [rule] = await self._rules()
+        self.assertEqual(rule['filter'], 'payload.action == "opened"')
+        [binding] = await self._bindings()
+        self.assertEqual(binding['sync_state'], 'synced')
+        self.assertEqual(binding['target_id'], self.webhook)
+
+    async def test_webhook_change_replaces_the_rule(self) -> None:
+        await self._activate(self._trigger())
+        await self.reconciler.reconcile()
+        other = f'{self.webhook}-2'
+        await self._node('Webhook', other)
+        await self.graph.execute(
+            """
+            MATCH (w:Webhook {{id: {webhook}}}), (o:Organization {{id: {org}}})
+            CREATE (w)-[:BELONGS_TO]->(o)
+            RETURN w.id AS id
+            """,
+            {'webhook': other, 'org': self.org},
+            ['id'],
+        )
+        await self._activate(
+            workflows.Trigger('hook', 'webhook', {'webhook_id': other})
+        )
+        spy = self._spy()
+        await self.reconciler.reconcile()
+        self.assertTrue(self._deleted(spy))
+        self.assertEqual(await self._rules(), [])
+        records = await self.graph.execute(
+            """
+            MATCH (r:WebhookRule)-[:ACTIONS]->(:Webhook {{id: {webhook}}})
+            RETURN r.handler_config AS config
+            """,
+            {'webhook': other},
+            ['config'],
+        )
+        self.assertEqual(len(records), 1)
+        [binding] = await self._bindings()
+        self.assertEqual(binding['sync_state'], 'synced')
+        self.assertEqual(binding['target_id'], other)
+
+    async def test_in_place_update_keeps_the_org_check(self) -> None:
+        """A rule whose webhook left the org is not updated."""
+        await self._activate(self._trigger())
+        await self.reconciler.reconcile()
+        before = await self._rule_ids()
+        other = f'{self.org}-2'
+        await self._node('Organization', other)
+        await self.graph.execute(
+            """
+            MATCH (w:Webhook {{id: {webhook}}})-[e:BELONGS_TO]->()
+            DELETE e
+            WITH w
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (w)-[:BELONGS_TO]->(o)
+            RETURN w.id AS id
+            """,
+            {'webhook': self.webhook, 'org': other},
+            ['id'],
+        )
+        await self._activate(self._trigger('payload.action == "opened"'))
+        self.assertTrue(await self.reconciler.reconcile())
+        [binding] = await self._bindings()
+        self.assertEqual(binding['sync_state'], 'failed')
+        self.assertIn('is not in the organization', binding['error'])
+        self.assertEqual(await self._rule_ids(), before)
+        [rule] = await self._rules()
+        self.assertEqual(rule['filter'], 'true')
+
+
+class RetryTestCase(ReconcilerTestCase):
+    trigger = workflows.Trigger('tick', 'schedule', {'cron': '0 9 * * *'})
+
+    def test_backoff_resets_after_a_clean_pass(self) -> None:
+        self.reconciler.retry_delays = (5.0, 15.0, 30.0, 60.0)
+        self.reconciler.config.reconcile_interval = 45.0
+        waits = [
+            self.reconciler._next_wait(failed)  # pyright: ignore[reportPrivateUsage]
+            for failed in (True, True, True, True, True, False, True)
+        ]
+        self.assertEqual(waits, [5.0, 15.0, 30.0, 45.0, 45.0, 45.0, 5.0])
+
+    def test_permanent_failure_waits_the_interval(self) -> None:
+        """A binding that never syncs does not keep the passes early."""
+        self.reconciler.retry_delays = (5.0, 15.0)
+        self.reconciler.config.reconcile_interval = 300.0
+        waits = [
+            self.reconciler._next_wait(True)  # pyright: ignore[reportPrivateUsage]
+            for _ in range(5)
+        ]
+        self.assertEqual(waits, [5.0, 15.0, 300.0, 300.0, 300.0])
+
+    async def test_failed_binding_is_retried_before_the_interval(
+        self,
+    ) -> None:
+        self.reconciler.retry_delays = (0.01, 0.02, 0.05)
+        self.reconciler.config.reconcile_interval = 3600.0
+        await self._activate(self.trigger)
+        self.scheduler.fail = 500
+        #: Whether each pass left a binding failed, as it ends.
+        passes: asyncio.Queue[bool] = asyncio.Queue()
+        reconcile = self.reconciler.reconcile
+
+        async def counted() -> bool:
+            failed = await reconcile()
+            passes.put_nowait(failed)
+            return failed
+
+        mock.patch.object(self.reconciler, 'reconcile', counted).start()
+        self.addCleanup(mock.patch.stopall)
+        stop = asyncio.Event()
+        loop = asyncio.create_task(self.reconciler.run_forever(stop))
+        try:
+            # Three passes fail, each after a retry delay, not the
+            # hour of the interval.
+            async with asyncio.timeout(10):
+                for _ in range(3):
+                    self.assertTrue(await passes.get())
+                self.scheduler.fail = None
+                self.assertFalse(await passes.get())
+            [binding] = await self._bindings()
+            self.assertEqual(binding['sync_state'], 'synced')
+            # A clean pass waits the interval again.
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(passes.get(), 0.3)
+            self.assertEqual(
+                self.reconciler._failed_passes,  # pyright: ignore[reportPrivateUsage]
+                0,
+            )
+        finally:
+            stop.set()
+            await loop
 
 
 class TaskCompletedTestCase(ReconcilerTestCase):
