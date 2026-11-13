@@ -33,6 +33,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.agent_tasks import log
+from imbi.common import relational
 from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
@@ -502,6 +503,9 @@ class TaskStore:
         task_id = uuid.uuid4()
         try:
             async with self._pool.connection() as conn, conn.transaction():
+                await relational.lock_organization_shared(
+                    conn, task.organization_id
+                )
                 if task.origin_kind == 'task':
                     # The lock conflicts with the lock in delete, so a
                     # parent cannot go while its child is made.

@@ -22,6 +22,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.secret_broker import audit, broker
+from imbi.common import relational
 
 SCHEMA = 'secrets'
 
@@ -243,6 +244,7 @@ class SecretStore:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(conn, organization_id)
             if table == 'grants':
                 await _lock_bindings(
                     cur, organization_id, values['binding_ids']
@@ -568,6 +570,7 @@ class SecretStore:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(conn, organization_id)
             await cur.execute(
                 'INSERT INTO secrets.identity_sources'
                 ' (organization_id, type, config, updated_by)'
@@ -608,6 +611,14 @@ class SecretStore:
 
 _GRANTED = 'SELECT 1 FROM secrets.grants WHERE %s = ANY(binding_ids) LIMIT 1'
 
+#: A resolution that is active, or whose provider lease is not revoked.
+#: The rows it needs (its binding, provider, and organization) must stay
+#: until it settles.
+UNSETTLED_RESOLUTION: typing.LiteralString = (
+    "(state IN ('pending', 'active')"
+    " OR revocation_state IN ('pending', 'failed'))"
+)
+
 
 async def _check_binding_unused(
     conn: broker.Conn, organization_id: str, binding_id: uuid.UUID
@@ -621,9 +632,10 @@ async def _check_binding_unused(
     if await cur.fetchone() is not None:
         raise InUse('A grant uses the binding')
     cur = await conn.execute(
-        'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
-        " AND (state IN ('pending', 'active')"
-        " OR revocation_state IN ('pending', 'failed')) LIMIT 1",
+        sql.SQL(
+            'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
+            ' AND {} LIMIT 1'
+        ).format(sql.SQL(UNSETTLED_RESOLUTION)),
         (binding_id,),
     )
     if await cur.fetchone() is not None:
