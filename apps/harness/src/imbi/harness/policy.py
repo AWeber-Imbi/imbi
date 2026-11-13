@@ -59,9 +59,22 @@ def tool_key(name: str) -> str | None:
     return f'{_KEY_SERVER.get(server, server)}.{tool}'
 
 
+#: Earlier CLI names of built-in tools: an organization rule with one
+#: of them applies to the tool. Keep in step with ``aliases`` in
+#: ``OPT_IN_BUILTIN_TOOLS`` of imbi-common, which the harness does not
+#: depend on.
+_BUILTIN_ALIASES: dict[str, frozenset[str]] = {'Agent': frozenset({'Task'})}
+
+
 def builtin_key(name: str) -> str:
     """The tool map key of the built-in tool ``name``."""
     return f'builtin.{name}'
+
+
+def _rule_names(name: str, key: str | None, plugin: str | None) -> set[str]:
+    """The names that an ``approval_tools`` rule can give the tool."""
+    names = {name, *_BUILTIN_ALIASES.get(name, ())}
+    return names | {value for value in (key, plugin) if value is not None}
 
 
 def _plugin_server(name: str, plugin_servers: list[str]) -> str | None:
@@ -112,6 +125,9 @@ def check(  # noqa: PLR0913 - keyword-only inputs
         return Check(deny='environment_not_allowed')
     return Check(
         approval=bool(config.get('approval'))
-        or (automation and bool({name, key, plugin} & set(approval_tools))),
+        or (
+            automation
+            and bool(_rule_names(name, key, plugin) & set(approval_tools))
+        ),
         rate_key=key if config.get('rate_limit') else None,
     )

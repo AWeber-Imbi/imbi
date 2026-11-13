@@ -60,6 +60,17 @@ class PolicyTestCase(unittest.TestCase):
         # A built-in tool without an entry has no approval or limit.
         self.assertEqual(check('Read', **on), policy.Check())
 
+    def test_approval_tools_match_an_earlier_tool_name(self) -> None:
+        # Task is the earlier CLI name of Agent: an organization rule
+        # with it applies to Agent.
+        options: dict[str, typing.Any] = {
+            'allowed': ['Task', 'Agent'],
+            'tool_map': {'builtin.Agent': {}},
+            'approval_tools': ['Task'],
+        }
+        self.assertTrue(check('Agent', automation=True, **options).approval)
+        self.assertFalse(check('Agent', **options).approval)
+
     def test_mcp_tools_need_the_tool_map(self) -> None:
         self.assertEqual(check('mcp__other__x').deny, 'tool_not_configured')
         self.assertEqual(check('mcp__imbi__request_input'), policy.Check())

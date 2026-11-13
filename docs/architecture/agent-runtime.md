@@ -141,7 +141,9 @@ The runner has these parts:
        configuration. An MCP tool must be in the agent's tool map. The
        opt-in built-in tools `Skill` and `Agent` are in the allowed tools
        only when the agent's tool map has `builtin.Skill` or
-       `builtin.Agent`, inside the organization's `allowed_tools`.
+       `builtin.Agent`. When the organization sets `allowed_tools`, the
+       list must also name the tool (`Skill`, or `Agent` or its earlier
+       name `Task`); an unset `allowed_tools` does not block them.
     2. An `environment` argument must not name a blocked environment.
     3. A tool with approval set opens a request, and the task waits for a
        person (`blocked`). A tool in `approval_tools` also needs approval
