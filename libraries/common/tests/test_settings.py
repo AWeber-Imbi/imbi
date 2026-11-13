@@ -494,6 +494,10 @@ class InternalApiTestCase(unittest.TestCase):
         with self.assertRaises(pydantic.ValidationError):
             self._settings(IMBI_API_URL='imbi.example.com/api')
 
+    def test_rejects_public_url_without_network_location(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._settings(IMBI_API_URL='https:imbi.example.com/api')
+
 
 if __name__ == '__main__':
     unittest.main()

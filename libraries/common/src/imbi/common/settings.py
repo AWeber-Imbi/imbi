@@ -66,10 +66,13 @@ class InternalApi(pydantic_settings.BaseSettings):
         :func:`urllib.parse.urlparse` reads a schemeless value as a path:
         ``imbi.example.com/api`` would give
         ``http://imbi-api:8000imbi.example.com/api`` and a 404 on every
-        call. A startup failure names the incorrect variable.
+        call. ``https:imbi.example.com/api`` has a scheme but no network
+        location, and fails the same way. A startup failure names the
+        incorrect variable.
 
         """
-        if value and not urllib.parse.urlparse(value).scheme:
+        parsed = urllib.parse.urlparse(value)
+        if value and not (parsed.scheme and parsed.netloc):
             raise ValueError(
                 'must be an absolute URL (e.g. https://imbi.example.com/api);'
                 f' got {value!r}'
