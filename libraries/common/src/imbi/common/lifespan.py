@@ -106,6 +106,10 @@ class Lifespan(dict[LifespanHook, object | None]):
         """
         super().__init__()
         self._hooks: tuple[LifespanHook, ...] = hooks
+        #: True when the lifespan unwound before the server asked it to
+        #: shut down. uvicorn keeps serving after that, but the hooks'
+        #: resources are closed, so ``/status`` must report a failure.
+        self.failed = False
 
     def get_state[T](self, hook: TypedLifespanHook[T]) -> T:
         """Retrieve the resource yielded by a specific hook.
@@ -174,7 +178,14 @@ class Lifespan(dict[LifespanHook, object | None]):
                 for hook in self._hooks:
                     if hook not in self:
                         self[hook] = await stack.enter_async_context(hook())
-                yield {'lifespan_data': self}
+                try:
+                    yield {'lifespan_data': self}
+                except BaseException:
+                    # A normal shutdown returns from the yield. Anything
+                    # raised into it (for example a task group that
+                    # cancels the lifespan task, #287) is unexpected.
+                    self.failed = True
+                    raise
 
         return cm()
 
@@ -224,3 +235,14 @@ def get_lifespan(request: fastapi.Request) -> Lifespan:
 
     """
     return _get_lifespan(request)
+
+
+def failed(request: fastapi.Request) -> bool:
+    """True when the request's app lifespan exited while the process kept
+    serving. ``/status`` endpoints use this to return 503 so that the
+    probe replaces the pod. An app without a running lifespan is not
+    failed.
+
+    """
+    state = getattr(request.state, 'lifespan_data', None)
+    return isinstance(state, Lifespan) and state.failed

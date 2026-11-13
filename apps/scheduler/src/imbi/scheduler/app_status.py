@@ -13,6 +13,8 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.common import lifespan
+
 router = fastapi.APIRouter()
 
 
@@ -28,9 +30,9 @@ class Status(pydantic.BaseModel):
     service: typing.Annotated[
         str, pydantic.Field(description='Service instance name')
     ] = 'imbi-scheduler'
-    #: One value on purpose. A reply *is* the signal, so a `'failing'` variant
-    #: could only ever be advertised and never returned — see the endpoint.
-    status: typing.Literal['ok']
+    #: ``'failing'`` only when the lifespan exited while the process kept
+    #: serving -- see the endpoint.
+    status: typing.Literal['ok', 'failing']
     version: typing.Annotated[
         str,
         pydantic.Field(description='Application version', examples=['0.0.0']),
@@ -39,14 +41,17 @@ class Status(pydantic.BaseModel):
 
 
 @router.get('/status', summary='Operational status', operation_id='getStatus')
-def status_endpoint(*, request: fastapi.Request) -> Status:
+def status_endpoint(
+    *, request: fastapi.Request, response: fastapi.Response
+) -> Status:
     """Report that this process is up and serving.
 
-    Answers from process state alone and touches no dependency, and
-    :attr:`Status.status` is narrowed to a single value to say so in the type.
-    That is deliberate, and the obvious change — widen the literal, add a
-    readiness check over the store pool, the ClickHouse client and the engine
-    task — is the one to resist here.
+    Answers from process state alone and touches no dependency. It returns
+    503 ``'failing'`` only when the lifespan exited while uvicorn kept
+    serving: its pools are closed and nothing reopens them, so the pod must
+    be replaced. The obvious further change — add a readiness check over the
+    store pool, the ClickHouse client and the engine task — is the one to
+    resist here.
 
     The chart points **both** the liveness and the readiness probe at this
     path (see ``helm/imbi/templates/deployment.yaml``). So a dependency-aware
@@ -64,9 +69,12 @@ def status_endpoint(*, request: fastapi.Request) -> Status:
     probe uses**, plus the chart change to point at it. That is a deliberate
     piece of work, not an edit to this function.
     """
+    ok = not lifespan.failed(request)
+    if not ok:
+        response.status_code = 503
     return Status(
         environment=os.environ.get('ENVIRONMENT', 'development'),
-        status='ok',
+        status='ok' if ok else 'failing',
         version=request.app.version,
         started_at=request.app.extra['started_at'],
     )

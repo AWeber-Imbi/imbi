@@ -1,13 +1,16 @@
 import datetime
+import unittest
 import unittest.mock
+from unittest import mock
 
+import fastapi
 import fastapi.testclient
 import pydantic
 
 import imbi.scheduler.app
 from apps.scheduler.tests import helpers
-from imbi.common import graph, sentry
-from imbi.scheduler import lifespans, store
+from imbi.common import graph, lifespan, sentry
+from imbi.scheduler import app_status, lifespans, store
 
 
 class AppTests(helpers.TestCase):
@@ -141,3 +144,17 @@ class AppTests(helpers.TestCase):
 
         body = response.json()
         self.assertEqual('testing', body['environment'])
+
+
+class StatusLifespanFailedTests(unittest.TestCase):
+    def test_status_fails_when_lifespan_failed(self) -> None:
+        failed = lifespan.Lifespan()
+        failed.failed = True
+        request = mock.Mock()
+        request.state.lifespan_data = failed
+        request.app.extra = {'started_at': datetime.datetime.now(datetime.UTC)}
+        request.app.version = '1.0.0'
+        response = fastapi.Response()
+        result = app_status.status_endpoint(request=request, response=response)
+        self.assertEqual(503, response.status_code)
+        self.assertEqual('failing', result.status)
