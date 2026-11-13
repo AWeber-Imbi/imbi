@@ -59,14 +59,14 @@ export function KindTag({ kind }: { kind: TrajectoryKind }) {
   return (
     <span
       className={cn(
-        'inline-flex h-[19px] shrink-0 items-center rounded-[4px] px-[5px] text-[10px] leading-4 font-[650] tracking-[.035em] uppercase @max-[620px]/tj:w-[19px] @max-[620px]/tj:justify-center @max-[620px]/tj:px-0',
+        'inline-flex h-4.75 shrink-0 items-center rounded-[4px] px-1.25 text-[10px] leading-4 font-[650] tracking-[.035em] uppercase @max-[620px]/tj:w-4.75 @max-[620px]/tj:justify-center @max-[620px]/tj:px-0',
         TAG[kind],
       )}
     >
       <span className="@max-[620px]/tj:hidden">{KIND_LABEL[kind]}</span>
       <Icon
         aria-hidden
-        className="hidden size-[13px] @max-[620px]/tj:block"
+        className="hidden size-3.25 @max-[620px]/tj:block"
         strokeWidth={1.75}
       />
     </span>

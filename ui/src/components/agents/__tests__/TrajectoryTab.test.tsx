@@ -1,10 +1,11 @@
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { render, screen, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { TrajectoryTab } from '../TrajectoryTab'
+import { DURATION_KEY } from '../TrajectoryToolbar'
 import { event, task } from './taskFixtures'
 
 const LOG = [
@@ -147,5 +148,62 @@ describe('TrajectoryTab ledger', () => {
     )
     renderTab()
     expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+describe('TrajectoryTab toolbar', () => {
+  it('collapses and expands every turn with one button', async () => {
+    renderTab()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse turns' }),
+    )
+    expect(rows()).toHaveLength(4)
+    expect(
+      screen.getByRole('button', { name: 'Expand turns' }),
+    ).toHaveTextContent('⊞')
+    await userEvent.click(screen.getByRole('button', { name: 'Expand turns' }))
+    expect(rows()).toHaveLength(9)
+  })
+
+  it('folds the calls under every assistant', async () => {
+    renderTab()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse calls' }),
+    )
+    expect(rows()).toHaveLength(8)
+    expect(rows()[3]).toHaveTextContent('2 tool calls · Bash, Grep')
+    expect(rows()[7]).toHaveTextContent('1 tool call · Bash')
+  })
+
+  it('disables a fold button with nothing to fold', () => {
+    renderTab()
+    expect(
+      screen.getByRole('button', { name: 'Collapse subcalls' }),
+    ).toBeDisabled()
+  })
+
+  it('searches every record and ignores folds', async () => {
+    renderTab()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse turns' }),
+    )
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search trajectory' }),
+      'denied',
+    )
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toHaveTextContent('Grep')
+  })
+
+  it('keeps the Duration toggle in the browser', async () => {
+    renderTab()
+    const toggle = screen.getByRole('button', { name: 'Duration' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    expect(vi.mocked(window.localStorage.setItem)).toHaveBeenCalledWith(
+      DURATION_KEY,
+      'true',
+    )
   })
 })

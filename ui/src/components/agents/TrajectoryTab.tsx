@@ -8,15 +8,25 @@ import { TrajectoryLedger, type TrajectorySelection } from './TrajectoryLedger'
 import {
   buildTrajectory,
   type Fold,
+  type FoldButton,
+  foldKeys,
   type Folds,
   recordForSeq,
   rowsOf,
+  type Trajectory,
   type TrajectoryRecord,
 } from './trajectoryModel'
+import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
+
+const SET_OF: Record<FoldButton, keyof Folds> = {
+  calls: 'calls',
+  subcalls: 'subcalls',
+  turns: 'turns',
+}
 
 /**
  * The Trajectory tab, after the DeepSeek Harness trajectory view: a
- * ledger of every record the task produced.
+ * toolbar and a ledger of every record the task produced.
  */
 export function TrajectoryTab({
   events,
@@ -32,21 +42,37 @@ export function TrajectoryTab({
     () => buildTrajectory(events, live),
     [events, live],
   )
-  const [folds, setFolds] = useState<Folds>(() => ({
-    calls: new Set(),
-    subcalls: new Set(),
-    turns: new Set(),
-  }))
+  const [folds, setFolds] = useState<Folds>(emptyFolds)
   const [selection, setSelection] = useState<TrajectorySelection>(null)
   const [scrollTo, setScrollTo] = useState<null | string>(null)
+  const [query, setQuery] = useState('')
+  const [duration, setDuration] = useTrajectoryDuration()
 
   const { records, requests, turns } = trajectory
-  const rows = useMemo(() => rowsOf(trajectory, folds, ''), [trajectory, folds])
+  const rows = useMemo(
+    () => rowsOf(trajectory, folds, query),
+    [trajectory, folds, query],
+  )
   const turnStarts = useMemo(
     () => new Map(turns.map((t) => [t.first, t.number])),
     [turns],
   )
   const byId = useMemo(() => new Map(records.map((r) => [r.id, r])), [records])
+  const keys = useMemo(
+    () => ({
+      calls: foldKeys(trajectory, 'calls'),
+      subcalls: foldKeys(trajectory, 'subcalls'),
+      turns: foldKeys(trajectory, 'turns'),
+    }),
+    [trajectory],
+  )
+  const folded = Object.fromEntries(
+    (['turns', 'calls', 'subcalls'] as const).map((button) => {
+      const set = folds[SET_OF[button]] as Set<number | string>
+      const list = keys[button]
+      return [button, list.length ? list.every((k) => set.has(k)) : null]
+    }),
+  ) as Record<FoldButton, boolean | null>
 
   const linked = /^#e(\d+)$/.exec(hash)?.[1]
   useEffect(() => {
@@ -76,14 +102,23 @@ export function TrajectoryTab({
 
   const toggle = (fold: Fold) =>
     setFolds((prev) => {
-      const next: Folds = {
-        calls: new Set(prev.calls),
-        subcalls: new Set(prev.subcalls),
-        turns: new Set(prev.turns),
-      }
+      const next = copyFolds(prev)
       if (fold.type === 'turn') flip(next.turns, fold.key)
       else if (fold.type === 'calls') flip(next.calls, fold.key)
       else flip(next.subcalls, fold.key)
+      return next
+    })
+
+  const foldAll = (button: FoldButton) =>
+    setFolds((prev) => {
+      const next = copyFolds(prev)
+      const set = next[SET_OF[button]] as Set<number | string>
+      const list = keys[button]
+      const all = list.every((k) => set.has(k))
+      for (const k of list) {
+        if (all) set.delete(k)
+        else set.add(k)
+      }
       return next
     })
 
@@ -106,6 +141,14 @@ export function TrajectoryTab({
 
   return (
     <div className="trajectory isolate flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TrajectoryToolbar
+        duration={duration}
+        folded={folded}
+        onDuration={setDuration}
+        onFold={foldAll}
+        onQuery={setQuery}
+        query={query}
+      />
       <TrajectoryLedger
         activeTurn={activeTurn}
         focused={null}
@@ -123,6 +166,18 @@ export function TrajectoryTab({
   )
 }
 
+function copyFolds(folds: Folds): Folds {
+  return {
+    calls: new Set(folds.calls),
+    subcalls: new Set(folds.subcalls),
+    turns: new Set(folds.turns),
+  }
+}
+
+function emptyFolds(): Folds {
+  return { calls: new Set(), subcalls: new Set(), turns: new Set() }
+}
+
 function flip<T>(set: Set<T>, key: T) {
   if (set.has(key)) set.delete(key)
   else set.add(key)
@@ -132,7 +187,7 @@ function flip<T>(set: Set<T>, key: T) {
 function unfoldFor(
   folds: Folds,
   record: TrajectoryRecord,
-  trajectory: ReturnType<typeof buildTrajectory>,
+  trajectory: Trajectory,
 ): Folds {
   const assistant = trajectory.records.find(
     (r) => r.kind === 'assistant' && r.request === record.request,
@@ -144,11 +199,7 @@ function unfoldFor(
       folds.calls.has(assistant.id)) ||
     (!!record.parent && folds.subcalls.has(record.parent))
   if (!hidden) return folds
-  const next: Folds = {
-    calls: new Set(folds.calls),
-    subcalls: new Set(folds.subcalls),
-    turns: new Set(folds.turns),
-  }
+  const next = copyFolds(folds)
   next.turns.delete(record.turn)
   if (assistant) next.calls.delete(assistant.id)
   if (record.parent) next.subcalls.delete(record.parent)
