@@ -12,6 +12,42 @@ export const MAX_INPUTS = 20
 
 const NAME = /^[a-z][a-z0-9_]*$/
 
+/** The lowercase names of Python's `keyword.kwlist`; the API refuses them. */
+const KEYWORDS = new Set([
+  'and',
+  'as',
+  'assert',
+  'async',
+  'await',
+  'break',
+  'class',
+  'continue',
+  'def',
+  'del',
+  'elif',
+  'else',
+  'except',
+  'finally',
+  'for',
+  'from',
+  'global',
+  'if',
+  'import',
+  'in',
+  'is',
+  'lambda',
+  'nonlocal',
+  'not',
+  'or',
+  'pass',
+  'raise',
+  'return',
+  'try',
+  'while',
+  'with',
+  'yield',
+])
+
 interface Row {
   key: string
   name: string
@@ -123,6 +159,7 @@ function nameError(name: string, repeated: boolean): null | string {
   if (!NAME.test(name)) {
     return 'Use lowercase letters, digits, and _, starting with a letter.'
   }
+  if (KEYWORDS.has(name)) return 'This name is a Python keyword.'
   if (repeated) return 'Another input has this name.'
   return null
 }

@@ -46,7 +46,10 @@ export function ScriptPreview({
         <Textarea
           className="font-mono text-xs"
           id={id}
-          onChange={(e) => setSample(e.target.value)}
+          onChange={(e) => {
+            setSample(e.target.value)
+            run.reset()
+          }}
           rows={4}
           spellCheck={false}
           value={sample}

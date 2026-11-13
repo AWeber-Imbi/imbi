@@ -67,6 +67,12 @@ describe('InputsField', () => {
         'Use lowercase letters, digits, and _, starting with a letter.',
       ),
     ).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Input 2 name'), {
+      target: { value: 'lambda' },
+    })
+    expect(
+      screen.getByText('This name is a Python keyword.'),
+    ).toBeInTheDocument()
   })
 
   it('does not send a map while two inputs have one name', () => {

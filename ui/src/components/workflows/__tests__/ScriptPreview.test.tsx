@@ -63,6 +63,13 @@ describe('ScriptPreview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run script' }))
     expect(await screen.findByText('script_error')).toBeInTheDocument()
     expect(screen.getByText('ValueError: nope')).toBeInTheDocument()
+    // A new sample clears the result of the last run.
+    fireEvent.change(screen.getByLabelText('Sample inputs'), {
+      target: { value: '{"n": 1}' },
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('script_error')).not.toBeInTheDocument(),
+    )
   })
 
   it('follows the step inputs until the sample is edited', () => {
