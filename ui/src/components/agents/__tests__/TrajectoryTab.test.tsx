@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
+import { startedText, tabsFor } from '../TrajectoryInspector'
 import { focusedBy, totalText } from '../TrajectoryOverview'
 import { TrajectoryTab } from '../TrajectoryTab'
 import { DURATION_KEY } from '../TrajectoryToolbar'
@@ -308,5 +309,147 @@ describe('overview helpers', () => {
 
   it('formats totals with thousands separators', () => {
     expect(totalText(1234.4)).toBe('Total 1,234 ms')
+  })
+})
+
+function inspector() {
+  return screen.getByRole('complementary', { name: 'Inspector' })
+}
+
+function tabNames() {
+  return within(inspector())
+    .getAllByRole('tab')
+    .map((t) => t.textContent)
+}
+
+describe('TrajectoryTab inspector', () => {
+  it('opens on selection and closes with its button', async () => {
+    renderTab()
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+    await userEvent.click(rows()[3])
+    expect(within(inspector()).getByText('TOOL')).toBeInTheDocument()
+    expect(within(inspector()).getByText('Turn 1 · Step 1')).toBeInTheDocument()
+    await userEvent.click(
+      within(inspector()).getByRole('button', { name: 'Close inspector' }),
+    )
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+  })
+
+  it('shows the tool tabs, summary and payload', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    expect(tabNames()).toEqual(['Summary', 'Payload', 'Result', 'Timing'])
+    expect(within(inspector()).getByText('Completed')).toBeInTheDocument()
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Payload' }),
+    )
+    expect(within(inspector()).getByRole('tabpanel')).toHaveTextContent(
+      '"command": "ls"',
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Timing' }),
+    )
+    expect(within(inspector()).getByText('500 ms')).toBeInTheDocument()
+    expect(
+      within(inspector()).getByText('Session timestamps'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a failed tool as Failed', async () => {
+    renderTab()
+    await userEvent.click(rows()[4])
+    expect(within(inspector()).getByText('Failed')).toBeInTheDocument()
+  })
+
+  it('keeps the last tab a record supports', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    )
+    await userEvent.click(rows()[4])
+    expect(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(rows()[2])
+    expect(
+      within(inspector()).getByRole('tab', { name: 'Summary' }),
+    ).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens a request from its dot, with usage and its message', async () => {
+    renderTab()
+    await userEvent.click(
+      within(rows()[2]).getByRole('button', { name: 'Request #1' }),
+    )
+    expect(within(inspector()).getByText('Request #1')).toBeInTheDocument()
+    expect(tabNames()).toEqual(['Summary', 'Usage', 'Timing'])
+    expect(within(inspector()).getAllByText('TTFT')[0]).toBeInTheDocument()
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Usage' }),
+    )
+    expect(within(inspector()).getByText('This request')).toBeInTheDocument()
+    expect(
+      within(inspector()).getByText('Session cumulative'),
+    ).toBeInTheDocument()
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Summary' }),
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('button', { name: 'Assistant Message' }),
+    )
+    expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows thinking in the assistant preview', async () => {
+    renderTab()
+    await userEvent.click(rows()[2])
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Preview' }),
+    )
+    expect(
+      within(inspector()).getByRole('button', { name: 'Thinking' }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(inspector()).getByText('Looking at releases'),
+    ).toBeInTheDocument()
+  })
+
+  it('resizes with the arrow keys and resets on double-click', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    const handle = within(inspector()).getByRole('separator', {
+      name: 'Resize inspector',
+    })
+    vi.spyOn(inspector(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 400,
+      toJSON: () => ({}),
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+    })
+    handle.focus()
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(inspector().style.width).toBe('416px')
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}')
+    expect(inspector().style.width).toBe('384px')
+    await userEvent.dblClick(handle)
+    expect(inspector().style.width).toBe('')
+  })
+})
+
+describe('inspector helpers', () => {
+  it('gives each kind its tabs', () => {
+    const t = { record: { kind: 'user' }, type: 'record' } as never
+    expect(tabsFor(t)).toEqual(['Summary', 'Preview', 'Raw'])
+  })
+
+  it('formats the start time with milliseconds', () => {
+    const ms = new Date(2026, 9, 8, 12, 0, 5, 250).getTime()
+    expect(startedText(ms)).toBe('2026-10-08 12:00:05.250')
   })
 })

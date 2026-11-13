@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
+import { type InspectorTab, TrajectoryInspector } from './TrajectoryInspector'
 import { TrajectoryLedger, type TrajectorySelection } from './TrajectoryLedger'
 import {
   buildTrajectory,
@@ -55,6 +56,7 @@ export function TrajectoryTab({
   const [query, setQuery] = useState('')
   const [duration, setDuration] = useTrajectoryDuration()
   const [range, setRange] = useState<null | TrajectoryRange>(null)
+  const [tab, setTab] = useState<InspectorTab>('Summary')
 
   const { records, requests, turns } = trajectory
   const mode = duration ? 'duration' : 'sequence'
@@ -171,6 +173,13 @@ export function TrajectoryTab({
     if (turnStarts.has(record.id)) toggle({ key: record.turn, type: 'turn' })
   }
 
+  const selectedRecord =
+    selection?.type === 'record' ? byId.get(selection.id) : undefined
+  const selectedRequest =
+    selection?.type === 'request'
+      ? requests.find((r) => r.number === selection.number)
+      : undefined
+
   const activeTurn =
     selection?.type === 'record'
       ? (byId.get(selection.id)?.turn ?? null)
@@ -209,19 +218,43 @@ export function TrajectoryTab({
         selected={selection?.type === 'record' ? selection.id : null}
         spans={spans}
       />
-      <TrajectoryLedger
-        activeTurn={activeTurn}
-        focused={focused}
-        onClear={() => setSelection(null)}
-        onDoubleClick={onDoubleClick}
-        onFold={toggle}
-        onSelect={select}
-        requests={requests}
-        rows={rows}
-        scrollTo={scrollTo}
-        selection={selection}
-        turnStarts={turnStarts}
-      />
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <TrajectoryLedger
+          activeTurn={activeTurn}
+          focused={focused}
+          onClear={() => setSelection(null)}
+          onDoubleClick={onDoubleClick}
+          onFold={toggle}
+          onSelect={select}
+          requests={requests}
+          rows={rows}
+          scrollTo={scrollTo}
+          selection={selection}
+          turnStarts={turnStarts}
+        />
+        {(selectedRecord || selectedRequest) && (
+          <TrajectoryInspector
+            inspected={
+              selectedRecord
+                ? { record: selectedRecord, type: 'record' }
+                : { request: selectedRequest!, type: 'request' }
+            }
+            live={live}
+            onClose={() => setSelection(null)}
+            onSelect={(target) => {
+              if (target.type === 'request') {
+                select({ number: target.request.number, type: 'request' })
+                return
+              }
+              select({ id: target.record.id, type: 'record' })
+              reveal(target.record)
+            }}
+            onTab={setTab}
+            tab={tab}
+            trajectory={trajectory}
+          />
+        )}
+      </div>
     </div>
   )
 }
