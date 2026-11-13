@@ -82,6 +82,7 @@ GLOBAL_SAFE: dict[str, str] = {
     'GET /blueprints/': 'global schema configuration',
     'GET /blueprints/{type}': 'global schema configuration',
     'GET /blueprints/{type}/{slug}': 'global schema configuration',
+    'GET /cves/{cve_id}': 'a public CVE List record: no organization data',
     'GET /scoring/policies/': 'global scoring configuration',
     'GET /scoring/policies/{slug}': 'global scoring configuration',
     'GET /plugins/{slug}/manifest': 'a plugin manifest: no organization data',
