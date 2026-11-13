@@ -874,6 +874,12 @@ def _check_structured_output(
     does not trust the harness to have validated it. The ``format``
     keyword is not checked, which matches what the Agent SDK accepts.
     """
+    schema = task['output_schema']
+    if schema is None:
+        raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
+    # The SDK may not keep enum case (#689), so match it before checking.
+    # Measure after the match: a case change can make a string longer.
+    output = agent_step.match_enum_case(schema, output)
     try:
         size = len(orjson.dumps(output))
     except orjson.JSONEncodeError as err:  # e.g. an integer over 64 bits
@@ -883,11 +889,6 @@ def _check_structured_output(
             f'structured_output is {size} bytes;'
             f' the limit is {MAX_STRUCTURED_OUTPUT_BYTES}'
         )
-    schema = task['output_schema']
-    if schema is None:
-        raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
-    # The SDK may not keep enum case (#689), so match it before checking.
-    output = agent_step.match_enum_case(schema, output)
     try:
         jsonschema.validate(output, schema)
     except (jsonschema.ValidationError, jsonschema.SchemaError) as err:

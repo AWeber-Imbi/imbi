@@ -808,6 +808,32 @@ class OutcomeTests(HarnessTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'invalid_structured_output'
         )
+        # The Kelvin sign casefolds to 'k' but takes 3 bytes, so the
+        # enum match makes this output larger than the limit.
+        await self.set_output_schema(
+            {
+                'type': 'object',
+                'properties': {
+                    'n': {'type': 'integer'},
+                    'tags': {
+                        'type': 'array',
+                        'items': {'type': 'string', 'enum': ['\u212a']},
+                    },
+                },
+                'required': ['n'],
+            }
+        )
+        response = await self.post(
+            'outcome',
+            {
+                'outcome': 'done_acted',
+                'structured_output': {'n': 1, 'tags': ['k'] * 60000},
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'invalid_structured_output'
+        )
         response = await self.post(
             'outcome',
             {'outcome': 'done_acted', 'structured_output': {'n': 2**64}},
