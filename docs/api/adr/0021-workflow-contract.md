@@ -180,9 +180,13 @@ endpoint and no public API.
   Only the step that failed the run can run again, and only when the run
   has no cancel request. A step whose `Failed` edge the run took cannot.
   A deployment marked done cannot run again, because Imbi does not know
-  its deployment run. To retry a deployment, first examine the deployment
-  provider for a deployment of that version that started at the time of
-  the call. If there is none, clear its key.
+  its deployment run. To retry a deployment, the operator first asks the
+  deployment plugin (`find_deployments`) for deployments of the step's
+  version and environment made since one minute before the key. The
+  operator confirms one, and Imbi stores it as the key's response, so the
+  retried step follows that deployment. Imbi never stores a candidate
+  without the operator, because another deploy of the same version and
+  environment at that time also matches. If there is none, clear its key.
 - **At least once.** A crash between a side effect and its record repeats
   the step. Each side-effecting step passes the idempotency key
   `<run_id>:<node_key>` to the API it calls. The key does not change

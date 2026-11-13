@@ -1152,6 +1152,47 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(run.completed_at)
 
 
+class FindDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_keeps_deployments_made_since(self) -> None:
+        listing = respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'staging', 'ref': '1.2.0'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(2, '2026-01-01T00:05:00Z'),
+                    _deployment(1, '2026-01-01T00:00:00Z'),
+                ],
+            )
+        )
+        _statuses('success', 'success')
+        runs = await GitHubDeployment().find_deployments(
+            _ctx(environment='staging'),
+            _CREDS,
+            '1.2.0',
+            datetime.datetime(2026, 1, 1, 0, 1, tzinfo=datetime.UTC),
+        )
+        self.assertTrue(listing.called)
+        self.assertEqual(
+            [(r.run_id, r.status, r.started_at) for r in runs],
+            [
+                (
+                    '2',
+                    'success',
+                    datetime.datetime(2026, 1, 1, 0, 5, tzinfo=datetime.UTC),
+                )
+            ],
+        )
+
+    async def test_needs_an_environment(self) -> None:
+        with self.assertRaises(ValueError):
+            await GitHubDeployment().find_deployments(
+                _ctx(), _CREDS, '1.2.0', datetime.datetime.now(datetime.UTC)
+            )
+
+
 class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_app_credentials_mint_installation_token(self) -> None:

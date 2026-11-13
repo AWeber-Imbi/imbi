@@ -15,6 +15,7 @@ vi.mock('@/api/endpoints', () => ({
   activateWorkflow: vi.fn(),
   cancelWorkflowRun: vi.fn(),
   createWorkflow: vi.fn(),
+  findSideEffectDeployments: vi.fn(),
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
   getWorkflowVersion: vi.fn(),
@@ -177,11 +178,87 @@ describe('WorkflowsManagement', () => {
     )
     await waitFor(() =>
       expect(endpoints.resolveSideEffect).toHaveBeenCalledWith('acme', {
+        deployment_run_id: null,
         key: effect.key,
         resolution: 'mark_done',
         retry: true,
       }),
     )
+  })
+
+  it('confirms a deployment found in the provider and retries', async () => {
+    const effect = {
+      action: 'deployment',
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      key: '["imbi-workflows", "deployment", "r1:ship"]',
+      node_key: 'ship',
+      retryable: true,
+      run_error: 'outcome_unknown',
+      run_id: RUN.id,
+      run_status: 'failed' as const,
+      step_input: { environment: 'staging', project_id: 'p1', version: '1.2' },
+      workflow_name: 'Deploy guard',
+      workflow_slug: 'deploy-guard',
+    }
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([effect])
+    vi.mocked(endpoints.findSideEffectDeployments).mockResolvedValue([
+      { run_id: '42', status: 'success' },
+    ])
+    vi.mocked(endpoints.resolveSideEffect).mockResolvedValue(undefined)
+    renderAt('/agents/workflows')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Find deployment' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Use this deployment' }),
+    )
+    expect(
+      await screen.findByText(/records deployment 42 as the result/),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Use deployment',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.resolveSideEffect).toHaveBeenCalledWith('acme', {
+        deployment_run_id: '42',
+        key: effect.key,
+        resolution: 'mark_done',
+        retry: true,
+      }),
+    )
+    expect(endpoints.findSideEffectDeployments).toHaveBeenCalledWith(
+      'acme',
+      effect.key,
+      expect.anything(),
+    )
+  })
+
+  it('says when the provider has no deployment of the call', async () => {
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([
+      {
+        action: 'deployment',
+        created_at: new Date(Date.now() - 3_600_000).toISOString(),
+        key: '["imbi-workflows", "deployment", "r1:ship"]',
+        node_key: 'ship',
+        retryable: false,
+        run_error: 'outcome_unknown',
+        run_id: RUN.id,
+        run_status: 'failed' as const,
+        step_input: null,
+        workflow_name: 'Deploy guard',
+        workflow_slug: 'deploy-guard',
+      },
+    ])
+    vi.mocked(endpoints.findSideEffectDeployments).mockResolvedValue([])
+    renderAt('/agents/workflows')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Find deployment' }),
+    )
+    expect(
+      await screen.findByText(/has no deployment of this version/),
+    ).toBeInTheDocument()
   })
 
   it('hides calls with an unknown outcome without workflow:recover', async () => {

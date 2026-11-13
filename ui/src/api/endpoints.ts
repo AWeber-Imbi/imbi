@@ -4130,7 +4130,21 @@ export const listStaleSideEffects = async (
   return Array.isArray(response) ? response : []
 }
 
-/** Clear a stale side effect, or mark its email sent, and retry. */
+/** Deployments that a stale deployment call can have made (#678). */
+export const findSideEffectDeployments = async (
+  orgSlug: string,
+  key: string,
+  signal?: AbortSignal,
+): Promise<DeploymentRun[]> => {
+  const response = await apiClient.get<DeploymentRun[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects/deployments`,
+    { key },
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+/** Clear a stale side effect, or mark it done, and retry. */
 export const resolveSideEffect = (orgSlug: string, body: SideEffectResolve) =>
   apiClient.post<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects/resolve`,
