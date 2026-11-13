@@ -1082,16 +1082,19 @@ class ControlTests(AgentTaskTestCase):
             ['task.created', 'control.changed', 'control.changed'],
         )
 
-    async def test_closed_since_returns_recently_closed_tasks(self) -> None:
-        async def ids(seconds: int) -> set[str]:
-            return {
-                str(r['id']) for r in await self.store.closed_since(seconds)
-            }
+    async def test_close_writes_a_trigger_outbox_row(self) -> None:
+        """The close transaction writes the row, so a close hook that
+        does not run still leaves the task for the sweep."""
 
-        self.assertNotIn(self.task['id'], await ids(60))
-        await self.post('cancel')
-        self.assertIn(self.task['id'], await ids(60))
-        self.assertNotIn(self.task['id'], await ids(0))
+        async def ids() -> set[str]:
+            return {str(r['id']) for r in await self.store.pending_triggers()}
+
+        self.assertNotIn(self.task['id'], await ids())
+        with mock.patch.object(agent_tasks.store, '_close_hooks', []):
+            await self.post('cancel')
+        self.assertIn(self.task['id'], await ids())
+        await self.store.triggers_started(uuid.UUID(self.task['id']))
+        self.assertNotIn(self.task['id'], await ids())
 
     async def test_closed_task_refuses_changes(self) -> None:
         await self.post('cancel')
