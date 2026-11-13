@@ -319,13 +319,26 @@ async def caller_org_slugs(
     db: graph.Graph, auth: permissions.AuthContext
 ) -> set[str]:
     """The slugs of the organizations that the caller is a member of:
-    a user, or a service account."""
+    a user, or a service account. For a scheduler request, only those
+    that the principal accountable for the task is a member of too."""
     if auth.user is not None:
-        query, who = _USER_ORGS_QUERY, auth.user.email
+        slugs = await _org_slugs_of(db, _USER_ORGS_QUERY, auth.user.email)
     elif auth.service_account is not None:
-        query, who = _ACCOUNT_ORGS_QUERY, auth.service_account.slug
+        slugs = await _org_slugs_of(
+            db, _ACCOUNT_ORGS_QUERY, auth.service_account.slug
+        )
     else:
         return set()
+    if auth.on_behalf_of is not None:
+        label, _, who = auth.on_behalf_of
+        query = _USER_ORGS_QUERY if label == 'User' else _ACCOUNT_ORGS_QUERY
+        slugs &= await _org_slugs_of(db, query, who)
+    return slugs
+
+
+async def _org_slugs_of(
+    db: graph.Graph, query: typing.LiteralString, who: str
+) -> set[str]:
     records = await db.execute(query, {'who': who}, ['slug'])
     return {str(graph.parse_agtype(r['slug'])) for r in records}
 

@@ -153,6 +153,7 @@ async def require_organization_membership(
             ['slug'],
         )
         if rows:
+            await _require_accountable_member(db, auth, org_slug)
             return
     LOGGER.warning(
         'Refusing principal %s on organization %s: not a member',
@@ -164,6 +165,39 @@ async def require_organization_membership(
         (
             f'Principal {auth.principal_name!r} is not a member of '
             f'organization {org_slug!r}.'
+        ),
+        org_slug=org_slug,
+    )
+
+
+async def _require_accountable_member(
+    db: graph.Graph, auth: permissions.AuthContext, org_slug: str
+) -> None:
+    """Refuse a scheduler request whose accountable principal is not a
+    member of ``org_slug``.
+
+    Without this, a person could reach an organization through the
+    memberships of the scheduler's service account. A member with a role
+    that grants nothing is refused too, which fails closed.
+    """
+    if auth.on_behalf_of is None:
+        return
+    if await permissions.load_principal_permissions(
+        db, *auth.on_behalf_of, org_slug=org_slug
+    ):
+        return
+    key = auth.on_behalf_of[2]
+    LOGGER.warning(
+        'Refusing a scheduled task request on organization %s: %s, '
+        'accountable for it, is not a member',
+        org_slug,
+        key,
+    )
+    raise forbidden(
+        'organization_forbidden',
+        (
+            f'{key!r}, accountable for this scheduled task, is not a '
+            f'member of organization {org_slug!r}.'
         ),
         org_slug=org_slug,
     )

@@ -98,6 +98,85 @@ class OrgPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         await organizations.check_member(self.org_a, self.graph, auth)
         self.assertEqual(auth.permissions, both)
 
+    async def _scheduler_in_both_orgs(self) -> permissions.AuthContext:
+        """A service account that writes in both orgs, as the scheduler's."""
+        slug = f'sched-{uuid.uuid4().hex[:10]}'
+        self.ids.append(slug)
+        await self.graph.execute(
+            """
+            MATCH (a:Organization {{slug: {a}}}),
+                  (b:Organization {{slug: {b}}})
+            CREATE (s:ServiceAccount {{id: {slug}, slug: {slug},
+                                       display_name: 'S', is_active: true}})
+            CREATE (s)-[:MEMBER_OF {{role: {writer}}}]->(a)
+            CREATE (s)-[:MEMBER_OF {{role: {writer}}}]->(b)
+            RETURN 1 AS ok
+            """,
+            {
+                'a': self.org_a,
+                'b': self.org_b,
+                'slug': slug,
+                'writer': self.ids[3],
+            },
+            ['ok'],
+        )
+        return permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                id=slug,
+                slug=slug,
+                display_name='S',
+                is_active=True,
+            ),
+            session_id='s',
+            auth_method='client_credentials',
+            permissions={self.read, self.write},
+        )
+
+    async def test_scheduler_gets_only_the_accountable_role(self) -> None:
+        # The account can write in org B; the accountable user only reads.
+        auth = await self._scheduler_in_both_orgs()
+        auth.on_behalf_of = ('User', 'email', self.email)
+        await organizations.check_member(self.org_b, self.graph, auth)
+        self.assertEqual(auth.permissions, {self.read})
+
+    async def test_org_permissions_also_limits_a_scheduler_request(
+        self,
+    ) -> None:
+        # Routes that call org_permissions directly (prompts, users) get
+        # the same limit as check_member.
+        auth = await self._scheduler_in_both_orgs()
+        auth.on_behalf_of = ('User', 'email', self.email)
+        self.assertEqual(
+            {self.read},
+            await organizations.org_permissions(self.graph, auth, self.org_b),
+        )
+
+    async def test_scheduler_refused_where_accountable_is_no_member(
+        self,
+    ) -> None:
+        auth = await self._scheduler_in_both_orgs()
+        outsider = f'out-{uuid.uuid4().hex[:10]}@example.com'
+        self.ids.append(outsider)
+        await self.graph.execute(
+            """
+            MATCH (a:Organization {{slug: {a}}})
+            CREATE (u:User {{id: {email}, email: {email},
+                             display_name: 'O', is_active: true}})
+            CREATE (u)-[:MEMBER_OF {{role: {writer}}}]->(a)
+            RETURN 1 AS ok
+            """,
+            {'a': self.org_a, 'email': outsider, 'writer': self.ids[3]},
+            ['ok'],
+        )
+        auth.on_behalf_of = ('User', 'email', outsider)
+        with self.assertRaises(fastapi.HTTPException) as raised:
+            await organizations.check_member(self.org_b, self.graph, auth)
+        self.assertEqual(403, raised.exception.status_code)
+        auth.on_behalf_of = ('User', 'email', outsider)
+        auth.permissions = {self.read, self.write}
+        await organizations.check_member(self.org_a, self.graph, auth)
+        self.assertEqual({self.read, self.write}, auth.permissions)
+
     async def test_api_key_scopes_still_limit(self) -> None:
         auth = self.auth({self.read})
         self.assertEqual(

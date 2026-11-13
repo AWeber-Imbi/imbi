@@ -9,6 +9,8 @@ import datetime
 import unittest
 from unittest import mock
 
+import fastapi
+
 from imbi.common import models
 from imbi.common.auth import permissions
 
@@ -460,3 +462,92 @@ class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
                 mock.AsyncMock(), 'jwt.token.here', mock.Mock()
             )
         remember.assert_not_called()
+
+
+class NarrowToAccountableTestCase(unittest.IsolatedAsyncioTestCase):
+    """A scheduler request gets only what its accountable principal has."""
+
+    def _scheduler(self) -> permissions.AuthContext:
+        return permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-scheduler', display_name='Scheduler'
+            ),
+            auth_method='client_credentials',
+            permissions={'project:read', 'workflow:run'},
+        )
+
+    def _user(self, **fields: object) -> models.User:
+        values: dict[str, object] = {
+            'email': 'dev@example.com',
+            'display_name': 'Dev',
+            'is_active': True,
+            'is_admin': False,
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+        values.update(fields)
+        return models.User.model_validate(values)
+
+    async def _narrow(
+        self,
+        ctx: permissions.AuthContext,
+        accountable: str | None,
+        *,
+        principals: list[object] | None = None,
+        granted: set[str] | None = None,
+    ) -> permissions.AuthContext:
+        db = mock.AsyncMock()
+        db.match.return_value = principals or []
+        with mock.patch.object(
+            permissions,
+            'load_principal_permissions',
+            mock.AsyncMock(return_value=granted or set()),
+        ):
+            return await permissions.narrow_to_accountable(
+                db, ctx, accountable
+            )
+
+    async def test_limits_to_the_accountable_user(self) -> None:
+        ctx = self._scheduler()
+        narrowed = await self._narrow(
+            ctx,
+            'dev@example.com',
+            principals=[self._user()],
+            granted={'project:read'},
+        )
+        self.assertEqual({'project:read'}, narrowed.permissions)
+        self.assertEqual(
+            ('User', 'email', 'dev@example.com'), narrowed.on_behalf_of
+        )
+        # A copy: a cached context must not change.
+        self.assertEqual({'project:read', 'workflow:run'}, ctx.permissions)
+
+    async def test_refuses_an_inactive_accountable_user(self) -> None:
+        with self.assertRaises(fastapi.HTTPException) as raised:
+            await self._narrow(
+                self._scheduler(),
+                'dev@example.com',
+                principals=[self._user(is_active=False)],
+            )
+        self.assertEqual(403, raised.exception.status_code)
+
+    async def test_refuses_an_unknown_accountable_principal(self) -> None:
+        with self.assertRaises(fastapi.HTTPException):
+            await self._narrow(self._scheduler(), 'gone@example.com')
+
+    async def test_leaves_internal_and_admin_principals_alone(self) -> None:
+        ctx = self._scheduler()
+        for accountable in permissions.INTERNAL_ACCOUNTABLE:
+            self.assertIs(ctx, await self._narrow(ctx, accountable))
+        admin = self._user(is_admin=True)
+        self.assertIs(
+            ctx,
+            await self._narrow(ctx, 'dev@example.com', principals=[admin]),
+        )
+
+    async def test_ignores_the_header_from_any_other_caller(self) -> None:
+        ctx = permissions.AuthContext(
+            user=self._user(),
+            auth_method='jwt',
+            permissions={'project:read'},
+        )
+        self.assertIs(ctx, await self._narrow(ctx, 'other@example.com'))
