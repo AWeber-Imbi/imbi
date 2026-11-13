@@ -1,4 +1,4 @@
-"""Tests for middleware.body_limit."""
+"""Tests for body_limit."""
 
 import collections.abc
 import unittest
@@ -7,7 +7,7 @@ import fastapi
 import httpx
 from fastapi import testclient
 
-from imbi.api.middleware import body_limit
+from imbi.common import body_limit
 
 
 def _make_app() -> tuple[fastapi.FastAPI, list[str]]:

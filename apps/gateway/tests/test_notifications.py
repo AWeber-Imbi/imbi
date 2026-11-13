@@ -307,16 +307,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self.g = graph.Graph()
         await self.g.open()
 
-        # create_app() calls plugin_registry.load_plugins() which wipes
-        # the registry, so the stub plugins must be installed *after*
-        # the app has been built.
-        self.app = imbi.gateway.app.create_app()
-        _install_stub_plugins()
-
-        async def _override_graph() -> abc.AsyncIterator[graph.Graph]:
-            yield self.g
-
-        self.app.dependency_overrides[_inject_graph] = _override_graph
+        self._build_app()
 
         ts = '2024-01-01T00:00:00+00:00'
 
@@ -404,6 +395,18 @@ class ProcessNotificationTests(helpers.TestCase):
             },
             ['p'],
         )
+
+    def _build_app(self) -> None:
+        # create_app() calls plugin_registry.load_plugins() which wipes
+        # the registry, so the stub plugins must be installed *after*
+        # the app has been built.
+        self.app = imbi.gateway.app.create_app()
+        _install_stub_plugins()
+
+        async def _override_graph() -> abc.AsyncIterator[graph.Graph]:
+            yield self.g
+
+        self.app.dependency_overrides[_inject_graph] = _override_graph
 
     async def asyncTearDown(self) -> None:
         for rule_id in self.rule_ids:
@@ -635,6 +638,30 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual({}, call['credentials'])
         self.assertEqual(self.ext_id, call['external_identifier'])
         self.assertIsNone(ctx.actor_user_id)
+
+    async def test_body_over_limit_refused_before_dispatch(self) -> None:
+        await self._add_rule(filter_expression='true')
+        with self.override_environment(IMBI_GATEWAY_MAX_REQUEST_BODY_BYTES=64):
+            self._build_app()
+        body = {'repo': {'id': self.ext_id}, 'pad': 'x' * 64}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(413, response.status_code)
+        self.assertEqual(
+            'payload_too_large', response.json()['detail']['error']
+        )
+        self.assertEqual([], ACTION_CALLS)
+
+    async def test_body_under_limit_dispatched(self) -> None:
+        await self._add_rule(filter_expression='true')
+        with self.override_environment(
+            IMBI_GATEWAY_MAX_REQUEST_BODY_BYTES=1024
+        ):
+            self._build_app()
+        response = await self._post(
+            self.webhook_id, {'repo': {'id': self.ext_id}}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
 
     async def test_webhook_actions_disabled_skips_dispatch(self) -> None:
         await self._set_integration_capabilities(

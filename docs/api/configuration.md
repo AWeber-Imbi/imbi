@@ -303,6 +303,7 @@ unset.
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_GATEWAY_API_TOKEN` | str | required | API key of the `imbi-gateway` service account. Required. |
+| `IMBI_GATEWAY_MAX_REQUEST_BODY_BYTES` | int | `26214400` | Largest request body in bytes; larger bodies get 413. GitHub caps webhooks at 25 MB. |
 
 ### imbi-mcp
 

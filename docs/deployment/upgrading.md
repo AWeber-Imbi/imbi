@@ -118,6 +118,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    disk but write only the changed records. In the hosted chart, mount an
    `emptyDir` with a `sizeLimit` of about 3 GiB at the temporary
    directory (`/tmp`, or the directory in `TMPDIR`).
+7. imbi-gateway now refuses a request body larger than 25 MiB with a
+   `413` (`payload_too_large`). GitHub caps a webhook payload at 25 MB,
+   so no GitHub webhook is refused. If a service sends larger webhook
+   bodies, set `IMBI_GATEWAY_MAX_REQUEST_BODY_BYTES`. An SBoM that the
+   gateway sends on to imbi-api must also fit
+   `IMBI_API_MAX_REQUEST_BODY_BYTES` (10 MiB by default).
 7. Start the first `cve-sync` from **Admin > Maintenance**. Do not wait
    for the `cve-sync` system task, which runs daily at 01:30 UTC. See
    [CVE catalog](../user-guide/pull-requests-and-dependencies.md#cve-catalog).
