@@ -171,8 +171,11 @@ export function joinParts(events: AgentTaskEvent[]): AgentTaskEvent[] {
  * tool call whose `call_id` is its `parent_call_id`; that call takes
  * the place of its first child, so it reads where the work started.
  */
-export function timeline(events: AgentTaskEvent[]): TimelineEntry[] {
-  const shown = joinParts(events).filter((e) => SHOWN.has(e.type))
+export function timeline(
+  events: AgentTaskEvent[],
+  show: (type: string) => boolean = (type) => SHOWN.has(type),
+): TimelineEntry[] {
+  const shown = joinParts(events).filter((e) => show(e.type))
   const callId = (e: AgentTaskEvent) =>
     e.type === 'tool.called' && typeof e.payload.call_id === 'string'
       ? e.payload.call_id
