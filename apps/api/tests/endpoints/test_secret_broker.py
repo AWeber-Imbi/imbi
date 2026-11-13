@@ -331,12 +331,25 @@ class SecretEndpointTestCase(
         )
 
     async def test_write_after_an_organization_delete_is_404(self) -> None:
-        """A delete that commits after the endpoint read stops the write."""
-        async with self.pool.connection() as conn:
-            await relational.mark_organization_deleted(conn, self.org)
-        response = await self.client.put(
-            self.base + '/workload-identity/', json={'type': 'fake'}
-        )
+        """A delete that commits after the endpoint found the organization,
+        but before the write takes its lock, stops the write."""
+        lock = relational.lock_organization_shared
+
+        async def delete_then_lock(
+            conn: typing.Any, organization_id: str
+        ) -> None:
+            async with self.pool.connection() as other:
+                await relational.mark_organization_deleted(
+                    other, organization_id
+                )
+            await lock(conn, organization_id)
+
+        with mock.patch.object(
+            relational, 'lock_organization_shared', delete_then_lock
+        ):
+            response = await self.client.put(
+                self.base + '/workload-identity/', json={'type': 'fake'}
+            )
         self.assertEqual(response.status_code, 404, response.text)
         self.assertIsNone(await self.store.identity_source(self.org))
 
