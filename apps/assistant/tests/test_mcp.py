@@ -278,6 +278,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
                 'get_projects',
                 {},
                 meta={mcp.AUTH_META_KEY: 'Bearer test-token'},
+                raise_on_error=False,
             )
 
             await manager.aclose()
@@ -490,6 +491,8 @@ class ExecuteToolAuthIsolationTestCase(unittest.IsolatedAsyncioTestCase):
         if request.url.path == '/openapi.json':
             return httpx.Response(200, json=self.SPEC)
         caller = request.url.path.rsplit('/', 1)[-1]
+        if caller == 'bad':
+            return httpx.Response(400, json={'detail': 'Bad Request'})
         self.seen[caller] = request.headers.get('authorization')
         if caller == 'a':
             await asyncio.wait_for(self.b_started.wait(), timeout=5)
@@ -514,6 +517,16 @@ class ExecuteToolAuthIsolationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_call_without_token_sends_no_header(self) -> None:
         await asyncio.gather(self._call('a', 'token-a'), self._call('b', None))
         self.assertEqual(self.seen, {'a': 'Bearer token-a', 'b': None})
+
+    async def test_api_error_goes_to_model_as_warning(self) -> None:
+        # An API 4xx is a tool error for the model, not an exception.
+        with self.assertNoLogs('imbi.assistant.mcp', 'ERROR'):
+            content, is_error = await self.manager.execute_tool(
+                'whoami', {'caller': 'bad'}
+            )
+        self.assertTrue(is_error)
+        self.assertIn('returned an error', content)
+        self.assertIn('400', content)
 
 
 class ModuleLevelFunctionsTestCase(

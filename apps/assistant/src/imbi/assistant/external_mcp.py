@@ -44,6 +44,10 @@ _OAUTH_EXPIRY_BUFFER = 60.0
 
 _OAUTH_TOKEN_TIMEOUT = 10.0
 
+# ponytail: fixed delay between reconnect attempts to a server that is
+# down; make it exponential if a fixed delay is too slow or too noisy.
+_RECONNECT_DELAY = 60.0
+
 
 class OAuthClientCredentialsAuth(httpx.Auth):
     """httpx Auth that fetches and caches OAuth client-credentials tokens.
@@ -178,6 +182,11 @@ class ExternalMCPManager:
         self._tools: list[dict[str, typing.Any]] = []
         # registered tool name -> (server slug, original tool name)
         self._tool_routes: dict[str, tuple[str, str]] = {}
+        # server slug -> config, kept to reopen a failed session
+        self._servers: dict[str, common_models.MCPServer] = {}
+        # server slug -> monotonic time before which no reconnect runs
+        self._reconnect_after: dict[str, float] = {}
+        self._reconnect_lock = asyncio.Lock()
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
@@ -231,6 +240,7 @@ class ExternalMCPManager:
                 server.slug,
             )
             return
+        self._servers[server.slug] = server
         prefix = _tool_prefix(server)
         for tool in result.tools:
             self._register_tool(server, tool, prefix)
@@ -257,6 +267,7 @@ class ExternalMCPManager:
                 verify=False,  # noqa: S501
             )
 
+        self._tasks = [task for task in self._tasks if not task.done()]
         loop = asyncio.get_running_loop()
         ready: asyncio.Future[mcp.ClientSession] = loop.create_future()
         task = asyncio.create_task(
@@ -363,6 +374,8 @@ class ExternalMCPManager:
         self._tasks = []
         self._sessions.clear()
         self._tool_routes.clear()
+        self._servers.clear()
+        self._reconnect_after.clear()
         self._tools = []
         self._initialized = False
 
@@ -403,7 +416,9 @@ class ExternalMCPManager:
                 True,
             )
         server_slug, original_name = route
-        session = self._sessions.get(server_slug)
+        session = self._sessions.get(server_slug) or await self._reconnect(
+            server_slug
+        )
         if session is None:
             return (
                 json.dumps({'error': f'Server {server_slug} not connected'}),
@@ -449,6 +464,43 @@ class ExternalMCPManager:
             )
         else:
             return body, False
+
+    async def _reconnect(self, server_slug: str) -> mcp.ClientSession | None:
+        """Reopen a failed server session, at most once per delay.
+
+        Returns:
+            The new session, or None if the server is still down or the
+            delay since the last failed attempt has not passed.
+
+        """
+        server = self._servers.get(server_slug)
+        if server is None:
+            return None
+        async with self._reconnect_lock:
+            # Another call can have reconnected while this one waited.
+            session = self._sessions.get(server_slug)
+            if session is not None:
+                return session
+            if time.monotonic() < self._reconnect_after.get(server_slug, 0.0):
+                return None
+            LOGGER.info('Reconnecting to MCP server %r', server_slug)
+            try:
+                return await asyncio.wait_for(
+                    self._open_session(server),
+                    timeout=float(server.timeout),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:  # noqa: BLE001
+                LOGGER.warning(
+                    'Failed to reconnect to MCP server %r: %s',
+                    server_slug,
+                    err,
+                )
+                self._reconnect_after[server_slug] = (
+                    time.monotonic() + _RECONNECT_DELAY
+                )
+                return None
 
     @property
     def is_initialized(self) -> bool:

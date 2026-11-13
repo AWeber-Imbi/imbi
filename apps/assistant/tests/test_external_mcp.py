@@ -324,6 +324,52 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['detail'], 'down')
 
 
+class ReconnectTestCase(unittest.IsolatedAsyncioTestCase):
+    """A call to a server whose session is gone reopens it once."""
+
+    def setUp(self) -> None:
+        self.manager = external_mcp.ExternalMCPManager()
+        self.manager._servers['svc'] = _make_server(slug='svc')
+        self.manager._tool_routes['mcp_svc_thing'] = ('svc', 'thing')
+        self.session = mock.AsyncMock()
+        block = mock.MagicMock()
+        block.text = 'ok'
+        self.session.call_tool.return_value = mock.MagicMock(
+            content=[block], isError=False
+        )
+
+    async def test_reconnects_and_retries_call(self) -> None:
+        self.manager._open_session = mock.AsyncMock(  # type: ignore
+            return_value=self.session
+        )
+        content, is_error = await self.manager.execute_tool(
+            'mcp_svc_thing', {}
+        )
+        self.assertEqual((content, is_error), ('ok', False))
+        self.session.call_tool.assert_awaited_once_with('thing', {})
+
+    async def test_failed_reconnect_waits_before_next_attempt(self) -> None:
+        opener = mock.AsyncMock(side_effect=RuntimeError('502'))
+        self.manager._open_session = opener  # type: ignore
+        for _ in range(2):
+            content, is_error = await self.manager.execute_tool(
+                'mcp_svc_thing', {}
+            )
+            self.assertIn('not connected', content)
+            self.assertTrue(is_error)
+        opener.assert_awaited_once()
+
+        # After the delay, the next call tries again.
+        self.manager._reconnect_after['svc'] = 0.0
+        opener.side_effect = None
+        opener.return_value = self.session
+        content, is_error = await self.manager.execute_tool(
+            'mcp_svc_thing', {}
+        )
+        self.assertEqual((content, is_error), ('ok', False))
+        self.assertEqual(opener.await_count, 2)
+
+
 class _FakeClientSession:
     """Stand-in for ``mcp.ClientSession`` used as a context manager."""
 
@@ -454,12 +500,10 @@ class SessionIsolationTestCase(unittest.IsolatedAsyncioTestCase):
                 asyncio.gather(*manager._tasks, return_exceptions=True),
                 timeout=5,
             )
-            # The failed server degrades on its own.
-            content, is_error = await manager.execute_tool(
-                'mcp_example_search', {}
-            )
-            self.assertTrue(is_error)
-            self.assertIn('not connected', content)
+            # The failed server degrades on its own; its tools stay
+            # registered so a later call can reconnect.
+            self.assertNotIn('example', manager._sessions)
+            self.assertTrue(manager.has_tool('mcp_example_search'))
             await manager.aclose()
 
 
