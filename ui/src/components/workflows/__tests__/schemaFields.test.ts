@@ -201,6 +201,12 @@ describe('paramSummary', () => {
       }),
     ).toBe('2 branches · Roll back?')
   })
+
+  it('names one item in the singular', () => {
+    expect(paramSummary({ conditions: [{}] })).toBe('1 condition')
+    expect(paramSummary({ branches: ['Yes'] })).toBe('1 branch')
+    expect(paramSummary({ output_fields: [{}] })).toBe('1 output field')
+  })
 })
 
 describe('isIdOrReference', () => {

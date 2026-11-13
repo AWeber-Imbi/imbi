@@ -101,7 +101,7 @@ export function paramSummary(params: Record<string, unknown>): string {
   const parts: string[] = []
   for (const [name, value] of Object.entries(params)) {
     if (Array.isArray(value)) {
-      parts.push(`${value.length} ${name.replace(/_/g, ' ')}`)
+      parts.push(`${value.length} ${countLabel(name, value.length)}`)
     } else if (
       // Ids of live records read as noise on the card.
       (typeof value === 'string' && value.trim() && !name.endsWith('_id')) ||
@@ -112,6 +112,11 @@ export function paramSummary(params: Record<string, unknown>): string {
     if (parts.length === 2) break
   }
   return parts.join(' · ')
+}
+
+function countLabel(name: string, count: number): string {
+  const label = name.replace(/_/g, ' ')
+  return count === 1 ? label.replace(/(?<=ch|sh|x)es$|s$/, '') : label
 }
 
 function enumOptions(values: unknown[]): { label: string; value: string }[] {
