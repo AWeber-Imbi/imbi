@@ -805,6 +805,14 @@ class OutcomeTests(HarnessTestCase):
             {'outcome': 'done_acted', 'structured_output': {'n': 1, 's': big}},
         )
         self.assertEqual(response.status_code, 413, response.text)
+        await self.set_output_schema({'$ref': '#/$defs/missing'})
+        response = await self.post(
+            'outcome', {'outcome': 'done_acted', 'structured_output': {'n': 1}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'invalid_structured_output'
+        )
         task = await self.task_row()
         self.assertNotEqual(task['status'], 'closed')
         self.assertIsNone(task['structured_output'])

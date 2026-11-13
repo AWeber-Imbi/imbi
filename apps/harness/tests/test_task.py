@@ -1542,7 +1542,8 @@ class RunTestCase(TaskTestCase):
 
     async def test_fails_when_the_structured_output_is_refused(self) -> None:
         result = FakeClient.messages[-1]
-        assert isinstance(result, sdk.ResultMessage)
+        self.assertIsInstance(result, sdk.ResultMessage)
+        result = typing.cast(sdk.ResultMessage, result)
         result.structured_output = {'subjects': 1}
         post = self.client.post.side_effect
         refusals = [api.Refused(422, 'invalid_structured_output')]

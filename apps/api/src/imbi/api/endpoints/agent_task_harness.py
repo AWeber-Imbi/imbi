@@ -37,6 +37,7 @@ import uuid
 import fastapi
 import jsonschema
 import pydantic
+from referencing import exceptions as referencing_exceptions
 
 from imbi.api import agent_tasks, harness
 from imbi.api.agent_tasks import store as task_store
@@ -880,6 +881,8 @@ def _check_structured_output(
         jsonschema.validate(output, schema)
     except (jsonschema.ValidationError, jsonschema.SchemaError) as err:
         raise _invalid_output(f'structured_output: {err.message}') from err
+    except referencing_exceptions.Unresolvable as err:
+        raise _invalid_output(f'structured_output: {err}') from err
 
 
 def _invalid_output(message: str) -> fastapi.HTTPException:
