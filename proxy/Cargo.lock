@@ -1099,7 +1099,7 @@ dependencies = [
 
 [[package]]
 name = "imbi-egress-proxy"
-version = "2.49.0"
+version = "2.50.0"
 dependencies = [
  "base64 0.22.1",
  "futures",
