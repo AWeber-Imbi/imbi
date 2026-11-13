@@ -86,6 +86,15 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    resumes a task becomes accountable for it, and an admin's task is not
    limited, so read its target before you resume it. See
    [Targets](../scheduler/tasks.md#targets).
+2. **Before you deploy**, delete every scheduled task whose `api` target
+   path is under `/auth`. The scheduler now refuses those paths, and one
+   such task stops `GET /tasks` from listing any task. Find them with:
+
+    ```sql
+    SELECT slug FROM scheduler.tasks
+     WHERE target->>'kind' = 'api'
+       AND target->>'path' ~ '^/auth([/?#]|$)';
+    ```
 
 ## 2.49.0
 
