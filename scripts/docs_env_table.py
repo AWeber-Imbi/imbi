@@ -326,6 +326,8 @@ DESCRIPTIONS: dict[str, str] = {
     'Also the trusted hosts for per-request OAuth URLs.',
     'IMBI_API_FORWARDED_ALLOW_IPS': 'Comma-separated proxy IPs (or `*`) '
     'whose `X-Forwarded-*` headers are trusted. Empty: off.',
+    'IMBI_API_MAX_REQUEST_BODY_BYTES': 'Largest request body in bytes; '
+    'larger bodies get 413. Uploads use `S3_MAX_FILE_SIZE` plus 1 MiB.',
     'IMBI_API_URL': 'Public imbi-api URL with its path prefix, for example '
     '`https://imbi.example.com/api`. The path is the API route prefix.',
     'IMBI_UI_URL': 'Public UI URL, no path. Used for deep links.',
