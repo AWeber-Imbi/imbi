@@ -32,7 +32,7 @@ const LOG = [
 function renderTab(status: 'closed' | 'running', events = LOG) {
   const t = task({ status }) as unknown as AgentTask
   return render(
-    <div className="flex h-[600px] flex-col">
+    <div className="flex h-150 flex-col">
       <ConversationTab events={events} orgSlug="acme" requests={[]} task={t} />
     </div>,
   )
@@ -147,6 +147,48 @@ describe('ConversationTab', () => {
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
     await user.click(screen.getByRole('button', { name: /Subagent search/ }))
     expect(screen.getByText(/search subagent/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
+  })
+
+  it('keeps a running subagent open once its call is written', async () => {
+    const user = userEvent.setup()
+    const child = event(2, 'tool.called', {
+      arguments: { command: 'ls' },
+      call_id: 'c2',
+      parent_call_id: 'task-1',
+      result: 'a.py',
+      tool: 'Bash',
+    })
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const view = (events: ReturnType<typeof event>[]) => (
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>
+    )
+    const { rerender } = render(view([LOG[0], child]))
+    expect(screen.queryByRole('button', { name: /Bash ls/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Subagent Running/ }))
+    expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
+    rerender(
+      view([
+        LOG[0],
+        child,
+        event(3, 'tool.called', {
+          arguments: { description: 'look', subagent_type: 'search' },
+          call_id: 'task-1',
+          result: 'Found it.',
+          tool: 'Task',
+        }),
+      ]),
+    )
+    expect(
+      screen.getByRole('button', { name: /Subagent search/ }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
   })
 

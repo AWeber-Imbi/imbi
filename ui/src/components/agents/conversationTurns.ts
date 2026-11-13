@@ -67,6 +67,14 @@ const NOTE_TYPES = new Set([
  * a turn starts at a person's input once the agent waits on a person
  * (its last reply or request); input while it works steers that turn.
  */
+/**
+ * A key that survives a call being written: a still-running subagent call
+ * is a placeholder until its own event lands with a new id.
+ */
+export function entryKey(entry: TimelineEntry): string {
+  return entry.parentOf ? `call:${entry.parentOf}` : entry.id
+}
+
 export function turns(
   entries: TimelineEntry[],
   task: { failed?: boolean; live: boolean },
@@ -101,7 +109,7 @@ export function turns(
       else
         turn.items.push({
           entries: [entry],
-          id: `g:${entry.id}`,
+          id: `g:${entryKey(entry)}`,
           kind: 'group',
         })
     }
@@ -159,7 +167,7 @@ function last<T>(list: T[]): T | undefined {
 
 function newTurn(opening: TimelineEntry[], first: TimelineEntry): Turn {
   return {
-    id: `t:${first.id}`,
+    id: `t:${entryKey(first)}`,
     items: [],
     opening,
     stats: { durationMs: null, errors: 0, tokens: 0, tools: 0 },

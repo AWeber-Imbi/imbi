@@ -49,7 +49,12 @@ import {
   useConversationMode,
   useFoldState,
 } from './conversationMode'
-import { type ProcessGroup, type Turn, turns } from './conversationTurns'
+import {
+  entryKey,
+  type ProcessGroup,
+  type Turn,
+  turns,
+} from './conversationTurns'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
 import { formatElapsed, isFailed, type TaskRequestView } from './taskEvents'
 import { RequestCard } from './TaskTabs'
@@ -174,10 +179,11 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
     : !e && !closed
       ? 'running'
       : undefined
+  const key = entryKey(entry)
   return (
     <TraceCollapsible
-      onOpenChange={(open) => ctx.setOpen(entry.id, open)}
-      open={ctx.isOpen(entry.id, false)}
+      onOpenChange={(open) => ctx.setOpen(key, open)}
+      open={ctx.isOpen(key, false)}
     >
       <TraceCollapsibleTrigger>
         <TraceLine status={status}>
@@ -217,7 +223,7 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             </Marker>
             <Trace>
               {entry.children.map((child) => (
-                <WorkRow ctx={ctx} entry={child} key={child.id} />
+                <WorkRow ctx={ctx} entry={child} key={entryKey(child)} />
               ))}
             </Trace>
           </div>
@@ -289,7 +295,7 @@ function GroupView({
         <TraceCollapsibleContent>
           <Trace>
             {group.entries.map((entry) => (
-              <WorkRow ctx={ctx} entry={entry} key={entry.id} />
+              <WorkRow ctx={ctx} entry={entry} key={entryKey(entry)} />
             ))}
           </Trace>
         </TraceCollapsibleContent>

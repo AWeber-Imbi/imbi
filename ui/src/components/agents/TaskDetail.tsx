@@ -641,7 +641,7 @@ function TaskHeader({
                 <span
                   className={cn(
                     'text-sm',
-                    current ? 'text-primary font-medium' : 'text-secondary',
+                    current ? 'font-medium text-primary' : 'text-secondary',
                   )}
                 >
                   {p.phase}
