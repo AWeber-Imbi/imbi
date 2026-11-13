@@ -1,8 +1,10 @@
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import {
   Bot,
   Brain,
+  Check,
+  Copy,
   FilePen,
   FileText,
   ListTodo,
@@ -11,6 +13,8 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import { Marker, MarkerContent } from '@/components/ui/marker'
 import { Message, MessageContent, MessageHeader } from '@/components/ui/message'
 import {
   MessageScroller,
@@ -33,6 +37,7 @@ import {
 } from '@/components/ui/trace'
 import type { AgentTask } from '@/types'
 
+import { conversationMarkdown, turnFooter } from './conversationMarkdown'
 import {
   canCollapseTurn,
   type ConversationMode,
@@ -129,6 +134,7 @@ export function ConversationTab({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <CopyButton list={list} task={task} />
         </div>
         <MessageScroller className="flex-1">
           <MessageScrollerViewport aria-label="Conversation">
@@ -207,6 +213,44 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
         )}
       </TraceCollapsibleContent>
     </TraceCollapsible>
+  )
+}
+
+function CopyButton({ list, task }: { list: Turn[]; task: AgentTask }) {
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState<null | string>(null)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(conversationMarkdown(task, list))
+      setError(null)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not copy.')
+    }
+  }
+  return (
+    <div className="ml-auto flex items-center gap-2">
+      {error && (
+        <span className="text-danger text-xs" role="alert">
+          {error}
+        </span>
+      )}
+      <Button
+        onClick={copy}
+        size="sm"
+        title="Copies the events loaded so far"
+        type="button"
+        variant="outline"
+      >
+        {copied ? (
+          <Check data-icon="inline-start" />
+        ) : (
+          <Copy data-icon="inline-start" />
+        )}
+        {copied ? 'Copied' : 'Copy as Markdown'}
+      </Button>
+    </div>
   )
 }
 
@@ -323,6 +367,7 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
     !canCollapseTurn(turn, ctx.mode) ||
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
   const hasWork = turn.items.some((i) => i.kind === 'group')
+  const footer = hasWork ? turnFooter(turn) : null
   return (
     <MessageScrollerItem messageId={turn.id} scrollAnchor>
       <div className="flex flex-col gap-4">
@@ -366,6 +411,11 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
               )
           }
         })}
+        {footer && (
+          <Marker className="text-xs">
+            <MarkerContent>{footer}</MarkerContent>
+          </Marker>
+        )}
       </div>
     </MessageScrollerItem>
   )

@@ -98,6 +98,33 @@ describe('ConversationTab', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('sums up a finished turn in its footer, not a running one', () => {
+    renderTab('closed')
+    expect(screen.getByText('3s · 1 tool')).toBeInTheDocument()
+  })
+
+  it('has no footer while the turn runs', () => {
+    renderTab('running', LOG.slice(0, 3))
+    expect(screen.queryByText(/1 tool/)).not.toBeInTheDocument()
+  })
+
+  it('copies the conversation as Markdown', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.resolve())
+    renderTab('closed')
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    await user.click(screen.getByRole('button', { name: /Copy as Markdown/ }))
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringMatching(/^# Fix the build\n/),
+    )
+    expect(
+      await screen.findByRole('button', { name: /Copied/ }),
+    ).toBeInTheDocument()
+  })
+
   it('says when there is nothing yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()
