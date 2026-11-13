@@ -824,6 +824,15 @@ class OutcomeTests(HarnessTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'invalid_structured_output'
         )
+        # A remote $ref is never fetched.
+        await self.set_output_schema({'$ref': 'http://127.0.0.1:9/schema'})
+        response = await self.post(
+            'outcome', {'outcome': 'done_acted', 'structured_output': {'n': 1}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'invalid_structured_output'
+        )
         task = await self.task_row()
         self.assertNotEqual(task['status'], 'closed')
         self.assertIsNone(task['structured_output'])

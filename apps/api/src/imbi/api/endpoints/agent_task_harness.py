@@ -38,6 +38,7 @@ import fastapi
 import jsonschema
 import orjson
 import pydantic
+import referencing
 from referencing import exceptions as referencing_exceptions
 
 from imbi.api import agent_tasks, harness
@@ -885,7 +886,10 @@ def _check_structured_output(
     if schema is None:
         raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
     try:
-        jsonschema.validate(output, schema)
+        # An empty registry stops remote $ref retrieval (SSRF).
+        jsonschema.validate(
+            output, schema, registry=referencing.Registry[typing.Any]()
+        )
     except (jsonschema.ValidationError, jsonschema.SchemaError) as err:
         raise _invalid_output(f'structured_output: {err.message}') from err
     except referencing_exceptions.Unresolvable as err:
