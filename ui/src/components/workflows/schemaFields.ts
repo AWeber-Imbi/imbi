@@ -22,6 +22,8 @@ export type ParamField =
   | (FieldBase & {
       kind:
         | 'boolean'
+        | 'code'
+        | 'inputs'
         | 'json'
         | 'list'
         | 'number'
@@ -70,6 +72,15 @@ export function paramFields(schema: JsonSchema): ParamField[] {
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (name === 'output_fields') return { ...base, kind: 'outputFields' }
+    // A script's code is Python, never a template (ADR 0027).
+    if (name === 'code' && prop.type === 'string') {
+      return { ...base, kind: 'code' }
+    }
+    // A script's inputs map names to values; a manual trigger's inputs
+    // are a list of declarations.
+    if (name === 'inputs' && prop.type === 'object') {
+      return { ...base, kind: 'inputs' }
+    }
     if (name === 'conditions' && prop.items) {
       const item = resolve(schema, prop.items)
       const operator = resolve(schema, item.properties?.operator ?? {})

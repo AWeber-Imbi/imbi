@@ -65,6 +65,7 @@ def create_app() -> fastapi.FastAPI:
             harness.store_lifespan,
             workflows.store_lifespan,
             prompt_pool.pool_lifespan,
+            lifespans.script_preview_hook,
             lifespans.email_hook,
             lifespans.storage_hook,
             lifespans.anthropic_hook,

@@ -20,6 +20,9 @@ export interface JsonSchema {
 }
 export type RunStatus = WorkflowRun['status']
 
+export type ScriptPreviewRequest = Schemas['ScriptPreview']
+export type ScriptPreviewResult = Schemas['ScriptPreviewResult']
+
 export type SideEffectResolve = Schemas['SideEffectResolve']
 
 export type StaleSideEffect = Schemas['StaleSideEffect']

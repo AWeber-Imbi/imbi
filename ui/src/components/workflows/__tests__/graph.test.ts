@@ -9,6 +9,7 @@ import {
   keyFromTitle,
   outPoint,
   placeNew,
+  portsOf,
   removeBranch,
   removeNode,
   toCanvas,
@@ -16,7 +17,7 @@ import {
   zoomAt,
 } from '../graph'
 import type { WorkflowGraph } from '../types'
-import { node, STEP_TYPES, TYPES } from './fixtures'
+import { node, SCRIPT, STEP_TYPES, TYPES } from './fixtures'
 
 const [manual, wait, decision] = STEP_TYPES
 
@@ -183,5 +184,18 @@ describe('canvas math', () => {
     const spot = placeNew(graph, TYPES, { x: 0, y: 0 }, graph.nodes[0], false)
     expect(spot.from).toEqual({ port: 1, source: 'd' })
     expect(spot.position.x).toBe(320)
+  })
+})
+
+describe('script steps', () => {
+  it('start with no inputs and no branches, and have one output', () => {
+    const n = createNode({ edges: [], nodes: [] }, SCRIPT, { x: 0, y: 0 })
+    expect(n.params).toEqual({ branches: [], inputs: {} })
+    expect(portsOf(n, { script: SCRIPT })).toEqual([''])
+  })
+
+  it('have one output port per branch', () => {
+    const n = node({ params: { branches: ['low', 'high'] }, type: 'script' })
+    expect(portsOf(n, { script: SCRIPT })).toEqual(['low', 'high'])
   })
 })

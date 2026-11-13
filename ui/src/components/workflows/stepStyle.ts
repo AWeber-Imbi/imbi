@@ -1,6 +1,7 @@
 import {
   Bot,
   Clock,
+  Code,
   type LucideIcon,
   Mail,
   Play,
@@ -23,6 +24,7 @@ const ICONS: Record<string, LucideIcon> = {
   model_decision: Sparkles,
   rollback: RotateCcw,
   schedule: Clock,
+  script: Code,
   wait: Timer,
   webhook: Webhook,
 }

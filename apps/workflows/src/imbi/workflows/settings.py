@@ -6,6 +6,7 @@ Postgres and the graph come from :mod:`imbi.common.settings`.
 import pydantic
 
 from imbi.common import settings as common_settings
+from imbi.common.workflows import script_runner
 
 
 class Workflows(common_settings.InternalApi):
@@ -47,10 +48,12 @@ class Workflows(common_settings.InternalApi):
         'imbi-api also wakes it after each activation and pause.',
     )
     script_max_memory_mb: int = pydantic.Field(
-        default=64, gt=0, description='Memory one script step can use, in MiB'
+        default=script_runner.DEFAULT_MAX_MEMORY_MB,
+        gt=0,
+        description='Memory one script step can use, in MiB',
     )
     script_max_seconds: float = pydantic.Field(
-        default=5.0,
+        default=script_runner.DEFAULT_MAX_SECONDS,
         gt=0,
         description='Seconds one script step can run. A step timeout that '
         'is shorter wins.',

@@ -24,6 +24,9 @@ import pydantic_monty
 
 from imbi.common.workflows.registry import agent, script
 
+#: Default limits of one script, for the engine and the editor preview.
+DEFAULT_MAX_MEMORY_MB = 64
+DEFAULT_MAX_SECONDS = 5.0
 #: The largest output of a step, in bytes of JSON.
 MAX_OUTPUT_BYTES = 64 * 1024
 #: The most printed text that the output keeps, in characters.
