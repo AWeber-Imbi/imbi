@@ -5,7 +5,9 @@ import logging
 import typing
 
 import fastapi
+import psycopg
 import pydantic
+from psycopg import sql
 
 from imbi.api import secret_broker
 from imbi.api.auth import organizations as org_auth
@@ -734,6 +736,24 @@ async def list_organization_members(
     return [m for m in raw_members if m.get('email')]
 
 
+# Rows that block an organization delete, by the name the 409 shows.
+_ORG_BLOCKING_TABLES: dict[str, tuple[str, str]] = {
+    'workflows': ('workflows', 'workflows'),
+    'workflow trigger bindings': ('workflows', 'trigger_bindings'),
+}
+
+# Rows that an organization delete removes. Children come before the
+# tables that they refer to with ON DELETE RESTRICT. The other child
+# tables of tasks and runs cascade.
+_ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
+    ('agent_runtime', 'task_dependencies'),
+    ('agent_runtime', 'task_projects'),
+    ('agent_runtime', 'tasks'),
+    ('agent_runtime', 'task_id_sequences'),
+    ('workflow_runtime', 'runs'),
+)
+
+
 @organizations_router.delete('/{slug}', status_code=204)
 async def delete_organization(
     slug: str,
@@ -746,7 +766,9 @@ async def delete_organization(
         ),
     ],
 ) -> None:
-    """Delete an empty organization. Its memberships go with it.
+    """Delete an empty organization.
+
+    Its memberships, agent tasks, and workflow runs go with it.
 
     Parameters:
         slug: Organization slug to delete.
@@ -754,9 +776,10 @@ async def delete_organization(
     Raises:
         404: Organization not found.
         409: The organization still has nodes that belong to it (teams,
-            agents, integrations, ...), secret providers, or an
-            identity source. Delete them first, so that each delete
-            does its own cleanup.
+            agents, integrations, ...), secret providers, an
+            identity source, workflows, or workflow trigger bindings.
+            Delete them first, so that each delete does its own
+            cleanup.
 
     """
     records = await db.execute(
@@ -772,38 +795,80 @@ async def delete_organization(
     org_id = org_auth.organization_id(
         graph.parse_agtype(records[0]['id']), slug
     )
-    contents = await db.execute(
-        'MATCH (n)-[:BELONGS_TO]->(:Organization {{slug: {slug}}})'
-        ' RETURN label(n) AS label, count(n) AS n',
-        {'slug': slug},
-        ['label', 'n'],
-    )
-    in_use = {
-        str(graph.parse_agtype(r['label'])): int(graph.parse_agtype(r['n']))
-        for r in contents
+    secrets_in_use = {
+        'secret providers': len(await secrets.list_all('providers', org_id)),
+        'identity sources': int(
+            await secrets.identity_source(org_id) is not None
+        ),
     }
-    in_use['secret providers'] = len(
-        await secrets.list_all('providers', org_id)
-    )
-    in_use['identity sources'] = int(
-        await secrets.identity_source(org_id) is not None
-    )
-    found = ', '.join(
-        f'{name} ({n})' for name, n in sorted(in_use.items()) if n
-    )
-    if found:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Organization {slug!r} is not empty: {found}. '
-                'Delete these first.'
-            ),
+
+    async def check_and_delete(
+        execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> None:
+        contents = await execute(
+            'MATCH (n)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})'
+            ' RETURN label(n) AS label, count(n) AS n',
+            {'org_id': org_id},
+            ['label', 'n'],
         )
-    # ponytail: something added between the check and the delete is
-    # left without an organization; lock the org if that matters.
-    await db.execute(
-        'MATCH (o:Organization {{slug: {slug}}})'
-        ' DETACH DELETE o RETURN 1 AS deleted',
-        {'slug': slug},
-        ['deleted'],
+        in_use = dict(secrets_in_use)  # a retry runs this again
+        for r in contents:
+            in_use[str(graph.parse_agtype(r['label']))] = int(
+                graph.parse_agtype(r['n'])
+            )
+        for name, table in _ORG_BLOCKING_TABLES.items():
+            in_use[name] = await _count_org_rows(conn, table, org_id)
+        found = ', '.join(
+            f'{name} ({n})' for name, n in sorted(in_use.items()) if n
+        )
+        if found:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=(
+                    f'Organization {slug!r} is not empty: {found}. '
+                    'Delete these first.'
+                ),
+            )
+        for table in _ORG_OWNED_TABLES:
+            await conn.execute(
+                sql.SQL('DELETE FROM {} WHERE organization_id = %s').format(
+                    sql.Identifier(*table)
+                ),
+                (org_id,),
+            )
+        # Match by id: a rename since the slug lookup must not leave
+        # the organization in place or delete a new one with the slug.
+        deleted = await execute(
+            'MATCH (o:Organization {{id: {org_id}}})'
+            ' DETACH DELETE o RETURN 1 AS deleted',
+            {'org_id': org_id},
+            ['deleted'],
+        )
+        if not deleted:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=f'Organization {slug!r} changed during the delete',
+            )
+
+    # ponytail: one transaction, but writers do not take this lock, so
+    # a node or row added during it can still be left behind; take the
+    # lock in those writers if that matters.
+    await db.locked_with_connection(
+        f'organization-delete:{org_id}', check_and_delete
     )
+
+
+async def _count_org_rows(
+    conn: psycopg.AsyncConnection[typing.Any],
+    table: tuple[str, str],
+    org_id: str,
+) -> int:
+    cursor = await conn.execute(
+        sql.SQL('SELECT count(*) FROM {} WHERE organization_id = %s').format(
+            sql.Identifier(*table)
+        ),
+        (org_id,),
+    )
+    row = await cursor.fetchone()
+    return row[0] if row else 0

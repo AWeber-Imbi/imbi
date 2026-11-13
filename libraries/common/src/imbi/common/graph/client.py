@@ -1010,6 +1010,25 @@ class Graph:
         rolls the transaction back and releases the lock.
 
         """
+        return await self.locked_with_connection(
+            key, lambda execute, _conn: work(execute)
+        )
+
+    async def locked_with_connection(
+        self,
+        key: str,
+        work: collections.abc.Callable[
+            [CypherExecute, psycopg.AsyncConnection[typing.Any]],
+            collections.abc.Awaitable[RunResultT],
+        ],
+    ) -> RunResultT:
+        """Like :meth:`locked`, but *work* also gets the connection.
+
+        Use the connection for plain SQL (the relational schemas are in
+        the same database), so that it runs in the same transaction as
+        the Cypher queries.
+
+        """
         self._require_open()
 
         async def run(conn: psycopg.AsyncConnection[typing.Any]) -> RunResultT:
@@ -1018,7 +1037,9 @@ class Graph:
                     'SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
                     (key,),
                 )
-                return await work(functools.partial(self._execute_on, conn))
+                return await work(
+                    functools.partial(self._execute_on, conn), conn
+                )
 
         return await self._run_retrying_poisoned(run)
 

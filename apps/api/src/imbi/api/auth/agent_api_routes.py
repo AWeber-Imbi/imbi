@@ -295,6 +295,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task',
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task/cancel',
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/email',
+        'GET /organizations/{org_slug}/workflow-runs/side-effects/deployments',
         'POST /organizations/{org_slug}/workflow-runs/side-effects/resolve',
         'POST /organizations/{org_slug}/workflows/{slug}/test-runs',
         'PUT /organizations/{org_slug}/workflows/{slug}',

@@ -1689,6 +1689,25 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, environments
         raise NotImplementedError
 
+    async def find_deployments(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref_or_sha: str,
+        since: datetime.datetime,
+    ) -> list[DeploymentRun]:
+        """Return the deployments of ``ref_or_sha`` to ``ctx.environment``
+        that the remote made at or after ``since``.
+
+        Optional -- the host uses it to find the deployment of a workflow
+        call with an unknown outcome (ADR 0021). Each ``run_id`` is the id
+        that :meth:`get_deployment_status` takes. Another deploy of the
+        same ref and environment in the same time also matches, so the
+        host stores a result only after an operator confirms it.
+        """
+        del ctx, credentials, ref_or_sha, since
+        raise NotImplementedError
+
     async def get_release_notes(
         self,
         ctx: PluginContext,
