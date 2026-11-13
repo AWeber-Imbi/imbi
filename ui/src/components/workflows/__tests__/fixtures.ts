@@ -4,6 +4,8 @@ export const RUN: WorkflowRun = {
   cancel_requested: false,
   closed_at: null,
   created_at: '2026-10-12T00:00:00Z',
+  dedupe_key: null,
+  duplicate_of: null,
   error: null,
   id: '3f1c2a9e-0000-4000-8000-000000000001',
   log_archived_at: null,
@@ -64,6 +66,51 @@ export const STEP_TYPES: StepType[] = [
     type: 'agent',
   }),
 ]
+
+const CONDITION_VALUE = {
+  anyOf: [
+    { type: 'string' },
+    { type: 'integer' },
+    { type: 'number' },
+    { type: 'boolean' },
+    { items: {}, type: 'array' },
+    { type: 'object' },
+    { type: 'null' },
+  ],
+}
+
+export const CONDITION: StepType = stepType({
+  description: 'Compares values and takes the True or the False port.',
+  label: 'Condition',
+  params_schema: {
+    $defs: {
+      Condition: {
+        properties: {
+          a: CONDITION_VALUE,
+          b: { ...CONDITION_VALUE, default: null },
+          operator: {
+            enum: ['equals', 'greater_than', 'is_empty'],
+            type: 'string',
+          },
+        },
+        required: ['a', 'operator'],
+        type: 'object',
+      },
+    },
+    properties: {
+      conditions: {
+        items: { $ref: '#/$defs/Condition' },
+        type: 'array',
+      },
+      ignore_case: { default: false, type: 'boolean' },
+      match: { default: 'all', enum: ['all', 'any'], type: 'string' },
+    },
+    required: ['conditions'],
+    type: 'object',
+  },
+  ports: ['True', 'False'],
+  type: 'condition',
+})
 
 export const TYPES = Object.fromEntries(STEP_TYPES.map((t) => [t.type, t]))
 
@@ -137,6 +184,8 @@ export function workflow(overrides: Partial<Workflow> = {}): Workflow {
       settings: {
         concurrency_key: null,
         concurrency_mode: 'unlimited',
+        dedupe_key: null,
+        dedupe_window_seconds: null,
         max_run_time_seconds: 3600,
         on_failure: 'notify_owner_team',
       },

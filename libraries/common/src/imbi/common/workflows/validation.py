@@ -16,6 +16,7 @@ import pydantic
 
 from imbi.common.workflows import graph, registry
 from imbi.common.workflows.registry import agent as agent_step
+from imbi.common.workflows.registry import condition
 
 MAX_NODES = 100
 MAX_EDGES = 200
@@ -29,12 +30,17 @@ TRIGGER_SCOPE = 'trigger'
 LIMIT_CODES = frozenset(
     {'too_many_nodes', 'too_many_edges', 'graph_too_large'}
 )
+#: Warnings that do not stop activation.
+ADVISORY_CODES = frozenset({'condition_type_mismatch'})
 
 #: ``{{ trigger.<name> }}``, or a nested field of the trigger payload
-#: such as ``{{ trigger.payload.repository.name }}``.
-_CONCURRENCY_KEY = re.compile(
-    r'^\{\{\s*trigger\.([a-z_][a-z0-9_]*(?:\.[A-Za-z0-9_-]+)*)\s*\}\}$'
+#: such as ``{{ trigger.payload.repository.name }}``. A key template
+#: (:func:`key_paths`) is one or more of them.
+_TRIGGER_REFERENCE = re.compile(
+    r'\{\{\s*trigger\.([a-z_][a-z0-9_]*(?:\.[A-Za-z0-9_-]+)*)\s*\}\}'
 )
+#: Template syntax that a key template cannot have outside a reference.
+_TEMPLATE_SYNTAX = ('{{', '}}', '{%', '%}', '{#', '#}')
 
 #: Only parses templates, to find the names they refer to.
 _JINJA = jinja2.Environment(autoescape=False)  # noqa: S701
@@ -145,6 +151,23 @@ def _renderable(node: graph.Node) -> dict[str, typing.Any]:
     return step.renderable(node.params) if step else node.params
 
 
+def _schema_types(schema: dict[str, typing.Any]) -> set[str]:
+    """Return the JSON types of ``schema``, without ``null``."""
+    branches: list[dict[str, typing.Any]] = schema.get('anyOf', [schema])
+    found = {b.get('type', 'object' if '$ref' in b else '') for b in branches}
+    return found - {'', 'null'}
+
+
+def _conditions(node: graph.Node) -> list[condition.Condition]:
+    """Return the conditions of a condition node with valid params."""
+    if node.type != condition.STEP.type:
+        return []
+    try:
+        return condition.Params.model_validate(node.params).conditions
+    except pydantic.ValidationError:
+        return []
+
+
 def _check_params(node: graph.Node, issues: _Issues) -> None:
     step = registry.STEP_TYPES[node.type]
     try:
@@ -168,6 +191,56 @@ def _check_params(node: graph.Node, issues: _Issues) -> None:
                 )
 
 
+def _check_key(
+    wf_graph: graph.Graph,
+    key: str,
+    setting: typing.Literal['concurrency', 'dedupe'],
+    issues: _Issues,
+) -> None:
+    """Report a key template that is not valid, or that a trigger of
+    the graph cannot fill.
+
+    Only a concurrency key needs each manual trigger to declare its
+    inputs: a manual run is never deduped, and one that lacks a value
+    of the dedupe key stores no key.
+    """
+    paths = key_paths(key)
+    if paths is None:
+        issues.add(
+            'error',
+            f'invalid_{setting}_key',
+            f'The {setting} key must be references to trigger values, '
+            'such as {{ trigger.service }}, with optional text between '
+            'them',
+        )
+        return
+    for node in wf_graph.nodes:
+        if node.type == 'schedule':
+            issues.add(
+                'error',
+                f'{setting}_key_with_schedule',
+                f'A {setting} key cannot be used with a schedule trigger',
+                node_id=node.id,
+            )
+        elif node.type == 'manual' and setting == 'concurrency':
+            raw: typing.Any = node.params.get('inputs')
+            inputs: list[typing.Any] = raw if isinstance(raw, list) else []
+            names = {
+                typing.cast(dict[str, typing.Any], i).get('name')
+                for i in inputs
+                if isinstance(i, dict)
+            }
+            for name in dict.fromkeys('.'.join(p) for p in paths):
+                if name not in names:
+                    issues.add(
+                        'error',
+                        f'{setting}_key_input_missing',
+                        f'{node.title} must declare the input {name!r} '
+                        f'that the {setting} key uses',
+                        node_id=node.id,
+                    )
+
+
 def _check_concurrency(
     wf_graph: graph.Graph, settings: graph.Settings, issues: _Issues
 ) -> None:
@@ -180,50 +253,72 @@ def _check_concurrency(
             'one_per_key needs a concurrency key',
         )
         return
-    path = concurrency_path(settings.concurrency_key)
-    if path is None:
+    _check_key(wf_graph, settings.concurrency_key, 'concurrency', issues)
+
+
+def _check_dedupe(
+    wf_graph: graph.Graph, settings: graph.Settings, issues: _Issues
+) -> None:
+    if settings.dedupe_key:
+        _check_key(wf_graph, settings.dedupe_key, 'dedupe', issues)
+    elif settings.dedupe_window_seconds is not None:
         issues.add(
             'error',
-            'invalid_concurrency_key',
-            'The concurrency key must be one reference to a trigger '
-            'value, such as {{ trigger.service }}',
+            'dedupe_window_without_key',
+            'A dedupe window needs a dedupe key',
         )
-        return
-    name = '.'.join(path)
-    for node in wf_graph.nodes:
-        if node.type == 'schedule':
-            issues.add(
-                'error',
-                'concurrency_key_with_schedule',
-                'one_per_key cannot be used with a schedule trigger',
-                node_id=node.id,
-            )
-        elif node.type == 'manual':
-            raw: typing.Any = node.params.get('inputs')
-            inputs: list[typing.Any] = raw if isinstance(raw, list) else []
-            names = {
-                typing.cast(dict[str, typing.Any], i).get('name')
-                for i in inputs
-                if isinstance(i, dict)
-            }
-            if name not in names:
-                issues.add(
-                    'error',
-                    'concurrency_key_input_missing',
-                    f'{node.title} must declare the input {name!r} that '
-                    'the concurrency key uses',
-                    node_id=node.id,
-                )
 
 
-def concurrency_path(key: str | None) -> list[str] | None:
-    """Return the trigger fields that a concurrency key names, in order.
+def key_paths(key: str | None) -> list[list[str]] | None:
+    """Return the trigger fields that a key template names, in order.
 
-    ``None`` when the key is not one reference to a trigger value.
-    Validation and :func:`concurrency_key` both read keys with it.
+    A key template is one or more references to trigger values, with
+    literal text between them and no other template syntax:
+    ``{{ trigger.service }}``, or
+    ``{{ trigger.payload.repo }}:{{ trigger.payload.sha }}``.
+    ``None`` when ``key`` is not one. Validation and :func:`render_key`
+    both read keys with it.
     """
-    match = _CONCURRENCY_KEY.match(key or '')
-    return match.group(1).split('.') if match else None
+    paths = [
+        m.group(1).split('.') for m in _TRIGGER_REFERENCE.finditer(key or '')
+    ]
+    rest = _TRIGGER_REFERENCE.sub('', key or '')
+    if not paths or any(s in rest for s in _TEMPLATE_SYNTAX):
+        return None
+    return paths
+
+
+def render_key(key: str | None, payload: dict[str, typing.Any]) -> str | None:
+    """Return a key template filled with the values of ``payload``.
+
+    ``None`` when the template is not valid, or a value that it names
+    is missing, empty or blank, a mapping, or a list: only a value that
+    a mapping or a list holds is part of a key.
+    """
+    if key is None or key_paths(key) is None:
+        return None
+    missing = False
+
+    def value_of(match: re.Match[str]) -> str:
+        nonlocal missing
+        value: typing.Any = payload
+        for name in match.group(1).split('.'):
+            value = (
+                typing.cast(dict[str, typing.Any], value).get(name)
+                if isinstance(value, dict)
+                else None
+            )
+        if (
+            value is None
+            or (isinstance(value, str) and not value.strip())
+            or isinstance(value, dict | list)
+        ):
+            missing = True
+            return ''
+        return str(value)
+
+    rendered = _TRIGGER_REFERENCE.sub(value_of, key)
+    return None if missing else rendered
 
 
 def concurrency_key(
@@ -240,18 +335,31 @@ def concurrency_key(
         return None
     if settings.concurrency_mode == 'one_at_a_time':
         return workflow_id
-    path = concurrency_path(settings.concurrency_key)
-    value: typing.Any = payload if path else None
-    for name in path or []:
-        value = (
-            typing.cast(dict[str, typing.Any], value).get(name)
-            if isinstance(value, dict)
-            else None
-        )
-    # A mapping or a list is not a key: only a value that it holds is.
-    if value is None or value == '' or isinstance(value, dict | list):
+    key = render_key(settings.concurrency_key, payload)
+    if key is None:
         raise ValueError('concurrency_key_missing')
-    return str(value)
+    return key
+
+
+#: The longest dedupe key, in bytes. A longer key can exceed the size
+#: of a B-tree entry in the dedupe index, and the run would fail to
+#: insert.
+MAX_DEDUPE_KEY_BYTES = 2048
+
+
+def dedupe_key(
+    settings: graph.Settings, payload: dict[str, typing.Any]
+) -> str | None:
+    """Return the dedupe key of a run (ADR 0021, Dedupe).
+
+    ``None`` when the workflow has no dedupe key, the payload lacks a
+    value that the key names, or the key is longer than
+    :data:`MAX_DEDUPE_KEY_BYTES`: such a run is never skipped.
+    """
+    key = render_key(settings.dedupe_key, payload)
+    if key is None or len(key.encode()) > MAX_DEDUPE_KEY_BYTES:
+        return None
+    return key
 
 
 def _by_node(branches: frozenset[_Branch]) -> dict[str, set[str]]:
@@ -290,6 +398,7 @@ def validate(
     if not issues:
         _Validator(wf_graph, issues).run()
         _check_concurrency(wf_graph, settings, issues)
+        _check_dedupe(wf_graph, settings, issues)
     return graph.ValidationResult(issues=issues)
 
 
@@ -462,6 +571,7 @@ class _Validator:
                         node_id=node_id,
                     )
             self._check_result_fields(node)
+            self._check_condition_types(node)
 
     def _check_result_fields(self, node: graph.Node) -> None:
         """Report a reference to a result field that a step lacks."""
@@ -486,6 +596,50 @@ class _Validator:
                 f'{node.title}: {path[0]}.result has no field {missing!r}',
                 node_id=node.id,
             )
+
+    def _reference_types(self, value: typing.Any) -> set[str]:
+        """Return the JSON types of a value that is one reference.
+
+        Empty when the value is not one reference to a step output
+        with a known type.
+        """
+        text = value if isinstance(value, str) else ''
+        whole = graph.WHOLE_REFERENCE.match(text)
+        path = whole.group(1).split('.') if whole else []
+        source_id = self.by_key.get(path[0]) if len(path) > 1 else None
+        if source_id is None:
+            return set()
+        source = self.nodes[source_id]
+        fields = _output_fields(source)
+        if fields is not None and len(path) > 2 and path[1] == 'result':
+            found = agent_step.field_type(fields, path[2:])
+            return {found} if found else set()
+        step = registry.STEP_TYPES.get(source.type)
+        schema = step.output.model_json_schema() if step else {}
+        properties: dict[str, typing.Any] = schema.get('properties', {})
+        if len(path) != 2 or path[1] not in properties:
+            return set()
+        return _schema_types(properties[path[1]])
+
+    def _check_condition_types(self, node: graph.Node) -> None:
+        """Warn about a reference whose type an operator cannot use."""
+        for number, row in enumerate(_conditions(node), 1):
+            sides: list[tuple[condition.Side, typing.Any]] = [('a', row.a)]
+            if row.operator not in condition.UNARY:
+                sides.append(('b', row.b))
+            for side, value in sides:
+                types = self._reference_types(value)
+                needs = condition.mismatch(row.operator, side, types)
+                if needs is None:
+                    continue
+                self.issues.add(
+                    'warning',
+                    'condition_type_mismatch',
+                    f'{node.title}: condition {number}: {value} is '
+                    f'{" or ".join(sorted(types))}, and {row.operator} '
+                    f'needs {needs} as {side}',
+                    node_id=node.id,
+                )
 
     def _check_any_joins(self, order: list[str]) -> None:
         """Warn about ``any`` joins whose inputs can both arrive in a run.

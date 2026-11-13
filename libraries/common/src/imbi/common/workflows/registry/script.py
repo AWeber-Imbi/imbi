@@ -1,4 +1,4 @@
-"""Script: run Python in the pydantic-monty sandbox (ADR 0026).
+"""Script: run Python in the pydantic-monty sandbox (ADR 0027).
 
 The engine runs the code with :mod:`imbi.common.workflows.script_runner`.
 This module declares the step only, so it does not import the sandbox.

@@ -105,7 +105,9 @@ Click empty canvas to see the workflow settings.
 | **Description** | Free text | Empty |
 | **Owner team** | A team in the organization | None. Required |
 | **Concurrency** | **Unlimited**, **One run at a time**, **One run per key** | **Unlimited** |
-| **Concurrency key** | One reference, for **One run per key** only | None |
+| **Concurrency key** | A key template, for **One run per key** only | None |
+| **Dedupe key** | A key template. A run that repeats the key of an earlier run is skipped. See [Dedupe](#dedupe) | None |
+| **Dedupe window (days)** | How long a key skips a repeat. Shows when a dedupe key is set | Empty (no limit) |
 | **Max run time (minutes)** | A run that runs longer stops as `timed_out` | 120 |
 | **When a run fails** | **Notify the owner team**, **Do nothing** | **Notify the owner team** |
 
@@ -124,6 +126,7 @@ with one output port has no port name.
 | `webhook` | Webhook | Triggers | One |
 | `wait` | Wait | Logic | One |
 | `model_decision` | Model decision | Logic | One for each branch |
+| `condition` | Condition | Logic | `True`, `False` |
 | `email` | Send email | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
@@ -136,6 +139,7 @@ count:
 |---|---|---|
 | `wait` | None | 0 |
 | `model_decision` | 60 seconds | 2 |
+| `condition` | 10 seconds | 0 |
 | `email` | 2 minutes | 0 |
 | `deploy`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
@@ -228,6 +232,57 @@ Otherwise the step fails with `model_unavailable` or
 `model_credentials_missing`. See [AI Models](ai-models.md).
 
 **Output:** `choice`, `probability`, and `reasoning`.
+
+### Condition
+
+Compares values from earlier steps. The step takes `True` when the
+conditions hold, and `False` when they do not.
+
+| Parameter | What to enter | Default |
+|---|---|---|
+| `conditions` | 1 to 10 rows. Each row has `a`, an `operator`, and `b` | Required |
+| `match` | `all`: every row must be true. `any`: at least one row must be true | `all` |
+| `ignore_case` | Treat uppercase and lowercase letters as the same when comparing text | `false` |
+
+`a` and `b` are values or templates, for example `{{ triage.result.risk }}`.
+`is_empty` and `is_not_empty` take no `b`.
+
+| Operator | Holds when |
+|---|---|
+| `equals`, `not_equals` | `a` is (or is not) the same as `b` |
+| `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal` | The number `a` compares to the number `b` |
+| `contains`, `not_contains` | The text `a` has (or does not have) `b` in it, or the list `a` has `b` as an item |
+| `starts_with`, `ends_with` | The text `a` starts or ends with `b` |
+| `matches` | The text `a` matches the regular expression `b` ([RE2 syntax](https://github.com/google/re2/wiki/Syntax)) |
+| `is_empty`, `is_not_empty` | `a` is (or is not) empty: no value, empty text, an empty list, or an empty object |
+
+How values compare:
+
+- A template with text around it always gives text. A value that is one
+  reference keeps its type. See [References](#references).
+- Numbers compare as numbers, also when one is text: `"5"` equals `5.0`.
+- `true` and `false` compare as text in any case: `"True"` equals `true`.
+- Other values compare as text.
+- A reference to a skipped step is empty.
+
+The step checks every row. When a row cannot be checked, the step fails,
+and the run fails. The error is one of these:
+
+| Error | Cause |
+|---|---|
+| `not_a_number` | A number operator got a value that is not a number |
+| `not_text` | `starts_with`, `ends_with`, or `matches` got an `a` that is not text. `contains` got an `a` that is not text or a list |
+| `invalid_pattern` | `b` of `matches` is not a valid regular expression |
+
+When a row references a step output whose type does not suit the operator,
+the editor outlines the row in red. Validation shows
+`condition_type_mismatch` as a warning. An example is `greater_than` on a
+text field. Unlike other warnings, it does not stop activation: a text
+field that holds a number, such as `"5"`, still compares as a number. A
+value that does not fit fails the step when the workflow runs.
+
+**Output:** `result`, and `conditions`: each row with its values and its
+`result`.
 
 ### Send email
 
@@ -365,9 +420,9 @@ A step with more than one input has a join. Set it in **Run when**:
 - **All inputs arrive** (`all`): the step runs when every input arrived or
   will not arrive, and at least one arrived.
 
-A branching step (model decision, deploy, agent task) takes one port. The
-steps on its other ports are `skipped`. A step whose inputs are all from
-skipped paths is `skipped` too.
+A branching step (model decision, condition, deploy, agent task) takes one
+port. The steps on its other ports are `skipped`. A step whose inputs are
+all from skipped paths is `skipped` too.
 
 Validation warns when an **Any input arrives** step can get two inputs in
 one run.
@@ -382,18 +437,94 @@ one run.
 
 Runs that wait start in the order that Imbi made them.
 
-For **One run per key**, the **Concurrency key** must be one reference to
-a trigger value:
-
-- `{{ trigger.service }}`
-- `{{ trigger.payload.repository.name }}`
+For **One run per key**, the **Concurrency key** is a
+[key template](#key-templates).
 
 More rules for **One run per key**:
 
-- Each **Manual run** trigger must declare the input that the key uses.
+- Each **Manual run** trigger must declare each input that the key uses.
 - You cannot use it with a **Schedule** trigger.
 - When a run has no value for the key, Imbi refuses it with
   `422 concurrency_key_missing` and makes no run.
+
+### Key templates
+
+The **Concurrency key** and the **Dedupe key** are key templates: one or
+more references to trigger values, with optional literal text between
+them.
+
+- `{{ trigger.service }}`
+- `{{ trigger.payload.repository.name }}`
+- `{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}`
+
+A reference is `{{ trigger.<field> }}`, with `.` for nested fields. A
+webhook trigger's body is under `trigger.payload`. Filters such as
+`| upper`, `{% %}` tags, and references to other steps are not allowed.
+Each reference must name a value, not a list or an object. The key is the
+template with each reference replaced by its value, for example
+`octo/imbi:4f2a9c1`.
+
+## Dedupe
+
+Dedupe skips a run that repeats work an earlier run already did. Use it
+when a trigger fires more than once for the same thing and the payload
+cannot tell the repeats apart. For example, a scheduled job redeploys an
+unchanged commit, and each redeploy sends the same webhook.
+
+Set **Dedupe key** to a [key template](#key-templates) that names the
+thing a run works on. Set **Dedupe window (days)** to how long a key
+skips a repeat. Leave the window empty to skip repeats forever.
+
+When a **Webhook** or **Task completed** trigger starts a run, Imbi
+fills the key from the payload. If a run of the same workflow with the
+same key was made within the window, Imbi does not start the new run. It
+records it as `skipped`, with a link to the earlier run.
+
+Example: review each commit once in 14 days, for a webhook that receives
+GitHub `workflow_run` events:
+
+| Setting | Value |
+|---|---|
+| **Dedupe key** | `{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}` |
+| **Dedupe window (days)** | `14` |
+
+The API stores this as:
+
+```json
+{
+  "dedupe_key": "{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}",
+  "dedupe_window_seconds": 1209600
+}
+```
+
+Which runs count:
+
+| Earlier run | Counts |
+|---|---|
+| `queued`, `running`, `succeeded` | Yes |
+| `cancelled` after it started | Yes. Someone stopped it on purpose, so a repeat does not start it again |
+| `failed`, `timed_out` | No. The next matching delivery retries the work |
+| `cancelled` before it started | No |
+| `skipped` | No. The window counts from the last run that did work |
+
+More rules:
+
+- A run that a person starts with **Run** is never skipped. Its key still
+  counts, so a webhook run with the same key after it is skipped.
+- A run whose payload has no value for a reference in the key is never
+  skipped and stores no key.
+- When one webhook delivery starts a run for each project it matches,
+  each project dedupes on its own: only an earlier run of the same
+  project, or a run with no project such as a person's run, counts. A
+  run with no project matches any earlier run of the workflow with the
+  key.
+- Two deliveries with the same key at the same time start one run.
+- Dedupe works with any **Concurrency** mode.
+- You cannot use a dedupe key with a **Schedule** trigger.
+- A **Manual run** trigger does not have to declare the inputs that the
+  key uses. A manual run is never skipped, and one without a value for
+  the key stores no key.
+- A window without a key is an error.
 
 ## Validation
 
@@ -414,7 +545,9 @@ graph is too large.
 | Templates are valid, and references name earlier steps | `invalid_template`, `unknown_reference` |
 | Ids are literal where required, and exist in the organization | `invalid_reference`, `resource_not_in_organization` |
 | Concurrency key rules | `missing_concurrency_key` (warning), `invalid_concurrency_key`, `concurrency_key_with_schedule`, `concurrency_key_input_missing` |
+| Dedupe key rules | `invalid_dedupe_key`, `dedupe_key_with_schedule`, `dedupe_window_without_key` |
 | An **Any input arrives** step can get two inputs | `any_join_overlap` (warning) |
+| A condition row references an output whose type does not suit its operator | `condition_type_mismatch` (warning) |
 
 ## Activate a workflow
 
@@ -428,7 +561,7 @@ Activation fails in these cases:
 
 | Response | Cause | Fix |
 |---|---|---|
-| `422 validation_failed` | The version has issues. Warnings count | Fix every issue, save, and activate again |
+| `422 validation_failed` | The version has issues. Warnings count, except `condition_type_mismatch` | Fix every issue, save, and activate again |
 | `403 missing_permissions` | You do not hold a permission that a step needs. The message lists them | Ask an admin to activate it, or to give you the permissions |
 
 Imbi checks the permissions of your role in the workflow's organization
@@ -515,6 +648,8 @@ first. Click a run to see each step: status, duration, branch, error,
 input, and output. Open runs refresh every 2 seconds.
 
 The workflow list shows **Runs 30d** and **Last run** for each workflow.
+Neither counts `skipped` runs, so a skipped repeat does not hide the
+outcome of the run before it.
 
 | Run status | Meaning |
 |---|---|
@@ -524,6 +659,7 @@ The workflow list shows **Runs 30d** and **Last run** for each workflow.
 | `failed` | A step failed and no connection handles the failure |
 | `cancelled` | A person cancelled it |
 | `timed_out` | It ran longer than the max run time |
+| `skipped` | It never ran: its dedupe key matches an earlier run. The run list shows **Duplicate of run** and the run links to the earlier run |
 
 The engine keeps the run log in Postgres until ClickHouse has every event of
 a closed run. Then run detail reads from ClickHouse. If ClickHouse is not

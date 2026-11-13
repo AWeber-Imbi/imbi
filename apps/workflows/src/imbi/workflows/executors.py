@@ -17,7 +17,7 @@ makes it with the key ``<run_id>:<node_key>`` the first time, and
 returns it after that. The step polls it until it is closed.
 
 A script step runs its code in the sandbox of
-:mod:`imbi.common.workflows.script_runner` (ADR 0026).
+:mod:`imbi.common.workflows.script_runner` (ADR 0027).
 """
 
 import asyncio
@@ -39,6 +39,7 @@ from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 from imbi.common.workflows.registry import (
     agent,
+    condition,
     deploy,
     email,
     model_decision,
@@ -245,6 +246,8 @@ class Executors:
         match call.node.type:
             case 'wait':
                 return self._wait(call)
+            case 'condition':
+                return self._condition(call)
             case 'model_decision':
                 return await self._model_decision(call)
             case 'script':
@@ -276,6 +279,16 @@ class Executors:
                 state=call.state,
             )
         return Outcome(output={'waited_seconds': seconds})
+
+    def _condition(self, call: Call) -> Outcome:
+        params = _params(condition.Params, call)
+        try:
+            output = condition.evaluate(params)
+        except condition.EvaluationError as error:
+            raise StepError(error.code, retry=False) from error
+        return Outcome(
+            output=output.model_dump(), port=0 if output.result else 1
+        )
 
     async def _model_decision(self, call: Call) -> Outcome:
         params = _params(model_decision.Params, call)

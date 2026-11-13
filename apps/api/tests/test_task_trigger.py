@@ -10,6 +10,7 @@ import uuid
 from unittest import mock
 
 import pydantic
+from psycopg.types import json as pg_json
 
 from apps.api.tests.endpoints.test_workflow_runs import HeldRunStore
 from imbi.api import workflows
@@ -145,6 +146,45 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'outcome': 'failed_external',
                     },
                 }
+            ],
+        )
+
+    async def test_dedupe_key_skips_a_repeat(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions SET settings = %s'
+                ' WHERE workflow_id = (SELECT id FROM workflows.workflows'
+                ' WHERE organization_id = %s)',
+                (
+                    pg_json.Jsonb(
+                        {
+                            'dedupe_key': '{{ trigger.agent_id }}:'
+                            '{{ trigger.outcome }}'
+                        }
+                    ),
+                    self.org,
+                ),
+            )
+        await self._activate(agent_id='mender')
+        await self.trigger(_task(organization_id=self.org))
+        await self.trigger(_task(organization_id=self.org))
+        await self.trigger(
+            _task(organization_id=self.org, outcome='done_acted')
+        )
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT status, dedupe_key, duplicate_of IS NOT NULL'
+                ' FROM workflow_runtime.runs WHERE organization_id = %s'
+                ' ORDER BY created_at',
+                (self.org,),
+            )
+            found = await cur.fetchall()
+        self.assertEqual(
+            found,
+            [
+                ('queued', 'mender:failed_external', False),
+                ('skipped', 'mender:failed_external', True),
+                ('queued', 'mender:done_acted', False),
             ],
         )
 

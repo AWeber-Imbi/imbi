@@ -1,3 +1,4 @@
+import { operatorLabel } from './conditions'
 import type { JsonSchema } from './types'
 
 // Turns a step type's `params_schema` into inspector form fields.
@@ -13,7 +14,7 @@ export type FieldSource =
 
 export type ParamField =
   | (FieldBase & {
-      kind: 'checks' | 'select'
+      kind: 'checks' | 'conditions' | 'select'
       options: { label: string; value: string }[]
     })
   | (FieldBase & { kind: 'multiline'; mono: boolean })
@@ -69,6 +70,18 @@ export function paramFields(schema: JsonSchema): ParamField[] {
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (name === 'output_fields') return { ...base, kind: 'outputFields' }
+    if (name === 'conditions' && prop.items) {
+      const item = resolve(schema, prop.items)
+      const operator = resolve(schema, item.properties?.operator ?? {})
+      return {
+        ...base,
+        kind: 'conditions',
+        options: (operator.enum ?? []).map((value) => ({
+          label: operatorLabel(String(value)),
+          value: String(value),
+        })),
+      }
+    }
     if (prop.enum) {
       return { ...base, kind: 'select', options: enumOptions(prop.enum) }
     }
@@ -101,7 +114,7 @@ export function paramSummary(params: Record<string, unknown>): string {
   const parts: string[] = []
   for (const [name, value] of Object.entries(params)) {
     if (Array.isArray(value)) {
-      parts.push(`${value.length} ${name.replace(/_/g, ' ')}`)
+      parts.push(`${value.length} ${countLabel(name, value.length)}`)
     } else if (
       // Ids of live records read as noise on the card.
       (typeof value === 'string' && value.trim() && !name.endsWith('_id')) ||
@@ -112,6 +125,11 @@ export function paramSummary(params: Record<string, unknown>): string {
     if (parts.length === 2) break
   }
   return parts.join(' · ')
+}
+
+function countLabel(name: string, count: number): string {
+  const label = name.replace(/_/g, ' ')
+  return count === 1 ? label.replace(/(?<=ch|sh|x)es$|s$/, '') : label
 }
 
 function enumOptions(values: unknown[]): { label: string; value: string }[] {

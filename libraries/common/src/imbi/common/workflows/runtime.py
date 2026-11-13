@@ -16,8 +16,9 @@ SCHEMA = 'workflow_runtime'
 #: ``NOTIFY`` channel that wakes the engine. A hint only: it polls.
 NOTIFY_CHANNEL = 'workflow_runs'
 
-#: Run statuses that are final.
-CLOSED = ('succeeded', 'failed', 'cancelled', 'timed_out')
+#: Run statuses that are final. A ``skipped`` run never started: it
+#: repeats the dedupe key of an earlier run (ADR 0021, Dedupe).
+CLOSED = ('succeeded', 'failed', 'cancelled', 'timed_out', 'skipped')
 
 #: ``NOTIFY`` channel that wakes the trigger reconciler. A hint only: it
 #: also runs on a schedule.

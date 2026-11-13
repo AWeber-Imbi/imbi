@@ -1,4 +1,4 @@
-# ADR 0026: Workflow Script Step
+# ADR 0027: Workflow Script Step
 
 Date: 2026-11-13
 
@@ -6,16 +6,18 @@ Date: 2026-11-13
 
 Accepted
 
-Related: [ADR 0021](0021-workflow-contract.md) (workflows). This ADR is
-the decision that ADR 0021 asks for before a script step ships.
+Related: [ADR 0021](0021-workflow-contract.md) (workflows),
+[ADR 0026](0026-workflow-condition-step.md) (condition step). This ADR
+is the decision that ADR 0021 asks for before a script step ships.
 
 ## Context
 
-Workflows can wait, ask a model to pick a branch, deploy, roll back,
-send email, and give a task to an agent. No step transforms data or
-picks a branch by a rule. An author who must count failed runs in a
-webhook payload, or route on a numeric threshold, must ask a model or an
-agent. That is slow, costs money, and is not deterministic.
+Workflows can wait, ask a model to pick a branch, compare values and
+branch on the result (`condition`), deploy, roll back, send email, and
+give a task to an agent. No step transforms data. An author who must
+count the failed runs in a webhook payload, reshape a payload for a
+later step, or branch on a value that must first be computed, must ask a
+model or an agent. That is slow, costs money, and is not deterministic.
 
 A small program does this work best. Running code that people write is a
 risk: it must not reach the network, the file system, the database, or

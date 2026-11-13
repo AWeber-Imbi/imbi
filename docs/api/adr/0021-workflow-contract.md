@@ -121,7 +121,7 @@ A second Postgres schema, `workflow_runtime`, holds runs:
 
 | Table | Holds |
 |---|---|
-| `runs` | One row per run: workflow, pinned version, origin, trigger payload, concurrency key, status, timestamps, error, `cancel_requested`, `last_seq`, `log_archived_at` |
+| `runs` | One row per run: workflow, pinned version, origin, trigger payload, concurrency key, dedupe key, `duplicate_of`, status, timestamps, error, `cancel_requested`, `last_seq`, `log_archived_at` |
 | `step_runs` | One row per node per run: status, attempt, input, output, error, chosen port, timestamps |
 | `run_events` | A buffer of run events for runs that are not yet archived |
 | `leases` | One row per claimed run: worker id, `expires_at` |
@@ -130,7 +130,8 @@ imbi-api owns both schemas and applies them on startup. The engine reads
 and writes `workflow_runtime` directly.
 
 Run status: `queued`, `running`, then one terminal status: `succeeded`,
-`failed`, `cancelled`, or `timed_out`.
+`failed`, `cancelled`, or `timed_out`. A run that repeats the dedupe key
+of an earlier run is written `skipped` and never runs (see Dedupe).
 
 Step status: `pending`, `running`, then one terminal status: `succeeded`,
 `failed`, `skipped`, or `cancelled`.
@@ -212,7 +213,7 @@ Workflow settings choose a concurrency mode:
 |---|---|
 | `unlimited` | None |
 | `one_at_a_time` | The workflow id |
-| `one_per_key` | A reference evaluated against the trigger payload, for example `{{ trigger.service }}` |
+| `one_per_key` | A key template evaluated against the trigger payload, for example `{{ trigger.service }}` |
 
 A run whose key matches a running run waits in `queued`, in creation
 order.
@@ -221,6 +222,54 @@ Validation requires every `manual` trigger to declare the input that
 `one_per_key` references, and refuses `one_per_key` for a workflow with a
 `schedule` trigger. A webhook payload is known only at run time: a run
 whose key resolves to nothing fails at once with `concurrency_key_missing`.
+
+A key template, for `concurrency_key` and `dedupe_key`, is one or more
+references to trigger values with literal text between them, for example
+`{{ trigger.payload.repository.full_name }}:{{ trigger.payload.workflow_run.head_sha }}`.
+A reference is `{{ trigger.<field>[.<field>...] }}`. Filters, tags, and
+references to other steps are invalid. Every reference must resolve to a
+non-empty scalar; the key is the template with each reference replaced by
+its value.
+
+### Dedupe
+
+Concurrency only orders runs. Dedupe skips them. A workflow that sets
+`dedupe_key` (a key template) and optionally `dedupe_window_seconds`
+skips a run whose key matches a run of the same workflow created within
+the window. No window means no limit. A window without a key is a
+validation error (`dedupe_window_without_key`). Dedupe does not depend on
+the concurrency mode. The key must be a valid key template
+(`invalid_dedupe_key`) and cannot be used with a `schedule` trigger
+(`dedupe_key_with_schedule`). Unlike `one_per_key`, a `manual` trigger
+does not have to declare the inputs that the key uses: a manual run is
+never skipped, and one that lacks a value of the key stores no key. A
+dotted webhook key could not be declared as a manual input anyway.
+
+imbi-api checks at run creation, in the transaction that writes the run,
+under a transaction advisory lock on the workflow and key, so two
+deliveries with one key at once start one run. A matching run is any
+run that did the work or still can: `queued`, `running`, `succeeded`,
+or `cancelled` after it started. A person cancels a run on purpose, so a
+repeat does not start it again. A `failed` or `timed_out` run did not
+finish the work, so it does not count and the next matching delivery
+retries it. A `skipped` run and a run cancelled before it started do
+not count either, so the window measures from the last run that did
+work.
+
+A webhook run of a project (one delivery can start a run for each
+project it matches) matches only runs of the same project and runs
+with no project, so each project dedupes on its own and a person's run
+counts for every project. A run with no project matches on workflow
+and key.
+
+A duplicate is written as a closed run: status `skipped`, `closed_at`
+set, `duplicate_of` the matching run, and events `run.created` and
+`run.skipped`. The engine never claims it. A redelivery with the same
+idempotency key returns that run.
+
+A run that a person starts (`human` origin) is never skipped, and stores
+its key, so it counts for later runs. A run whose payload lacks a value
+of the key stores no key and is never skipped.
 
 ### References
 
@@ -358,7 +407,8 @@ This follows ADR 0020.
   origin, and the outcome, so the API always knows where to read a run's
   log, and audit references never depend on ClickHouse alone.
 - **Reads.** Run detail reads Postgres before archive and ClickHouse after.
-  The list page's runs in 30 days and last outcome read `workflow_runs`.
+  The list page's runs in 30 days and last outcome read `workflow_runs`,
+  leaving out `skipped` runs.
   Live views read Postgres only.
 - **Retention.** No TTL to start, as for `agent_task_events`. Both
   ClickHouse tables carry `run_created_at` on every row, so a later TTL can

@@ -1,4 +1,4 @@
-"""Tests for the ``script`` step type and its runner (ADR 0026)."""
+"""Tests for the ``script`` step type and its runner (ADR 0027)."""
 
 import time
 import typing

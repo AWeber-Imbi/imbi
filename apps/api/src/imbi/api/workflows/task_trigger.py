@@ -117,6 +117,9 @@ class TaskTrigger:
                             settings, str(workflow_id), payload
                         ),
                         activated_by=binding['activated_by'],
+                        dedupe_key=validation.dedupe_key(settings, payload),
+                        dedupe_window_seconds=settings.dedupe_window_seconds,
+                        skip_duplicate=True,
                     )
                 )
             except Exception as error:  # one workflow must not stop the rest

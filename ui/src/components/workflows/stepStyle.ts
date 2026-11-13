@@ -7,6 +7,7 @@ import {
   Rocket,
   RotateCcw,
   Sparkles,
+  Split,
   SquareFunction,
   Timer,
   Webhook,
@@ -15,6 +16,7 @@ import {
 import type { StepCategory } from './types'
 
 const ICONS: Record<string, LucideIcon> = {
+  condition: Split,
   deploy: Rocket,
   email: Mail,
   manual: Play,

@@ -1,11 +1,16 @@
 """The graph and settings of a workflow version (ADR 0021)."""
 
+import re
 import typing
 
 import pydantic
 
 #: The pattern of a node key. A reference names a node by its key.
 KEY_PATTERN = r'^[a-z][a-z0-9_]*$'
+
+WHOLE_REFERENCE = re.compile(
+    r'^\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*\}\}$'
+)
 
 
 class Position(pydantic.BaseModel):
@@ -43,9 +48,17 @@ class Settings(pydantic.BaseModel):
     concurrency_mode: typing.Literal[
         'unlimited', 'one_at_a_time', 'one_per_key'
     ] = 'unlimited'
-    #: A reference to a trigger value, such as ``{{ trigger.service }}``.
-    #: Used only with ``one_per_key``.
+    #: A key template (:func:`imbi.common.workflows.validation.key_paths`),
+    #: such as ``{{ trigger.service }}``. Used only with ``one_per_key``.
     concurrency_key: str | None = None
+    #: A key template, such as
+    #: ``{{ trigger.payload.repository.full_name }}:{{ trigger.payload.
+    #: workflow_run.head_sha }}``. A run whose key matches a run of the
+    #: workflow made within ``dedupe_window_seconds`` is skipped
+    #: (ADR 0021, Dedupe).
+    dedupe_key: str | None = None
+    #: How long a run's dedupe key skips a repeat. ``None``: no limit.
+    dedupe_window_seconds: int | None = pydantic.Field(default=None, gt=0)
     max_run_time_seconds: int = pydantic.Field(default=7200, gt=0)
     on_failure: typing.Literal['notify_owner_team', 'none'] = (
         'notify_owner_team'

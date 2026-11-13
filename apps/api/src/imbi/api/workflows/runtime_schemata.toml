@@ -44,6 +44,12 @@ created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 started_at = "TIMESTAMP WITH TIME ZONE"
 closed_at = "TIMESTAMP WITH TIME ZONE"
 log_archived_at = "TIMESTAMP WITH TIME ZONE"
+# The workflow's dedupe key filled with the payload. NULL when the
+# workflow has none or the payload lacks a value of it.
+dedupe_key = "TEXT"
+# A `skipped` run: the earlier run of the workflow with the same
+# dedupe key.
+duplicate_of = "UUID"
 
 [tables.primary_key]
 columns = ["id"]
@@ -71,6 +77,11 @@ columns = ["workflow_id", "created_at"]
 [[tables.indexes]]
 name = "runs_status_due_idx"
 columns = ["status", "due_at"]
+
+# The dedupe check: the newest run of a workflow with a key.
+[[tables.indexes]]
+name = "runs_workflow_dedupe_key_idx"
+columns = ["workflow_id", "dedupe_key", "created_at"]
 
 # One row per node per run.
 #

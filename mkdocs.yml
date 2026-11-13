@@ -195,7 +195,8 @@ nav:
               - 0023 Realtime Channel: api/adr/0023-realtime-channel.md
               - 0024 Work Items: api/adr/0024-work-items.md
               - 0025 Tickets: api/adr/0025-tickets.md
-              - 0026 Workflow Script Step: api/adr/0026-workflow-script-step.md
+              - 0026 Workflow Condition Step: api/adr/0026-workflow-condition-step.md
+              - 0027 Workflow Script Step: api/adr/0027-workflow-script-step.md
           - Library:
               - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
               - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md

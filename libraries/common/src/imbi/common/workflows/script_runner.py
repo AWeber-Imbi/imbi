@@ -1,4 +1,4 @@
-"""Run the code of a ``script`` step (ADR 0026).
+"""Run the code of a ``script`` step (ADR 0027).
 
 Needs the ``script`` extra. The workflow engine and the editor preview
 of imbi-api both run scripts here, so they share one sandbox
@@ -45,7 +45,7 @@ _VALIDATOR = jsonschema.Draft202012Validator
 
 
 class ScriptError(Exception):
-    """The script failed. ``code`` names the cause (ADR 0026)."""
+    """The script failed. ``code`` names the cause (ADR 0027)."""
 
     def __init__(
         self, code: str, message: str = '', *, retry: bool = False
