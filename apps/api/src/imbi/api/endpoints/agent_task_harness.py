@@ -901,6 +901,11 @@ def _check_structured_output(
         raise _invalid_output(
             'structured_output: output_schema recursion limit exceeded'
         ) from err
+    except AttributeError as err:
+        # e.g. a $ref that resolves to a value that is not a schema.
+        raise _invalid_output(
+            'structured_output: output_schema is not a valid schema'
+        ) from err
 
 
 def _invalid_output(message: str) -> fastapi.HTTPException:

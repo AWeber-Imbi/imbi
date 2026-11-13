@@ -826,12 +826,13 @@ class OutcomeTests(HarnessTestCase):
             response.json()['detail']['error'], 'invalid_structured_output'
         )
         # A remote $ref is never fetched, a self $ref cannot recurse,
-        # and a non-string $schema is refused.
+        # and a non-string $schema or a $ref to a non-schema is refused.
         for schema in (
             {'$ref': 'http://127.0.0.1:9/schema'},
             {'$ref': '#'},
             {'$schema': ['x']},
             {'$schema': 1},
+            {'title': 'text', '$ref': '#/title'},
         ):
             await self.set_output_schema(schema)
             with mock.patch('urllib.request.urlopen') as urlopen:
