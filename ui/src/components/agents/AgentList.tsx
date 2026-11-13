@@ -125,7 +125,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
       }
       onSearchChange={setSearch}
       search={search}
-      searchPlaceholder="Search agents, teams, labels…"
+      searchPlaceholder="Search agents, teams, tags…"
     >
       <AdminTable
         columns={[
