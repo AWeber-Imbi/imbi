@@ -60,7 +60,7 @@ To copy an agent, open it and click **Duplicate**.
 | Icon | An icon, or an image that you upload (500 KB maximum) |
 | Slack channel | A channel name, for example `#cs-escalations`. Imbi stores it. In this release, nothing uses it |
 | Owner team | Required. The team that owns the agent |
-| Labels | Organization tags. You can make a label with a color from this field |
+| Tags | Organization tags. They only classify the agent and have no effect on runner selection. You can make a tag with a color from this field |
 
 ### System prompt and model
 
@@ -211,7 +211,7 @@ An empty field means no limit.
 | Task budget | USD. The default hard budget of each task. A task can only lower it. See [Budgets](agent-tasks.md#budgets) |
 | Max concurrent tasks | The number of tasks of this agent that can run at the same time |
 | Task timeout | For example `30m` or `2h`. A number with no unit is minutes. A task that runs longer closes with `exceeded_ceiling` |
-| Required runner labels | Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
+| Required runner labels | Used only to select a harness runner. Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
 | Egress destinations | The internal hosts that the pod of the agent's chains may reach, in addition to the global ones. See [Egress allowlists](../deployment/agent-runners.md#egress-allowlists). A host name destination works only for HTTPS clients that use the egress proxy, and the DNS owner of each name controls where it goes: see [Host name destinations](../deployment/agent-runners.md#host-name-destinations) |
 | Human response SLA | 4 hours, 8 business hours, 24 hours, 3 days, or No SLA. Imbi stores it. In this release, nothing uses it |
 
@@ -274,7 +274,7 @@ The delete returns `409` when:
 
 Open an agent from the list. The detail page shows:
 
-- The owner team, model, Slack channel, settings, and labels.
+- The owner team, model, Slack channel, settings, and tags.
 - **Runs (30 days)** and the monthly cost cap, with a badge at 80% and
   100%.
 - **Cost over time**: daily cost and runs for the last 30 days.
