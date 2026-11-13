@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { Plus, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -27,8 +29,17 @@ export function ConditionsField({
   references: ReferenceGroup[]
   value: Condition[]
 }) {
+  const [keys, setKeys] = useState(() => value.map(() => crypto.randomUUID()))
   const replace = (index: number, row: Condition) =>
     onChange(value.map((other, position) => (position === index ? row : other)))
+  const remove = (index: number) => {
+    setKeys(keys.filter((_, position) => position !== index))
+    onChange(value.filter((_, position) => position !== index))
+  }
+  const add = () => {
+    setKeys([...keys, crypto.randomUUID()])
+    onChange([...value, { a: '', b: '', operator: 'equals' }])
+  }
   return (
     <div
       aria-label={label}
@@ -39,12 +50,10 @@ export function ConditionsField({
       {value.map((row, index) => (
         <ConditionRow
           id={`${id}-${index}`}
-          key={index}
+          key={keys[index] ?? index}
           label={`Condition ${index + 1}`}
           onChange={(next) => replace(index, next)}
-          onRemove={() =>
-            onChange(value.filter((_, position) => position !== index))
-          }
+          onRemove={() => remove(index)}
           operators={operators}
           references={references}
           row={row}
@@ -53,9 +62,7 @@ export function ConditionsField({
       {value.length < MAX_CONDITIONS && (
         <button
           className="border-input text-secondary hover:border-amber-border hover:text-primary flex h-8.5 items-center justify-center gap-1.5 rounded-md border border-dashed text-sm"
-          onClick={() =>
-            onChange([...value, { a: '', b: '', operator: 'equals' }])
-          }
+          onClick={add}
           type="button"
         >
           <Plus className="size-3.5" />
@@ -83,6 +90,7 @@ function ConditionRow({
   references: ReferenceGroup[]
   row: Condition
 }) {
+  const [json] = useState(() => ({ a: isJson(row.a), b: isJson(row.b) }))
   const warnings = conditionWarnings(row, references)
   return (
     <div
@@ -98,7 +106,7 @@ function ConditionRow({
         groups={references}
         id={`${id}-a`}
         multiline={false}
-        onChange={(a) => onChange({ ...row, a: fromText(row.a, a) })}
+        onChange={(a) => onChange({ ...row, a: fromText(json.a, a) })}
         value={text(row.a)}
       />
       <div className="flex items-center gap-1.5">
@@ -129,7 +137,7 @@ function ConditionRow({
             groups={references}
             id={`${id}-b`}
             multiline={false}
-            onChange={(b) => onChange({ ...row, b: fromText(row.b, b) })}
+            onChange={(b) => onChange({ ...row, b: fromText(json.b, b) })}
             value={text(row.b)}
           />
         </>
@@ -143,14 +151,17 @@ function ConditionRow({
   )
 }
 
-function fromText(previous: unknown, next: string): unknown {
-  if (previous === undefined || previous === null) return next
-  if (typeof previous === 'string') return next
+function fromText(json: boolean, next: string): unknown {
+  if (!json) return next
   try {
     return JSON.parse(next)
   } catch {
     return next
   }
+}
+
+function isJson(value: unknown): boolean {
+  return value !== undefined && value !== null && typeof value !== 'string'
 }
 
 function text(value: unknown): string {

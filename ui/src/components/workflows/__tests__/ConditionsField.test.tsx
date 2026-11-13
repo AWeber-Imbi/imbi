@@ -76,6 +76,34 @@ describe('ConditionsField', () => {
     ])
   })
 
+  it('parses a non-text value again after an invalid edit', () => {
+    const onChange = renderField([{ a: ['abc'], b: 'a', operator: 'contains' }])
+    const input = screen.getByLabelText('Condition 1 value')
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.change(input, { target: { value: '["abc",' } })
+    expect(onChange).toHaveBeenLastCalledWith([
+      { a: '["abc",', b: 'a', operator: 'contains' },
+    ])
+    fireEvent.change(input, { target: { value: '["abc", "d"]' } })
+    expect(onChange).toHaveBeenLastCalledWith([
+      { a: ['abc', 'd'], b: 'a', operator: 'contains' },
+    ])
+  })
+
+  it('keeps each row parsing as it did after a row is removed', () => {
+    const onChange = renderField([
+      { a: ['abc'], b: 'a', operator: 'contains' },
+      { a: 'x', b: 'y', operator: 'equals' },
+    ])
+    fireEvent.click(screen.getByRole('button', { name: 'Remove condition 1' }))
+    fireEvent.change(screen.getByLabelText('Condition 1 value'), {
+      target: { value: '[1]' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith([
+      { a: '[1]', b: 'y', operator: 'equals' },
+    ])
+  })
+
   it('hides b for an empty check', async () => {
     const onChange = renderField([{ a: 'x', b: 'y', operator: 'equals' }])
     fireEvent.click(screen.getByLabelText('Condition 1 operator'))

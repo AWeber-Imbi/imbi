@@ -205,6 +205,7 @@ function FieldControl({
       return (
         <ConditionsField
           id={id}
+          key={id}
           label={field.label}
           onChange={onChange}
           operators={field.options}
