@@ -113,7 +113,7 @@ export function ConversationTab({
     () =>
       turns(timeline(events), {
         failed: isFailed(task),
-        live: task.status !== 'closed',
+        live: task.status === 'running',
       }),
     [events, task],
   )
@@ -168,15 +168,15 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const argsText = typeof p.arguments === 'string' ? p.arguments : null
   const args = isRecord(p.arguments) ? p.arguments : {}
   const ms = typeof p.duration_ms === 'number' ? p.duration_ms : null
-  const closed = ctx.task.status === 'closed'
+  const running = ctx.task.status === 'running'
   const summary = e
     ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
-    : closed
-      ? 'Did not finish'
-      : 'Running…'
+    : running
+      ? 'Running…'
+      : 'Did not finish'
   const status = isError(entry)
     ? 'error'
-    : !e && !closed
+    : !e && running
       ? 'running'
       : undefined
   const key = entryKey(entry)

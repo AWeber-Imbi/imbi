@@ -29,7 +29,7 @@ const LOG = [
   event(4, 'turn', { body: 'fixed' }),
 ]
 
-function renderTab(status: 'closed' | 'running', events = LOG) {
+function renderTab(status: AgentTask['status'], events = LOG) {
   const t = task({ status }) as unknown as AgentTask
   return render(
     <div className="flex h-150 flex-col">
@@ -112,6 +112,14 @@ describe('ConversationTab', () => {
   it('sums up a finished turn in its footer, not a running one', () => {
     renderTab('closed')
     expect(screen.getByText('3s · 1 tool')).toBeInTheDocument()
+  })
+
+  it('does not show a paused task as working', () => {
+    renderTab('paused', LOG.slice(0, 3))
+    expect(screen.queryByText('Working…')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Worked for/ }),
+    ).toBeInTheDocument()
   })
 
   it('has no footer while the turn runs', () => {
