@@ -1394,9 +1394,18 @@ class TaskRun:
             for tool in _deny_rule(str(rule))
         )
         base = self.config.get('allowed_tools')
+        snapshot: Body = self.bundle.get('snapshot') or {}
+        tool_map: Body = snapshot.get('tools') or {}
+        # imbi-api sends the opt-in built-in tools (Skill, Agent) that
+        # the agent turned on; each needs its builtin.<name> key too.
+        opt_in = [
+            str(tool)
+            for tool in api.items(self.config, 'builtin_tools')
+            if policy.builtin_key(str(tool)) in tool_map
+        ]
         allowed = [
             tool
-            for tool in (BUILTIN_TOOLS if base is None else base)
+            for tool in [*(BUILTIN_TOOLS if base is None else base), *opt_in]
             if tool not in denied
         ]
         relayed = self.relay.allowed_tools() if self.relay else []

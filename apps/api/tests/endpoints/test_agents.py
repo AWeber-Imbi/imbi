@@ -1248,6 +1248,102 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
                 self.assertEqual(response.status_code, 422)
         self.mock_db.execute.assert_not_awaited()
 
+    def test_create_with_builtin_tools(self) -> None:
+        tools = {
+            'builtin.Skill': {},
+            'builtin.Agent': {'approval': True},
+        }
+        stored = {
+            key: {'approval': False, 'environments': None, 'rate_limit': None}
+            | config
+            for key, config in tools.items()
+        }
+        # team, slug check, SA slug check, create, version, fetch
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [],
+            [],
+            [{'id': 'agent-1'}],
+            [{'n': 1}],
+            [self._row(tools=json.dumps(stored))],
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'tools': tools,
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['tools'], stored)
+        (version,) = self._version_writes()
+        self.assertEqual(json.loads(version['snapshot'])['tools'], stored)
+
+    def test_put_builtin_tool(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=2)],
+            [self._row(latest=3)],
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'tools': {'builtin.Skill': {}}}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            list(json.loads(version['snapshot'])['tools']),
+            ['builtin.Skill'],
+        )
+
+    def test_unknown_builtin_tool_is_refused(self) -> None:
+        # The other built-in tools come from the organization.
+        # create: team; put: fetch
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [self._row(latest=2)],
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'T',
+                'slug': 't',
+                'team': 'ops',
+                'tools': {'builtin.Bash': {}},
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('builtin.Bash', response.text)
+        response = self.client.put(
+            BASE + '/triage', json={'tools': {'builtin.Task': {}}}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self._version_writes(), [])
+
+    def test_stored_unknown_builtin_tool_allows_other_edits(self) -> None:
+        # An agent saved before the check keeps its tools on a rename.
+        stored = {'builtin.Bash': {}}
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=2, tools=json.dumps(stored))],
+            [self._row(latest=3, name='Renamed')],
+        ]
+        response = self.client.put(BASE + '/triage', json={'name': 'Renamed'})
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            list(json.loads(version['snapshot'])['tools']), ['builtin.Bash']
+        )
+
+    def test_restore_unknown_builtin_tool_is_refused(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3)],
+            [self._version(1, tools={'builtin.Bash': {}})],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('builtin.Bash', response.text)
+        self.assertEqual(self._version_writes(), [])
+
     def test_tool_keys_are_not_checked(self) -> None:
         # A tool without environments needs no query. The key does not
         # have to be in the catalog.
@@ -1399,6 +1495,10 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         body = response.json()
         self.assertEqual(body['tools'], [])
         self.assertEqual(body['error'], 'timeout')
+        self.assertEqual(
+            [t['key'] for t in body['builtin_tools']],
+            ['builtin.Agent', 'builtin.Skill'],
+        )
         args = get_catalog.await_args
         self.assertIs(args.args[0], valkey_client)
         self.assertTrue(args.kwargs['refresh'])

@@ -38,6 +38,39 @@ class PolicyTestCase(unittest.TestCase):
         self.assertEqual(check('Write').deny, 'tool_not_allowed')
         self.assertEqual(check('Task').deny, 'tool_not_allowed')
 
+    def test_opt_in_builtin_tools(self) -> None:
+        # The runner allows an opt-in tool only when the tool map has
+        # its key and the organization allows it.
+        self.assertEqual(check('Skill').deny, 'tool_not_allowed')
+        self.assertEqual(check('Agent').deny, 'tool_not_allowed')
+        on = {
+            'allowed': [*ALLOWED, 'Skill'],
+            'tool_map': {
+                'builtin.Skill': {
+                    'approval': True,
+                    'rate_limit': {'count': 5, 'per': 'hour'},
+                }
+            },
+        }
+        checked = check('Skill', **on)
+        self.assertIsNone(checked.deny)
+        self.assertTrue(checked.approval)
+        self.assertEqual(checked.rate_key, 'builtin.Skill')
+        self.assertEqual(check('Agent', **on).deny, 'tool_not_allowed')
+        # A built-in tool without an entry has no approval or limit.
+        self.assertEqual(check('Read', **on), policy.Check())
+
+    def test_approval_tools_match_an_earlier_tool_name(self) -> None:
+        # Task is the earlier CLI name of Agent: an organization rule
+        # with it applies to Agent.
+        options: dict[str, typing.Any] = {
+            'allowed': ['Task', 'Agent'],
+            'tool_map': {'builtin.Agent': {}},
+            'approval_tools': ['Task'],
+        }
+        self.assertTrue(check('Agent', automation=True, **options).approval)
+        self.assertFalse(check('Agent', **options).approval)
+
     def test_mcp_tools_need_the_tool_map(self) -> None:
         self.assertEqual(check('mcp__other__x').deny, 'tool_not_configured')
         self.assertEqual(check('mcp__imbi__request_input'), policy.Check())

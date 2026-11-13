@@ -193,7 +193,9 @@ class AgentWrite(pydantic.BaseModel):
         description=(
             'The tools that the agent can use, by tool key '
             '(<server slug>.<tool name>). A tool that is not in the map '
-            'is off. Environment slugs must exist in the org.'
+            'is off. builtin.Skill and builtin.Agent turn on those '
+            'Claude Code built-in tools. Environment slugs must exist in '
+            'the org.'
         ),
     )
     subagents: AgentSubagents = pydantic.Field(
@@ -828,14 +830,36 @@ async def _validate_tag_slugs(
         raise _unprocessable(f'Tag slug(s) not found: {sorted(missing)!r}')
 
 
-async def _validate_tool_environments(
+def _check_builtin_tools(tools: AgentTools) -> None:
+    """Raise 422 for a ``builtin.*`` key that is not an opt-in tool.
+
+    The other built-in tools come from the organization. It runs only
+    when the tools change, so an agent that holds an older key can
+    still be renamed or turned off.
+    """
+    prefix = f'{models.BUILTIN_TOOL_SERVER}.'
+    unknown = sorted(
+        key
+        for key in tools
+        if key.startswith(prefix) and key not in models.OPT_IN_BUILTIN_TOOLS
+    )
+    if unknown:
+        raise _unprocessable(
+            f'Unknown built-in tool key(s) {unknown!r}: the agent can turn '
+            f'on only {sorted(models.OPT_IN_BUILTIN_TOOLS)!r}'
+        )
+
+
+async def _validate_tools(
     db: graph.Pool, org_slug: str, tools: AgentTools
 ) -> None:
-    """Raise 422 when a tool names an environment that is not in the org.
+    """Raise 422 for an unknown built-in tool key, or when a tool names
+    an environment that is not in the org.
 
-    The tool keys are not checked, because a tool server can be
+    The other tool keys are not checked, because a tool server can be
     offline when the agent is saved.
     """
+    _check_builtin_tools(tools)
     slugs = sorted(
         {
             slug
@@ -1066,7 +1090,7 @@ async def _apply(
         if target.tags != current.tags:
             await _validate_tag_slugs(db, org_slug, target.tags)
         if target.tools != current.tools:
-            await _validate_tool_environments(db, org_slug, target.tools)
+            await _validate_tools(db, org_slug, target.tools)
         if target.subagents != current.subagents:
             await _validate_subagents(db, org_slug, agent_id, target.subagents)
         n = int(existing['_latest']) + 1
@@ -1181,7 +1205,7 @@ async def create_agent(
     )
     team_id = await _team_id(db, org_slug, data.team)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
-    await _validate_tool_environments(db, org_slug, snapshot.tools)
+    await _validate_tools(db, org_slug, snapshot.tools)
     await _validate_subagents(db, org_slug, None, snapshot.subagents)
     await _assert_slug_free(db, org_slug, data.slug)
 

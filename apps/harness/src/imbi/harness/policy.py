@@ -5,7 +5,8 @@ before the CLI's own permission check (``dontAsk`` with the allowed
 tools). :func:`check` is the part that needs no I/O:
 
 1. A built-in tool must be in the allowed tools of the merged
-   configuration. An MCP tool ``mcp__<server>__<tool>`` must be in the
+   configuration; its ``builtin.<tool>`` tool map entry, if any,
+   applies to it. An MCP tool ``mcp__<server>__<tool>`` must be in the
    agent's tool map as ``<server>.<tool>``; the harness's own tools of
    the ``imbi`` server are always configured.
 2. A tool that declares an ``environment`` argument is refused for an
@@ -58,6 +59,24 @@ def tool_key(name: str) -> str | None:
     return f'{_KEY_SERVER.get(server, server)}.{tool}'
 
 
+#: Earlier CLI names of built-in tools: an organization rule with one
+#: of them applies to the tool. Keep in step with ``aliases`` in
+#: ``OPT_IN_BUILTIN_TOOLS`` of imbi-common, which the harness does not
+#: depend on.
+_BUILTIN_ALIASES: dict[str, frozenset[str]] = {'Agent': frozenset({'Task'})}
+
+
+def builtin_key(name: str) -> str:
+    """The tool map key of the built-in tool ``name``."""
+    return f'builtin.{name}'
+
+
+def _rule_names(name: str, key: str | None, plugin: str | None) -> set[str]:
+    """The names that an ``approval_tools`` rule can give the tool."""
+    names = {name, *_BUILTIN_ALIASES.get(name, ())}
+    return names | {value for value in (key, plugin) if value is not None}
+
+
 def _plugin_server(name: str, plugin_servers: list[str]) -> str | None:
     """The plugin MCP server rule that ``name`` is a tool of, if any."""
     return next(
@@ -89,6 +108,10 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     if key is None:
         if name not in allowed:
             return Check(deny='tool_not_allowed')
+        # An opt-in built-in tool (Skill, Agent) has a tool map entry:
+        # its approval and rate limit apply as for an MCP tool.
+        key = builtin_key(name)
+        config = tool_map.get(key) or {}
     elif key in tool_map:
         config = tool_map[key] or {}
     elif plugin is None and key.removeprefix('imbi.') not in HARNESS_TOOLS:
@@ -102,6 +125,9 @@ def check(  # noqa: PLR0913 - keyword-only inputs
         return Check(deny='environment_not_allowed')
     return Check(
         approval=bool(config.get('approval'))
-        or (automation and bool({name, key, plugin} & set(approval_tools))),
+        or (
+            automation
+            and bool(_rule_names(name, key, plugin) & set(approval_tools))
+        ),
         rate_key=key if config.get('rate_limit') else None,
     )

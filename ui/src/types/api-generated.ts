@@ -10645,7 +10645,7 @@ export interface components {
             settings?: components["schemas"]["AgentSettings-Input"];
             /**
              * Tools
-             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off. Environment slugs must exist in the org.
+             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off. builtin.Skill and builtin.Agent turn on those Claude Code built-in tools. Environment slugs must exist in the org.
              * @default {}
              */
             tools: {
@@ -11384,6 +11384,8 @@ export interface components {
              * @default []
              */
             tools: components["schemas"]["AgentCatalogTool"][];
+            /** Builtin Tools */
+            builtin_tools?: components["schemas"]["AgentCatalogTool"][];
             /** Error */
             error?: ("unreachable" | "timeout" | "auth_failed") | null;
             /**
@@ -15945,6 +15947,11 @@ export interface components {
             allowed_tools: string[] | null;
             /** Denied Tools */
             denied_tools: string[];
+            /**
+             * Builtin Tools
+             * @default []
+             */
+            builtin_tools: string[];
             /**
              * Permission Mode
              * @enum {string}

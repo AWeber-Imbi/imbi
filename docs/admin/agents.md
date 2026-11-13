@@ -122,14 +122,38 @@ servers.
 - A plugin with the badge **unsupported source** cannot load. See
   [Plugin sources](#plugin-sources).
 
-**Tools** lists the tools of the Imbi API, in one list. The MCP
+**Tools** lists two groups: **Built-in** and **Imbi**. The MCP
 servers in **Admin > Global Admin > Assistant > MCP Servers** are for the
 assistant only and are not in this list. To give the agent other MCP
 servers, select a plugin that brings them.
 
-The key of a tool is `imbi.<tool name>`. Each tool has a
-capability badge: **Read**, **Write**, **Destructive**, or **Unknown**. The
-badge comes from the MCP annotations of the tool.
+**Imbi** has the tools of the Imbi API. The key of a tool is
+`imbi.<tool name>`. Each tool has a capability badge: **Read**,
+**Write**, **Destructive**, or **Unknown**. The badge comes from the MCP
+annotations of the tool.
+
+**Built-in** has the Claude Code built-in tools that are off for every
+agent until you turn them on for one agent:
+
+| Key | Tool | What it does |
+|---|---|---|
+| `builtin.Skill` | `Skill` | Loads a skill from the plugins of the agent |
+| `builtin.Agent` | `Agent` | Starts a Claude Code subagent for part of the task |
+
+The other built-in tools (`Bash`, `Read`, `Edit`, ...) come from the
+**Allowed tools** of the [base configuration](#base-configuration), not
+from this tab. Without its switch, the runner refuses a call of `Skill`
+or `Agent` with `tool_not_allowed`. The base configuration still applies:
+
+- When **Allowed tools** is empty, you can turn on each opt-in tool here.
+- When **Allowed tools** has a list, it is the ceiling. Add `Skill` or
+  `Agent` to it, then turn the tool on for each agent that needs it. A
+  tool in the list stays off for an agent that does not turn it on.
+- A tool in **Denied tools**, of the organization or the agent, stays
+  off. `Task`, the earlier name of `Agent`, denies `Agent` too.
+
+A subagent and the tools that a skill uses are checked like every other
+tool call of the agent.
 
 To give the agent a tool:
 
@@ -140,7 +164,8 @@ To give the agent a tool:
    [Approvals](agent-tasks.md#answer-a-request).
 4. Optional: click an environment chip to block that environment. A
    blocked environment is not highlighted. The runner refuses a call whose
-   `environment` argument names a blocked environment.
+   `environment` argument names a blocked environment. A built-in tool has
+   no environment chips.
 5. Optional: click the rate limit button. Enter the number of calls and
    select **Per minute**, **Per hour**, or **Per day**. Click **Apply**.
 
@@ -301,7 +326,7 @@ stricter value.
 | Key | The `secret://` reference of the model key. See [Configure the model key](../deployment/agent-runners.md#5-configure-the-model-key) |
 | Permission mode | `plan`, `default`, `acceptEdits`, or `bypassPermissions`, strictest first. Agents can set a stricter mode only |
 | Sandbox | **Require the sandbox** and **Allow unsandboxed commands** |
-| Allowed tools | Built-in tools, separated by commas. Empty allows all |
+| Allowed tools | Built-in tools, separated by commas. Empty allows all. `Skill` and `Agent` are on only for an agent that turns them on in its **Tools** tab |
 | Denied tools | Agents can deny more |
 | Approval tools | Tools that need approval when an automation starts the task (not a person) |
 | System prompt prefix | Put before the system prompt of each agent |
