@@ -142,7 +142,7 @@ export function OverviewTab({
             value={draft.team}
           />
         </Field>
-        <Field label="Labels">
+        <Field label="Tags">
           <AgentLabelPicker
             onChange={(tags) => onChange({ tags })}
             orgSlug={orgSlug}

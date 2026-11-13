@@ -125,7 +125,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
       }
       onSearchChange={setSearch}
       search={search}
-      searchPlaceholder="Search agents, teams, labels…"
+      searchPlaceholder="Search agents, teams, tags…"
     >
       <AdminTable
         columns={[
@@ -157,10 +157,10 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
           ),
           {
             header: header(
-              'Labels',
+              'Tags',
               facet(
                 'label',
-                'Labels',
+                'Tags',
                 labels.map((t) => ({ label: t.name, slug: t.slug })),
               ),
             ),

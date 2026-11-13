@@ -106,7 +106,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       name: 'Runs (30 days)',
       value: usage ? formatCount(sumTotals(usage.agents).tasks) : '—',
     },
-    { name: 'Labels', value: <AgentLabels tags={agent.tags} /> },
+    { name: 'Tags', value: <AgentLabels tags={agent.tags} /> },
   ]
 
   const system = version?.system ?? ''
