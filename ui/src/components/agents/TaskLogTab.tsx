@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-
-import { ChevronRight, Search, TriangleAlert, X } from 'lucide-react'
+import { ChevronRight, Search, TriangleAlert } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Collapsible,
   CollapsibleContent,
@@ -16,12 +13,9 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useFollowBottom } from '@/hooks/useFollowBottom'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
-import { elapsed } from './conversationMode'
 import {
   AgentMessage,
   HumanMessage,
@@ -44,8 +38,6 @@ import {
   type TimelineEntry,
   type TimelineFilters,
 } from './taskTimeline'
-import { findEntry } from './taskTrajectory'
-import { TimingOverview } from './TimingOverview'
 import {
   FAMILY_TAG,
   familyOf,
@@ -62,7 +54,6 @@ interface RowContext {
   isOpen: (id: string) => boolean
   orgSlug: string
   requests: TaskRequestView[]
-  selected: null | number
   task: AgentTask
   toggle: (id: string) => void
 }
@@ -109,22 +100,6 @@ export function TaskLogTab({
   const all = useMemo(() => timeline(events), [events])
   const shown = useMemo(() => filterTimeline(all, filters), [all, filters])
   const counts = useMemo(() => countTimeline(all), [all])
-  const listRef = useRef<HTMLDivElement>(null)
-  const location = useLocation()
-  const navigate = useNavigate()
-  const seq = /^#e(\d+)$/.exec(location.hash)?.[1]
-  const selected = seq
-    ? (findEntry(all, Number(seq))?.event ??
-      events.find((e) => e.seq === Number(seq)) ??
-      null)
-    : null
-  const origin = events.length ? Date.parse(events[0].at) : 0
-  const close = () =>
-    navigate(
-      { pathname: location.pathname, search: location.search },
-      { replace: true },
-    )
-  useFollowBottom(listRef, events.length, events.length > 0)
 
   const isOpen = (id: string) => toggled.get(id) ?? full
   const toggle = (id: string) =>
@@ -137,16 +112,15 @@ export function TaskLogTab({
     isOpen,
     orgSlug,
     requests,
-    selected: selected?.seq ?? null,
     task,
     toggle,
   }
 
-  useScrollToHash(location.hash, shown.length > 0)
+  useScrollToHash(shown.length > 0)
 
   return (
-    <div className="bg-tertiary flex min-h-0 flex-1 flex-col">
-      <div className="border-tertiary bg-primary flex shrink-0 flex-wrap items-center gap-2 border-b px-6 py-2.5">
+    <div className="bg-tertiary flex min-h-full flex-col">
+      <div className="border-tertiary bg-primary sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b px-6 py-2.5">
         {CHIPS.map((chip) => (
           <Chip
             count={counts[chip.key]}
@@ -190,45 +164,25 @@ export function TaskLogTab({
           />
         </div>
       </div>
-      <TimingOverview
-        entries={all}
-        live={task.status === 'running'}
-        selected={selected?.seq ?? null}
-      />
-      <div className="flex min-h-0 flex-1">
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" ref={listRef}>
-          <ol className="py-4">
-            {all.length === 0 && (
-              <li className="text-tertiary px-6 py-4 text-sm">
-                No events yet.
-              </li>
-            )}
-            {all.length > 0 && shown.length === 0 && (
-              <li className="text-tertiary px-6 py-4 text-sm">
-                Nothing matches these filters.
-              </li>
-            )}
-            {shown.map((entry, i) => (
-              <Row
-                ctx={ctx}
-                entry={entry}
-                first={i === 0}
-                key={entry.id}
-                last={i === shown.length - 1}
-              />
-            ))}
-          </ol>
-        </div>
-        {selected && (
-          <Inspector
-            event={selected}
-            key={selected.event_id}
-            onClose={close}
-            orgSlug={orgSlug}
-            origin={origin}
-          />
+      <ol className="flex-1 py-4">
+        {all.length === 0 && (
+          <li className="text-tertiary px-6 py-4 text-sm">No events yet.</li>
         )}
-      </div>
+        {all.length > 0 && shown.length === 0 && (
+          <li className="text-tertiary px-6 py-4 text-sm">
+            Nothing matches these filters.
+          </li>
+        )}
+        {shown.map((entry, i) => (
+          <Row
+            ctx={ctx}
+            entry={entry}
+            first={i === 0}
+            key={entry.id}
+            last={i === shown.length - 1}
+          />
+        ))}
+      </ol>
     </div>
   )
 }
@@ -329,103 +283,6 @@ function EntryBody({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
   )
 }
 
-/** The selected event in full: when it ran, what went in and came out. */
-function Inspector({
-  event: e,
-  onClose,
-  orgSlug,
-  origin,
-}: {
-  event: AgentTaskEvent
-  onClose: () => void
-  orgSlug: string
-  origin: number
-}) {
-  const actorName = useActorName(orgSlug)
-  const p = e.payload
-  const tool = e.type === 'tool.called' ? String(p.tool ?? 'tool') : null
-  const ms = typeof p.duration_ms === 'number' ? p.duration_ms : null
-  const at = Date.parse(e.at)
-  const input = tool
-    ? typeof p.arguments === 'string'
-      ? p.arguments
-      : JSON.stringify(p.arguments ?? {}, null, 2)
-    : typeof p.body === 'string' && p.body
-      ? p.body
-      : null
-  const output = tool && p.result != null ? label(p.result) : null
-  const facts: [string, string][] = [
-    ['Event', `#${e.seq} · ${e.type}`],
-    [
-      'Actor',
-      e.actor_id ? `${actorName(e.actor_id)} (${e.actor_kind})` : e.actor_kind,
-    ],
-    ['Time', clock(e.at)],
-  ]
-  if (ms !== null) {
-    facts.push(['Started', clock(new Date(at - ms).toISOString())])
-    facts.push(['Duration', ms < 1000 ? `${ms}ms` : formatElapsed(ms)])
-  }
-  facts.push(['Into task', `+${elapsed(Math.max(0, at - origin))}`])
-  if (e.type === 'usage.reported')
-    facts.push([
-      'Tokens',
-      `${String(p.tokens_in ?? 0)} in · ${String(p.tokens_out ?? 0)} out`,
-    ])
-  const first = input !== null ? 'input' : 'raw'
-  return (
-    <aside
-      aria-label="Event inspector"
-      className="border-tertiary bg-primary flex w-[min(26rem,45%)] shrink-0 flex-col overflow-y-auto border-l"
-    >
-      <div className="border-tertiary flex items-center gap-2 border-b py-1.5 pr-2 pl-4">
-        <h3 className="truncate text-sm font-medium">
-          {tool ? toolLabel(tool) : e.type}
-        </h3>
-        <span className="text-tertiary font-mono text-xs">#{e.seq}</span>
-        <Button
-          aria-label="Close the inspector"
-          className="ml-auto"
-          onClick={onClose}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <X />
-        </Button>
-      </div>
-      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-4 py-3 text-xs">
-        {facts.map(([term, value]) => (
-          <div className="contents" key={term}>
-            <dt className="text-tertiary">{term}</dt>
-            <dd className="truncate font-mono">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <Tabs className="flex flex-col gap-2 px-4 pb-4" defaultValue={first}>
-        <TabsList>
-          {input !== null && <TabsTrigger value="input">Input</TabsTrigger>}
-          {output !== null && <TabsTrigger value="output">Output</TabsTrigger>}
-          <TabsTrigger value="raw">Raw</TabsTrigger>
-        </TabsList>
-        {input !== null && (
-          <TabsContent value="input">
-            <Pane>{input}</Pane>
-          </TabsContent>
-        )}
-        {output !== null && (
-          <TabsContent value="output">
-            <Pane>{output}</Pane>
-          </TabsContent>
-        )}
-        <TabsContent value="raw">
-          <Pane>{JSON.stringify(e, null, 2)}</Pane>
-        </TabsContent>
-      </Tabs>
-    </aside>
-  )
-}
-
 /** One entry on the spine: time, a dot colored by kind, and its body. */
 function Row({
   ctx,
@@ -439,30 +296,19 @@ function Row({
   last: boolean
 }) {
   const e = entry.event
-  const { pathname, search } = useLocation()
   const small = categoryOf(entry) === 'system'
-  const selected = e != null && ctx.selected === e.seq
   return (
     <li
-      aria-current={selected || undefined}
-      className={cn(
-        'grid grid-cols-[4.5rem_1.5rem_minmax(0,1fr)] pr-6 pl-2',
-        selected && 'bg-secondary',
-      )}
+      className="grid grid-cols-[4.5rem_1.5rem_minmax(0,1fr)] pr-6 pl-2"
       id={e ? `e${e.seq}` : undefined}
     >
-      {e ? (
-        <Link
-          className="text-tertiary hover:text-info pt-3 pr-1.5 text-right font-mono text-[11px] tabular-nums"
-          replace
-          title="Link to this event"
-          to={`${pathname}${search}#e${e.seq}`}
-        >
-          {clock(e.at)}
-        </Link>
-      ) : (
-        <span />
-      )}
+      <a
+        className="text-tertiary hover:text-info pt-3 pr-1.5 text-right font-mono text-[11px] tabular-nums"
+        href={e ? `#e${e.seq}` : undefined}
+        title="Link to this event"
+      >
+        {e ? clock(e.at) : ''}
+      </a>
       <div className="relative">
         <span
           className={cn(
@@ -653,12 +499,12 @@ function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
   )
 }
 
-/** Bring the `#e<seq>` row of the URL into view once the log has rows. */
-function useScrollToHash(hash: string, ready: boolean) {
+/** Scroll to the `#e<seq>` of the URL once the timeline has rows. */
+function useScrollToHash(ready: boolean) {
   useEffect(() => {
-    if (!ready || !hash.startsWith('#e')) return
+    if (!ready || !window.location.hash.startsWith('#e')) return
     document
-      .getElementById(hash.slice(1))
-      ?.scrollIntoView?.({ block: 'nearest' })
-  }, [hash, ready])
+      .getElementById(window.location.hash.slice(1))
+      ?.scrollIntoView?.({ block: 'center' })
+  }, [ready])
 }

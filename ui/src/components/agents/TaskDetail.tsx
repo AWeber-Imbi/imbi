@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -37,6 +37,7 @@ import {
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useFollowBottom } from '@/hooks/useFollowBottom'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
@@ -99,6 +100,8 @@ export function TaskDetail({
     const entries = timeline(events.data ?? [])
     return [turns(entries, { live: false }).length, entries.length]
   }, [events.data])
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const eventCount = events.data?.length ?? 0
   useEffect(() => {
     if (tab !== 'conversation' && tab !== 'actions') return
     if (!/^#e\d+$/.test(hash)) return
@@ -106,6 +109,11 @@ export function TaskDetail({
       replace: true,
     })
   }, [hash, navigate, orgSlug, shortId, tab])
+  useFollowBottom(
+    scrollRef,
+    eventCount,
+    !!task.data && eventCount > 0 && tab === 'log',
+  )
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -196,22 +204,22 @@ export function TaskDetail({
           requests={requests}
           task={t}
         />
-      ) : current === 'log' ? (
-        <TaskLogTab
-          events={log}
-          orgSlug={orgSlug}
-          requests={requests}
-          task={t}
-        />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
           {current === 'overview' && (
             <OverviewTab end={end} events={log} task={t} />
           )}
           {current === 'input' && (
             <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
           )}
-
+          {current === 'log' && (
+            <TaskLogTab
+              events={log}
+              orgSlug={orgSlug}
+              requests={requests}
+              task={t}
+            />
+          )}
           {current === 'checks' && <ChecksTab events={log} />}
           {current === 'related' && (
             <RelatedTasksTab orgSlug={orgSlug} task={t} />
