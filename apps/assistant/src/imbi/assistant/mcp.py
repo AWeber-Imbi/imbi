@@ -192,10 +192,12 @@ class MCPManager:
         # _apply_caller_auth); the shared HTTP client is never changed.
         meta = {AUTH_META_KEY: f'Bearer {auth_token}'} if auth_token else None
         try:
+            # A tool error goes back to the model, not to Sentry.
             result = await self._client.call_tool(
                 tool_name,
                 tool_input,
                 meta=meta,
+                raise_on_error=False,
             )
             # call_tool returns a CallToolResult with .content
             parts: list[str] = []
