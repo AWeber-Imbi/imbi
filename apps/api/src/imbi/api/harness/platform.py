@@ -136,7 +136,8 @@ class MergedConfig(pydantic.BaseModel):
 
     model_upstream: ModelUpstream
     plugins: list[models.AgentPlugin]
-    #: The organization's built-in tools, less the opt-in tools.
+    #: The organization's built-in tools, less the opt-in tools that
+    #: the agent did not turn on.
     #: ``None`` allows all of the runner's default built-in tools.
     allowed_tools: list[str] | None
     denied_tools: list[str]
@@ -278,9 +279,13 @@ def merge(
             update={'key_ref': settings.model_key_ref}
         )
     denied = sorted({*config.denied_tools, *settings.denied_tools})
-    opt_in = {
+    builtin = models.opt_in_builtin_tools(tools, config.allowed_tools, denied)
+    # allowed_tools keeps the opt-in tools that the agent turned on, so a
+    # runner that does not read builtin_tools still gets them.
+    off = {
         name
         for tool in models.OPT_IN_BUILTIN_TOOLS.values()
+        if tool.name not in builtin
         for name in tool.names
     }
     return MergedConfig(
@@ -289,12 +294,10 @@ def merge(
         allowed_tools=(
             None
             if config.allowed_tools is None
-            else [t for t in config.allowed_tools if t not in opt_in]
+            else [t for t in config.allowed_tools if t not in off]
         ),
         denied_tools=denied,
-        builtin_tools=models.opt_in_builtin_tools(
-            tools, config.allowed_tools, denied
-        ),
+        builtin_tools=builtin,
         permission_mode=mode,
         sandbox=sandbox,
         system_prompt_prefix=config.system_prompt_prefix,

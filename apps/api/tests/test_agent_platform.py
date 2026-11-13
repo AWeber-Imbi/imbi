@@ -542,8 +542,8 @@ class NarrowingTests(unittest.TestCase):
             ['Skill'],
         )
         # An explicit allowed_tools is the ceiling, not the switch: it
-        # loses the opt-in tools, and the agent turns on only those that
-        # it names.
+        # keeps only the opt-in tools that the agent turned on, and the
+        # agent turns on only those that it names.
         config = platform.AgentPlatformConfig(
             allowed_tools=['Read', 'Skill', 'Task']
         )
@@ -551,7 +551,11 @@ class NarrowingTests(unittest.TestCase):
         self.assertEqual(merged.allowed_tools, ['Read'])
         self.assertEqual(merged.builtin_tools, [])
         merged = platform.merge(config, settings, both)
+        self.assertEqual(merged.allowed_tools, ['Read', 'Skill', 'Task'])
         self.assertEqual(merged.builtin_tools, ['Agent', 'Skill'])
+        merged = platform.merge(config, settings, {'builtin.Skill': {}})
+        self.assertEqual(merged.allowed_tools, ['Read', 'Skill'])
+        self.assertEqual(merged.builtin_tools, ['Skill'])
         merged = platform.merge(
             platform.AgentPlatformConfig(allowed_tools=['Read']),
             settings,
