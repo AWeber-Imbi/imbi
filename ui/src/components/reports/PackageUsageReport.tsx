@@ -543,8 +543,12 @@ function PackageSearch({
         name: hit.purl_name,
       }))
 
-  // A new list has no highlighted row.
-  useEffect(() => setActive(-1), [browsing, query, options.length])
+  // A new list has no highlighted row. Keyed on the ordered ids, not
+  // the count: opening a recent package moves it to the top of the
+  // recents without changing how many there are, and the old index
+  // would then highlight whatever slid into that slot.
+  const optionKey = options.map((row) => row.id).join('\n')
+  useEffect(() => setActive(-1), [browsing, query, optionKey])
 
   // The list is capped in height, so keep the highlighted row in view.
   useEffect(() => {
@@ -607,6 +611,10 @@ function PackageSearch({
           // list, not to hold the last result set behind it.
           if (e.target.value.trim() === '') onSearch('')
         }}
+        // Choosing an option closes the list but leaves the input
+        // focused, so a second click on it never fires onFocus. The
+        // click has to reopen the list itself.
+        onClick={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder="Search packages by name, then press Enter — jsonschema, react, axios…"
         role="combobox"

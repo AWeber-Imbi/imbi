@@ -48,6 +48,19 @@ const HIT = {
   version_count: 8,
 }
 
+const ALPHA = { ecosystem: 'npm', id: 'cmp_a', purl_name: 'pkg:npm/alpha' }
+const BETA = { ecosystem: 'npm', id: 'cmp_b', purl_name: 'pkg:npm/beta' }
+
+const usageOf = (pkg: typeof ALPHA) => ({
+  ...pkg,
+  deployed_version_count: 0,
+  name: pkg.purl_name,
+  project_count: 0,
+  version_count: 0,
+  versions: [],
+  vulnerable_project_count: 0,
+})
+
 function renderReport() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -140,5 +153,56 @@ describe('PackageUsageReport search', () => {
         expect.anything(),
       ),
     )
+  })
+
+  it('reopens the list when the still-focused input is clicked', async () => {
+    renderReport()
+    const input = screen.getByRole('combobox')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'api-clients' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    const option = await screen.findByRole('option', { name: /api-clients/ })
+
+    // The option click keeps focus in the input, so there is no focus
+    // event to reopen on — the click itself has to do it.
+    fireEvent.click(option)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    fireEvent.click(input)
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
+  it('drops the highlight when the recents reorder underneath it', async () => {
+    // The shared setup stubs localStorage with a no-op mock, so seed
+    // the recents through the read rather than a write.
+    vi.spyOn(localStorage, 'getItem').mockReturnValueOnce(
+      JSON.stringify([ALPHA, BETA]),
+    )
+    vi.mocked(getComponentUsage).mockImplementation((_org, id) =>
+      Promise.resolve(usageOf(id === BETA.id ? BETA : ALPHA)),
+    )
+    renderReport()
+    const input = screen.getByRole('combobox')
+    fireEvent.focus(input)
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(screen.getByRole('option', { name: /beta/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    // Opening beta moves it to the front of the recents. The count is
+    // unchanged, so a count-keyed reset would leave index 1 — now
+    // alpha — highlighted, and Enter would open the wrong package.
+    fireEvent.click(input)
+    await waitFor(() =>
+      expect(screen.getAllByRole('option').map((el) => el.textContent)).toEqual(
+        [expect.stringContaining('beta'), expect.stringContaining('alpha')],
+      ),
+    )
+    expect(input).not.toHaveAttribute('aria-activedescendant')
+    for (const el of screen.getAllByRole('option')) {
+      expect(el).toHaveAttribute('aria-selected', 'false')
+    }
   })
 })
