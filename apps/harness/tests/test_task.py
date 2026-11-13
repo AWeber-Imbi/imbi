@@ -1577,23 +1577,10 @@ class RunTestCase(TaskTestCase):
         self.assertIsInstance(result, sdk.ResultMessage)
         result = typing.cast(sdk.ResultMessage, result)
         result.structured_output = {'subjects': ['\ud800']}
-        post = self.client.post.side_effect
-
-        async def encode(path: str, *args: typing.Any, **kw: typing.Any):
-            if 'json' in kw:
-                httpx.Request('POST', 'https://imbi.test', json=kw['json'])
-            return await post(path, *args, **kw)
-
-        self.client.post.side_effect = encode
         await self.run_task.run()
         self.assertEqual(
             self.posted('/outcome'),
             [
-                {
-                    'outcome': 'done_acted',
-                    'reason': None,
-                    'structured_output': {'subjects': ['\ud800']},
-                },
                 {
                     'outcome': 'failed_external',
                     'reason': 'invalid_structured_output',

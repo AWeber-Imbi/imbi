@@ -848,16 +848,20 @@ class TaskRun:
                     self.session_id, 'cancelled'
                 )
             else:
+                output = self.structured_output
                 try:
-                    state = await self.api.set_outcome(
-                        kind, reason, self.structured_output
-                    )
-                except (api.Refused, ValueError) as err:
-                    # ValueError: httpx cannot encode the output as JSON
-                    # (a lone surrogate, NaN), so imbi-api never sees it.
-                    if isinstance(err, api.Refused) and (
-                        err.code != _OUTPUT_REFUSED
-                    ):
+                    # httpx encodes the body like this. A lone surrogate
+                    # or NaN fails here, before imbi-api sees the output.
+                    json.dumps(
+                        output, ensure_ascii=False, allow_nan=False
+                    ).encode()
+                except ValueError:
+                    output = None
+                    kind, reason = 'failed_external', _OUTPUT_REFUSED
+                try:
+                    state = await self.api.set_outcome(kind, reason, output)
+                except api.Refused as err:
+                    if err.code != _OUTPUT_REFUSED:
                         raise
                     # Close the task without the output: an open task
                     # goes back to the queue and runs again.

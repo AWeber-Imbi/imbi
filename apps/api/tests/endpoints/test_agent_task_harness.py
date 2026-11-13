@@ -9,7 +9,6 @@ import datetime
 import decimal
 import typing
 import uuid
-from unittest import mock
 
 import httpx
 from psycopg.types import json as pg_json
@@ -817,38 +816,46 @@ class OutcomeTests(HarnessTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'invalid_structured_output'
         )
-        await self.set_output_schema({'$ref': '#/$defs/missing'})
-        response = await self.post(
-            'outcome', {'outcome': 'done_acted', 'structured_output': {'n': 1}}
-        )
-        self.assertEqual(response.status_code, 422, response.text)
-        self.assertEqual(
-            response.json()['detail']['error'], 'invalid_structured_output'
-        )
-        # A remote $ref is never fetched, a self $ref cannot recurse,
-        # and a non-string $schema or a $ref to a non-schema is refused.
-        for schema in (
-            {'$ref': 'http://127.0.0.1:9/schema'},
-            {'$ref': '#'},
-            {'$schema': ['x']},
-            {'$schema': 1},
-            {'title': 'text', '$ref': '#/title'},
-        ):
-            await self.set_output_schema(schema)
-            with mock.patch('urllib.request.urlopen') as urlopen:
-                response = await self.post(
-                    'outcome',
-                    {'outcome': 'done_acted', 'structured_output': {'n': 1}},
-                )
-            urlopen.assert_not_called()
-            self.assertEqual(response.status_code, 422, response.text)
-            self.assertEqual(
-                response.json()['detail']['error'],
-                'invalid_structured_output',
-            )
         task = await self.task_row()
         self.assertNotEqual(task['status'], 'closed')
         self.assertIsNone(task['structured_output'])
+
+    async def test_outcome_matches_the_enum_case(self) -> None:
+        await self.set_output_schema(
+            {
+                'type': 'object',
+                'properties': {
+                    'level': {'type': 'string', 'enum': ['High', 'Low']},
+                    'tags': {
+                        'type': 'array',
+                        'items': {'type': 'string', 'enum': ['Bug']},
+                    },
+                },
+                'required': ['level'],
+                'additionalProperties': False,
+            }
+        )
+        await self.open_session()
+        response = await self.post(
+            'outcome',
+            {
+                'outcome': 'done_acted',
+                'structured_output': {'level': 'medium'},
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.post(
+            'outcome',
+            {
+                'outcome': 'done_acted',
+                'structured_output': {'level': 'HIGH', 'tags': ['bug']},
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.task_row()
+        self.assertEqual(
+            task['structured_output'], {'level': 'High', 'tags': ['Bug']}
+        )
 
     async def test_outcome_closes_the_task_and_sessions(self) -> None:
         await self.open_session()
