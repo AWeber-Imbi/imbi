@@ -1,15 +1,29 @@
 """AsyncAnthropic client singleton for the Slack bot."""
 
 import logging
+import typing
 
 import anthropic
 
-from imbi.common.llm import tokens
+from imbi.common.llm import observability, tokens
 from imbi.slackbot import settings
 
 LOGGER = logging.getLogger(__name__)
 
 _client: anthropic.AsyncAnthropic | None = None
+_observed = False
+
+
+def tracking(user_email: str, trace_id: str) -> dict[str, typing.Any]:
+    """Keyword arguments that link an LLM call to a user and thread.
+
+    Empty when AI observability is off: the plain client does not take
+    them. Privacy mode is set on the PostHog client
+    (``POSTHOG_AI_PRIVACY_MODE``).
+    """
+    if not _observed:
+        return {}
+    return observability.tracking(user_email, trace_id)
 
 
 async def initialize() -> None:
@@ -18,7 +32,7 @@ async def initialize() -> None:
     Non-fatal if the bot is disabled or no API key is configured.
 
     """
-    global _client
+    global _client, _observed
 
     await aclose()
 
@@ -28,11 +42,15 @@ async def initialize() -> None:
         LOGGER.info('Slack bot is disabled')
         return
 
+    client_class = observability.client_class()
+    _observed = client_class is not anthropic.AsyncAnthropic
+
     if slackbot_settings.api_token:
         _client = tokens.bearer_client(
             tokens.ServiceToken(
                 slackbot_settings.api_base_url, slackbot_settings.api_token
-            )
+            ),
+            client_class=client_class,
         )
         LOGGER.info('Slack bot client uses the AI provider token')
         return
@@ -44,7 +62,7 @@ async def initialize() -> None:
         )
         return
 
-    _client = anthropic.AsyncAnthropic(
+    _client = client_class(
         api_key=slackbot_settings.api_key,
     )
     LOGGER.info('Slack bot Anthropic client initialized')

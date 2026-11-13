@@ -20,6 +20,7 @@ from slack_sdk import errors
 
 from imbi.slackbot import (
     agent,
+    client,
     identity,
     inflight,
     mcp,
@@ -244,6 +245,9 @@ async def _process(
             on_status=reporter.update,
             temperature=prompt.temperature,
             idempotency_prefix=f'slack:{channel}:{ts}',
+            tracking=client.tracking(
+                user.email, f'slack:{channel}:{thread_ts}'
+            ),
         )
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)

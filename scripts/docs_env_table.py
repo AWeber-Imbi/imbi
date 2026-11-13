@@ -303,7 +303,7 @@ DESCRIPTIONS: dict[str, str] = {
     'POSTHOG_MCP_ANALYTICS': '`true` sends a `$mcp_tool_call` event for '
     'each MCP tool call, without arguments or results',
     'POSTHOG_AI_OBSERVABILITY': '`true` sends a `$ai_generation` event for '
-    'each assistant LLM call',
+    'each assistant and Slack bot LLM call',
     'POSTHOG_AI_PRIVACY_MODE': '`false` puts prompt and output text in AI '
     'events. Default: `true`.',
     'IMBI_PROMPT_WORKERS': 'Prompt render worker processes per service '

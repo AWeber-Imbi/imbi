@@ -132,6 +132,7 @@ async def run_turn(
     max_tool_result_chars: int = _DEFAULT_MAX_TOOL_RESULT_CHARS,
     temperature: float | None = None,
     idempotency_prefix: str | None = None,
+    tracking: dict[str, typing.Any] | None = None,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -154,6 +155,8 @@ async def run_turn(
             key ``<prefix>:<agent slug>:<n>``, where ``n`` counts the
             creates for that agent in this turn. The model's own key is
             replaced, so a redelivered event makes no second task.
+        tracking: PostHog AI observability keyword arguments from
+            :func:`client.tracking`, added to every model call.
 
     Returns:
         The assistant's final text (concatenated across rounds).
@@ -173,6 +176,7 @@ async def run_turn(
             'max_tokens': max_tokens,
             'system': system,
             'messages': messages,
+            **(tracking or {}),
         }
         if tools:
             kwargs['tools'] = tools
