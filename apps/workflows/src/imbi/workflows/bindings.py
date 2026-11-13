@@ -33,6 +33,7 @@ import httpx
 from psycopg import rows
 
 from imbi.common import graph
+from imbi.common.auth import permissions
 from imbi.common.graph import cypher
 from imbi.workflows import executors, settings, store
 
@@ -42,7 +43,7 @@ HANDLER = 'gateway-actions#start_workflow'
 
 #: The scheduler runs an ``api`` task only as its own service account
 #: (scheduler ADR 0002).
-SCHEDULER_ACCOUNT = 'imbi-scheduler'
+SCHEDULER_ACCOUNT = permissions.SCHEDULER_ACCOUNT
 
 HTTP_NOT_FOUND = 404
 
