@@ -53,11 +53,22 @@ const FACET_LABEL: Record<UsageFacetKey, string> = {
 
 const FACET_KEYS: UsageFacetKey[] = ['project_type', 'team', 'environment']
 
+/** One row of the search dropdown, whether a hit or a recent package. */
+interface Option {
+  ecosystem?: string
+  id: string
+  meta?: string
+  name: string
+}
+
 interface RecentPackage {
   ecosystem?: string
   id: string
   purl_name: string
 }
+
+const LIST_ID = 'package-search-results'
+const optionId = (i: number) => `${LIST_ID}-${i}`
 
 export function PackageUsageReport() {
   const { selectedOrganization } = useOrganization()
@@ -313,20 +324,32 @@ function NoteButton({
 }
 
 function OptionRow({
+  active,
   ecosystem,
+  id,
   meta,
   name,
+  onHover,
   onSelect,
 }: {
+  active: boolean
   ecosystem?: string
+  id: string
   meta?: string
   name: string
+  onHover: () => void
   onSelect: () => void
 }) {
   return (
     <button
-      className="hover:bg-secondary flex w-full items-center gap-2.5 px-4 py-2 text-left"
+      aria-selected={active}
+      className={`flex w-full items-center gap-2.5 px-4 py-2 text-left ${
+        active ? 'bg-secondary' : 'hover:bg-secondary'
+      }`}
+      id={id}
       onClick={onSelect}
+      onMouseEnter={onHover}
+      role="option"
       type="button"
     >
       {ecosystem && (
@@ -499,9 +522,64 @@ function PackageSearch({
   total: number
 }) {
   const [open, setOpen] = useState(false)
+  // Index of the keyboard-highlighted row, -1 for none. Enter with no
+  // row highlighted submits the typed term; with one, it opens it.
+  const [active, setActive] = useState(-1)
 
   const browsing = query === ''
   const hidden = Math.max(0, total - hits.length)
+  const options: Option[] = browsing
+    ? recent.map((entry) => ({
+        ecosystem: entry.ecosystem,
+        id: entry.id,
+        name: entry.purl_name,
+      }))
+    : hits.map((hit) => ({
+        ecosystem: hit.ecosystem,
+        id: hit.id,
+        meta: `${hit.version_count} version${
+          hit.version_count === 1 ? '' : 's'
+        } · ${hit.project_count} project${hit.project_count === 1 ? '' : 's'}`,
+        name: hit.purl_name,
+      }))
+
+  // A new list has no highlighted row.
+  useEffect(() => setActive(-1), [browsing, query, options.length])
+
+  // The list is capped in height, so keep the highlighted row in view.
+  useEffect(() => {
+    if (active < 0) return
+    document
+      .getElementById(optionId(active))
+      ?.scrollIntoView?.({ block: 'nearest' })
+  }, [active])
+
+  const choose = (id: string) => {
+    setOpen(false)
+    onSelect(id)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setOpen(true)
+      setActive((i) => Math.min(i + 1, options.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => Math.max(i - 1, -1))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const row = open ? options[active] : undefined
+      if (row) choose(row.id)
+      else {
+        onSearch(search.trim())
+        setOpen(true)
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
   return (
     // Focus is tracked on the container, not the input: tabbing from
     // the input into the option list blurs the input, and unmounting
@@ -515,21 +593,23 @@ function PackageSearch({
     >
       <Search className="text-tertiary absolute top-4 left-3.5 size-4" />
       <input
+        aria-activedescendant={
+          open && active >= 0 ? optionId(active) : undefined
+        }
+        aria-controls={LIST_ID}
+        aria-expanded={open}
+        aria-label="Search packages"
         className="border-tertiary bg-primary text-primary placeholder:text-tertiary focus:border-action h-12 w-full rounded-lg border pr-24 pl-10 text-sm outline-none"
         onChange={(e) => {
           setSearch(e.target.value)
+          setActive(-1)
           // Emptying the box is a request to go back to the recents
           // list, not to hold the last result set behind it.
           if (e.target.value.trim() === '') onSearch('')
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            onSearch(search.trim())
-            setOpen(true)
-          }
-          if (e.key === 'Escape') setOpen(false)
-        }}
+        onKeyDown={onKeyDown}
         placeholder="Search packages by name, then press Enter — jsonschema, react, axios…"
+        role="combobox"
         value={search}
       />
       {isSearching && (
@@ -539,7 +619,16 @@ function PackageSearch({
         </span>
       )}
       {open && (
-        <div className="border-tertiary bg-primary absolute z-10 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border py-2 shadow-lg">
+        // Keep focus in the input so blur does not close the list before
+        // a click lands. Safari does not focus a button on click, so the
+        // blur's relatedTarget is null there and the container check
+        // above would unmount the option under the pointer.
+        <div
+          className="border-tertiary bg-primary absolute z-10 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border py-2 shadow-lg"
+          id={LIST_ID}
+          onMouseDown={(e) => e.preventDefault()}
+          role="listbox"
+        >
           <p className="text-tertiary text-overline px-4 pb-2 tracking-wide uppercase">
             {browsing
               ? 'Recently viewed'
@@ -547,34 +636,18 @@ function PackageSearch({
                 ? 'Searching'
                 : `${total} match${total === 1 ? '' : 'es'}`}
           </p>
-          {browsing
-            ? recent.map((entry) => (
-                <OptionRow
-                  ecosystem={entry.ecosystem}
-                  key={entry.id}
-                  name={entry.purl_name}
-                  onSelect={() => {
-                    setOpen(false)
-                    onSelect(entry.id)
-                  }}
-                />
-              ))
-            : hits.map((hit) => (
-                <OptionRow
-                  ecosystem={hit.ecosystem}
-                  key={hit.id}
-                  meta={`${hit.version_count} version${
-                    hit.version_count === 1 ? '' : 's'
-                  } · ${hit.project_count} project${
-                    hit.project_count === 1 ? '' : 's'
-                  }`}
-                  name={hit.purl_name}
-                  onSelect={() => {
-                    setOpen(false)
-                    onSelect(hit.id)
-                  }}
-                />
-              ))}
+          {options.map((row, i) => (
+            <OptionRow
+              active={active === i}
+              ecosystem={row.ecosystem}
+              id={optionId(i)}
+              key={row.id}
+              meta={row.meta}
+              name={row.name}
+              onHover={() => setActive(i)}
+              onSelect={() => choose(row.id)}
+            />
+          ))}
           {isSearching && !browsing && hits.length === 0 && (
             <p className="text-tertiary flex items-center gap-2 px-4 py-4 text-xs">
               <Loader2 className="size-3.5 animate-spin" />
