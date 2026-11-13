@@ -32,6 +32,12 @@ export const CAPABILITIES: {
 /** The group slug of the Imbi tools, and the prefix of their keys. */
 export const IMBI_SLUG = 'imbi'
 
+/**
+ * The group slug of the opt-in Claude Code built-in tools (Skill,
+ * Agent), and the prefix of their keys. They are off until switched on.
+ */
+export const BUILTIN_SLUG = 'builtin'
+
 export const RATE_PERIODS: {
   label: string
   short: string
@@ -72,6 +78,13 @@ export interface ToolRow {
   unavailable: boolean
 }
 
+/** Every tool that the catalog lists: the Imbi and built-in tools. */
+export function catalogTools(
+  catalog: AgentToolCatalog,
+): AgentToolCatalog['tools'] {
+  return [...(catalog.builtin_tools ?? []), ...catalog.tools]
+}
+
 /** The short form of a rate limit, for example "6 / hr". */
 export function formatRateLimit(config: AgentToolConfig): string {
   const limit = config.rate_limit
@@ -81,33 +94,37 @@ export function formatRateLimit(config: AgentToolConfig): string {
 }
 
 /**
- * The groups to show: the Imbi tools, and then each tool that is
- * enabled but not in the catalog, for example a `zoekt.*` key from an
- * earlier release, as an "unavailable" row so it can be removed.
+ * The groups to show: the opt-in built-in tools, the Imbi tools, and
+ * then each tool that is enabled but not in the catalog, for example a
+ * `zoekt.*` key from an earlier release, as an "unavailable" row so it
+ * can be removed.
  */
 export function groupViews(
   catalog: AgentToolCatalog,
   tools: AgentTools,
   filters: ToolFilters,
 ): ToolGroupView[] {
-  const listed = new Set(catalog.tools.map((t) => t.key))
+  const listed = new Set(catalogTools(catalog).map((t) => t.key))
   const lost = Object.keys(tools)
     .filter((key) => !listed.has(key))
     .sort()
-  const views: ToolGroupView[] = [
-    {
-      allRows: catalog.tools.map((t) => ({
-        capability: t.capability,
-        description: t.description ?? null,
-        key: t.key,
-        unavailable: false,
-      })),
-      error: catalog.error ?? null,
-      name: 'Imbi',
+  const builtins = catalog.builtin_tools ?? []
+  const views: ToolGroupView[] = []
+  if (builtins.length)
+    views.push({
+      allRows: builtins.map(catalogRow),
+      error: null,
+      name: 'Built-in',
       rows: [],
-      slug: IMBI_SLUG,
-    },
-  ]
+      slug: BUILTIN_SLUG,
+    })
+  views.push({
+    allRows: catalog.tools.map(catalogRow),
+    error: catalog.error ?? null,
+    name: 'Imbi',
+    rows: [],
+    slug: IMBI_SLUG,
+  })
   if (lost.length)
     views.push({
       allRows: lost.map(unavailableRow),
@@ -172,6 +189,15 @@ export function toggleEnvironment(
   if (!next.length) return config
   const allowed = all.every((s) => next.includes(s))
   return { ...config, environments: allowed ? null : [...next].sort() }
+}
+
+function catalogRow(tool: AgentToolCatalog['tools'][number]): ToolRow {
+  return {
+    capability: tool.capability,
+    description: tool.description ?? null,
+    key: tool.key,
+    unavailable: false,
+  }
 }
 
 function unavailableRow(key: string): ToolRow {

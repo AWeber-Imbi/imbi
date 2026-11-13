@@ -13,6 +13,7 @@ An agent can only narrow them (plan section 5.1):
   the catalog holds now.
 """
 
+import collections.abc
 import typing
 
 import pydantic
@@ -135,8 +136,14 @@ class MergedConfig(pydantic.BaseModel):
 
     model_upstream: ModelUpstream
     plugins: list[models.AgentPlugin]
+    #: The organization's built-in tools, less the opt-in tools.
+    #: ``None`` allows all of the runner's default built-in tools.
     allowed_tools: list[str] | None
     denied_tools: list[str]
+    #: The opt-in built-in tools (``Skill``, ``Agent``) that the agent
+    #: turned on in its tool map, inside ``allowed_tools`` and not in
+    #: ``denied_tools``.
+    builtin_tools: list[str] = []
     permission_mode: models.AgentPermissionMode
     sandbox: models.AgentSandbox
     system_prompt_prefix: str
@@ -218,9 +225,12 @@ def _enforced(
 
 
 def merge(
-    config: AgentPlatformConfig, settings: models.AgentSettings
+    config: AgentPlatformConfig,
+    settings: models.AgentSettings,
+    tools: collections.abc.Collection[str] = (),
 ) -> MergedConfig:
-    """Apply the agent's ``settings`` over ``config``.
+    """Apply the agent's ``settings`` and tool map keys ``tools`` over
+    ``config``.
 
     Each value is the stricter of the two. An agent plugin from a
     marketplace that ``config`` does not allow is left out. A default
@@ -230,6 +240,9 @@ def merge(
     ``claude_settings`` is the exception: each path that the agent sets
     replaces the organization's value, a list too, unless the
     organization enforces the path (settings plan 4.4).
+
+    An opt-in built-in tool is on only when ``tools`` has its key: the
+    organization's ``allowed_tools`` is its ceiling, not its switch.
     """
     mode = config.permission_mode
     if settings.permission_mode is not None and _strictness(
@@ -264,11 +277,24 @@ def merge(
         upstream = upstream.model_copy(
             update={'key_ref': settings.model_key_ref}
         )
+    denied = sorted({*config.denied_tools, *settings.denied_tools})
+    opt_in = {
+        name
+        for tool in models.OPT_IN_BUILTIN_TOOLS.values()
+        for name in tool.names
+    }
     return MergedConfig(
         model_upstream=upstream,
         plugins=plugins,
-        allowed_tools=config.allowed_tools,
-        denied_tools=sorted({*config.denied_tools, *settings.denied_tools}),
+        allowed_tools=(
+            None
+            if config.allowed_tools is None
+            else [t for t in config.allowed_tools if t not in opt_in]
+        ),
+        denied_tools=denied,
+        builtin_tools=models.opt_in_builtin_tools(
+            tools, config.allowed_tools, denied
+        ),
         permission_mode=mode,
         sandbox=sandbox,
         system_prompt_prefix=config.system_prompt_prefix,

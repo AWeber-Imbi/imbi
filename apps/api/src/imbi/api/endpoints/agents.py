@@ -62,6 +62,29 @@ AGENT_PROMPT_NAMESPACE = 'agents'
 AgentTools = dict[models.AgentToolKey, models.AgentToolConfig]
 
 
+def _check_builtin_tools(value: AgentTools) -> AgentTools:
+    """Refuse a ``builtin.*`` key that is not an opt-in built-in tool:
+    the other built-in tools come from the organization."""
+    prefix = f'{models.BUILTIN_TOOL_SERVER}.'
+    unknown = sorted(
+        key
+        for key in value
+        if key.startswith(prefix) and key not in models.OPT_IN_BUILTIN_TOOLS
+    )
+    if unknown:
+        raise ValueError(
+            f'Unknown built-in tool key(s) {unknown!r}: the agent can turn '
+            f'on only {sorted(models.OPT_IN_BUILTIN_TOOLS)!r}'
+        )
+    return value
+
+
+#: The tools of a write: a ``builtin.*`` key must be an opt-in tool.
+AgentToolsWrite = typing.Annotated[
+    AgentTools, pydantic.AfterValidator(_check_builtin_tools)
+]
+
+
 def _check_subagents(
     value: list[models.AgentSubagent],
 ) -> list[models.AgentSubagent]:
@@ -188,12 +211,14 @@ class AgentWrite(pydantic.BaseModel):
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
     )
-    tools: AgentTools = pydantic.Field(
+    tools: AgentToolsWrite = pydantic.Field(
         default={},
         description=(
             'The tools that the agent can use, by tool key '
             '(<server slug>.<tool name>). A tool that is not in the map '
-            'is off. Environment slugs must exist in the org.'
+            'is off. builtin.Skill and builtin.Agent turn on those '
+            'Claude Code built-in tools. Environment slugs must exist in '
+            'the org.'
         ),
     )
     subagents: AgentSubagents = pydantic.Field(
@@ -227,7 +252,7 @@ class AgentUpdate(pydantic.BaseModel):
     prompt_ref: PromptRef = None
     prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: models.AgentSettings | None = None
-    tools: AgentTools | None = None
+    tools: AgentToolsWrite | None = None
     subagents: AgentSubagents | None = None
     version_summary: str | None = None
 

@@ -157,6 +157,38 @@ describe('ToolsTab', () => {
     expect(last()).toEqual({})
   })
 
+  it('switches a built-in tool on, without environments', async () => {
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue({
+      ...catalog(),
+      builtin_tools: [
+        {
+          capability: 'read',
+          description: 'Load a skill.',
+          key: 'builtin.Skill',
+          name: 'Skill',
+        },
+      ],
+    })
+    render(<Harness initial={{}} />)
+    await screen.findAllByText('0 of 1 enabled')
+    expect(screen.getByText('0 of 5 enabled')).toBeInTheDocument()
+    expect(within(group('Built-in')).getByText('builtin.Skill')).toBeVisible()
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Enable builtin.Skill' }),
+    )
+    expect(last()).toEqual({
+      'builtin.Skill': {
+        approval: false,
+        environments: null,
+        rate_limit: null,
+      },
+    })
+    // Approval and a rate limit apply; an environment limit does not.
+    expect(screen.getByRole('button', { name: 'Approval' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'No limit' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /: allowed$/ })).toBeNull()
+  })
+
   it('lists an enabled tool that the catalog lacks, so it can be removed', async () => {
     render(<Harness initial={{ 'zoekt.search': {} as never }} />)
     await screen.findByText('Not in the catalog')

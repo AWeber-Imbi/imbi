@@ -138,7 +138,10 @@ The runner has these parts:
 - **PreToolUse policy.** A hook checks each tool call before the CLI runs
   it:
     1. A built-in tool must be in the allowed tools of the merged
-       configuration. An MCP tool must be in the agent's tool map.
+       configuration. An MCP tool must be in the agent's tool map. The
+       opt-in built-in tools `Skill` and `Agent` are in the allowed tools
+       only when the agent's tool map has `builtin.Skill` or
+       `builtin.Agent`, inside the organization's `allowed_tools`.
     2. An `environment` argument must not name a blocked environment.
     3. A tool with approval set opens a request, and the task waits for a
        person (`blocked`). A tool in `approval_tools` also needs approval

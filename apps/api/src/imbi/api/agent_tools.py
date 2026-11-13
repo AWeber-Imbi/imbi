@@ -13,6 +13,11 @@ the response or to the cache. The catalog is kept in Valkey for
 
 A tool key is ``imbi.<tool name>``. An agent stores its tool
 configuration by this key.
+
+The catalog also lists the opt-in Claude Code built-in tools in
+``builtin_tools``, as ``builtin.<tool name>``. They are off for each
+agent until its tool map has the key. They do not come from the
+OpenAPI document, so a catalog error does not change them.
 """
 
 import asyncio
@@ -28,6 +33,7 @@ from mcp import types as mcp_types
 from valkey import asyncio as valkey
 
 from imbi.common import mcp as common_mcp
+from imbi.common import models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,11 +51,25 @@ ErrorCode = typing.Literal['unreachable', 'timeout', 'auth_failed']
 
 
 class AgentCatalogTool(pydantic.BaseModel):
-    #: ``imbi.<tool name>``.
+    #: ``imbi.<tool name>`` or ``builtin.<tool name>``.
     key: str
     name: str
     description: str | None = None
     capability: Capability
+
+
+#: The catalog entries of the opt-in built-in tools, by name.
+BUILTIN_CATALOG = tuple(
+    AgentCatalogTool(
+        key=tool.key,
+        name=tool.name,
+        description=tool.description,
+        capability=tool.capability,
+    )
+    for tool in sorted(
+        models.OPT_IN_BUILTIN_TOOLS.values(), key=lambda t: t.name
+    )
+)
 
 
 class AgentToolCatalog(pydantic.BaseModel):
@@ -58,6 +78,10 @@ class AgentToolCatalog(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid')
 
     tools: list[AgentCatalogTool] = []
+    #: The opt-in Claude Code built-in tools.
+    builtin_tools: list[AgentCatalogTool] = pydantic.Field(
+        default_factory=lambda: list(BUILTIN_CATALOG)
+    )
     #: Set when the tools could not be listed.
     error: ErrorCode | None = None
     generated_at: datetime.datetime
@@ -189,7 +213,11 @@ async def get_catalog(
             cached = None
         if cached is not None:
             try:
-                return AgentToolCatalog.model_validate_json(cached)
+                # The built-in tools come from this release, not the
+                # kept copy.
+                return AgentToolCatalog.model_validate_json(cached).model_copy(
+                    update={'builtin_tools': list(BUILTIN_CATALOG)}
+                )
             except pydantic.ValidationError:
                 LOGGER.debug('discarding malformed tool catalog cache entry')
     catalog = await build_catalog(spec())

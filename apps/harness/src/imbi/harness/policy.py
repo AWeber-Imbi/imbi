@@ -5,7 +5,8 @@ before the CLI's own permission check (``dontAsk`` with the allowed
 tools). :func:`check` is the part that needs no I/O:
 
 1. A built-in tool must be in the allowed tools of the merged
-   configuration. An MCP tool ``mcp__<server>__<tool>`` must be in the
+   configuration; its ``builtin.<tool>`` tool map entry, if any,
+   applies to it. An MCP tool ``mcp__<server>__<tool>`` must be in the
    agent's tool map as ``<server>.<tool>``; the harness's own tools of
    the ``imbi`` server are always configured.
 2. A tool that declares an ``environment`` argument is refused for an
@@ -58,6 +59,11 @@ def tool_key(name: str) -> str | None:
     return f'{_KEY_SERVER.get(server, server)}.{tool}'
 
 
+def builtin_key(name: str) -> str:
+    """The tool map key of the built-in tool ``name``."""
+    return f'builtin.{name}'
+
+
 def _plugin_server(name: str, plugin_servers: list[str]) -> str | None:
     """The plugin MCP server rule that ``name`` is a tool of, if any."""
     return next(
@@ -89,6 +95,10 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     if key is None:
         if name not in allowed:
             return Check(deny='tool_not_allowed')
+        # An opt-in built-in tool (Skill, Agent) has a tool map entry:
+        # its approval and rate limit apply as for an MCP tool.
+        key = builtin_key(name)
+        config = tool_map.get(key) or {}
     elif key in tool_map:
         config = tool_map[key] or {}
     elif plugin is None and key.removeprefix('imbi.') not in HARNESS_TOOLS:

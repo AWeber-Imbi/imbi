@@ -1,3 +1,4 @@
+import collections.abc
 import dataclasses
 import datetime
 import decimal
@@ -1352,6 +1353,81 @@ class AgentToolConfig(pydantic.BaseModel):
 AgentToolKey = typing.Annotated[
     str, pydantic.StringConstraints(pattern=r'^[^.\s]+\.\S+$')
 ]
+
+#: The server slug of a Claude Code built-in tool in an agent's tool
+#: map: ``builtin.<tool name>``.
+BUILTIN_TOOL_SERVER = 'builtin'
+
+
+@dataclasses.dataclass(frozen=True)
+class OptInBuiltinTool:
+    """A Claude Code built-in tool that is off for every agent until
+    the agent's tool map has its ``builtin.<name>`` key."""
+
+    #: The CLI tool name.
+    name: str
+    description: str
+    capability: typing.Literal['read', 'write', 'destructive', 'unknown']
+    #: Earlier CLI names of the tool. A ``denied_tools`` or
+    #: ``allowed_tools`` rule with one of them applies to the tool.
+    aliases: tuple[str, ...] = ()
+
+    @property
+    def key(self) -> str:
+        return f'{BUILTIN_TOOL_SERVER}.{self.name}'
+
+    @property
+    def names(self) -> frozenset[str]:
+        return frozenset({self.name, *self.aliases})
+
+
+#: The opt-in built-in tools, by tool map key. The bundled CLI calls
+#: the subagent tool ``Agent``; ``Task`` is its earlier name.
+OPT_IN_BUILTIN_TOOLS: dict[str, OptInBuiltinTool] = {
+    tool.key: tool
+    for tool in (
+        OptInBuiltinTool(
+            name='Agent',
+            description=(
+                'Start a Claude Code subagent for part of the task. The '
+                'subagent has the same tools and the same tool policy.'
+            ),
+            capability='unknown',
+            aliases=('Task',),
+        ),
+        OptInBuiltinTool(
+            name='Skill',
+            description=(
+                'Load a skill from the plugins of the agent. Each tool '
+                'that the skill uses is still checked.'
+            ),
+            capability='read',
+        ),
+    )
+}
+
+
+def opt_in_builtin_tools(
+    tools: collections.abc.Collection[str],
+    allowed_tools: list[str] | None,
+    denied_tools: list[str],
+) -> list[str]:
+    """The CLI names of the opt-in built-in tools that an agent with
+    the tool map keys ``tools`` can use, in sort order.
+
+    ``allowed_tools`` of the organization is the ceiling: when it is
+    set, a tool that it does not name stays off. A tool that
+    ``denied_tools`` names stays off.
+    """
+    allowed = None if allowed_tools is None else set(allowed_tools)
+    denied = set(denied_tools)
+    return sorted(
+        tool.name
+        for key, tool in OPT_IN_BUILTIN_TOOLS.items()
+        if key in tools
+        and (allowed is None or tool.names & allowed)
+        and not tool.names & denied
+    )
 
 
 class AgentSubagent(pydantic.BaseModel):

@@ -50,6 +50,28 @@ describe('agentTools', () => {
     ])
   })
 
+  it('lists the built-in tools in their own group, first', () => {
+    const views = groupViews(
+      {
+        ...catalog(),
+        builtin_tools: [
+          {
+            capability: 'unknown',
+            description: 'Start a subagent.',
+            key: 'builtin.Agent',
+            name: 'Agent',
+          },
+        ],
+      },
+      { 'builtin.Agent': {} },
+      none,
+    )
+    expect(views.map((v) => v.name)).toEqual(['Built-in', 'Imbi'])
+    expect(views[0].rows.map((r) => r.key)).toEqual(['builtin.Agent'])
+    // Without built-in tools, no empty group.
+    expect(groupViews(catalog(), {}, none).map((v) => v.name)).toEqual(['Imbi'])
+  })
+
   it('filters by search, capability, and enabled', () => {
     const tools = { 'imbi.get_me': {} }
     const search = groupViews(catalog(), tools, {

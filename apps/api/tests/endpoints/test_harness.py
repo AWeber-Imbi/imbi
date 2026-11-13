@@ -366,6 +366,14 @@ class ClaimTests(RunnerTestCase):
             ],
         )
 
+    async def test_bundle_has_the_opt_in_builtin_tools(self) -> None:
+        await self.make_version(
+            {'tools': {'builtin.Skill': {}, 'imbi.get_me': {}}}
+        )
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(claim['bundle']['config']['builtin_tools'], ['Skill'])
+
     async def test_long_poll_waits_for_a_task(self) -> None:
         runner = await self.register()
         self.assertIsNotNone(await self.claim(runner))
