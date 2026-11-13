@@ -380,12 +380,13 @@ as $0. The page tells you how many reports had no price.
 
 - **Tasks** counts the tasks made in the range. The cost in the range can
   include tasks made before it.
-- The monthly cost cap uses the UTC calendar month. At 80% and 100% of a
-  cap, the page shows a banner. The cap does not stop the agent.
+- The days, the range, and the monthly cost cap use the calendar in the
+  time zone of your browser. At 80% and 100% of a cap, the page shows a
+  banner. The cap does not stop the agent.
 
 The page needs `agent_task:read`. The API is
-`GET /organizations/{org}/agent-usage/`, with `start`, `end`, and
-`agent_id`.
+`GET /organizations/{org}/agent-usage/`, with `start`, `end`, `agent_id`,
+and `tz` (an IANA time zone; the default is UTC).
 
 ## Dashboard
 

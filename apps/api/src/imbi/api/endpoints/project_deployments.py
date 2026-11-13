@@ -19,7 +19,6 @@ import logging
 import re
 import textwrap
 import typing
-import zoneinfo
 
 import fastapi
 import httpx
@@ -32,6 +31,7 @@ from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.commit_sync import service as commit_sync_service
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.deployment_sync import service as deployment_sync_service
+from imbi.api.endpoints import _local_time
 from imbi.api.endpoints._helpers import (
     deployed_operation_log,
     lookup_project_links,
@@ -5820,34 +5820,6 @@ def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
     return f'{prefix}{major}.{minor}.{patch + 1}'
 
 
-def _local_today(
-    tz: typing.Annotated[
-        str,
-        fastapi.Query(
-            description=(
-                'IANA time zone of the requester; calendar versions use '
-                'the date in this zone.'
-            ),
-        ),
-    ] = 'UTC',
-) -> datetime.date:
-    """Today's date in ``tz``, so a calendar version is the user's date.
-
-    An unknown zone is a 422: a silent UTC fallback would suggest
-    tomorrow's date to an evening release in the Americas.
-    """
-    try:
-        zone = zoneinfo.ZoneInfo(tz)
-    except (zoneinfo.ZoneInfoNotFoundError, ValueError) as err:
-        raise fastapi.HTTPException(
-            status_code=422, detail=f'Invalid time zone: {tz!r}'
-        ) from err
-    return datetime.datetime.now(zone).date()
-
-
-LocalToday = typing.Annotated[datetime.date, fastapi.Depends(_local_today)]
-
-
 def _suggest_version(
     last_tag: str | None,
     bump: SemverBump,
@@ -5867,7 +5839,7 @@ def _suggest_version(
     ``0.1.0``, then today's date).  With
     no policy configured the first candidate stands, which keeps the
     historical ``v0.1.0`` answer for an untagged project.  ``today`` is
-    the requester's local date (see :func:`_local_today`); UTC if absent.
+    the requester's local date (see :mod:`._local_time`); UTC if absent.
     """
     today = today or datetime.datetime.now(datetime.UTC).date()
     # A configured scheme knows its own counters, so it goes first: a tag
@@ -6306,7 +6278,7 @@ async def draft_release_notes(
         ),
     ],
     anthropic: InjectAnthropicClient,
-    today: LocalToday,
+    today: _local_time.LocalToday,
     source: str | None = None,
 ) -> DraftReleaseNotesResponse:
     """Draft release notes for a tag promotion.
@@ -6918,7 +6890,7 @@ async def get_release_drift(
             permissions.require_permission('project:deployment:read'),
         ),
     ],
-    today: LocalToday,
+    today: _local_time.LocalToday,
 ) -> ReleaseDriftResponse:
     """Commits awaiting a release: the delta from the latest tag to HEAD.
 

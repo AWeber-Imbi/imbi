@@ -415,6 +415,41 @@ class DashboardMetricsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual([0] * 7, body['ops_log']['daily'])
         self.assertEqual([], body['releases_by_environment'])
 
+    def test_metrics_days_are_in_the_requester_zone(self) -> None:
+        """8 PM in New York on 10 November ends the window on the 10th."""
+        now = datetime.datetime(2026, 11, 11, 1, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[[], [], [], [{'day': '2026-11-10', 'c': 3}]]
+        )
+        with (
+            mock.patch.object(dashboard.clickhouse, 'query', query),
+            mock.patch.object(
+                dashboard.datetime, 'datetime', wraps=datetime.datetime
+            ) as dt,
+        ):
+            dt.now.side_effect = now.astimezone
+            response = self.client.get(
+                '/admin/dashboard/metrics',
+                params={'tz': 'America/New_York'},
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        body = response.json()
+        self.assertEqual(3, body['pull_requests']['daily'][-1])
+        self.assertEqual(
+            datetime.datetime.fromisoformat(body['since']),
+            datetime.datetime(2026, 11, 4, 5, tzinfo=datetime.UTC),
+        )
+        for call in query.call_args_list:
+            self.assertIn('{tz:String}', call.args[0])
+            self.assertEqual('America/New_York', call.args[1]['tz'])
+
+    def test_metrics_rejects_an_unknown_time_zone(self) -> None:
+        response = self.client.get(
+            '/admin/dashboard/metrics', params={'tz': 'Mars/Olympus'}
+        )
+        self.assertEqual(422, response.status_code)
+        self.assertEqual(['query', 'tz'], response.json()['detail'][0]['loc'])
+
     def test_metrics_requires_permission(self) -> None:
         self.admin_context.user.is_admin = False
         self.admin_context.permissions = set()

@@ -14,11 +14,13 @@ import asyncio
 import datetime
 import decimal
 import typing
+import zoneinfo
 
 import fastapi
 import pydantic
 
 from imbi.api.auth import organizations, permissions
+from imbi.api.endpoints import _local_time
 from imbi.common import clickhouse
 
 #: The longest range that one request can ask for, in days.
@@ -56,7 +58,7 @@ class AgentUsage(pydantic.BaseModel):
     #: Usage reports in the range with no cost, because the model or
     #: its price was unknown. They count as $0.
     unpriced_reports: int
-    #: USD this UTC calendar month, by agent id, for the advisory
+    #: USD this calendar month in ``tz``, by agent id, for the advisory
     #: monthly cost cap. It does not depend on ``start`` and ``end``.
     month_to_date: dict[str, decimal.Decimal]
 
@@ -79,7 +81,7 @@ _TOTALS = """
 """
 
 _DAYS_QUERY = f"""
-SELECT toDate(recorded_at) AS day, agent_id, {_TOTALS} {_FROM}
+SELECT toDate(recorded_at, {{tz:String}}) AS day, agent_id, {_TOTALS} {_FROM}
 GROUP BY day, agent_id
 """
 
@@ -101,7 +103,8 @@ WHERE organization_id = {organization_id:String}
 """
 
 _DAY_RUNS_QUERY = f"""
-SELECT toDate(at) AS day, agent_id, uniqExact(task_id) AS tasks {_RUNS_FROM}
+SELECT toDate(at, {{tz:String}}) AS day, agent_id,
+       uniqExact(task_id) AS tasks {_RUNS_FROM}
 GROUP BY day, agent_id
 """
 
@@ -137,12 +140,14 @@ def _merge(
     return list(merged.values())
 
 
-def _today() -> datetime.date:
-    return datetime.datetime.now(datetime.UTC).date()
+def _today(zone: zoneinfo.ZoneInfo) -> datetime.date:
+    return datetime.datetime.now(zone).date()
 
 
-def _midnight(day: datetime.date) -> datetime.datetime:
-    return datetime.datetime.combine(day, datetime.time.min, datetime.UTC)
+def _midnight(
+    day: datetime.date, zone: zoneinfo.ZoneInfo
+) -> datetime.datetime:
+    return datetime.datetime.combine(day, datetime.time.min, zone)
 
 
 agent_usage_router = fastapi.APIRouter(
@@ -158,23 +163,25 @@ async def get_agent_usage(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:read')),
     ],
+    zone: _local_time.LocalZone,
     start: datetime.date | None = None,
     end: datetime.date | None = None,
     agent_id: str | None = None,
 ) -> AgentUsage:
     """Return token use and cost by day and by agent.
 
-    ``start`` and ``end`` are UTC days and are both in the range. The
+    ``start`` and ``end`` are days in ``tz`` and are both in the range. The
     default range is the 30 days that end today. ``agent_id`` keeps
     the usage of one agent.
 
     Raises:
         403: The caller is not a member of the org.
         404: No such organization.
-        422: ``start`` is after ``end``, or the range is too long.
+        422: ``start`` is after ``end``, the range is too long, or
+            ``tz`` is not a known time zone.
 
     """
-    today = _today()
+    today = _today(zone)
     end = end or today
     start = start or end - datetime.timedelta(days=DEFAULT_RANGE_DAYS - 1)
     if start > end:
@@ -189,13 +196,14 @@ async def get_agent_usage(
     params: dict[str, typing.Any] = {
         'organization_id': org_id,
         'agent_id': agent_id or '',
-        'since': _midnight(start),
-        'until': _midnight(end + datetime.timedelta(days=1)),
+        'tz': zone.key,
+        'since': _midnight(start, zone),
+        'until': _midnight(end + datetime.timedelta(days=1), zone),
     }
     month = {
         **params,
-        'since': _midnight(today.replace(day=1)),
-        'until': _midnight(today + datetime.timedelta(days=1)),
+        'since': _midnight(today.replace(day=1), zone),
+        'until': _midnight(today + datetime.timedelta(days=1), zone),
     }
     days, day_runs, agents, agent_runs, month_rows = await asyncio.gather(
         clickhouse.query(_DAYS_QUERY, params),

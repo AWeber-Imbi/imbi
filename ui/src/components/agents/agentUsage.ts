@@ -43,7 +43,7 @@ export function dailyValues(
   return daysBetween(usage.start, usage.end).map((d) => byDay.get(d) ?? 0)
 }
 
-/** Every UTC day from `start` to `end` (YYYY-MM-DD), both included. */
+/** Every day from `start` to `end` (YYYY-MM-DD), both included. */
 export function daysBetween(start: string, end: string): string[] {
   const days: string[] = []
   const day = new Date(`${start}T00:00:00Z`)
