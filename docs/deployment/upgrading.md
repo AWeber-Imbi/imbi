@@ -92,6 +92,17 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    that maintenance operation every 6 hours, and without the permission
    each run gets a `403`. See
    [System tasks](../scheduler/tasks.md#system-tasks).
+3. **Before you deploy**, delete every scheduled task whose `api` target
+   path is under `/auth`. The scheduler now refuses those paths, and one
+   such task stops `GET /tasks` from listing any task. Find them with
+   the query below. It uses the default schema `scheduler`. If you set
+   `IMBI_SCHEDULER_SCHEMA`, use that schema instead.
+
+    ```sql
+    SELECT slug FROM scheduler.tasks
+     WHERE target->>'kind' = 'api'
+       AND target->>'path' ~ '^/auth([/?#]|$)';
+    ```
 
 ## 2.49.0
 

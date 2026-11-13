@@ -67,6 +67,25 @@ def ensure_slug(value: str) -> str:
     return value
 
 
+def ensure_not_auth_route(path: str) -> str:
+    """Return `path`, or raise if it is an `imbi-api` ``/auth`` route.
+
+    Those routes act on the session of the caller, and the caller of a task
+    is the scheduler's service account. So a task under ``/auth`` could
+    revoke the scheduler's own tokens (``POST /auth/logout``) instead of
+    doing work in Imbi. No task needs them.
+    """
+    # The query and fragment are not part of the route: ``/auth?x=1``
+    # still reaches ``/auth``.
+    route = re.split(r'[?#]', path, maxsplit=1)[0]
+    if route == '/auth' or route.startswith('/auth/'):
+        raise ValueError(
+            'path may not be under /auth: those routes act on the '
+            "scheduler's own session"
+        )
+    return path
+
+
 def ensure_no_traversal(path: str) -> str:
     """Return `path`, or raise if it could address anything above itself.
 
@@ -181,7 +200,7 @@ class ApiTarget(pydantic.BaseModel):
         # value is a Jinja template and a traversal can arrive from the
         # context rather than the source. Kept here as well so an author gets
         # a 422 at create time rather than a failed run months later.
-        return ensure_no_traversal(value)
+        return ensure_not_auth_route(ensure_no_traversal(value))
 
     @pydantic.field_validator('organization')
     @classmethod
