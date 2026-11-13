@@ -7,6 +7,7 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.api import secret_broker
 from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -737,6 +738,7 @@ async def list_organization_members(
 async def delete_organization(
     slug: str,
     db: graph.Pool,
+    secrets: secret_broker.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -744,21 +746,64 @@ async def delete_organization(
         ),
     ],
 ) -> None:
-    """Delete an organization.
+    """Delete an empty organization. Its memberships go with it.
 
     Parameters:
         slug: Organization slug to delete.
 
     Raises:
         404: Organization not found.
+        409: The organization still has nodes that belong to it (teams,
+            agents, integrations, ...), secret providers, or an
+            identity source. Delete them first, so that each delete
+            does its own cleanup.
 
     """
-    query: typing.LiteralString = (
-        'MATCH (n:Organization {{slug: {slug}}}) DETACH DELETE n RETURN n'
+    records = await db.execute(
+        'MATCH (o:Organization {{slug: {slug}}}) RETURN o.id AS id',
+        {'slug': slug},
+        ['id'],
     )
-    records = await db.execute(query, {'slug': slug})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(f'Organization with slug {slug!r} not found'),
         )
+    org_id = org_auth.organization_id(
+        graph.parse_agtype(records[0]['id']), slug
+    )
+    contents = await db.execute(
+        'MATCH (n)-[:BELONGS_TO]->(:Organization {{slug: {slug}}})'
+        ' RETURN label(n) AS label, count(n) AS n',
+        {'slug': slug},
+        ['label', 'n'],
+    )
+    in_use = {
+        str(graph.parse_agtype(r['label'])): int(graph.parse_agtype(r['n']))
+        for r in contents
+    }
+    in_use['secret providers'] = len(
+        await secrets.list_all('providers', org_id)
+    )
+    in_use['identity sources'] = int(
+        await secrets.identity_source(org_id) is not None
+    )
+    found = ', '.join(
+        f'{name} ({n})' for name, n in sorted(in_use.items()) if n
+    )
+    if found:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Organization {slug!r} is not empty: {found}. '
+                'Delete these first.'
+            ),
+        )
+    # ponytail: something added between the check and the delete is
+    # left without an organization; lock the org if that matters.
+    await db.execute(
+        'MATCH (o:Organization {{slug: {slug}}})'
+        ' DETACH DELETE o RETURN 1 AS deleted',
+        {'slug': slug},
+        ['deleted'],
+    )
