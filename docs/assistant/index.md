@@ -89,6 +89,7 @@ The full list is in [Configuration](../api/configuration.md).
 | `IMBI_ASSISTANT_SYSTEM_PROMPT` | none | Replaces the CMS prompt |
 | `IMBI_ASSISTANT_URL` | none | The public URL of the assistant, for example `https://imbi.example.com/assistant`. Its path is the route prefix |
 | `IMBI_INTERNAL_API_URL` | `http://localhost:8000` | Where the assistant connects to imbi-api |
+| `IMBI_API_URL` | none | The public URL of imbi-api. The assistant uses its path, for example `/api`, as the route prefix. It must be an absolute URL |
 | `IMBI_UI_URL` | none | The public URL of the UI, for links in answers |
 | `IMBI_INTERNAL_UI_URL` | none | Where the assistant reads `llms.txt`. The default is `IMBI_UI_URL` |
 

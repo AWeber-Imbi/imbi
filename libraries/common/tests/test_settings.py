@@ -464,5 +464,36 @@ class BaseSettingsConfigTestCase(unittest.TestCase):
         self.assertEqual(config['env_prefix'], 'TEST_')
 
 
+class InternalApiTestCase(unittest.TestCase):
+    """imbi-api routes are under the path of IMBI_API_URL."""
+
+    def _settings(self, **env: str) -> settings.InternalApi:
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            return settings.InternalApi()
+
+    def test_defaults_to_loopback_without_prefix(self) -> None:
+        self.assertEqual(
+            'http://localhost:8000', self._settings().api_base_url
+        )
+
+    def test_joins_public_path_onto_internal_origin(self) -> None:
+        s = self._settings(
+            IMBI_INTERNAL_API_URL='http://imbi-api:8000/',
+            IMBI_API_URL='https://imbi.example.com/api/',
+        )
+        self.assertEqual('http://imbi-api:8000/api', s.api_base_url)
+
+    def test_public_url_without_path_adds_no_prefix(self) -> None:
+        s = self._settings(
+            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
+            IMBI_API_URL='https://imbi.example.com',
+        )
+        self.assertEqual('http://imbi-api:8000', s.api_base_url)
+
+    def test_rejects_schemeless_public_url(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._settings(IMBI_API_URL='imbi.example.com/api')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -3,29 +3,16 @@
 Postgres and the graph come from :mod:`imbi.common.settings`.
 """
 
-import urllib.parse
-
 import pydantic
-import pydantic_settings
 
 from imbi.common import settings as common_settings
 
 
-class Workflows(pydantic_settings.BaseSettings):
+class Workflows(common_settings.InternalApi):
     model_config = common_settings.base_settings_config(
         env_prefix='IMBI_WORKFLOWS_'
     )
 
-    api_url: str = pydantic.Field(
-        default='http://localhost:8000',
-        validation_alias='IMBI_INTERNAL_API_URL',
-        description='In-cluster origin of imbi-api',
-    )
-    api_public_url: str = pydantic.Field(
-        default='',
-        validation_alias='IMBI_API_URL',
-        description="imbi-api's public URL, whose path is its route prefix",
-    )
     sa_client_id: str | None = None
     sa_client_secret: pydantic.SecretStr | None = None
     workers: int = pydantic.Field(
@@ -59,9 +46,3 @@ class Workflows(pydantic_settings.BaseSettings):
         description='Seconds between passes of the trigger reconciler. '
         'imbi-api also wakes it after each activation and pause.',
     )
-
-    @property
-    def api_base_url(self) -> str:
-        """Return the imbi-api base URL with its route prefix."""
-        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
-        return self.api_url.rstrip('/') + prefix
