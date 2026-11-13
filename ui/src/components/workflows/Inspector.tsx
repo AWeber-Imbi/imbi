@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { Copy, Trash2 } from 'lucide-react'
 
@@ -346,17 +346,11 @@ export function SettingsPanel({
             htmlFor="workflow-dedupe-window"
             label="Dedupe window (days)"
           >
-            <Input
-              id="workflow-dedupe-window"
-              min={0}
-              onChange={(e) => {
-                const seconds = windowSeconds(e.target.value)
-                if (seconds === undefined) return
+            <DedupeWindowInput
+              onChange={(seconds) =>
                 setSettings({ dedupe_window_seconds: seconds })
-              }}
-              step="any"
-              type="number"
-              value={windowDays(settings.dedupe_window_seconds)}
+              }
+              seconds={settings.dedupe_window_seconds ?? null}
             />
           </FormField>
         )}
@@ -389,6 +383,43 @@ export function SettingsPanel({
         </FormField>
       </fieldset>
     </>
+  )
+}
+
+/**
+ * The dedupe window in days. The typed text is kept as a draft, so a
+ * partial value such as `0.` or `1.` survives until it is a positive
+ * number; only a valid value or an empty field reaches the settings.
+ */
+function DedupeWindowInput({
+  onChange,
+  seconds,
+}: {
+  onChange: (seconds: null | number) => void
+  seconds: null | number
+}) {
+  const [draft, setDraft] = useState(() => windowDays(seconds))
+  const [synced, setSynced] = useState(seconds)
+  if (seconds !== synced) {
+    // The settings changed outside this field: show the new value.
+    setSynced(seconds)
+    setDraft(windowDays(seconds))
+  }
+  return (
+    <Input
+      id="workflow-dedupe-window"
+      min={0}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        const value = windowSeconds(e.target.value)
+        if (value === undefined) return
+        setSynced(value)
+        onChange(value)
+      }}
+      step="any"
+      type="number"
+      value={draft}
+    />
   )
 }
 

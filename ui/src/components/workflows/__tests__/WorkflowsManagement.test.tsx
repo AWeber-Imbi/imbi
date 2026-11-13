@@ -455,6 +455,23 @@ describe('WorkflowsManagement', () => {
     })
   })
 
+  it('keeps a partial dedupe window while it is typed', async () => {
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.change(await screen.findByLabelText('Dedupe key'), {
+      target: { value: '{{ trigger.service }}' },
+    })
+    const field = screen.getByLabelText('Dedupe window (days)')
+    fireEvent.change(field, { target: { value: '0' } })
+    expect(field).toHaveValue(0)
+    fireEvent.change(field, { target: { value: '0.5' } })
+    expect(field).toHaveValue(0.5)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.updateWorkflow).toHaveBeenCalled())
+    const body = vi.mocked(endpoints.updateWorkflow).mock.calls[0][2]
+    expect(body.settings).toMatchObject({ dedupe_window_seconds: 43_200 })
+  })
+
   it('shows a dedupe validation error in the settings', async () => {
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({
       issues: [
