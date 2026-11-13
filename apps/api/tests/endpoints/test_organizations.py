@@ -302,6 +302,18 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn(
             'DETACH DELETE o', self.mock_db.execute.await_args.args[0]
         )
+        self.assertEqual(
+            self.mock_db.execute.await_args.args[1], {'org_id': 'org-1'}
+        )
+
+    def test_delete_organization_changed_during_delete(self) -> None:
+        """A delete that matches no node is refused, not reported done."""
+        self.mock_db.execute.side_effect = [[{'id': 'org-1'}], [], []]
+
+        response = self.client.delete('/organizations/engineering')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('changed during the delete', response.json()['detail'])
 
     def test_delete_organization_not_empty(self) -> None:
         """Nodes or secret providers in the organization block the delete."""

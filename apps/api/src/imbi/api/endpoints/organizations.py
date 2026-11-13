@@ -807,9 +807,9 @@ async def delete_organization(
         conn: psycopg.AsyncConnection[typing.Any],
     ) -> None:
         contents = await execute(
-            'MATCH (n)-[:BELONGS_TO]->(:Organization {{slug: {slug}}})'
+            'MATCH (n)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})'
             ' RETURN label(n) AS label, count(n) AS n',
-            {'slug': slug},
+            {'org_id': org_id},
             ['label', 'n'],
         )
         in_use = dict(secrets_in_use)  # a retry runs this again
@@ -837,12 +837,19 @@ async def delete_organization(
                 ),
                 (org_id,),
             )
-        await execute(
-            'MATCH (o:Organization {{slug: {slug}}})'
+        # Match by id: a rename since the slug lookup must not leave
+        # the organization in place or delete a new one with the slug.
+        deleted = await execute(
+            'MATCH (o:Organization {{id: {org_id}}})'
             ' DETACH DELETE o RETURN 1 AS deleted',
-            {'slug': slug},
+            {'org_id': org_id},
             ['deleted'],
         )
+        if not deleted:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=f'Organization {slug!r} changed during the delete',
+            )
 
     # ponytail: one transaction, but writers do not take this lock, so
     # a node or row added during it can still be left behind; take the

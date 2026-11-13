@@ -53,8 +53,9 @@ The `organization:create`, `organization:read`, `organization:update`, and
 Imbi deletes only an empty organization. It refuses the delete with `409`
 while the organization has teams, agents, integrations, or other items,
 secret providers, an identity source, or workflows. Delete those first.
-The memberships, the agent task history, and the workflow runs of the
-organization are deleted with it.
+The memberships, the agent tasks, and the workflow runs of the
+organization are deleted with it. The archived task events and usage
+records in ClickHouse stay as the audit trail.
 
 ## Users
 
