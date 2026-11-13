@@ -885,6 +885,9 @@ def _check_structured_output(
     schema = task['output_schema']
     if schema is None:
         raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
+    # jsonschema raises AttributeError on a non-string $schema.
+    if not isinstance(schema.get('$schema', ''), str):
+        raise _invalid_output('structured_output: $schema is not a string')
     try:
         # An empty registry stops remote $ref retrieval (SSRF).
         jsonschema.validate(

@@ -825,8 +825,14 @@ class OutcomeTests(HarnessTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'invalid_structured_output'
         )
-        # A remote $ref is never fetched, and a self $ref cannot recurse.
-        for schema in ({'$ref': 'http://127.0.0.1:9/schema'}, {'$ref': '#'}):
+        # A remote $ref is never fetched, a self $ref cannot recurse,
+        # and a non-string $schema is refused.
+        for schema in (
+            {'$ref': 'http://127.0.0.1:9/schema'},
+            {'$ref': '#'},
+            {'$schema': ['x']},
+            {'$schema': 1},
+        ):
             await self.set_output_schema(schema)
             with mock.patch('urllib.request.urlopen') as urlopen:
                 response = await self.post(
