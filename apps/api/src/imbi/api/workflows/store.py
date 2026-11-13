@@ -304,7 +304,7 @@ class WorkflowStore:
         workflows of an org, with the settings of the active version."""
         return await self._all(
             'SELECT b.node_id, b.params, w.id AS workflow_id,'
-            ' w.active_version, w.activated_by, v.settings'
+            ' w.active_version, w.activated_by, w.activated_at, v.settings'
             ' FROM workflows.trigger_bindings AS b'
             ' JOIN workflows.workflows AS w ON w.id = b.workflow_id'
             ' JOIN workflows.workflow_versions AS v'

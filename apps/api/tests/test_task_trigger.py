@@ -3,6 +3,7 @@
 These run against the live Postgres that ``root:services`` boots.
 """
 
+import datetime
 import typing
 import unittest
 import uuid
@@ -24,6 +25,7 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
         'origin_kind': 'human',
         'origin': {'kind': 'human'},
         'chain_id': None,
+        'closed_at': datetime.datetime.now(datetime.UTC),
         **changes,
     }
 
@@ -151,6 +153,14 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         await self._activate(agent_id='mender', outcomes=['done_acted'])
         await self.trigger(_task(organization_id=self.org, agent_id='other'))
         await self.trigger(_task(organization_id=self.org))
+        self.assertEqual(await self._runs(), [])
+
+    async def test_task_closed_before_activation_starts_nothing(self) -> None:
+        """The sweep calls the trigger again after the task closed; a
+        workflow activated since then must not start a run."""
+        task = _task(organization_id=self.org)
+        await self._activate()
+        await self.trigger(task)
         self.assertEqual(await self._runs(), [])
 
     async def test_paused_workflow_starts_nothing(self) -> None:
