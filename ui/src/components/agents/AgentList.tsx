@@ -157,10 +157,10 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
           ),
           {
             header: header(
-              'Labels',
+              'Tags',
               facet(
                 'label',
-                'Labels',
+                'Tags',
                 labels.map((t) => ({ label: t.name, slug: t.slug })),
               ),
             ),
