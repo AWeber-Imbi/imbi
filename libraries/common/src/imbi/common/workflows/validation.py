@@ -265,8 +265,8 @@ def render_key(key: str | None, payload: dict[str, typing.Any]) -> str | None:
     """Return a key template filled with the values of ``payload``.
 
     ``None`` when the template is not valid, or a value that it names
-    is missing, empty, a mapping, or a list: only a value that a mapping
-    or a list holds is part of a key.
+    is missing, empty or blank, a mapping, or a list: only a value that
+    a mapping or a list holds is part of a key.
     """
     if key is None or key_paths(key) is None:
         return None
@@ -281,7 +281,11 @@ def render_key(key: str | None, payload: dict[str, typing.Any]) -> str | None:
                 if isinstance(value, dict)
                 else None
             )
-        if value is None or value == '' or isinstance(value, dict | list):
+        if (
+            value is None
+            or (isinstance(value, str) and not value.strip())
+            or isinstance(value, dict | list)
+        ):
             missing = True
             return ''
         return str(value)
@@ -310,15 +314,25 @@ def concurrency_key(
     return key
 
 
+#: The longest dedupe key, in bytes. A longer key can exceed the size
+#: of a B-tree entry in the dedupe index, and the run would fail to
+#: insert.
+MAX_DEDUPE_KEY_BYTES = 2048
+
+
 def dedupe_key(
     settings: graph.Settings, payload: dict[str, typing.Any]
 ) -> str | None:
     """Return the dedupe key of a run (ADR 0021, Dedupe).
 
-    ``None`` when the workflow has no dedupe key, or the payload lacks a
-    value that the key names: such a run is never skipped.
+    ``None`` when the workflow has no dedupe key, the payload lacks a
+    value that the key names, or the key is longer than
+    :data:`MAX_DEDUPE_KEY_BYTES`: such a run is never skipped.
     """
-    return render_key(settings.dedupe_key, payload)
+    key = render_key(settings.dedupe_key, payload)
+    if key is None or len(key.encode()) > MAX_DEDUPE_KEY_BYTES:
+        return None
+    return key
 
 
 def _by_node(branches: frozenset[_Branch]) -> dict[str, set[str]]:

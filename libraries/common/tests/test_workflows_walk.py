@@ -111,6 +111,7 @@ class ConcurrencyKeyTestCase(unittest.TestCase):
             {'payload': []},
             {'payload': {'repository': 'imbi'}},
             {'payload': {'repository': {'name': ''}}},
+            {'payload': {'repository': {'name': '  \t'}}},
             {'payload': {'repository': {'name': {'x': 1}}}},
         ):
             with (
@@ -194,4 +195,28 @@ class KeyTemplateTestCase(unittest.TestCase):
                 graph.Settings(dedupe_key='{{ trigger.n }}'), {'n': 7}
             ),
             '7',
+        )
+
+    def test_dedupe_key_blank_value(self) -> None:
+        settings = graph.Settings(dedupe_key='{{ trigger.n }}')
+        self.assertIsNone(validation.dedupe_key(settings, {'n': '   '}))
+        for value, key in ((0, '0'), (False, 'False'), (' a ', ' a ')):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    validation.dedupe_key(settings, {'n': value}), key
+                )
+
+    def test_dedupe_key_too_long(self) -> None:
+        settings = graph.Settings(dedupe_key='{{ trigger.n }}')
+        limit = validation.MAX_DEDUPE_KEY_BYTES
+        self.assertEqual(
+            validation.dedupe_key(settings, {'n': 'a' * limit}), 'a' * limit
+        )
+        # A longer key would not fit the dedupe index: never skipped.
+        self.assertIsNone(
+            validation.dedupe_key(settings, {'n': 'a' * (limit + 1)})
+        )
+        # The limit is in bytes, not characters.
+        self.assertIsNone(
+            validation.dedupe_key(settings, {'n': 'é' * (limit // 2 + 1)})
         )
