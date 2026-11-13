@@ -30,11 +30,20 @@ KIND = 'task_completed'
 MAX_DEPTH = 5
 
 
-def _matches(params: dict[str, typing.Any], task: store.Row) -> bool:
+def _matches(binding: store.Row, task: store.Row) -> bool:
+    """Return whether the closed task starts a run of ``binding``.
+
+    A workflow activated after the task closed does not match, so the
+    sweep that calls the trigger again starts no run that the close
+    hook could not have started.
+    """
+    params: dict[str, typing.Any] = binding['params']
     agent_id = params.get('agent_id')
     outcomes: list[str] = params.get('outcomes') or []
-    return (not agent_id or agent_id == task['agent_id']) and (
-        not outcomes or task['outcome'] in outcomes
+    return (
+        binding['activated_at'] <= task['closed_at']
+        and (not agent_id or agent_id == task['agent_id'])
+        and (not outcomes or task['outcome'] in outcomes)
     )
 
 
@@ -77,7 +86,7 @@ class TaskTrigger:
         }
         org = task['organization_id']
         for binding in await self._definitions.active_bindings(org, KIND):
-            if not _matches(binding['params'], task):
+            if not _matches(binding, task):
                 continue
             workflow_id = binding['workflow_id']
             try:
