@@ -130,19 +130,21 @@ def create_app() -> fastapi.FastAPI:
     # on the repository. A terminal 403 rather than a 5xx: consuming
     # clients retry 5xx on the assumption that it is transient, and an
     # uninstalled App will still be uninstalled on the retry. The
-    # discriminated ``detail.error`` is what an autonomous caller
-    # branches on so it can log the cause instead of spinning.
+    # discriminated ``detail.error`` (``app_not_installed``, or
+    # ``identity_access_denied`` for a user identity with no grant) is
+    # what an autonomous caller branches on so it can log the cause
+    # instead of spinning.
     @app.exception_handler(PluginInstallationMissing)
     async def _plugin_installation_missing(  # pyright: ignore[reportUnusedFunction]
         _request: fastapi.Request,
         exc: PluginInstallationMissing,
     ) -> responses.JSONResponse:
-        LOGGER.warning('Plugin installation missing: %s', exc)
+        LOGGER.warning('Plugin grant missing (%s): %s', exc.error_code, exc)
         return responses.JSONResponse(
             status_code=403,
             content={
                 'detail': {
-                    'error': 'app_not_installed',
+                    'error': exc.error_code,
                     'message': str(exc),
                     'owner_repo': exc.owner_repo,
                     'integration_slug': exc.integration_slug,

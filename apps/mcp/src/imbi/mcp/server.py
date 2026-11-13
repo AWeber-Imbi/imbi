@@ -13,6 +13,7 @@ token validation to the API.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import typing
 
@@ -41,6 +42,8 @@ from imbi.common.mcp import (
 )
 
 if typing.TYPE_CHECKING:
+    from collections import abc
+
     from fastmcp.utilities.components import FastMCPComponent
     from fastmcp.utilities.openapi import HTTPRoute
     from starlette.requests import Request
@@ -204,6 +207,23 @@ def create_server(
         event_hooks={'request': [_inject_auth]},
     )
 
+    # FastMCP closes this lifespan with ``aclose()``, so it never sees
+    # the exception that unwound the server. Any exit counts: uvicorn
+    # closes its listeners before a normal lifespan shutdown, so only an
+    # unexpected exit (for example a cancelled session manager task
+    # group, #287) leaves the process serving ``/status``.
+    lifespan_exited = False
+
+    @contextlib.asynccontextmanager
+    async def lifespan(
+        _server: fastmcp.FastMCP,
+    ) -> abc.AsyncGenerator[None]:
+        nonlocal lifespan_exited
+        try:
+            yield
+        finally:
+            lifespan_exited = True
+
     mcp = fastmcp.FastMCP.from_openapi(
         openapi_spec=spec,
         client=client,
@@ -213,6 +233,7 @@ def create_server(
         route_maps=excluded_route_maps(spec),
         route_map_fn=exclude_non_ai_tools,
         mcp_component_fn=_component,
+        lifespan=lifespan,
     )
 
     # ``client`` forwards the caller's Authorization header via
@@ -232,9 +253,10 @@ def create_server(
         return JSONResponse(
             {
                 'service': 'imbi-mcp',
-                'status': 'ok',
+                'status': 'failing' if lifespan_exited else 'ok',
                 'version': imbi.mcp.version,
-            }
+            },
+            status_code=503 if lifespan_exited else 200,
         )
 
     return mcp

@@ -23,6 +23,12 @@ The same round cancels the agent tasks whose agent step has ended
 (:func:`cancel_orphan_agent_tasks`). The engine cancels a task when
 its step or its run ends, but only as best effort; this is what makes
 the cancel certain.
+
+It also starts again the ``task_completed`` runs of the tasks that
+closed in the last :data:`TASK_TRIGGER_WINDOW_SECONDS`
+(:func:`retry_task_triggers`). The close hook starts them once, after
+the commit, and a failure there is only logged. The run idempotency key
+makes a repeat start no second run.
 """
 
 import asyncio
@@ -32,6 +38,7 @@ import logging
 import uuid
 
 from imbi.api import agent_tasks
+from imbi.api.agent_tasks import store as task_store
 from imbi.api.workflows import runs as run_store
 from imbi.common import valkey
 from imbi.common.workflows import history, runtime
@@ -44,6 +51,8 @@ _SWEEP_LOCK_KEY = 'imbi:workflows:log-sweeper'
 #: Runs read per page, so memory and each ClickHouse ``IN`` list stay
 #: bounded when the backlog grows.
 PAGE_SIZE = 500
+#: How far back :func:`retry_task_triggers` looks for closed tasks.
+TASK_TRIGGER_WINDOW_SECONDS = 600
 
 
 @dataclasses.dataclass
@@ -170,12 +179,31 @@ async def cancel_orphan_agent_tasks(
     return cancelled
 
 
+async def retry_task_triggers(
+    tasks: agent_tasks.TaskStore, trigger: task_store.CloseHook
+) -> None:
+    """Call ``trigger`` again for each task that closed in the last
+    :data:`TASK_TRIGGER_WINDOW_SECONDS`."""
+    for task in await tasks.closed_since(TASK_TRIGGER_WINDOW_SECONDS):
+        try:
+            await trigger(task)
+        except Exception:  # noqa: BLE001 -- the next round tries again
+            LOGGER.warning(
+                'task_completed retry failed for task %s',
+                task['id'],
+                exc_info=True,
+            )
+
+
 async def sweep_once(
-    store: run_store.RunStore, tasks: agent_tasks.TaskStore | None = None
+    store: run_store.RunStore,
+    tasks: agent_tasks.TaskStore | None = None,
+    trigger: task_store.CloseHook | None = None,
 ) -> SweepResult:
     """Republish what ClickHouse does not have and archive complete runs.
 
-    With ``tasks``, also cancel the tasks of agent steps that ended.
+    With ``tasks``, also cancel the tasks of agent steps that ended, and
+    with ``trigger`` too, start the missed runs of closed tasks.
     """
     result = SweepResult()
     if not await _try_sweep_lock():
@@ -185,6 +213,11 @@ async def sweep_once(
             await cancel_orphan_agent_tasks(store, tasks)
         except Exception:  # noqa: BLE001 -- the next round tries again
             LOGGER.warning('Agent task reconcile failed', exc_info=True)
+        if trigger is not None:
+            try:
+                await retry_task_triggers(tasks, trigger)
+            except Exception:  # noqa: BLE001 -- the next round tries again
+                LOGGER.warning('task_completed retry failed', exc_info=True)
     after: tuple[str, uuid.UUID] | None = None
     while page := await store.unarchived(after, PAGE_SIZE):
         after = (page[-1]['organization_id'], page[-1]['id'])
@@ -200,6 +233,7 @@ async def sweep_once(
 async def run_sweeper(
     store: run_store.RunStore,
     tasks: agent_tasks.TaskStore,
+    trigger: task_store.CloseHook,
     *,
     stop: asyncio.Event,
 ) -> None:
@@ -216,6 +250,6 @@ async def run_sweeper(
         else:
             return
         try:
-            await sweep_once(store, tasks)
+            await sweep_once(store, tasks, trigger)
         except Exception:  # noqa: BLE001
             LOGGER.warning('Workflow run sweep failed', exc_info=True)

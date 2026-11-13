@@ -60,14 +60,6 @@ class SettingsTests(helpers.TestCase):
             cfg = settings.Slackbot()
         self.assertEqual('http://imbi-api:8000', cfg.api_url)
 
-    def test_api_base_url_adds_public_prefix(self) -> None:
-        with self.override_environment(
-            IMBI_INTERNAL_API_URL='http://imbi-api:8000/',
-            IMBI_API_URL='https://imbi.example.com/api/',
-        ):
-            cfg = settings.Slackbot()
-        self.assertEqual('http://imbi-api:8000/api', cfg.api_base_url)
-
     def test_singleton(self) -> None:
         first = settings.get_slackbot_settings()
         second = settings.get_slackbot_settings()

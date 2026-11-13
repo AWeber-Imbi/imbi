@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import datetime
 import http
@@ -222,3 +223,53 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 http.HTTPStatus.INTERNAL_SERVER_ERROR, response.status_code
             )
+
+
+class LifespanFailedTests(unittest.IsolatedAsyncioTestCase):
+    async def test_normal_shutdown_is_not_failed(self) -> None:
+        func = lifespan.Lifespan()
+        async with func(fastapi.FastAPI()):
+            pass
+        self.assertFalse(func.failed)
+
+    async def test_cancelled_lifespan_task_is_failed(self) -> None:
+        # The #287 failure: a task group cancels the ASGI lifespan task
+        # after startup, and the server keeps serving.
+        func = lifespan.Lifespan()
+        app = fastapi.FastAPI(lifespan=func)
+        receive: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+        sent: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+        await receive.put({'type': 'lifespan.startup'})
+        task = asyncio.create_task(
+            app({'type': 'lifespan', 'state': {}}, receive.get, sent.put)
+        )
+        self.assertEqual(
+            'lifespan.startup.complete', (await sent.get())['type']
+        )
+        self.assertFalse(func.failed)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        self.assertTrue(func.failed)
+
+    def test_failed_reads_request_lifespan(self) -> None:
+        func = lifespan.Lifespan()
+        app = fastapi.FastAPI(lifespan=func)
+
+        @app.get('/')
+        def handler(request: fastapi.Request) -> bool:
+            return lifespan.failed(request)
+
+        with fastapi.testclient.TestClient(app) as client:
+            self.assertFalse(client.get('/').json())
+            func.failed = True
+            self.assertTrue(client.get('/').json())
+
+    def test_failed_without_lifespan(self) -> None:
+        app = fastapi.FastAPI()
+
+        @app.get('/')
+        def handler(request: fastapi.Request) -> bool:
+            return lifespan.failed(request)
+
+        self.assertFalse(fastapi.testclient.TestClient(app).get('/').json())

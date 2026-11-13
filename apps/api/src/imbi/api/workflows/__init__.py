@@ -6,8 +6,8 @@ managed like ``agent_runtime``: the declarative schemata are applied on
 every start. imbi-api owns both; imbi-workflows executes the runs.
 
 The store lifespan also runs the archive sweep of the run log and the
-reconcile of agent step tasks (:mod:`imbi.api.workflows.sweeper`),
-because they need the pool.
+reconcile of agent step tasks and the retry of missed ``task_completed``
+runs (:mod:`imbi.api.workflows.sweeper`), because they need the pool.
 """
 
 import asyncio
@@ -68,7 +68,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         task_store.register_close_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(
-            sweeper.run_sweeper(_runs, tasks, stop=stop)
+            sweeper.run_sweeper(_runs, tasks, trigger, stop=stop)
         )
         try:
             yield definitions

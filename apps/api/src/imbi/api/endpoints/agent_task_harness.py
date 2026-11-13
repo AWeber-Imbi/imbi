@@ -230,6 +230,11 @@ class OutcomeSet(pydantic.BaseModel):
         pattern=_REASON_PATTERN,
         description='A slug. Required for every outcome but done_acted.',
     )
+    structured_output: dict[str, typing.Any] | None = pydantic.Field(
+        default=None,
+        description='The structured output that the agent returned, for '
+        'a task with an output schema.',
+    )
 
     @pydantic.model_validator(mode='after')
     def _reason_required(self) -> typing.Self:
@@ -882,6 +887,7 @@ async def set_agent_task_outcome(
             data.outcome,
             data.reason,
             _agent_actor(task),
+            data.structured_output,
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err

@@ -140,6 +140,10 @@ def _merge(
     return list(merged.values())
 
 
+def _today(zone: zoneinfo.ZoneInfo) -> datetime.date:
+    return datetime.datetime.now(zone).date()
+
+
 def _midnight(
     day: datetime.date, zone: zoneinfo.ZoneInfo
 ) -> datetime.datetime:
@@ -177,7 +181,7 @@ async def get_agent_usage(
             ``tz`` is not a known time zone.
 
     """
-    today = datetime.datetime.now(zone).date()
+    today = _today(zone)
     end = end or today
     start = start or end - datetime.timedelta(days=DEFAULT_RANGE_DAYS - 1)
     if start > end:

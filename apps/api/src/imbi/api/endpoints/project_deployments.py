@@ -6623,8 +6623,11 @@ async def _tags_by_sha(
         return {}
     try:
         rows = await clickhouse.query(
-            _PROJECT_TAGS_SQL + ' AND lower(sha) IN {shas:Array(String)}',
-            {'project_id': project_id, 'shas': wanted},
+            # Constant SQL; the shas go as an external table.
+            _PROJECT_TAGS_SQL  # noqa: S608
+            + ' AND lower(sha) IN (SELECT id FROM shas)',
+            {'project_id': project_id},
+            tables={'shas': wanted},
         )
     except Exception:
         LOGGER.exception('could not read tags for project %s', project_id)

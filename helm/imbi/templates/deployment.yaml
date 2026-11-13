@@ -192,27 +192,16 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
-          {{- else if has .Values.service.mode (list "assistant" "scheduler" "slackbot" "workflows") }}
-          livenessProbe:
-            httpGet:
-              path: /status
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 15
-          readinessProbe:
-            httpGet:
-              path: /status
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
           {{- else }}
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /status
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /status
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10

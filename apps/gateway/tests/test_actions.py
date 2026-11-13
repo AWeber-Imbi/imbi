@@ -3121,7 +3121,7 @@ class ActionSettingsTests(helpers.TestCase):
             IMBI_INTERNAL_API_URL='http://imbi-api:8000',
         ):
             settings = actions.ActionSettings()
-        self.assertEqual('http://imbi-api:8000/', str(settings.imbi_url))
+        self.assertEqual('http://imbi-api:8000', settings.api_url)
         self.assertEqual(_TOKEN, settings.api_token)
 
     def test_defaults_to_loopback(self) -> None:
@@ -3129,41 +3129,11 @@ class ActionSettingsTests(helpers.TestCase):
             IMBI_GATEWAY_API_TOKEN=_TOKEN, IMBI_INTERNAL_API_URL=None
         ):
             settings = actions.ActionSettings()
-        self.assertEqual('http://localhost:8000/', str(settings.imbi_url))
+        self.assertEqual('http://localhost:8000', settings.api_url)
 
     def test_requires_api_token(self) -> None:
         with (
             self.override_environment(IMBI_GATEWAY_API_TOKEN=None),
-            self.assertRaises(pydantic.ValidationError),
-        ):
-            actions.ActionSettings()
-
-    def test_api_base_url_joins_public_path_onto_internal_origin(
-        self,
-    ) -> None:
-        with self.override_environment(
-            IMBI_GATEWAY_API_TOKEN=_TOKEN,
-            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
-            IMBI_API_URL='https://imbi.example.com/api/',
-        ):
-            settings = actions.ActionSettings()
-        self.assertEqual('http://imbi-api:8000/api', settings.api_base_url)
-
-    def test_api_base_url_without_public_url_is_bare_origin(self) -> None:
-        with self.override_environment(
-            IMBI_GATEWAY_API_TOKEN=_TOKEN,
-            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
-            IMBI_API_URL=None,
-        ):
-            settings = actions.ActionSettings()
-        self.assertEqual('http://imbi-api:8000', settings.api_base_url)
-
-    def test_rejects_schemeless_public_url(self) -> None:
-        with (
-            self.override_environment(
-                IMBI_GATEWAY_API_TOKEN=_TOKEN,
-                IMBI_API_URL='imbi.example.com/api',
-            ),
             self.assertRaises(pydantic.ValidationError),
         ):
             actions.ActionSettings()

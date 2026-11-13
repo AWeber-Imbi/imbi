@@ -206,3 +206,21 @@ class UpstreamErrorHandlerTestCase(unittest.TestCase):
     def test_plugin_rate_limited_in_the_past_waits_one_second(self) -> None:
         response = self._get(plugin_errors.PluginRateLimited(0))
         self.assertEqual(response.headers['retry-after'], '1')
+
+    def test_installation_missing_is_403_app_not_installed(self) -> None:
+        response = self._get(
+            plugin_errors.PluginInstallationMissing('not installed')
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()['detail']['error'], 'app_not_installed'
+        )
+
+    def test_identity_access_denied_is_403_with_its_own_label(self) -> None:
+        response = self._get(
+            plugin_errors.PluginIdentityAccessDenied('no permission set')
+        )
+        self.assertEqual(response.status_code, 403)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'identity_access_denied')
+        self.assertEqual(detail['message'], 'no permission set')

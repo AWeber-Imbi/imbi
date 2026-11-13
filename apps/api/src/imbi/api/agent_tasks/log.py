@@ -60,7 +60,7 @@ _EVENT_COUNTS_QUERY = """
 SELECT task_id, uniqExact(seq) AS events, max(seq) AS max_seq
 FROM imbi.agent_task_events
 WHERE organization_id = {organization_id:String}
-  AND task_id IN {task_ids:Array(String)}
+  AND task_id IN (SELECT id FROM task_ids)
 GROUP BY task_id
 """
 
@@ -68,7 +68,7 @@ _USAGE_COUNTS_QUERY = """
 SELECT task_id, uniqExact(report_id) AS reports
 FROM imbi.agent_usage
 WHERE organization_id = {organization_id:String}
-  AND task_id IN {task_ids:Array(String)}
+  AND task_id IN (SELECT id FROM task_ids)
 GROUP BY task_id
 """
 
@@ -272,7 +272,8 @@ async def event_counts(
     """Return ``(distinct seqs, max seq)`` in ClickHouse, by task id."""
     rows = await clickhouse.query(
         _EVENT_COUNTS_QUERY,
-        {'organization_id': organization_id, 'task_ids': task_ids},
+        {'organization_id': organization_id},
+        tables={'task_ids': task_ids},
     )
     return {
         row['task_id']: (int(row['events']), int(row['max_seq']))
@@ -286,7 +287,8 @@ async def usage_counts(
     """Return the number of distinct usage reports in ClickHouse."""
     rows = await clickhouse.query(
         _USAGE_COUNTS_QUERY,
-        {'organization_id': organization_id, 'task_ids': task_ids},
+        {'organization_id': organization_id},
+        tables={'task_ids': task_ids},
     )
     return {row['task_id']: int(row['reports']) for row in rows}
 

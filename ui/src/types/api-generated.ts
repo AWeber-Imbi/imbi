@@ -6163,9 +6163,9 @@ export interface paths {
          * Get Run
          * @description Return a run with its step records.
          *
-         *     The ``reason`` and ``summary`` of an agent step's output come from
-         *     the agent task. Only a caller who can read agent tasks
-         *     (``agent_task:read``) gets them.
+         *     The ``reason``, ``summary``, and ``result`` of an agent step's
+         *     output come from the agent task. Only a caller who can read agent
+         *     tasks (``agent_task:read``) gets them.
          *
          *     Raises:
          *         404: No such workflow or run.
@@ -8380,13 +8380,17 @@ export interface paths {
         post?: never;
         /**
          * Delete Organization
-         * @description Delete an organization.
+         * @description Delete an empty organization. Its memberships go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
          *
          *     Raises:
          *         404: Organization not found.
+         *         409: The organization still has nodes that belong to it (teams,
+         *             agents, integrations, ...), secret providers, or an
+         *             identity source. Delete them first, so that each delete
+         *             does its own cleanup.
          */
         delete: operations["delete_organization_api_organizations__slug__delete"];
         options?: never;
@@ -11116,6 +11120,14 @@ export interface components {
             acknowledged_at?: string | null;
             /** Acknowledged By */
             acknowledged_by?: string | null;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Structured Output */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
             /** Blocked Since */
             blocked_since?: string | null;
         };
@@ -11288,6 +11300,14 @@ export interface components {
             acknowledged_at?: string | null;
             /** Acknowledged By */
             acknowledged_by?: string | null;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Structured Output */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** AgentTaskRetry */
         AgentTaskRetry: {
@@ -16242,6 +16262,13 @@ export interface components {
              * @description A slug. Required for every outcome but done_acted.
              */
             reason?: string | null;
+            /**
+             * Structured Output
+             * @description The structured output that the agent returned, for a task with an output schema.
+             */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * PRActivityResponse
@@ -20406,6 +20433,10 @@ export interface components {
             reason: string | null;
             /** Summary */
             summary: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** StepRun */
         StepRun: {

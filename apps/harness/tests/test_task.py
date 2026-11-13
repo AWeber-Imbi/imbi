@@ -332,6 +332,61 @@ class OutcomeTestCase(unittest.TestCase):
             with self.subTest(result=result):
                 self.assertEqual(task.outcome(result), expected)
 
+    def test_structured_output(self) -> None:
+        output: dict[str, typing.Any] = {'subjects': []}
+        cases = [
+            (None, None),
+            (self.result(), None),
+            (self.result(structured_output=output), output),
+            (self.result(structured_output='text'), None),
+            (
+                self.result(
+                    subtype='error_max_structured_output_retries',
+                    is_error=True,
+                    structured_output=output,
+                ),
+                None,
+            ),
+        ]
+        for result, expected in cases:
+            with self.subTest(result=result):
+                self.assertEqual(task.structured_output(result), expected)
+        self.assertEqual(
+            task.outcome(
+                self.result(
+                    subtype='error_max_structured_output_retries',
+                    is_error=True,
+                )
+            ),
+            ('failed_external', 'error_max_structured_output_retries'),
+        )
+
+    def test_require_output(self) -> None:
+        schema: dict[str, typing.Any] = {'output_schema': {'type': 'object'}}
+        output: dict[str, typing.Any] = {'subjects': []}
+        done = ('done_acted', None)
+        failed = ('failed_external', 'project_forbidden')
+        missing = ('failed_external', 'no_structured_output')
+        cases: list[
+            tuple[
+                tuple[str, str | None],
+                dict[str, typing.Any],
+                dict[str, typing.Any] | None,
+                tuple[str, str | None],
+            ]
+        ] = [
+            (done, {}, None, done),
+            (done, schema, output, done),
+            (done, schema, None, missing),
+            (('done_nothing_to_act_on', 'x'), schema, None, missing),
+            (failed, schema, None, failed),
+        ]
+        for given, subject, value, expected in cases:
+            with self.subTest(given=given, subject=subject, value=value):
+                self.assertEqual(
+                    task.require_output(given, subject, value), expected
+                )
+
     def test_success_uses_the_report_then_the_mutating_calls(self) -> None:
         reported = ('failed_external', 'project_forbidden')
         self.assertEqual(
@@ -704,6 +759,16 @@ class ConfigTestCase(TaskTestCase):
         self.assertNotIn('FORCE_PROMPT_CACHING_5M', options.env)
         subject.bundle['prompt']['params'] = {'effort': 'ultra'}
         self.assertIsNone(subject.options('u').effort)
+
+    def test_options_output_format(self) -> None:
+        self.assertIsNone(self.make().options('u').output_format)
+        subject = self.make()
+        schema: dict[str, typing.Any] = {'type': 'object', 'properties': {}}
+        subject.task['output_schema'] = schema
+        self.assertEqual(
+            subject.options('u').output_format,
+            {'type': 'json_schema', 'schema': schema},
+        )
 
     def test_options_five_minute_cache(self) -> None:
         subject = self.make()
@@ -1458,6 +1523,30 @@ class RunTestCase(TaskTestCase):
         self.assertFalse(self.proxy.call_args.kwargs['litellm'])
         transcript = self.tmp / 'transcripts' / 't.jsonl'
         self.assertEqual(len(transcript.read_text().splitlines()), 4)
+
+    async def test_posts_the_structured_output(self) -> None:
+        result = FakeClient.messages[-1]
+        assert isinstance(result, sdk.ResultMessage)
+        result.structured_output = {'subjects': ['Hi']}
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [
+                {
+                    'outcome': 'done_acted',
+                    'reason': None,
+                    'structured_output': {'subjects': ['Hi']},
+                }
+            ],
+        )
+
+    async def test_fails_without_the_structured_output(self) -> None:
+        self.run_task.task['output_schema'] = {'type': 'object'}
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'no_structured_output'}],
+        )
 
     async def test_litellm_upstream(self) -> None:
         subject = self.make(

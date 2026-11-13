@@ -13,7 +13,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
-    PluginInstallationMissing,
+    PluginIdentityAccessDenied,
 )
 from imbi.plugins.aws import identity
 from imbi.plugins.aws.errors import (
@@ -373,7 +373,7 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.access_token, 'iam-ic-token')
 
     @respx.mock
-    async def test_no_access_raises_installation_missing(self) -> None:
+    async def test_no_access_raises_identity_access_denied(self) -> None:
         respx.get(
             'https://portal.sso.us-east-1.amazonaws.com/federation/credentials'
         ).mock(
@@ -393,7 +393,7 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
                 'aws_role_name': 'PowerUserAccess',
             },
         )
-        with self.assertRaises(PluginInstallationMissing):
+        with self.assertRaises(PluginIdentityAccessDenied):
             await AWSIdentity().materialize(_ctx(), {}, connection)
 
     async def test_missing_account_or_role_raises(self) -> None:

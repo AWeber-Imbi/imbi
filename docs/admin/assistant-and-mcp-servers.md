@@ -50,7 +50,10 @@ versions, labels, the environment override, and the model settings, see
 
 An MCP server gives tools to the assistant. imbi-assistant uses every
 enabled server. Imbi connects to the server over streamable HTTP. The
-tool names in the assistant are `mcp_<tool prefix>_<tool>`. Agents do
+tool names in the assistant are `mcp_<tool prefix>_<tool>`. If the
+connection to a server fails, the next call to one of its tools opens
+the connection again. If that attempt also fails, the assistant waits
+60 seconds before it tries again. Agents do
 not use these servers. See
 [MCP servers and agents](#mcp-servers-and-agents).
 

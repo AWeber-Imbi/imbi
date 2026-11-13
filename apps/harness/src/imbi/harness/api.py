@@ -239,10 +239,16 @@ class TaskApi:
     async def report_usage(self, body: Body) -> Body:
         return await self._call('/usage', body)
 
-    async def set_outcome(self, outcome: str, reason: str | None) -> Body:
-        return await self._call(
-            '/outcome', {'outcome': outcome, 'reason': reason}
-        )
+    async def set_outcome(
+        self,
+        outcome: str,
+        reason: str | None,
+        structured_output: Body | None = None,
+    ) -> Body:
+        body: Body = {'outcome': outcome, 'reason': reason}
+        if structured_output is not None:
+            body['structured_output'] = structured_output
+        return await self._call('/outcome', body)
 
     async def create_resolution(self, body: Body) -> Body:
         return await self.client.create_resolution(

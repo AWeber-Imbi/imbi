@@ -7,7 +7,7 @@ import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
-from imbi.api import models
+from imbi.api import models, secret_broker
 from imbi.common import graph
 
 
@@ -50,6 +50,14 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
+        )
+        self.secret_store = mock.AsyncMock(
+            spec=secret_broker.store.SecretStore
+        )
+        self.secret_store.list_all.return_value = []
+        self.secret_store.identity_source.return_value = None
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.secret_store
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -256,15 +264,58 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         )
 
     def test_delete_organization(self) -> None:
-        """Test deleting organization."""
-        self.mock_db.execute.return_value = [{'n': 'true'}]
+        """An empty organization is deleted."""
+        # org id, contents, delete
+        self.mock_db.execute.side_effect = [
+            [{'id': 'org-1'}],
+            [],
+            [{'deleted': 1}],
+        ]
 
         response = self.client.delete(
             '/organizations/engineering',
         )
 
         self.assertEqual(response.status_code, 204)
-        self.mock_db.execute.assert_called_once()
+        self.secret_store.list_all.assert_awaited_once_with(
+            'providers', 'org-1'
+        )
+        self.secret_store.identity_source.assert_awaited_once_with('org-1')
+        self.assertIn(
+            'DETACH DELETE o', self.mock_db.execute.await_args.args[0]
+        )
+
+    def test_delete_organization_not_empty(self) -> None:
+        """Nodes or secret providers in the organization block the delete."""
+        self.secret_store.list_all.return_value = [{}, {}]
+        self.mock_db.execute.side_effect = [
+            [{'id': 'org-1'}],
+            [{'label': 'Team', 'n': 3}, {'label': 'Agent', 'n': 1}],
+        ]
+
+        response = self.client.delete(
+            '/organizations/engineering',
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()['detail'],
+            "Organization 'engineering' is not empty: Agent (1), Team (3), "
+            'secret providers (2). Delete these first.',
+        )
+        self.assertEqual(self.mock_db.execute.await_count, 2)
+
+    def test_delete_organization_with_secrets_only(self) -> None:
+        """An identity source alone blocks the delete."""
+        self.secret_store.identity_source.return_value = {}
+        self.mock_db.execute.side_effect = [[{'id': 'org-1'}], []]
+
+        response = self.client.delete(
+            '/organizations/engineering',
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('identity sources (1)', response.json()['detail'])
 
     def test_delete_organization_not_found(self) -> None:
         """Test deleting non-existent organization."""
