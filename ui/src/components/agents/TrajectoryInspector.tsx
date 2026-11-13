@@ -2,6 +2,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  useId,
   useRef,
   useState,
 } from 'react'
@@ -92,6 +93,7 @@ export function TrajectoryInspector({
   const panel = useRef<HTMLElement>(null)
   const tabs = tabsFor(inspected)
   const current = tabs.includes(tab) ? tab : 'Summary'
+  const base = useId()
 
   const limit = (w: number) => {
     const split = panel.current?.parentElement?.clientWidth ?? 0
@@ -174,6 +176,7 @@ export function TrajectoryInspector({
       >
         {tabs.map((name) => (
           <button
+            aria-controls={`${base}-panel`}
             aria-selected={current === name}
             className={cn(
               'relative shrink-0 px-2.25 text-[13px] leading-5 outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--tj-business)]',
@@ -181,9 +184,28 @@ export function TrajectoryInspector({
                 ? 'text-(--tj-business)'
                 : 'text-(--tj-label-3) hover:text-(--tj-label-1)',
             )}
+            id={`${base}-${name}`}
             key={name}
             onClick={() => onTab(name)}
+            onKeyDown={(e) => {
+              const i = tabs.indexOf(current)
+              const next =
+                e.key === 'ArrowRight'
+                  ? tabs[(i + 1) % tabs.length]
+                  : e.key === 'ArrowLeft'
+                    ? tabs[(i - 1 + tabs.length) % tabs.length]
+                    : e.key === 'Home'
+                      ? tabs[0]
+                      : e.key === 'End'
+                        ? tabs[tabs.length - 1]
+                        : null
+              if (!next) return
+              e.preventDefault()
+              onTab(next)
+              document.getElementById(`${base}-${next}`)?.focus()
+            }}
             role="tab"
+            tabIndex={current === name ? 0 : -1}
             type="button"
           >
             {name}
@@ -193,7 +215,12 @@ export function TrajectoryInspector({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-4" role="tabpanel">
+      <div
+        aria-labelledby={`${base}-${current}`}
+        className="min-h-0 flex-1 overflow-y-auto pb-4"
+        id={`${base}-panel`}
+        role="tabpanel"
+      >
         <TabBody
           inspected={inspected}
           live={live}

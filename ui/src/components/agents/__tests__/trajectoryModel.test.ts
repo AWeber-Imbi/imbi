@@ -255,3 +255,84 @@ describe('helpers', () => {
     expect(recordForSeq(t.records, 99)?.kind).toBe('system')
   })
 })
+
+describe('subagent calls and previews', () => {
+  const sub = { actor_kind: 'subagent' as const }
+  const running = [
+    event(1, 'usage.reported', { tokens_in: 1, tokens_out: 1 }),
+    event(2, 'turn', { body: 'Searching', parent_call_id: 'a1' }, sub),
+    event(
+      3,
+      'tool.called',
+      {
+        call_id: 's1',
+        duration_ms: 1000,
+        parent_call_id: 'a1',
+        result: 'x',
+        tool: 'Grep',
+      },
+      sub,
+    ),
+  ]
+  const done = [
+    ...running,
+    event(4, 'tool.called', {
+      arguments: { description: 'look' },
+      call_id: 'a1',
+      duration_ms: 4000,
+      result: 'ok',
+      tool: 'Agent',
+    }),
+  ]
+
+  it('keeps the id of a running call once it is written', () => {
+    const before = buildTrajectory(running, true).records
+    const after = buildTrajectory(done, false).records
+    expect(before.find((r) => r.kind === 'tool')?.id).toBe('call:a1')
+    expect(after.find((r) => r.kind === 'tool')?.id).toBe('call:a1')
+  })
+
+  it('starts a running call when its first child started', () => {
+    const records = buildTrajectory(running, true).records
+    const call = records.find((r) => r.kind === 'tool')!
+    const child = records.find((r) => r.kind === 'subtool')!
+    expect(call.startedAt).toBe(child.startedAt)
+    expect(call.startedAt).toBe(Date.parse(running[2].at) - 1000)
+  })
+
+  it('links a subagent turn to the call that owns it', () => {
+    const records = buildTrajectory(done, false).records
+    expect(recordForSeq(records, 2)?.id).toBe('call:a1')
+    expect(recordForSeq(records, 3)?.kind).toBe('subtool')
+  })
+
+  it('shows string arguments in the ledger', () => {
+    const records = buildTrajectory(
+      [
+        event(1, 'usage.reported', {}),
+        event(2, 'tool.called', {
+          arguments: '{"file_path": "big.txt", "content": "…',
+          arguments_truncated: true,
+          call_id: 'w',
+          result: 'ok',
+          tool: 'Write',
+        }),
+      ],
+      false,
+    ).records
+    expect(records.find((r) => r.kind === 'tool')?.tool?.args).toContain(
+      'big.txt',
+    )
+  })
+
+  it('keeps snake_case, code and symbols in a preview', () => {
+    expect(
+      preview('src/analytics_ingestion/app.py get_user_id(x) -> int'),
+    ).toBe('src/analytics_ingestion/app.py get_user_id(x) -> int')
+    expect(preview('```\n{"ok":true}\n```')).toBe('{"ok":true}')
+    expect(preview('a*b = 2**3 #1 > 0')).toBe('a*b = 2**3 #1 > 0')
+    expect(preview('# Title\n> quoted `code` and **bold**')).toBe(
+      'Title quoted code and bold',
+    )
+  })
+})

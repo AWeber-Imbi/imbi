@@ -153,6 +153,109 @@ describe('TrajectoryTab ledger', () => {
   })
 })
 
+describe('TrajectoryTab links and live tasks', () => {
+  it('falls back to the record before a seq no record holds', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/agents/tasks/acme/T-1/trajectory#e50',
+    )
+    renderTab()
+    expect(rows()[rows().length - 1]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('treats a blocked task as live, so a running call is Pending', async () => {
+    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    renderTab('blocked', [
+      ...LOG,
+      event(
+        12,
+        'tool.called',
+        { call_id: 's1', duration_ms: 5, parent_call_id: 'a1', tool: 'Grep' },
+        { actor_kind: 'subagent' },
+      ),
+    ])
+    const pending = rows().find(
+      (r) => r.getAttribute('data-record') === 'call:a1',
+    )!
+    await userEvent.click(pending)
+    expect(
+      within(inspector()).getByText('Status').nextElementSibling,
+    ).toHaveTextContent('Pending')
+  })
+
+  it('keeps a running call selected once it is written', async () => {
+    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    const sub = event(
+      12,
+      'tool.called',
+      { call_id: 's1', duration_ms: 5, parent_call_id: 'a1', tool: 'Grep' },
+      { actor_kind: 'subagent' },
+    )
+    const t = (status: AgentTask['status']) =>
+      task({ status }) as unknown as AgentTask
+    const view = render(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={[...LOG, sub]} task={t('running')} />
+      </div>,
+    )
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:a1')!,
+    )
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab
+          events={[
+            ...LOG,
+            sub,
+            event(13, 'tool.called', {
+              call_id: 'a1',
+              duration_ms: 50,
+              result: 'ok',
+              tool: 'Agent',
+            }),
+          ]}
+          task={t('running')}
+        />
+      </div>,
+    )
+    expect(
+      rows().find((r) => r.getAttribute('data-record') === 'call:a1'),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(inspector()).toBeInTheDocument()
+  })
+
+  it('clears the search when a span re-selects a hidden record', async () => {
+    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    renderTab()
+    await userEvent.click(rows()[3])
+    const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
+    await userEvent.type(search, 'grep')
+    const bar = spanBars()[3]
+    fireEvent.pointerDown(bar, { button: 0, clientX: 10 })
+    fireEvent.pointerUp(bar, { button: 0, clientX: 10 })
+    expect(search).toHaveValue('')
+    expect(rows()[3]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('moves between inspector tabs with the arrow keys', async () => {
+    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    renderTab()
+    await userEvent.click(rows()[3])
+    const summary = within(inspector()).getByRole('tab', { name: 'Summary' })
+    expect(within(inspector()).getByRole('tabpanel')).toHaveAccessibleName(
+      'Summary',
+    )
+    summary.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    const payload = within(inspector()).getByRole('tab', { name: 'Payload' })
+    expect(payload).toHaveAttribute('aria-selected', 'true')
+    expect(payload).toHaveFocus()
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(summary).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
 describe('TrajectoryTab toolbar', () => {
   it('collapses and expands every turn with one button', async () => {
     renderTab()
@@ -396,7 +499,9 @@ describe('TrajectoryTab inspector', () => {
     )
     expect(within(inspector()).getByText('Request #1')).toBeInTheDocument()
     expect(tabNames()).toEqual(['Summary', 'Usage', 'Timing'])
-    expect(within(inspector()).getAllByText('TTFT')[0]).toBeInTheDocument()
+    expect(
+      within(inspector()).getAllByText('TTFT')[0].nextElementSibling,
+    ).toHaveTextContent('Not recorded')
     await userEvent.click(
       within(inspector()).getByRole('tab', { name: 'Usage' }),
     )

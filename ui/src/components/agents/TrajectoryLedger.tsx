@@ -41,8 +41,6 @@ interface LedgerProps {
   activeTurn: null | number
   /** Record ids inside the overview range; null when there is no range. */
   focused: null | Set<string>
-  /** Keeps the ledger at the bottom while the task runs. */
-  live: boolean
   onClear: () => void
   onDoubleClick: (record: TrajectoryRecord) => void
   onFold: (fold: Fold) => void
@@ -83,7 +81,6 @@ export function KindTag({ kind }: { kind: TrajectoryKind }) {
 export function TrajectoryLedger({
   activeTurn,
   focused,
-  live,
   onClear,
   onDoubleClick,
   onFold,
@@ -95,7 +92,7 @@ export function TrajectoryLedger({
   turnStarts,
 }: LedgerProps) {
   const pane = useRef<HTMLDivElement>(null)
-  const following = useRef(live)
+  const following = useRef(true)
   const requestAt = new Map(requests.map((r) => [r.assistant, r]))
 
   useLayoutEffect(() => {
@@ -407,6 +404,8 @@ function SummaryRow({
 }) {
   return (
     <tr
+      aria-expanded={false}
+      aria-label={`Expand ${text}`}
       aria-rowindex={index + 1}
       className="h-5 cursor-pointer outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-business)]"
       data-summary

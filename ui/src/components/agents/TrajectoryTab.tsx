@@ -25,12 +25,6 @@ import {
 } from './TrajectoryOverview'
 import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
 
-const SET_OF: Record<FoldButton, keyof Folds> = {
-  calls: 'calls',
-  subcalls: 'subcalls',
-  turns: 'turns',
-}
-
 /**
  * The Trajectory tab, after the DeepSeek Harness trajectory view: a
  * toolbar, a timing overview, and a ledger of every record the task
@@ -45,7 +39,7 @@ export function TrajectoryTab({
 }) {
   const navigate = useNavigate()
   const { hash, pathname } = useLocation()
-  const live = task.status === 'running'
+  const live = task.status !== 'closed'
   const trajectory = useMemo(
     () => buildTrajectory(events, live),
     [events, live],
@@ -101,7 +95,7 @@ export function TrajectoryTab({
   )
   const folded = Object.fromEntries(
     (['turns', 'calls', 'subcalls'] as const).map((button) => {
-      const set = folds[SET_OF[button]] as Set<number | string>
+      const set = folds[button] as Set<number | string>
       const list = keys[button]
       return [button, list.length ? list.every((k) => set.has(k)) : null]
     }),
@@ -112,6 +106,15 @@ export function TrajectoryTab({
       setFolds((prev) => unfoldFor(prev, record, trajectory))
       setScrollTo({ id: record.id })
     },
+    [trajectory],
+  )
+
+  const hides = useCallback(
+    (q: string, id: string) =>
+      !!q.trim() &&
+      !rowsOf(trajectory, emptyFolds(), q).some(
+        (r) => r.kind === 'record' && r.record.id === id,
+      ),
     [trajectory],
   )
 
@@ -127,28 +130,23 @@ export function TrajectoryTab({
         ? prev
         : { id: record.id, type: 'record' },
     )
-    setQuery((q) =>
-      q.trim() &&
-      !rowsOf(trajectory, emptyFolds(), q).some(
-        (r) => r.kind === 'record' && r.record.id === record.id,
-      )
-        ? ''
-        : q,
-    )
+    setQuery((q) => (hides(q, record.id) ? '' : q))
     reveal(record)
-  }, [linked, records, reveal, trajectory])
+  }, [hides, linked, records, reveal])
 
   const select = useCallback(
     (next: TrajectorySelection) => {
       setSelection(next)
       if (next?.type !== 'record') return
+      const id = next.id
+      setQuery((q) => (hides(q, id) ? '' : q))
       if (focused && !focused.has(next.id)) setRange(null)
       const record = byId.get(next.id)
       const seq = record?.seqs.length ? Math.min(...record.seqs) : null
       if (seq !== null && hash !== `#e${seq}`)
         navigate(`${pathname}#e${seq}`, { replace: true })
     },
-    [byId, focused, hash, navigate, pathname],
+    [byId, focused, hash, hides, navigate, pathname],
   )
 
   const toggle = (fold: Fold) =>
@@ -163,7 +161,7 @@ export function TrajectoryTab({
   const foldAll = (button: FoldButton) =>
     setFolds((prev) => {
       const next = copyFolds(prev)
-      const set = next[SET_OF[button]] as Set<number | string>
+      const set = next[button] as Set<number | string>
       const list = keys[button]
       const all = list.every((k) => set.has(k))
       for (const k of list) {
@@ -232,7 +230,6 @@ export function TrajectoryTab({
         <TrajectoryLedger
           activeTurn={activeTurn}
           focused={focused}
-          live={live}
           onClear={() => setSelection(null)}
           onDoubleClick={onDoubleClick}
           onFold={toggle}

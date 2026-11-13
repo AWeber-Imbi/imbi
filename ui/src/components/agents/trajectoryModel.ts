@@ -81,7 +81,6 @@ export interface TrajectoryTool {
   args: string
   arguments: unknown
   callId: null | string
-  durationMs: null | number
   name: string
   result: string
   resultValue: unknown
@@ -276,9 +275,11 @@ export function formatDuration(ms: number): string {
 export function preview(markdown: string): string {
   const text = markdown
     .slice(0, 2048)
-    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/```[^\n]*\n?/g, ' ')
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`#>]+/g, '')
+    .replace(/^ {0,3}(#{1,6}|>) +/gm, '')
+    .replace(/(\*\*|__)(?=\S)([^*_]*?\S)\1/g, '$2')
+    .replace(/`([^`\n]+)`/g, '$1')
     .replace(/\s+/g, ' ')
     .trim()
   return text.length > 512 || markdown.length > 2048
@@ -504,8 +505,6 @@ function lineFor(e: AgentTaskEvent): string {
       return 'Session closed'
     case 'session.opened':
       return 'Session opened'
-    case 'task.created':
-      return 'Task created'
     case 'todos.updated':
       return 'Plan updated'
   }
@@ -571,26 +570,44 @@ function toolRecord(
   const duration = typeof p.duration_ms === 'number' ? p.duration_ms : null
   const end = e ? at(e) : null
   const childStarts = entry.children.flatMap((c) =>
-    c.event ? [at(c.event)] : [],
+    c.event
+      ? [
+          at(c.event) -
+            (typeof c.event.payload.duration_ms === 'number'
+              ? c.event.payload.duration_ms
+              : 0),
+        ]
+      : [],
   )
+  const owned: number[] = []
+  const walk = (x: TimelineEntry) => {
+    for (const c of x.children)
+      if (c.event && c.event.type !== 'tool.called') {
+        owned.push(c.seq)
+        walk(c)
+      }
+  }
+  walk(entry)
   const start =
     end !== null
       ? end - (duration ?? 0)
       : childStarts.length
         ? Math.min(...childStarts)
         : null
-  const args = isRecord(p.arguments) ? p.arguments : {}
-  const summaryText = toolSummary(tool, args)
+  const summaryText =
+    typeof p.arguments === 'string'
+      ? preview(p.arguments)
+      : toolSummary(tool, isRecord(p.arguments) ? p.arguments : {})
   return {
     body: { reply: '', thinking: '' },
     endedAt: end,
     error: isError(entry),
     events: e ? [e] : [],
-    id: entry.id,
+    id: entry.parentOf ? `call:${entry.parentOf}` : entry.id,
     kind,
     parent,
     request: request.number,
-    seqs: e ? [e.seq] : [],
+    seqs: [...(e ? [e.seq] : []), ...owned],
     startedAt: start,
     step: request.step,
     text: `${toolLabel(tool)} ${summaryText}`,
@@ -598,7 +615,6 @@ function toolRecord(
       args: summaryText,
       arguments: p.arguments,
       callId: entry.parentOf,
-      durationMs: duration,
       name: toolLabel(tool),
       result: e ? preview(resultText(p.result)) : '',
       resultValue: p.result,
