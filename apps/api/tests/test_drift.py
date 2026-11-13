@@ -148,8 +148,8 @@ class VerdictsByShaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual({FULL_SHA: True, 'e' * 40: False}, verdicts)
         # The queried shas are lowercased to join the verdict table.
-        params = self.query.await_args.args[1]
-        self.assertIn(FULL_SHA, params['shas'])
+        tables = self.query.await_args.kwargs['tables']
+        self.assertIn(FULL_SHA, tables['shas'])
 
     async def test_no_shas_asks_nothing(self) -> None:
         self.assertEqual({}, await drift.verdicts_by_sha('p1', []))

@@ -227,8 +227,9 @@ async def verdicts_by_sha(
             # Table name is a module constant; values are bound params.
             f'SELECT sha, drift_detected FROM {VERDICT_TABLE} FINAL '  # noqa: S608
             'WHERE project_id = {project_id:String} '
-            'AND sha IN {shas:Array(String)}',
-            {'project_id': project_id, 'shas': wanted},
+            'AND sha IN (SELECT id FROM shas)',
+            {'project_id': project_id},
+            tables={'shas': wanted},
         )
     except Exception:
         LOGGER.exception(
