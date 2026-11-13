@@ -1002,6 +1002,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # `system` tasks belong to no user, so firing and managing
             # them is an :admin operation by definition.
             'scheduled_task:admin',
+            # System tasks start maintenance operations
+            # (POST /maintenance/operations/{slug}/run).
+            'admin:maintenance:manage',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).

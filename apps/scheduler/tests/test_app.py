@@ -10,7 +10,7 @@ import pydantic
 import imbi.scheduler.app
 from apps.scheduler.tests import helpers
 from imbi.common import graph, lifespan, sentry
-from imbi.scheduler import app_status, lifespans, store
+from imbi.scheduler import app_status, lifespans, store, system_tasks
 
 
 class AppTests(helpers.TestCase):
@@ -34,6 +34,7 @@ class AppTests(helpers.TestCase):
                 lifespans.iggy_hook,
                 graph.graph_lifespan,
                 store.store_lifespan,
+                system_tasks.hook,
                 lifespans.engine_hook,
             ),
             composed.call_args.args,

@@ -37,6 +37,10 @@ from imbi.common import lifespan, relational
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
 
+#: The store that :func:`store_lifespan` opened, for code outside a
+#: request (the maintenance worker).
+_store: HarnessStore | None = None
+
 
 async def initialize() -> None:
     """Create the ``harness`` schema, tables, and indexes."""
@@ -51,6 +55,7 @@ async def initialize() -> None:
 async def store_lifespan() -> abc.AsyncGenerator[HarnessStore]:
     """Initialize the schema, hold the store open, sweep leases, and
     refresh the pool gauges."""
+    global _store
     await initialize()
     pool = create_pool()
     try:
@@ -59,9 +64,11 @@ async def store_lifespan() -> abc.AsyncGenerator[HarnessStore]:
         stop = asyncio.Event()
         sweep = asyncio.create_task(sweeper.run_sweeper(store, stop=stop))
         gauges = asyncio.create_task(metrics.run_refresher(store, stop=stop))
+        _store = store
         try:
             yield store
         finally:
+            _store = None
             stop.set()
             for task in (sweep, gauges):
                 task.cancel()
@@ -69,6 +76,13 @@ async def store_lifespan() -> abc.AsyncGenerator[HarnessStore]:
                     await task
     finally:
         await pool.close()
+
+
+def get_store() -> HarnessStore:
+    """Return the store that :func:`store_lifespan` opened."""
+    if _store is None:
+        raise RuntimeError('store_lifespan has not opened the store')
+    return _store
 
 
 async def _inject_store(

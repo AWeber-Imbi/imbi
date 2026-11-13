@@ -691,6 +691,19 @@ class HarnessStore:
             (organization_id,),
         )
 
+    async def marketplace_ids(self) -> list[str]:
+        """Return the id of every marketplace in every organization."""
+        rows = await self._fetch_all(
+            'SELECT id FROM harness.marketplaces ORDER BY id', ()
+        )
+        return [str(row['id']) for row in rows]
+
+    async def marketplace_by_id(self, marketplace_id: str) -> Row | None:
+        return await self._fetch_one(
+            'SELECT * FROM harness.marketplaces WHERE id = %s',
+            (marketplace_id,),
+        )
+
     async def marketplace(self, organization_id: str, slug: str) -> Row | None:
         return await self._fetch_one(
             'SELECT * FROM harness.marketplaces'

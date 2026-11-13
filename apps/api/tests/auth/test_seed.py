@@ -289,8 +289,9 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         The scheduler manages the schedule and reads everything else; the
         gateway writes only projects (which covers releases and SBOMs).
         Both can start agent tasks (ADR 0020) and workflow runs (ADR
-        0021), with their own origin. Widening either is a deliberate
-        decision, not a drive-by edit.
+        0021), with their own origin. The scheduler can also start
+        maintenance operations, which its system tasks call. Widening
+        either is a deliberate decision, not a drive-by edit.
         """
         scheduler = next(
             r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-scheduler'
@@ -300,7 +301,10 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             for perm in scheduler[4]
             if ':read' not in perm and not perm.startswith('scheduled_task:')
         }
-        self.assertEqual(non_read, {'agent_task:create', 'workflow:run'})
+        self.assertEqual(
+            non_read,
+            {'agent_task:create', 'workflow:run', 'admin:maintenance:manage'},
+        )
 
         gateway = next(r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-gateway')
         self.assertEqual(

@@ -477,7 +477,9 @@ async def eligible_agents(
     return agents, limits
 
 
-async def _org_slugs(db: graph.Graph, ids: list[str]) -> dict[str, str]:
+async def organization_slugs(
+    db: graph.Graph, ids: list[str]
+) -> dict[str, str]:
     if not ids:
         return {}
     records = await db.execute(_ORGS_BY_ID_QUERY, {'ids': ids}, ['id', 'slug'])
@@ -802,7 +804,7 @@ async def _claim(
     )
     if not accounts:
         raise _NoServiceAccount(task['short_id'])
-    org_slugs = await _org_slugs(db, [task['organization_id']])
+    org_slugs = await organization_slugs(db, [task['organization_id']])
     grant = tokens.AgentGrant(
         chain_id=chain['root_task_id'],
         attempt=chain['attempt'],
@@ -1033,7 +1035,7 @@ async def _chain_task(
     grant = caller.grant
     if grant is None:  # pragma: no cover - AgentCaller has a grant
         raise RuntimeError('an agent caller has no grant')
-    org_slug = (await _org_slugs(db, [grant.organization_id])).get(
+    org_slug = (await organization_slugs(db, [grant.organization_id])).get(
         grant.organization_id
     )
     if org_slug is None:
@@ -1145,7 +1147,7 @@ async def list_harness_pools(
     runners = await store.runners([pool['name'] for pool in pools])
     ids = {org for pool in pools for org in pool['organization_ids']}
     ids |= {r['chain_organization_id'] for r in runners} - {None}
-    org_slugs = await _org_slugs(db, sorted(ids))
+    org_slugs = await organization_slugs(db, sorted(ids))
     return [
         _pool_response(
             pool,
@@ -1271,7 +1273,9 @@ async def create_harness_pool(
         )
     except harness.PoolExists as err:
         raise _conflict('pool_exists', f'Pool {data.name!r} exists') from err
-    return _pool_response(pool, await _org_slugs(db, org_ids), [], None)
+    return _pool_response(
+        pool, await organization_slugs(db, org_ids), [], None
+    )
 
 
 @harness_router.patch('/pools/{name}', response_model=PoolResponse)
@@ -1315,7 +1319,10 @@ async def update_harness_pool(
         )
     runners = await store.runners([name])
     return _pool_response(
-        pool, await _org_slugs(db, pool['organization_ids']), runners, None
+        pool,
+        await organization_slugs(db, pool['organization_ids']),
+        runners,
+        None,
     )
 
 
@@ -1469,7 +1476,7 @@ async def _renew_api_tokens(
         runner_id=runner['id'],
         organization_id=chain['organization_id'],
     )
-    org_slugs = await _org_slugs(db, [chain['organization_id']])
+    org_slugs = await organization_slugs(db, [chain['organization_id']])
     renewed: dict[str, ApiToken] = {}
     for short_id in short_ids:
         task = await tasks.get(chain['organization_id'], short_id.upper())
@@ -1710,7 +1717,7 @@ async def create_harness_child_task(
     parent = await _chain_task(caller, short_id, db, store)
     if parent['status'] == 'closed':
         raise _conflict('task_closed', f'Task {parent["short_id"]} is closed')
-    org_slugs = await _org_slugs(db, [parent['organization_id']])
+    org_slugs = await organization_slugs(db, [parent['organization_id']])
     if not await tasks_api.may_create(
         db, org_slugs.get(parent['organization_id'], ''), parent['owner']
     ):
@@ -2208,7 +2215,7 @@ async def _responses(
     *,
     with_agents: bool,
 ) -> list[EgressDestinationResponse]:
-    org_slugs = await _org_slugs(
+    org_slugs = await organization_slugs(
         db, sorted({o for row in rows for o in row['organization_ids']})
     )
     agents = await _agents_by_destination(db) if with_agents else {}
