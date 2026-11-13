@@ -5,7 +5,7 @@ import typing as t
 import fastapi
 import pydantic
 
-from imbi.common import graph
+from imbi.common import lifespan
 
 router = fastapi.APIRouter()
 
@@ -35,15 +35,9 @@ class Status(pydantic.BaseModel):
     operation_id='getStatus',
 )
 def status_endpoint(
-    *,
-    request: fastapi.Request,
-    response: fastapi.Response,
-    db: graph.Pool,
+    *, request: fastapi.Request, response: fastapi.Response
 ) -> Status:
-    # A closed pool means the lifespan was torn down while the process
-    # kept serving; nothing reopens it, so report 503 and let the probe
-    # replace the pod. This checks local state only, never the database.
-    ok = db.opened
+    ok = not lifespan.failed(request)
     if not ok:
         response.status_code = 503
     return Status(

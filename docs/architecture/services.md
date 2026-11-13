@@ -111,13 +111,15 @@ The Helm chart uses these probes for each `service.mode`:
 | `service.mode` | Probe |
 |---|---|
 | `all`, `api`, `ui` | HTTP GET on the imbi-api status path, through the container port |
-| `assistant`, `scheduler`, `slackbot`, `workflows` | HTTP GET `/status` |
-| `gateway`, `mcp` | TCP connect on the container port |
+| `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`, `workflows` | HTTP GET `/status` |
 
-imbi-assistant `/status` returns 503 with `status: failing` when its graph
-pool is closed. A closed pool does not open again, so Kubernetes must
-replace the pod. The check reads process state only. It does not query
-PostgreSQL, so a database outage does not restart the pod.
+`/status` returns 503 when the application lifespan stopped while the
+process continues to serve. imbi-api then returns `status: error`. The
+other services return `status: failing`. After the lifespan stops, its
+pools are closed and do not open again, so Kubernetes must replace the
+pod. The check reads process state only. It does not query a database,
+so a database outage does not restart the pod. imbi-mcp does not use the
+shared lifespan, so its `/status` always returns `ok`.
 
 In `ui` mode the probe goes through Caddy to imbi-api. Thus a `ui` pod is
 not ready when imbi-api is down.
