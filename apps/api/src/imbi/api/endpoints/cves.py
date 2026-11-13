@@ -24,7 +24,7 @@ async def get_cve(
     ],
 ) -> cves.CveRecord:
     """Return one CVE record from the catalog."""
-    normalized = cve_id.strip().upper()
+    normalized = cves.normalize(cve_id)
     record = (await cves.lookup([normalized])).get(normalized)
     if record is None:
         raise fastapi.HTTPException(

@@ -1139,19 +1139,12 @@ async def execute_marketplace_sync(
 
 
 async def enumerate_cve_release(db: graph.Graph) -> list[str]:
-    """The tag of the newest CVE List release: one item per run.
+    """One item per run: the import of the newest CVE List release.
 
-    A GitHub failure is a ``502`` from the run endpoint, so the scheduler
-    run that started it shows the cause.
+    The item is resolved when it runs, so a run makes one GitHub call
+    and reports a GitHub failure in one place, the attempt row.
     """
-    try:
-        async with cves.http_client() as http:
-            return [await cves.latest_release_tag(http)]
-    except httpx.HTTPError as err:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=f'Cannot read the latest CVE List release: {err!r}',
-        ) from err
+    return ['latest']
 
 
 async def execute_cve_sync(
@@ -1161,15 +1154,14 @@ async def execute_cve_sync(
     *,
     ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
-    """Import the CVE records of release ``item_id`` that changed.
+    """Import the CVE records that changed in the newest CVE List release.
 
     The whole import is one item, so a failure fails the run and the
     next daily run tries again. Records published before the failure
     stay, and the next run does not publish them again.
     """
     try:
-        async with cves.http_client() as http:
-            result = await cves.import_release(http, item_id)
+        result = await cves.import_latest()
     except cves.ImportFailed as err:
         raise MaintenanceItemFailed(str(err)) from err
     except httpx.HTTPError as err:
@@ -1179,8 +1171,9 @@ async def execute_cve_sync(
     ctx.log.record(
         'succeeded',
         'cve-sync',
-        f'Read {result.records} CVE records, published {result.published}',
-        release=item_id,
+        f'Read {result.records} CVE records from {result.release}, '
+        f'published {result.published}',
+        release=result.release,
         records=result.records,
         published=result.published,
     )

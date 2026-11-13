@@ -9,7 +9,6 @@ import unittest
 import zipfile
 from unittest import mock
 
-import fastapi
 import httpx
 import orjson
 import respx
@@ -201,36 +200,32 @@ class ChangedBatchesTests(unittest.TestCase):
                 _record('CVE-2025-0003'),
             )
         )
-        same = datetime.datetime(2025, 2, 1, 10, 0, 0, 123000, tzinfo=UTC)
-        existing = {
-            'CVE-2025-0001': same,
-            'CVE-2025-0002': same - datetime.timedelta(seconds=1),
-        }
-        counter = [0]
-        batches = list(cves.changed_batches(self.path, existing, counter))
-        self.assertEqual(3, counter[0])
+        # 2025-02-01T10:00:00.123Z in epoch milliseconds.
+        same = 1_738_404_000_123
+        existing = {'CVE-2025-0001': same, 'CVE-2025-0002': same - 1}
+        items = list(cves.changed_batches(self.path, existing))
+        self.assertEqual(3, items[-1][1])
         self.assertEqual(
             ['CVE-2025-0002', 'CVE-2025-0003'],
-            sorted(r.cve_id for batch in batches for r in batch),
+            sorted(r.cve_id for batch, _ in items for r in batch),
         )
 
     def test_yields_batches_of_the_given_size(self) -> None:
         self._write(_files(*(_record(f'CVE-2025-000{i}') for i in range(5))))
-        sizes = [
-            len(batch) for batch in cves.changed_batches(self.path, {}, [0], 2)
-        ]
-        self.assertEqual([2, 2, 1], sizes)
+        items = list(cves.changed_batches(self.path, {}, 2))
+        self.assertEqual(
+            [(2, 2), (2, 4), (1, 5)], [(len(b), n) for b, n in items]
+        )
 
     def test_skips_files_that_are_not_records(self) -> None:
         files = _files(_record('CVE-2025-0001'))
         files['cves/2025/0xxx/CVE-2025-0002.json'] = b'{not json'
         files['cves/delta.json'] = b'{}'
         self._write(files)
-        counter = [0]
-        batches = list(cves.changed_batches(self.path, {}, counter))
-        self.assertEqual(2, counter[0])
+        items = list(cves.changed_batches(self.path, {}))
+        self.assertEqual(2, items[-1][1])
         self.assertEqual(
-            ['CVE-2025-0001'], [r.cve_id for b in batches for r in b]
+            ['CVE-2025-0001'], [r.cve_id for b, _ in items for r in b]
         )
 
 
@@ -245,13 +240,8 @@ class ImportReleaseTests(unittest.IsolatedAsyncioTestCase):
             'imbi.common.clickhouse.query',
             new_callable=mock.AsyncMock,
             return_value=[
-                {
-                    'cve_id': 'CVE-2025-0001',
-                    # ClickHouse returns naive UTC.
-                    'updated_at': datetime.datetime(
-                        2025, 2, 1, 10, 0, 0, 123000, tzinfo=UTC
-                    ).replace(tzinfo=None),
-                }
+                # 2025-02-01T10:00:00.123Z in epoch milliseconds.
+                {'cve_id': 'CVE-2025-0001', 'version': 1_738_404_000_123}
             ],
         )
         self.query = query.start()
@@ -263,7 +253,7 @@ class ImportReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(publish.stop)
 
     def _release(self, size: int | None = None) -> None:
-        respx.get(f'{cves.RELEASES_URL}/tags/{TAG}').respond(
+        respx.get(cves.LATEST_RELEASE_URL).respond(
             json={
                 'tag_name': TAG,
                 'assets': [
@@ -281,9 +271,12 @@ class ImportReleaseTests(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_publishes_only_changed_records(self) -> None:
         self._release()
-        async with cves.http_client() as client:
-            result = await cves.import_release(client, TAG)
-        self.assertEqual(cves.ImportResult(records=2, published=1), result)
+        result = await cves.import_latest()
+        self.assertEqual(
+            cves.ImportResult(release=TAG, records=2, published=1), result
+        )
+        # One GitHub API call, then the asset download.
+        self.assertEqual(2, len(respx.calls))
         stream, topic, rows = self.publish.await_args.args
         self.assertEqual(('cves', 'maintenance'), (stream, topic))
         self.assertEqual(['CVE-2025-0002'], [r.cve_id for r in rows])
@@ -291,27 +284,17 @@ class ImportReleaseTests(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_a_size_mismatch_fails(self) -> None:
         self._release(size=len(self.asset_bytes) + 1)
-        async with cves.http_client() as client:
-            with self.assertRaisesRegex(cves.ImportFailed, 'expected'):
-                await cves.import_release(client, TAG)
+        with self.assertRaisesRegex(cves.ImportFailed, 'expected'):
+            await cves.import_latest()
         self.publish.assert_not_awaited()
 
     @respx.mock
     async def test_a_release_with_no_midnight_asset_fails(self) -> None:
-        respx.get(f'{cves.RELEASES_URL}/tags/{TAG}').respond(
+        respx.get(cves.LATEST_RELEASE_URL).respond(
             json={'tag_name': TAG, 'assets': [{'name': 'delta.zip'}]}
         )
-        async with cves.http_client() as client:
-            with self.assertRaisesRegex(cves.ImportFailed, 'no _all_CVEs'):
-                await cves.import_release(client, TAG)
-
-    @respx.mock
-    async def test_latest_release_tag(self) -> None:
-        respx.get(f'{cves.RELEASES_URL}/latest').respond(
-            json={'tag_name': TAG}
-        )
-        async with cves.http_client() as client:
-            self.assertEqual(TAG, await cves.latest_release_tag(client))
+        with self.assertRaisesRegex(cves.ImportFailed, 'no _all_CVEs'):
+            await cves.import_latest()
 
 
 class LookupTests(unittest.IsolatedAsyncioTestCase):
@@ -387,9 +370,10 @@ class EnrichTests(unittest.IsolatedAsyncioTestCase):
             ),
         ) as lookup:
             await components._enrich(advisories)
-        lookup.assert_awaited_once_with(['CVE-2025-0001', 'CVE-2025-0002'])
+        lookup.assert_awaited_once_with({'CVE-2025-0001', 'CVE-2025-0002'})
         first, missing, _ = advisories
         self.assertEqual('CRITICAL', first.severity)
+        self.assertEqual('Catalog title', first.title)
         self.assertEqual(9.8, first.cvss_score)
         self.assertEqual('Catalog description', first.description)
         self.assertEqual(
@@ -431,7 +415,7 @@ def _ctx() -> log.MaintenanceContext:
 
 class CveSyncOperationTests(unittest.IsolatedAsyncioTestCase):
     async def _run(self, **patch: typing.Any) -> str:
-        with mock.patch.object(cves, 'import_release', **patch):
+        with mock.patch.object(cves, 'import_latest', **patch):
             return await operations.execute_cve_sync(
                 mock.AsyncMock(), mock.AsyncMock(), TAG, ctx=self.ctx
             )
@@ -441,7 +425,9 @@ class CveSyncOperationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_records_what_it_published(self) -> None:
         outcome = await self._run(
-            return_value=cves.ImportResult(records=10, published=3)
+            return_value=cves.ImportResult(
+                release=TAG, records=10, published=3
+            )
         )
         self.assertEqual('succeeded', outcome)
         (row,) = self.ctx.log.rows
@@ -460,18 +446,8 @@ class CveSyncOperationTests(unittest.IsolatedAsyncioTestCase):
         ):
             await self._run(side_effect=httpx.ConnectError('refused'))
 
-    @respx.mock
-    async def test_enumerates_the_latest_release(self) -> None:
-        respx.get(f'{cves.RELEASES_URL}/latest').respond(
-            json={'tag_name': TAG}
-        )
+    async def test_enumerates_one_item_and_calls_no_one(self) -> None:
         self.assertEqual(
-            [TAG], await operations.enumerate_cve_release(mock.AsyncMock())
+            ['latest'],
+            await operations.enumerate_cve_release(mock.AsyncMock()),
         )
-
-    @respx.mock
-    async def test_a_github_failure_at_enumeration_is_a_502(self) -> None:
-        respx.get(f'{cves.RELEASES_URL}/latest').respond(status_code=503)
-        with self.assertRaises(fastapi.HTTPException) as caught:
-            await operations.enumerate_cve_release(mock.AsyncMock())
-        self.assertEqual(502, caught.exception.status_code)

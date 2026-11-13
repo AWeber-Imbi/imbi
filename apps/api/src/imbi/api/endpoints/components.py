@@ -533,8 +533,8 @@ def _status(value: str | None) -> models.ComponentStatus | None:
 
 
 def _normalize_cve(cve_id: str) -> str:
-    """Return the canonical (upper-case, trimmed) advisory identifier."""
-    normalized = cve_id.strip().upper()
+    """Return the canonical advisory identifier; 400 when empty."""
+    normalized = cves.normalize(cve_id)
     if not normalized:
         raise fastapi.HTTPException(
             status_code=400, detail='Advisory identifier must not be empty'
@@ -542,42 +542,31 @@ def _normalize_cve(cve_id: str) -> str:
     return normalized
 
 
-def _apply_catalog(
-    advisory: AdvisoryResponse, record: cves.CveRecord | None
-) -> None:
-    """Copy the catalog fields of ``record`` onto ``advisory``."""
-    advisory.in_catalog = record is not None
-    if record is None:
-        return
-    advisory.severity = record.cvss_severity
-    advisory.cvss_score = record.cvss_score
-    advisory.description = record.description or None
-    advisory.published_at = record.published_at
-
-
-async def _catalog(cve_ids: list[str]) -> dict[str, cves.CveRecord] | None:
-    """Read the catalog rows of ``cve_ids``, or ``None`` on failure.
-
-    The catalog only adds detail, so a ClickHouse failure must not fail
-    the response that asked for it.
-    """
-    try:
-        return await cves.lookup(cve_ids)
-    except Exception:  # noqa: BLE001 - the catalog is optional detail
-        LOGGER.warning('CVE catalog lookup failed', exc_info=True)
-        return None
-
-
 async def _enrich(advisories: abc.Iterable[AdvisoryResponse]) -> None:
-    """Add the catalog fields to ``advisories`` with one query."""
+    """Add the catalog fields to ``advisories`` with one query.
+
+    An empty title becomes the catalog title. The catalog only adds
+    detail, so a ClickHouse failure leaves the fields empty and does not
+    fail the response.
+    """
     items = list(advisories)
     if not items:
         return
-    catalog = await _catalog(sorted({a.cve_id for a in items}))
-    if catalog is None:
+    try:
+        catalog = await cves.lookup({a.cve_id for a in items})
+    except Exception:  # noqa: BLE001 - the catalog is optional detail
+        LOGGER.warning('CVE catalog lookup failed', exc_info=True)
         return
     for advisory in items:
-        _apply_catalog(advisory, catalog.get(advisory.cve_id))
+        record = catalog.get(advisory.cve_id)
+        advisory.in_catalog = record is not None
+        if record is None:
+            continue
+        advisory.title = advisory.title or record.title or None
+        advisory.severity = record.cvss_severity
+        advisory.cvss_score = record.cvss_score
+        advisory.description = record.description or None
+        advisory.published_at = record.published_at
 
 
 async def _advisories_by_release(
@@ -1383,18 +1372,22 @@ async def upsert_component_advisory(
     await _assert_release_in_org(db, org_slug, component_release_id)
     normalized = _normalize_cve(cve_id)
     now = datetime.datetime.now(datetime.UTC)
-    catalog = await _catalog([normalized])
-    record = catalog.get(normalized) if catalog is not None else None
-    url = body.url or f'https://www.cve.org/CVERecord?id={normalized}'
-    title = body.title or (record.title if record is not None else None)
+    response = AdvisoryResponse(
+        cve_id=normalized,
+        url=body.url or f'https://www.cve.org/CVERecord?id={normalized}',
+        title=body.title,
+        created_by=auth.principal_name,
+        created_at=now,
+    )
+    await _enrich([response])
     rows = await db.execute(
         _UPSERT_ADVISORY,
         {
             'component_release_id': component_release_id,
             'cve_id': normalized,
             'advisory_id': nanoid.generate(),
-            'url': url,
-            'title': title,
+            'url': response.url,
+            'title': response.title,
             'created_by': auth.principal_name,
             'now': now.isoformat(),
         },
@@ -1411,15 +1404,6 @@ async def upsert_component_advisory(
         normalized,
         auth.principal_name,
     )
-    response = AdvisoryResponse(
-        cve_id=normalized,
-        url=url,
-        title=title,
-        created_by=auth.principal_name,
-        created_at=now,
-    )
-    if catalog is not None:
-        _apply_catalog(response, record)
     return response
 
 

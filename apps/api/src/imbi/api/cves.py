@@ -33,7 +33,9 @@ from imbi.common import clickhouse, iggy
 
 LOGGER = logging.getLogger(__name__)
 
-RELEASES_URL = 'https://api.github.com/repos/CVEProject/cvelistV5/releases'
+LATEST_RELEASE_URL = (
+    'https://api.github.com/repos/CVEProject/cvelistV5/releases/latest'
+)
 
 #: The release asset that holds every CVE record at midnight UTC.
 ASSET_MARKER = '_all_CVEs_at_midnight'
@@ -50,7 +52,6 @@ TITLE_LENGTH = 200
 
 CVSS_KEYS = ('cvssV4_0', 'cvssV3_1', 'cvssV3_0', 'cvssV2_0')
 
-_TIMEOUT = httpx.Timeout(60.0)
 _HEADERS = {'Accept': 'application/vnd.github+json'}
 
 
@@ -74,6 +75,7 @@ class CveRecord(pydantic.BaseModel):
 class ImportResult(typing.NamedTuple):
     """What one import read and published."""
 
+    release: str
     records: int
     published: int
 
@@ -183,7 +185,7 @@ def parse_record(data: object) -> CveRecord | None:
     """
     record = _dict(data)
     meta = _dict(record.get('cveMetadata'))
-    cve_id = _text(meta.get('cveId')).upper()
+    cve_id = normalize(_text(meta.get('cveId')))
     published_at = _timestamp(meta.get('datePublished'))
     updated_at = (
         _timestamp(meta.get('dateUpdated'))
@@ -228,26 +230,41 @@ def parse_record(data: object) -> CveRecord | None:
     )
 
 
+def normalize(cve_id: str) -> str:
+    """The canonical (trimmed, upper-case) form of a CVE ID."""
+    return cve_id.strip().upper()
+
+
+def _epoch_ms(value: datetime.datetime) -> int:
+    """``value`` as whole milliseconds since the epoch."""
+    return (value - _EPOCH) // datetime.timedelta(milliseconds=1)
+
+
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
+
+
 def changed_batches(
     path: pathlib.Path,
-    existing: abc.Mapping[str, datetime.datetime],
-    counter: list[int],
+    existing: abc.Mapping[str, int],
     batch_size: int = BATCH_SIZE,
-) -> abc.Iterator[list[CveRecord]]:
-    """Yield the records in the inner zip that ``existing`` does not
-    have at the same or a newer ``updated_at``, in batches.
+) -> abc.Iterator[tuple[list[CveRecord], int]]:
+    """Yield the records in the inner zip that ``existing`` (CVE ID to
+    ``updated_at`` in epoch milliseconds) does not have at the same or a
+    newer version, in batches.
 
-    ``counter[0]`` counts every record read, so the caller can report
-    it. A record that does not parse is logged and skipped: one bad file
-    must not stop the import of the other 400 000.
+    Each item is ``(batch, records read so far)``. The last item has the
+    total and can have an empty batch. A record that does not parse is
+    logged and skipped: one bad file must not stop the import of the
+    other 400 000.
     """
     batch: list[CveRecord] = []
+    read = 0
     with zipfile.ZipFile(path) as archive:
         for info in archive.infolist():
             name = info.filename.rsplit('/', 1)[-1]
             if not (name.startswith('CVE-') and name.endswith('.json')):
                 continue
-            counter[0] += 1
+            read += 1
             try:
                 record = parse_record(orjson.loads(archive.read(info)))
             except orjson.JSONDecodeError as err:
@@ -256,14 +273,13 @@ def changed_batches(
             if record is None:
                 continue
             stored = existing.get(record.cve_id)
-            if stored is not None and record.updated_at <= stored:
+            if stored is not None and _epoch_ms(record.updated_at) <= stored:
                 continue
             batch.append(record)
             if len(batch) >= batch_size:
-                yield batch
+                yield batch, read
                 batch = []
-    if batch:
-        yield batch
+    yield batch, read
 
 
 # ----- Import ----------------------------------------------------------
@@ -273,20 +289,13 @@ class ImportFailed(Exception):
     """The import cannot continue; the message is safe to show."""
 
 
-async def latest_release_tag(client: httpx.AsyncClient) -> str:
-    """The tag of the newest CVE List release."""
-    response = await client.get(f'{RELEASES_URL}/latest', headers=_HEADERS)
-    response.raise_for_status()
-    return str(response.json()['tag_name'])
-
-
-async def _asset(client: httpx.AsyncClient, tag: str) -> dict[str, typing.Any]:
-    response = await client.get(f'{RELEASES_URL}/tags/{tag}', headers=_HEADERS)
-    response.raise_for_status()
-    for asset in _dicts(_dict(response.json()).get('assets')):
+def _midnight_asset(release: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    for asset in _dicts(release.get('assets')):
         if ASSET_MARKER in _text(asset.get('name')):
             return asset
-    raise ImportFailed(f'Release {tag} has no {ASSET_MARKER} asset')
+    raise ImportFailed(
+        f'Release {release.get("tag_name")} has no {ASSET_MARKER} asset'
+    )
 
 
 async def _download(
@@ -299,7 +308,7 @@ async def _download(
         response.raise_for_status()
         with path.open('wb') as handle:
             async for chunk in response.aiter_bytes(1 << 20):
-                handle.write(chunk)
+                await asyncio.to_thread(handle.write, chunk)
     size = path.stat().st_size
     if size != asset.get('size'):
         raise ImportFailed(
@@ -322,20 +331,18 @@ def _extract_inner(outer: pathlib.Path, inner: pathlib.Path) -> None:
             shutil.copyfileobj(src, dst, 1 << 20)
 
 
-async def stored_versions() -> dict[str, datetime.datetime]:
-    """The newest ``updated_at`` of each CVE in the table, as UTC."""
+async def stored_versions() -> dict[str, int]:
+    """The newest ``updated_at`` of each CVE in the table, in epoch
+    milliseconds. An int per CVE keeps the ~425 000-entry map small."""
     rows = await clickhouse.query(
-        'SELECT cve_id, max(updated_at) AS updated_at'
+        'SELECT cve_id, toUnixTimestamp64Milli(max(updated_at)) AS version'
         ' FROM imbi.cves GROUP BY cve_id'
     )
-    return {
-        str(row['cve_id']): clickhouse.as_utc(row['updated_at'])
-        for row in rows
-    }
+    return {str(row['cve_id']): int(row['version']) for row in rows}
 
 
-async def import_release(client: httpx.AsyncClient, tag: str) -> ImportResult:
-    """Import the midnight snapshot of release ``tag``.
+async def import_latest() -> ImportResult:
+    """Import the midnight snapshot of the newest CVE List release.
 
     Raises:
         ImportFailed: The release or its asset is not as expected.
@@ -343,34 +350,34 @@ async def import_release(client: httpx.AsyncClient, tag: str) -> ImportResult:
         iggy.PublishError: A publish failed. Records published before
             it stay; the next run publishes the rest.
     """
-    asset = await _asset(client, tag)
-    existing = await stored_versions()
-    counter = [0]
-    published = 0
-    with tempfile.TemporaryDirectory(prefix='imbi-cve-') as tmp:
-        outer = pathlib.Path(tmp) / 'outer.zip'
-        inner = pathlib.Path(tmp) / 'cves.zip'
-        await _download(client, asset, outer)
-        await asyncio.to_thread(_extract_inner, outer, inner)
-        outer.unlink()
-        batches = changed_batches(inner, existing, counter)
-        while batch := await asyncio.to_thread(next, batches, None):
-            await iggy.publish(
-                STREAM, TOPIC, typing.cast('list[pydantic.BaseModel]', batch)
-            )
-            published += len(batch)
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.get(LATEST_RELEASE_URL, headers=_HEADERS)
+        response.raise_for_status()
+        release = _dict(response.json())
+        tag = _text(release.get('tag_name'))
+        asset = _midnight_asset(release)
+        existing = await stored_versions()
+        read = published = 0
+        with tempfile.TemporaryDirectory(prefix='imbi-cve-') as tmp:
+            outer = pathlib.Path(tmp) / 'outer.zip'
+            inner = pathlib.Path(tmp) / 'cves.zip'
+            await _download(client, asset, outer)
+            await asyncio.to_thread(_extract_inner, outer, inner)
+            outer.unlink()
+            batches = changed_batches(inner, existing)
+            while item := await asyncio.to_thread(next, batches, None):
+                batch, read = item
+                if batch:
+                    await iggy.publish(
+                        STREAM,
+                        TOPIC,
+                        typing.cast('list[pydantic.BaseModel]', batch),
+                    )
+                    published += len(batch)
     LOGGER.info(
-        'CVE import %s: read %d records, published %d',
-        tag,
-        counter[0],
-        published,
+        'CVE import %s: read %d records, published %d', tag, read, published
     )
-    return ImportResult(records=counter[0], published=published)
-
-
-def http_client() -> httpx.AsyncClient:
-    """The client the import uses for GitHub."""
-    return httpx.AsyncClient(timeout=_TIMEOUT)
+    return ImportResult(release=tag, records=read, published=published)
 
 
 # ----- Lookup ----------------------------------------------------------
