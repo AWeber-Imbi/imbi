@@ -151,6 +151,13 @@ class ReportOutcomeTestCase(unittest.TestCase):
         self.assertEqual(checked, policy.Check())
 
 
+class StructuredOutputTestCase(unittest.TestCase):
+    def test_allowed_without_a_listing(self) -> None:
+        self.assertEqual(
+            check(policy.STRUCTURED_OUTPUT, allowed=[]), policy.Check()
+        )
+
+
 class HarnessNameTestCase(unittest.TestCase):
     def test_a_relayed_tool_never_takes_a_harness_tool_key(self) -> None:
         for name in sorted(policy.HARNESS_TOOLS):

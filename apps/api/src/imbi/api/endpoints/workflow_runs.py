@@ -203,6 +203,8 @@ class StepAgentTask(pydantic.BaseModel):
     reason: str | None
     #: The last message of the agent, when the task is closed.
     summary: str | None
+    #: The structured output of the agent, when the task is closed.
+    result: dict[str, typing.Any] | None = None
 
 
 # --- Helpers -----------------------------------------------------------
@@ -584,7 +586,7 @@ def _without_task_content(
     output = {
         k: v
         for k, v in step['output'].items()
-        if k not in ('reason', 'summary')
+        if k not in ('reason', 'summary', 'result')
     }
     return {**step, 'output': output}
 
@@ -598,6 +600,7 @@ def _step_agent_task(
         'outcome': task['outcome'],
         'reason': task['outcome_reason'],
         'summary': summary,
+        'result': task['structured_output'],
     }
 
 
@@ -784,9 +787,9 @@ async def get_run(
 ) -> dict[str, typing.Any]:
     """Return a run with its step records.
 
-    The ``reason`` and ``summary`` of an agent step's output come from
-    the agent task. Only a caller who can read agent tasks
-    (``agent_task:read``) gets them.
+    The ``reason``, ``summary``, and ``result`` of an agent step's
+    output come from the agent task. Only a caller who can read agent
+    tasks (``agent_task:read``) gets them.
 
     Raises:
         404: No such workflow or run.
@@ -1121,6 +1124,7 @@ async def step_agent_task(
             key,
             run['activated_by'],
             agent_runtime.Actor('system', auth.principal_name, 'api'),
+            agent_step.output_schema(params.output_fields),
         )
     if (
         not _made_by_step(task, run_id, step['node_key'])

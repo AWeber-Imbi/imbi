@@ -116,6 +116,10 @@ describe('paramFields for the agent step', () => {
           default: null,
         },
         instruction: { title: 'Instruction', type: 'string' },
+        output_fields: {
+          items: { $ref: '#/$defs/OutputField' },
+          type: 'array',
+        },
       },
       required: ['agent_id', 'instruction'],
       type: 'object',
@@ -135,6 +139,12 @@ describe('paramFields for the agent step', () => {
         mono: false,
         name: 'instruction',
         required: true,
+      },
+      {
+        kind: 'outputFields',
+        label: 'Output fields',
+        name: 'output_fields',
+        required: false,
       },
     ])
   })

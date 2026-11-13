@@ -355,7 +355,7 @@ class Executors:
         return Outcome(output={'recipients': sent['recipients']})
 
     async def _agent(self, call: Call) -> Outcome:
-        _params(agent.Params, call)
+        params = _params(agent.Params, call)
         task = await self.api.request(
             'POST',
             await self._agent_task_path(
@@ -378,6 +378,9 @@ class Executors:
                 'outcome': task['outcome'],
                 'reason': task['reason'],
                 'summary': task['summary'],
+                'result': _result(params, task.get('result'))
+                if port == 0
+                else None,
             },
             port=port,
             failed=port == 1,
@@ -581,6 +584,15 @@ def _check(name: str, value: str | None, pattern: re.Pattern[str]) -> None:
 def _path(*segments: object) -> str:
     """Return ``/a/b/c`` with every segment quoted."""
     return ''.join('/' + urllib.parse.quote(str(s), safe='') for s in segments)
+
+
+def _result(
+    params: agent.Params, result: dict[str, typing.Any] | None
+) -> dict[str, typing.Any] | None:
+    """Return the structured output with every field of the step."""
+    if result is None:
+        return None
+    return agent.complete_result(params.output_fields, result)
 
 
 def _params[T: pydantic.BaseModel](model: type[T], call: Call) -> T:

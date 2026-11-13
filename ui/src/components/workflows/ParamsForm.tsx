@@ -20,6 +20,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 
+import type { OutputField } from './outputFields'
+import { OutputFieldsField } from './OutputFieldsField'
+import { TemplateInput } from './ReferencePicker'
+import type { ReferenceGroup } from './references'
 import {
   type FieldSource,
   isIdOrReference,
@@ -36,6 +40,7 @@ interface ParamsFormProps {
   onRemoveItem: (name: string, index: number) => void
   orgSlug: string
   params: Record<string, unknown>
+  references: ReferenceGroup[]
   /** The workflow has a webhook trigger, so a run can have a project. */
   webhookProject: boolean
 }
@@ -54,6 +59,7 @@ export function ParamsForm({
   onRemoveItem,
   orgSlug,
   params,
+  references,
   webhookProject,
 }: ParamsFormProps) {
   return (
@@ -75,6 +81,7 @@ export function ParamsForm({
               onChange={(v) => onChange(field.name, v)}
               onRemoveItem={(i) => onRemoveItem(field.name, i)}
               orgSlug={orgSlug}
+              references={references}
               value={value}
               webhookProject={webhookProject}
             />
@@ -87,18 +94,20 @@ export function ParamsForm({
 
 export function SelectField({
   id,
+  label,
   onChange,
   options,
   value,
 }: {
   id: string
+  label?: string
   onChange: (value: string) => void
   options: { label: string; value: string }[]
   value: string
 }) {
   return (
     <Select onValueChange={onChange} value={value}>
-      <SelectTrigger id={id}>
+      <SelectTrigger aria-label={label} id={id}>
         <SelectValue placeholder="Choose…" />
       </SelectTrigger>
       <SelectContent>
@@ -158,6 +167,7 @@ function FieldControl({
   onChange,
   onRemoveItem,
   orgSlug,
+  references,
   value,
   webhookProject,
 }: {
@@ -166,6 +176,7 @@ function FieldControl({
   onChange: (value: unknown) => void
   onRemoveItem: (index: number) => void
   orgSlug: string
+  references: ReferenceGroup[]
   value: unknown
   webhookProject: boolean
 }) {
@@ -201,11 +212,12 @@ function FieldControl({
       )
     case 'multiline':
       return (
-        <Textarea
+        <TemplateInput
           className={cn(field.mono && 'font-mono text-xs')}
+          groups={references}
           id={id}
-          onChange={(e) => onChange(e.target.value)}
-          rows={4}
+          multiline
+          onChange={onChange}
           value={typeof value === 'string' ? value : ''}
         />
       )
@@ -218,6 +230,15 @@ function FieldControl({
           }
           type="number"
           value={typeof value === 'number' ? value : ''}
+        />
+      )
+    case 'outputFields':
+      return (
+        <OutputFieldsField
+          id={id}
+          label={field.label}
+          onChange={onChange}
+          value={Array.isArray(value) ? (value as OutputField[]) : []}
         />
       )
     case 'recipients':
@@ -252,9 +273,11 @@ function FieldControl({
       )
     case 'text':
       return (
-        <Input
+        <TemplateInput
+          groups={references}
           id={id}
-          onChange={(e) => onChange(e.target.value)}
+          multiline={false}
+          onChange={onChange}
           value={typeof value === 'string' ? value : ''}
         />
       )
