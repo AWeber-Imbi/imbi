@@ -605,6 +605,18 @@ describe('Tasks', () => {
       ).toHaveAttribute('aria-selected', 'true')
     })
 
+    it('sends an old Conversation event link to the Log', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation#e2')
+      expect(await screen.findByRole('tab', { name: /^Log/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/agents/tasks/acme/T-3/log'),
+      )
+      expect(window.location.hash).toBe('#e2')
+    })
+
     it('opens an old Actions taken link on the Conversation', async () => {
       renderAt('/agents/tasks/acme/T-3/actions')
       expect(

@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -90,6 +90,7 @@ export function TaskDetail({
   tab?: string
 }) {
   const navigate = useNavigate()
+  const { hash } = useLocation()
   const task = useAgentTask(orgSlug, shortId)
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
@@ -100,6 +101,13 @@ export function TaskDetail({
   )
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventCount = events.data?.length ?? 0
+  useEffect(() => {
+    if (tab !== 'conversation' && tab !== 'actions') return
+    if (!/^#e\d+$/.test(hash)) return
+    navigate(`${agentsPath('tasks', orgSlug, shortId, 'log')}${hash}`, {
+      replace: true,
+    })
+  }, [hash, navigate, orgSlug, shortId, tab])
   useFollowBottom(
     scrollRef,
     eventCount,
