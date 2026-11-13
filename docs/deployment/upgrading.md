@@ -103,6 +103,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
      WHERE target->>'kind' = 'api'
        AND target->>'path' ~ '^/auth([/?#]|$)';
     ```
+4. imbi-api now refuses a request body larger than 10 MiB with a `413`
+   (`payload_too_large`). File uploads keep their own limit,
+   `S3_MAX_FILE_SIZE` plus 1 MiB. If a client sends larger bodies, for
+   example a very large SBoM, set `IMBI_API_MAX_REQUEST_BODY_BYTES`.
 
 ## 2.49.0
 

@@ -206,6 +206,7 @@ unset.
 | `IMBI_API_PORT` | int | `8000` | Port of the fallback public URL. A `tcp://ip:port` value from Kubernetes service discovery is read as its port. |
 | `IMBI_API_CORS_ALLOWED_ORIGINS` | list[str] | `[]` | JSON array of allowed CORS origins. Also the trusted hosts for per-request OAuth URLs. |
 | `IMBI_API_FORWARDED_ALLOW_IPS` | str | `''` | Comma-separated proxy IPs (or `*`) whose `X-Forwarded-*` headers are trusted. Empty: off. |
+| `IMBI_API_MAX_REQUEST_BODY_BYTES` | int | `10485760` | Largest request body in bytes; larger bodies get 413. Uploads use `S3_MAX_FILE_SIZE` plus 1 MiB. |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_AUTH_PASSWORD_MIN_LENGTH` | int | `12` | Minimum password length |
