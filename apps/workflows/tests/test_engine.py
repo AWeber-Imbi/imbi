@@ -27,7 +27,7 @@ from imbi.api.workflows import sweeper
 from imbi.common import graph, iggy, sentry
 from imbi.common.auth import encryption
 from imbi.common.workflows import graph as wf
-from imbi.common.workflows import history
+from imbi.common.workflows import history, script_runner
 from imbi.workflows import app, engine, executors, settings, store
 
 CLOSED = {'succeeded', 'failed', 'cancelled', 'timed_out'}
@@ -1619,6 +1619,107 @@ class AgentStepTestCase(EngineTestCase):
         self.assertEqual(
             await self._control(task['short_id']), ('run', 'queued')
         )
+
+
+COUNT = [{'name': 'count', 'type': 'integer'}]
+
+
+class ScriptStepTestCase(EngineTestCase):
+    async def asyncSetUp(self) -> None:
+        self.scripts = await self.enterAsyncContext(
+            script_runner.open_runner(
+                processes=1, max_memory=16 * 1024 * 1024, max_seconds=2.0
+            )
+        )
+        await super().asyncSetUp()
+
+    def _engine(self, worker_id: str) -> engine.Engine:
+        runner = super()._engine(worker_id)
+        runner.steps.scripts = self.scripts
+        return runner
+
+    async def test_result_branch_and_reference(self) -> None:
+        # The code holds Jinja syntax: it must reach the sandbox as
+        # written, while the inputs are rendered.
+        echo = "f'{{{{n}}}}'\n{'count': n * 2}"
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'calc',
+                    'script',
+                    {
+                        'inputs': {'runs': '{{ trigger.runs }}'},
+                        'code': "n = len([r for r in runs if r == 'x'])\n"
+                        "{'count': n, 'branch': 'many' if n > 1 else 'few'}",
+                        'output_fields': COUNT,
+                        'branches': ['few', 'many'],
+                    },
+                ),
+                _node(
+                    'echo',
+                    'script',
+                    {
+                        'inputs': {'n': '{{ calc.result.count }}'},
+                        'code': echo,
+                        'output_fields': COUNT,
+                    },
+                ),
+                _node(
+                    'other',
+                    'script',
+                    {'code': "{'count': 0}", 'output_fields': COUNT},
+                ),
+            ],
+            [
+                _edge('start', 'calc'),
+                _edge('calc', 'other', 0),
+                _edge('calc', 'echo', 1),
+            ],
+        )
+        run = await self._drive(
+            await self._start(workflow_id, {'runs': ['x', 'y', 'x']})
+        )
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        steps = run['steps']
+        self.assertEqual(
+            self._states(run),
+            {
+                'start': 'succeeded',
+                'calc': 'succeeded',
+                'echo': 'succeeded',
+                'other': 'skipped',
+            },
+        )
+        self.assertEqual(
+            steps['calc']['output'],
+            {'result': {'count': 2}, 'branch': 'many', 'stdout': None},
+        )
+        self.assertEqual(steps['calc']['port'], 1)
+        self.assertEqual(steps['echo']['input']['inputs'], {'n': 2})
+        self.assertEqual(steps['echo']['input']['code'], echo)
+        self.assertEqual(steps['echo']['output']['result'], {'count': 4})
+
+    async def test_script_error_fails_the_run(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'calc',
+                    'script',
+                    {
+                        'code': "raise ValueError('nope')",
+                        'output_fields': COUNT,
+                    },
+                ),
+            ],
+            [_edge('start', 'calc')],
+            {'on_failure': 'none'},
+        )
+        run = await self._drive(await self._start(workflow_id))
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'script_error: ValueError: nope')
+        self.assertEqual(run['steps']['calc']['attempt'], 1)
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

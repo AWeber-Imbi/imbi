@@ -195,6 +195,38 @@ def _object_schema(
     }
 
 
+def check_output_fields(fields: list[OutputField]) -> list[OutputField]:
+    """Refuse repeated names and too many optional fields."""
+    _unique_names(fields)
+    nested = [n for f in fields for n in f.fields or []]
+    optional = sum(not f.required for f in [*fields, *nested])
+    if optional > MAX_OPTIONAL_FIELDS:
+        raise ValueError(
+            f'at most {MAX_OPTIONAL_FIELDS} fields can be optional'
+        )
+    return fields
+
+
+class _Structured(typing.Protocol):
+    output_fields: list[OutputField]
+
+
+def structured_fields(
+    step: step_type.StepType, params: dict[str, typing.Any]
+) -> list[OutputField] | None:
+    """Return the output fields of a node of ``step``.
+
+    ``None`` for a type without structured output, or invalid params.
+    """
+    if not step.structured_output:
+        return None
+    try:
+        model = step.params.model_validate(params)
+    except pydantic.ValidationError:
+        return None
+    return typing.cast('_Structured', model).output_fields
+
+
 def output_schema(fields: list[OutputField]) -> dict[str, typing.Any] | None:
     """Return the JSON Schema of the structured output, if any."""
     return _object_schema(fields) if fields else None
@@ -327,14 +359,7 @@ class Params(pydantic.BaseModel):
     def _check_output_fields(
         cls, fields: list[OutputField]
     ) -> list[OutputField]:
-        _unique_names(fields)
-        nested = [n for f in fields for n in f.fields or []]
-        optional = sum(not f.required for f in [*fields, *nested])
-        if optional > MAX_OPTIONAL_FIELDS:
-            raise ValueError(
-                f'at most {MAX_OPTIONAL_FIELDS} fields can be optional'
-            )
-        return fields
+        return check_output_fields(fields)
 
 
 class Output(pydantic.BaseModel):
@@ -373,4 +398,5 @@ STEP = step_type.StepType(
     timeout_seconds=None,
     retries=2,
     required_permissions=required_permissions,
+    structured_output=True,
 )

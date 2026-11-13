@@ -1373,7 +1373,7 @@ def simulate(
     while node_id is not None:
         node = nodes[node_id]
         step = registry.STEP_TYPES[node.type]
-        names = step.ports_for(node.params) or ['']
+        names = step.ports_for(node.params)
         port = picked.get(node_id, 0)
         if not 0 <= port < len(names):
             raise fastapi.HTTPException(

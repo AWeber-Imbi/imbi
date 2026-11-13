@@ -15,6 +15,9 @@ first result instead of acting again, or ``409 outcome_unknown``.
 An agent step asks imbi-api for the agent task of the step: imbi-api
 makes it with the key ``<run_id>:<node_key>`` the first time, and
 returns it after that. The step polls it until it is closed.
+
+A script step runs its code in the sandbox of
+:mod:`imbi.common.workflows.script_runner` (ADR 0026).
 """
 
 import asyncio
@@ -33,12 +36,14 @@ from imbi.common import graph
 from imbi.common.auth import encryption
 from imbi.common.llm import drivers, typesafe
 from imbi.common.workflows import graph as wf
+from imbi.common.workflows import script_runner
 from imbi.common.workflows.registry import (
     agent,
     deploy,
     email,
     model_decision,
     rollback,
+    script,
     wait,
 )
 from imbi.workflows import settings
@@ -225,18 +230,25 @@ async def _values(
 
 class Executors:
     def __init__(
-        self, api: Api, db: graph.Graph, config: settings.Workflows
+        self,
+        api: Api,
+        db: graph.Graph,
+        config: settings.Workflows,
+        scripts: script_runner.Runner | None = None,
     ) -> None:
         self.api = api
         self.db = db
         self.config = config
+        self.scripts = scripts
 
-    async def run(self, call: Call) -> Outcome:
+    async def run(self, call: Call) -> Outcome:  # noqa: PLR0911
         match call.node.type:
             case 'wait':
                 return self._wait(call)
             case 'model_decision':
                 return await self._model_decision(call)
+            case 'script':
+                return await self._script(call)
             case 'email':
                 return await self._email(call)
             case 'deploy':
@@ -328,6 +340,20 @@ class Executors:
             },
             port=port,
         )
+
+    async def _script(self, call: Call) -> Outcome:
+        params = _params(script.Params, call)
+        if self.scripts is None:
+            raise StepError('script_runner_unavailable', retry=False)
+        try:
+            done = await self.scripts.run(
+                params, max_seconds=call.node.timeout_seconds
+            )
+        except script_runner.Busy as e:
+            raise StepError('script_busy', retry=True) from e
+        except script_runner.ScriptError as e:
+            raise StepError(str(e), retry=e.retry) from e
+        return Outcome(output=done.output, port=done.port)
 
     async def _email(self, call: Call) -> Outcome:
         _params(email.Params, call)

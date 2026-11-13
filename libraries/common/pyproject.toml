@@ -71,6 +71,10 @@ otel = [
 posthog = [
   "posthog==7.84.0",
 ]
+script = [
+  "jsonschema>=4.26",
+  "pydantic-monty~=1.5",
+]
 sentry = [
   "sentry-sdk>=2.48.0",
 ]

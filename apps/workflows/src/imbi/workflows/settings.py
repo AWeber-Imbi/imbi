@@ -46,3 +46,12 @@ class Workflows(common_settings.InternalApi):
         description='Seconds between passes of the trigger reconciler. '
         'imbi-api also wakes it after each activation and pause.',
     )
+    script_max_memory_mb: int = pydantic.Field(
+        default=64, gt=0, description='Memory one script step can use, in MiB'
+    )
+    script_max_seconds: float = pydantic.Field(
+        default=5.0,
+        gt=0,
+        description='Seconds one script step can run. A step timeout that '
+        'is shorter wins.',
+    )

@@ -134,13 +134,15 @@ def _attribute_paths(value: typing.Any) -> list[list[str]]:
 
 
 def _output_fields(node: graph.Node) -> list[agent_step.OutputField] | None:
-    """Return the output fields of an agent node with valid params."""
-    if node.type != agent_step.STEP.type:
-        return None
-    try:
-        return agent_step.Params.model_validate(node.params).output_fields
-    except pydantic.ValidationError:
-        return None
+    """Return the output fields of a node with structured output."""
+    step = registry.STEP_TYPES.get(node.type)
+    return agent_step.structured_fields(step, node.params) if step else None
+
+
+def _renderable(node: graph.Node) -> dict[str, typing.Any]:
+    """Return the params of ``node`` that can hold references."""
+    step = registry.STEP_TYPES.get(node.type)
+    return step.renderable(node.params) if step else node.params
 
 
 def _check_params(node: graph.Node, issues: _Issues) -> None:
@@ -441,7 +443,7 @@ class _Validator:
                     node_id=node_id,
                 )
             try:
-                names = _references(node.params)
+                names = _references(_renderable(node))
             except jinja2.TemplateSyntaxError as e:
                 self.issues.add(
                     'error',
@@ -462,9 +464,9 @@ class _Validator:
             self._check_result_fields(node)
 
     def _check_result_fields(self, node: graph.Node) -> None:
-        """Report a reference to a field that an agent step lacks."""
+        """Report a reference to a result field that a step lacks."""
         reported: set[str] = set()
-        for path in _attribute_paths(node.params):
+        for path in _attribute_paths(_renderable(node)):
             source_id = self.by_key.get(path[0])
             if len(path) < 3 or path[1] != 'result' or source_id is None:
                 continue

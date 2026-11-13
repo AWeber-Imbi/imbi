@@ -20,6 +20,7 @@ import imbi.workflows
 from imbi.common import graph, iggy, lifespan, posthog, sentry, server
 from imbi.common import settings as common_settings
 from imbi.common.prompts import pool as prompt_pool
+from imbi.common.workflows import script_runner
 from imbi.workflows import bindings, engine, executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
@@ -50,9 +51,18 @@ async def engine_lifespan() -> abc.AsyncGenerator[engine.Engine]:
     stop = asyncio.Event()
     worker_id = f'{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}'
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with (
+            httpx.AsyncClient(timeout=60) as client,
+            # One sandbox worker per engine worker: a script never
+            # waits for a process.
+            script_runner.open_runner(
+                processes=config.workers,
+                max_memory=config.script_max_memory_mb * 1024 * 1024,
+                max_seconds=config.script_max_seconds,
+            ) as scripts,
+        ):
             steps = executors.Executors(
-                executors.Api(client, config), db, config
+                executors.Api(client, config), db, config, scripts
             )
             runner = engine.Engine(store.Store(pool, worker_id), steps, config)
             reconciler = bindings.Reconciler(pool, client, steps, config)
