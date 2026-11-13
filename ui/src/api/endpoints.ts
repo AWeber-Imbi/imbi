@@ -1491,7 +1491,12 @@ export const getDashboardStatus = (signal?: AbortSignal) =>
   apiClient.get<DashboardStatus>('/admin/dashboard/status', undefined, signal)
 
 export const getDashboardMetrics = (signal?: AbortSignal) =>
-  apiClient.get<DashboardMetrics>('/admin/dashboard/metrics', undefined, signal)
+  apiClient.get<DashboardMetrics>(
+    '/admin/dashboard/metrics',
+    // The browser's zone, so the days are the user's days.
+    { tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    signal,
+  )
 
 export const getDashboardIggy = (signal?: AbortSignal) =>
   apiClient.get<IggyTopics>('/admin/dashboard/iggy', undefined, signal)
@@ -3660,7 +3665,7 @@ export const patchAgent = (
 export const deleteAgent = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(agentPath(orgSlug, slug))
 
-/** `start` and `end` are UTC days (YYYY-MM-DD); both are in the range. */
+/** `start` and `end` are local days (YYYY-MM-DD); both are in the range. */
 export interface AgentUsageParams {
   agent_id?: string
   end?: string
@@ -3674,7 +3679,8 @@ export const getAgentUsage = (
 ) =>
   apiClient.get<AgentUsage>(
     `/organizations/${encodeURIComponent(orgSlug)}/agent-usage/`,
-    { ...params },
+    // The browser's zone, so the days are the user's days.
+    { ...params, tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
     signal,
   )
 

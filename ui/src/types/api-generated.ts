@@ -1336,7 +1336,8 @@ export interface paths {
          * Get Dashboard Metrics
          * @description Return 7-day activity metrics with per-day counts for the tiles.
          *
-         *     The pull request series skips drafts and archived projects.
+         *     The days are calendar days in the requester's ``tz``.  The pull
+         *     request series skips drafts and archived projects.
          */
         get: operations["get_dashboard_metrics_api_admin_dashboard_metrics_get"];
         put?: never;
@@ -5905,14 +5906,15 @@ export interface paths {
          * Get Agent Usage
          * @description Return token use and cost by day and by agent.
          *
-         *     ``start`` and ``end`` are UTC days and are both in the range. The
+         *     ``start`` and ``end`` are days in ``tz`` and are both in the range. The
          *     default range is the 30 days that end today. ``agent_id`` keeps
          *     the usage of one agent.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
          *         404: No such organization.
-         *         422: ``start`` is after ``end``, or the range is too long.
+         *         422: ``start`` is after ``end``, the range is too long, or
+         *             ``tz`` is not a known time zone.
          */
         get: operations["get_agent_usage_api_organizations__org_slug__agent_usage__get"];
         put?: never;
@@ -24003,7 +24005,10 @@ export interface operations {
     };
     get_dashboard_metrics_api_admin_dashboard_metrics_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
+                tz?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -24017,6 +24022,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardMetrics"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -31702,6 +31716,8 @@ export interface operations {
                 start?: string | null;
                 end?: string | null;
                 agent_id?: string | null;
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
+                tz?: string;
             };
             header?: never;
             path: {
@@ -34319,7 +34335,7 @@ export interface operations {
         parameters: {
             query?: {
                 source?: string | null;
-                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
                 tz?: string;
             };
             header?: never;
@@ -34427,7 +34443,7 @@ export interface operations {
     get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
         parameters: {
             query?: {
-                /** @description IANA time zone of the requester; calendar versions use the date in this zone. */
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
                 tz?: string;
             };
             header?: never;
