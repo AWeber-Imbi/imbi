@@ -36,6 +36,7 @@ TOPICS: dict[str, tuple[str, ...]] = {
     'agent_usage': ('agent_tasks',),
     'commit_drift': ('drift',),
     'commits': ('github', 'maintenance'),
+    'cves': ('maintenance',),
     'document_read_events': ('documents',),
     'document_read_sessions': ('documents',),
     'document_versions': ('documents',),

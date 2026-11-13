@@ -22,8 +22,10 @@ import logging
 import typing
 
 import fastapi
+import httpx
 from valkey import asyncio as valkey
 
+from imbi.api import cves
 from imbi.api.auth import permissions, principals
 from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
@@ -1133,4 +1135,46 @@ async def execute_marketplace_sync(
         raise MaintenanceItemFailed(
             f'Marketplace {row["slug"]}: {synced["sync_error"]}'
         )
+    return 'succeeded'
+
+
+async def enumerate_cve_release(db: graph.Graph) -> list[str]:
+    """One item per run: the import of the newest CVE List release.
+
+    The item is resolved when it runs, so a run makes one GitHub call
+    and reports a GitHub failure in one place, the attempt row.
+    """
+    return ['latest']
+
+
+async def execute_cve_sync(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Import the CVE records that changed in the newest CVE List release.
+
+    The whole import is one item, so a failure fails the run and the
+    next daily run tries again. Records published before the failure
+    stay, and the next run does not publish them again.
+    """
+    try:
+        result = await cves.import_latest()
+    except cves.ImportFailed as err:
+        raise MaintenanceItemFailed(str(err)) from err
+    except httpx.HTTPError as err:
+        raise MaintenanceItemFailed(
+            f'CVE List download failed: {err!r}'
+        ) from err
+    ctx.log.record(
+        'succeeded',
+        'cve-sync',
+        f'Read {result.records} CVE records from {result.release}, '
+        f'published {result.published}',
+        release=result.release,
+        records=result.records,
+        published=result.published,
+    )
     return 'succeeded'

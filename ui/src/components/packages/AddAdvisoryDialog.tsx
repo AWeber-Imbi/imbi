@@ -27,10 +27,10 @@ interface AddAdvisoryDialogProps {
 /**
  * Records one advisory against a package version.
  *
- * Severity is deliberately not collected: a hand-entered severity goes
- * stale silently, and the field lands when an OSV/GHSA feed can keep it
- * honest. The URL is required because the chip in both reports is a
- * link — an identifier with nowhere to go makes the reader search.
+ * Severity is deliberately not collected: it comes from the CVE
+ * catalog when the advisory is shown. The URL and title are optional —
+ * the API links an empty URL to the record on cve.org and fills an
+ * empty title from the catalog.
  */
 export function AddAdvisoryDialog({
   componentReleaseId,
@@ -53,7 +53,7 @@ export function AddAdvisoryDialog({
   }, [open, componentReleaseId])
 
   const trimmedUrl = url.trim()
-  const urlValid = isHttpUrl(trimmedUrl)
+  const urlValid = trimmedUrl.length === 0 || isHttpUrl(trimmedUrl)
   const ready = cveId.trim().length > 0 && urlValid
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -83,16 +83,13 @@ export function AddAdvisoryDialog({
             />
           </Label>
           <Label className="text-tertiary flex flex-col gap-1.5 text-xs">
-            <span>
-              URL
-              <RequiredAsterisk />
-            </span>
+            <span>URL</span>
             <Input
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://nvd.nist.gov/vuln/detail/CVE-2025-1234"
+              placeholder="Empty: the record on cve.org"
               value={url}
             />
-            {trimmedUrl.length > 0 && !urlValid && (
+            {!urlValid && (
               <span className="text-danger">
                 Enter a full http:// or https:// address.
               </span>
@@ -102,7 +99,7 @@ export function AddAdvisoryDialog({
             <span>Title</span>
             <Input
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Prototype pollution in query parsing"
+              placeholder="Empty: the CVE catalog title"
               value={title}
             />
           </Label>

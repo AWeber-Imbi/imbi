@@ -32,12 +32,13 @@ import itertools
 import logging
 import re
 import typing
+from collections import abc
 
 import fastapi
 import nanoid
 import pydantic
 
-from imbi.api import component_facts
+from imbi.api import component_facts, cves
 from imbi.api.auth import permissions
 from imbi.common import clickhouse, graph, models
 
@@ -66,13 +67,24 @@ _UNDATED: typing.Final = datetime.datetime.min.replace(tzinfo=datetime.UTC)
 
 
 class AdvisoryResponse(pydantic.BaseModel):
-    """One advisory recorded against a component version."""
+    """One advisory recorded against a component version.
+
+    ``severity``, ``cvss_score``, ``description``, and ``published_at``
+    come from the CVE catalog when the response is built, so they are
+    never stale. ``in_catalog`` is ``None`` when the catalog could not be
+    read; then the catalog fields are empty too.
+    """
 
     cve_id: str
     url: str
     title: str | None = None
     created_by: str | None = None
     created_at: datetime.datetime | None = None
+    severity: str | None = None
+    cvss_score: float | None = None
+    description: str | None = None
+    published_at: datetime.datetime | None = None
+    in_catalog: bool | None = None
 
 
 class ComponentNoteResponse(pydantic.BaseModel):
@@ -210,22 +222,25 @@ class ComponentNoteRequest(pydantic.BaseModel):
 class AdvisoryRequest(pydantic.BaseModel):
     """Body for ``PUT .../advisories/{cve_id}``.
 
-    Severity is deliberately absent — see :class:`imbi.common.models.
-    Advisory`.
+    Severity is deliberately absent: it comes from the CVE catalog. An
+    empty ``url`` becomes the record's page on cve.org, and an empty
+    ``title`` becomes the catalog title.
     """
 
-    url: str = pydantic.Field(min_length=1)
+    url: str | None = None
     title: str | None = None
 
     @pydantic.field_validator('url')
     @classmethod
-    def _require_http_url(cls, value: str) -> str:
+    def _require_http_url(cls, value: str | None) -> str | None:
         """Reject anything the advisory chip must not link to.
 
         Both reports render this value as an anchor href, so a
         ``javascript:`` or ``data:`` URL would run on click.
         """
-        stripped = value.strip()
+        stripped = (value or '').strip()
+        if not stripped:
+            return None
         if not stripped.lower().startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')
         return stripped
@@ -518,13 +533,40 @@ def _status(value: str | None) -> models.ComponentStatus | None:
 
 
 def _normalize_cve(cve_id: str) -> str:
-    """Return the canonical (upper-case, trimmed) advisory identifier."""
-    normalized = cve_id.strip().upper()
+    """Return the canonical advisory identifier; 400 when empty."""
+    normalized = cves.normalize(cve_id)
     if not normalized:
         raise fastapi.HTTPException(
             status_code=400, detail='Advisory identifier must not be empty'
         )
     return normalized
+
+
+async def _enrich(advisories: abc.Iterable[AdvisoryResponse]) -> None:
+    """Add the catalog fields to ``advisories`` with one query.
+
+    An empty title becomes the catalog title. The catalog only adds
+    detail, so a ClickHouse failure leaves the fields empty and does not
+    fail the response.
+    """
+    items = list(advisories)
+    if not items:
+        return
+    try:
+        catalog = await cves.lookup({a.cve_id for a in items})
+    except Exception:  # noqa: BLE001 - the catalog is optional detail
+        LOGGER.warning('CVE catalog lookup failed', exc_info=True)
+        return
+    for advisory in items:
+        record = catalog.get(advisory.cve_id)
+        advisory.in_catalog = record is not None
+        if record is None:
+            continue
+        advisory.title = advisory.title or record.title or None
+        advisory.severity = record.cvss_severity
+        advisory.cvss_score = record.cvss_score
+        advisory.description = record.description or None
+        advisory.published_at = record.published_at
 
 
 async def _advisories_by_release(
@@ -559,6 +601,7 @@ async def _advisories_by_release(
         )
     for advisories in out.values():
         advisories.sort(key=lambda a: a.cve_id)
+    await _enrich(itertools.chain.from_iterable(out.values()))
     return out
 
 
@@ -1298,6 +1341,7 @@ async def list_component_advisories(
         for row in rows
     ]
     advisories.sort(key=lambda a: a.cve_id)
+    await _enrich(advisories)
     return advisories
 
 
@@ -1319,18 +1363,31 @@ async def upsert_component_advisory(
     several versions is one node with several edges. Re-recording it
     updates the URL and title but keeps the original author and
     creation time.
+
+    An empty title is filled from the CVE catalog, and an empty URL
+    becomes the record's page on cve.org. An identifier that is not in
+    the catalog is accepted, because the catalog can be a day behind;
+    the response then has ``in_catalog: false``.
     """
     await _assert_release_in_org(db, org_slug, component_release_id)
     normalized = _normalize_cve(cve_id)
     now = datetime.datetime.now(datetime.UTC)
+    response = AdvisoryResponse(
+        cve_id=normalized,
+        url=body.url or f'https://www.cve.org/CVERecord?id={normalized}',
+        title=body.title,
+        created_by=auth.principal_name,
+        created_at=now,
+    )
+    await _enrich([response])
     rows = await db.execute(
         _UPSERT_ADVISORY,
         {
             'component_release_id': component_release_id,
             'cve_id': normalized,
             'advisory_id': nanoid.generate(),
-            'url': body.url,
-            'title': body.title,
+            'url': response.url,
+            'title': response.title,
             'created_by': auth.principal_name,
             'now': now.isoformat(),
         },
@@ -1347,13 +1404,7 @@ async def upsert_component_advisory(
         normalized,
         auth.principal_name,
     )
-    return AdvisoryResponse(
-        cve_id=normalized,
-        url=body.url,
-        title=body.title,
-        created_by=auth.principal_name,
-        created_at=now,
-    )
+    return response
 
 
 @component_releases_router.delete(

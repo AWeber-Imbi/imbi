@@ -3604,7 +3604,7 @@ export const upsertComponentAdvisory = (
   orgSlug: string,
   componentReleaseId: string,
   cveId: string,
-  payload: { title?: null | string; url: string },
+  payload: { title?: null | string; url?: null | string },
 ) =>
   apiClient.put<Advisory>(
     `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/advisories/${encodeURIComponent(cveId)}`,

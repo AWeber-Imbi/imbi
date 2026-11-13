@@ -33,6 +33,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /blueprints/',
         'GET /blueprints/{type}',
         'GET /blueprints/{type}/{slug}',
+        'GET /cves/{cve_id}',
         'GET /operations-log/plugin-templates',
         'GET /organizations/{org_slug}/agent-marketplaces/',
         'GET /organizations/{org_slug}/agent-platform-config/',

@@ -28,6 +28,7 @@ class TopicsTestCase(unittest.TestCase):
                 'agent_usage',
                 'commit_drift',
                 'commits',
+                'cves',
                 'document_read_events',
                 'document_read_sessions',
                 'document_versions',

@@ -73,6 +73,7 @@ run `uv run python scripts/docs_iggy_topics.py` and paste the output.
 | `agent_usage` | `agent_tasks` | `ReplacingMergeTree()` | none |
 | `commit_drift` | `drift` | `ReplacingMergeTree(recorded_at)` | none |
 | `commits` | `github`, `maintenance` | `ReplacingMergeTree(recorded_at)` | none |
+| `cves` | `maintenance` | `ReplacingMergeTree(updated_at)` | none |
 | `document_read_events` | `documents` | `ReplacingMergeTree(recorded_at)` | `toDateTime(session_started_at) + INTERVAL 90 DAY` |
 | `document_read_sessions` | `documents` | `ReplacingMergeTree(finalized_at)` | `toDateTime(started_at) + INTERVAL 2 YEAR` |
 | `document_versions` | `documents` | `ReplacingMergeTree(recorded_at)` | none |
