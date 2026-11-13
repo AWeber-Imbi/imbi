@@ -919,7 +919,14 @@ class PathTraversalTests(unittest.TestCase):
     def test_an_auth_route_is_refused(self) -> None:
         # /auth routes act on the caller's session, which for a task is the
         # scheduler's own: POST /auth/logout would revoke its token.
-        for path in ('/auth', '/auth/logout', '/auth/token/refresh'):
+        for path in (
+            '/auth',
+            '/auth/logout',
+            '/auth/token/refresh',
+            '/auth?x=1',
+            '/auth#fragment',
+            '/auth/logout?x=1',
+        ):
             with self.subTest(path=path):
                 with self.assertRaises(pydantic.ValidationError):
                     models.ApiTarget(method='POST', path=path)

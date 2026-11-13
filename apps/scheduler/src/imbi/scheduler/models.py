@@ -75,7 +75,10 @@ def ensure_not_auth_route(path: str) -> str:
     revoke the scheduler's own tokens (``POST /auth/logout``) instead of
     doing work in Imbi. No task needs them.
     """
-    if path == '/auth' or path.startswith('/auth/'):
+    # The query and fragment are not part of the route: ``/auth?x=1``
+    # still reaches ``/auth``.
+    route = re.split(r'[?#]', path, maxsplit=1)[0]
+    if route == '/auth' or route.startswith('/auth/'):
         raise ValueError(
             'path may not be under /auth: those routes act on the '
             "scheduler's own session"
