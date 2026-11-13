@@ -8378,13 +8378,17 @@ export interface paths {
         post?: never;
         /**
          * Delete Organization
-         * @description Delete an organization.
+         * @description Delete an empty organization. Its memberships go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
          *
          *     Raises:
          *         404: Organization not found.
+         *         409: The organization still has nodes that belong to it (teams,
+         *             agents, integrations, ...), secret providers, or an
+         *             identity source. Delete them first, so that each delete
+         *             does its own cleanup.
          */
         delete: operations["delete_organization_api_organizations__slug__delete"];
         options?: never;
