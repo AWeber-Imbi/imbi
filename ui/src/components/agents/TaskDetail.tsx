@@ -73,6 +73,7 @@ type TabKey =
   | 'checks'
   | 'conversation'
   | 'input'
+  | 'log'
   | 'overview'
   | 'projects'
   | 'related'
@@ -103,7 +104,7 @@ export function TaskDetail({
     eventCount,
     !!task.data &&
       eventCount > 0 &&
-      (tab === 'conversation' || tab === 'actions'),
+      (tab === 'conversation' || tab === 'actions' || tab === 'log'),
   )
 
   if (task.isLoading) {
@@ -135,6 +136,7 @@ export function TaskDetail({
       key: 'conversation',
       label: 'Conversation',
     },
+    { count: eventCount, key: 'log', label: 'Log' },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',
@@ -194,7 +196,7 @@ export function TaskDetail({
         {current === 'input' && (
           <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
         )}
-        {current === 'conversation' && (
+        {(current === 'conversation' || current === 'log') && (
           <TaskLogTab
             events={log}
             orgSlug={orgSlug}
