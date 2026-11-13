@@ -21,9 +21,10 @@ from imbi.api import (
     workflows,
 )
 from imbi.api.auth import agent_api
-from imbi.api.middleware import body_limit, rate_limit
+from imbi.api.middleware import rate_limit
 from imbi.common import (
     access_log,
+    body_limit,
     graph,
     lifespan,
     metrics,

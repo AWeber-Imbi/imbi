@@ -2,11 +2,13 @@ import datetime
 import os
 
 import fastapi
+import pydantic_settings
 import typer
 
 import imbi.gateway
 from imbi.common import (
     access_log,
+    body_limit,
     graph,
     lifespan,
     metrics,
@@ -22,6 +24,15 @@ from imbi.gateway import app_status, lifespans, notifications
 #: ``imbi_plugin_*`` naming convention, so it is registered explicitly
 #: through the ``IMBI_PLUGINS`` setting rather than the convention scan.
 _BUILTIN_PLUGIN = 'imbi.gateway.plugin:GatewayActionsPlugin'
+
+
+class ServerSettings(pydantic_settings.BaseSettings):
+    model_config = pydantic_settings.SettingsConfigDict(
+        env_prefix='IMBI_GATEWAY_'
+    )
+    # Largest request body, in bytes, before imbi-gateway answers 413.
+    # The default fits GitHub's 25 MB cap on a webhook payload.
+    max_request_body_bytes: int = 25 * 1024 * 1024
 
 
 def _register_builtin_plugin() -> None:
@@ -55,6 +66,11 @@ def create_app() -> fastapi.FastAPI:
     # For Prometheus to scrape by pod IP. The Caddyfile refuses
     # /gateway/metrics so that the public routes do not reach it.
     metrics.add_route(app)
+    # Innermost, so that the access log wraps its 413.
+    app.add_middleware(
+        body_limit.BodyLimitMiddleware,
+        limit=ServerSettings().max_request_body_bytes,
+    )
     app.add_middleware(
         access_log.AccessLogMiddleware,
         quiet_paths={'/status', '/gateway/status', metrics.PATH},

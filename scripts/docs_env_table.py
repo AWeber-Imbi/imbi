@@ -33,6 +33,7 @@ from imbi.common import llm
 from imbi.common import settings as common_settings
 from imbi.common.api import settings as client_settings
 from imbi.gateway import actions as gateway_actions
+from imbi.gateway import app as gateway_app
 from imbi.scheduler import settings as scheduler_settings
 from imbi.slackbot import settings as slackbot_settings
 from imbi.workflows import settings as workflows_settings
@@ -137,7 +138,7 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
     ),
     (
         'imbi-gateway',
-        [gateway_actions.ActionSettings],
+        [gateway_actions.ActionSettings, gateway_app.ServerSettings],
         ['apps/gateway/src'],
         [],
     ),
@@ -438,6 +439,8 @@ DESCRIPTIONS: dict[str, str] = {
     'imbi-api instead of `ANTHROPIC_API_KEY`.',
     'IMBI_GATEWAY_API_TOKEN': 'API key of the `imbi-gateway` service '
     'account. Required.',
+    'IMBI_GATEWAY_MAX_REQUEST_BODY_BYTES': 'Largest request body in bytes; '
+    'larger bodies get 413. GitHub caps webhooks at 25 MB.',
     'IMBI_SCHEDULER_SCHEMA': 'Postgres schema of the task tables',
     'IMBI_SCHEDULER_API_PREFIX': 'Route prefix of the task and run routes',
     'IMBI_SCHEDULER_GATEWAY_URL': 'imbi-gateway URL for gateway targets',
