@@ -13,6 +13,7 @@ import datetime
 import hashlib
 import hmac
 import json
+import time
 import typing
 import urllib.parse
 
@@ -22,6 +23,7 @@ from imbi.common.plugins.base import PluginContext
 from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginCredentialsMissing,
+    PluginRateLimited,
     PluginTimeoutError,
     PluginUnavailableError,
 )
@@ -29,6 +31,7 @@ from imbi.common.plugins.errors import (
 ServiceName = typing.Literal['ssm', 'logs']
 
 _SIGNING_ALGORITHM = 'AWS4-HMAC-SHA256'
+_THROTTLE_BACKOFF_SECONDS = 5
 _AWS_REQUEST = 'aws4_request'
 
 _TARGET_PREFIX: dict[ServiceName, str] = {
@@ -251,7 +254,13 @@ def _map_status_error(
     if error_code in _AUTH_ERROR_CODES:
         return PluginAuthenticationFailed(message or error_code)
     if error_code in error_map:
-        return error_map[error_code](message or error_code)
+        error_cls = error_map[error_code]
+        if issubclass(error_cls, PluginRateLimited):
+            # AWS sends no retry hint with a throttle; back off briefly.
+            return error_cls(
+                time.time() + _THROTTLE_BACKOFF_SECONDS, message or error_code
+            )
+        return error_cls(message or error_code)
     if status_code >= 500:
         return PluginUnavailableError(message or f'AWS {status_code}')
     return PluginUnavailableError(

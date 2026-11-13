@@ -7,7 +7,8 @@ import fastapi.testclient
 import imbi.assistant
 import imbi.assistant.app
 from apps.assistant.tests import helpers
-from imbi.assistant import external_mcp
+from imbi.assistant import app_status, external_mcp
+from imbi.common import lifespan
 
 
 class AppTests(helpers.TestCase):
@@ -75,6 +76,18 @@ class AppTests(helpers.TestCase):
 
         body = response.json()
         self.assertEqual('testing', body['environment'])
+
+    def test_status_fails_when_lifespan_failed(self) -> None:
+        failed = lifespan.Lifespan()
+        failed.failed = True
+        request = mock.Mock()
+        request.state.lifespan_data = failed
+        request.app.extra = {'started_at': datetime.datetime.now(datetime.UTC)}
+        request.app.version = '1.0.0'
+        response = fastapi.Response()
+        result = app_status.status_endpoint(request=request, response=response)
+        self.assertEqual(503, response.status_code)
+        self.assertEqual('failing', result.status)
 
 
 class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):

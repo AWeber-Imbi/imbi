@@ -6,8 +6,8 @@ managed like ``agent_runtime``: the declarative schemata are applied on
 every start. imbi-api owns both; imbi-workflows executes the runs.
 
 The store lifespan also runs the archive sweep of the run log and the
-reconcile of agent step tasks (:mod:`imbi.api.workflows.sweeper`),
-because they need the pool.
+reconcile of agent step tasks and the retry of missed ``task_completed``
+runs (:mod:`imbi.api.workflows.sweeper`), because they need the pool.
 """
 
 import asyncio
@@ -19,7 +19,8 @@ from collections import abc
 import fastapi
 
 from imbi.api.agent_tasks import TaskStore, create_pool
-from imbi.api.workflows import runs, sweeper
+from imbi.api.agent_tasks import store as task_store
+from imbi.api.workflows import runs, sweeper, task_trigger
 from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
     SCHEMA,
@@ -50,6 +51,7 @@ async def initialize() -> None:
             relational.load_schemata(path),
             f'imbi.api.initialize.{schema}',
         )
+    await relational.initialize_deleted_organizations()
 
 
 @contextlib.asynccontextmanager
@@ -61,13 +63,18 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
     try:
         await pool.open()
         _runs = RunStore(pool)
+        definitions = WorkflowStore(pool)
+        tasks = TaskStore(pool)
+        trigger = task_trigger.TaskTrigger(definitions, _runs, tasks)
+        task_store.register_close_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(
-            sweeper.run_sweeper(_runs, TaskStore(pool), stop=stop)
+            sweeper.run_sweeper(_runs, tasks, trigger, stop=stop)
         )
         try:
-            yield WorkflowStore(pool)
+            yield definitions
         finally:
+            task_store.unregister_close_hook(trigger)
             stop.set()
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):

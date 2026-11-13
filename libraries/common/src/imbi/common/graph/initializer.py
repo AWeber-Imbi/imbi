@@ -27,6 +27,14 @@ async def initialize() -> None:
         await conn.execute(
             'SET search_path = ag_catalog, "$user", public',
         )
+        # Services that start together run this DDL at the same time,
+        # and concurrent CREATE OR REPLACE FUNCTION fails with "tuple
+        # concurrently updated".  The lock is session level on this
+        # unpooled connection, so closing the connection releases it.
+        await conn.execute(
+            'SELECT pg_advisory_lock('
+            "hashtextextended('imbi.graph.initialize', 0))",
+        )
         async with conn.cursor() as cursor:
             await _create_extensions(cursor, schemata)
             await _create_graph(cursor, postgres.graph_name)

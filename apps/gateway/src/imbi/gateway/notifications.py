@@ -9,6 +9,7 @@ import typing
 
 import celpy
 import fastapi
+import httpx
 import jsonpointer
 import pydantic
 
@@ -326,8 +327,10 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
         ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
         resolved = ptr.resolve(body)
     except jsonpointer.JsonPointerException:
-        LOGGER.exception(
-            'failed to select project identifier %r for webhook_id=%r'
+        # Some events (e.g. installation_repositories) do not carry the
+        # identifier; they match no project.
+        LOGGER.debug(
+            'project identifier %r not in body for webhook_id=%r'
             ' integration=%r',
             sel['identifier_selector'],
             webhook_id,
@@ -724,7 +727,9 @@ async def _resolve_project_and_verify(  # noqa: PLR0913
     row-order dependent. Integrations that don't sign deliveries store no
     secret and pass straight through. ``signature`` is the plugin's
     ``edge`` signature; with none, an edge that has a secret cannot
-    verify, so the delivery is dropped.
+    verify, so the delivery is dropped. When at least one matched edge
+    is verified (``verified_identifier`` equals ``external_id``), the
+    unverified matches are dropped.
     """
     project_records: list[dict[str, typing.Any]] = await db.execute(
         'MATCH (p:Project)'
@@ -733,10 +738,27 @@ async def _resolve_project_and_verify(  # noqa: PLR0913
         'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
         ' RETURN p.id AS project_id, p.slug AS project_slug,'
         '        t.slug AS team_slug,'
-        '        ei.webhook_secret_enc AS webhook_secret_enc',
+        '        ei.webhook_secret_enc AS webhook_secret_enc,'
+        '        ei.verified_identifier AS verified_identifier',
         {'external_id': external_id, 'integration_slug': integration_slug},
-        ['project_id', 'project_slug', 'team_slug', 'webhook_secret_enc'],
+        [
+            'project_id',
+            'project_slug',
+            'team_slug',
+            'webhook_secret_enc',
+            'verified_identifier',
+        ],
     )
+    # A project writer can link a non-shareable identifier by hand before
+    # the real project's plugin writeback verifies it. That manual edge
+    # stays, so prefer the verified edges when there are any.
+    verified = [
+        record
+        for record in project_records
+        if graph.parse_agtype(record.get('verified_identifier')) == external_id
+    ]
+    if verified:
+        project_records = verified
     if not project_records:
         LOGGER.warning(
             'Ignoring notification: no project found for external_id=%r'
@@ -939,15 +961,21 @@ async def _run_handlers(  # noqa: PLR0913
                 action_config=config,
                 event=event,
             )
-        except Exception as err:
-            LOGGER.exception(
+        except Exception as err:  # noqa: BLE001 -- logged below
+            # A network failure (API restart, slow upstream) is
+            # transient; log it without a traceback.
+            transient = isinstance(err, httpx.TransportError)
+            LOGGER.log(
+                logging.WARNING if transient else logging.ERROR,
                 'Failure executing rule %r (webhook_id=%r integration=%r'
-                ' project=%s/%s)',
+                ' project=%s/%s): %r',
                 rule.handler,
                 webhook_id,
                 integration_slug,
                 org_slug,
                 project_id,
+                err,
+                exc_info=not transient,
                 extra={
                     'webhook_id': webhook_id,
                     'integration_slug': integration_slug,
@@ -1020,16 +1048,27 @@ async def _resolve_identity(
 
     Queries ``/users/by-identity`` for each candidate identity
     Integration slug and returns the single matching user's email.
-    Returns ``None`` when nothing matches, or -- defensively -- when two
+    Returns ``None`` when nothing matches, when the API is unreachable
+    (logged as a warning), or -- defensively -- when two
     or more candidates resolve to *different* users (logged as an error;
     the actor is left unattributed rather than mis-attributed).
     """
     matches: set[str] = set()
-    async with actions.ImbiClient() as client:
-        for slug in identity_slugs:
-            user_id = await client.find_user_by_identity(slug, subject)
-            if user_id is not None:
-                matches.add(user_id)
+    try:
+        async with actions.ImbiClient() as client:
+            for slug in identity_slugs:
+                user_id = await client.find_user_by_identity(slug, subject)
+                if user_id is not None:
+                    matches.add(user_id)
+    except httpx.TransportError as err:
+        LOGGER.warning(
+            'Imbi API unreachable resolving identity subject %r: %r'
+            ' -- leaving unattributed (webhook_id=%r)',
+            subject,
+            err,
+            webhook_id,
+        )
+        return None
     if len(matches) > 1:
         LOGGER.error(
             'Identity subject %r resolved to multiple Imbi users via '

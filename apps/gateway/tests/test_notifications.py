@@ -63,6 +63,18 @@ async def raising_action(
     raise RuntimeError('test error')
 
 
+async def timeout_action(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: StubActionConfig,
+    event: object,
+) -> None:
+    del ctx, credentials, external_identifier, action_config, event
+    raise httpx.ReadTimeout('timed out')
+
+
 class StubActionConfig(pydantic.BaseModel):
     label: str = 'default'
 
@@ -90,6 +102,10 @@ class StubWebhookActions(plugin_base.WebhookActionsCapability):
             ),
             _descriptor(
                 'boom', 'apps.gateway.tests.test_notifications:raising_action'
+            ),
+            _descriptor(
+                'unreachable',
+                'apps.gateway.tests.test_notifications:timeout_action',
             ),
         ]
 
@@ -1154,6 +1170,30 @@ class ProcessNotificationTests(helpers.TestCase):
         }
         self.assertEqual({self.proj_id, second_proj_id}, project_ids)
 
+    async def test_verified_edge_wins_over_unverified_match(self) -> None:
+        # A manual (unverified) link on a second project must not receive
+        # deliveries once the real project's edge is verified.
+        await self._add_rule(filter_expression='true')
+        await self._create_extra_project()
+        await self.g.execute(
+            'MATCH (:Project {{id: {pid}}})'
+            '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+            ' SET ei.verified_identifier = {ext_id} RETURN 1 AS r',
+            {'pid': self.proj_id, 'ext_id': self.ext_id},
+            ['r'],
+        )
+        response = await self._post(
+            self.webhook_id, {'repo': {'id': self.ext_id}}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(
+            [self.proj_id],
+            [
+                typing.cast('plugin_base.PluginContext', c['ctx']).project_id
+                for c in ACTION_CALLS
+            ],
+        )
+
     async def test_handlers_run_in_ordinal_order(self) -> None:
         # Ordering is load-bearing: ``add_deployment_event`` drops its
         # event when the release is missing, so it has to run after
@@ -1335,17 +1375,22 @@ class ProcessNotificationTests(helpers.TestCase):
                 TokenEncryption.reset_instance()
 
     async def test_identifier_pointer_not_in_body(self) -> None:
+        # Events such as installation_repositories have no repository;
+        # that is "no match", not an error.
         with self.assertLogs(
-            'imbi.gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='DEBUG'
         ) as cm:
             response = await self._post(self.webhook_id, {})
         self.assertEqual(204, response.status_code)
         self.assertTrue(
             any(
-                'failed to select project identifier' in line
+                line.startswith('DEBUG:')
+                and 'project identifier' in line
+                and 'not in body' in line
                 for line in cm.output
             )
         )
+        self.assertFalse(any(line.startswith('ERROR:') for line in cm.output))
 
     async def test_webhook_in_multiple_orgs_fails(self) -> None:
         extra_org_id = nanoid.generate()
@@ -1697,6 +1742,53 @@ class ProcessNotificationTests(helpers.TestCase):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
         mock_lookup.assert_not_awaited()
+
+    async def test_identity_lookup_transport_error_is_unattributed(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(
+                    side_effect=httpx.ConnectError('refused')
+                ),
+            ),
+            self.assertLogs(
+                'imbi.gateway.notifications', level='WARNING'
+            ) as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+        self.assertTrue(
+            any(
+                line.startswith('WARNING:') and 'Imbi API' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_handler_transport_error_logs_warning(self) -> None:
+        await self._add_rule(handler='stub-nocreds#unreachable')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi.gateway.notifications', level='WARNING'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        failures = [
+            line for line in cm.output if 'Failure executing rule' in line
+        ]
+        self.assertEqual(1, len(failures))
+        self.assertTrue(failures[0].startswith('WARNING:'))
+        self.assertIn('ReadTimeout', failures[0])
 
     async def test_handler_exception_is_caught(self) -> None:
         await self._add_rule(handler='stub-nocreds#boom')

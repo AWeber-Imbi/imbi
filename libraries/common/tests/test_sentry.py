@@ -3,6 +3,9 @@ import typing
 import unittest
 from unittest import mock
 
+import httpx
+from fastmcp.exceptions import ToolError
+
 from imbi.common import sentry
 
 
@@ -84,6 +87,29 @@ class ScrubTestCase(unittest.TestCase):
                     _event('http://imbi' + path),
                 )
         self.assertEqual(sentry._scrub({}, {}), {})
+
+    def test_tool_errors_from_client_errors_are_dropped(self) -> None:
+        def tool_error(status: int) -> BaseException:
+            request = httpx.Request('GET', 'http://imbi-api/api/projects/')
+            response = httpx.Response(status, request=request)
+            cause = ValueError(f'HTTP error {status}')
+            cause.__cause__ = httpx.HTTPStatusError(
+                'error', request=request, response=response
+            )
+            error = ToolError('Error calling tool')
+            error.__cause__ = cause
+            return error
+
+        def hint(error: BaseException) -> dict[str, typing.Any]:
+            return {'exc_info': (type(error), error, error.__traceback__)}
+
+        # IMBI-3M: the API refused a bad call; the model gets the error.
+        self.assertIsNone(sentry._scrub({}, hint(tool_error(400))))
+        # A server error or a plain client error is still reported.
+        self.assertEqual(sentry._scrub({}, hint(tool_error(500))), {})
+        not_a_tool = tool_error(400).__cause__
+        assert not_a_tool is not None
+        self.assertEqual(sentry._scrub({}, hint(not_a_tool)), {})
 
     def test_init_scrubs_errors_and_transactions(self) -> None:
         with (

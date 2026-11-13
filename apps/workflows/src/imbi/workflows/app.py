@@ -97,7 +97,7 @@ async def iggy_lifespan() -> abc.AsyncGenerator[None]:
 
 class Status(pydantic.BaseModel):
     service: str = 'imbi-workflows'
-    status: typing.Literal['ok']
+    status: typing.Literal['ok', 'failing']
     version: str
     started_at: datetime.datetime
 
@@ -115,10 +115,16 @@ def create_app() -> fastapi.FastAPI:
     )
 
     @app.get('/status', operation_id='getStatus')
-    def status(request: fastapi.Request) -> Status:  # pyright: ignore[reportUnusedFunction]
-        """Report that this process is up. It checks no dependency."""
+    def status(  # pyright: ignore[reportUnusedFunction]
+        request: fastapi.Request, response: fastapi.Response
+    ) -> Status:
+        """Report that this process is up. It checks no dependency, only
+        that the lifespan did not exit while the process kept serving."""
+        ok = not lifespan.failed(request)
+        if not ok:
+            response.status_code = 503
         return Status(
-            status='ok',
+            status='ok' if ok else 'failing',
             version=request.app.version,
             started_at=request.app.extra['started_at'],
         )

@@ -5,6 +5,7 @@ import typing
 import unittest
 from unittest import mock
 
+import fastapi
 import psycopg.errors
 from fastapi.testclient import TestClient
 
@@ -102,6 +103,16 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         )
         self._resolve_patcher.start()
         self.addCleanup(self._resolve_patcher.stop)
+
+        # Archive and unarchive ask the lifecycle plugins first; the
+        # archive tests override this locally.
+        self._access_check = mock.AsyncMock(return_value=None)
+        self._access_patcher = mock.patch(
+            'imbi.api.endpoints.projects.check_archive_access',
+            new=self._access_check,
+        )
+        self._access_patcher.start()
+        self.addCleanup(self._access_patcher.stop)
 
         # The slim list reads deployment plugin bindings with extra
         # ``db.execute`` calls; stub them so list tests keep one call.
@@ -815,6 +826,169 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         response = self._patch_delivery_mode('sometimes')
         self.assertEqual(response.status_code, 400, response.text)
         self.assertIn('delivery_mode', response.json()['detail'])
+
+    def _patch_with_required_facts(
+        self,
+        operations: list[dict[str, typing.Any]],
+        required: tuple[str, ...] = ('owner', 'tier'),
+        **props: typing.Any,
+    ) -> typing.Any:
+        """PATCH a project whose blueprint requires ``required`` of
+        ``owner`` and ``tier`` (an enum); ``props`` are the node's
+        current facts."""
+        from imbi.common import blueprints
+
+        dynamic_model = blueprints.apply_blueprints(
+            models.Project,
+            [
+                models.Blueprint(
+                    name='facts',
+                    slug='facts',
+                    type='Project',
+                    json_schema=models.Schema.model_validate(
+                        {
+                            'type': 'object',
+                            'properties': {
+                                'owner': {'type': 'string'},
+                                'tier': {
+                                    'type': 'string',
+                                    'enum': ['gold', 'silver'],
+                                },
+                            },
+                            'required': list(required),
+                        }
+                    ),
+                )
+            ],
+        )
+        existing = self._project_data(**props)
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=dynamic_model,
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            return self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=operations,
+            )
+
+    def test_patch_fact_ignores_unrelated_missing_required(self) -> None:
+        """A valid fact write succeeds although another required
+        property is missing (#640)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'gold'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertEqual(set_statement.params['tier'], 'gold')
+        self.assertNotIn('owner', set_statement.params)
+        self.assertNotIn('p.owner', set_statement.cypher)
+
+    def test_patch_add_ignores_unused_from(self) -> None:
+        """``add`` ignores ``from``, so a stray value must not 500."""
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'gold', 'from': 'x'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    def test_patch_fact_still_validates_patched_value(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'add', 'path': '/tier', 'value': 'bronze'}]
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('tier', response.json()['detail'])
+
+    def test_patch_fact_refuses_clearing_required(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/owner', 'value': None}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('owner', response.json()['detail'])
+
+    def test_patch_fact_remove_refuses_required(self) -> None:
+        """``remove`` on a required property is refused (#675)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/owner'}], owner='ops', tier='gold'
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('owner', response.json()['detail'])
+
+    def test_patch_fact_remove_clears_optional(self) -> None:
+        """``remove`` clears an optional property (#675)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/owner'}],
+            required=('tier',),
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIsNone(set_statement.params['owner'])
+        self.assertEqual(set_statement.params['tier'], 'gold')
+
+    def test_patch_remove_refuses_required_base_field(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/name'}], owner='ops', tier='gold'
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('name', response.json()['detail'])
+
+    def test_patch_remove_clears_optional_base_field(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'remove', 'path': '/description'}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIsNone(set_statement.params['description'])
+
+    def test_patch_replace_null_refuses_required_base_field(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/name', 'value': None}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn('name', response.json()['detail'])
+
+    def test_patch_replace_null_clears_optional_base_field(self) -> None:
+        """``replace`` with null clears a base field (#699)."""
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/description', 'value': None}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertIsNone(set_statement.params['description'])
+
+    def test_patch_untouched_base_field_keeps_value(self) -> None:
+        response = self._patch_with_required_facts(
+            [{'op': 'replace', 'path': '/name', 'value': 'New'}],
+            owner='ops',
+            tier='gold',
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statement = next(s for s in statements if 'SET p.' in s.cypher)
+        self.assertEqual(set_statement.params['description'], 'An example API')
 
     def test_list_slim_release_summaries_follow_delivery_mode(self) -> None:
         """Release summaries are fetched for projects that *resolve* to
@@ -1549,6 +1723,30 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
+        # A project outside the organization never reaches the plugins.
+        self._access_check.assert_not_awaited()
+
+    def test_archive_refused_by_remote_writes_nothing(self) -> None:
+        """A remote refusal returns 403 before any graph write."""
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
+        self._access_check.side_effect = fastapi.HTTPException(
+            status_code=403, detail='You need admin access'
+        )
+
+        for action in ('archive', 'unarchive'):
+            response = self.client.post(
+                f'/organizations/engineering/projects/{PROJECT_ID}/{action}',
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.json()['detail'], 'You need admin access'
+            )
+        self.assertFalse(
+            any(
+                'SET p.archived' in call.args[0]
+                for call in self.mock_db.execute.call_args_list
+            )
+        )
 
     def test_archive_succeeds_when_dispatch_raises(self) -> None:
         """Dispatch failure must not poison a committed archive."""

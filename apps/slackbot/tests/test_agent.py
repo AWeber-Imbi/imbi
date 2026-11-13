@@ -103,6 +103,14 @@ class RunTurnTests(helpers.TestCase):
         answer = await self._run(client, FakeManager([]))
         self.assertEqual('Hello there', answer)
 
+    async def test_tracking_kwargs_reach_the_model_call(self) -> None:
+        client = FakeClient([Response([_text('ok')], 'end_turn')])
+        tracking = {'posthog_distinct_id': 'd', 'posthog_trace_id': 't'}
+        await self._run(client, FakeManager([]), tracking=tracking)
+        self.assertLessEqual(
+            tracking.items(), client.messages.calls[0].items()
+        )
+
     async def test_tool_round(self) -> None:
         client = FakeClient(
             [

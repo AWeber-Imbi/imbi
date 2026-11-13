@@ -1,11 +1,15 @@
 import datetime
+import unittest
 import unittest.mock
+from unittest import mock
 
+import fastapi
 import fastapi.testclient
 
 import imbi.gateway.app
 from apps.gateway.tests import helpers
-from imbi.common import sentry
+from imbi.common import lifespan, sentry
+from imbi.gateway import app_status
 
 
 class AppTests(helpers.TestCase):
@@ -59,3 +63,17 @@ class AppTests(helpers.TestCase):
 
         body = response.json()
         self.assertEqual('testing', body['environment'])
+
+
+class StatusLifespanFailedTests(unittest.TestCase):
+    def test_status_fails_when_lifespan_failed(self) -> None:
+        failed = lifespan.Lifespan()
+        failed.failed = True
+        request = mock.Mock()
+        request.state.lifespan_data = failed
+        request.app.extra = {'started_at': datetime.datetime.now(datetime.UTC)}
+        request.app.version = '1.0.0'
+        response = fastapi.Response()
+        result = app_status.status_endpoint(request=request, response=response)
+        self.assertEqual(503, response.status_code)
+        self.assertEqual('failing', result.status)

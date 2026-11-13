@@ -755,6 +755,16 @@ class RequestTests(HarnessTestCase):
 
 
 class OutcomeTests(HarnessTestCase):
+    async def test_outcome_keeps_the_structured_output(self) -> None:
+        await self.open_session()
+        response = await self.post(
+            'outcome',
+            {'outcome': 'done_acted', 'structured_output': {'n': 1}},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.task_row()
+        self.assertEqual(task['structured_output'], {'n': 1})
+
     async def test_outcome_closes_the_task_and_sessions(self) -> None:
         await self.open_session()
         await self.open_session('s-2')

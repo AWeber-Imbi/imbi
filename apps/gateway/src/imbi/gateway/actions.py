@@ -3,7 +3,6 @@ import http
 import logging
 import re
 import typing
-import urllib.parse
 
 import celpy
 import httpx
@@ -12,6 +11,7 @@ import pydantic
 import pydantic_settings
 
 from imbi.common import json_pointer
+from imbi.common import settings as common_settings
 from imbi.gateway import helpers, metrics, version
 
 if typing.TYPE_CHECKING:
@@ -20,52 +20,12 @@ if typing.TYPE_CHECKING:
     from imbi.common.plugins import base as plugin_base
 
 
-class ActionSettings(pydantic_settings.BaseSettings):
-    model_config = {'env_prefix': 'IMBI_GATEWAY_'}
-    # Where the gateway reaches imbi-api: the in-cluster origin every other
-    # service reads from ``IMBI_INTERNAL_API_URL``.
-    imbi_url: pydantic.HttpUrl = pydantic.Field(
-        default=pydantic.HttpUrl('http://localhost:8000'),
-        validation_alias='IMBI_INTERNAL_API_URL',
-    )
-    # imbi-api mounts every router under the path component of its *public*
-    # URL (``imbi.api.settings.Server.api_prefix``), while
-    # ``IMBI_INTERNAL_API_URL`` is a bare origin. The prefix therefore has to
-    # be re-derived here -- see :attr:`api_base_url`.
-    api_public_url: str = pydantic.Field(
-        default='', validation_alias='IMBI_API_URL'
+class ActionSettings(common_settings.InternalApi):
+    model_config = pydantic_settings.SettingsConfigDict(
+        env_prefix='IMBI_GATEWAY_'
     )
     # The gateway's own API key for imbi-api, ``IMBI_GATEWAY_API_TOKEN``.
     api_token: str
-
-    @pydantic.field_validator('api_public_url')
-    @classmethod
-    def _validate_api_public_url(cls, value: str) -> str:
-        """Require an absolute URL, or nothing at all.
-
-        Only the path is used, and :func:`urllib.parse.urlparse` reads a
-        schemeless value as one: ``imbi.example.com/api`` parses to that
-        whole string as the path, so :attr:`api_base_url` would concatenate
-        to ``http://imbi-api:8000imbi.example.com/api`` and turn every action
-        into a 404. A startup failure names the misconfigured variable.
-        """
-        if value and not urllib.parse.urlparse(value).scheme:
-            raise ValueError(
-                'must be an absolute URL (e.g. https://imbi.example.com/api);'
-                f' got {value!r}'
-            )
-        return value
-
-    @property
-    def api_base_url(self) -> str:
-        """Return the in-cluster imbi-api base URL, prefix included.
-
-        Every path :class:`ImbiClient` builds must be joined onto this rather
-        than onto :attr:`imbi_url`: ``PATCH http://imbi-api:8000/organizations/
-        ...`` is a 404 when the deployment mounts the API at ``/api``.
-        """
-        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
-        return str(self.imbi_url).rstrip('/') + prefix
 
 
 LOGGER = logging.getLogger(__name__)
@@ -79,6 +39,9 @@ _COMMITTISH_PATTERN = re.compile(r'^[0-9a-f]{7}$')
 _DEPLOYMENT_WRITE_RETRIES = 2
 _DEPLOYMENT_WRITE_BACKOFF = 0.5
 _REPEATABLE_STATUSES = frozenset({'success', 'failed', 'rolled_back'})
+# The API parses and stores the SBoM before it responds; large SBoMs
+# take longer than the httpx default 5 s read timeout.
+_SBOM_TIMEOUT = httpx.Timeout(5.0, read=60.0)
 
 
 class UpdateProjectRule(pydantic.BaseModel):
@@ -387,7 +350,7 @@ class ImbiClient(httpx.AsyncClient):
             f'/releases/{release_id}/sbom'
         )
         LOGGER.debug('Putting SBoM %s', url)
-        response = await self.put(url, json=sbom)
+        response = await self.put(url, json=sbom, timeout=_SBOM_TIMEOUT)
         if response.is_error:
             LOGGER.warning('Failed to put SBoM %r: %s', url, response.text)
         return response

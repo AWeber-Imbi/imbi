@@ -5,14 +5,17 @@ import logging
 import typing
 
 import fastapi
+import psycopg
 import pydantic
+from psycopg import sql
 
 from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.harness import auth as harness_auth
 from imbi.api.relationships import RelationshipSpec, build_relationships
-from imbi.common import graph, models
+from imbi.api.secret_broker import store as secret_store
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 
 from .agent_platform import (
@@ -733,6 +736,34 @@ async def list_organization_members(
     return [m for m in raw_members if m.get('email')]
 
 
+# Rows that block an organization delete, by the name the 409 shows,
+# with the condition that makes a row block.
+_ORG_BLOCKING_ROWS: dict[str, tuple[tuple[str, str], typing.LiteralString]] = {
+    'workflows': (('workflows', 'workflows'), 'TRUE'),
+    'workflow trigger bindings': (('workflows', 'trigger_bindings'), 'TRUE'),
+    'secret providers': (('secrets', 'providers'), 'TRUE'),
+    'identity sources': (('secrets', 'identity_sources'), 'TRUE'),
+    'active secret resolutions or unrevoked provider leases': (
+        ('secrets', 'resolutions'),
+        secret_store.UNSETTLED_RESOLUTION,
+    ),
+}
+
+# Rows that an organization delete removes. Children come before the
+# tables that they refer to with ON DELETE RESTRICT. The other child
+# tables of tasks and runs cascade, and so do the nonces of
+# resolutions.
+_ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
+    ('agent_runtime', 'task_dependencies'),
+    ('agent_runtime', 'task_projects'),
+    ('agent_runtime', 'tasks'),
+    ('agent_runtime', 'task_id_sequences'),
+    ('workflow_runtime', 'runs'),
+    ('secrets', 'grants'),
+    ('secrets', 'resolutions'),
+)
+
+
 @organizations_router.delete('/{slug}', status_code=204)
 async def delete_organization(
     slug: str,
@@ -744,21 +775,112 @@ async def delete_organization(
         ),
     ],
 ) -> None:
-    """Delete an organization.
+    """Delete an empty organization.
+
+    Its memberships, agent tasks, workflow runs, secret grants, and
+    settled secret resolutions go with it.
 
     Parameters:
         slug: Organization slug to delete.
 
     Raises:
         404: Organization not found.
+        409: The organization still has nodes that belong to it (teams,
+            agents, integrations, ...), secret providers, an
+            identity source, workflows, or workflow trigger bindings.
+            Delete them first, so that each delete does its own
+            cleanup. An active secret resolution or a provider lease
+            that is not revoked also blocks the delete.
 
     """
-    query: typing.LiteralString = (
-        'MATCH (n:Organization {{slug: {slug}}}) DETACH DELETE n RETURN n'
+    records = await db.execute(
+        'MATCH (o:Organization {{slug: {slug}}}) RETURN o.id AS id',
+        {'slug': slug},
+        ['id'],
     )
-    records = await db.execute(query, {'slug': slug})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(f'Organization with slug {slug!r} not found'),
         )
+    org_id = org_auth.organization_id(
+        graph.parse_agtype(records[0]['id']), slug
+    )
+
+    async def check_and_delete(
+        execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> None:
+        contents = await execute(
+            'MATCH (n)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})'
+            ' RETURN label(n) AS label, count(n) AS n',
+            {'org_id': org_id},
+            ['label', 'n'],
+        )
+        in_use = {
+            str(graph.parse_agtype(r['label'])): int(
+                graph.parse_agtype(r['n'])
+            )
+            for r in contents
+        }
+        for name, (table, condition) in _ORG_BLOCKING_ROWS.items():
+            in_use[name] = await _count_org_rows(
+                conn, table, condition, org_id
+            )
+        found = ', '.join(
+            f'{name} ({n})' for name, n in sorted(in_use.items()) if n
+        )
+        if found:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=(
+                    f'Organization {slug!r} is not empty: {found}. '
+                    'Delete these first.'
+                ),
+            )
+        for table in _ORG_OWNED_TABLES:
+            await conn.execute(
+                sql.SQL('DELETE FROM {} WHERE organization_id = %s').format(
+                    sql.Identifier(*table)
+                ),
+                (org_id,),
+            )
+        # Match by id: a rename since the slug lookup must not leave
+        # the organization in place or delete a new one with the slug.
+        deleted = await execute(
+            'MATCH (o:Organization {{id: {org_id}}})'
+            ' DETACH DELETE o RETURN 1 AS deleted',
+            {'org_id': org_id},
+            ['deleted'],
+        )
+        if not deleted:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=f'Organization {slug!r} changed during the delete',
+            )
+        # A writer that read the organization before this delete gets
+        # the lock after the commit; the marker makes it stop.
+        await relational.mark_organization_deleted(conn, org_id)
+
+    # The writers of the relational rows take this lock shared
+    # (relational.lock_organization_shared). ponytail: graph writers do
+    # not, so a node added during the delete can still be left behind.
+    await db.locked_with_connection(
+        relational.organization_delete_lock_key(org_id), check_and_delete
+    )
+
+
+async def _count_org_rows(
+    conn: psycopg.AsyncConnection[typing.Any],
+    table: tuple[str, str],
+    condition: typing.LiteralString,
+    org_id: str,
+) -> int:
+    cursor = await conn.execute(
+        sql.SQL(
+            'SELECT count(*) FROM {} WHERE organization_id = %s AND {}'
+        ).format(sql.Identifier(*table), sql.SQL(condition)),
+        (org_id,),
+    )
+    row = await cursor.fetchone()
+    return row[0] if row else 0

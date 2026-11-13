@@ -186,7 +186,7 @@ unset.
 | `SERVICE` | str | `unknown` | Server name sent to Sentry, and the `service` property of PostHog events |
 | `POSTHOG_ERROR_TRACKING` | str | none | `false` stops sending exceptions to PostHog. Default: `true`. |
 | `POSTHOG_MCP_ANALYTICS` | str | none | `true` sends a `$mcp_tool_call` event for each MCP tool call, without arguments or results |
-| `POSTHOG_AI_OBSERVABILITY` | str | none | `true` sends a `$ai_generation` event for each assistant LLM call |
+| `POSTHOG_AI_OBSERVABILITY` | str | none | `true` sends a `$ai_generation` event for each assistant and Slack bot LLM call |
 | `POSTHOG_API_KEY` | str | none | PostHog project key. Unset: PostHog is off. |
 | `IMBI_PROMPT_RENDER_INPROCESS` | str | `''` | `true` renders in the service process. For debugging only: it removes the isolation. |
 | `IMBI_PROMPT_WORKERS` | int | `2` | Prompt render worker processes per service process |
@@ -280,6 +280,8 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_ASSISTANT_ENABLED` | bool | `false` | Turn the assistant on. `ANTHROPIC_API_KEY` turns it on too. |
 | `IMBI_ASSISTANT_MODEL` | str | `claude-sonnet-4-6` | Claude model |
 | `IMBI_ASSISTANT_MAX_TOKENS` | int | `16384` | Maximum response tokens |
@@ -289,7 +291,6 @@ unset.
 | `IMBI_ASSISTANT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
 | `IMBI_ASSISTANT_PROMPT_REF` | str | `imbi-assistant/system@stable` | Prompt CMS reference of the system prompt |
 | `IMBI_ASSISTANT_API_TOKEN` | str | `''` | API key of the `imbi-assistant` service account. Set: the assistant uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
-| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_ASSISTANT_URL` | str | `''` | Public assistant URL. Its path is the route prefix. |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
@@ -298,7 +299,7 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `IMBI_INTERNAL_API_URL` | HttpUrl | `http://localhost:8000/` | In-cluster origin of imbi-api |
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_GATEWAY_API_TOKEN` | str | required | API key of the `imbi-gateway` service account. Required. |
 
@@ -314,10 +315,10 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `IMBI_SCHEDULER_SCHEMA` | str | `scheduler` | Postgres schema of the task tables |
-| `IMBI_SCHEDULER_API_PREFIX` | str | `/api` | Route prefix of the task and run routes |
 | `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
+| `IMBI_SCHEDULER_SCHEMA` | str | `scheduler` | Postgres schema of the task tables |
+| `IMBI_SCHEDULER_API_PREFIX` | str | `/api` | Route prefix of the task and run routes |
 | `IMBI_SCHEDULER_GATEWAY_URL` | str | `http://localhost:8003` | imbi-gateway URL for gateway targets |
 | `IMBI_SCHEDULER_SA_SLUG` | str | `imbi-scheduler` | Slug of the scheduler service account |
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | str | none | Client ID of the scheduler service account |
@@ -331,6 +332,8 @@ unset.
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
+| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
+| `IMBI_API_URL` | str | `''` | Public imbi-api URL with its path prefix, for example `https://imbi.example.com/api`. The path is the API route prefix. |
 | `IMBI_SLACKBOT_ENABLED` | bool | `false` | Turn the bot on. `ANTHROPIC_API_KEY` and both Slack tokens turn it on too. |
 | `IMBI_SLACKBOT_MODEL` | str | `claude-sonnet-4-6` | Claude model |
 | `IMBI_SLACKBOT_MAX_TOKENS` | int | `16384` | Maximum response tokens |
@@ -345,7 +348,6 @@ unset.
 | `IMBI_SLACKBOT_API_TOKEN` | str | `''` | API key of the `imbi-slackbot` service account. Set: the bot uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
 | `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`) |
 | `SLACK_APP_TOKEN` | str | `''` | Slack app-level token for Socket Mode (`xapp-`) |
-| `IMBI_INTERNAL_API_URL` | str | `http://localhost:8000` | In-cluster origin of imbi-api |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
 
@@ -396,6 +398,9 @@ unset.
 | `SENTRY_PROJECT` | str | none | Sentry project for the upload |
 | `SENTRY_RELEASE` | str | none | Sentry release for the upload |
 | `SENTRY_URL` | str | none | Sentry server URL for the upload |
+| `POSTHOG_CLI_API_KEY` | str | none | With `POSTHOG_CLI_PROJECT_ID`, the `all` and `ui` modes upload the UI source maps to PostHog at start. A personal API key with `error_tracking:write` |
+| `POSTHOG_CLI_PROJECT_ID` | str | none | PostHog project for the upload |
+| `POSTHOG_CLI_HOST` | str | `https://us.posthog.com` | PostHog app host for the upload |
 | `IMBI_API_UPSTREAM` | str | `127.0.0.1:8000` | Caddy upstream of imbi-api (`ui` mode) |
 | `IMBI_ASSISTANT_UPSTREAM` | str | `127.0.0.1:8002` | Caddy upstream of imbi-assistant |
 | `IMBI_GATEWAY_UPSTREAM` | str | `127.0.0.1:8003` | Caddy upstream of imbi-gateway |
@@ -411,7 +416,7 @@ unset.
 | `VITE_POSTHOG_WEB_ANALYTICS` | str | none | `true` sends pageviews, page leaves, and web vitals |
 | `VITE_POSTHOG_SESSION_REPLAY` | str | none | `true` records sessions. All text and inputs are always masked. |
 | `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | str | none | Share of sessions that record, `0` to `1`. Default: `1`. |
-| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email. Default: `never`. |
+| `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email and names the person by the email local part. Default: `never`. |
 
 <!-- END GENERATED -->
 

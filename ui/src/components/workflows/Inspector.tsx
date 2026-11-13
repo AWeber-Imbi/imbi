@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { portsOf, type StepTypes } from './graph'
+import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
 import { ParamsForm, SelectField } from './ParamsForm'
+import { referenceGroups } from './references'
 import { StatusBadge } from './RunPanel'
 import { formatDuration, type StepResult } from './runs'
 import { paramFields } from './schemaFields'
@@ -20,8 +21,6 @@ import type {
   WorkflowWrite,
 } from './types'
 import { useSourceOptions } from './workflowQueries'
-
-const KEY_PATTERN = /^[a-z][a-z0-9_]*$/
 
 const CONCURRENCY = [
   { label: 'Unlimited', value: 'unlimited' },
@@ -119,6 +118,10 @@ export function NodePanel({
     () => (type ? paramFields(type.params_schema) : []),
     [type],
   )
+  const references = useMemo(
+    () => referenceGroups(graph, types, node.id),
+    [graph, types, node.id],
+  )
   const incoming = graph.edges.filter((e) => e.target === node.id).length
   const keyError = !KEY_PATTERN.test(node.key)
     ? 'Use lower case letters, digits, and _, starting with a letter.'
@@ -213,6 +216,7 @@ export function NodePanel({
             onRemoveItem={onRemoveItem}
             orgSlug={orgSlug}
             params={node.params}
+            references={references}
             webhookProject={graph.nodes.some((n) => n.type === 'webhook')}
           />
           {incoming > 1 && (

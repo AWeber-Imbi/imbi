@@ -68,6 +68,10 @@ platform_config_version = "INTEGER"
 # the email of that person. The dashboard does not show it then.
 acknowledged_at = "TIMESTAMP WITH TIME ZONE"
 acknowledged_by = "TEXT"
+# The JSON Schema of the structured output that the agent must return,
+# and the output that it returned. NULL when the task asks for none.
+output_schema = "JSONB"
+structured_output = "JSONB"
 
 [tables.primary_key]
 columns = ["id"]
@@ -292,3 +296,17 @@ added_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
 columns = ["organization_id", "task_id", "project_id"]
+
+# One row per closed task whose workflow `task_completed` triggers have
+# not all started their runs. The transaction that closes the task
+# writes the row. The trigger deletes it after it starts the runs; the
+# workflow sweep calls the trigger again for each row that stays.
+[[tables]]
+name = "trigger_outbox"
+
+[tables.columns]
+task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["task_id"]

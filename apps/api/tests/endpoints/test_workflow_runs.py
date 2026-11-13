@@ -953,6 +953,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'outcome': None,
                 'reason': None,
                 'summary': None,
+                'result': None,
             },
         )
         self.assertEqual(await self._count(), 1)
@@ -978,6 +979,39 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             (response.json()['status'], response.json()['outcome']),
             ('closed', 'cancelled_by_human'),
         )
+
+    async def test_output_fields_make_the_schema(self) -> None:
+        await self._agent_step(
+            {
+                'agent_id': self.agent,
+                'instruction': 'Go.',
+                'output_fields': [{'name': 'n', 'type': 'integer'}],
+            }
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task_id = response.json()['task_id']
+        task = await self.tasks.get(self.org, task_id)
+        assert task is not None
+        self.assertEqual(
+            task['output_schema'],
+            {
+                'type': 'object',
+                'properties': {'n': {'type': 'integer'}},
+                'required': ['n'],
+                'additionalProperties': False,
+            },
+        )
+        await self.tasks.set_outcome(
+            self.org,
+            task_id,
+            'done_acted',
+            None,
+            agent_tasks.Actor('agent', self.agent, 'harness'),
+            {'n': 3},
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.json()['result'], {'n': 3})
 
     async def test_malformed_input_is_422(self) -> None:
         # Not a 500: the engine would retry it, and it fails each time.
@@ -1151,6 +1185,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                             'outcome': 'failed_external',
                             'reason': 'secret_reason',
                             'summary': 'Secret summary.',
+                            'result': {'secret': True},
                         }
                     ),
                     self.run_id,
@@ -1184,6 +1219,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         overrides[permissions.get_current_user] = reader
         self.assertEqual((await output())['summary'], 'Secret summary.')
         self.assertEqual((await output())['reason'], 'secret_reason')
+        self.assertEqual((await output())['result'], {'secret': True})
 
     async def test_open_run_keeps_the_agent_in_use(self) -> None:
         # The run is open on version 1. Version 2 has no agent step.
@@ -1220,3 +1256,428 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual(
             await self.store.agent_references(self.org, self.agent), 0
         )
+
+
+class SideEffectRecoveryTestCase(WorkflowRunTestCase):
+    """Operator recovery of ``outcome_unknown`` side effects (#392)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        url = await self._workflow()
+        response = await self.client.post(
+            f'{url}/runs', json={'inputs': {'version': '1'}}
+        )
+        self.run_id = response.json()['id']
+        self.key = workflows.runs.side_effect_key(
+            'imbi-workflows', 'step-email', f'{self.run_id}:tell'
+        )
+        self.addAsyncCleanup(self._forget, str(self.run_id))
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'failed',"
+                " error = 'outcome_unknown', closed_at = NOW()"
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, error, input)'
+                " VALUES (%s, 'tell', 'tell', 'email', 'Tell', 'failed',"
+                " 'outcome_unknown', '{}'),"
+                " (%s, 'hold', 'hold', 'email', 'Hold', 'cancelled',"
+                ' NULL, NULL)',
+                (self.run_id, self.run_id),
+            )
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key, created_at)'
+                " VALUES (%s, NOW() - INTERVAL '1 hour')",
+                (self.key,),
+            )
+        self.recover = f'/organizations/{self.org}/workflow-runs/side-effects'
+        self._grant('workflow:recover')
+
+    def _grant(self, *extra: str) -> None:
+        overrides = self.test_app.dependency_overrides
+        user_auth = overrides[permissions.get_current_user]
+
+        async def current_user() -> permissions.AuthContext:
+            auth = await user_auth()
+            auth.permissions = set(PERMISSIONS) | set(extra)
+            return auth
+
+        overrides[permissions.get_current_user] = current_user
+
+    async def _resolve(self, **body: typing.Any) -> httpx.Response:
+        return await self.client.post(
+            self.recover + '/resolve', json={'key': self.key, **body}
+        )
+
+    async def _state(self) -> tuple[typing.Any, ...]:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT status FROM workflow_runtime.runs WHERE id = %s',
+                (self.run_id,),
+            )
+            run = await cur.fetchone()
+            cur = await conn.execute(
+                'SELECT node_id, status FROM workflow_runtime.step_runs'
+                ' WHERE run_id = %s ORDER BY node_id',
+                (self.run_id,),
+            )
+            steps = await cur.fetchall()
+            cur = await conn.execute(
+                'SELECT response FROM workflow_runtime.side_effects'
+                ' WHERE key = %s',
+                (self.key,),
+            )
+            effect = await cur.fetchone()
+        assert run is not None
+        return run[0], dict(steps), effect
+
+    async def test_list_needs_the_permission(self) -> None:
+        response = await self.client.get(self.recover)
+        self.assertEqual(response.status_code, 200, response.text)
+        [effect] = response.json()
+        self.assertEqual(effect['key'], self.key)
+        self.assertEqual(effect['action'], 'step-email')
+        self.assertEqual(effect['node_key'], 'tell')
+        self.assertEqual(effect['step_input'], {})
+        self.assertTrue(effect['retryable'])
+
+        self._grant()
+        response = await self.client.get(self.recover)
+        self.assertEqual(response.status_code, 403)
+
+    async def test_fresh_key_is_not_stale(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.side_effects'
+                ' SET created_at = NOW() WHERE key = %s',
+                (self.key,),
+            )
+        response = await self.client.get(self.recover)
+        self.assertEqual(response.json(), [])
+        response = await self._resolve(resolution='clear')
+        self.assertEqual(response.status_code, 404)
+
+    async def test_mark_done_and_retry(self) -> None:
+        response = await self._resolve(resolution='mark_done', retry=True)
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(
+            await self._state(),
+            (
+                'running',
+                {'hold': 'pending', 'tell': 'running'},
+                ({'recipients': [], 'failed': []},),
+            ),
+        )
+        response = await self.client.get(self.recover)
+        self.assertEqual(response.json(), [])
+
+    async def test_clear_without_retry(self) -> None:
+        response = await self._resolve(resolution='clear')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(
+            await self._state(),
+            ('failed', {'hold': 'cancelled', 'tell': 'failed'}, None),
+        )
+
+    async def test_refusals_change_nothing(self) -> None:
+        before = await self._state()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET log_archived_at = NOW()'
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(await self._state(), before)
+
+        deploy = workflows.runs.side_effect_key(
+            'imbi-workflows', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key, created_at)'
+                " VALUES (%s, NOW() - INTERVAL '1 hour')",
+                (deploy,),
+            )
+        response = await self.client.post(
+            self.recover + '/resolve',
+            json={'key': deploy, 'resolution': 'mark_done', 'retry': True},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    async def test_mark_deployment_done(self) -> None:
+        deploy = workflows.runs.side_effect_key(
+            'imbi-workflows', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key, created_at)'
+                " VALUES (%s, NOW() - INTERVAL '1 hour')",
+                (deploy,),
+            )
+        response = await self.client.post(
+            self.recover + '/resolve',
+            json={'key': deploy, 'resolution': 'mark_done'},
+        )
+        self.assertEqual(response.status_code, 204, response.text)
+        call = mock.AsyncMock()
+        stored = await self.runs.once(
+            'imbi-workflows', 'deployment', f'{self.run_id}:ship', call
+        )
+        call.assert_not_called()
+        project_deployments.DeploymentTriggerResponse.model_validate(stored)
+
+    async def test_person_key_with_run_id_is_not_listed(self) -> None:
+        person = workflows.runs.side_effect_key(
+            'a@example.com', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key, created_at)'
+                " VALUES (%s, NOW() - INTERVAL '1 hour')",
+                (person,),
+            )
+        response = await self.client.get(self.recover)
+        self.assertNotIn(person, [e['key'] for e in response.json()])
+        response = await self.client.post(
+            self.recover + '/resolve',
+            json={'key': person, 'resolution': 'clear'},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    async def test_other_org_cannot_see_the_key(self) -> None:
+        self.test_app.dependency_overrides[organizations.member_org_id] = (
+            lambda: 'another-org'
+        )
+        response = await self.client.get(self.recover)
+        self.assertEqual(response.json(), [])
+        response = await self._resolve(resolution='clear')
+        self.assertEqual(response.status_code, 404)
+
+    async def test_archive_waits_for_the_key(self) -> None:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT last_seq FROM workflow_runtime.runs WHERE id = %s',
+                (self.run_id,),
+            )
+            row = await cur.fetchone()
+        assert row is not None
+        run_id = uuid.UUID(str(self.run_id))
+        self.assertFalse(await self.runs.archive(run_id, row[0]))
+        await self._resolve(resolution='clear')
+        self.assertTrue(await self.runs.archive(run_id, row[0]))
+
+    async def test_archive_ignores_a_person_key(self) -> None:
+        await self._resolve(resolution='clear')
+        person = workflows.runs.side_effect_key(
+            'a@example.com', 'deployment', f'{self.run_id}:ship'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.side_effects (key) VALUES (%s)',
+                (person,),
+            )
+            self.addAsyncCleanup(self._drop_key, person)
+            cur = await conn.execute(
+                'SELECT last_seq FROM workflow_runtime.runs WHERE id = %s',
+                (self.run_id,),
+            )
+            row = await cur.fetchone()
+        assert row is not None
+        run_id = uuid.UUID(str(self.run_id))
+        self.assertTrue(await self.runs.archive(run_id, row[0]))
+
+    async def _drop_key(self, key: str) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM workflow_runtime.side_effects WHERE key = %s',
+                (key,),
+            )
+
+    async def test_retry_waits_for_a_running_run_of_the_key(self) -> None:
+        response = await self.client.post(
+            f'{self.base}/deploy-guard/runs', json={'inputs': {'version': '2'}}
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        other = response.json()['id']
+        self.addAsyncCleanup(self._forget, str(other))
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET concurrency_key = 'k',"
+                " status = CASE WHEN id = %s THEN 'running' ELSE status END"
+                ' WHERE id IN (%s, %s)',
+                (other, self.run_id, other),
+            )
+        before = await self._state()
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(await self._state(), before)
+
+    async def test_cancel_request_blocks_a_retry(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET cancel_requested = TRUE'
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        [effect] = (await self.client.get(self.recover)).json()
+        self.assertFalse(effect['retryable'])
+        before = await self._state()
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(await self._state(), before)
+        # The transactional guard refuses too.
+        self.assertFalse(
+            await self.runs.resolve_side_effect(
+                self.key, None, (uuid.UUID(str(self.run_id)), 'tell')
+            )
+        )
+        self.assertEqual(await self._state(), before)
+
+    async def test_step_whose_failed_edge_was_taken_is_not_retryable(
+        self,
+    ) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET port = 1'
+                " WHERE run_id = %s AND node_id = 'tell'",
+                (self.run_id,),
+            )
+            await conn.execute(
+                'UPDATE workflows.workflow_versions AS v SET graph ='
+                " jsonb_set(v.graph, '{edges}', COALESCE(v.graph -> 'edges',"
+                ' \'[]\') || \'[{"source": "tell", "port": 1,'
+                ' "target": "hold"}]\'::jsonb)'
+                ' FROM workflow_runtime.runs AS r'
+                ' WHERE r.id = %s AND v.workflow_id = r.workflow_id'
+                ' AND v.version = r.version',
+                (self.run_id,),
+            )
+        [effect] = (await self.client.get(self.recover)).json()
+        self.assertFalse(effect['retryable'])
+        response = await self._resolve(resolution='clear', retry=True)
+        self.assertEqual(response.status_code, 409)
+        response = await self._resolve(resolution='clear')
+        self.assertEqual(response.status_code, 204, response.text)
+
+    # --- Provider reconcile of a deployment key (#678) -----------------
+
+    async def _as_deployment(
+        self, found: list[plugin_base.DeploymentRun]
+    ) -> mock.AsyncMock:
+        """Make the stale key a deployment of the failed step, and patch
+        the deployment plugin lookup to return ``found``."""
+        deploy = workflows.runs.side_effect_key(
+            'imbi-workflows', 'deployment', f'{self.run_id}:tell'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.side_effects SET key = %s'
+                ' WHERE key = %s',
+                (deploy, self.key),
+            )
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET input = %s'
+                " WHERE run_id = %s AND node_id = 'tell'",
+                (
+                    '{"project_id": "p1", "environment": "staging",'
+                    ' "version": "1.2.0"}',
+                    self.run_id,
+                ),
+            )
+        self.key = deploy
+        resolved = mock.Mock(integration_id='int-1', plugin_slug='github')
+        patcher = mock.patch.object(
+            project_deployments,
+            'find_deployments',
+            mock.AsyncMock(return_value=(resolved, found)),
+        )
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    async def test_find_deployments_reads_the_step_input(self) -> None:
+        run = plugin_base.DeploymentRun(run_id='42', status='success')
+        find = await self._as_deployment([run])
+        response = await self.client.get(
+            self.recover + '/deployments', params={'key': self.key}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([r['run_id'] for r in response.json()], ['42'])
+        args, kwargs = find.call_args
+        self.assertEqual(args[1:3], (self.org, 'p1'))
+        self.assertEqual(kwargs['environment'], 'staging')
+        self.assertEqual(kwargs['ref'], '1.2.0')
+        [effect] = (await self.client.get(self.recover)).json()
+        self.assertEqual(
+            kwargs['since'],
+            datetime.datetime.fromisoformat(effect['created_at'])
+            - datetime.timedelta(minutes=1),
+        )
+
+    async def test_find_deployments_needs_a_deployment_key(self) -> None:
+        response = await self.client.get(
+            self.recover + '/deployments', params={'key': self.key}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_confirmed_deployment_is_stored_and_retried(self) -> None:
+        run = plugin_base.DeploymentRun(run_id='42', status='in_progress')
+        find = await self._as_deployment([run])
+        response = await self._resolve(
+            resolution='mark_done', deployment_run_id='42', retry=True
+        )
+        self.assertEqual(response.status_code, 204, response.text)
+        find.assert_awaited_once()
+        args, kwargs = find.call_args
+        self.assertEqual(args[1:3], (self.org, 'p1'))
+        self.assertEqual(
+            (kwargs['environment'], kwargs['ref']), ('staging', '1.2.0')
+        )
+        status, steps, effect = await self._state()
+        self.assertEqual((status, steps['tell']), ('running', 'running'))
+        stored = project_deployments.DeploymentTriggerResponse.model_validate(
+            effect[0]
+        )
+        self.assertEqual(
+            (stored.run.run_id, stored.plugin_id, stored.plugin_slug),
+            ('42', 'int-1', 'github'),
+        )
+
+    async def test_unconfirmed_deployment_run_changes_nothing(self) -> None:
+        find = await self._as_deployment([])
+        before = await self._state()
+        response = await self._resolve(
+            resolution='mark_done', deployment_run_id='42', retry=True
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        find.assert_awaited_once()
+        self.assertEqual(
+            (
+                find.call_args.kwargs['environment'],
+                find.call_args.kwargs['ref'],
+            ),
+            ('staging', '1.2.0'),
+        )
+        response = await self._resolve(
+            resolution='clear', deployment_run_id='42'
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(await self._state(), before)
+
+    async def test_rollback_to_last_healthy_has_no_version(self) -> None:
+        find = await self._as_deployment([])
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.step_runs SET node_type = 'rollback'"
+                " WHERE run_id = %s AND node_id = 'tell'",
+                (self.run_id,),
+            )
+        response = await self.client.get(
+            self.recover + '/deployments', params={'key': self.key}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        find.assert_not_called()

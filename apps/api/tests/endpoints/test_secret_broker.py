@@ -16,7 +16,7 @@ from apps.api.tests import secret_support, support
 from imbi.api import models, secret_broker
 from imbi.api.auth import permissions
 from imbi.api.secret_broker import audit, identity, providers, store
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, graph, relational
 from imbi.common.clickhouse import client as ch_client
 
 ALL_PERMISSIONS = frozenset(
@@ -329,6 +329,29 @@ class SecretEndpointTestCase(
         self.assertEqual(
             (await self.audit_events())[-1].type, 'workload_identity_deleted'
         )
+
+    async def test_write_after_an_organization_delete_is_404(self) -> None:
+        """A delete that commits after the endpoint found the organization,
+        but before the write takes its lock, stops the write."""
+        lock = relational.lock_organization_shared
+
+        async def delete_then_lock(
+            conn: typing.Any, organization_id: str
+        ) -> None:
+            async with self.pool.connection() as other:
+                await relational.mark_organization_deleted(
+                    other, organization_id
+                )
+            await lock(conn, organization_id)
+
+        with mock.patch.object(
+            relational, 'lock_organization_shared', delete_then_lock
+        ):
+            response = await self.client.put(
+                self.base + '/workload-identity/', json={'type': 'fake'}
+            )
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertIsNone(await self.store.identity_source(self.org))
 
     async def test_binding_rules(self) -> None:
         body: dict[str, typing.Any] = {
@@ -648,6 +671,75 @@ class SecretEndpointTestCase(
             url, json={'credential_class': 'dynamic'}
         )
         self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_provider_key_and_grants_exclude_each_other(self) -> None:
+        """A grant cannot name a marked key, and the mark of a granted
+        binding does not change."""
+        usage = {'host': 'github.com', 'app_id': '7'}
+        response = await self._post(
+            '/secret-bindings/',
+            {
+                'reference': 'secret://production/gh/key',
+                'provider_id': str(self.provider['id']),
+                'credential_class': 'static',
+                'locator': {'key': 'plain'},
+                'allowed_delivery_modes': ['stdin'],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        key_id = response.json()['id']
+        url = self.base + f'/secret-bindings/{key_id}'
+        grant = {
+            'agent_ids': ['agent-x'],
+            'binding_ids': [key_id],
+            'purposes': ['checkout'],
+            'delivery_modes': ['stdin'],
+        }
+        response = await self._post('/secret-grants/', grant)
+        self.assertEqual(response.status_code, 201, response.text)
+        grant_url = self.base + f'/secret-grants/{response.json()["id"]}'
+        # An explicit null on an unmarked granted binding is a no-op.
+        response = await self.client.patch(
+            url, json={'provider_key_usage': None}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.client.patch(
+            url, json={'provider_key_usage': usage}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self.client.get(url)
+        self.assertIsNone(response.json()['provider_key_usage'])
+
+        # A grant from before this check names a marked key.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.bindings SET provider_key_usage ='
+                ' %s::jsonb WHERE id = %s',
+                ('{"host": "github.com", "app_id": "7"}', key_id),
+            )
+        response = await self.client.patch(
+            url, json={'provider_key_usage': None}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self.client.get(url)
+        self.assertIsNotNone(response.json()['provider_key_usage'])
+
+        response = await self._post('/secret-grants/', grant)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('provider key', response.text)
+        response = await self.client.patch(
+            self.base + f'/secret-grants/{self.grant["id"]}',
+            json={'binding_ids': [key_id]},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
+        response = await self.client.delete(grant_url)
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.patch(
+            url, json={'provider_key_usage': None}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()['provider_key_usage'])
 
     async def test_dynamic_binding_needs_the_capability(self) -> None:
         response = await self._post(

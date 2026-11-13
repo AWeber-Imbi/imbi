@@ -25,12 +25,22 @@ def _pod(pod: str | None) -> dict[str, str]:
 class Refused(Exception):
     """imbi-api refused a request. ``code`` is its error code."""
 
-    def __init__(self, status: int, code: str, hint: str = '') -> None:
+    def __init__(
+        self, status: int, code: str, hint: str = '', reason: str = ''
+    ) -> None:
         super().__init__(f'{status} {code}')
         self.status = status
         self.code = code
         #: What to change, for the model (``detail.hint``), if any.
         self.hint = hint
+        #: The broker reason code (``detail.reason``), if any.
+        self.reason = reason
+
+    @property
+    def detail(self) -> str:
+        """The code, and the reason in parentheses when there is one:
+        the model can then tell the person what to change (#646)."""
+        return f'{self.code} ({self.reason})' if self.reason else self.code
 
 
 class Api:
@@ -62,11 +72,12 @@ class Api:
                 if isinstance(decoded, dict)
                 else None
             )
-            hint = ''
+            hint = reason = ''
             if isinstance(detail, dict):
                 code = str(typing.cast('Body', detail).get('error', code))
                 hint = str(typing.cast('Body', detail).get('hint') or '')
-            raise Refused(response.status_code, code, hint)
+                reason = str(typing.cast('Body', detail).get('reason') or '')
+            raise Refused(response.status_code, code, hint, reason)
         return response
 
     async def pool_token(self, client_id: str, client_secret: str) -> str:
@@ -228,10 +239,16 @@ class TaskApi:
     async def report_usage(self, body: Body) -> Body:
         return await self._call('/usage', body)
 
-    async def set_outcome(self, outcome: str, reason: str | None) -> Body:
-        return await self._call(
-            '/outcome', {'outcome': outcome, 'reason': reason}
-        )
+    async def set_outcome(
+        self,
+        outcome: str,
+        reason: str | None,
+        structured_output: Body | None = None,
+    ) -> Body:
+        body: Body = {'outcome': outcome, 'reason': reason}
+        if structured_output is not None:
+            body['structured_output'] = structured_output
+        return await self._call('/outcome', body)
 
     async def create_resolution(self, body: Body) -> Body:
         return await self.client.create_resolution(

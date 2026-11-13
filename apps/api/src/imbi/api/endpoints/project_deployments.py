@@ -31,6 +31,7 @@ from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.commit_sync import service as commit_sync_service
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.deployment_sync import service as deployment_sync_service
+from imbi.api.endpoints import _local_time
 from imbi.api.endpoints._helpers import (
     deployed_operation_log,
     lookup_project_links,
@@ -43,6 +44,7 @@ from imbi.api.endpoints.releases import (
     ReleaseEnvironmentEdgeResponse,
     append_deployment_event,
     reconcile_current_release,
+    release_lock_key,
 )
 from imbi.api.identity import attribution
 from imbi.api.identity.host_integration import (
@@ -50,7 +52,11 @@ from imbi.api.identity.host_integration import (
     call_with_identity_retry,
 )
 from imbi.api.llm.dependencies import InjectAnthropicClient
-from imbi.api.plugins import call_with_timeout, release_dispatch
+from imbi.api.plugins import (
+    call_with_timeout,
+    host_retry_after,
+    release_dispatch,
+)
 from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
 from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
@@ -969,24 +975,6 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
-def _host_retry_after(response: httpx.Response) -> str:
-    """Seconds the source host asks a caller to wait, for ``Retry-After``.
-
-    The host's ``Retry-After``, else the wait until ``x-ratelimit-reset``
-    once ``x-ratelimit-remaining`` is 0 (GitHub's primary rate limit),
-    else 5.
-    """
-    headers = response.headers
-    retry_after = str(headers.get('retry-after', ''))
-    if retry_after.isdigit():
-        return retry_after
-    reset = str(headers.get('x-ratelimit-reset', ''))
-    if headers.get('x-ratelimit-remaining') == '0' and reset.isdigit():
-        now = int(datetime.datetime.now(datetime.UTC).timestamp())
-        return str(max(1, int(reset) - now))
-    return '5'
-
-
 async def _compare_refs(
     handler: DeploymentCapability,
     ctx: PluginContext,
@@ -1001,7 +989,7 @@ async def _compare_refs(
     same answer: GitHub's 404 (a ref, or the repo, it cannot find) or 422
     (a comparison it will not compute).  Any other host or transport
     failure is the host failing to answer: 503, with the host's own wait
-    as ``Retry-After`` (see :func:`_host_retry_after`).
+    as ``Retry-After`` (see :func:`host_retry_after`).
     """
     try:
         return await call_with_timeout(
@@ -1032,7 +1020,7 @@ async def _compare_refs(
             status_code=503,
             detail=f'Could not reach the source host to compare {base}...'
             f'{head}',
-            headers={'Retry-After': _host_retry_after(exc.response)},
+            headers={'Retry-After': host_retry_after(exc.response)},
         ) from exc
     except httpx.HTTPError as exc:
         LOGGER.warning(
@@ -1388,25 +1376,32 @@ async def _existing_tag_for_committish(
     version bump), while a resync of the *testing* deployment that
     preceded it still carries the promoted commit.  Matching only the
     current committish would strand those late observations on an
-    untagged sibling.
+    untagged sibling.  A Release whose own ``committish`` is the commit
+    wins over one that only carries it as ``promoted_committish``: the
+    commit then matches both the Release built on it and the one
+    promoted from it, and that is not a retag.
     """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
     WHERE r.tag IS NOT NULL
       AND (r.committish = {committish}
            OR r.promoted_committish = {committish})
-    RETURN r.tag AS tag
+    RETURN r.tag AS tag, r.committish = {committish} AS exact
     """
     rows = await db.execute(
         query,
         {'project_id': project_id, 'committish': committish},
-        ['tag'],
+        ['tag', 'exact'],
     )
     tags: set[str] = set()
+    exact_tags: set[str] = set()
     for row in rows:
         tag = graph.parse_agtype(row.get('tag'))
         if tag:
             tags.add(str(tag))
+            if graph.parse_agtype(row.get('exact')) is True:
+                exact_tags.add(str(tag))
+    tags = exact_tags or tags
     if len(tags) == 1:
         return tags.pop()
     if len(tags) > 1:
@@ -2098,9 +2093,19 @@ async def _apply_remote_deployment(
     # onto the existing tagged Release for this commit (the node the UI
     # reads, keyed by tag) instead of spawning a duplicate untagged node.
     if tag is None:
-        tag = await _existing_tag_for_committish(
-            db, project_id=project_id, committish=committish
-        )
+        try:
+            tag = await _existing_tag_for_committish(
+                db, project_id=project_id, committish=committish
+            )
+        except ValueError:
+            LOGGER.warning(
+                'Resync for project=%s env=%s committish=%s: several'
+                ' tagged Releases carry that commit; not recorded',
+                project_id,
+                observed.environment,
+                committish,
+            )
+            return
     # Prefer notes the plugin already fetched from the deployment ref; when
     # absent but the tag is now known, ask the remote for the body by tag.
     notes = observed.release_notes
@@ -2761,7 +2766,10 @@ async def resolve_commit(
     commit = await call_with_timeout(
         handler.resolve_committish(ctx, credentials, committish)
     )
-    await persist_link_writeback(db, ctx)
+    await asyncio.gather(
+        persist_link_writeback(db, ctx),
+        _annotate_commits(project_id, [commit]),
+    )
     return commit
 
 
@@ -3280,6 +3288,51 @@ async def get_deployment_run(
                 'deployment status.'
             ),
         ) from exc
+
+
+async def find_deployments(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    *,
+    environment: str,
+    ref: str,
+    since: datetime.datetime,
+) -> tuple[ResolvedCapability, list[DeploymentRun]]:
+    """Return the project's deployment plugin, and the deployments of
+    ``ref`` to ``environment`` that it made at or after ``since``.
+
+    Raises:
+        400: The plugin cannot find deployments.
+        404: The project is not in the organization.
+
+    """
+    if not await _project_in_org(db, org_slug, project_id):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found in {org_slug!r}',
+        )
+    # A read-only lookup: an operator with no connected identity uses
+    # the Integration's service credentials.
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        auth,
+        environment=environment,
+        best_effort_identity=True,
+    )
+    try:
+        runs = await call_with_timeout(
+            _handler(resolved).find_deployments(ctx, credentials, ref, since)
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Plugin {resolved.plugin_slug!r} cannot find deployments.',
+        ) from exc
+    return resolved, runs
 
 
 async def _handle_deploy(
@@ -4172,7 +4225,14 @@ async def _dispatch_release_build(
         # Anything else the remote or the transport raises: the build was
         # never accepted, so the release does not exist in any sense.
         await _abandon()
-        LOGGER.exception(
+        # An HTTPException (e.g. the plugin timeout's 503) already is
+        # the answer; it is expected, so do not log it as an error.
+        log = (
+            LOGGER.warning
+            if isinstance(exc, fastapi.HTTPException)
+            else LOGGER.exception
+        )
+        log(
             'create_deployment_artifact failed for project=%s tag=%s '
             'workflow=%s ref=%s',
             project_id,
@@ -4674,26 +4734,27 @@ async def _upsert_release_node(
     query: typing.LiteralString = (
         _RELEASE_UPSERT_BY_TAG if tag else _RELEASE_UPSERT_BY_COMMITTISH
     ) + _RELEASE_UPSERT_SET
-    rows = await db.execute(
-        query,
-        {
-            'project_id': project_id,
-            'committish': committish,
-            'tag': tag,
-            'id': new_id,
-            'title': title,
-            'description': notes_markdown,
-            'links': links_json,
-            'created_by': created_by,
-            'author': (
-                ''
-                if principals.is_process_principal(created_by)
-                else created_by
-            ),
-            'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
-            'now': now,
-        },
-        ['rid'],
+    params: dict[str, typing.Any] = {
+        'project_id': project_id,
+        'committish': committish,
+        'tag': tag,
+        'id': new_id,
+        'title': title,
+        'description': notes_markdown,
+        'links': links_json,
+        'created_by': created_by,
+        'author': (
+            '' if principals.is_process_principal(created_by) else created_by
+        ),
+        'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
+        'now': now,
+    }
+    # The same lock as ``releases.create_release``: the lookup and the
+    # create in one statement are not atomic in AGE, which has no unique
+    # constraint, so two writers could both create the node.
+    rows = await db.locked(
+        release_lock_key(project_id),
+        lambda execute: execute(query, params, ['rid']),
     )
     if rows:
         rid = graph.parse_agtype(rows[0].get('rid'))
@@ -5764,6 +5825,8 @@ def _suggest_version(
     bump: SemverBump,
     patterns: collections.abc.Sequence[str],
     schemes: collections.abc.Sequence[str] = (),
+    *,
+    today: datetime.date | None = None,
 ) -> str:
     """The next tag to suggest, honouring the configured tag formats.
 
@@ -5775,9 +5838,10 @@ def _suggest_version(
     first-release defaults (``v0.1.0``, the first tag of each scheme,
     ``0.1.0``, then today's date).  With
     no policy configured the first candidate stands, which keeps the
-    historical ``v0.1.0`` answer for an untagged project.
+    historical ``v0.1.0`` answer for an untagged project.  ``today`` is
+    the requester's local date (see :mod:`._local_time`); UTC if absent.
     """
-    today = datetime.datetime.now(datetime.UTC).date()
+    today = today or datetime.datetime.now(datetime.UTC).date()
     # A configured scheme knows its own counters, so it goes first: a tag
     # such as ``26.4.1`` is valid semver too, and a semver bump would miss
     # the reset when the month changes.
@@ -5877,6 +5941,8 @@ def _version_matches_bump(
     bump: SemverBump,
     schemes: collections.abc.Sequence[str] = (),
     patterns: collections.abc.Sequence[str] = (),
+    *,
+    today: datetime.date | None = None,
 ) -> bool:
     """Whether ``version`` is ``last_tag`` bumped by ``bump``.
 
@@ -5893,7 +5959,7 @@ def _version_matches_bump(
     The ``v`` prefix is not compared: the tag policy decides it, and
     ``_version_allowed`` checks that.
     """
-    today = datetime.datetime.now(datetime.UTC).date()
+    today = today or datetime.datetime.now(datetime.UTC).date()
     expected = {
         versioning.next_scheme_tag(scheme, last_tag, today, bump)
         for scheme in schemes
@@ -6086,7 +6152,10 @@ def _build_release_notes_prompt(
     tag_formats: collections.abc.Sequence[common_models.TagFormat] = (),
     suggested_version: str | None = None,
     dependency_changes: collections.abc.Sequence[str] | None = None,
+    *,
+    today: datetime.date | None = None,
 ) -> str:
+    today = today or datetime.datetime.now(datetime.UTC).date()
     capped = commits[:_PROMPT_COMMIT_CAP]
     omitted = len(commits) - len(capped)
     formats = (
@@ -6097,7 +6166,7 @@ def _build_release_notes_prompt(
         f'Project: {project_name}',
         f'Previous tag: {last_tag or "(none)"}',
         f'Allowed tag formats: {formats}',
-        f'Today: {datetime.datetime.now(datetime.UTC).date().isoformat()}',
+        f'Today: {today.isoformat()}',
         f'Suggested next version: {suggested_version or "(none)"}',
         f'Comparing: {base_sha or "(no prior release)"}..{head_sha}',
         f'Total commits: {len(commits)}'
@@ -6209,6 +6278,7 @@ async def draft_release_notes(
         ),
     ],
     anthropic: InjectAnthropicClient,
+    today: _local_time.LocalToday,
     source: str | None = None,
 ) -> DraftReleaseNotesResponse:
     """Draft release notes for a tag promotion.
@@ -6247,7 +6317,7 @@ async def draft_release_notes(
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
         version=_suggest_version(
-            body.last_tag, fallback_bump, patterns, schemes
+            body.last_tag, fallback_bump, patterns, schemes, today=today
         ),
         reasoning=(
             'AI unavailable — bump and notes derived from '
@@ -6267,6 +6337,7 @@ async def draft_release_notes(
             await _dependency_changes(
                 db, project_id, body.last_tag, body.head_sha
             ),
+            today=today,
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
@@ -6283,12 +6354,17 @@ async def draft_release_notes(
     if not _version_allowed(
         notes.version, patterns
     ) or not _version_matches_bump(
-        body.last_tag, notes.version, notes.bump, schemes, patterns
+        body.last_tag,
+        notes.version,
+        notes.bump,
+        schemes,
+        patterns,
+        today=today,
     ):
         notes = notes.model_copy(
             update={
                 'version': _suggest_version(
-                    body.last_tag, notes.bump, patterns, schemes
+                    body.last_tag, notes.bump, patterns, schemes, today=today
                 )
             }
         )
@@ -6592,8 +6668,11 @@ async def _tags_by_sha(
         return {}
     try:
         rows = await clickhouse.query(
-            _PROJECT_TAGS_SQL + ' AND lower(sha) IN {shas:Array(String)}',
-            {'project_id': project_id, 'shas': wanted},
+            # Constant SQL; the shas go as an external table.
+            _PROJECT_TAGS_SQL  # noqa: S608
+            + ' AND lower(sha) IN (SELECT id FROM shas)',
+            {'project_id': project_id},
+            tables={'shas': wanted},
         )
     except Exception:
         LOGGER.exception('could not read tags for project %s', project_id)
@@ -6811,6 +6890,7 @@ async def get_release_drift(
             permissions.require_permission('project:deployment:read'),
         ),
     ],
+    today: _local_time.LocalToday,
 ) -> ReleaseDriftResponse:
     """Commits awaiting a release: the delta from the latest tag to HEAD.
 
@@ -6864,7 +6944,7 @@ async def get_release_drift(
                 commits=[],
                 suggested_bump='patch',
                 suggested_tag=_suggest_version(
-                    latest_tag, 'patch', patterns, schemes
+                    latest_tag, 'patch', patterns, schemes, today=today
                 ),
             )
 
@@ -6906,7 +6986,9 @@ async def get_release_drift(
         commits_since_tag=commits_since_tag,
         commits=commits,
         suggested_bump=bump,
-        suggested_tag=_suggest_version(latest_tag, bump, patterns, schemes),
+        suggested_tag=_suggest_version(
+            latest_tag, bump, patterns, schemes, today=today
+        ),
     )
 
 

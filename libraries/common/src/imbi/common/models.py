@@ -14,6 +14,7 @@ from jsonschema_models import models as schema_models
 from pydantic import alias_generators
 
 from imbi.common import versioning
+from imbi.common.llm import drivers
 
 __all__ = [
     'AIModel',
@@ -279,7 +280,14 @@ class Blueprint(Node):
             return None
         return value.model_dump_json()
 
-    @pydantic.field_validator('json_schema', mode='before')
+    # A plain validator keeps the Schema AST out of OpenAPI. Its fields
+    # are named ``anyOf`` and ``$ref``, and OpenAPI tools (fastmcp) read
+    # them as schema keywords.
+    @pydantic.field_validator(
+        'json_schema',
+        mode='plain',
+        json_schema_input_type=dict[str, typing.Any],
+    )
     @classmethod
     def validate_json_schema(
         cls,
@@ -766,7 +774,21 @@ class AIProvider(Node):
 
     @pydantic.model_validator(mode='after')
     def _validate_driver_requirements(self) -> typing.Self:
-        """``openai_compatible`` has no default endpoint to fall back on."""
+        """Store the driver default as ``None`` and check the driver.
+
+        The driver default is the same as no ``base_url``, so workload
+        identity (which needs the default endpoint) also accepts a
+        provider that names it. ``openai_compatible`` has no default
+        endpoint to fall back on.
+        """
+        info = drivers.get_driver(self.driver)
+        default = info.default_base_url if info else None
+        if (
+            self.base_url
+            and default
+            and self.base_url.rstrip('/') == default.rstrip('/')
+        ):
+            self.base_url = None
         if self.driver == 'openai_compatible' and not self.base_url:
             raise ValueError("driver 'openai_compatible' requires a base_url")
         if self.workload_identity is not None:

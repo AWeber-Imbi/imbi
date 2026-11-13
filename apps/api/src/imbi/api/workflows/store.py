@@ -14,6 +14,7 @@ import psycopg_pool
 from psycopg import rows
 from psycopg.types import json as pg_json
 
+from imbi.common import relational
 from imbi.common.workflows import runtime
 
 type Pool = psycopg_pool.AsyncConnectionPool[
@@ -109,6 +110,7 @@ class WorkflowStore:
         """
         workflow_id = uuid.uuid4()
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             await conn.execute(
                 'INSERT INTO workflows.workflows (id, organization_id,'
                 ' slug, name, description, owner_team_id, created_by)'
@@ -240,6 +242,7 @@ class WorkflowStore:
         imbi-workflows then writes the scheduler and the gateway.
         """
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
                 "UPDATE workflows.workflows SET status = 'active',"
                 ' active_version = %s, activated_by = %s,'
@@ -297,13 +300,31 @@ class WorkflowStore:
             (workflow_id,),
         )
 
+    async def active_bindings(
+        self, organization_id: str, trigger_type: str
+    ) -> list[Row]:
+        """Return the enabled bindings of one trigger type of the active
+        workflows of an org, with the settings of the active version."""
+        return await self._all(
+            'SELECT b.node_id, b.params, w.id AS workflow_id,'
+            ' w.active_version, w.activated_by, w.activated_at, v.settings'
+            ' FROM workflows.trigger_bindings AS b'
+            ' JOIN workflows.workflows AS w ON w.id = b.workflow_id'
+            ' JOIN workflows.workflow_versions AS v'
+            '   ON v.workflow_id = w.id AND v.version = w.active_version'
+            ' WHERE b.organization_id = %s AND b.type = %s'
+            " AND b.enabled AND NOT b.removed AND w.status = 'active'",
+            (organization_id, trigger_type),
+        )
+
     async def agent_references(
         self, organization_id: str, agent_id: str
     ) -> int:
         """Return how many workflows use the agent.
 
-        A workflow uses the agent when an agent step names it in its
-        latest or active version, or in the pinned version of a run
+        A workflow uses the agent when an agent step or a
+        ``task_completed`` trigger names it in its latest or active
+        version, or in the pinned version of a run
         that is not closed. Other versions cannot run.
         """
         row = await self._one(
@@ -316,7 +337,7 @@ class WorkflowStore:
             ' AND NOT (r.status = ANY(%s))))'
             ' AND EXISTS (SELECT 1'
             " FROM jsonb_array_elements(v.graph->'nodes') AS n"
-            " WHERE n->>'type' = 'agent'"
+            " WHERE n->>'type' IN ('agent', 'task_completed')"
             " AND n->'params'->>'agent_id' = %s)",
             (organization_id, list(runtime.CLOSED), agent_id),
         )

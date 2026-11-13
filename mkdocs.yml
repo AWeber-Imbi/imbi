@@ -72,6 +72,7 @@ nav:
           - Assistant and MCP Servers: admin/assistant-and-mcp-servers.md
           - Secrets: admin/secrets.md
           - Workload Identity Runbook: admin/workload-identity.md
+          - GitHub App Runbook: admin/github-app-runbook.md
           - Agents: admin/agents.md
           - Agent Tasks: admin/agent-tasks.md
           - Workflows: admin/workflows.md
@@ -192,6 +193,7 @@ nav:
               - 0022 Agent Harness and Secrets Broker: api/adr/0022-agent-harness-and-secrets-broker.md
               - 0023 Realtime Channel: api/adr/0023-realtime-channel.md
               - 0024 Work Items: api/adr/0024-work-items.md
+              - 0025 Tickets: api/adr/0025-tickets.md
           - Library:
               - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
               - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md

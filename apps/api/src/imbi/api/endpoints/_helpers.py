@@ -15,6 +15,8 @@ from imbi.api.auth import permissions
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common import patch as json_patch
+from imbi.common.plugins import errors as plugin_errors
+from imbi.common.plugins import registry as plugin_registry
 from imbi.common.plugins.base import (
     PluginContext,
     ProjectDependency,
@@ -796,6 +798,114 @@ async def _repoint_refusal(
     return None
 
 
+#: Another project in the organization with an ``EXISTS_IN`` edge to
+#: the same Integration and identifier.
+_IDENTIFIER_HOLDER: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(:Team)'
+    '<-[:OWNED_BY]-(p:Project)-[ei:EXISTS_IN]->'
+    '(i:Integration {{slug: {integration_slug}}})-[:BELONGS_TO]->(o) '
+    'WHERE ei.identifier = {identifier} AND p.id <> {project_id} '
+)
+_IDENTIFIER_HOLDER_RETURN: typing.LiteralString = (
+    'RETURN i.plugin AS plugin, p.slug AS project_slug LIMIT 1'
+)
+#: Only a holder whose edge the plugin verified from the remote API.
+_VERIFIED_HOLDER: typing.LiteralString = (
+    'AND ei.verified_identifier = ei.identifier '
+)
+
+
+class SharedIdentifierRefused(Exception):
+    """:func:`claim_identifier` refused the write; the message says why."""
+
+
+async def claim_identifier(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    slug: str,
+    identifier: str,
+    write: collections.abc.Callable[
+        [graph.CypherExecute], collections.abc.Awaitable[T]
+    ],
+    *,
+    verified: bool = False,
+) -> T:
+    """Run ``write`` unless :func:`shared_identifier_refusal` refuses.
+
+    The holder check and ``write`` run in one transaction under an
+    advisory lock on the organization, Integration, and identifier.
+    Thus two projects that claim one unused identifier at the same
+    time cannot both get an ``EXISTS_IN`` edge to it: AGE has no
+    unique constraint that stops the second edge.
+
+    Raises :class:`SharedIdentifierRefused`, and writes nothing, when
+    the check refuses.
+    """
+
+    async def claim(execute: graph.CypherExecute) -> T:
+        refusal = await shared_identifier_refusal(
+            execute, org_slug, project_id, slug, identifier, verified=verified
+        )
+        if refusal is not None:
+            raise SharedIdentifierRefused(refusal)
+        return await write(execute)
+
+    return await db.locked(f'exists-in:{org_slug}:{slug}:{identifier}', claim)
+
+
+async def shared_identifier_refusal(
+    execute: graph.CypherExecute,
+    org_slug: str,
+    project_id: str,
+    slug: str,
+    identifier: str,
+    *,
+    verified: bool = False,
+) -> str | None:
+    """Return why ``identifier`` cannot be shared, or ``None``.
+
+    Refuses when another project in the organization already holds
+    ``identifier`` for the same Integration and the plugin declares
+    ``shareable_service_identifier = False`` (issue #639). A plugin
+    that is not loaded is treated as shareable.
+
+    Set ``verified`` for a plugin writeback that verified
+    ``identifier`` from the remote API. Then only a verified holder
+    refuses, so a manual link made first cannot squat the identifier.
+    A manual link is refused by any holder.
+    """
+    query: typing.LiteralString = (
+        _IDENTIFIER_HOLDER
+        + (_VERIFIED_HOLDER if verified else '')
+        + _IDENTIFIER_HOLDER_RETURN
+    )
+    records = await execute(
+        query,
+        {
+            'org_slug': org_slug,
+            'integration_slug': slug,
+            'identifier': identifier,
+            'project_id': project_id,
+        },
+        ['plugin', 'project_slug'],
+    )
+    for row in records:
+        plugin = str(graph.parse_agtype(row.get('plugin')))
+        try:
+            entry = plugin_registry.get_plugin(plugin)
+        except plugin_errors.PluginNotFoundError:
+            return None
+        if entry.manifest.shareable_service_identifier:
+            return None
+        holder = graph.parse_agtype(row.get('project_slug'))
+        return (
+            f'Refusing to link {identifier!r}: project {holder!r} is '
+            f'already linked to it in the {slug!r} integration.'
+        )
+    return None
+
+
 async def persist_service_writeback(
     db: graph.Graph, ctx: PluginContext, auth: permissions.AuthContext
 ) -> str | None:
@@ -812,7 +922,9 @@ async def persist_service_writeback(
 
     Returns a refusal message, and writes nothing, when a caller that
     is not an admin would change the verified identifier of a GitHub
-    edge to a different repository. Otherwise returns ``None``.
+    edge to a different repository, or when another project already
+    holds an identifier the plugin declares not shareable. Otherwise
+    returns ``None``.
     """
     writeback = ctx.service_writeback
     if writeback is None:
@@ -826,10 +938,38 @@ async def persist_service_writeback(
         )
         return None
     try:
-        if not writeback.remove and not auth.is_admin:
-            refusal = await _repoint_refusal(
-                db, ctx, slug, writeback.identifier
+        if writeback.remove:
+            await _delete_exists_in(db, ctx.org_slug, ctx.project_id, slug)
+            await merge_project_links(
+                db, ctx.project_id, remove=writeback.dashboard_links.keys()
             )
+        else:
+            refusal = None
+            if not auth.is_admin:
+                refusal = await _repoint_refusal(
+                    db, ctx, slug, writeback.identifier
+                )
+            if refusal is None:
+                try:
+                    await claim_identifier(
+                        db,
+                        ctx.org_slug,
+                        ctx.project_id,
+                        slug,
+                        writeback.identifier,
+                        lambda execute: _merge_exists_in(
+                            execute,
+                            ctx.org_slug,
+                            ctx.project_id,
+                            slug,
+                            writeback.identifier,
+                            writeback.canonical_url,
+                            writeback.webhook_secret_enc,
+                        ),
+                        verified=True,
+                    )
+                except SharedIdentifierRefused as exc:
+                    refusal = str(exc)
             if refusal is not None:
                 LOGGER.warning(
                     'Refused service writeback for project %s (%s): %s',
@@ -838,21 +978,6 @@ async def persist_service_writeback(
                     refusal,
                 )
                 return refusal
-        if writeback.remove:
-            await _delete_exists_in(db, ctx.org_slug, ctx.project_id, slug)
-            await merge_project_links(
-                db, ctx.project_id, remove=writeback.dashboard_links.keys()
-            )
-        else:
-            await _merge_exists_in(
-                db,
-                ctx.org_slug,
-                ctx.project_id,
-                slug,
-                writeback.identifier,
-                writeback.canonical_url,
-                writeback.webhook_secret_enc,
-            )
             await merge_project_links(
                 db, ctx.project_id, add=writeback.dashboard_links
             )
@@ -874,7 +999,7 @@ async def persist_service_writeback(
 
 
 async def _merge_exists_in(
-    db: graph.Graph,
+    execute: graph.CypherExecute,
     org_slug: str,
     project_id: str,
     integration_slug: str,
@@ -928,7 +1053,7 @@ async def _merge_exists_in(
     }
     if webhook_secret_enc is not None:
         params['webhook_secret_enc'] = webhook_secret_enc
-    await db.execute(query, params, ['identifier'])
+    await execute(query, params, ['identifier'])
 
 
 async def _delete_exists_in(

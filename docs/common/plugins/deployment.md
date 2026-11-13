@@ -87,7 +87,9 @@ class GitHubDeployment(DeploymentCapability):
   optionally filtered by `kind` and a `query` substring.
 - **`list_commits`** — list commits reachable from `ref`, newest first.
 - **`resolve_committish`** — hydrate a single branch / tag / SHA into a
-  `Commit`.
+  `Commit`. Set `ci_status` from the commit's checks and `is_head` when
+  the commit is the default branch's head. The API stamps
+  `drift_detected` and `tag` after the plugin answers.
 - **`compare`** — return a `CompareResult` for `base..head` (ahead /
   behind counts, commits, diffstat).
 - **`trigger_deployment`** — dispatch a CI workflow / pipeline run for
@@ -138,6 +140,12 @@ These default to returning `'unknown'` or `None`, or raising
   prevent. Optional even for capabilities that set
   `supports_deployment_sync`; hosts probe by catching
   `NotImplementedError`.
+- **`find_deployments`** — return the deployments of a ref to
+  `ctx.environment` that the remote made at or after `since`, as
+  `DeploymentRun`s whose `run_id` `get_deployment_status` takes. The host
+  uses it to find the deployment of a workflow call with an unknown
+  outcome, and stores a result only after an operator confirms it. The
+  GitHub plugin reads `GET /deployments?environment=&ref=`.
 - **`get_release_notes`** — return the remote release's notes body for a
   given tag. The tag-keyed counterpart to `list_recent_deployments`'
   `release_notes` field: it lets the host enrich a `Release` node's notes

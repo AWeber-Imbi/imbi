@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
 
 import { listTeams } from '@/api/endpoints'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox } from '@/components/ui/combobox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 
+import type { OutputField } from './outputFields'
+import { OutputFieldsField } from './OutputFieldsField'
+import { TemplateInput } from './ReferencePicker'
+import type { ReferenceGroup } from './references'
 import {
   type FieldSource,
   isIdOrReference,
@@ -35,6 +40,7 @@ interface ParamsFormProps {
   onRemoveItem: (name: string, index: number) => void
   orgSlug: string
   params: Record<string, unknown>
+  references: ReferenceGroup[]
   /** The workflow has a webhook trigger, so a run can have a project. */
   webhookProject: boolean
 }
@@ -53,6 +59,7 @@ export function ParamsForm({
   onRemoveItem,
   orgSlug,
   params,
+  references,
   webhookProject,
 }: ParamsFormProps) {
   return (
@@ -74,6 +81,7 @@ export function ParamsForm({
               onChange={(v) => onChange(field.name, v)}
               onRemoveItem={(i) => onRemoveItem(field.name, i)}
               orgSlug={orgSlug}
+              references={references}
               value={value}
               webhookProject={webhookProject}
             />
@@ -86,18 +94,20 @@ export function ParamsForm({
 
 export function SelectField({
   id,
+  label,
   onChange,
   options,
   value,
 }: {
   id: string
+  label?: string
   onChange: (value: string) => void
   options: { label: string; value: string }[]
   value: string
 }) {
   return (
     <Select onValueChange={onChange} value={value}>
-      <SelectTrigger id={id}>
+      <SelectTrigger aria-label={label} id={id}>
         <SelectValue placeholder="Choose…" />
       </SelectTrigger>
       <SelectContent>
@@ -111,12 +121,53 @@ export function SelectField({
   )
 }
 
+/** A list of enum values, as one checkbox per option. */
+function ChecksField({
+  id,
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  id: string
+  label: string
+  onChange: (value: string[]) => void
+  options: { label: string; value: string }[]
+  value: string[]
+}) {
+  return (
+    <div
+      aria-label={label}
+      className="flex flex-col gap-1.5"
+      id={id}
+      role="group"
+    >
+      {options.map((o) => (
+        <label className="flex items-center gap-2 text-sm" key={o.value}>
+          <Checkbox
+            checked={value.includes(o.value)}
+            onCheckedChange={(checked) =>
+              onChange(
+                checked
+                  ? [...value, o.value]
+                  : value.filter((v) => v !== o.value),
+              )
+            }
+          />
+          {o.label}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 function FieldControl({
   field,
   id,
   onChange,
   onRemoveItem,
   orgSlug,
+  references,
   value,
   webhookProject,
 }: {
@@ -125,6 +176,7 @@ function FieldControl({
   onChange: (value: unknown) => void
   onRemoveItem: (index: number) => void
   orgSlug: string
+  references: ReferenceGroup[]
   value: unknown
   webhookProject: boolean
 }) {
@@ -135,6 +187,16 @@ function FieldControl({
           checked={value === true}
           id={id}
           onCheckedChange={(checked) => onChange(checked)}
+        />
+      )
+    case 'checks':
+      return (
+        <ChecksField
+          id={id}
+          label={field.label}
+          onChange={onChange}
+          options={field.options}
+          value={Array.isArray(value) ? value.map(String) : []}
         />
       )
     case 'json':
@@ -150,11 +212,12 @@ function FieldControl({
       )
     case 'multiline':
       return (
-        <Textarea
+        <TemplateInput
           className={cn(field.mono && 'font-mono text-xs')}
+          groups={references}
           id={id}
-          onChange={(e) => onChange(e.target.value)}
-          rows={4}
+          multiline
+          onChange={onChange}
           value={typeof value === 'string' ? value : ''}
         />
       )
@@ -167,6 +230,15 @@ function FieldControl({
           }
           type="number"
           value={typeof value === 'number' ? value : ''}
+        />
+      )
+    case 'outputFields':
+      return (
+        <OutputFieldsField
+          id={id}
+          label={field.label}
+          onChange={onChange}
+          value={Array.isArray(value) ? (value as OutputField[]) : []}
         />
       )
     case 'recipients':
@@ -192,6 +264,7 @@ function FieldControl({
         <SourceField
           id={id}
           onChange={onChange}
+          optional={!field.required}
           orgSlug={orgSlug}
           source={field.source}
           value={typeof value === 'string' ? value : ''}
@@ -200,9 +273,11 @@ function FieldControl({
       )
     case 'text':
       return (
-        <Input
+        <TemplateInput
+          groups={references}
           id={id}
-          onChange={(e) => onChange(e.target.value)}
+          multiline={false}
+          onChange={onChange}
           value={typeof value === 'string' ? value : ''}
         />
       )
@@ -393,13 +468,15 @@ function RecipientsField({
 function SourceField({
   id,
   onChange,
+  optional,
   orgSlug,
   source,
   value,
   webhookProject,
 }: {
   id: string
-  onChange: (value: string) => void
+  onChange: (value: string | undefined) => void
+  optional: boolean
   orgSlug: string
   source: FieldSource
   value: string
@@ -411,15 +488,15 @@ function SourceField({
     <>
       <Combobox
         id={id}
-        onChange={onChange}
-        options={
-          detect
-            ? [
-                { label: 'Detected from webhook', value: TRIGGER_PROJECT },
-                ...options,
-              ]
-            : options
-        }
+        // The "None" option clears an optional field.
+        onChange={(v) => onChange(v || undefined)}
+        options={[
+          ...(optional ? [{ label: 'None', value: '' }] : []),
+          ...(detect
+            ? [{ label: 'Detected from webhook', value: TRIGGER_PROJECT }]
+            : []),
+          ...options,
+        ]}
         placeholder={loading ? 'Loading…' : 'Choose…'}
         value={value}
       />

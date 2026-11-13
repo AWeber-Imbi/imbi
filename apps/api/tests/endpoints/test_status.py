@@ -1,10 +1,14 @@
+import asyncio
 import typing
 import unittest
+from unittest import mock
 
+import fastapi
 from fastapi import testclient
 
 from apps.api.tests import support
 from imbi.api.endpoints import status
+from imbi.common import lifespan
 
 _StatusLiteral = typing.Literal['ok', 'initializing', 'error']
 
@@ -59,3 +63,12 @@ class StatusEndpointTestCase(support.SharedAppTestCase):
         # Validate the response against the model
         status_response = status.StatusResponse(**response.json())
         self.assertIsInstance(status_response, status.StatusResponse)
+
+    def test_get_status_fails_when_lifespan_failed(self) -> None:
+        request = mock.Mock()
+        request.state.lifespan_data = lifespan.Lifespan()
+        request.state.lifespan_data.failed = True
+        response = fastapi.Response()
+        result = asyncio.run(status.get_status(request, response))
+        self.assertEqual(503, response.status_code)
+        self.assertEqual('error', result.status)

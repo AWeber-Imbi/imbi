@@ -1,7 +1,7 @@
 [package]
 name = "imbi-egress-proxy"
 # Lockstep with the monorepo; scripts/bump-version.sh sets it.
-version = "2.47.0"
+version = "2.49.0"
 edition = "2024"
 description = "CONNECT proxy for host name egress destinations of the Imbi agent harness"
 license = "BSD-3-Clause"

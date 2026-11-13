@@ -1340,9 +1340,12 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
             [{'revoked_count': 0}],
         ]
 
-        with mock.patch(
-            'imbi.api.settings.get_auth_settings',
-            return_value=auth_settings,
+        with (
+            mock.patch(
+                'imbi.api.settings.get_auth_settings',
+                return_value=auth_settings,
+            ),
+            self.assertLogs('imbi.api.endpoints.auth', 'WARNING') as logs,
         ):
             response = self.client.post(
                 '/auth/token/refresh',
@@ -1354,6 +1357,10 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
                 'revoked',
                 response.json()['detail'].lower(),
             )
+        # The family was already revoked (IMBI-2N): two tabs racing on
+        # one cookie, not a leak, so it is a warning.
+        reuse = [r for r in logs.records if 'reuse detected' in r.message]
+        self.assertEqual(['WARNING'], [r.levelname for r in reuse])
 
     def test_refresh_token_user_inactive(self) -> None:
         """Test token refresh with inactive user."""
@@ -1426,15 +1433,20 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
             [{'revoked_count': 3}],
         ]
 
-        with mock.patch(
-            'imbi.api.settings.get_auth_settings',
-            return_value=auth_settings,
+        with (
+            mock.patch(
+                'imbi.api.settings.get_auth_settings',
+                return_value=auth_settings,
+            ),
+            self.assertLogs('imbi.api.endpoints.auth', 'WARNING') as logs,
         ):
             response = self.client.post(
                 '/auth/token/refresh',
                 json={'refresh_token': refresh_token},
             )
 
+        reuse = [r for r in logs.records if 'reuse detected' in r.message]
+        self.assertEqual(['ERROR'], [r.levelname for r in reuse])
         self.assertEqual(response.status_code, 401)
         self.assertIn('revoked', response.json()['detail'].lower())
         # 3 execute() calls: atomic SET, reuse lookup, family cascade.

@@ -1101,6 +1101,9 @@ class HarnessStore:
                 )
         for task, events in published:
             await log.publish(task, events)
+            # A task with control ``cancel`` closed in the transaction.
+            if task['status'] == 'closed':
+                await task_store.run_close_hooks(task)
         return True
 
     async def prune(self, days: int = 7) -> None:

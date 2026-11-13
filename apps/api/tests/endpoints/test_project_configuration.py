@@ -746,6 +746,38 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
                 )
         self.assertEqual(response.status_code, 503)
 
+    def test_set_configuration_value_rejected_is_400(self) -> None:
+        # SSM answers ValidationException (e.g. an empty value) and the
+        # plugin raises ValueError: the request is bad, not the server.
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
+                    return_value=_resolved(self.plugin_id),
+                ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+                mock.patch.object(
+                    _FakeConfigurationHandler,
+                    'set_value',
+                    side_effect=ValueError('Member must have length >= 1'),
+                ),
+            ):
+                response = client.put(
+                    f'/organizations/myorg/projects/{self.project_id}'
+                    '/configuration/foo',
+                    json={
+                        'data_type': 'string',
+                        'value': '',
+                        'secret': False,
+                    },
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('length', response.json()['detail'])
+
     def test_set_configuration_value_audit_failure_propagates(self) -> None:
         # Audit failures must NOT be swallowed: a successful plugin
         # write that fails to be recorded leaves operations_log silently

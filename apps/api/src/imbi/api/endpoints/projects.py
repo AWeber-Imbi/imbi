@@ -34,6 +34,7 @@ from imbi.api.plugins import assignments as plugin_assignments
 from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
     build_lifecycle_context_bundle,
+    check_archive_access,
     dispatch_lifecycle,
 )
 from imbi.api.plugins.resolution import resolve_all_capabilities
@@ -765,12 +766,12 @@ async def lookup_ops_log_performed_by(
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed'"
         ' AND is_deleted = 0'
-        ' AND project_id IN {project_ids:Array(String)}'
+        ' AND project_id IN (SELECT project_id FROM project_ids)'
         ' GROUP BY project_id, environment_slug, version'
     )
     try:
         rows = await ch_client.Clickhouse.get_instance().query(
-            sql, {'project_ids': project_ids}
+            sql, project_ids=project_ids
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
@@ -988,6 +989,12 @@ async def _fetch_current_releases(
     return CurrentReleaseState(current, in_flight)
 
 
+def _ch_time(value: datetime.datetime) -> str:
+    """Format a UTC time for a ``DateTime64(3, 'UTC')`` TSV column."""
+    utc = clickhouse.as_utc(value).astimezone(datetime.UTC)
+    return utc.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+
 class ActionableCommit(typing.NamedTuple):
     """One commit :func:`_fetch_actionable_commit_times` returned.
 
@@ -1039,30 +1046,30 @@ async def _fetch_actionable_commit_times(
     """
     if not windows:
         return {}
-    project_ids = list(windows)
     try:
         rows = await clickhouse.query(
             'SELECT c.project_id AS project_id, c.short_sha AS short_sha,'
             ' COALESCE(c.committed_at, c.authored_at) AS at,'
             ' c.pushed_at AS landed'
             ' FROM commits AS c FINAL'
+            ' INNER JOIN project_ids AS w ON w.project_id = c.project_id'
             ' LEFT ANTI JOIN (SELECT project_id, sha'
             ' FROM commit_drift FINAL'
             ' WHERE NOT drift_detected'
-            ' AND project_id IN {project_ids:Array(String)}) AS d'
+            ' AND project_id IN (SELECT project_id FROM project_ids)) AS d'
             ' ON d.project_id = c.project_id AND d.sha = c.sha'
-            ' WHERE c.project_id IN {project_ids:Array(String)}'
-            ' AND COALESCE(c.committed_at, c.authored_at) >='
-            ' mapFromArrays({project_ids:Array(String)},'
-            ' {los:Array(DateTime64(3))})[c.project_id]'
-            ' AND COALESCE(c.committed_at, c.authored_at) <='
-            ' mapFromArrays({project_ids:Array(String)},'
-            ' {his:Array(DateTime64(3))})[c.project_id]',
-            {
-                'project_ids': project_ids,
-                'los': [windows[pid][0] for pid in project_ids],
-                'his': [windows[pid][1] for pid in project_ids],
-            },
+            ' WHERE c.project_id IN (SELECT project_id FROM project_ids)'
+            ' AND COALESCE(c.committed_at, c.authored_at) >= w.lo'
+            ' AND COALESCE(c.committed_at, c.authored_at) <= w.hi',
+            project_ids=[
+                (pid, _ch_time(lo), _ch_time(hi))
+                for pid, (lo, hi) in windows.items()
+            ],
+            columns=(
+                'project_id String',
+                "lo DateTime64(3, 'UTC')",
+                "hi DateTime64(3, 'UTC')",
+            ),
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to fetch actionable commits', exc_info=True)
@@ -1095,9 +1102,10 @@ async def _fetch_commit_times(
             'SELECT project_id, short_sha,'
             ' COALESCE(committed_at, authored_at) AS at'
             ' FROM commits FINAL'
-            ' WHERE project_id IN {project_ids:Array(String)}'
-            ' AND short_sha IN {short_shas:Array(String)}',
-            {'project_ids': project_ids, 'short_shas': short_shas},
+            ' WHERE project_id IN (SELECT project_id FROM project_ids)'
+            ' AND short_sha IN (SELECT id FROM short_shas)',
+            project_ids=project_ids,
+            tables={'short_shas': short_shas},
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to resolve commit times', exc_info=True)
@@ -3353,6 +3361,7 @@ async def _execute_project_update(
     existing_types: list[str],
     request: fastapi.Request,
     db: graph.Pool,
+    touched: set[str],
 ) -> ProjectResponse:
     """Execute the shared update logic for the PATCH handler.
 
@@ -3368,6 +3377,10 @@ async def _execute_project_update(
         existing_team: Current team slug.
         existing_types: Current project-type slugs.
         db: Graph connection pool.
+        touched: Top-level fields the patch operations name. A
+            required blueprint property that is missing is refused
+            only when the patch touches it, so a valid write is not
+            blocked by an unrelated missing property (#640).
 
     """
     effective_team = data.team_slug or existing_team
@@ -3417,6 +3430,11 @@ async def _execute_project_update(
             or 'project-type'
         ),
     }
+    # A removed or null-replaced base field takes the model default; a
+    # required one then fails validation (#675, #699).
+    for name in touched & merged.keys():
+        if getattr(data, name) is None:
+            del merged[name]
 
     # Merge blueprint extra fields: start from existing unknown keys,
     # then overlay any extras supplied by the caller.
@@ -3441,6 +3459,33 @@ async def _execute_project_update(
             if k not in _RESERVED_FIELDS
         }
     )
+    # A touched property that the patched document no longer has was
+    # removed: clear it, as ``replace`` with null does, instead of
+    # keeping the existing value (#675).
+    for name in touched & (
+        extra_fields.keys() - (data.model_extra or {}).keys()
+    ):
+        extra_fields[name] = None
+
+    # Relax required blueprint properties that the node does not have
+    # and the patch does not touch: they are already missing, and this
+    # write does not make that worse. Values that are set still get
+    # the full validation.
+    untouched_missing: dict[str, typing.Any] = {
+        name: (typing.Any, None)
+        for name, field in dynamic_model.model_fields.items()
+        if field.is_required()
+        and name not in merged
+        and name not in extra_fields
+        and name not in touched
+        and name not in {'id', 'team', 'project_types', 'environments'}
+    }
+    if untouched_missing:
+        dynamic_model = pydantic.create_model(
+            dynamic_model.__name__,
+            __base__=dynamic_model,
+            **untouched_missing,
+        )
 
     try:
         project = dynamic_model(
@@ -3472,12 +3517,16 @@ async def _execute_project_update(
         else datetime.datetime.now(datetime.UTC)
     )
     project.updated_at = datetime.datetime.now(datetime.UTC)
+    # Leave the relaxed properties out of the write: their None is
+    # synthetic, and SET to null removes a value that a concurrent
+    # request can write.
     props = project.model_dump(
         mode='json',
         exclude={
             'team',
             'project_types',
             'environments',
+            *untouched_missing,
         },
     )
     props = serialize_json_fields(props, _PROJECT_JSON_FIELDS)
@@ -3714,6 +3763,15 @@ async def patch_project(
         current_type_slugs,
         request,
         db,
+        {
+            path.split('/')[1]
+            for op in operations
+            for path in (
+                op.path,
+                op.from_ if op.op in ('move', 'copy') else None,
+            )
+            if path
+        },
     )
     if response.name != project_data.get(
         'name'
@@ -3950,8 +4008,24 @@ async def _set_archived_state(
     archived: bool,
     request: fastapi.Request,
     db: graph.Pool,
+    auth: permissions.AuthContext,
 ) -> ProjectResponse:
     """Toggle archived state on a project and return the updated entity."""
+    # The lifecycle hooks run after the write; refuse first when a
+    # remote would refuse them, so Imbi and the remote stay in step.
+    # Find the project in this organization first: the check runs the
+    # plugins with the project's own bindings and can return their
+    # reason to the caller.
+    if not await db.execute(
+        _UPDATE_MATCH_FRAGMENT + ' RETURN p.id',
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
+    ):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+    await check_archive_access(db, project_id, org_slug, auth)
     now = datetime.datetime.now(datetime.UTC).isoformat()
     archived_at: str | None = now if archived else None
     # Write and read back as separate statements: AGE aborts a query
@@ -4020,7 +4094,7 @@ async def archive_project(
 ) -> ArchiveProjectResponse:
     """Archive a project (soft-hide from default listings)."""
     project = await _set_archived_state(
-        org_slug, project_id, True, request, db
+        org_slug, project_id, True, request, db, auth
     )
     # State change is already committed; never let an unexpected
     # dispatcher failure turn a successful archive into a 500.
@@ -4055,7 +4129,7 @@ async def unarchive_project(
 ) -> ArchiveProjectResponse:
     """Restore an archived project to the active state."""
     project = await _set_archived_state(
-        org_slug, project_id, False, request, db
+        org_slug, project_id, False, request, db, auth
     )
     # State change is already committed; never let an unexpected
     # dispatcher failure turn a successful unarchive into a 500.

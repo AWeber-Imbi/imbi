@@ -332,6 +332,35 @@ def outcome(
     return 'failed_external', reason
 
 
+def structured_output(result: sdk.ResultMessage | None) -> Body | None:
+    """The structured output of a ``success`` result, if any.
+
+    The SDK validates it against the schema of the task; a result that
+    does not match ends as ``error_max_structured_output_retries``.
+    """
+    if result is None or result.is_error or result.subtype != 'success':
+        return None
+    value: typing.Any = result.structured_output
+    return typing.cast('Body', value) if isinstance(value, dict) else None
+
+
+def require_output(
+    done: tuple[str, str | None], task: Body, output: Body | None
+) -> tuple[str, str | None]:
+    """Fail a ``done_*`` outcome of a task with an output schema that
+    returned no structured output: later steps need the output."""
+    missing = bool(task.get('output_schema')) and output is None
+    if missing and done[0].startswith('done_'):
+        return 'failed_external', 'no_structured_output'
+    return done
+
+
+def _output_format(task: Body) -> Body | None:
+    """The SDK ``output_format`` of a task with an output schema."""
+    schema = task.get('output_schema')
+    return {'type': 'json_schema', 'schema': schema} if schema else None
+
+
 def _deny_rule(rule: str) -> list[str]:
     """The CLI deny rules for one ``denied_tools`` rule, less
     ``report_outcome``: a deny rule wins over every allow rule."""
@@ -692,6 +721,8 @@ class TaskRun:
         self.state: Body = {}
         self.seq = 0
         self.result_text: str | None = None
+        #: The structured output of a task with an output schema.
+        self.structured_output: Body | None = None
         #: The last ``report_outcome`` of the model: (outcome, reason).
         self.reported: tuple[str, str] | None = None
         #: Set when the control or the status changes, so a wait for a
@@ -736,8 +767,11 @@ class TaskRun:
         heartbeat = asyncio.create_task(self._heartbeat())
         try:
             result = await self._work()
-            done = outcome(
-                result, self.reported, mutated=self.recorder.mutated
+            self.structured_output = structured_output(result)
+            done = require_output(
+                outcome(result, self.reported, mutated=self.recorder.mutated),
+                self.task,
+                self.structured_output,
             )
         except Failed as err:
             done = ('failed_external', err.reason)
@@ -811,7 +845,9 @@ class TaskRun:
                     self.session_id, 'cancelled'
                 )
             else:
-                state = await self.api.set_outcome(kind, reason)
+                state = await self.api.set_outcome(
+                    kind, reason, self.structured_output
+                )
             self.state = state
         except api.Refused as err:
             if err.code != 'task_closed':
@@ -1069,7 +1105,7 @@ class TaskRun:
         try:
             created = await self.api.create_resolution(body)
         except api.Refused as err:
-            LOGGER.warning('Refused %s secret: %s', purpose, err.code)
+            LOGGER.warning('Refused %s secret: %s', purpose, err.detail)
             return None
         return {
             'handle': created['handle'],
@@ -1606,6 +1642,7 @@ class TaskRun:
             # The SDK default (1 MiB) fails the task on one large message.
             max_buffer_size=SDK_BUFFER,
             stderr=_cli_stderr,
+            output_format=_output_format(self.task),
         )
 
     async def run_sdk(self, proxy_url: str) -> sdk.ResultMessage | None:
@@ -2011,7 +2048,7 @@ class TaskRun:
                 except api.Refused as err:
                     hint = f': {err.hint}' if err.hint else ''
                     return _tool_error(
-                        f'The secret request was refused: {err.code}{hint}'
+                        f'The secret request was refused: {err.detail}{hint}'
                     )
                 resolved.append(
                     {

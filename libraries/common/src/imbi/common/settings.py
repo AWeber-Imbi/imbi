@@ -4,6 +4,7 @@ import pathlib
 import secrets
 import tomllib
 import typing
+import urllib.parse
 
 import pydantic
 import pydantic_settings
@@ -33,6 +34,56 @@ def base_settings_config(
         extra='ignore',
         env_prefix=env_prefix,
     )
+
+
+class InternalApi(pydantic_settings.BaseSettings):
+    """Where a service reaches imbi-api, route prefix included.
+
+    imbi-api mounts every router under the path of its *public* URL
+    (``IMBI_API_URL``), while ``IMBI_INTERNAL_API_URL`` is a bare
+    origin. A call joined onto the origin alone is a 404, so every
+    service that calls imbi-api joins its paths onto
+    :attr:`api_base_url`.
+
+    """
+
+    api_url: str = pydantic.Field(
+        default='http://localhost:8000',
+        validation_alias='IMBI_INTERNAL_API_URL',
+        description='In-cluster origin of imbi-api',
+    )
+    api_public_url: str = pydantic.Field(
+        default='',
+        validation_alias='IMBI_API_URL',
+        description="imbi-api's public URL, whose path is its route prefix",
+    )
+
+    @pydantic.field_validator('api_public_url')
+    @classmethod
+    def _validate_api_public_url(cls, value: str) -> str:
+        """Require an absolute URL, or nothing at all.
+
+        :func:`urllib.parse.urlparse` reads a schemeless value as a path:
+        ``imbi.example.com/api`` would give
+        ``http://imbi-api:8000imbi.example.com/api`` and a 404 on every
+        call. ``https:imbi.example.com/api`` has a scheme but no network
+        location, and fails the same way. A startup failure names the
+        incorrect variable.
+
+        """
+        parsed = urllib.parse.urlparse(value)
+        if value and not (parsed.scheme and parsed.netloc):
+            raise ValueError(
+                'must be an absolute URL (e.g. https://imbi.example.com/api);'
+                f' got {value!r}'
+            )
+        return value
+
+    @property
+    def api_base_url(self) -> str:
+        """Return the in-cluster imbi-api URL with the route prefix."""
+        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
+        return self.api_url.rstrip('/') + prefix
 
 
 class ConfigFileSettings(pydantic_settings.BaseSettings):

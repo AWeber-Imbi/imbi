@@ -45,7 +45,11 @@ class PluginInstallationMissing(Exception):
     came up short.  The slug rather than the node id because that is
     what ``?source=`` accepts -- a caller that has to pick a different
     Integration can act on it directly.
+
+    ``error_code`` is the ``detail.error`` label of the ``403``.
     """
+
+    error_code: str = 'app_not_installed'
 
     def __init__(
         self,
@@ -57,6 +61,20 @@ class PluginInstallationMissing(Exception):
         self.owner_repo: str | None = owner_repo
         self.integration_slug: str | None = integration_slug
         super().__init__(message)
+
+
+class PluginIdentityAccessDenied(PluginInstallationMissing):
+    """The user's identity has no grant for the target account or role.
+
+    Raised when a per-user identity is valid but the provider assigns
+    it nothing on the target -- canonically an AWS IAM Identity Center
+    user with no permission set for the account and role.  The host
+    answers a terminal ``403`` with ``detail.error`` set to
+    ``identity_access_denied``, so the user knows to ask for access
+    instead of installing an App.
+    """
+
+    error_code = 'identity_access_denied'
 
 
 class PluginAuthenticationFailed(Exception):

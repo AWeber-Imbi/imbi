@@ -1,7 +1,9 @@
 import asyncio
 from unittest import mock
 
+import fastmcp
 import httpx
+from fastmcp.exceptions import ToolError
 
 from apps.slackbot.tests import helpers
 from imbi.slackbot import mcp, settings
@@ -100,6 +102,27 @@ class ManagerTests(helpers.TestCase):
         self.assertTrue(is_error)
         self.assertIn('returned an error', body)
 
+    async def test_execute_tool_error_goes_to_model(self) -> None:
+        # An API 400 is a tool error for the model, not an exception
+        # to report (IMBI-4A).
+        server = fastmcp.FastMCP('test')
+
+        @server.tool
+        def fails() -> str:
+            raise ToolError('HTTP error 400: Bad Request')
+
+        manager = mcp.MCPManager()
+        manager._http_client = httpx.AsyncClient()
+        manager._client = fastmcp.Client(server)
+        try:
+            async with manager._client:
+                with self.assertNoLogs('imbi.slackbot.mcp', 'ERROR'):
+                    body, is_error = await manager.execute_tool('fails', {})
+        finally:
+            await manager._http_client.aclose()
+        self.assertTrue(is_error)
+        self.assertIn('HTTP error 400', body)
+
     async def test_execute_serializes_auth_header(self) -> None:
         # Two concurrent calls with different tokens must not interleave
         # their auth-header set/clear; the lock guarantees each call_tool
@@ -109,7 +132,9 @@ class ManagerTests(helpers.TestCase):
         release = asyncio.Event()
         seen: list[str | None] = []
 
-        async def call_tool(_name: str, _input: dict) -> object:
+        async def call_tool(
+            _name: str, _input: dict, **_kwargs: object
+        ) -> object:
             seen.append(manager._http_client.headers.get('authorization'))
             if len(seen) == 1:
                 # Hold the first call open so the second would race if the

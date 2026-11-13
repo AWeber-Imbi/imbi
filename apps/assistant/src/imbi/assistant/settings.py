@@ -5,14 +5,13 @@ import os
 import urllib.parse
 
 import pydantic
-import pydantic_settings
 
 from imbi.common import settings as common_settings
 
 LOGGER = logging.getLogger(__name__)
 
 
-class Assistant(pydantic_settings.BaseSettings):
+class Assistant(common_settings.InternalApi):
     """AI assistant configuration."""
 
     model_config = common_settings.base_settings_config(
@@ -43,15 +42,6 @@ class Assistant(pydantic_settings.BaseSettings):
     #: the assistant uses the token of its AI Provider from imbi-api
     #: (WIF plan 4.6) instead of ``ANTHROPIC_API_KEY``.
     api_token: str = ''
-    # Where the assistant reaches the Imbi REST API. Distinct from
-    # ``IMBI_API_URL`` (which carries the API's *public* URL for OAuth
-    # redirect URIs and hypermedia links) — this is the in-cluster /
-    # internal address used for service-to-service calls. ``imbi-mcp``
-    # reads the same env var for the same role.
-    api_url: str = pydantic.Field(
-        default='http://localhost:8000',
-        validation_alias='IMBI_INTERNAL_API_URL',
-    )
     # Public URL where the assistant is reachable (e.g.
     # ``https://imbi.example.com/assistant``). The path component is used
     # as the route prefix so routes match the Okteto ingress path.

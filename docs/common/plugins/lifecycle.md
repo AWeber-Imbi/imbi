@@ -26,6 +26,12 @@ raising `NotImplementedError`, which the host dispatcher maps to
 it actually handles via the `lifecycle_events` hint so the UI can gate
 the matching affordances (e.g. "Also delete the repository").
 
+`check_archive_access` is optional too. The host calls it before the
+Imbi write of an archive or unarchive, with the credentials the hook
+gets. Return a message to refuse the request with `403`; Imbi then does
+not change the project. The default returns `None` (allow). A check that
+raises does not block the request.
+
 | Hook | `lifecycle_events` value | Notes |
 | --- | --- | --- |
 | `on_project_created` | `created` | Provision the remote; set `ctx.link_writeback` with the canonical link. |
@@ -119,6 +125,20 @@ the Integration surfaced as
 carries no slug and a capability cannot write an edge to an arbitrary
 Integration. Read the current relationship from
 [`ctx.service_connections`][imbi.common.plugins.ServiceConnection].
+
+By default several projects in an organization can hold the same
+identifier for one Integration (for example, a monorepo where several
+projects map to one GitHub repository). Set
+`shareable_service_identifier=False` on the `PluginManifest` when a
+lookup by identifier must find one project. The host then refuses a
+writeback whose identifier another project already holds, and returns
+the refusal as the result message. A manual edit of the project services
+gets HTTP 409 for the same reason. The Sentry plugin sets it.
+
+A writeback is refused only by a project whose edge the plugin verified.
+A manual link cannot block the real project's writeback. When an
+inbound webhook matches several projects and at least one edge is
+verified, the gateway drops the unverified matches.
 
 ## Hints
 

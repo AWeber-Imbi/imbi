@@ -1,6 +1,6 @@
 [project]
 name = "imbi-common"
-version = "2.47.0"
+version = "2.49.0"
 description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -102,5 +102,6 @@ include = [
   "src/imbi/common/log-config.toml",
   "src/imbi/common/clickhouse/schemata.toml",
   "src/imbi/common/graph/schemata.toml",
+  "src/imbi/common/organizations_schemata.toml",
   "src/imbi/common/prompts/defaults/*.md",
 ]

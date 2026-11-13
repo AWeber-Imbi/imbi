@@ -117,6 +117,20 @@ class CreateServerTests(unittest.TestCase):
         )
 
     @mock.patch('imbi.mcp.server.httpx.get')
+    def test_status_fails_after_lifespan_exit(
+        self, mock_get: mock.Mock
+    ) -> None:
+        mock_get.return_value = self.mock_response
+        app = server.create_server('http://localhost:8000').http_app()
+        with starlette_testclient.TestClient(app):
+            pass
+        # Serve again without a lifespan, as uvicorn does after the
+        # lifespan unwinds unexpectedly.
+        response = starlette_testclient.TestClient(app).get('/status')
+        self.assertEqual(503, response.status_code)
+        self.assertEqual('failing', response.json()['status'])
+
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_status_custom_route_with_auth_enabled(
         self, mock_get: mock.Mock
     ) -> None:
@@ -425,6 +439,7 @@ class PostHogInstrumentTestCase(unittest.TestCase):
         with mock.patch.object(server, 'get_access_token', return_value=user):
             identity = server._mcp_identity()
         self.assertEqual(identity.distinct_id, posthog.distinct_id('a@b.c'))
+        self.assertEqual(identity.properties, {'name': 'a'})
         for token in (api_key, None):
             with mock.patch.object(
                 server, 'get_access_token', return_value=token

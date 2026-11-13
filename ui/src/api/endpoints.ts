@@ -20,6 +20,8 @@ import type {
 } from '@/components/admin/secrets/types'
 import type {
   AttentionRun,
+  SideEffectResolve,
+  StaleSideEffect,
   StepType,
   TestRunResult,
   ValidationResult,
@@ -215,7 +217,7 @@ import type {
   CreateThreadBody,
 } from '@/types/comments'
 
-import { apiClient, ApiError, apiUrl } from './client'
+import { apiClient, ApiError, apiUrl, refreshAccessToken } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -261,8 +263,11 @@ export const disableMfa = (
 ) => apiClient.delete<void>('/mfa/disable', undefined, body)
 
 // The refresh token is sent as an HttpOnly cookie (C2), not in the body.
-export const refreshToken = () =>
-  apiClient.post<TokenResponse>('/auth/token/refresh')
+// Use the shared refresh so that two callers (or two tabs) never send the
+// same cookie twice, which the API treats as token reuse.
+export const refreshToken = async (): Promise<
+  Pick<TokenResponse, 'access_token'>
+> => ({ access_token: await refreshAccessToken() })
 
 export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 
@@ -1486,7 +1491,12 @@ export const getDashboardStatus = (signal?: AbortSignal) =>
   apiClient.get<DashboardStatus>('/admin/dashboard/status', undefined, signal)
 
 export const getDashboardMetrics = (signal?: AbortSignal) =>
-  apiClient.get<DashboardMetrics>('/admin/dashboard/metrics', undefined, signal)
+  apiClient.get<DashboardMetrics>(
+    '/admin/dashboard/metrics',
+    // The browser's zone, so the days are the user's days.
+    { tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    signal,
+  )
 
 export const getDashboardIggy = (signal?: AbortSignal) =>
   apiClient.get<IggyTopics>('/admin/dashboard/iggy', undefined, signal)
@@ -2726,9 +2736,13 @@ export const draftReleaseNotes = (
   body: DraftReleaseNotesRequest,
   source?: string,
 ): Promise<DraftReleaseNotesResponse> => {
-  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  // The browser's zone, so a calendar version uses the user's date.
+  const search = new URLSearchParams({
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  })
+  if (source) search.set('source', source)
   return apiClient.post<DraftReleaseNotesResponse>(
-    `${deploymentsBase(orgSlug, projectId)}/draft-release-notes${search}`,
+    `${deploymentsBase(orgSlug, projectId)}/draft-release-notes?${search}`,
     body,
   )
 }
@@ -3651,7 +3665,7 @@ export const patchAgent = (
 export const deleteAgent = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(agentPath(orgSlug, slug))
 
-/** `start` and `end` are UTC days (YYYY-MM-DD); both are in the range. */
+/** `start` and `end` are local days (YYYY-MM-DD); both are in the range. */
 export interface AgentUsageParams {
   agent_id?: string
   end?: string
@@ -3665,7 +3679,8 @@ export const getAgentUsage = (
 ) =>
   apiClient.get<AgentUsage>(
     `/organizations/${encodeURIComponent(orgSlug)}/agent-usage/`,
-    { ...params },
+    // The browser's zone, so the days are the user's days.
+    { ...params, tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
     signal,
   )
 
@@ -4107,6 +4122,40 @@ export const listWorkflowAttention = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+/** Side effects of runs that started and did not finish (#392). */
+export const listStaleSideEffects = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<StaleSideEffect[]> => {
+  const response = await apiClient.get<StaleSideEffect[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+/** Deployments that a stale deployment call can have made (#678). */
+export const findSideEffectDeployments = async (
+  orgSlug: string,
+  key: string,
+  signal?: AbortSignal,
+): Promise<DeploymentRun[]> => {
+  const response = await apiClient.get<DeploymentRun[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects/deployments`,
+    { key },
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+/** Clear a stale side effect, or mark it done, and retry. */
+export const resolveSideEffect = (orgSlug: string, body: SideEffectResolve) =>
+  apiClient.post<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/side-effects/resolve`,
+    body,
+  )
 
 export const listWorkflowStepTypes = async (
   orgSlug: string,

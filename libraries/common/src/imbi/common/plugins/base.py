@@ -297,6 +297,13 @@ class PluginManifest(pydantic.BaseModel):
     auth_type: typing.Literal[
         'api_token', 'oauth2', 'oidc', 'aws-iam-ic', 'none'
     ] = 'api_token'
+    #: Whether several projects in an organization can share one
+    #: ``EXISTS_IN`` identifier for the same Integration. ``True`` suits
+    #: a monorepo where several projects map to one GitHub repository.
+    #: ``False`` makes the host refuse a :class:`ServiceWriteback` whose
+    #: identifier another project already holds, because a lookup by
+    #: identifier (for example a gateway delivery) must find one project.
+    shareable_service_identifier: bool = True
     #: Integration-level options — asked ONCE per Integration
     #: (e.g. github: flavor, host; aws: region, default_role_name).
     options: list[PluginOption] = []
@@ -1682,6 +1689,25 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, environments
         raise NotImplementedError
 
+    async def find_deployments(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref_or_sha: str,
+        since: datetime.datetime,
+    ) -> list[DeploymentRun]:
+        """Return the deployments of ``ref_or_sha`` to ``ctx.environment``
+        that the remote made at or after ``since``.
+
+        Optional -- the host uses it to find the deployment of a workflow
+        call with an unknown outcome (ADR 0021). Each ``run_id`` is the id
+        that :meth:`get_deployment_status` takes. Another deploy of the
+        same ref and environment in the same time also matches, so the
+        host stores a result only after an operator confirms it.
+        """
+        del ctx, credentials, ref_or_sha, since
+        raise NotImplementedError
+
     async def get_release_notes(
         self,
         ctx: PluginContext,
@@ -1859,6 +1885,21 @@ class LifecycleCapability(CapabilityHandler):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> LifecycleResult: ...
+
+    async def check_archive_access(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> str | None:
+        """Return why the remote would refuse to archive or restore.
+
+        Optional.  The host calls it *before* the Imbi write of an
+        archive or unarchive, with the credentials the matching hook
+        gets.  A returned message refuses the request with ``403`` and
+        leaves Imbi unchanged; ``None`` (the default) allows it.
+        """
+        del ctx, credentials
+        return None
 
     async def on_project_unarchived(
         self,

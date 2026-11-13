@@ -74,6 +74,17 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## 2.49.0
+
+1. **Deploy imbi-workflows together with imbi-api.** An older reconciler
+   marks the new task-completed trigger bindings `failed`. The trigger
+   still works, but it shows as failed.
+2. Run `imbi-api setup-permissions`. It adds `workflow:recover` and gives
+   it to the `admin` role. The new **Calls with an unknown outcome**
+   section on the Workflows page needs it. See
+   [Workflows](../admin/workflows.md#calls-with-an-unknown-outcome). It
+   also gives the `developer` role `secret_binding:read`.
+
 ## 2.47.0
 
 No setup command is required.

@@ -220,10 +220,13 @@ function chartSeries(agents: AgentUsageTotals[]) {
   return series
 }
 
+/** The local date `n` days ago (YYYY-MM-DD). */
 function daysAgo(n: number): string {
   const day = new Date()
-  day.setUTCDate(day.getUTCDate() - n)
-  return day.toISOString().slice(0, 10)
+  day.setDate(day.getDate() - n)
+  return [day.getFullYear(), day.getMonth() + 1, day.getDate()]
+    .map((part) => String(part).padStart(2, '0'))
+    .join('-')
 }
 
 function UsageChart({

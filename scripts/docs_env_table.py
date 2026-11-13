@@ -211,6 +211,26 @@ CONTAINER: list[Row] = [
     ('SENTRY_PROJECT', 'str', 'none', 'Sentry project for the upload'),
     ('SENTRY_RELEASE', 'str', 'none', 'Sentry release for the upload'),
     ('SENTRY_URL', 'str', 'none', 'Sentry server URL for the upload'),
+    (
+        'POSTHOG_CLI_API_KEY',
+        'str',
+        'none',
+        'With `POSTHOG_CLI_PROJECT_ID`, the `all` and `ui` modes upload the '
+        'UI source maps to PostHog at start. A personal API key with '
+        '`error_tracking:write`',
+    ),
+    (
+        'POSTHOG_CLI_PROJECT_ID',
+        'str',
+        'none',
+        'PostHog project for the upload',
+    ),
+    (
+        'POSTHOG_CLI_HOST',
+        'str',
+        '`https://us.posthog.com`',
+        'PostHog app host for the upload',
+    ),
 ]
 
 DESCRIPTIONS: dict[str, str] = {
@@ -283,7 +303,7 @@ DESCRIPTIONS: dict[str, str] = {
     'POSTHOG_MCP_ANALYTICS': '`true` sends a `$mcp_tool_call` event for '
     'each MCP tool call, without arguments or results',
     'POSTHOG_AI_OBSERVABILITY': '`true` sends a `$ai_generation` event for '
-    'each assistant LLM call',
+    'each assistant and Slack bot LLM call',
     'POSTHOG_AI_PRIVACY_MODE': '`false` puts prompt and output text in AI '
     'events. Default: `true`.',
     'IMBI_PROMPT_WORKERS': 'Prompt render worker processes per service '
@@ -501,7 +521,8 @@ DESCRIPTIONS: dict[str, str] = {
     'VITE_POSTHOG_REPLAY_SAMPLE_RATE': 'Share of sessions that record, '
     '`0` to `1`. Default: `1`.',
     'VITE_POSTHOG_PERSON_PROFILES': '`identified_only` identifies each user '
-    'by a hash of their email. Default: `never`.',
+    'by a hash of their email and names the person by the email local '
+    'part. Default: `never`.',
     'VITE_DRIFT_STALE_AFTER': 'Drift that waits longer than this '
     '(`90m`, `12h`, `3d`, `2w`) shows red on the Projects page. Empty: '
     'never.',

@@ -72,6 +72,7 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status, 409)
         self.assertEqual(ctx.exception.code, 'resolution_already_used')
         self.assertEqual(ctx.exception.hint, '')
+        self.assertEqual(ctx.exception.detail, 'resolution_already_used')
 
     async def test_error_hint_from_envelope(self) -> None:
         self.mock.post('/harness/secret-resolutions').respond(
@@ -86,6 +87,24 @@ class ApiTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(api.Refused) as ctx:
             await self.api.create_resolution('a', {})
         self.assertEqual(ctx.exception.hint, 'use one of #SENTRY_AUTH_TOKEN')
+
+    async def test_error_reason_from_envelope(self) -> None:
+        self.mock.post('/harness/executor/secret-materializations').respond(
+            502,
+            json={
+                'detail': {
+                    'error': 'secret_materialization_failed',
+                    'reason': 'permission_or_repository_not_granted',
+                }
+            },
+        )
+        with self.assertRaises(api.Refused) as ctx:
+            await self.api.materialize('e', {'handle': 'h'})
+        self.assertEqual(
+            ctx.exception.detail,
+            'secret_materialization_failed'
+            ' (permission_or_repository_not_granted)',
+        )
 
     async def test_error_without_envelope(self) -> None:
         self.mock.post('/harness/runners/r/heartbeat').respond(

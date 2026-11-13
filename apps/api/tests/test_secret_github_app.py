@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from apps.api.tests import secret_support
 from imbi.api import secret_broker
-from imbi.api.secret_broker import providers
+from imbi.api.secret_broker import providers, store
 from imbi.common.auth import encryption
 from imbi.plugins.github import secret_provider
 
@@ -224,12 +224,19 @@ class GitHubAppBrokerTestCase(secret_support.SecretCase):
             self.assertEqual(ctx.exception.reason, reason, changes)
 
     async def test_key_cannot_be_granted_to_a_task(self) -> None:
-        await self.store.update(
-            'grants',
-            self.org,
-            self.grant['id'],
-            {'binding_ids': [self.key_binding['id']]},
-        )
+        with self.assertRaises(store.ProviderKeyBinding):
+            await self.store.update(
+                'grants',
+                self.org,
+                self.grant['id'],
+                {'binding_ids': [self.key_binding['id']]},
+            )
+        # A grant from before the store refused this still gets nothing.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.grants SET binding_ids = %s WHERE id = %s',
+                ([self.key_binding['id']], self.grant['id']),
+            )
         with self.assertRaises(providers.BrokerError) as ctx:
             await self.broker.create_resolution(
                 self.context(), self.request(reference=KEY_REFERENCE)

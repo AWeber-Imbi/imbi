@@ -191,7 +191,11 @@ stops the SDK. The **Agents > Usage** page reads `agent_usage`.
 The agent reports its outcome with the `report_outcome` tool. The runner
 sets the outcome and closes the task. Then:
 
-- The close hooks release the secrets of the task.
+- The close hooks release the secrets of the task and start the runs of
+  the matching workflow `task_completed` triggers. If a hook fails, a
+  sweep does its work again. For the trigger runs, the transaction that
+  closes the task writes a `trigger_outbox` row, and the sweep retries
+  until the runs start and the row is deleted.
 - The outcome goes to the [Operations Log](../admin/agent-tasks.md#operations-log).
 - A workflow `agent` step that waits on the task continues.
 - The task inbox shows the result. See

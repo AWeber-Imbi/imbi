@@ -119,7 +119,7 @@ The full list is in [Configuration](../api/configuration.md).
 | `IMBI_WORKFLOWS_SA_CLIENT_ID` | none | The client id of the `imbi-workflows` service account. Required |
 | `IMBI_WORKFLOWS_SA_CLIENT_SECRET` | none | Its client secret. Required |
 | `IMBI_INTERNAL_API_URL` | `http://localhost:8000` | Where the engine connects to imbi-api. Required when imbi-api runs in another container |
-| `IMBI_API_URL` | none | The public URL of imbi-api. The engine uses its path, for example `/api`, as the route prefix. Required |
+| `IMBI_API_URL` | none | The public URL of imbi-api. The engine uses its path, for example `/api`, as the route prefix. It must be an absolute URL. Required |
 | `IMBI_WORKFLOWS_SCHEDULER_URL` | `http://localhost:8005/api` | The task API of imbi-scheduler, with its route prefix |
 | `IMBI_WORKFLOWS_WORKERS` | `10` | Runs that one process works on at the same time |
 | `IMBI_WORKFLOWS_POLL_INTERVAL` | `10` | The longest sleep between polls, in seconds |

@@ -6,23 +6,12 @@ import typing
 import anthropic
 
 from imbi.assistant import settings
-from imbi.common import posthog
-from imbi.common.llm import tokens
+from imbi.common.llm import observability, tokens
 
 LOGGER = logging.getLogger(__name__)
 
 _client: anthropic.AsyncAnthropic | None = None
 _observed = False
-
-
-def _client_class() -> type[anthropic.AsyncAnthropic]:
-    """Return the PostHog wrapper when AI observability is on."""
-    if not (posthog.ai_observability() and posthog.init()):
-        return anthropic.AsyncAnthropic
-    # Optional dependency: import only when the switch is on.
-    from posthog.ai import anthropic as ph_anthropic  # noqa: PLC0415
-
-    return ph_anthropic.AsyncAnthropic
 
 
 def tracking(user_email: str, conversation_id: str) -> dict[str, typing.Any]:
@@ -34,10 +23,7 @@ def tracking(user_email: str, conversation_id: str) -> dict[str, typing.Any]:
     """
     if not _observed:
         return {}
-    return {
-        'posthog_distinct_id': posthog.distinct_id(user_email),
-        'posthog_trace_id': conversation_id,
-    }
+    return observability.tracking(user_email, conversation_id)
 
 
 async def initialize() -> None:
@@ -60,13 +46,13 @@ async def initialize() -> None:
         LOGGER.info('AI assistant is disabled')
         return
 
-    client_class = _client_class()
+    client_class = observability.client_class()
     _observed = client_class is not anthropic.AsyncAnthropic
 
     if assistant_settings.api_token:
         _client = tokens.bearer_client(
             tokens.ServiceToken(
-                assistant_settings.api_url, assistant_settings.api_token
+                assistant_settings.api_base_url, assistant_settings.api_token
             ),
             client_class=client_class,
         )

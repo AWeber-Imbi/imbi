@@ -4,15 +4,12 @@ Shared settings (Postgres, ClickHouse, auth) come from
 :mod:`imbi.common.settings`; only what the scheduler adds lives here.
 """
 
-import urllib.parse
-
 import pydantic
-import pydantic_settings
 
 from imbi.common import settings as common_settings
 
 
-class Scheduler(pydantic_settings.BaseSettings):
+class Scheduler(common_settings.InternalApi):
     """Scheduler configuration, prefixed ``IMBI_SCHEDULER_``."""
 
     model_config = common_settings.base_settings_config(
@@ -34,23 +31,6 @@ class Scheduler(pydantic_settings.BaseSettings):
     api_prefix: str = pydantic.Field(
         default='/api',
         description='Path prefix for the task and run routes',
-    )
-    # Where the scheduler reaches imbi-api. Distinct from ``IMBI_API_URL``
-    # (the API's *public* URL): this is the in-cluster address used for
-    # service-to-service calls, the same var imbi-assistant and imbi-mcp read.
-    api_url: str = pydantic.Field(
-        default='http://localhost:8000',
-        validation_alias='IMBI_INTERNAL_API_URL',
-        description='imbi-api base URL for api targets and token requests',
-    )
-    # imbi-api mounts every router under the path component of its *public*
-    # URL (``imbi.api.settings.Server.api_prefix``), while
-    # ``IMBI_INTERNAL_API_URL`` is a bare origin. The prefix therefore has to
-    # be re-derived here — see :attr:`api_base_url`.
-    api_public_url: str = pydantic.Field(
-        default='',
-        validation_alias='IMBI_API_URL',
-        description="imbi-api's public URL, whose path is its route prefix",
     )
     gateway_url: str = pydantic.Field(
         default='http://localhost:8003',
@@ -114,39 +94,6 @@ class Scheduler(pydantic_settings.BaseSettings):
                 f'must be an absolute path (e.g. /api); got {value!r}'
             )
         return trimmed
-
-    @pydantic.field_validator('api_public_url')
-    @classmethod
-    def _validate_api_public_url(cls, value: str) -> str:
-        """Require an absolute URL, or nothing at all.
-
-        Only the path is used, and :func:`urllib.parse.urlparse` reads a
-        schemeless value as one: ``imbi.example.com/api`` parses to that whole
-        string as the path, so :attr:`api_base_url` would concatenate to
-        ``http://imbi-api:8000imbi.example.com/api`` and turn every firing
-        into a skip. Same reasoning as :meth:`_validate_api_prefix` -- a
-        startup failure names the misconfigured variable, while a 404 on every
-        run does not.
-        """
-        if value and not urllib.parse.urlparse(value).scheme:
-            raise ValueError(
-                'must be an absolute URL (e.g. https://imbi.example.com/api);'
-                f' got {value!r}'
-            )
-        return value
-
-    @property
-    def api_base_url(self) -> str:
-        """Return the in-cluster imbi-api base URL, prefix included.
-
-        Every path the scheduler builds — the token endpoint and every `api`
-        target — must be joined onto this rather than onto
-        :attr:`api_url`: reaching ``http://imbi-api:8000/auth/token`` when the
-        deployment mounts the API at ``/api`` is a 404, which turns every run
-        into a skip.
-        """
-        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
-        return self.api_url.rstrip('/') + prefix
 
 
 _settings: Scheduler | None = None

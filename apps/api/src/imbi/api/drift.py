@@ -38,6 +38,7 @@ import logging
 import typing
 
 import fastapi
+import httpx
 
 from imbi.api.auth import principals
 from imbi.common import clickhouse, graph, iggy
@@ -226,8 +227,9 @@ async def verdicts_by_sha(
             # Table name is a module constant; values are bound params.
             f'SELECT sha, drift_detected FROM {VERDICT_TABLE} FINAL '  # noqa: S608
             'WHERE project_id = {project_id:String} '
-            'AND sha IN {shas:Array(String)}',
-            {'project_id': project_id, 'shas': wanted},
+            'AND sha IN (SELECT id FROM shas)',
+            {'project_id': project_id},
+            tables={'shas': wanted},
         )
     except Exception:
         LOGGER.exception(
@@ -562,12 +564,25 @@ async def sweep_project(
             return None
         except plugin_errors.PluginRateLimited:
             raise
-        except Exception:
-            LOGGER.exception(
-                'drift sweep could not read the note for %s on project %s',
-                committish,
-                project_id,
-            )
+        except Exception as exc:
+            if isinstance(
+                exc, httpx.HTTPStatusError
+            ) and exc.response.status_code in (404, 422):
+                # The remote does not know the committish (e.g. a bad
+                # short SHA). Expected, so not an error.
+                LOGGER.warning(
+                    'drift sweep: the remote cannot resolve %s on project '
+                    '%s (HTTP %s)',
+                    committish,
+                    project_id,
+                    exc.response.status_code,
+                )
+            else:
+                LOGGER.exception(
+                    'drift sweep could not read the note for %s on project %s',
+                    committish,
+                    project_id,
+                )
             continue
         await _stamp_release(
             db,

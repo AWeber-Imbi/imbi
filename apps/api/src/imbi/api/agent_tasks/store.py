@@ -33,6 +33,8 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.agent_tasks import log
+from imbi.common import relational
+from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -63,7 +65,7 @@ def unregister_close_hook(hook: CloseHook) -> None:
         _close_hooks.remove(hook)
 
 
-async def _run_close_hooks(task: Row) -> None:
+async def run_close_hooks(task: Row) -> None:
     """Call every close hook. A failure is logged; the task stays
     closed."""
     for hook in list(_close_hooks):
@@ -82,24 +84,7 @@ Status = typing.Literal['queued', 'running', 'blocked', 'paused', 'closed']
 Control = typing.Literal['run', 'pause', 'cancel']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
-#: The closed F5 set of terminal outcomes.
-Outcome = typing.Literal[
-    'done_acted',
-    'done_nothing_to_act_on',
-    'no_reason_to_run',
-    'partial_capped',
-    'suppressed_duplicate',
-    'superseded',
-    'cancelled_by_human',
-    'interrupted_by_operator',
-    'failed_at_gate',
-    'failed_external',
-    'unmapped_subject',
-    'exceeded_ceiling',
-    'unhandled_no_actor',
-    'request_expired',
-    'refused_rate_ceiling',
-]
+Outcome = agent_step.Outcome
 
 #: The open requests of the task ``t`` that a person can still resolve.
 #: A task that is not closed and has one waits on a person (O1), also
@@ -247,6 +232,9 @@ class NewTask:
     #: The root task of the chain of a child task. ``None`` makes the
     #: task the root of its own chain.
     chain_id: uuid.UUID | None = None
+    #: The JSON Schema of the structured output that the agent must
+    #: return. ``None``: the task asks for none.
+    output_schema: Row | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -379,8 +367,19 @@ class _Write:
         return row
 
     async def update(self, changes: Row) -> Row:
-        """Change columns of the task and keep the new row."""
+        """Change columns of the task and keep the new row.
+
+        A change that closes the task also writes its ``trigger_outbox``
+        row, so its ``task_completed`` runs start even when the close
+        hook fails.
+        """
         self.task = await _update_task(self.conn, self.task['id'], changes)
+        if changes.get('status') == 'closed':
+            await self.conn.execute(
+                'INSERT INTO agent_runtime.trigger_outbox (task_id)'
+                ' VALUES (%s)',
+                (self.task['id'],),
+            )
         return self.task
 
 
@@ -449,7 +448,7 @@ class TaskStore:
         await log.publish(write.task, write.events, write.ledger)
         # The lock refuses a closed task, so this write closed it.
         if write.task['status'] == 'closed':
-            await _run_close_hooks(write.task)
+            await run_close_hooks(write.task)
 
     async def move_legacy_projects(self) -> int:
         """Move the old single project of each task (``tasks.project_id``)
@@ -504,6 +503,9 @@ class TaskStore:
         task_id = uuid.uuid4()
         try:
             async with self._pool.connection() as conn, conn.transaction():
+                await relational.lock_organization_shared(
+                    conn, task.organization_id
+                )
                 if task.origin_kind == 'task':
                     # The lock conflicts with the lock in delete, so a
                     # parent cannot go while its child is made.
@@ -521,9 +523,9 @@ class TaskStore:
                     ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
-                    ' platform_config_version) VALUES (%s,'
+                    ' output_schema, platform_config_version) VALUES (%s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, (SELECT max(version)'
+                    ' %s, %s, %s, %s, (SELECT max(version)'
                     ' FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -543,6 +545,7 @@ class TaskStore:
                         task.owner,
                         task.budget,
                         task.chain_id or task_id,
+                        _jsonb(task.output_schema),
                         task.organization_id,
                     ),
                 )
@@ -615,6 +618,16 @@ class TaskStore:
                 _SELECT_TASKS
                 + ' WHERE organization_id = %s AND short_id = %s',
                 (organization_id, short_id),
+            )
+
+    async def chain_root(self, task: Row) -> Row | None:
+        """Return the root task of the chain of ``task`` (ADR 0022)."""
+        chain_id = task['chain_id'] or task['id']
+        if chain_id == task['id']:
+            return task
+        async with self._pool.connection() as conn:
+            return await _fetch_one(
+                conn, _SELECT_TASKS + ' WHERE t.id = %s', (chain_id,)
             )
 
     async def search(
@@ -746,6 +759,26 @@ class TaskStore:
             return await log.last_archived_agent_turn(task)
         return None if body is None else str(body)
 
+    async def pending_triggers(self) -> list[Row]:
+        """Return the closed tasks that have a ``trigger_outbox`` row."""
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                _SELECT_TASKS + ' JOIN agent_runtime.trigger_outbox AS o'
+                ' ON o.task_id = t.id ORDER BY o.created_at'
+            )
+            return await cursor.fetchall()
+
+    async def triggers_started(self, task_id: uuid.UUID) -> None:
+        """Delete the ``trigger_outbox`` row of a task."""
+        async with self._pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM agent_runtime.trigger_outbox WHERE task_id = %s',
+                (task_id,),
+            )
+
     async def unarchived(self) -> list[Row]:
         """Return the tasks whose log is not archived, by organization.
 
@@ -832,7 +865,8 @@ class TaskStore:
             TaskNotFound: No such task.
             TaskOpen: The task, or a child or chain task, is not closed,
                 the log of the task is not archived, its harness chain
-                is not done, or it has open secret resolutions.
+                is not done, it has open secret resolutions, or it or a
+                task in its chain has a ``trigger_outbox`` row.
 
         """
         async with self._pool.connection() as conn, conn.transaction():
@@ -863,14 +897,19 @@ class TaskStore:
                 raise TaskOpen(short_id)
             # The lease sweep still needs the chain row of a root that
             # waits for its fencers, and Broker.sweep joins the open
-            # resolutions of a failed close hook to the task.
+            # resolutions of a failed close hook to the task. A pending
+            # trigger_outbox row of the task, or of a task in the chain
+            # of a root, needs the root for its depth (task_trigger).
             cursor = await conn.execute(
                 'SELECT 1 FROM harness.chains WHERE root_task_id = %s'
                 " AND state IN ('running', 'fencing', 'stuck')"
                 ' UNION ALL SELECT 1 FROM secrets.resolutions'
                 " WHERE task_id = %s AND state IN ('pending', 'active')"
+                ' UNION ALL SELECT 1 FROM agent_runtime.trigger_outbox AS o'
+                ' JOIN agent_runtime.tasks AS c ON c.id = o.task_id'
+                ' WHERE c.id = %s OR c.chain_id = %s'
                 ' LIMIT 1',
-                (task['id'], task['id']),
+                (task['id'], task['id'], task['id'], task['id']),
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
@@ -1855,8 +1894,11 @@ class TaskStore:
         outcome: Outcome,
         reason: str | None,
         actor: Actor,
+        structured_output: Row | None = None,
     ) -> Row:
         """Close the task with ``outcome``; see :func:`_close`.
+
+        Keep the ``structured_output`` that the agent returned, if any.
 
         Raises:
             TaskNotFound: No such task.
@@ -1865,6 +1907,10 @@ class TaskStore:
         """
         async with self._write(organization_id, short_id) as write:
             await _close(write, outcome, reason, actor)
+            if structured_output is not None:
+                await write.update(
+                    {'structured_output': _jsonb(structured_output)}
+                )
         return write.task
 
 

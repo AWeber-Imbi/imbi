@@ -126,7 +126,7 @@ class EmptyScopeTestCase(unittest.IsolatedAsyncioTestCase):
         self.query.assert_not_awaited()
         await component_facts.component_ids_in_org(['proj-1'], None)
         self.assertEqual(1, self.query.await_count)
-        self.assertNotIn('component_ids', self.query.await_args.args[1])
+        self.assertEqual({}, self.query.await_args.kwargs['tables'])
 
     async def test_empty_report_scope_reads_nothing(self) -> None:
         """The deployment pointer set can legitimately be empty."""

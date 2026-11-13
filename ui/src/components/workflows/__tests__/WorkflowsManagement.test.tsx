@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
+import { agent } from '../../agents/__tests__/fixtures'
 import { WorkflowsManagement } from '../WorkflowsManagement'
 import { node, RUN, STEP_TYPES, workflow } from './fixtures'
 
@@ -14,15 +15,19 @@ vi.mock('@/api/endpoints', () => ({
   activateWorkflow: vi.fn(),
   cancelWorkflowRun: vi.fn(),
   createWorkflow: vi.fn(),
+  findSideEffectDeployments: vi.fn(),
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
   getWorkflowVersion: vi.fn(),
+  listAgents: vi.fn(),
+  listStaleSideEffects: vi.fn(),
   listTeams: vi.fn(),
   listWorkflowAttention: vi.fn(),
   listWorkflowRuns: vi.fn(),
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
   pauseWorkflow: vi.fn(),
+  resolveSideEffect: vi.fn(),
   startWorkflowRun: vi.fn(),
   testRunWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
@@ -78,10 +83,12 @@ describe('WorkflowsManagement', () => {
     ])
     vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue(STEP_TYPES)
     vi.mocked(endpoints.getWorkflow).mockResolvedValue(workflow())
+    vi.mocked(endpoints.listAgents).mockResolvedValue([])
     vi.mocked(endpoints.listTeams).mockResolvedValue([])
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({ issues: [] })
     vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([])
     vi.mocked(endpoints.listWorkflowRuns).mockResolvedValue([])
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([])
   })
 
   it('lists workflows with trigger, status, and empty run columns', async () => {
@@ -134,6 +141,137 @@ describe('WorkflowsManagement', () => {
     expect(
       screen.getByText('activator_lacks_permission').closest('a'),
     ).toHaveAttribute('href', `/agents/workflows/deploy-guard?run=${RUN.id}`)
+  })
+
+  it('resolves a call with an unknown outcome and retries the step', async () => {
+    const effect = {
+      action: 'step-email',
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      key: '["imbi-workflows", "step-email", "r1:tell"]',
+      node_key: 'tell',
+      retryable: true,
+      run_error: 'outcome_unknown',
+      run_id: RUN.id,
+      run_status: 'failed' as const,
+      step_input: { subject: 'Shipped 1', to: [] },
+      workflow_name: 'Deploy guard',
+      workflow_slug: 'deploy-guard',
+    }
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([effect])
+    vi.mocked(endpoints.resolveSideEffect).mockResolvedValue(undefined)
+    renderAt('/agents/workflows')
+    expect(
+      await screen.findByText('Calls with an unknown outcome'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Step email')).toBeInTheDocument()
+    expect(screen.getByText('subject: Shipped 1')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeChecked()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark done' }))
+    expect(
+      await screen.findByText(/does not make it again\. The run opens again/),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Mark done',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.resolveSideEffect).toHaveBeenCalledWith('acme', {
+        deployment_run_id: null,
+        key: effect.key,
+        resolution: 'mark_done',
+        retry: true,
+      }),
+    )
+  })
+
+  it('confirms a deployment found in the provider and retries', async () => {
+    const effect = {
+      action: 'deployment',
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      key: '["imbi-workflows", "deployment", "r1:ship"]',
+      node_key: 'ship',
+      retryable: true,
+      run_error: 'outcome_unknown',
+      run_id: RUN.id,
+      run_status: 'failed' as const,
+      step_input: { environment: 'staging', project_id: 'p1', version: '1.2' },
+      workflow_name: 'Deploy guard',
+      workflow_slug: 'deploy-guard',
+    }
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([effect])
+    vi.mocked(endpoints.findSideEffectDeployments).mockResolvedValue([
+      { run_id: '42', status: 'success' },
+    ])
+    vi.mocked(endpoints.resolveSideEffect).mockResolvedValue(undefined)
+    renderAt('/agents/workflows')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Find deployment' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Use this deployment' }),
+    )
+    expect(
+      await screen.findByText(/records deployment 42 as the result/),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Use deployment',
+      }),
+    )
+    await waitFor(() =>
+      expect(endpoints.resolveSideEffect).toHaveBeenCalledWith('acme', {
+        deployment_run_id: '42',
+        key: effect.key,
+        resolution: 'mark_done',
+        retry: true,
+      }),
+    )
+    expect(endpoints.findSideEffectDeployments).toHaveBeenCalledWith(
+      'acme',
+      effect.key,
+      expect.anything(),
+    )
+  })
+
+  it('says when the provider has no deployment of the call', async () => {
+    vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([
+      {
+        action: 'deployment',
+        created_at: new Date(Date.now() - 3_600_000).toISOString(),
+        key: '["imbi-workflows", "deployment", "r1:ship"]',
+        node_key: 'ship',
+        retryable: false,
+        run_error: 'outcome_unknown',
+        run_id: RUN.id,
+        run_status: 'failed' as const,
+        step_input: null,
+        workflow_name: 'Deploy guard',
+        workflow_slug: 'deploy-guard',
+      },
+    ])
+    vi.mocked(endpoints.findSideEffectDeployments).mockResolvedValue([])
+    renderAt('/agents/workflows')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Find deployment' }),
+    )
+    expect(
+      await screen.findByText(/has no deployment of this version/),
+    ).toBeInTheDocument()
+  })
+
+  it('hides calls with an unknown outcome without workflow:recover', async () => {
+    auth.user = {
+      is_admin: false,
+      organizations: [
+        { organization_slug: 'acme', permissions: ['workflow:read'] },
+      ],
+      permissions: [],
+    }
+    renderAt('/agents/workflows')
+    expect(await screen.findByText('Deploy guard')).toBeInTheDocument()
+    expect(endpoints.listStaleSideEffects).not.toHaveBeenCalled()
   })
 
   it('test runs the workflow and shows a step output', async () => {
@@ -332,6 +470,57 @@ describe('WorkflowsManagement', () => {
       target: added.id,
     })
     expect(await screen.findByText('Saved · v3')).toBeInTheDocument()
+  })
+
+  it('shows each step key, and the type when the title differs', async () => {
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('settle')).toBeInTheDocument()
+    expect(screen.getByText('settle').parentElement).toHaveTextContent(
+      'settle · Wait',
+    )
+    expect(screen.getByText('start').parentElement).toHaveTextContent(
+      'start · Manual run',
+    )
+  })
+
+  it('shows the agent that an agent step runs', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
+    const base = workflow()
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue({
+      ...base,
+      version: {
+        ...base.version,
+        graph: {
+          edges: [],
+          nodes: [
+            node({
+              id: 'c',
+              key: 'triage',
+              params: { agent_id: 'agt-1', instruction: 'Triage the issue' },
+              title: 'Agent task',
+              type: 'agent',
+            }),
+            node({
+              id: 'd',
+              key: 'follow_up',
+              params: { agent_id: 'gone', instruction: 'Follow up' },
+              position: { x: 320, y: 0 },
+              title: 'Agent task',
+              type: 'agent',
+            }),
+          ],
+        },
+      },
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Mender')).toBeInTheDocument()
+    expect(screen.getAllByText('Mender')).toHaveLength(1)
+    expect(screen.getByText('triage').parentElement).toHaveTextContent(
+      /^triage$/,
+    )
+    expect(screen.getByText('Triage the issue')).toBeInTheDocument()
+    expect(screen.getByText('Follow up')).toBeInTheDocument()
+    expect(screen.getByText('Agent')).toBeInTheDocument()
   })
 
   it('marks steps that need configuration', async () => {

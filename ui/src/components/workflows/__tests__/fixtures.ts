@@ -48,6 +48,21 @@ export const STEP_TYPES: StepType[] = [
     ports: ['Succeeded', 'Failed'],
     type: 'deploy',
   }),
+  stepType({
+    category: 'agent',
+    description: 'Gives an agent a task and waits for its outcome.',
+    label: 'Agent task',
+    params_schema: {
+      properties: {
+        agent_id: { type: 'string' },
+        instruction: { type: 'string' },
+      },
+      required: ['agent_id', 'instruction'],
+      type: 'object',
+    },
+    ports: ['Succeeded', 'Failed'],
+    type: 'agent',
+  }),
 ]
 
 export const TYPES = Object.fromEntries(STEP_TYPES.map((t) => [t.type, t]))
@@ -60,6 +75,29 @@ export function node(overrides: Partial<WorkflowNode> = {}): WorkflowNode {
     params: {},
     position: { x: 0, y: 0 },
     title: 'Wait',
+    type: 'wait',
+    ...overrides,
+  }
+}
+
+export function stepType(overrides: Partial<StepType> = {}): StepType {
+  return {
+    category: 'logic',
+    description: 'Pause for a time',
+    idempotent: true,
+    label: 'Wait',
+    output_schema: {},
+    params_schema: {
+      properties: { duration: { default: '10m', type: 'string' } },
+      required: ['duration'],
+      type: 'object',
+    },
+    ports: [''],
+    retries: 0,
+    sample_output: {},
+    side_effect: false,
+    timeout_seconds: null,
+    trigger: false,
     type: 'wait',
     ...overrides,
   }
@@ -105,29 +143,6 @@ export function workflow(overrides: Partial<Workflow> = {}): Workflow {
       validation: { issues: [] },
       version: 2,
     },
-    ...overrides,
-  }
-}
-
-function stepType(overrides: Partial<StepType> = {}): StepType {
-  return {
-    category: 'logic',
-    description: 'Pause for a time',
-    idempotent: true,
-    label: 'Wait',
-    output_schema: {},
-    params_schema: {
-      properties: { duration: { default: '10m', type: 'string' } },
-      required: ['duration'],
-      type: 'object',
-    },
-    ports: [''],
-    retries: 0,
-    sample_output: {},
-    side_effect: false,
-    timeout_seconds: null,
-    trigger: false,
-    type: 'wait',
     ...overrides,
   }
 }

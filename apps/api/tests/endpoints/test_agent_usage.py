@@ -10,9 +10,11 @@ import datetime
 import decimal
 import typing
 import uuid
+from unittest import mock
 
 from apps.api.tests.endpoints import test_agent_task_log
 from imbi.api.agent_tasks import log
+from imbi.api.endpoints import agent_usage
 from imbi.common import iggy
 
 TODAY = datetime.datetime.now(datetime.UTC).replace(
@@ -32,6 +34,16 @@ def _task(org: str, task: str, agent: str) -> dict[str, typing.Any]:
 
 
 class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        # The fixtures are relative to TODAY, so the endpoint must agree
+        # on the day even when a run crosses midnight UTC.
+        today = mock.patch.object(
+            agent_usage, '_today', return_value=TODAY.date()
+        )
+        today.start()
+        self.addCleanup(today.stop)
+
     async def create(
         self,
         *,
@@ -181,6 +193,23 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         )
         self.assertEqual([row['day'] for row in usage['days']], [start])
 
+    async def test_days_are_in_the_requester_zone(self) -> None:
+        """Noon UTC is 2 AM the next day at UTC+14."""
+        await self.create()
+        await self.publish()
+        tomorrow = (TODAY + datetime.timedelta(days=1)).date().isoformat()
+
+        usage = await self.get_usage(
+            start=TODAY.date().isoformat(),
+            end=tomorrow,
+            tz='Pacific/Kiritimati',
+        )
+
+        self.assertEqual(
+            [(row['day'], row['tasks']) for row in usage['days']],
+            [(tomorrow, 1)],
+        )
+
     async def test_month_to_date(self) -> None:
         await self.publish(cost='2')
         await self.publish(task='T-2', days_ago=TODAY.day, cost='50')
@@ -220,6 +249,7 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         for params in (
             {'start': '2026-02-01', 'end': '2026-01-01'},
             {'start': '2024-01-01', 'end': '2026-01-01'},
+            {'tz': 'Mars/Olympus'},
         ):
             response = await self.client.get(
                 f'/organizations/{self.org}/agent-usage/', params=params

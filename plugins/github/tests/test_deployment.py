@@ -628,10 +628,72 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
+        head = respx.get(
+            'https://api.github.com/repos/octo/demo/commits/HEAD'
+        ).mock(return_value=httpx.Response(200, text='abc'))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'check_runs': [
+                        {
+                            'id': 1,
+                            'name': 'unit',
+                            'status': 'completed',
+                            'conclusion': 'failure',
+                        }
+                    ]
+                },
+            )
+        )
         plugin = GitHubDeployment()
         commit = await plugin.resolve_committish(_ctx(), _CREDS, 'abc')
         self.assertEqual(commit.sha, 'abc')
         self.assertEqual(commit.message, 'fix')
+        self.assertTrue(commit.is_head)
+        self.assertEqual(commit.ci_status, 'fail')
+        self.assertEqual(
+            head.calls.last.request.headers['Accept'],
+            'application/vnd.github.sha',
+        )
+
+    @respx.mock
+    async def test_resolve_committish_not_default_head(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/commits/v1').mock(
+            return_value=httpx.Response(
+                200, json={'sha': 'abc', 'commit': {'message': 'fix'}}
+            )
+        )
+        respx.get('https://api.github.com/repos/octo/demo/commits/HEAD').mock(
+            return_value=httpx.Response(200, text='def')
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(return_value=httpx.Response(404, json={}))
+        plugin = GitHubDeployment()
+        commit = await plugin.resolve_committish(_ctx(), _CREDS, 'v1')
+        self.assertFalse(commit.is_head)
+        self.assertEqual(commit.ci_status, 'unknown')
+
+    @respx.mock
+    async def test_resolve_committish_head_lookup_fails(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/commits/v1').mock(
+            return_value=httpx.Response(
+                200, json={'sha': 'abc', 'commit': {'message': 'fix'}}
+            )
+        )
+        respx.get('https://api.github.com/repos/octo/demo/commits/HEAD').mock(
+            side_effect=httpx.TimeoutException('timeout')
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(return_value=httpx.Response(404, json={}))
+        plugin = GitHubDeployment()
+        commit = await plugin.resolve_committish(_ctx(), _CREDS, 'v1')
+        self.assertEqual(commit.sha, 'abc')
+        self.assertFalse(commit.is_head)
 
 
 class CompareTestCase(unittest.IsolatedAsyncioTestCase):
@@ -1088,6 +1150,47 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'queued')
         self.assertIsNone(run.completed_at)
+
+
+class FindDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_keeps_deployments_made_since(self) -> None:
+        listing = respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'staging', 'ref': '1.2.0'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(2, '2026-01-01T00:05:00Z'),
+                    _deployment(1, '2026-01-01T00:00:00Z'),
+                ],
+            )
+        )
+        _statuses('success', 'success')
+        runs = await GitHubDeployment().find_deployments(
+            _ctx(environment='staging'),
+            _CREDS,
+            '1.2.0',
+            datetime.datetime(2026, 1, 1, 0, 1, tzinfo=datetime.UTC),
+        )
+        self.assertTrue(listing.called)
+        self.assertEqual(
+            [(r.run_id, r.status, r.started_at) for r in runs],
+            [
+                (
+                    '2',
+                    'success',
+                    datetime.datetime(2026, 1, 1, 0, 5, tzinfo=datetime.UTC),
+                )
+            ],
+        )
+
+    async def test_needs_an_environment(self) -> None:
+        with self.assertRaises(ValueError):
+            await GitHubDeployment().find_deployments(
+                _ctx(), _CREDS, '1.2.0', datetime.datetime.now(datetime.UTC)
+            )
 
 
 class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):

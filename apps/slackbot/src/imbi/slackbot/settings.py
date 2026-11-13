@@ -4,14 +4,13 @@ import logging
 import os
 
 import pydantic
-import pydantic_settings
 
 from imbi.common import settings as common_settings
 
 LOGGER = logging.getLogger(__name__)
 
 
-class Slackbot(pydantic_settings.BaseSettings):
+class Slackbot(common_settings.InternalApi):
     """Slack bot configuration."""
 
     model_config = common_settings.base_settings_config(
@@ -52,15 +51,6 @@ class Slackbot(pydantic_settings.BaseSettings):
     )
     slack_app_token: str = pydantic.Field(
         default='', validation_alias='SLACK_APP_TOKEN'
-    )
-
-    # Where the bot reaches the Imbi REST API. Distinct from
-    # ``IMBI_API_URL`` (the API's *public* URL); this is the in-cluster
-    # address used for service-to-service calls. ``imbi-assistant`` and
-    # ``imbi-mcp`` read the same env var for the same role.
-    api_url: str = pydantic.Field(
-        default='http://localhost:8000',
-        validation_alias='IMBI_INTERNAL_API_URL',
     )
 
     # Public base URL of the Imbi UI (no path component), used to build

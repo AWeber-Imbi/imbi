@@ -282,8 +282,10 @@ SELECT maxIf(ended_at, is_read)                  AS last_read_at,
        uniqExactIf(principal, is_read)           AS readers,
        countIf(is_view)                          AS views,
        countIf(is_read)                          AS reads,
-       quantileIf(0.5)(engaged_ms, is_view)      AS median_engaged_ms,
-       quantileIf(0.9)(engaged_ms, is_view)      AS p90_engaged_ms
+       ifNotFinite(quantileIf(0.5)(engaged_ms, is_view), 0)
+                                                 AS median_engaged_ms,
+       ifNotFinite(quantileIf(0.9)(engaged_ms, is_view), 0)
+                                                 AS p90_engaged_ms
 FROM ({source})
 """
 

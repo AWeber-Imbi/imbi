@@ -75,11 +75,13 @@ def _router(
     """A ``clickhouse.query`` that answers each statement by table."""
 
     async def _answer(
-        sql: str, params: dict[str, typing.Any]
+        sql: str,
+        params: dict[str, typing.Any],
+        tables: dict[str, list[str]] | None = None,
     ) -> list[dict[str, typing.Any]]:
         if 'FROM events' in sql:
             return deliveries
-        wanted = set(params['shas'])
+        wanted = set((tables or {})['shas'])
         return [row for row in commits if row['sha'] in wanted]
 
     return mock.AsyncMock(side_effect=_answer)
@@ -289,4 +291,4 @@ class RepairTestCase(unittest.IsolatedAsyncioTestCase):
             await commit_pushed_at_repair.repair_project('p1')
         commits_call = query.await_args_list[1]
         self.assertIn('FROM commits FINAL', commits_call.args[0])
-        self.assertEqual([head], commits_call.args[1]['shas'])
+        self.assertEqual([head], commits_call.kwargs['tables']['shas'])

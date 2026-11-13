@@ -19,6 +19,7 @@ import pydantic
 
 from imbi.api import settings, version
 from imbi.api.auth import permissions
+from imbi.api.endpoints import _local_time
 from imbi.common import clickhouse, graph, iggy, valkey
 
 LOGGER = logging.getLogger(__name__)
@@ -395,26 +396,26 @@ async def get_dashboard_metrics(
             permissions.require_permission('admin:dashboard:read')
         ),
     ],
+    zone: _local_time.LocalZone,
 ) -> DashboardMetrics:
     """Return 7-day activity metrics with per-day counts for the tiles.
 
-    The pull request series skips drafts and archived projects.
+    The days are calendar days in the requester's ``tz``.  The pull
+    request series skips drafts and archived projects.
     """
-    today = datetime.datetime.now(datetime.UTC).date()
+    today = datetime.datetime.now(zone).date()
     start_date = today - datetime.timedelta(days=_METRICS_WINDOW_DAYS - 1)
-    since = datetime.datetime.combine(
-        start_date, datetime.time.min, tzinfo=datetime.UTC
-    )
+    since = datetime.datetime.combine(start_date, datetime.time.min, zone)
     days = [
         (start_date + datetime.timedelta(days=offset)).isoformat()
         for offset in range(_METRICS_WINDOW_DAYS)
     ]
-    params: dict[str, typing.Any] = {'since': since}
+    params: dict[str, typing.Any] = {'since': since, 'tz': zone.key}
     # One scan of the (FINAL, merge-on-read) deploy rows yields both the
     # per-day series and the per-environment rollup.
     deploys, events, ops, prs = await asyncio.gather(
         clickhouse.query(
-            'SELECT toDate(occurred_at) AS day,'
+            'SELECT toDate(occurred_at, {tz:String}) AS day,'
             ' environment_slug AS slug, count() AS c'
             ' FROM operations_log FINAL'
             " WHERE is_deleted = 0 AND entry_type = 'Deployed'"
@@ -423,13 +424,13 @@ async def get_dashboard_metrics(
             params,
         ),
         clickhouse.query(
-            'SELECT toDate(recorded_at) AS day, count() AS c'
+            'SELECT toDate(recorded_at, {tz:String}) AS day, count() AS c'
             ' FROM events WHERE recorded_at >= {since:DateTime64(3)}'
             ' GROUP BY day',
             params,
         ),
         clickhouse.query(
-            'SELECT toDate(occurred_at) AS day, count() AS c'
+            'SELECT toDate(occurred_at, {tz:String}) AS day, count() AS c'
             ' FROM operations_log FINAL'
             ' WHERE is_deleted = 0'
             ' AND occurred_at >= {since:DateTime64(3)}'
@@ -437,7 +438,7 @@ async def get_dashboard_metrics(
             params,
         ),
         clickhouse.query(
-            'SELECT toDate(created_at) AS day, count() AS c'
+            'SELECT toDate(created_at, {tz:String}) AS day, count() AS c'
             ' FROM pull_requests FINAL'
             ' WHERE created_at >= {since:DateTime64(3)}'
             ' AND NOT draft'

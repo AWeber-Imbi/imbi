@@ -546,3 +546,20 @@ class RetryTestCase(ReconcilerTestCase):
         finally:
             stop.set()
             await loop
+
+
+class TaskCompletedTestCase(ReconcilerTestCase):
+    async def test_binding_syncs_without_a_call(self) -> None:
+        await self._activate(
+            workflows.Trigger('done', 'task_completed', {'outcomes': []})
+        )
+        await self.reconciler.reconcile()
+        [binding] = await self._bindings()
+        self.assertEqual(binding['sync_state'], 'synced')
+        self.assertIsNone(binding['target_id'])
+        self.assertEqual(self.scheduler.calls, [])
+        self.assertEqual(await self._rules(), [])
+
+        await self.definitions.delete(self.org, self.slug)
+        await self.reconciler.reconcile()
+        self.assertEqual(await self._bindings(), [])

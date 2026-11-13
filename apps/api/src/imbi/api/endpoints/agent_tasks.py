@@ -161,12 +161,16 @@ class AgentTaskOrigin(pydantic.BaseModel):
     """What started a task. It does not change.
 
     A ``schedule`` origin also has ``scheduled_task_id``. A ``webhook``
-    origin also has ``webhook_id`` and ``delivery_id``.
+    origin also has ``webhook_id`` and ``delivery_id``. A
+    ``task_completed`` origin is a workflow run that a closed task
+    started; it also has ``task_id``.
     """
 
     model_config = pydantic.ConfigDict(extra='allow')
 
-    kind: typing.Literal['human', 'schedule', 'webhook', 'task']
+    kind: typing.Literal[
+        'human', 'schedule', 'webhook', 'task', 'task_completed'
+    ]
     #: The email of the person, for a ``human`` origin.
     user: str | None = None
 
@@ -217,6 +221,10 @@ class AgentTaskResponse(pydantic.BaseModel):
     #: attention, and who.
     acknowledged_at: datetime.datetime | None = None
     acknowledged_by: str | None = None
+    #: The JSON Schema of the structured output that the agent must
+    #: return, and the output that it returned.
+    output_schema: dict[str, typing.Any] | None = None
+    structured_output: dict[str, typing.Any] | None = None
 
 
 class AgentTaskListItem(AgentTaskResponse):
@@ -945,10 +953,13 @@ async def make_task(
     key: str | None,
     owner: str,
     actor: agent_tasks.Actor,
+    output_schema: dict[str, typing.Any] | None = None,
 ) -> tuple[dict[str, typing.Any], bool]:
     """Make a task with the agent and prompt versions that it has now.
 
     Return the task, and ``False`` when a task with the key exists.
+    ``output_schema`` is the JSON Schema of the structured output that
+    the agent must return.
 
     Raises:
         409: The agent is disabled.
@@ -991,6 +1002,7 @@ async def make_task(
             idempotency_key=key,
             owner=owner,
             budget=budget,
+            output_schema=output_schema,
         ),
         actor,
         {

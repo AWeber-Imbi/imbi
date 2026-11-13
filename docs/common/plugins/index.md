@@ -191,6 +191,9 @@ class GitHubPlugin(Plugin):
   `'oauth2'`, `'oidc'`, `'aws-iam-ic'`, or `'none'`. OAuth
   `client_id` / `client_secret` are ordinary named fields in
   `credentials`.
+- **`shareable_service_identifier`** (default `True`) declares whether
+  several projects in an organization can share one `EXISTS_IN`
+  identifier. See [Lifecycle](lifecycle.md).
 - **`options`** are the integration-level option values collected once
   per Integration (e.g. GitHub `flavor` / `host`, AWS `region`). Five
   field types are supported: the four scalars (`string`, `integer`,
@@ -491,7 +494,8 @@ the exception. The author-relevant ones:
 | Exception | When to raise |
 | --- | --- |
 | `PluginCredentialsMissing` | A required credential is absent or empty in the `credentials` dict. |
-| `PluginInstallationMissing` | The credential is valid but grants nothing on the target resource (for example, a GitHub App that is not installed on the repository). The API returns a terminal `403`, because a retry does not change the result. Carries `owner_repo` and `integration_slug`. |
+| `PluginInstallationMissing` | The credential is valid but grants nothing on the target resource (for example, a GitHub App that is not installed on the repository). The API returns a terminal `403`, because a retry does not change the result. Carries `owner_repo` and `integration_slug`. `detail.error` is `app_not_installed`. |
+| `PluginIdentityAccessDenied` | A subclass of `PluginInstallationMissing` for a per-user identity that the provider gives no grant on the target (for example, an AWS IAM Identity Center user with no permission set for the account and role). The API returns a terminal `403` with `detail.error` set to `identity_access_denied`. |
 | `PluginAuthenticationFailed` | The upstream rejected the call for an auth reason (HTTP 401, expired token); host may refresh and retry once. |
 | `PluginRateLimited` | The upstream's rate limit is exhausted; carries `retry_at` so the host can pause and keep the job queued. |
 | `PluginTimeoutError` | An upstream call exceeded the capability's internal timeout budget. |
@@ -508,6 +512,8 @@ should not raise it.
 ::: imbi.common.plugins.PluginCredentialsMissing
 
 ::: imbi.common.plugins.PluginInstallationMissing
+
+::: imbi.common.plugins.PluginIdentityAccessDenied
 
 ::: imbi.common.plugins.PluginAuthenticationFailed
 

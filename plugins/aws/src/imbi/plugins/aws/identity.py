@@ -52,7 +52,10 @@ from imbi.common.plugins.base import (
     PluginContext,
     PollingDescriptor,
 )
-from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.common.plugins.errors import (
+    PluginCredentialsMissing,
+    PluginIdentityAccessDenied,
+)
 from imbi.common.plugins.templates import expand_template
 from imbi.plugins.aws._helpers import template_vars
 from imbi.plugins.aws.errors import (
@@ -359,6 +362,14 @@ class AWSIdentity(IdentityCapability):
                 headers={
                     'x-amz-sso_bearer_token': connection.access_token,
                 },
+            )
+        if response.status_code == 403:
+            # The actor has no IAM IC assignment for this account and
+            # role. Retrying or refreshing does not change that.
+            raise PluginIdentityAccessDenied(
+                f'IAM Identity Center gives you no access to role '
+                f'{role_name!r} in account {account_id}. Ask an AWS '
+                f'administrator to assign you a permission set for it.'
             )
         if response.status_code != 200:
             raise ValueError(

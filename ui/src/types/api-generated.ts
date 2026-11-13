@@ -1336,7 +1336,8 @@ export interface paths {
          * Get Dashboard Metrics
          * @description Return 7-day activity metrics with per-day counts for the tiles.
          *
-         *     The pull request series skips drafts and archived projects.
+         *     The days are calendar days in the requester's ``tz``.  The pull
+         *     request series skips drafts and archived projects.
          */
         get: operations["get_dashboard_metrics_api_admin_dashboard_metrics_get"];
         put?: never;
@@ -3438,7 +3439,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Project
-         * @description Delete a project.
+         * @description Delete a project, and remove it from the secret grants.
          *
          *     When ``delete_repository`` is true (the default), each assigned
          *     lifecycle plugin's ``on_project_deleted`` hook is also invoked so
@@ -4949,7 +4950,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Agent
-         * @description Delete an agent, every version of it, and its service account.
+         * @description Delete an agent, every version of it, and its service account,
+         *     and remove it from the secret grants.
          *
          *     Raises:
          *         404: No such agent.
@@ -5904,14 +5906,15 @@ export interface paths {
          * Get Agent Usage
          * @description Return token use and cost by day and by agent.
          *
-         *     ``start`` and ``end`` are UTC days and are both in the range. The
+         *     ``start`` and ``end`` are days in ``tz`` and are both in the range. The
          *     default range is the 30 days that end today. ``agent_id`` keeps
          *     the usage of one agent.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
          *         404: No such organization.
-         *         422: ``start`` is after ``end``, or the range is too long.
+         *         422: ``start`` is after ``end``, the range is too long, or
+         *             ``tz`` is not a known time zone.
          */
         get: operations["get_agent_usage_api_organizations__org_slug__agent_usage__get"];
         put?: never;
@@ -6160,9 +6163,9 @@ export interface paths {
          * Get Run
          * @description Return a run with its step records.
          *
-         *     The ``reason`` and ``summary`` of an agent step's output come from
-         *     the agent task. Only a caller who can read agent tasks
-         *     (``agent_task:read``) gets them.
+         *     The ``reason``, ``summary``, and ``result`` of an agent step's
+         *     output come from the agent task. Only a caller who can read agent
+         *     tasks (``agent_task:read``) gets them.
          *
          *     Raises:
          *         404: No such workflow or run.
@@ -6396,6 +6399,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stale Side Effects
+         * @description Return the side effects of runs that started and did not finish.
+         *
+         *     A repeat of such a key gets ``409 outcome_unknown``, so its step
+         *     fails. Only an operator resolves one; keys never expire (ADR 0021,
+         *     unknown-outcome reconciliation).
+         */
+        get: operations["list_stale_side_effects_api_organizations__org_slug__workflow_runs_side_effects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Side Effect Deployments
+         * @description Return the deployments that a stale ``deployment`` key can have
+         *     made, from the project's deployment plugin.
+         *
+         *     Another deploy of the same version and environment at the same time
+         *     also matches, so the operator confirms one (``mark_done`` with
+         *     ``deployment_run_id``) before Imbi stores it. An empty list: the
+         *     plugin found none.
+         *
+         *     Raises:
+         *         400: The plugin cannot find deployments.
+         *         404: No stale side effect with the key in the organization.
+         *         409: The key is not a deployment, or its step input is gone.
+         */
+        get: operations["find_side_effect_deployments_api_organizations__org_slug__workflow_runs_side_effects_deployments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Side Effect
+         * @description Clear a stale side effect, or mark it done, and retry its step.
+         *
+         *     A deployment marked done with a ``deployment_run_id`` stores that
+         *     run as the result of the call, if the plugin still finds it.
+         *
+         *     Raises:
+         *         404: No stale side effect with the key in the organization.
+         *         409: The resolution or the retry does not apply to it, or it
+         *             changed.
+         */
+        post: operations["resolve_side_effect_api_organizations__org_slug__workflow_runs_side_effects_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/secret-providers/types": {
         parameters: {
             query?: never;
@@ -6556,6 +6642,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such binding.
+         *         409: The change sets or clears the provider key mark while a
+         *             grant uses the binding.
          *         422: The locator is not valid.
          */
         patch: operations["update_binding_api_organizations__org_slug__secret_bindings__binding_id__patch"];
@@ -6622,8 +6710,9 @@ export interface paths {
          * @description Create an allow rule with exact ids.
          *
          *     Raises:
-         *         422: A binding is not in the organization, or a setup purpose
-         *             has a delivery mode other than ``file_descriptor``.
+         *         422: A binding is not in the organization or is a provider
+         *             key binding, or a setup purpose has a delivery mode other
+         *             than ``file_descriptor``.
          */
         post: operations["create_grant_api_organizations__org_slug__secret_grants__post"];
         delete?: never;
@@ -6677,8 +6766,9 @@ export interface paths {
          *
          *     Raises:
          *         404: No such grant.
-         *         422: A binding is not in the organization, or a setup purpose
-         *             has a delivery mode other than ``file_descriptor``.
+         *         422: A binding is not in the organization or is a provider
+         *             key binding, or a setup purpose has a delivery mode other
+         *             than ``file_descriptor``.
          */
         patch: operations["update_grant_api_organizations__org_slug__secret_grants__grant_id__patch"];
         trace?: never;
@@ -8324,13 +8414,22 @@ export interface paths {
         post?: never;
         /**
          * Delete Organization
-         * @description Delete an organization.
+         * @description Delete an empty organization.
+         *
+         *     Its memberships, agent tasks, workflow runs, secret grants, and
+         *     settled secret resolutions go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
          *
          *     Raises:
          *         404: Organization not found.
+         *         409: The organization still has nodes that belong to it (teams,
+         *             agents, integrations, ...), secret providers, an
+         *             identity source, workflows, or workflow trigger bindings.
+         *             Delete them first, so that each delete does its own
+         *             cleanup. An active secret resolution or a provider lease
+         *             that is not revoked also blocks the delete.
          */
         delete: operations["delete_organization_api_organizations__slug__delete"];
         options?: never;
@@ -11060,6 +11159,14 @@ export interface components {
             acknowledged_at?: string | null;
             /** Acknowledged By */
             acknowledged_by?: string | null;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Structured Output */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
             /** Blocked Since */
             blocked_since?: string | null;
         };
@@ -11068,14 +11175,16 @@ export interface components {
          * @description What started a task. It does not change.
          *
          *     A ``schedule`` origin also has ``scheduled_task_id``. A ``webhook``
-         *     origin also has ``webhook_id`` and ``delivery_id``.
+         *     origin also has ``webhook_id`` and ``delivery_id``. A
+         *     ``task_completed`` origin is a workflow run that a closed task
+         *     started; it also has ``task_id``.
          */
         AgentTaskOrigin: {
             /**
              * Kind
              * @enum {string}
              */
-            kind: "human" | "schedule" | "webhook" | "task";
+            kind: "human" | "schedule" | "webhook" | "task" | "task_completed";
             /** User */
             user?: string | null;
         } & {
@@ -11230,6 +11339,14 @@ export interface components {
             acknowledged_at?: string | null;
             /** Acknowledged By */
             acknowledged_by?: string | null;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Structured Output */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** AgentTaskRetry */
         AgentTaskRetry: {
@@ -11788,7 +11905,10 @@ export interface components {
              */
             priority: number;
             filter?: components["schemas"]["BlueprintFilter"] | null;
-            json_schema: components["schemas"]["Schema-Input"];
+            /** Json Schema */
+            json_schema: {
+                [key: string]: unknown;
+            };
             /**
              * Version
              * @default 0
@@ -11839,6 +11959,7 @@ export interface components {
              */
             priority: number;
             filter?: string | null;
+            /** Json Schema */
             json_schema: string;
             /**
              * Version
@@ -14207,12 +14328,6 @@ export interface components {
             /** Dashboard Url */
             dashboard_url?: string | null;
         };
-        /**
-         * FormatType
-         * @description JSON Schema format enumeration for string validation.
-         * @enum {string}
-         */
-        FormatType: "date-time" | "date" | "time" | "duration" | "email" | "idn-email" | "hostname" | "idn-hostname" | "ipv4" | "ipv6" | "uri" | "uri-reference" | "iri" | "iri-reference" | "uuid" | "uri-template" | "json-pointer" | "relative-json-pointer" | "regex";
         /** GlobalScoreEvent */
         GlobalScoreEvent: {
             /** Timestamp */
@@ -16186,6 +16301,13 @@ export interface components {
              * @description A slug. Required for every outcome but done_acted.
              */
             reason?: string | null;
+            /**
+             * Structured Output
+             * @description The structured output that the agent returned, for a task with an output schema.
+             */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * PRActivityResponse
@@ -19348,284 +19470,6 @@ export interface components {
             chain?: components["schemas"]["RunnerChain"] | null;
         };
         /**
-         * Schema
-         * @description JSON Schema Draft 2020-12 schema object.
-         */
-        "Schema-Input": {
-            /** $Schema */
-            $schema?: string | null;
-            /** $Id */
-            $id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Default */
-            default?: unknown | null;
-            /** Deprecated */
-            deprecated?: boolean | null;
-            /** Readonly */
-            readOnly?: boolean | null;
-            /** Writeonly */
-            writeOnly?: boolean | null;
-            /** Examples */
-            examples?: unknown[] | null;
-            /** $Comment */
-            $comment?: string | null;
-            /** Type */
-            type?: components["schemas"]["SchemaType"] | components["schemas"]["SchemaType"][] | null;
-            /** Enum */
-            enum?: unknown[] | null;
-            /** Const */
-            const?: unknown | null;
-            /**
-             * Multipleof
-             * @description Must be greater than 0
-             */
-            multipleOf?: number | null;
-            /** Maximum */
-            maximum?: number | null;
-            /** Exclusivemaximum */
-            exclusiveMaximum?: number | null;
-            /** Minimum */
-            minimum?: number | null;
-            /** Exclusiveminimum */
-            exclusiveMinimum?: number | null;
-            /** Maxlength */
-            maxLength?: number | null;
-            /** Minlength */
-            minLength?: number | null;
-            /** Pattern */
-            pattern?: string | null;
-            /** Format */
-            format?: components["schemas"]["FormatType"] | string | null;
-            items?: components["schemas"]["Schema-Input"] | null;
-            /**
-             * Additionalitems
-             * @deprecated
-             */
-            additionalItems?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Maxitems */
-            maxItems?: number | null;
-            /** Minitems */
-            minItems?: number | null;
-            /** Uniqueitems */
-            uniqueItems?: boolean | null;
-            contains?: components["schemas"]["Schema-Input"] | null;
-            /** Mincontains */
-            minContains?: number | null;
-            /** Maxcontains */
-            maxContains?: number | null;
-            /** Maxproperties */
-            maxProperties?: number | null;
-            /** Minproperties */
-            minProperties?: number | null;
-            /** Required */
-            required?: string[] | null;
-            /** Properties */
-            properties?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Patternproperties */
-            patternProperties?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Additionalproperties */
-            additionalProperties?: boolean | components["schemas"]["Schema-Input"] | null;
-            propertyNames?: components["schemas"]["Schema-Input"] | null;
-            /** Unevaluateditems */
-            unevaluatedItems?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Unevaluatedproperties */
-            unevaluatedProperties?: boolean | components["schemas"]["Schema-Input"] | null;
-            /** Allof */
-            allOf?: components["schemas"]["Schema-Input"][] | null;
-            /** Anyof */
-            anyOf?: components["schemas"]["Schema-Input"][] | null;
-            /** Oneof */
-            oneOf?: components["schemas"]["Schema-Input"][] | null;
-            not?: components["schemas"]["Schema-Input"] | null;
-            if?: components["schemas"]["Schema-Input"] | null;
-            then?: components["schemas"]["Schema-Input"] | null;
-            else?: components["schemas"]["Schema-Input"] | null;
-            /** Dependentrequired */
-            dependentRequired?: {
-                [key: string]: string[];
-            } | null;
-            /** Dependentschemas */
-            dependentSchemas?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** $Ref */
-            $ref?: string | null;
-            /** $Defs */
-            $defs?: {
-                [key: string]: components["schemas"]["Schema-Input"];
-            } | null;
-            /** Contentmediatype */
-            contentMediaType?: string | null;
-            /** Contentencoding */
-            contentEncoding?: string | null;
-            contentSchema?: components["schemas"]["Schema-Input"] | null;
-            /** $Anchor */
-            $anchor?: string | null;
-            /** $Dynamicanchor */
-            $dynamicAnchor?: string | null;
-            /** $Dynamicref */
-            $dynamicRef?: string | null;
-            /** $Vocabulary */
-            $vocabulary?: {
-                [key: string]: boolean;
-            } | null;
-            /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * Schema
-         * @description JSON Schema Draft 2020-12 schema object.
-         */
-        "Schema-Output": {
-            /** $Schema */
-            $schema?: string | null;
-            /** $Id */
-            $id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Default */
-            default?: unknown | null;
-            /** Deprecated */
-            deprecated?: boolean | null;
-            /** Readonly */
-            readOnly?: boolean | null;
-            /** Writeonly */
-            writeOnly?: boolean | null;
-            /** Examples */
-            examples?: unknown[] | null;
-            /** $Comment */
-            $comment?: string | null;
-            /** Type */
-            type?: components["schemas"]["SchemaType"] | components["schemas"]["SchemaType"][] | null;
-            /** Enum */
-            enum?: unknown[] | null;
-            /** Const */
-            const?: unknown | null;
-            /**
-             * Multipleof
-             * @description Must be greater than 0
-             */
-            multipleOf?: number | null;
-            /** Maximum */
-            maximum?: number | null;
-            /** Exclusivemaximum */
-            exclusiveMaximum?: number | null;
-            /** Minimum */
-            minimum?: number | null;
-            /** Exclusiveminimum */
-            exclusiveMinimum?: number | null;
-            /** Maxlength */
-            maxLength?: number | null;
-            /** Minlength */
-            minLength?: number | null;
-            /** Pattern */
-            pattern?: string | null;
-            /** Format */
-            format?: components["schemas"]["FormatType"] | string | null;
-            items?: components["schemas"]["Schema-Output"] | null;
-            /**
-             * Additionalitems
-             * @deprecated
-             */
-            additionalItems?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Maxitems */
-            maxItems?: number | null;
-            /** Minitems */
-            minItems?: number | null;
-            /** Uniqueitems */
-            uniqueItems?: boolean | null;
-            contains?: components["schemas"]["Schema-Output"] | null;
-            /** Mincontains */
-            minContains?: number | null;
-            /** Maxcontains */
-            maxContains?: number | null;
-            /** Maxproperties */
-            maxProperties?: number | null;
-            /** Minproperties */
-            minProperties?: number | null;
-            /** Required */
-            required?: string[] | null;
-            /** Properties */
-            properties?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Patternproperties */
-            patternProperties?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Additionalproperties */
-            additionalProperties?: boolean | components["schemas"]["Schema-Output"] | null;
-            propertyNames?: components["schemas"]["Schema-Output"] | null;
-            /** Unevaluateditems */
-            unevaluatedItems?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Unevaluatedproperties */
-            unevaluatedProperties?: boolean | components["schemas"]["Schema-Output"] | null;
-            /** Allof */
-            allOf?: components["schemas"]["Schema-Output"][] | null;
-            /** Anyof */
-            anyOf?: components["schemas"]["Schema-Output"][] | null;
-            /** Oneof */
-            oneOf?: components["schemas"]["Schema-Output"][] | null;
-            not?: components["schemas"]["Schema-Output"] | null;
-            if?: components["schemas"]["Schema-Output"] | null;
-            then?: components["schemas"]["Schema-Output"] | null;
-            else?: components["schemas"]["Schema-Output"] | null;
-            /** Dependentrequired */
-            dependentRequired?: {
-                [key: string]: string[];
-            } | null;
-            /** Dependentschemas */
-            dependentSchemas?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** $Ref */
-            $ref?: string | null;
-            /** $Defs */
-            $defs?: {
-                [key: string]: components["schemas"]["Schema-Output"];
-            } | null;
-            /** Contentmediatype */
-            contentMediaType?: string | null;
-            /** Contentencoding */
-            contentEncoding?: string | null;
-            contentSchema?: components["schemas"]["Schema-Output"] | null;
-            /** $Anchor */
-            $anchor?: string | null;
-            /** $Dynamicanchor */
-            $dynamicAnchor?: string | null;
-            /** $Dynamicref */
-            $dynamicRef?: string | null;
-            /** $Vocabulary */
-            $vocabulary?: {
-                [key: string]: boolean;
-            } | null;
-            /** Extra */
-            extra?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * SchemaType
-         * @description JSON Schema type enumeration.
-         * @enum {string}
-         */
-        SchemaType: "array" | "boolean" | "integer" | "null" | "number" | "object" | "string";
-        /**
          * ScoreBreakdown
          * @description Result of scoring a project across all applicable policies.
          */
@@ -20524,6 +20368,67 @@ export interface components {
              */
             on_failure: "notify_owner_team" | "none";
         };
+        /** SideEffectResolve */
+        SideEffectResolve: {
+            /** Key */
+            key: string;
+            /**
+             * Resolution
+             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_done`` records that the call acted, so a repeat does not act. A deployment marked done with no ``deployment_run_id`` cannot be retried: Imbi does not know its deployment run.
+             * @enum {string}
+             */
+            resolution: "clear" | "mark_done";
+            /**
+             * Retry
+             * @description Open the run again and run the step again.
+             * @default false
+             */
+            retry: boolean;
+            /**
+             * Deployment Run Id
+             * @description With ``mark_done`` on a deployment: the run, from ``GET side-effects/deployments``, that the operator confirmed. Imbi stores it as the result of the call, so a retried step follows that deployment.
+             */
+            deployment_run_id?: string | null;
+        };
+        /**
+         * StaleSideEffect
+         * @description A side effect of a run that started and did not finish.
+         */
+        StaleSideEffect: {
+            /** Key */
+            key: string;
+            /** Action */
+            action: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Run Status
+             * @enum {string}
+             */
+            run_status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
+            /** Run Error */
+            run_error: string | null;
+            /** Workflow Slug */
+            workflow_slug: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Node Key */
+            node_key: string | null;
+            /** Step Input */
+            step_input: {
+                [key: string]: unknown;
+            } | null;
+            /** Retryable */
+            retryable: boolean;
+        };
         /** StatsResponse */
         StatsResponse: {
             /**
@@ -20572,6 +20477,10 @@ export interface components {
             reason: string | null;
             /** Summary */
             summary: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** StepRun */
         StepRun: {
@@ -24171,7 +24080,10 @@ export interface operations {
     };
     get_dashboard_metrics_api_admin_dashboard_metrics_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
+                tz?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -24185,6 +24097,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardMetrics"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -31870,6 +31791,8 @@ export interface operations {
                 start?: string | null;
                 end?: string | null;
                 agent_id?: string | null;
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
+                tz?: string;
             };
             header?: never;
             path: {
@@ -32596,6 +32519,103 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AttentionRun"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_stale_side_effects_api_organizations__org_slug__workflow_runs_side_effects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleSideEffect"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_side_effect_deployments_api_organizations__org_slug__workflow_runs_side_effects_deployments_get: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentRun"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_side_effect_api_organizations__org_slug__workflow_runs_side_effects_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SideEffectResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -34423,6 +34443,8 @@ export interface operations {
         parameters: {
             query?: {
                 source?: string | null;
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
+                tz?: string;
             };
             header?: never;
             path: {
@@ -34528,7 +34550,10 @@ export interface operations {
     };
     get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description IANA time zone of the requester; dates use the date in this zone. */
+                tz?: string;
+            };
             header?: never;
             path: {
                 org_slug: string;

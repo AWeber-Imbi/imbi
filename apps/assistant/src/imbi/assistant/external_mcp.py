@@ -13,7 +13,6 @@ from the Imbi OpenAPI spec); the two managers run side by side.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import re
@@ -44,6 +43,10 @@ _MAX_TOOL_NAME_LEN = 128
 _OAUTH_EXPIRY_BUFFER = 60.0
 
 _OAUTH_TOKEN_TIMEOUT = 10.0
+
+# ponytail: fixed delay between reconnect attempts to a server that is
+# down; make it exponential if a fixed delay is too slow or too noisy.
+_RECONNECT_DELAY = 60.0
 
 
 class OAuthClientCredentialsAuth(httpx.Auth):
@@ -174,11 +177,17 @@ class ExternalMCPManager:
     """
 
     def __init__(self) -> None:
-        self._exit_stack = contextlib.AsyncExitStack()
+        self._tasks: list[asyncio.Task[None]] = []
         self._sessions: dict[str, mcp.ClientSession] = {}
         self._tools: list[dict[str, typing.Any]] = []
         # registered tool name -> (server slug, original tool name)
         self._tool_routes: dict[str, tuple[str, str]] = {}
+        # server slug -> config, kept to reopen a failed session
+        self._servers: dict[str, common_models.MCPServer] = {}
+        # server slug -> monotonic time before which no reconnect runs
+        self._reconnect_after: dict[str, float] = {}
+        # server slug -> lock that serializes reconnects to that server
+        self._reconnect_locks: dict[str, asyncio.Lock] = {}
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
@@ -226,9 +235,16 @@ class ExternalMCPManager:
                 err,
             )
             return
+        if self._sessions.get(server.slug) is not session:
+            LOGGER.warning(
+                'MCP server %r session closed during tool discovery',
+                server.slug,
+            )
+            return
+        self._servers[server.slug] = server
         prefix = _tool_prefix(server)
         for tool in result.tools:
-            self._register_tool(server, session, tool, prefix)
+            self._register_tool(server, tool, prefix)
 
     async def _open_session(
         self,
@@ -252,24 +268,64 @@ class ExternalMCPManager:
                 verify=False,  # noqa: S501
             )
 
-        result = await self._exit_stack.enter_async_context(
-            streamable_http.streamable_http_client(
-                str(server.url),
-                http_client=http_client,
-            )
+        self._tasks = [task for task in self._tasks if not task.done()]
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[mcp.ClientSession] = loop.create_future()
+        task = asyncio.create_task(
+            self._run_session(server, http_client, ready),
+            name=f'external-mcp-{server.slug}',
         )
-        read_stream, write_stream = result[0], result[1]
-        session = await self._exit_stack.enter_async_context(
-            mcp.ClientSession(read_stream, write_stream)
-        )
-        await session.initialize()
-        self._sessions[server.slug] = session
-        return session
+        self._tasks.append(task)
+        try:
+            return await ready
+        except BaseException:
+            task.cancel()
+            raise
+
+    async def _run_session(
+        self,
+        server: common_models.MCPServer,
+        http_client: httpx.AsyncClient,
+        ready: asyncio.Future[mcp.ClientSession],
+    ) -> None:
+        """Hold one server's client contexts open in a dedicated task.
+
+        The MCP client runs its I/O in an anyio task group. When a child
+        task fails (for example on an HTTP 502), the group cancels the
+        task that entered it. That task must be this one, not the caller,
+        so a failure stops only this server and never the app lifespan.
+
+        """
+        try:
+            async with (
+                http_client,
+                streamable_http.streamable_http_client(
+                    str(server.url),
+                    http_client=http_client,
+                ) as (read_stream, write_stream, _),
+                mcp.ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                self._sessions[server.slug] = session
+                ready.set_result(session)
+                await asyncio.get_running_loop().create_future()
+        except Exception as err:  # noqa: BLE001
+            if ready.done():
+                LOGGER.error(
+                    'External MCP server %r session failed: %r',
+                    server.slug,
+                    err,
+                )
+            else:
+                ready.set_exception(err)
+        finally:
+            self._sessions.pop(server.slug, None)
+            if not ready.done():
+                ready.cancel()
 
     def _register_tool(
         self,
         server: common_models.MCPServer,
-        session: mcp.ClientSession,
         tool: mcp_types.Tool,
         prefix: str,
     ) -> None:
@@ -306,21 +362,24 @@ class ExternalMCPManager:
                 server.slug,
             )
             return
-        self._sessions.setdefault(server.slug, session)
         self._tool_routes[registered_name] = (server.slug, tool.name)
         self._tools.append(_mcp_tool_to_anthropic(tool, registered_name))
 
     async def aclose(self) -> None:
         """Close all server connections."""
-        try:
-            await self._exit_stack.aclose()
-        except RuntimeError, OSError:
-            # The MCP library uses anyio cancel scopes internally that
-            # may raise when exiting across tasks during teardown.
-            LOGGER.debug('Error closing external MCP connections')
-        self._exit_stack = contextlib.AsyncExitStack()
+        # Clear the servers first. A reconnect that gets its lock while
+        # this method waits below then finds no server and opens nothing.
+        self._servers.clear()
+        for task in self._tasks:
+            task.cancel()
+        # Each session task logs its own failure; teardown errors here
+        # must not escape into the caller's (lifespan) unwind.
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
         self._sessions.clear()
         self._tool_routes.clear()
+        self._reconnect_after.clear()
+        self._reconnect_locks.clear()
         self._tools = []
         self._initialized = False
 
@@ -361,7 +420,9 @@ class ExternalMCPManager:
                 True,
             )
         server_slug, original_name = route
-        session = self._sessions.get(server_slug)
+        session = self._sessions.get(server_slug) or await self._reconnect(
+            server_slug
+        )
         if session is None:
             return (
                 json.dumps({'error': f'Server {server_slug} not connected'}),
@@ -407,6 +468,47 @@ class ExternalMCPManager:
             )
         else:
             return body, False
+
+    async def _reconnect(self, server_slug: str) -> mcp.ClientSession | None:
+        """Reopen a failed server session, at most once per delay.
+
+        Returns:
+            The new session, or None if the server is still down or the
+            delay since the last failed attempt has not passed.
+
+        """
+        server = self._servers.get(server_slug)
+        if server is None:
+            return None
+        lock = self._reconnect_locks.setdefault(server_slug, asyncio.Lock())
+        async with lock:
+            # aclose() can have removed the server while this one waited.
+            if self._servers.get(server_slug) is not server:
+                return None
+            # Another call can have reconnected while this one waited.
+            session = self._sessions.get(server_slug)
+            if session is not None:
+                return session
+            if time.monotonic() < self._reconnect_after.get(server_slug, 0.0):
+                return None
+            LOGGER.info('Reconnecting to MCP server %r', server_slug)
+            try:
+                return await asyncio.wait_for(
+                    self._open_session(server),
+                    timeout=float(server.timeout),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:  # noqa: BLE001
+                LOGGER.warning(
+                    'Failed to reconnect to MCP server %r: %s',
+                    server_slug,
+                    err,
+                )
+                self._reconnect_after[server_slug] = (
+                    time.monotonic() + _RECONNECT_DELAY
+                )
+                return None
 
     @property
     def is_initialized(self) -> bool:

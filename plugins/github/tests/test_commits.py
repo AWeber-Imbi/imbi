@@ -134,14 +134,15 @@ def _query_router(
     """
 
     async def _answer(
-        sql: str, params: dict[str, typing.Any] | None = None
+        sql: str,
+        params: dict[str, typing.Any] | None = None,
+        tables: dict[str, list[str]] | None = None,
     ) -> list[dict[str, typing.Any]]:
-        params = params or {}
         if 'min(pushed_at)' in sql:
             return [
                 {'sha': sha, 'pushed_at': pushed_at}
                 for sha, pushed_at in (stored or {}).items()
-                if sha in params.get('shas', ())
+                if sha in (tables or {}).get('shas', ())
             ]
         if 'argMax(sha, pushed_at)' in sql:
             return [{'sha': last_known}] if last_known else []
@@ -457,7 +458,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         lookup = next(
             c for c in query.await_args_list if 'min(pushed_at)' in c.args[0]
         )
-        self.assertEqual([head], lookup.args[1]['shas'])
+        self.assertEqual([head], lookup.kwargs['tables']['shas'])
 
     @respx.mock
     async def test_only_new_commits_get_the_current_push_time(self) -> None:
@@ -1794,6 +1795,46 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
 
     @respx.mock
+    async def test_deep_page_404_ends_history(self) -> None:
+        """IMBI-2K: GHES 404s a deep commits page; keep what was read."""
+        self._mock_default_branch()
+        url = f'{self._REPO}/commits'
+        respx.get(url).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[_commit('1' * 40)],
+                    headers={'link': f'<{url}?page=2>; rel="next"'},
+                ),
+                httpx.Response(404, json={'message': 'Not Found'}),
+            ]
+        )
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
+                (
+                    commits_recorded,
+                    _,
+                ) = await commits.GitHubCommitSync().sync_all_history(
+                    ctx=self._ctx(), credentials=_CREDS
+                )
+        self.assertEqual(1, commits_recorded)
+        self.assertTrue(any('page 2' in x for x in cm.output))
+
+    @respx.mock
+    async def test_first_page_404_still_raises(self) -> None:
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        with self.assertRaises(httpx.HTTPStatusError):
+            await commits.GitHubCommitSync().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+
+    @respx.mock
     async def test_history_truncation_logs(self) -> None:
         self._mock_default_branch()
         url = f'{self._REPO}/commits'
@@ -2321,6 +2362,28 @@ class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         params = history.calls.last.request.url.params
         self.assertEqual(since.isoformat(), params['since'])
         self.assertEqual('main', params['sha'])
+
+    @respx.mock
+    async def test_since_window_deep_page_404_keeps_read(self) -> None:
+        """#686: GHES 404s a deep since-window page; keep what was read."""
+        self._mock_default_branch()
+        url = f'{self._REPO}/commits'
+        respx.get(url).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[_commit('c' * 40)],
+                    headers={'link': f'<{url}?page=2>; rel="next"'},
+                ),
+                httpx.Response(404, json={'message': 'Not Found'}),
+            ]
+        )
+        since = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)
+        with mock.patch(_QUERY, new=mock.AsyncMock(return_value=[])):
+            with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
+                written, _ = await self._sync(since=since)
+        self.assertEqual(1, written)
+        self.assertTrue(any('page 2' in x for x in cm.output))
 
     @respx.mock
     async def test_recent_page_when_no_sha_and_no_since(self) -> None:

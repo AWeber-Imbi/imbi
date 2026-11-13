@@ -22,6 +22,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.secret_broker import audit, broker
+from imbi.common import relational
 
 SCHEMA = 'secrets'
 
@@ -43,6 +44,11 @@ class UnknownProvider(ValueError):
 
 class UnknownBindings(ValueError):
     """A grant names a binding that is not in the organization."""
+
+
+class ProviderKeyBinding(ValueError):
+    """A grant names a provider key binding. The broker never gives
+    such a binding to a task."""
 
 
 def _value(value: typing.Any) -> typing.Any:
@@ -140,17 +146,34 @@ class SecretStore:
         that no grant names. One statement does the check and the
         write, so of two concurrent marks only the first applies.
         Return the row, or ``None`` when the mark was not written.
+
+        A grant write holds the binding ``FOR SHARE`` until it commits.
+        A separate ``FOR UPDATE`` lock first waits for that grant, so
+        the grant check of the ``UPDATE`` gets a new snapshot that
+        includes it.
         """
-        return await self._write_one(
-            'UPDATE secrets.bindings SET provider_key_usage = %s,'
-            ' updated_at = NOW()'
-            ' WHERE organization_id = %s AND id = %s'
-            ' AND provider_key_usage IS NULL'
-            ' AND NOT EXISTS (SELECT 1 FROM secrets.grants'
-            ' WHERE bindings.id = ANY(binding_ids)) RETURNING *',
-            (pg_json.Jsonb(usage), organization_id, binding_id),
-            event,
-        )
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                'SELECT 1 FROM secrets.bindings'
+                ' WHERE organization_id = %s AND id = %s FOR UPDATE',
+                (organization_id, binding_id),
+            )
+            await cur.execute(
+                'UPDATE secrets.bindings SET provider_key_usage = %s,'
+                ' updated_at = NOW()'
+                ' WHERE organization_id = %s AND id = %s'
+                ' AND provider_key_usage IS NULL'
+                ' AND NOT EXISTS (SELECT 1 FROM secrets.grants'
+                ' WHERE bindings.id = ANY(binding_ids)) RETURNING *',
+                (pg_json.Jsonb(usage), organization_id, binding_id),
+            )
+            row = await cur.fetchone()
+            await _audit(conn, event, row)
+            return row
 
     async def add_provider_key_consumer(
         self,
@@ -201,6 +224,7 @@ class SecretStore:
         Raises:
             psycopg.errors.UniqueViolation: A name or reference is in use.
             UnknownBindings: A grant names a binding not in the org.
+            ProviderKeyBinding: A grant names a provider key binding.
 
         """
         values = {
@@ -220,6 +244,7 @@ class SecretStore:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(conn, organization_id)
             if table == 'grants':
                 await _lock_bindings(
                     cur, organization_id, values['binding_ids']
@@ -251,6 +276,9 @@ class SecretStore:
         Raises:
             psycopg.errors.UniqueViolation: A name is in use.
             UnknownBindings: A grant names a binding not in the org.
+            ProviderKeyBinding: A grant names a provider key binding.
+            InUse: The change sets or clears the provider key mark of a
+                binding that a grant names.
 
         """
         query = sql.SQL(
@@ -277,6 +305,10 @@ class SecretStore:
             if table == 'bindings' and 'provider_id' in changes:
                 await _check_provider(
                     cur, organization_id, changes['provider_id']
+                )
+            if table == 'bindings' and 'provider_key_usage' in changes:
+                await _check_mark_change(
+                    cur, organization_id, row_id, changes['provider_key_usage']
                 )
             await cur.execute(
                 query,
@@ -538,6 +570,7 @@ class SecretStore:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(conn, organization_id)
             await cur.execute(
                 'INSERT INTO secrets.identity_sources'
                 ' (organization_id, type, config, updated_by)'
@@ -578,6 +611,14 @@ class SecretStore:
 
 _GRANTED = 'SELECT 1 FROM secrets.grants WHERE %s = ANY(binding_ids) LIMIT 1'
 
+#: A resolution that is active, or whose provider lease is not revoked.
+#: The rows it needs (its binding, provider, and organization) must stay
+#: until it settles.
+UNSETTLED_RESOLUTION: typing.LiteralString = (
+    "(state IN ('pending', 'active')"
+    " OR revocation_state IN ('pending', 'failed'))"
+)
+
 
 async def _check_binding_unused(
     conn: broker.Conn, organization_id: str, binding_id: uuid.UUID
@@ -591,9 +632,10 @@ async def _check_binding_unused(
     if await cur.fetchone() is not None:
         raise InUse('A grant uses the binding')
     cur = await conn.execute(
-        'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
-        " AND (state IN ('pending', 'active')"
-        " OR revocation_state IN ('pending', 'failed')) LIMIT 1",
+        sql.SQL(
+            'SELECT 1 FROM secrets.resolutions WHERE binding_id = %s'
+            ' AND {} LIMIT 1'
+        ).format(sql.SQL(UNSETTLED_RESOLUTION)),
         (binding_id,),
     )
     if await cur.fetchone() is not None:
@@ -652,11 +694,44 @@ async def _lock_bindings(
     organization_id: str,
     binding_ids: list[uuid.UUID],
 ) -> None:
-    """Lock the bindings of a grant; each must be in the organization."""
+    """Lock the bindings of a grant; each must be in the organization
+    and must not be a provider key binding."""
     await cur.execute(
-        'SELECT id FROM secrets.bindings'
+        'SELECT provider_key_usage FROM secrets.bindings'
         ' WHERE organization_id = %s AND id = ANY(%s) FOR SHARE',
         (organization_id, binding_ids),
     )
-    if len(await cur.fetchall()) != len(set(binding_ids)):
+    found = await cur.fetchall()
+    if len(found) != len(set(binding_ids)):
         raise UnknownBindings('A binding is not in the organization')
+    if any(row['provider_key_usage'] for row in found):
+        raise ProviderKeyBinding(
+            'A provider key binding cannot be granted to a task'
+        )
+
+
+async def _check_mark_change(
+    cur: psycopg.AsyncCursor[Row],
+    organization_id: str,
+    binding_id: uuid.UUID,
+    usage: Row | None,
+) -> None:
+    """The provider key mark of a granted binding does not change. A
+    cleared mark gives the private key to the tasks of the grant, and a
+    new mark makes the grant useless. A null that stays null is no
+    change. The row lock waits for a grant write that holds the binding.
+    """
+    await cur.execute(
+        'SELECT provider_key_usage FROM secrets.bindings'
+        ' WHERE organization_id = %s AND id = %s FOR UPDATE',
+        (organization_id, binding_id),
+    )
+    row = await cur.fetchone()
+    if not row or not (row['provider_key_usage'] or usage):
+        return
+    await cur.execute(_GRANTED, (binding_id,))
+    if await cur.fetchone() is not None:
+        raise InUse(
+            'A grant uses the binding; remove it from the grant before '
+            'changing the provider key mark'
+        )

@@ -326,6 +326,20 @@ class CreateProviderTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 201)
         self.assertFalse(response.json()['is_builtin_driver'])
 
+    def test_default_base_url_is_stored_as_null(self) -> None:
+        """The driver default means "no base_url" (#600)."""
+        router = self.route((CREATE, [{'p': provider_props()}]))
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Anthropic',
+                'driver': 'anthropic',
+                'base_url': 'https://api.anthropic.com/',
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(router.params_for(CREATE)['base_url'])
+
     def test_duplicate_slug_conflicts(self) -> None:
         """Slugs are unique across the installation."""
         self.route((SLUG_TAKEN, [{'id': 'prv-other'}]))
@@ -889,6 +903,20 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
     def test_put_refuses_a_driver_without_an_exchanger(self) -> None:
         self.route((GET_PROVIDER, [{'p': provider_props(driver='bedrock')}]))
         self.assertEqual(self.put().status_code, 422)
+
+    def test_put_accepts_a_stored_default_base_url(self) -> None:
+        # Providers made before #600 store the driver default.
+        props = provider_props(base_url='https://api.anthropic.com')
+        router = self.route(
+            (GET_PROVIDER, [{'p': props}]),
+            (
+                UPDATE,
+                [{'p': provider_props(workload_identity=json.dumps(WIF))}],
+            ),
+        )
+        response = self.put()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(router.params_for(UPDATE)['base_url'])
 
     def test_put_refuses_a_custom_base_url(self) -> None:
         props = provider_props(base_url='https://proxy.example.com')
