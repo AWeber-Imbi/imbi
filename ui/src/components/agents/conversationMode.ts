@@ -27,6 +27,11 @@ export function elapsed(ms: number): string {
   return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 60)}h`
 }
 
+/** Failed calls in the group, subagent calls included. */
+export function groupErrors(group: ProcessGroup): number {
+  return group.entries.reduce((n, entry) => n + errorsIn(entry), 0)
+}
+
 export function groupOpenByDefault(
   group: ProcessGroup,
   turn: Turn,
@@ -42,13 +47,11 @@ export function groupOpenByDefault(
 /** `Ran 3 commands, read 2 files, 1 failed`. */
 export function groupSummary(group: ProcessGroup): string {
   const counts = new Map<string, number>()
-  let failed = 0
   for (const entry of group.entries) {
     const kind = callKind(entry)
-    if (!kind) continue
-    counts.set(kind, (counts.get(kind) ?? 0) + 1)
-    if (isError(entry)) failed++
+    if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1)
   }
+  const failed = groupErrors(group)
   const parts = PHRASES.filter(([kind]) => counts.has(kind)).map(
     ([kind, one, many]) => {
       const n = counts.get(kind)!
@@ -56,7 +59,13 @@ export function groupSummary(group: ProcessGroup): string {
     },
   )
   if (failed) parts.push(`${failed} failed`)
-  if (!parts.length) return 'Thought'
+  if (!parts.length) {
+    if (group.entries.some((e) => e.event?.payload.kind === 'thinking'))
+      return 'Thought'
+    if (group.entries.some((e) => e.event?.type === 'todos.updated'))
+      return 'Updated the plan'
+    return 'Worked'
+  }
   const text = parts.join(', ')
   return text[0].toUpperCase() + text.slice(1)
 }
@@ -154,4 +163,9 @@ function callKind(entry: TimelineEntry): null | string {
       return 'read'
   }
   return 'other'
+}
+
+function errorsIn(entry: TimelineEntry): number {
+  const own = callKind(entry) && isError(entry) ? 1 : 0
+  return entry.children.reduce((n, child) => n + errorsIn(child), own)
 }

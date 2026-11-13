@@ -8,6 +8,7 @@ import {
   FilePen,
   FileText,
   ListTodo,
+  MessageSquare,
   Plug,
   SquareTerminal,
   TriangleAlert,
@@ -41,6 +42,7 @@ import { conversationMarkdown, turnFooter } from './conversationMarkdown'
 import {
   canCollapseTurn,
   type ConversationMode,
+  groupErrors,
   groupOpenByDefault,
   groupSummary,
   isConversationMode,
@@ -180,6 +182,13 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
       ? 'running'
       : undefined
   const key = entryKey(entry)
+  const steps = entry.children.filter(
+    (child) => child.event?.type !== 'usage.reported',
+  ).length
+  const agent =
+    typeof args.subagent_type === 'string' && args.subagent_type
+      ? `${args.subagent_type} subagent`
+      : 'Subagent'
   return (
     <TraceCollapsible
       onOpenChange={(open) => ctx.setOpen(key, open)}
@@ -217,8 +226,7 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
                 <Bot />
               </MarkerIcon>
               <MarkerContent>
-                {String(args.subagent_type ?? 'Subagent')} subagent ·{' '}
-                {entry.children.length} steps
+                {`${agent} · ${steps} ${steps === 1 ? 'step' : 'steps'}`}
               </MarkerContent>
             </Marker>
             <Trace>
@@ -280,7 +288,7 @@ function GroupView({
   group: ProcessGroup
   turn: Turn
 }) {
-  const failed = group.entries.some(isError)
+  const failed = groupErrors(group) > 0
   return (
     <Trace>
       <TraceCollapsible
@@ -442,7 +450,9 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
 function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const e = entry.event
   if (!e || e.type === 'tool.called') return <CallRow ctx={ctx} entry={entry} />
+  if (e.type === 'usage.reported') return null
   const body = String(e.payload.body ?? '')
+  const thought = e.payload.kind === 'thinking'
   if (e.type === 'turn' && e.payload.kind === 'warning')
     return (
       <TraceLine status="error">
@@ -461,12 +471,20 @@ function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
         <TraceCollapsibleTrigger>
           <TraceLine>
             <TraceIcon>
-              {e.type === 'turn' ? <Brain /> : <ListTodo />}
+              {e.type !== 'turn' ? (
+                <ListTodo />
+              ) : thought ? (
+                <Brain />
+              ) : (
+                <MessageSquare />
+              )}
             </TraceIcon>
             <TraceTitle>
-              {e.type === 'turn'
-                ? `Thought: ${body.split('\n')[0]}`
-                : 'Updated the plan'}
+              {e.type !== 'turn'
+                ? 'Updated the plan'
+                : thought
+                  ? `Thought: ${body.split('\n')[0]}`
+                  : body.split('\n')[0]}
             </TraceTitle>
           </TraceLine>
         </TraceCollapsibleTrigger>

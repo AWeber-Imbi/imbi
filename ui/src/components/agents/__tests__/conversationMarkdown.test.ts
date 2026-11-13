@@ -71,6 +71,17 @@ describe('conversationMarkdown', () => {
     expect(out).toContain('- `Subagent` search · look\n  - `Bash` ls')
   })
 
+  it('says a pending subagent call is running only while it runs', () => {
+    const log = timeline([
+      human(1, 'go'),
+      bash(2, 'ls', { parent_call_id: 't' }),
+    ])
+    const md = (live: boolean) =>
+      conversationMarkdown({ title: 'T' }, turns(log, { live }))
+    expect(md(true)).toContain('- `Subagent` running…\n  - `Bash` ls')
+    expect(md(false)).toContain('- `Subagent` did not finish\n')
+  })
+
   it('falls back to the first description line', () => {
     expect(
       conversationMarkdown({ description: 'Do it\nnow', title: '' }, []),

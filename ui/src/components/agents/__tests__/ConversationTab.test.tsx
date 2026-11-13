@@ -169,6 +169,31 @@ describe('ConversationTab', () => {
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
   })
 
+  it('labels a subagent message as a message and hides usage', async () => {
+    const user = userEvent.setup()
+    renderTab('closed', [
+      LOG[0],
+      event(2, 'turn', { body: 'Looking around.', parent_call_id: 'task-1' }),
+      event(3, 'usage.reported', { parent_call_id: 'task-1', tokens_in: 9 }),
+      event(4, 'tool.called', {
+        arguments: { subagent_type: 'search' },
+        call_id: 'task-1',
+        result: 'Found it.',
+        tool: 'Task',
+      }),
+      event(5, 'turn', { body: 'fixed' }),
+    ])
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    await user.click(screen.getByRole('button', { name: /Subagent/ }))
+    const marker = screen
+      .getByText('search subagent · 1 step')
+      .closest('[data-slot="marker"]')
+    expect(marker?.nextElementSibling?.children).toHaveLength(1)
+    expect(
+      screen.getByRole('button', { name: /^Looking around\.$/ }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps a running subagent open once its call is written', async () => {
     const user = userEvent.setup()
     const child = event(2, 'tool.called', {
@@ -193,6 +218,7 @@ describe('ConversationTab', () => {
     expect(screen.queryByRole('button', { name: /Bash ls/ })).toBeNull()
     await user.click(screen.getByRole('button', { name: /Subagent Running/ }))
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
+    expect(screen.getByText('Subagent · 1 step')).toBeInTheDocument()
     rerender(
       view([
         LOG[0],

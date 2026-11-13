@@ -26,7 +26,8 @@ export function conversationMarkdown(
     }
     for (const item of turn.items) {
       if (item.kind === 'group') {
-        for (const entry of item.entries) calls.push(...callLines(entry, ''))
+        for (const entry of item.entries)
+          calls.push(...callLines(entry, '', turn.status === 'running'))
         continue
       }
       flush()
@@ -57,16 +58,23 @@ export function turnFooter(turn: Turn): null | string {
   return parts.length ? parts.join(' · ') : null
 }
 
-function callLines(entry: TimelineEntry, indent: string): string[] {
+function callLines(
+  entry: TimelineEntry,
+  indent: string,
+  running: boolean,
+): string[] {
   const e = entry.event
   if (e && e.type !== 'tool.called') return []
   const tool = e ? String(e.payload.tool ?? 'tool') : 'Task'
   const args = isRecord(e?.payload.arguments) ? e.payload.arguments : {}
-  const summary = e ? toolSummary(tool, args) : 'did not finish'
+  const pending = running ? 'running…' : 'did not finish'
+  const summary = e ? toolSummary(tool, args) : pending
   const line = `${indent}- \`${toolLabel(tool)}\` ${summary}`.trimEnd()
   return [
     isError(entry) ? `${line} — failed` : line,
-    ...entry.children.flatMap((child) => callLines(child, `${indent}  `)),
+    ...entry.children.flatMap((child) =>
+      callLines(child, `${indent}  `, running),
+    ),
   ]
 }
 

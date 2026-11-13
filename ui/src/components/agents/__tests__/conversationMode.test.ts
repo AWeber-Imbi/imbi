@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   canCollapseTurn,
   elapsed,
+  groupErrors,
   groupOpenByDefault,
   groupSummary,
   MODE_KEY,
@@ -109,6 +110,18 @@ describe('groupSummary', () => {
     expect(
       groupSummary(group(event(1, 'turn', { body: 'Hm.', kind: 'thinking' }))),
     ).toBe('Thought')
+  })
+
+  it('names a plan update and counts subagent failures', () => {
+    expect(groupSummary(group(event(1, 'todos.updated', { todos: [] })))).toBe(
+      'Updated the plan',
+    )
+    const sub = group(
+      call(1, 'Bash', { is_error: true, parent_call_id: 'task-1' }),
+      call(2, 'Task', { call_id: 'task-1' }),
+    )
+    expect(groupSummary(sub)).toBe('Ran a subagent, 1 failed')
+    expect(groupErrors(sub)).toBe(1)
   })
 })
 
