@@ -523,6 +523,62 @@ class NarrowingTests(unittest.TestCase):
             'plan',
         )
 
+    def test_merge_opt_in_builtin_tools(self) -> None:
+        settings = models.AgentSettings()
+        both = {'builtin.Skill': {}, 'builtin.Agent': {}}
+        # Off without the tool map key.
+        merged = platform.merge(platform.AgentPlatformConfig(), settings)
+        self.assertIsNone(merged.allowed_tools)
+        self.assertEqual(merged.builtin_tools, [])
+        # On with it, when the organization allows all built-in tools.
+        merged = platform.merge(platform.AgentPlatformConfig(), settings, both)
+        self.assertEqual(merged.builtin_tools, ['Agent', 'Skill'])
+        self.assertEqual(
+            platform.merge(
+                platform.AgentPlatformConfig(),
+                settings,
+                {'builtin.Skill': {}, 'imbi.get_me': {}},
+            ).builtin_tools,
+            ['Skill'],
+        )
+        # An explicit allowed_tools is the ceiling, not the switch: it
+        # keeps only the opt-in tools that the agent turned on, and the
+        # agent turns on only those that it names.
+        config = platform.AgentPlatformConfig(
+            allowed_tools=['Read', 'Skill', 'Task']
+        )
+        merged = platform.merge(config, settings)
+        self.assertEqual(merged.allowed_tools, ['Read'])
+        self.assertEqual(merged.builtin_tools, [])
+        merged = platform.merge(config, settings, both)
+        self.assertEqual(merged.allowed_tools, ['Read', 'Skill', 'Task'])
+        self.assertEqual(merged.builtin_tools, ['Agent', 'Skill'])
+        merged = platform.merge(config, settings, {'builtin.Skill': {}})
+        self.assertEqual(merged.allowed_tools, ['Read', 'Skill'])
+        self.assertEqual(merged.builtin_tools, ['Skill'])
+        merged = platform.merge(
+            platform.AgentPlatformConfig(allowed_tools=['Read']),
+            settings,
+            both,
+        )
+        self.assertEqual(merged.builtin_tools, [])
+        # A deny rule of the organization or the agent wins, by name or
+        # by the earlier name of the tool.
+        for config, agent_denied in (
+            (platform.AgentPlatformConfig(denied_tools=['Skill']), []),
+            (platform.AgentPlatformConfig(), ['Skill']),
+        ):
+            merged = platform.merge(
+                config, models.AgentSettings(denied_tools=agent_denied), both
+            )
+            self.assertEqual(merged.builtin_tools, ['Agent'])
+        merged = platform.merge(
+            platform.AgentPlatformConfig(denied_tools=['Task']),
+            settings,
+            both,
+        )
+        self.assertEqual(merged.builtin_tools, ['Skill'])
+
     def test_merge_uses_the_agent_model_key(self) -> None:
         config = platform.AgentPlatformConfig(
             model_upstream=platform.ModelUpstream(

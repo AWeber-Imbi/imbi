@@ -133,6 +133,16 @@ run only), `X-Imbi-Scheduled-Task-Org` (the organization of the request,
 when the task names one), and `Idempotency-Key` (the run id, unless
 `idempotency_key` sets one). All attempts of a run send the same key.
 
+`imbi-api` gives a request only what the accountable principal could do
+themselves. The request has only the permissions that both the scheduler's
+service account and the accountable principal have, and on a route of one
+organization, the accountable principal must be a member of that
+organization too. So a task cannot use the scheduler to reach an
+organization, or do a thing, that the person who set it cannot. If the
+accountable principal is inactive or deleted, every request gets a `403`.
+Admins, and Imbi's own services (`imbi-scheduler` for system tasks,
+`imbi-workflows` for workflow schedule triggers), are not limited this way.
+
 To start agent work on a schedule, post to the agent tasks of an organization.
 `imbi-api` records the task with a `schedule` origin, and a retry of the run
 returns the first task. The person accountable for the scheduled task owns the

@@ -464,6 +464,37 @@ class ConfigTestCase(TaskTestCase):
         subject = self.make(allowed_tools=['Read', 'WebFetch'])
         self.assertEqual(subject.tools()[0], ['Read', *task.IMBI_TOOLS])
 
+    def test_opt_in_builtin_tools(self) -> None:
+        def allowed(
+            tools: dict[str, typing.Any], **config: typing.Any
+        ) -> list[str]:
+            subject = self.make(**config)
+            subject.bundle['snapshot'] = {'tools': tools}
+            return subject.tools()[0]
+
+        both = {'builtin.Skill': {}, 'builtin.Agent': {}}
+        # Off by default: the runner's own built-in tools lack them.
+        self.assertNotIn('Skill', allowed(both))
+        self.assertNotIn('Agent', allowed(both))
+        # On when imbi-api sends them and the tool map has the key.
+        on = allowed(both, builtin_tools=['Agent', 'Skill'])
+        self.assertIn('Skill', on)
+        self.assertIn('Agent', on)
+        self.assertIn('Bash', on)
+        self.assertNotIn(
+            'Skill', allowed({'builtin.Agent': {}}, builtin_tools=['Skill'])
+        )
+        # A deny rule wins.
+        self.assertNotIn(
+            'Skill',
+            allowed(both, builtin_tools=['Skill'], denied_tools=['Skill']),
+        )
+        # With an explicit list, imbi-api left the tools out of it.
+        self.assertEqual(
+            allowed(both, allowed_tools=['Read'], builtin_tools=['Skill']),
+            ['Read', 'Skill', *task.IMBI_TOOLS],
+        )
+
     def test_settings_and_rules_are_not_files(self) -> None:
         subject = self.make(
             hooks={'PreToolUse': []},
@@ -1540,6 +1571,54 @@ class RunTestCase(TaskTestCase):
             ],
         )
 
+    async def test_fails_when_the_structured_output_is_refused(self) -> None:
+        result = FakeClient.messages[-1]
+        self.assertIsInstance(result, sdk.ResultMessage)
+        result = typing.cast(sdk.ResultMessage, result)
+        result.structured_output = {'subjects': 1}
+        post = self.client.post.side_effect
+        refusals = [api.Refused(422, 'invalid_structured_output')]
+
+        async def refuse_once(path: str, *args: typing.Any, **kw: typing.Any):
+            if path.endswith('/outcome') and refusals:
+                raise refusals.pop()
+            return await post(path, *args, **kw)
+
+        self.client.post.side_effect = refuse_once
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [
+                {
+                    'outcome': 'done_acted',
+                    'reason': None,
+                    'structured_output': {'subjects': 1},
+                },
+                {
+                    'outcome': 'failed_external',
+                    'reason': 'invalid_structured_output',
+                },
+            ],
+        )
+
+    async def test_fails_when_the_structured_output_cannot_encode(
+        self,
+    ) -> None:
+        result = FakeClient.messages[-1]
+        self.assertIsInstance(result, sdk.ResultMessage)
+        result = typing.cast(sdk.ResultMessage, result)
+        result.structured_output = {'subjects': ['\ud800']}
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [
+                {
+                    'outcome': 'failed_external',
+                    'reason': 'invalid_structured_output',
+                },
+            ],
+        )
+
     async def test_fails_without_the_structured_output(self) -> None:
         self.run_task.task['output_schema'] = {'type': 'object'}
         await self.run_task.run()
@@ -1759,6 +1838,31 @@ class PolicyHookTestCase(RoutedTestCase):
         self.assertEqual(await self.hook(self.run_task, 'Bash'), {})
         self.assertEqual(
             self.run_task.recorder.decisions['tu1']['decision'], 'allow'
+        )
+
+    async def test_opt_in_builtin_tool(self) -> None:
+        def make(tools: dict[str, typing.Any]) -> task.TaskRun:
+            subject = self.with_tools(tools)
+            subject.config['builtin_tools'] = ['Skill']
+            return subject
+
+        output = await self.hook(make({}), 'Skill', skill='x')
+        self.assertIn(
+            'tool_not_allowed',
+            output['hookSpecificOutput']['permissionDecisionReason'],
+        )
+        self.assertEqual(
+            await self.hook(make({'builtin.Skill': {}}), 'Skill', skill='x'),
+            {},
+        )
+        # Its tool map entry applies as for an MCP tool.
+        self.resolved('rejected')
+        output = await self.hook(
+            make({'builtin.Skill': {'approval': True}}), 'Skill', skill='x'
+        )
+        self.assertIn(
+            'approval_rejected',
+            output['hookSpecificOutput']['permissionDecisionReason'],
         )
 
     async def test_approved(self) -> None:

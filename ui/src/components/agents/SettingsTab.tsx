@@ -94,7 +94,7 @@ export function SettingsTab({
         </Field>
         <Field
           error={errors.requiredLabels}
-          help="A runner needs every label to run the tasks of this agent. Separate labels with commas."
+          help="Used only to select a harness runner. A runner needs every label to run the tasks of this agent. Separate labels with commas."
           htmlFor="agent-labels"
           label="Required runner labels"
         >

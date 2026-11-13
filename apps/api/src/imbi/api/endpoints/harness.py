@@ -705,7 +705,9 @@ async def _identity(
             'prompt': prompt,
             'prompt_error': prompt_error,
             'platform_config_version': version,
-            'config': platform.merge(config, settings).model_copy(
+            'config': platform.merge(
+                config, settings, bundle.snapshot.get('tools') or {}
+            ).model_copy(
                 update={
                     # What the agent may request comes from its grants,
                     # not from a list in the agent (#445).

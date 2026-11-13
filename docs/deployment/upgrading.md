@@ -76,7 +76,17 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 ## Next release
 
-1. Run `imbi-api setup-permissions`. It adds
+1. Scheduled tasks now run with only the permissions of the person
+   accountable for them (who last changed the task, else who made it),
+   and only in organizations where that person is a member. A task whose
+   person has left an organization, lost a permission, or been
+   deactivated now gets a `403` there. After you deploy, look for failed
+   scheduler runs with a `403`. Have a current member of the organization
+   take over each task that is still needed. An admin who changes or
+   resumes a task becomes accountable for it, and an admin's task is not
+   limited, so read its target before you resume it. See
+   [Targets](../scheduler/tasks.md#targets).
+2. Run `imbi-api setup-permissions`. It adds
    `admin:maintenance:marketplace-sync` and gives it to the
    `imbi-scheduler` role. The new `marketplace-sync` system task starts
    that maintenance operation every 6 hours, and without the permission

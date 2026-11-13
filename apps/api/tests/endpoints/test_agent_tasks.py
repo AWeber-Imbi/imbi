@@ -17,6 +17,7 @@ import typing
 import uuid
 from unittest import mock
 
+import fastapi
 import httpx
 import slugify
 from psycopg import sql
@@ -130,6 +131,7 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         overrides[harness._inject_store] = lambda: self.harness
 
         async def harness_caller(
+            request: fastapi.Request,
             db: graph.Pool,
             store: harness.Store,
             credentials: harness_auth.Credentials,
@@ -140,7 +142,7 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
                 credentials.credentials
             ):
                 return await harness_auth.harness_caller(
-                    db, store, credentials
+                    request, db, store, credentials
                 )
             return harness_auth.HarnessCaller(
                 await overrides[permissions.get_current_user]()

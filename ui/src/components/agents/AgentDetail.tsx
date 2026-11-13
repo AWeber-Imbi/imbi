@@ -24,7 +24,7 @@ import {
   usePromptResolution,
 } from './agentQueries'
 import { agentsPath } from './agentsNav'
-import { serverOf } from './agentTools'
+import { catalogTools, serverOf } from './agentTools'
 import {
   capStatus,
   dailyValues,
@@ -106,7 +106,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       name: 'Runs (30 days)',
       value: usage ? formatCount(sumTotals(usage.agents).tasks) : '—',
     },
-    { name: 'Labels', value: <AgentLabels tags={agent.tags} /> },
+    { name: 'Tags', value: <AgentLabels tags={agent.tags} /> },
   ]
 
   const system = version?.system ?? ''
@@ -360,7 +360,7 @@ function SubagentsCard({ agent }: { agent: Agent }) {
 function ToolAccessCard({ agent }: { agent: Agent }) {
   const { query: catalog } = useAgentToolCatalog(agent.organization.slug)
   const keys = Object.keys(agent.tools ?? {}).sort()
-  const total = catalog.data?.tools.length ?? 0
+  const total = catalog.data ? catalogTools(catalog.data).length : 0
   const servers = new Map<string, string[]>()
   for (const key of keys) {
     const server = serverOf(key)

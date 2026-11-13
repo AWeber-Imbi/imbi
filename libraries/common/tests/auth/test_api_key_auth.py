@@ -613,7 +613,7 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
             auth_context = await permissions.get_current_user(
-                mock_db, credentials
+                mock.Mock(headers={}), mock_db, credentials
             )
 
         self.assertEqual(auth_context.user.email, 'test@example.com')

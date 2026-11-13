@@ -210,6 +210,27 @@ def _matching_enum(value: typing.Any, enum: list[str] | None) -> typing.Any:
     return next((e for e in enum if e.casefold() == value.casefold()), value)
 
 
+def match_enum_case(
+    schema: dict[str, typing.Any], value: typing.Any
+) -> typing.Any:
+    """Return ``value`` with each enum value in the case of ``schema``.
+
+    ``schema`` is an :func:`output_schema`. Structured output does not
+    keep the case of enum values.
+    """
+    if isinstance(value, dict) and 'properties' in schema:
+        props: dict[str, typing.Any] = schema['properties']
+        items = typing.cast('dict[str, typing.Any]', value)
+        return {
+            k: match_enum_case(props[k], v) if k in props else v
+            for k, v in items.items()
+        }
+    if isinstance(value, list) and 'items' in schema:
+        values = typing.cast('list[typing.Any]', value)  # type: ignore[redundant-cast]
+        return [match_enum_case(schema['items'], v) for v in values]
+    return _matching_enum(value, schema.get('enum'))
+
+
 def _complete_value(
     field: OutputField | ObjectField, value: typing.Any
 ) -> typing.Any:

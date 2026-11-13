@@ -29,12 +29,15 @@ import type { AgentToolConfig } from '@/types'
 import type { AgentTools } from './agentDraft'
 import { useAgentToolCatalog, useOrgEnvironments } from './agentQueries'
 import {
+  BUILTIN_SLUG,
   CAPABILITIES,
+  catalogTools,
   formatRateLimit,
   groupViews,
   IMBI_SLUG,
   RATE_PERIODS,
   type RatePeriod,
+  serverOf,
   setTools,
   toggleEnvironment,
   TOOL_ERROR_MESSAGES,
@@ -75,8 +78,9 @@ interface ToolsTabProps {
 }
 
 /**
- * The Imbi tools that the agent can use. A switch turns a tool on; then
- * approval, environments, and a rate limit apply to it.
+ * The Imbi tools and the opt-in built-in tools that the agent can use.
+ * A switch turns a tool on; then approval, environments, and a rate
+ * limit apply to it.
  */
 export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const { query: catalog, refresh } = useAgentToolCatalog(orgSlug)
@@ -86,7 +90,9 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const [search, setSearch] = useState('')
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set())
   const [enabledOnly, setEnabledOnly] = useState(false)
-  const [open, setOpen] = useState<Set<string>>(new Set([IMBI_SLUG]))
+  const [open, setOpen] = useState<Set<string>>(
+    new Set([BUILTIN_SLUG, IMBI_SLUG]),
+  )
 
   if (catalog.isLoading)
     return (
@@ -104,7 +110,8 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const filters = { capabilities, enabledOnly, query: search }
   const views = groupViews(catalog.data, value, filters)
   const filtering = !!search.trim() || enabledOnly || capabilities.size > 0
-  const total = catalog.data.tools.length
+  const listed = catalogTools(catalog.data)
+  const total = listed.length
   const enabled = Object.keys(value).length
   const chips: EnvironmentChip[] = (environments.data ?? []).map((e) => ({
     name: e.name,
@@ -112,8 +119,7 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   }))
 
   const counts: Record<string, number> = {}
-  for (const t of catalog.data.tools)
-    counts[t.capability] = (counts[t.capability] ?? 0) + 1
+  for (const t of listed) counts[t.capability] = (counts[t.capability] ?? 0) + 1
 
   const setConfig = (key: string, config: AgentToolConfig) =>
     onChange({ ...value, [key]: config })
@@ -123,8 +129,9 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
       <div>
         <div className="text-overline text-tertiary uppercase">Tools</div>
         <p className="text-tertiary mt-1 text-xs">
-          Switch on each Imbi API tool the agent may call. Other MCP servers
-          come with the plugins in the Plugins section.
+          Switch on each Imbi API tool the agent may call. Built-in tools such
+          as Skill and Agent are off until you switch them on here. Other MCP
+          servers come with the plugins in the Plugins section.
         </p>
       </div>
       <div className="flex items-center gap-3">
@@ -419,6 +426,8 @@ function ToolRowView({
 }: ToolRowViewProps) {
   const capability = CAPABILITIES.find((c) => c.slug === row.capability)
   const all = environments.map((e) => e.slug)
+  // A built-in tool takes no environment argument.
+  const chips = serverOf(row.key) === BUILTIN_SLUG ? [] : environments
   return (
     <div className="border-border flex items-center gap-4 border-b px-5 py-3 last:border-b-0">
       <Switch
@@ -461,9 +470,9 @@ function ToolRowView({
           >
             Approval
           </button>
-          {environments.length > 0 && (
+          {chips.length > 0 && (
             <div className="flex gap-1">
-              {environments.map((e) => {
+              {chips.map((e) => {
                 const allowed =
                   !config.environments || config.environments.includes(e.slug)
                 return (

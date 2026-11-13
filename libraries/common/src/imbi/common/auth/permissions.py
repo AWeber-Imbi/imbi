@@ -124,6 +124,21 @@ class AuthContext(pydantic.BaseModel):
     #: value that arrived over the wire: every real authentication path
     #: leaves this ``False``.
     internal: bool = False
+    #: For a request from imbi-scheduler: the principal accountable for
+    #: the scheduled task, as ``(label, match_prop, value)`` for
+    #: :func:`load_principal_permissions`. :func:`get_current_user` has
+    #: already limited ``permissions`` to theirs. Only imbi-api also
+    #: requires their membership of the organization of a route
+    #: (``imbi.api.auth.organizations.check_member``). ``None`` for
+    #: every other request.
+    on_behalf_of: (
+        tuple[
+            typing.Literal['User', 'ServiceAccount'],
+            typing.Literal['email', 'slug'],
+            str,
+        ]
+        | None
+    ) = None
 
     def identity_for(self, plugin_slug: str) -> str | None:
         """Return the subject for the given plugin_slug, or None."""
@@ -720,7 +735,87 @@ async def authenticate_api_key(
     return ctx
 
 
+#: The header in which imbi-scheduler names the principal accountable
+#: for a scheduled task. A task cannot set it (see
+#: ``docs/scheduler/tasks.md``).
+SCHEDULED_TASK_ACCOUNTABLE = 'X-Imbi-Scheduled-Task-Accountable'
+
+#: Accountable principals that are Imbi's own services. Only an admin
+#: can make or change the tasks that they own (system tasks and the
+#: tasks of workflow schedule triggers), so those run as the scheduler
+#: with no further limit.
+INTERNAL_ACCOUNTABLE = frozenset({'imbi-scheduler', 'imbi-workflows'})
+
+
+async def narrow_to_accountable(
+    db: graph.Graph, ctx: AuthContext, accountable: str | None
+) -> AuthContext:
+    """Limit a scheduler request to the principal accountable for its task.
+
+    Any user who can make a scheduled task can make one that runs as the
+    scheduler's service account. Without this, that task could do what
+    the account can do, in every organization that the account is a
+    member of. With it, the request has only the permissions that the
+    accountable principal has too, and ``check_member`` requires that
+    principal's membership as well.
+
+    Applies to any service account that sends the header, not only to
+    the scheduler's: the slug of that account is configurable, and the
+    limit can only remove permissions, so another account gains nothing
+    by sending it. Returns ``ctx`` unchanged for a user, for an internal
+    accountable principal, and for an admin. Otherwise returns a copy,
+    so a cached context is never changed.
+
+    Raises:
+        fastapi.HTTPException: 403 when the accountable principal does
+            not exist or is not active.
+
+    """
+    if (
+        ctx.service_account is None
+        or not accountable
+        or accountable in INTERNAL_ACCOUNTABLE
+    ):
+        return ctx
+    label: PrincipalLabel
+    match_prop: PrincipalMatchProp
+    principal: models.User | models.ServiceAccount | None
+    if '@' in accountable:
+        label, match_prop = 'User', 'email'
+        users = await db.match(models.User, {'email': accountable})
+        principal = users[0] if users else None
+    else:
+        label, match_prop = 'ServiceAccount', 'slug'
+        accounts = await db.match(models.ServiceAccount, {'slug': accountable})
+        principal = accounts[0] if accounts else None
+    if principal is None or not principal.is_active:
+        LOGGER.warning(
+            'Refusing a scheduled task request for %r: not an active '
+            'principal',
+            accountable,
+        )
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'The principal accountable for this scheduled task '
+                f'({accountable!r}) is not active.'
+            ),
+        )
+    if isinstance(principal, models.User) and principal.is_admin:
+        return ctx
+    granted = await load_principal_permissions(
+        db, label, match_prop, accountable
+    )
+    return ctx.model_copy(
+        update={
+            'permissions': ctx.permissions & granted,
+            'on_behalf_of': (label, match_prop, accountable),
+        }
+    )
+
+
 async def get_current_user(
+    request: fastapi.Request,
     db: graph.Pool,
     credentials: security.HTTPAuthorizationCredentials
     | None = fastapi.Depends(oauth2_scheme),  # noqa: B008
@@ -748,8 +843,11 @@ async def get_current_user(
             detail='Missing authentication credentials',
             headers={'WWW-Authenticate': 'Bearer'},
         )
-    return await _authenticate_token(
+    ctx = await _authenticate_token(
         db, credentials.credentials, auth_settings()
+    )
+    return await narrow_to_accountable(
+        db, ctx, request.headers.get(SCHEDULED_TASK_ACCOUNTABLE)
     )
 
 
@@ -863,7 +961,10 @@ async def get_current_user_cookie_fallback(
             detail='Missing authentication credentials',
             headers={'WWW-Authenticate': 'Bearer'},
         )
-    return await _authenticate_token(db, token, auth_settings())
+    ctx = await _authenticate_token(db, token, auth_settings())
+    return await narrow_to_accountable(
+        db, ctx, request.headers.get(SCHEDULED_TASK_ACCOUNTABLE)
+    )
 
 
 def require_permission(

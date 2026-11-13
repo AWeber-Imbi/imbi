@@ -60,7 +60,7 @@ To copy an agent, open it and click **Duplicate**.
 | Icon | An icon, or an image that you upload (500 KB maximum) |
 | Slack channel | A channel name, for example `#cs-escalations`. Imbi stores it. In this release, nothing uses it |
 | Owner team | Required. The team that owns the agent |
-| Labels | Organization tags. You can make a label with a color from this field |
+| Tags | Organization tags. They only classify the agent and have no effect on runner selection. You can make a tag with a color from this field |
 
 ### System prompt and model
 
@@ -122,14 +122,38 @@ servers.
 - A plugin with the badge **unsupported source** cannot load. See
   [Plugin sources](#plugin-sources).
 
-**Tools** lists the tools of the Imbi API, in one list. The MCP
+**Tools** lists two groups: **Built-in** and **Imbi**. The MCP
 servers in **Admin > Global Admin > Assistant > MCP Servers** are for the
 assistant only and are not in this list. To give the agent other MCP
 servers, select a plugin that brings them.
 
-The key of a tool is `imbi.<tool name>`. Each tool has a
-capability badge: **Read**, **Write**, **Destructive**, or **Unknown**. The
-badge comes from the MCP annotations of the tool.
+**Imbi** has the tools of the Imbi API. The key of a tool is
+`imbi.<tool name>`. Each tool has a capability badge: **Read**,
+**Write**, **Destructive**, or **Unknown**. The badge comes from the MCP
+annotations of the tool.
+
+**Built-in** has the Claude Code built-in tools that are off for every
+agent until you turn them on for one agent:
+
+| Key | Tool | What it does |
+|---|---|---|
+| `builtin.Skill` | `Skill` | Loads a skill from the plugins of the agent |
+| `builtin.Agent` | `Agent` | Starts a Claude Code subagent for part of the task |
+
+The other built-in tools (`Bash`, `Read`, `Edit`, ...) come from the
+**Allowed tools** of the [base configuration](#base-configuration), not
+from this tab. Without its switch, the runner refuses a call of `Skill`
+or `Agent` with `tool_not_allowed`. The base configuration still applies:
+
+- When **Allowed tools** is empty, you can turn on each opt-in tool here.
+- When **Allowed tools** has a list, it is the ceiling. Add `Skill` or
+  `Agent` to it, then turn the tool on for each agent that needs it. A
+  tool in the list stays off for an agent that does not turn it on.
+- A tool in **Denied tools**, of the organization or the agent, stays
+  off. `Task`, the earlier name of `Agent`, denies `Agent` too.
+
+A subagent and the tools that a skill uses are checked like every other
+tool call of the agent.
 
 To give the agent a tool:
 
@@ -140,7 +164,8 @@ To give the agent a tool:
    [Approvals](agent-tasks.md#answer-a-request).
 4. Optional: click an environment chip to block that environment. A
    blocked environment is not highlighted. The runner refuses a call whose
-   `environment` argument names a blocked environment.
+   `environment` argument names a blocked environment. A built-in tool has
+   no environment chips.
 5. Optional: click the rate limit button. Enter the number of calls and
    select **Per minute**, **Per hour**, or **Per day**. Click **Apply**.
 
@@ -211,7 +236,7 @@ An empty field means no limit.
 | Task budget | USD. The default hard budget of each task. A task can only lower it. See [Budgets](agent-tasks.md#budgets) |
 | Max concurrent tasks | The number of tasks of this agent that can run at the same time |
 | Task timeout | For example `30m` or `2h`. A number with no unit is minutes. A task that runs longer closes with `exceeded_ceiling` |
-| Required runner labels | Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
+| Required runner labels | Used only to select a harness runner. Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
 | Egress destinations | The internal hosts that the pod of the agent's chains may reach, in addition to the global ones. See [Egress allowlists](../deployment/agent-runners.md#egress-allowlists). A host name destination works only for HTTPS clients that use the egress proxy, and the DNS owner of each name controls where it goes: see [Host name destinations](../deployment/agent-runners.md#host-name-destinations) |
 | Human response SLA | 4 hours, 8 business hours, 24 hours, 3 days, or No SLA. Imbi stores it. In this release, nothing uses it |
 
@@ -274,7 +299,7 @@ The delete returns `409` when:
 
 Open an agent from the list. The detail page shows:
 
-- The owner team, model, Slack channel, settings, and labels.
+- The owner team, model, Slack channel, settings, and tags.
 - **Runs (30 days)** and the monthly cost cap, with a badge at 80% and
   100%.
 - **Cost over time**: daily cost and runs for the last 30 days.
@@ -301,7 +326,7 @@ stricter value.
 | Key | The `secret://` reference of the model key. See [Configure the model key](../deployment/agent-runners.md#5-configure-the-model-key) |
 | Permission mode | `plan`, `default`, `acceptEdits`, or `bypassPermissions`, strictest first. Agents can set a stricter mode only |
 | Sandbox | **Require the sandbox** and **Allow unsandboxed commands** |
-| Allowed tools | Built-in tools, separated by commas. Empty allows all |
+| Allowed tools | Built-in tools, separated by commas. Empty allows all. `Skill` and `Agent` are on only for an agent that turns them on in its **Tools** tab |
 | Denied tools | Agents can deny more |
 | Approval tools | Tools that need approval when an automation starts the task (not a person) |
 | System prompt prefix | Put before the system prompt of each agent |

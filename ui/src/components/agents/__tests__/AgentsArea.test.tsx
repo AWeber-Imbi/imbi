@@ -376,6 +376,30 @@ describe('AgentsArea', () => {
     expect(endpoints.createAgent).not.toHaveBeenCalled()
   })
 
+  it('counts the built-in tools in the detail page total', async () => {
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue({
+      ...catalog(),
+      builtin_tools: [
+        {
+          capability: 'read',
+          description: 'Load a skill.',
+          key: 'builtin.Skill',
+          name: 'Skill',
+        },
+      ],
+    })
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({
+        tools: {
+          'builtin.Skill': { approval: false },
+          'imbi.list_projects': { approval: false },
+        },
+      }),
+    ])
+    renderAt('/agents/manage/mender')
+    expect(await screen.findByText('2 of 5 enabled')).toBeInTheDocument()
+  })
+
   it('shows the enabled tools by prefix on the detail page', async () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([
       agent({

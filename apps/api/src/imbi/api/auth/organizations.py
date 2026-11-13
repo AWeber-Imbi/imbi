@@ -61,7 +61,9 @@ async def org_permissions(
     db: graph.Graph, auth: permissions.AuthContext, org_slug: str
 ) -> set[str]:
     """The caller's permissions in ``org_slug``: those of their role in
-    that organization, still limited by the scopes of an API key."""
+    that organization, still limited by the scopes of an API key. For a
+    scheduler request, also limited to the role in that organization of
+    the principal accountable for the task."""
     granted: set[str] = set()
     if auth.user is not None:
         granted = await common_permissions.load_principal_permissions(
@@ -74,6 +76,10 @@ async def org_permissions(
             'slug',
             auth.service_account.slug,
             org_slug=org_slug,
+        )
+    if auth.on_behalf_of is not None:
+        granted &= await common_permissions.load_principal_permissions(
+            db, *auth.on_behalf_of, org_slug=org_slug
         )
     return auth.permissions & granted
 

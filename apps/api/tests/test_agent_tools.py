@@ -105,6 +105,24 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
             catalog = await agent_tools.build_catalog({'paths': {}})
         self.assertEqual(catalog.tools, [])
         self.assertIsNotNone(catalog.error)
+        # The built-in tools do not come from the OpenAPI document.
+        self.assertEqual(
+            [t.key for t in catalog.builtin_tools],
+            ['builtin.Agent', 'builtin.Skill'],
+        )
+
+    async def test_builtin_tools(self) -> None:
+        catalog = await agent_tools.build_catalog(SPEC)
+        tools = {t.key: t for t in catalog.builtin_tools}
+        self.assertEqual(sorted(tools), ['builtin.Agent', 'builtin.Skill'])
+        self.assertEqual(tools['builtin.Skill'].name, 'Skill')
+        self.assertEqual(tools['builtin.Skill'].capability, 'read')
+        self.assertEqual(tools['builtin.Agent'].capability, 'unknown')
+        self.assertTrue(tools['builtin.Agent'].description)
+        # The Imbi tools do not hold them.
+        self.assertFalse(
+            [t for t in catalog.tools if t.key.startswith('builtin.')]
+        )
 
     def test_error_codes(self) -> None:
         request = httpx.Request('POST', 'https://mcp.example.com/mcp')
@@ -150,6 +168,18 @@ class CacheTestCase(unittest.IsolatedAsyncioTestCase):
         self.build.assert_not_awaited()
         self.spec.assert_not_called()
         self.valkey.set.assert_not_awaited()
+
+    async def test_cache_hit_has_current_builtin_tools(self) -> None:
+        # A kept copy without the built-in tools, or with other ones,
+        # gets the built-in tools of this release.
+        entry = json.loads(self.catalog.model_dump_json())
+        entry['builtin_tools'] = []
+        self.valkey.get.return_value = json.dumps(entry).encode()
+        result = await agent_tools.get_catalog(self.valkey, self.spec)
+        self.assertEqual(
+            result.builtin_tools, list(agent_tools.BUILTIN_CATALOG)
+        )
+        self.build.assert_not_awaited()
 
     async def test_cache_miss_stores(self) -> None:
         self.valkey.get.return_value = None
