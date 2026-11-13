@@ -740,11 +740,18 @@ async def authenticate_api_key(
 #: ``docs/scheduler/tasks.md``).
 SCHEDULED_TASK_ACCOUNTABLE = 'X-Imbi-Scheduled-Task-Accountable'
 
+# Service-account slugs that `imbi-api setup-service-accounts` creates.
+SCHEDULER_ACCOUNT = 'imbi-scheduler'
+GATEWAY_ACCOUNT = 'imbi-gateway'
+WORKFLOWS_ACCOUNT = 'imbi-workflows'
+ASSISTANT_ACCOUNT = 'imbi-assistant'
+SLACKBOT_ACCOUNT = 'imbi-slackbot'
+
 #: Accountable principals that are Imbi's own services. Only an admin
 #: can make or change the tasks that they own (system tasks and the
 #: tasks of workflow schedule triggers), so those run as the scheduler
 #: with no further limit.
-INTERNAL_ACCOUNTABLE = frozenset({'imbi-scheduler', 'imbi-workflows'})
+INTERNAL_ACCOUNTABLE = frozenset({SCHEDULER_ACCOUNT, WORKFLOWS_ACCOUNT})
 
 
 async def narrow_to_accountable(

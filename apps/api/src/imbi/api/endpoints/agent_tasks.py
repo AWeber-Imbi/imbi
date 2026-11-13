@@ -57,8 +57,8 @@ HUMAN_ORIGIN = 'human'
 #: (see :mod:`imbi.api.auth.internal_services`). Only these service
 #: accounts can make a task that a person did not start (CC9).
 SERVICE_ORIGINS: dict[str, typing.Literal['schedule', 'webhook']] = {
-    'imbi-scheduler': 'schedule',
-    'imbi-gateway': 'webhook',
+    common_permissions.SCHEDULER_ACCOUNT: 'schedule',
+    common_permissions.GATEWAY_ACCOUNT: 'webhook',
 }
 
 

@@ -22,6 +22,7 @@ from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph
 from imbi.common import patch as json_patch
 from imbi.common.auth import encryption
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.plugins import base as plugin_base
 from imbi.common.plugins import registry as plugin_registry
 from imbi.common.plugins.errors import PluginNotFoundError
@@ -139,7 +140,7 @@ async def _check_identifier_collision(
 #: deliveries that its activator did not approve.
 _WORKFLOW_HANDLER = 'gateway-actions#start_workflow'
 
-_WORKFLOWS_ACCOUNT = 'imbi-workflows'
+_WORKFLOWS_ACCOUNT = common_permissions.WORKFLOWS_ACCOUNT
 
 
 def _workflow_rules(rules: list[dict[str, typing.Any]]) -> list[str]:
