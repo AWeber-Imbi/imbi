@@ -637,6 +637,18 @@ class DedupeTestCase(TriggerTestCase):
         )
         self.assertEqual((await self._deliver('d-2'))['status'], 'skipped')
 
+    async def test_window_beyond_int4(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions'
+                ' SET settings = jsonb_set('
+                "   settings, '{dedupe_window_seconds}', %s::jsonb)"
+                ' WHERE workflow_id = %s',
+                (str(2**31 + 1), self.workflow_id),
+            )
+        self.assertEqual((await self._deliver('d-1'))['status'], 'queued')
+        self.assertEqual((await self._deliver('d-2'))['status'], 'skipped')
+
     async def test_concurrent_deliveries_start_one_run(self) -> None:
         def new_run(delivery: str) -> workflows.NewRun:
             return workflows.NewRun(

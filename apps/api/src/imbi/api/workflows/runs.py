@@ -556,7 +556,7 @@ async def _duplicate_of(
         ' WHERE workflow_id = %s AND dedupe_key = %s'
         " AND status <> 'skipped'"
         " AND NOT (status = 'cancelled' AND started_at IS NULL)"
-        ' AND (%s::int IS NULL'
+        ' AND (%s::bigint IS NULL'
         '      OR created_at > NOW() - make_interval(secs => %s))'
         ' ORDER BY created_at DESC LIMIT 1',
         (
