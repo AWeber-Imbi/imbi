@@ -119,7 +119,8 @@ other services return `status: failing`. After the lifespan stops, its
 pools are closed and do not open again, so Kubernetes must replace the
 pod. The check reads process state only. It does not query a database,
 so a database outage does not restart the pod. imbi-mcp does not use the
-shared lifespan, so its `/status` always returns `ok`.
+shared lifespan. Its own FastMCP lifespan sets the same failure when it
+stops.
 
 In `ui` mode the probe goes through Caddy to imbi-api. Thus a `ui` pod is
 not ready when imbi-api is down.
