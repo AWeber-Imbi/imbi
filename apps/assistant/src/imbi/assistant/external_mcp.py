@@ -186,7 +186,8 @@ class ExternalMCPManager:
         self._servers: dict[str, common_models.MCPServer] = {}
         # server slug -> monotonic time before which no reconnect runs
         self._reconnect_after: dict[str, float] = {}
-        self._reconnect_lock = asyncio.Lock()
+        # server slug -> lock that serializes reconnects to that server
+        self._reconnect_locks: dict[str, asyncio.Lock] = {}
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
@@ -376,6 +377,7 @@ class ExternalMCPManager:
         self._tool_routes.clear()
         self._servers.clear()
         self._reconnect_after.clear()
+        self._reconnect_locks.clear()
         self._tools = []
         self._initialized = False
 
@@ -476,7 +478,11 @@ class ExternalMCPManager:
         server = self._servers.get(server_slug)
         if server is None:
             return None
-        async with self._reconnect_lock:
+        lock = self._reconnect_locks.setdefault(server_slug, asyncio.Lock())
+        async with lock:
+            # aclose() can have removed the server while this one waited.
+            if self._servers.get(server_slug) is not server:
+                return None
             # Another call can have reconnected while this one waited.
             session = self._sessions.get(server_slug)
             if session is not None:
