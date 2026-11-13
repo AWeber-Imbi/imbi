@@ -132,6 +132,23 @@ async def check_member(
             org_slug=org_slug,
         )
     auth.permissions = await org_permissions(db, auth, org_slug)
+    if auth.on_behalf_of is not None:
+        # A scheduler request: the person accountable for the task must
+        # be a member too, and it gets only what their role here allows.
+        key = auth.on_behalf_of[2]
+        granted = await common_permissions.load_principal_permissions(
+            db, *auth.on_behalf_of, org_slug=org_slug
+        )
+        if not granted:
+            raise autonomous.forbidden(
+                'organization_forbidden',
+                (
+                    f'{key!r}, accountable for this scheduled task, is not '
+                    f'a member of organization {org_slug!r}.'
+                ),
+                org_slug=org_slug,
+            )
+        auth.permissions &= granted
     return organization_id(graph.parse_agtype(records[0]['id']), org_slug)
 
 

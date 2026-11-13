@@ -77,7 +77,10 @@ async def check_grant(
 
 
 async def harness_caller(
-    db: graph.Pool, store: harness.Store, credentials: Credentials
+    request: fastapi.Request,
+    db: graph.Pool,
+    store: harness.Store,
+    credentials: Credentials,
 ) -> HarnessCaller:
     """Authenticate an agent token, or any credential that
     :func:`permissions.get_current_user` accepts.
@@ -94,7 +97,7 @@ async def harness_caller(
         credentials.credentials
     ):
         return HarnessCaller(
-            await permissions.get_current_user(db, credentials)
+            await permissions.get_current_user(request, db, credentials)
         )
     slug, grant = tokens.verify_agent_token(credentials.credentials)
     await check_grant(store, grant)
