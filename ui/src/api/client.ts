@@ -135,7 +135,10 @@ const SKIP_AUTH_PATHS = [
   '/status',
 ]
 
-class ApiClient {
+export class ApiClient {
+  // Another service on this origin, e.g. imbi-scheduler, passes its own base.
+  constructor(private readonly baseUrl: string = API_BASE_URL) {}
+
   async delete<T>(
     url: string,
     signal?: AbortSignal,
@@ -157,7 +160,7 @@ class ApiClient {
     params?: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<{ data: T; headers: Headers }> {
-    const fullUrl = buildUrl(url, params)
+    const fullUrl = buildUrl(this.baseUrl, url, params)
 
     const response = await withAuthRetry(
       url,
@@ -219,7 +222,7 @@ class ApiClient {
         }
 
         // Don't set Content-Type — browser sets it with boundary for FormData
-        return fetch(`${API_BASE_URL}${url}`, {
+        return fetch(`${this.baseUrl}${url}`, {
           body: formData,
           credentials: 'include',
           headers,
@@ -248,7 +251,7 @@ class ApiClient {
     } = {},
   ): Promise<T> {
     const { body, headers: extraHeaders, params, signal } = options
-    const fullUrl = buildUrl(url, params)
+    const fullUrl = buildUrl(this.baseUrl, url, params)
 
     const response = await withAuthRetry(
       url,
@@ -315,8 +318,12 @@ export async function withAuthRetry(
   }
 }
 
-function buildUrl(url: string, params?: Record<string, unknown>): string {
-  let fullUrl = `${API_BASE_URL}${url}`
+function buildUrl(
+  baseUrl: string,
+  url: string,
+  params?: Record<string, unknown>,
+): string {
+  let fullUrl = `${baseUrl}${url}`
   if (params) {
     const searchParams = new URLSearchParams()
     for (const [key, value] of Object.entries(params)) {

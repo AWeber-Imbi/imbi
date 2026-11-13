@@ -77,6 +77,7 @@ nav:
           - Agent Tasks: admin/agent-tasks.md
           - Workflows: admin/workflows.md
       - Maintenance: admin/maintenance.md
+      - Scheduled Jobs: admin/scheduled-jobs.md
   - Plugins:
       - Overview: plugins/index.md
       - AWS: plugins/aws.md
