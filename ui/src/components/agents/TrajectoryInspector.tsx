@@ -33,8 +33,8 @@ export type InspectorTab =
   | 'Timing'
   | 'Usage'
 
-export const MIN_WIDTH = 320
-export const MAX_WIDTH = 720
+const MIN_WIDTH = 320
+const MAX_WIDTH = 720
 const TABLE_MIN = 280
 const STEP = 16
 
@@ -51,19 +51,6 @@ export function startedText(ms: number): string {
   const d = new Date(ms)
   const two = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`
-}
-
-/** The status DSH shows: Failed, Pending or Completed. */
-export function statusOf(inspected: Inspected, live: boolean): string {
-  if (inspected.type === 'request')
-    return inspected.request.status === 'pending' && live
-      ? 'Pending'
-      : 'Completed'
-  const r = inspected.record
-  if (r.error) return 'Failed'
-  if (r.endedAt === null && live) return 'Pending'
-  if (r.endedAt === null && r.kind !== 'assistant') return 'Did not finish'
-  return 'Completed'
 }
 
 /** The tabs of what is inspected, in order. */
@@ -394,6 +381,19 @@ function Started({ ms }: { ms: number }) {
       {unix ? (ms / 1000).toFixed(3) : startedText(ms)}
     </button>
   )
+}
+
+/** The status DSH shows: Failed, Pending or Completed. */
+function statusOf(inspected: Inspected, live: boolean): string {
+  if (inspected.type === 'request')
+    return inspected.request.status === 'pending' && live
+      ? 'Pending'
+      : 'Completed'
+  const r = inspected.record
+  if (r.error) return 'Failed'
+  if (r.endedAt === null && live) return 'Pending'
+  if (r.endedAt === null && r.kind !== 'assistant') return 'Did not finish'
+  return 'Completed'
 }
 
 function TabBody({

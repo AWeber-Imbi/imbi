@@ -1,15 +1,6 @@
 /** The family of a tool, which picks its tag color and its readable view. */
 export type Family = 'agent' | 'edit' | 'mcp' | 'read' | 'shell'
 
-/** The tag colors of each tool family. */
-export const FAMILY_TAG: Record<Family, string> = {
-  agent: 'bg-accent text-accent',
-  edit: 'bg-teal text-teal',
-  mcp: 'bg-accent text-accent',
-  read: 'bg-info text-info',
-  shell: 'bg-secondary text-primary',
-}
-
 /** Lines of output shown before "Show all". */
 export const OUTPUT_LINES = 40
 

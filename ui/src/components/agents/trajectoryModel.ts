@@ -183,14 +183,7 @@ export function buildTrajectory(
   for (const entry of timeline(events, () => true)) {
     const e = entry.event
     if (e?.type === 'usage.reported') {
-      const pending = state.current
-      if (pending && !pending.usage && pending.toolCalls === 0) {
-        pending.usage = e
-        pending.status = 'completed'
-        const a = byId.get(pending.assistant)!
-        a.events.unshift(e)
-        a.seqs.unshift(e.seq)
-      } else open(e, e.seq)
+      open(e, e.seq)
       continue
     }
     if (e?.type === 'task.created') {
@@ -235,7 +228,13 @@ export function buildTrajectory(
     push(instant(e, kind, lineFor(e), state.turn))
   }
 
-  for (const request of requests) finishRequest(request, records, byId, live)
+  for (const request of requests)
+    finishRequest(
+      request,
+      records,
+      byId,
+      live && request === requests[requests.length - 1],
+    )
   return { records, requests, turns: turnsOf(records) }
 }
 
@@ -271,11 +270,6 @@ export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`
   if (ms < 10_000) return `${(ms / 1000).toFixed(2)} s`
   return `${(ms / 1000).toFixed(1)} s`
-}
-
-/** The lane of a record in the overview: input, model, or tools. */
-export function laneOf(kind: TrajectoryKind): 0 | 1 | 2 {
-  return LANE[kind]
 }
 
 /** One line of Markdown as text: at most 512 characters. */
@@ -369,26 +363,6 @@ export function rowsOf(
       })
   }
   return rows
-}
-
-/** The text that search matches in a record. */
-export function searchText(record: TrajectoryRecord): string {
-  const parts = [
-    KIND_LABEL[record.kind],
-    record.text,
-    record.body.thinking,
-    record.body.reply,
-  ]
-  if (record.tool)
-    parts.push(
-      record.tool.tool,
-      record.tool.name,
-      record.tool.args,
-      resultText(record.tool.resultValue),
-      record.tool.callId ?? '',
-      JSON.stringify(record.tool.arguments ?? ''),
-    )
-  return parts.join(' ').toLowerCase()
 }
 
 /**
@@ -542,6 +516,26 @@ function resultText(value: unknown): string {
   if (value == null) return ''
   if (typeof value === 'string') return value
   return JSON.stringify(value)
+}
+
+/** The text that search matches in a record. */
+function searchText(record: TrajectoryRecord): string {
+  const parts = [
+    KIND_LABEL[record.kind],
+    record.text,
+    record.body.thinking,
+    record.body.reply,
+  ]
+  if (record.tool)
+    parts.push(
+      record.tool.tool,
+      record.tool.name,
+      record.tool.args,
+      resultText(record.tool.resultValue),
+      record.tool.callId ?? '',
+      JSON.stringify(record.tool.arguments ?? ''),
+    )
+  return parts.join(' ').toLowerCase()
 }
 
 /** The subagent tool calls under a call, flattened in start order. */

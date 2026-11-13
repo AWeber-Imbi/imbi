@@ -14,10 +14,6 @@ export const RESOLVED: Record<TaskRequestView['status'], string> = {
   rejected: 'Rejected',
 }
 
-export function clock(at: string): string {
-  return new Date(at).toLocaleTimeString([], { hour12: false })
-}
-
 /** One line for an event that is not a turn. */
 export function systemText(e: AgentTaskEvent): string {
   const p = e.payload

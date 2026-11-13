@@ -28,8 +28,8 @@ function log() {
     }),
     event(2, 'session.opened', { session_id: 's' }),
     event(3, 'secret.resolution', { action: 'created', reference: 'gh' }),
-    event(5, 'usage.reported', { tokens_in: 2, tokens_out: 9 }),
-    event(4, 'turn', { body: 'Looking at releases', kind: 'thinking' }),
+    event(4, 'usage.reported', { tokens_in: 2, tokens_out: 9 }),
+    event(5, 'turn', { body: 'Looking at releases', kind: 'thinking' }),
     event(6, 'tool.called', {
       arguments: { command: 'ls' },
       call_id: 'c1',
@@ -105,7 +105,7 @@ describe('buildTrajectory', () => {
     expect(first.text).toBe('Looking at releases')
     expect(second.text).toBe('All done.')
     expect(third.text).toBe('')
-    expect(first.seqs).toEqual([5, 4])
+    expect(first.seqs).toEqual([4, 5])
   })
 
   it('times tools back from their result and the model up to its first call', () => {
@@ -116,7 +116,7 @@ describe('buildTrajectory', () => {
     expect([bash.startedAt, bash.endedAt]).toEqual([at(6) - 500, at(6)])
     const model = t.records[3]
     expect(model.startedAt).toBe(at(3))
-    expect(model.endedAt).toBe(at(5))
+    expect(model.endedAt).toBe(at(4))
   })
 
   it('opens a pending request for agent work with no usage yet', () => {

@@ -5,8 +5,6 @@ import type { AgentTaskEvent } from '@/types'
 // under the tool call that started them, and the continuation parts of
 // a large turn or tool result are joined back into one event.
 
-export type TimelineCategory = 'messages' | 'system' | 'thinking' | 'tools'
-
 export interface TimelineEntry {
   children: TimelineEntry[]
   /**
@@ -20,26 +18,6 @@ export interface TimelineEntry {
   /** The call id that `children` name as their `parent_call_id`. */
   parentOf: null | string
   seq: number
-}
-
-export interface TimelineFilters {
-  errorsOnly: boolean
-  messages: boolean
-  query: string
-  subagents: boolean
-  system: boolean
-  thinking: boolean
-  tools: boolean
-}
-
-export const DEFAULT_FILTERS: TimelineFilters = {
-  errorsOnly: false,
-  messages: true,
-  query: '',
-  subagents: true,
-  system: true,
-  thinking: true,
-  tools: true,
 }
 
 /** The event types that the timeline shows. */
@@ -62,57 +40,6 @@ const SHOWN = new Set([
 const SPLIT_FIELD: Record<string, string> = {
   'tool.called': 'result',
   turn: 'body',
-}
-
-/** The category of an entry, for the filter chips. */
-export function categoryOf(entry: TimelineEntry): TimelineCategory {
-  const e = entry.event
-  if (!e || e.type === 'tool.called') return 'tools'
-  if (e.type === 'turn')
-    return e.payload.kind === 'thinking' ? 'thinking' : 'messages'
-  if (e.type === 'request.opened') return 'messages'
-  return 'system'
-}
-
-/** How many entries of each filter the timeline has. */
-export function countTimeline(
-  entries: TimelineEntry[],
-): Record<'errors' | 'subagents' | TimelineCategory, number> {
-  const counts = {
-    errors: 0,
-    messages: 0,
-    subagents: 0,
-    system: 0,
-    thinking: 0,
-    tools: 0,
-  }
-  const walk = (entry: TimelineEntry, nested: boolean) => {
-    if (nested) counts.subagents++
-    else counts[categoryOf(entry)]++
-    if (isError(entry)) counts.errors++
-    for (const child of entry.children) walk(child, true)
-  }
-  for (const entry of entries) walk(entry, false)
-  return counts
-}
-
-/** The entries that the filters let through, children included. */
-export function filterTimeline(
-  entries: TimelineEntry[],
-  filters: TimelineFilters,
-): TimelineEntry[] {
-  const query = filters.query.trim().toLowerCase()
-  const keep = (entry: TimelineEntry): boolean =>
-    filters[categoryOf(entry)] && (!filters.errorsOnly || hasError(entry))
-  // Prune before searching, so a child the filters hide cannot match.
-  const prune = (entry: TimelineEntry): TimelineEntry => ({
-    ...entry,
-    children: filters.subagents ? entry.children.filter(keep).map(prune) : [],
-  })
-  return entries
-    .filter(keep)
-    .map(prune)
-    .filter((entry) => !query || searchText(entry).includes(query))
 }
 
 /** A tool call that policy denied before it ran. */
@@ -222,35 +149,8 @@ export function timeline(
   return sort(roots)
 }
 
-function hasError(entry: TimelineEntry): boolean {
-  return isError(entry) || entry.children.some(hasError)
-}
-
 function partKey(e: AgentTaskEvent): null | string {
   const p = e.payload
   if (!(e.type in SPLIT_FIELD) || p.parts == null) return null
   return `${e.type}:${String(p.call_id)}`
-}
-
-/**
- * The text a reader sees in an entry: its string and number values, at
- * any depth. Field names are left out, so `error` does not match every
- * call by its `is_error` key.
- */
-function searchText(entry: TimelineEntry): string {
-  return [
-    ...values(entry.event?.payload ?? {}),
-    ...entry.children.map(searchText),
-  ]
-    .join(' ')
-    .toLowerCase()
-}
-
-function values(value: unknown): string[] {
-  if (typeof value === 'string') return [value]
-  if (typeof value === 'number') return [String(value)]
-  if (Array.isArray(value)) return value.flatMap(values)
-  if (value && typeof value === 'object')
-    return Object.values(value).flatMap(values)
-  return []
 }
