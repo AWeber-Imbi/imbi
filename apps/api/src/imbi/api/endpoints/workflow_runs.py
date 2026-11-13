@@ -702,8 +702,9 @@ async def start_run(
 
     A run that a service starts is written ``skipped``,
     with ``duplicate_of``, when its dedupe key matches a run of the
-    workflow made within the dedupe window. A person's run always
-    starts, and its key counts for later runs.
+    workflow made within the dedupe window. For a webhook run of a
+    project, only a run of the same project counts. A person's run
+    always starts, and its key counts for later runs.
 
     Raises:
         403: The trigger's ``who`` does not include the caller, a person
@@ -727,6 +728,7 @@ async def start_run(
     wf_graph, settings = await _version_graph(
         store, org_id, slug, workflow['active_version']
     )
+    project_id: str | None = None
     if origin.kind == agent_tasks.HUMAN_ORIGIN:
         trigger = _manual_trigger(wf_graph, data.trigger)
         await _check_who(db, trigger, workflow, auth)
@@ -747,6 +749,7 @@ async def start_run(
                 record={**origin.record, 'project_id': data.project_id}
             )
             idempotency_key = f'{idempotency_key}:{data.project_id}'
+            project_id = data.project_id
         if not idempotency_key:
             # The scheduler sends its run id, the same on every retry of
             # a firing; without it a retry would start a second run.
@@ -784,6 +787,7 @@ async def start_run(
                 dedupe_key=validation.dedupe_key(settings, payload),
                 dedupe_window_seconds=settings.dedupe_window_seconds,
                 skip_duplicate=origin.kind != agent_tasks.HUMAN_ORIGIN,
+                project_id=project_id,
             )
         )
     except workflows.NotActive as e:

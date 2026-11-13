@@ -118,6 +118,9 @@ class NewRun:
     dedupe_window_seconds: int | None = None
     #: Skip the run when it is a duplicate. A person's run is not.
     skip_duplicate: bool = False
+    #: The project of a webhook run, also in ``origin``. A duplicate
+    #: must be a run of the same project. ``None``: any run counts.
+    project_id: str | None = None
 
 
 class RunStore:
@@ -543,6 +546,10 @@ async def _duplicate_of(
     started. A ``skipped`` run, or one cancelled before it started,
     reviewed nothing, so it does not count.
 
+    When ``run`` has a project, only a run of that project counts: one
+    delivery that starts runs for several projects dedupes each project
+    on its own. A run with no project matches on workflow and key.
+
     Takes a transaction lock on the key first, so two runs with one key
     serialize: under READ COMMITTED the second sees the first after the
     first commits.
@@ -558,12 +565,15 @@ async def _duplicate_of(
         " AND NOT (status = 'cancelled' AND started_at IS NULL)"
         ' AND (%s::bigint IS NULL'
         '      OR created_at > NOW() - make_interval(secs => %s))'
+        " AND (%s::text IS NULL OR origin->>'project_id' = %s)"
         ' ORDER BY created_at DESC LIMIT 1',
         (
             run.workflow_id,
             run.dedupe_key,
             run.dedupe_window_seconds,
             run.dedupe_window_seconds,
+            run.project_id,
+            run.project_id,
         ),
     )
     found = await cur.fetchone()

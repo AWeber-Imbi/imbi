@@ -502,7 +502,10 @@ class DedupeTestCase(TriggerTestCase):
         self.version: int = row['active_version']
 
     async def _deliver(
-        self, delivery: str, sha: str | None = 'abc123'
+        self,
+        delivery: str,
+        sha: str | None = 'abc123',
+        project: str | None = None,
     ) -> dict[str, typing.Any]:
         self._as('imbi-gateway')
         run: dict[str, typing.Any] = {'repository': {'full_name': 'octo/a'}}
@@ -514,6 +517,7 @@ class DedupeTestCase(TriggerTestCase):
                 'trigger': 'hook',
                 'binding': self.binding,
                 'payload': {'payload': run},
+                'project_id': project,
             },
             headers={
                 'X-Imbi-Webhook': self.webhook,
@@ -616,6 +620,25 @@ class DedupeTestCase(TriggerTestCase):
             f"created_at = NOW() - INTERVAL '{WINDOW + 60} seconds'",
         )
         self.assertEqual((await self._deliver('d-3'))['status'], 'queued')
+
+    async def test_each_project_dedupes_on_its_own(self) -> None:
+        # One delivery matches two projects: each gets a run.
+        first = {p: await self._deliver('d-1', project=p) for p in 'ab'}
+        self.assertEqual(
+            [r['status'] for r in first.values()], ['queued', 'queued']
+        )
+        for project, run in first.items():
+            with self.subTest(project=project):
+                repeat = await self._deliver('d-2', project=project)
+                self.assertEqual(repeat['status'], 'skipped')
+                self.assertEqual(repeat['duplicate_of'], run['id'])
+        # A project with no run of the key yet runs.
+        other = await self._deliver('d-2', project='c')
+        self.assertEqual(other['status'], 'queued')
+        # A run with no project matches a run of any project.
+        bare = await self._deliver('d-3')
+        self.assertEqual(bare['status'], 'skipped')
+        self.assertEqual(bare['duplicate_of'], other['id'])
 
     async def test_payload_without_the_key_runs(self) -> None:
         for delivery in ('d-1', 'd-2'):
