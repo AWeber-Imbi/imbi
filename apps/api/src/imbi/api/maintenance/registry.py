@@ -35,6 +35,7 @@ MaintenanceSlug = typing.Literal[
     'commit-sync',
     'pr-sync',
     'search-reindex',
+    'marketplace-sync',
 ]
 
 
@@ -300,6 +301,20 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_embeddable_nodes,
             execute=operations.execute_search_reindex,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='marketplace-sync',
+            label='Sync Agent Marketplaces',
+            description=(
+                'Read the catalog of every agent marketplace in every '
+                'organization again at its default branch head. Agent '
+                'versions keep the commit they pinned. The scheduler runs '
+                'this every 6 hours.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_marketplaces,
+            execute=operations.execute_marketplace_sync,
             items_are_projects=False,
         ),
     )

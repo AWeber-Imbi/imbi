@@ -86,6 +86,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    resumes a task becomes accountable for it, and an admin's task is not
    limited, so read its target before you resume it. See
    [Targets](../scheduler/tasks.md#targets).
+2. Run `imbi-api setup-permissions`. It adds
+   `admin:maintenance:marketplace-sync` and gives it to the
+   `imbi-scheduler` role. The new `marketplace-sync` system task starts
+   that maintenance operation every 6 hours, and without the permission
+   each run gets a `403`. See
+   [System tasks](../scheduler/tasks.md#system-tasks).
 
 ## 2.49.0
 

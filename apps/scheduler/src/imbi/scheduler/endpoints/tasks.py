@@ -67,7 +67,7 @@ class TaskCreate(pydantic.BaseModel):
     tags: list[str] = []
 
 
-def _created(body: TaskCreate, created_by: str) -> models.Task:
+def created(body: TaskCreate, created_by: str) -> models.Task:
     """Build the task to store from a create request."""
     now = datetime.datetime.now(datetime.UTC)
     return _scheduled(
@@ -133,7 +133,7 @@ async def create_task(
     """Create a task owned by the authenticated caller."""
     dependencies.authorize_system_kind(auth, body.kind)
     try:
-        task = _created(body, auth.principal_name)
+        task = created(body, auth.principal_name)
     except pydantic.ValidationError as err:
         # The cross-field rules live on `models.Task`, not on the request
         # model: whether an identity is required depends on the target kind,

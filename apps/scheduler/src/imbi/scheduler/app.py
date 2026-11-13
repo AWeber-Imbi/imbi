@@ -13,7 +13,14 @@ from imbi.common import (
     sentry,
     server,
 )
-from imbi.scheduler import app_status, endpoints, lifespans, settings, store
+from imbi.scheduler import (
+    app_status,
+    endpoints,
+    lifespans,
+    settings,
+    store,
+    system_tasks,
+)
 
 
 def create_app() -> fastapi.FastAPI:
@@ -37,6 +44,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.iggy_hook,
             graph.graph_lifespan,
             store.store_lifespan,
+            system_tasks.hook,
             lifespans.engine_hook,
         ),
     )

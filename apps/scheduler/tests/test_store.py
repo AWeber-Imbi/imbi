@@ -15,7 +15,7 @@ import psycopg
 from psycopg import rows, sql
 
 from apps.scheduler.tests import helpers
-from imbi.scheduler import models, store, triggers
+from imbi.scheduler import models, store, system_tasks, triggers
 from imbi.scheduler.store import initializer
 from imbi.scheduler.store import tasks as tasks_repo
 
@@ -756,3 +756,54 @@ class UpdateInvariantTests(StoreTestCase):
         updated = await self.tasks.update(renamed)
         assert updated is not None
         self.assertEqual('Renamed', updated.name)
+
+
+class SystemTaskSeedTests(StoreTestCase):
+    """`system_tasks.seed` creates what is missing and changes nothing else."""
+
+    DEFINITIONS: typing.ClassVar[tuple[dict[str, typing.Any], ...]] = (
+        {
+            'slug': 'nightly-recompute',
+            'name': 'Nightly recompute',
+            'trigger': triggers.CronTrigger(expression='0 6 * * *'),
+            'target': models.ApiTarget(
+                method='POST', path='/maintenance/operations/rescore/run'
+            ),
+        },
+    )
+
+    async def test_creates_a_missing_task(self) -> None:
+        created = await system_tasks.seed(self.tasks, self.DEFINITIONS)
+        self.assertEqual(['nightly-recompute'], created)
+        stored = await self.tasks.get('nightly-recompute')
+        assert stored is not None and stored.identity is not None
+        self.assertEqual('system', stored.kind)
+        self.assertEqual('imbi-scheduler', stored.identity.subject)
+        self.assertEqual('imbi-scheduler', stored.created_by)
+        self.assertIsNotNone(stored.next_run_at)
+
+    async def test_keeps_an_operator_change(self) -> None:
+        await system_tasks.seed(self.tasks, self.DEFINITIONS)
+        stored = await self.tasks.get('nightly-recompute')
+        assert stored is not None
+        await self.tasks.update(
+            stored.model_copy(
+                update={
+                    'trigger': triggers.CronTrigger(expression='0 7 * * *')
+                }
+            )
+        )
+        created = await system_tasks.seed(self.tasks, self.DEFINITIONS)
+        self.assertEqual([], created)
+        kept = await self.tasks.get('nightly-recompute')
+        assert kept is not None
+        self.assertEqual(
+            triggers.CronTrigger(expression='0 7 * * *'), kept.trigger
+        )
+
+    async def test_every_shipped_definition_is_valid(self) -> None:
+        # A bad entry would otherwise fail only at scheduler startup.
+        created = await system_tasks.seed(self.tasks)
+        self.assertEqual(
+            [d['slug'] for d in system_tasks.SYSTEM_TASKS], created
+        )

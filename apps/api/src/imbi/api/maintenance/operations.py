@@ -1086,3 +1086,51 @@ async def execute_search_reindex(
             label=label,
         )
     return 'succeeded'
+
+
+async def enumerate_marketplaces(db: graph.Graph) -> list[str]:
+    """The id of every agent marketplace in every organization."""
+    from imbi.api import harness
+
+    return await harness.get_store().marketplace_ids()
+
+
+async def execute_marketplace_sync(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Read one marketplace's catalog again at its default branch head.
+
+    The same sync as ``POST .../agent-marketplaces/{slug}/sync``. A failed
+    sync keeps the last catalog and stores ``sync_error``, which the
+    marketplace page already shows, so the message is safe to record.
+    """
+    from imbi.api import harness
+    from imbi.api.endpoints import harness as harness_endpoints
+    from imbi.api.harness import marketplaces
+
+    store = harness.get_store()
+    row = await store.marketplace_by_id(item_id)
+    if row is None:
+        return _skip(
+            ctx,
+            'marketplace-sync',
+            'Marketplace was deleted between enumeration and execution.',
+        )
+    org_id = str(row['organization_id'])
+    org_slug = (await harness_endpoints.organization_slugs(db, [org_id])).get(
+        org_id
+    )
+    if org_slug is None:
+        return _skip(
+            ctx, 'marketplace-sync', 'Marketplace has no organization.'
+        )
+    synced = await marketplaces.sync(db, store, org_slug, row)
+    if synced.get('sync_error'):
+        raise MaintenanceItemFailed(
+            f'Marketplace {row["slug"]}: {synced["sync_error"]}'
+        )
+    return 'succeeded'
