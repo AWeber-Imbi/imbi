@@ -799,17 +799,21 @@ async def _fetch_default_branch(
     return str(meta.get('default_branch') or 'main')
 
 
-async def _fetch_all_commits(
-    client: httpx.AsyncClient, branch: str, *, max_wait: float
+async def _walk_commits(
+    client: httpx.AsyncClient,
+    params: dict[str, str],
+    max_pages: int,
+    truncated: str,
+    *,
+    max_wait: float,
 ) -> list[dict[str, typing.Any]]:
-    """Walk every commit reachable from ``branch`` via Link pagination.
+    """Walk ``GET /commits`` with *params* via Link pagination.
 
-    Capped at ``_MAX_HISTORY_PAGES`` (logged on truncation) so a very deep
-    repo can't pin a one-shot backfill indefinitely.
+    Capped at *max_pages*; on truncation *truncated* is logged as a
+    warning with the page cap and the commit count.
     """
-    params: dict[str, str] = {'sha': branch, 'per_page': '100'}
     out: list[dict[str, typing.Any]] = []
-    for page in range(1, _MAX_HISTORY_PAGES + 1):
+    for page in range(1, max_pages + 1):
         resp = await _request(
             client, 'GET', '/commits', params=params, max_wait=max_wait
         )
@@ -832,14 +836,27 @@ async def _fetch_all_commits(
         if next_page is None:
             return out
         params['page'] = next_page
-        if page == _MAX_HISTORY_PAGES:
-            LOGGER.warning(
-                'github-commit-sync truncated history at %d pages (%d '
-                'commits); older commits will not be recorded',
-                _MAX_HISTORY_PAGES,
-                len(out),
-            )
+        if page == max_pages:
+            LOGGER.warning(truncated, max_pages, len(out))
     return out
+
+
+async def _fetch_all_commits(
+    client: httpx.AsyncClient, branch: str, *, max_wait: float
+) -> list[dict[str, typing.Any]]:
+    """Walk every commit reachable from ``branch`` via Link pagination.
+
+    Capped at ``_MAX_HISTORY_PAGES`` (logged on truncation) so a very deep
+    repo can't pin a one-shot backfill indefinitely.
+    """
+    return await _walk_commits(
+        client,
+        {'sha': branch, 'per_page': '100'},
+        _MAX_HISTORY_PAGES,
+        'github-commit-sync truncated history at %d pages (%d '
+        'commits); older commits will not be recorded',
+        max_wait=max_wait,
+    )
 
 
 async def _fetch_tag_ref(
@@ -886,34 +903,15 @@ async def _fetch_commits_since(
     :data:`_MAX_SINCE_PAGES` for the pathological case of a window wide
     enough to cover thousands of commits.
     """
-    params: dict[str, str] = {
-        'sha': branch,
-        'since': since.isoformat(),
-        'per_page': '100',
-    }
-    out: list[dict[str, typing.Any]] = []
-    for page in range(1, _MAX_SINCE_PAGES + 1):
-        resp = await _request(
-            client, 'GET', '/commits', params=params, max_wait=max_wait
-        )
-        resp.raise_for_status()
-        out.extend(typing.cast('list[dict[str, typing.Any]]', resp.json()))
-        next_url = _next_page_url(resp.headers.get('link'))
-        if next_url is None:
-            return out
-        next_page = _query_param(next_url, 'page')
-        if next_page is None:
-            return out
-        params['page'] = next_page
-        if page == _MAX_SINCE_PAGES:
-            LOGGER.warning(
-                'github-commit-sync truncated the since-window walk at %d '
-                'pages (%d commits); widen the stored history with a full '
-                'sync instead',
-                _MAX_SINCE_PAGES,
-                len(out),
-            )
-    return out
+    return await _walk_commits(
+        client,
+        {'sha': branch, 'since': since.isoformat(), 'per_page': '100'},
+        _MAX_SINCE_PAGES,
+        'github-commit-sync truncated the since-window walk at %d '
+        'pages (%d commits); widen the stored history with a full '
+        'sync instead',
+        max_wait=max_wait,
+    )
 
 
 async def _publish_best_effort(
