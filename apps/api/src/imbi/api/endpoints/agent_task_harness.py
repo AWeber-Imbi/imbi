@@ -35,6 +35,7 @@ import typing
 import uuid
 
 import fastapi
+import jsonschema
 import pydantic
 
 from imbi.api import agent_tasks, harness
@@ -55,6 +56,8 @@ MAX_BATCH_PAYLOAD_BYTES = 4 * MAX_LARGE_PAYLOAD_BYTES
 LARGE_EVENT_TYPES = frozenset({'turn', 'tool.called'})
 #: The most continuation parts of one call.
 MAX_PARTS = 1000
+#: The largest ``structured_output`` of an outcome, in bytes of JSON.
+MAX_STRUCTURED_OUTPUT_BYTES = 256 * 1024
 
 #: The event types that a harness writes. Imbi writes all others.
 HarnessEventType = typing.Literal[
@@ -859,6 +862,33 @@ async def open_agent_task_request(
     )
 
 
+def _check_structured_output(
+    task: dict[str, typing.Any], output: dict[str, typing.Any]
+) -> None:
+    """Raise when ``output`` is too large or does not match the schema.
+
+    Later workflow steps use the output as the step result, so Imbi
+    does not trust the harness to have validated it.
+    """
+    tasks_api.check_payload_size(
+        'structured_output', output, MAX_STRUCTURED_OUTPUT_BYTES
+    )
+    schema = task['output_schema']
+    if schema is None:
+        raise _invalid_output(f'Task {task["short_id"]} has no output_schema')
+    try:
+        jsonschema.validate(output, schema)
+    except (jsonschema.ValidationError, jsonschema.SchemaError) as err:
+        raise _invalid_output(f'structured_output: {err.message}') from err
+
+
+def _invalid_output(message: str) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=422,
+        detail={'error': 'invalid_structured_output', 'message': message},
+    )
+
+
 @agent_task_harness_router.post(
     '/{short_id}/outcome', response_model=TaskState
 )
@@ -877,9 +907,16 @@ async def set_agent_task_outcome(
         403: The caller is not the service account of the task's agent.
         404: No such task.
         409: ``task_closed``.
+        413: ``payload_too_large``: ``structured_output`` is larger
+            than :data:`MAX_STRUCTURED_OUTPUT_BYTES`.
         422: Not an F5 outcome, or no reason.
+            ``invalid_structured_output``: ``structured_output`` does
+            not match the ``output_schema`` of the task, or the task
+            has no ``output_schema``.
 
     """
+    if data.structured_output is not None:
+        _check_structured_output(task, data.structured_output)
     try:
         row = await store.set_outcome(
             org_id,

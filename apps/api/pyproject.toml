@@ -32,6 +32,7 @@ dependencies = [
   "imbi-common[databases,llm,mcp,sentry,server]==2.49.0",
   "jinja2",
   "jsonpatch>=1.33",
+  "jsonschema>=4.26",
   "limits>=5,<6",
   "mcp>=1.26.0",
   "nanoid>=2.0.0",

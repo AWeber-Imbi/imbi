@@ -11,6 +11,7 @@ import typing
 import uuid
 
 import httpx
+from psycopg.types import json as pg_json
 
 from apps.api.tests.endpoints import test_agent_tasks
 from imbi.api import models
@@ -755,7 +756,16 @@ class RequestTests(HarnessTestCase):
 
 
 class OutcomeTests(HarnessTestCase):
+    async def set_output_schema(self, schema: dict[str, typing.Any]) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET output_schema = %s'
+                ' WHERE id = %s',
+                (pg_json.Jsonb(schema), uuid.UUID(self.task['id'])),
+            )
+
     async def test_outcome_keeps_the_structured_output(self) -> None:
+        await self.set_output_schema({'type': 'object'})
         await self.open_session()
         response = await self.post(
             'outcome',
@@ -764,6 +774,40 @@ class OutcomeTests(HarnessTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         task = await self.task_row()
         self.assertEqual(task['structured_output'], {'n': 1})
+
+    async def test_outcome_refuses_a_bad_structured_output(self) -> None:
+        await self.open_session()
+        response = await self.post(
+            'outcome', {'outcome': 'done_acted', 'structured_output': {}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'invalid_structured_output'
+        )
+        await self.set_output_schema(
+            {
+                'type': 'object',
+                'properties': {'n': {'type': 'integer'}},
+                'required': ['n'],
+            }
+        )
+        response = await self.post(
+            'outcome',
+            {'outcome': 'done_acted', 'structured_output': {'n': 'one'}},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'invalid_structured_output'
+        )
+        big = 'x' * agent_task_harness.MAX_STRUCTURED_OUTPUT_BYTES
+        response = await self.post(
+            'outcome',
+            {'outcome': 'done_acted', 'structured_output': {'n': 1, 's': big}},
+        )
+        self.assertEqual(response.status_code, 413, response.text)
+        task = await self.task_row()
+        self.assertNotEqual(task['status'], 'closed')
+        self.assertIsNone(task['structured_output'])
 
     async def test_outcome_closes_the_task_and_sessions(self) -> None:
         await self.open_session()
