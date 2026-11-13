@@ -98,7 +98,7 @@ function ConditionRow({
         groups={references}
         id={`${id}-a`}
         multiline={false}
-        onChange={(a) => onChange({ ...row, a })}
+        onChange={(a) => onChange({ ...row, a: fromText(row.a, a) })}
         value={text(row.a)}
       />
       <div className="flex items-center gap-1.5">
@@ -129,7 +129,7 @@ function ConditionRow({
             groups={references}
             id={`${id}-b`}
             multiline={false}
-            onChange={(b) => onChange({ ...row, b })}
+            onChange={(b) => onChange({ ...row, b: fromText(row.b, b) })}
             value={text(row.b)}
           />
         </>
@@ -141,6 +141,16 @@ function ConditionRow({
       ))}
     </div>
   )
+}
+
+function fromText(previous: unknown, next: string): unknown {
+  if (previous === undefined || previous === null) return next
+  if (typeof previous === 'string') return next
+  try {
+    return JSON.parse(next)
+  } catch {
+    return next
+  }
 }
 
 function text(value: unknown): string {

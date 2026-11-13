@@ -63,6 +63,19 @@ describe('ConditionsField', () => {
     ])
   })
 
+  it('keeps the type of a value that is not text', () => {
+    const onChange = renderField([{ a: ['abc'], b: 'a', operator: 'contains' }])
+    fireEvent.change(screen.getByLabelText('Condition 1 value'), {
+      target: { value: '["abc", "d"]' },
+    })
+    fireEvent.change(screen.getByLabelText('Condition 1 compared value'), {
+      target: { value: '5' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith([
+      { a: ['abc', 'd'], b: '5', operator: 'contains' },
+    ])
+  })
+
   it('hides b for an empty check', async () => {
     const onChange = renderField([{ a: 'x', b: 'y', operator: 'equals' }])
     fireEvent.click(screen.getByLabelText('Condition 1 operator'))
