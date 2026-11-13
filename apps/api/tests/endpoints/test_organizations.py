@@ -654,6 +654,8 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
                 'workflows.workflows',
                 'secrets.grants',
                 'secrets.resolutions',
+                'secrets.providers',
+                'secrets.identity_sources',
             ):
                 await conn.execute(
                     f'DELETE FROM {table} WHERE organization_id = %s',
@@ -934,4 +936,21 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             lambda: agent_tasks.TaskStore(self.pool).create(
                 task, agent_tasks.Actor('human', 'u', 'web'), {}
             )
+        )
+        secrets = secret_broker.store.SecretStore(self.pool)
+        await self._assert_waits_for_delete(
+            lambda: secrets.create(
+                'providers',
+                self.org,
+                {
+                    'name': 'p',
+                    'type': 'fake',
+                    'config': {},
+                    'capabilities': [],
+                    'created_by': 'u',
+                },
+            )
+        )
+        await self._assert_waits_for_delete(
+            lambda: secrets.put_identity_source(self.org, 'fake', {}, 'u')
         )

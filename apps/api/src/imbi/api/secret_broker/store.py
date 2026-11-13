@@ -22,6 +22,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api.secret_broker import audit, broker
+from imbi.common import relational
 
 SCHEMA = 'secrets'
 
@@ -243,6 +244,7 @@ class SecretStore:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(conn, organization_id)
             if table == 'grants':
                 await _lock_bindings(
                     cur, organization_id, values['binding_ids']
@@ -568,6 +570,7 @@ class SecretStore:
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(conn, organization_id)
             await cur.execute(
                 'INSERT INTO secrets.identity_sources'
                 ' (organization_id, type, config, updated_by)'
