@@ -37,8 +37,10 @@ from imbi.api import agent_tasks as agent_runtime
 from imbi.api import email, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
-from imbi.api.endpoints import agent_tasks
+from imbi.api.endpoints import agent_tasks, project_deployments
+from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common import graph, lifespan
+from imbi.common.plugins.base import DeploymentRun
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import agent as agent_step
@@ -150,12 +152,20 @@ class SideEffectResolve(pydantic.BaseModel):
     resolution: typing.Literal['clear', 'mark_done'] = pydantic.Field(
         description='``clear`` deletes the key, so a repeat of the call '
         'acts again. ``mark_done`` records that the call acted, so a '
-        'repeat does not act. A deployment marked done cannot be retried: '
-        'Imbi does not know its deployment run.'
+        'repeat does not act. A deployment marked done with no '
+        '``deployment_run_id`` cannot be retried: Imbi does not know its '
+        'deployment run.'
     )
     retry: bool = pydantic.Field(
         default=False,
         description='Open the run again and run the step again.',
+    )
+    deployment_run_id: str | None = pydantic.Field(
+        default=None,
+        description='With ``mark_done`` on a deployment: the run, from '
+        '``GET side-effects/deployments``, that the operator confirmed. '
+        'Imbi stores it as the result of the call, so a retried step '
+        'follows that deployment.',
     )
 
 
@@ -886,14 +896,106 @@ async def list_stale_side_effects(
     return await runs.stale_side_effects(org_id)
 
 
+async def _stale_side_effect(
+    runs: workflows.RunStore, org_id: str, key: str
+) -> workflows.Row:
+    found = await runs.stale_side_effects(org_id, key)
+    if not found:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No stale side effect with this key'
+        )
+    return found[0]
+
+
+async def _deployment_candidates(
+    db: graph.Graph,
+    org_slug: str,
+    effect: workflows.Row,
+    auth: permissions.AuthContext,
+) -> tuple[ResolvedCapability, list[DeploymentRun]]:
+    """Ask the deployment plugin for the deployments that the call of a
+    stale ``deployment`` key can have made.
+
+    The project, environment, and version come from the step's stored
+    input. A rollback to ``last_healthy`` or ``previous`` finds its
+    version when it runs, so its input has none. The window starts one
+    minute before the key, for clock skew between Imbi and the provider.
+
+    Raises:
+        409: The key is not a deployment, or its step input does not
+            name a project, an environment, and a version.
+
+    """
+    params: dict[str, typing.Any] = effect['step_input'] or {}
+    project_id, environment, version = (
+        params.get(name) for name in ('project_id', 'environment', 'version')
+    )
+    if effect['node_type'] == 'rollback' and params.get('target') != 'version':
+        version = None
+    if effect['action'] != 'deployment' or not (
+        isinstance(project_id, str)
+        and isinstance(environment, str)
+        and isinstance(version, str)
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail='The step input of this key does not name a project, '
+            'an environment, and a version',
+        )
+    return await project_deployments.find_deployments(
+        db,
+        org_slug,
+        project_id,
+        auth,
+        environment=environment,
+        ref=version,
+        since=effect['created_at'] - datetime.timedelta(minutes=1),
+    )
+
+
+@workflow_attention_router.get(
+    '/side-effects/deployments', response_model=list[DeploymentRun]
+)
+async def find_side_effect_deployments(
+    org_slug: str,
+    org_id: OrgId,
+    key: str,
+    db: graph.Pool,
+    runs: workflows.Runs,
+    auth: RecoverAuth,
+) -> list[DeploymentRun]:
+    """Return the deployments that a stale ``deployment`` key can have
+    made, from the project's deployment plugin.
+
+    Another deploy of the same version and environment at the same time
+    also matches, so the operator confirms one (``mark_done`` with
+    ``deployment_run_id``) before Imbi stores it. An empty list: the
+    plugin found none.
+
+    Raises:
+        400: The plugin cannot find deployments.
+        404: No stale side effect with the key in the organization.
+        409: The key is not a deployment, or its step input is gone.
+
+    """
+    effect = await _stale_side_effect(runs, org_id, key)
+    _, found = await _deployment_candidates(db, org_slug, effect, auth)
+    return found
+
+
 @workflow_attention_router.post('/side-effects/resolve', status_code=204)
 async def resolve_side_effect(
+    org_slug: str,
     org_id: OrgId,
     body: SideEffectResolve,
+    db: graph.Pool,
     runs: workflows.Runs,
-    _: RecoverAuth,
+    auth: RecoverAuth,
 ) -> None:
     """Clear a stale side effect, or mark it done, and retry its step.
+
+    A deployment marked done with a ``deployment_run_id`` stores that
+    run as the result of the call, if the plugin still finds it.
 
     Raises:
         404: No stale side effect with the key in the organization.
@@ -901,24 +1003,44 @@ async def resolve_side_effect(
             changed.
 
     """
-    found = await runs.stale_side_effects(org_id, body.key)
-    if not found:
-        raise fastapi.HTTPException(
-            status_code=404, detail='No stale side effect with this key'
-        )
-    effect = found[0]
+    effect = await _stale_side_effect(runs, org_id, body.key)
     done = body.resolution == 'mark_done'
+    deployment = effect['action'] == 'deployment'
+    if body.deployment_run_id is not None and not (done and deployment):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail='Only a deployment marked done takes a deployment run',
+        )
     if body.retry and (
-        not effect['retryable'] or (done and effect['action'] == 'deployment')
+        not effect['retryable']
+        or (done and deployment and body.deployment_run_id is None)
     ):
         raise fastapi.HTTPException(
             status_code=409, detail='The step of this key cannot run again'
         )
     response = None
-    if done:
+    if body.deployment_run_id is not None:
+        resolved, found = await _deployment_candidates(
+            db, org_slug, effect, auth
+        )
+        run = next(
+            (r for r in found if r.run_id == body.deployment_run_id), None
+        )
+        if run is None:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail='The plugin does not find this deployment run '
+                'for the key',
+            )
+        response = project_deployments.DeploymentTriggerResponse(
+            run=run,
+            plugin_id=resolved.integration_id,
+            plugin_slug=resolved.plugin_slug,
+        ).model_dump(mode='json')
+    elif done:
         response = (
             _DEPLOYMENT_DONE
-            if effect['action'] == 'deployment'
+            if deployment
             else EmailResult(recipients=[]).model_dump()
         )
     retry = (effect['run_id'], effect['node_id']) if body.retry else None

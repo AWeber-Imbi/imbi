@@ -1936,6 +1936,55 @@ class GitHubDeployment(DeploymentCapability):
                 else None,
             )
 
+    async def find_deployments(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref_or_sha: str,
+        since: datetime.datetime,
+    ) -> list[DeploymentRun]:
+        """Find deployments via ``GET /deployments?environment=&ref=``.
+
+        GitHub lists them newest first, so one page of 100 holds every
+        deployment of one ref and environment in the window the host
+        asks about. Each match gets its status from
+        :meth:`get_deployment_status`, with ``started_at`` set to when
+        GitHub made the deployment.
+        """
+        if not ctx.environment:
+            raise ValueError(
+                'find_deployments requires PluginContext.environment'
+            )
+        async with self._client(
+            ctx, credentials, SCOPE_DEPLOYMENTS_READ
+        ) as client:
+            resp = await client.get(
+                '/deployments',
+                params={
+                    'environment': ctx.environment,
+                    'ref': ref_or_sha,
+                    'per_page': '100',
+                },
+            )
+            resp.raise_for_status()
+            found = typing.cast(list[dict[str, typing.Any]], resp.json())
+        matches = [
+            (str(d['id']), created)
+            for d in found
+            if (created := _parse_iso(d.get('created_at'))) is not None
+            and created >= since
+        ]
+        runs = await asyncio.gather(
+            *(
+                self.get_deployment_status(ctx, credentials, run_id)
+                for run_id, _ in matches
+            )
+        )
+        return [
+            run.model_copy(update={'started_at': created})
+            for run, (_, created) in zip(runs, matches, strict=True)
+        ]
+
     async def list_recent_deployments(
         self,
         ctx: PluginContext,

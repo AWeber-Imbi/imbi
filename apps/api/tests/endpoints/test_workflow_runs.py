@@ -1527,3 +1527,107 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         self.assertEqual(response.status_code, 409)
         response = await self._resolve(resolution='clear')
         self.assertEqual(response.status_code, 204, response.text)
+
+    # --- Provider reconcile of a deployment key (#678) -----------------
+
+    async def _as_deployment(
+        self, found: list[plugin_base.DeploymentRun]
+    ) -> mock.AsyncMock:
+        """Make the stale key a deployment of the failed step, and patch
+        the deployment plugin lookup to return ``found``."""
+        deploy = workflows.runs.side_effect_key(
+            'imbi-workflows', 'deployment', f'{self.run_id}:tell'
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.side_effects SET key = %s'
+                ' WHERE key = %s',
+                (deploy, self.key),
+            )
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET input = %s'
+                " WHERE run_id = %s AND node_id = 'tell'",
+                (
+                    '{"project_id": "p1", "environment": "staging",'
+                    ' "version": "1.2.0"}',
+                    self.run_id,
+                ),
+            )
+        self.key = deploy
+        resolved = mock.Mock(integration_id='int-1', plugin_slug='github')
+        patcher = mock.patch.object(
+            project_deployments,
+            'find_deployments',
+            mock.AsyncMock(return_value=(resolved, found)),
+        )
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    async def test_find_deployments_reads_the_step_input(self) -> None:
+        run = plugin_base.DeploymentRun(run_id='42', status='success')
+        find = await self._as_deployment([run])
+        response = await self.client.get(
+            self.recover + '/deployments', params={'key': self.key}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([r['run_id'] for r in response.json()], ['42'])
+        args, kwargs = find.call_args
+        self.assertEqual(args[1:3], (self.org, 'p1'))
+        self.assertEqual(kwargs['environment'], 'staging')
+        self.assertEqual(kwargs['ref'], '1.2.0')
+        [effect] = (await self.client.get(self.recover)).json()
+        self.assertEqual(
+            kwargs['since'],
+            datetime.datetime.fromisoformat(effect['created_at'])
+            - datetime.timedelta(minutes=1),
+        )
+
+    async def test_find_deployments_needs_a_deployment_key(self) -> None:
+        response = await self.client.get(
+            self.recover + '/deployments', params={'key': self.key}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_confirmed_deployment_is_stored_and_retried(self) -> None:
+        run = plugin_base.DeploymentRun(run_id='42', status='in_progress')
+        await self._as_deployment([run])
+        response = await self._resolve(
+            resolution='mark_done', deployment_run_id='42', retry=True
+        )
+        self.assertEqual(response.status_code, 204, response.text)
+        status, steps, effect = await self._state()
+        self.assertEqual((status, steps['tell']), ('running', 'running'))
+        stored = project_deployments.DeploymentTriggerResponse.model_validate(
+            effect[0]
+        )
+        self.assertEqual(
+            (stored.run.run_id, stored.plugin_id, stored.plugin_slug),
+            ('42', 'int-1', 'github'),
+        )
+
+    async def test_unconfirmed_deployment_run_changes_nothing(self) -> None:
+        await self._as_deployment([])
+        before = await self._state()
+        response = await self._resolve(
+            resolution='mark_done', deployment_run_id='42', retry=True
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self._resolve(
+            resolution='clear', deployment_run_id='42'
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(await self._state(), before)
+
+    async def test_rollback_to_last_healthy_has_no_version(self) -> None:
+        find = await self._as_deployment([])
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.step_runs SET node_type = 'rollback'"
+                " WHERE run_id = %s AND node_id = 'tell'",
+                (self.run_id,),
+            )
+        response = await self.client.get(
+            self.recover + '/deployments', params={'key': self.key}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        find.assert_not_called()

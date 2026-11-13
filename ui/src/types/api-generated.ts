@@ -6421,6 +6421,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflow-runs/side-effects/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Side Effect Deployments
+         * @description Return the deployments that a stale ``deployment`` key can have
+         *     made, from the project's deployment plugin.
+         *
+         *     Another deploy of the same version and environment at the same time
+         *     also matches, so the operator confirms one (``mark_done`` with
+         *     ``deployment_run_id``) before Imbi stores it. An empty list: the
+         *     plugin found none.
+         *
+         *     Raises:
+         *         400: The plugin cannot find deployments.
+         *         404: No stale side effect with the key in the organization.
+         *         409: The key is not a deployment, or its step input is gone.
+         */
+        get: operations["find_side_effect_deployments_api_organizations__org_slug__workflow_runs_side_effects_deployments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/workflow-runs/side-effects/resolve": {
         parameters: {
             query?: never;
@@ -6433,6 +6464,9 @@ export interface paths {
         /**
          * Resolve Side Effect
          * @description Clear a stale side effect, or mark it done, and retry its step.
+         *
+         *     A deployment marked done with a ``deployment_run_id`` stores that
+         *     run as the result of the call, if the plugin still finds it.
          *
          *     Raises:
          *         404: No stale side effect with the key in the organization.
@@ -20306,7 +20340,7 @@ export interface components {
             key: string;
             /**
              * Resolution
-             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_done`` records that the call acted, so a repeat does not act. A deployment marked done cannot be retried: Imbi does not know its deployment run.
+             * @description ``clear`` deletes the key, so a repeat of the call acts again. ``mark_done`` records that the call acted, so a repeat does not act. A deployment marked done with no ``deployment_run_id`` cannot be retried: Imbi does not know its deployment run.
              * @enum {string}
              */
             resolution: "clear" | "mark_done";
@@ -20316,6 +20350,11 @@ export interface components {
              * @default false
              */
             retry: boolean;
+            /**
+             * Deployment Run Id
+             * @description With ``mark_done`` on a deployment: the run, from ``GET side-effects/deployments``, that the operator confirmed. Imbi stores it as the result of the call, so a retried step follows that deployment.
+             */
+            deployment_run_id?: string | null;
         };
         /**
          * StaleSideEffect
@@ -32458,6 +32497,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaleSideEffect"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_side_effect_deployments_api_organizations__org_slug__workflow_runs_side_effects_deployments_get: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentRun"][];
                 };
             };
             /** @description Validation Error */

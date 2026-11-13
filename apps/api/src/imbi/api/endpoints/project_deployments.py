@@ -3290,6 +3290,44 @@ async def get_deployment_run(
         ) from exc
 
 
+async def find_deployments(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    *,
+    environment: str,
+    ref: str,
+    since: datetime.datetime,
+) -> tuple[ResolvedCapability, list[DeploymentRun]]:
+    """Return the project's deployment plugin, and the deployments of
+    ``ref`` to ``environment`` that it made at or after ``since``.
+
+    Raises:
+        400: The plugin cannot find deployments.
+        404: The project is not in the organization.
+
+    """
+    if not await _project_in_org(db, org_slug, project_id):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found in {org_slug!r}',
+        )
+    resolved, ctx, credentials = await _resolve_and_context(
+        db, org_slug, project_id, auth, environment=environment
+    )
+    try:
+        runs = await call_with_timeout(
+            _handler(resolved).find_deployments(ctx, credentials, ref, since)
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Plugin {resolved.plugin_slug!r} cannot find deployments.',
+        ) from exc
+    return resolved, runs
+
+
 async def _handle_deploy(
     db: graph.Graph,
     org_slug: str,
