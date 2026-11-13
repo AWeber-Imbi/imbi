@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   Bot,
@@ -244,12 +244,15 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
 function CopyButton({ list, task }: { list: Turn[]; task: AgentTask }) {
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<null | string>(null)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(conversationMarkdown(task, list))
       setError(null)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not copy.')
     }

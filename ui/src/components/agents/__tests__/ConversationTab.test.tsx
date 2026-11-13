@@ -1,7 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { render, screen } from '@/test/utils'
+import { act, render, screen } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
@@ -147,6 +147,28 @@ describe('ConversationTab', () => {
     expect(
       await screen.findByRole('button', { name: /Copied/ }),
     ).toBeInTheDocument()
+  })
+
+  it('resets Copied two seconds after the last click', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderTab('closed')
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: vi.fn(() => Promise.resolve()) },
+      })
+      const button = screen.getByRole('button', { name: /Copy as Markdown/ })
+      await user.click(button)
+      await act(() => vi.advanceTimersByTimeAsync(1500))
+      await user.click(button)
+      await act(() => vi.advanceTimersByTimeAsync(1000))
+      expect(button).toHaveTextContent('Copied')
+      await act(() => vi.advanceTimersByTimeAsync(1100))
+      expect(button).toHaveTextContent('Copy as Markdown')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('sets subagent work apart under its call', async () => {
