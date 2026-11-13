@@ -338,7 +338,7 @@ error is one of these:
 | `script_error` | The code raised an exception. The error has its type and message |
 | `script_timeout` | The code ran for more than 5 seconds |
 | `script_memory` | The code used more than 64 MiB, or printed more than 64 KiB |
-| `script_output_invalid` | The last line is not a dict, a value has no JSON form, or the result does not match `output_fields` |
+| `script_output_invalid` | The last line is not a dict, a value has no JSON form, text holds a NUL character, or the result does not match `output_fields` |
 | `script_output_too_large` | The output is more than 64 KiB of JSON |
 | `script_branch_invalid` | `branch` is missing, or is not one of `branches` |
 

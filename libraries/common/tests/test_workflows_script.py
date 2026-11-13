@@ -197,6 +197,25 @@ class ResultTestCase(unittest.TestCase):
             self.assertEqual(raised.exception.code, code)
             self.assertFalse(raised.exception.retry)
 
+    def test_nul_character(self) -> None:
+        # PostgreSQL rejects a NUL character in jsonb.
+        for value, printed in (
+            ({'count': 1, 'note': 'a\x00b'}, ''),
+            ({'count': 1, 'a\x00': 1}, ''),
+            ({'count': 1}, 'a\x00b'),
+        ):
+            with (
+                self.subTest(repr(value), printed=printed),
+                self.assertRaises(script_runner.ScriptError) as raised,
+            ):
+                script_runner.result(_params(), value, printed)
+            self.assertEqual(raised.exception.code, 'script_output_invalid')
+            self.assertIn('NUL', raised.exception.message)
+        # A NUL past the kept text is not stored.
+        printed = 'x' * script_runner.MAX_STDOUT + '\x00'
+        done = script_runner.result(_params(), {'count': 1}, printed)
+        self.assertNotIn('\x00', done.output['stdout'])
+
     def test_too_deep(self) -> None:
         value: typing.Any = 1
         for _ in range(40):

@@ -177,8 +177,13 @@ def result(params: script.Params, value: typing.Any, printed: str) -> Result:
                 + ', '.join(params.branches),
             )
         port = params.branches.index(branch)
+    # PostgreSQL rejects a NUL character in jsonb, so the stored output
+    # must not hold one. Only the kept part of the printed text is stored.
+    kept = printed[:MAX_STDOUT]
+    if '\x00' in kept:
+        raise _invalid('the printed text contains a NUL character')
     output = script.Output(
-        result=found, branch=branch, stdout=printed[:MAX_STDOUT] or None
+        result=found, branch=branch, stdout=kept or None
     ).model_dump()
     _check_size(output)
     schema = typing.cast(
@@ -249,6 +254,8 @@ class _Converter:
         self._charge(1)
         match value:
             case str():
+                if '\x00' in value:
+                    raise _invalid('a string contains a NUL character')
                 self._charge(len(value))
                 return value
             case None | bool():
@@ -272,6 +279,8 @@ class _Converter:
                 for key, item in mapping.items():
                     if not isinstance(key, str):
                         raise _invalid('a dict key is not a string')
+                    if '\x00' in key:
+                        raise _invalid('a dict key contains a NUL character')
                     self._charge(len(key) + 1)
                     found[key] = self.convert(item, depth + 1)
                 return found

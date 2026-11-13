@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Next release
+## 2.50.0
 
 1. Scheduled tasks now run with only the permissions of the person
    accountable for them (who last changed the task, else who made it),
@@ -124,9 +124,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    bodies, set `IMBI_GATEWAY_MAX_REQUEST_BODY_BYTES`. An SBoM that the
    gateway sends on to imbi-api must also fit
    `IMBI_API_MAX_REQUEST_BODY_BYTES` (10 MiB by default).
-7. Start the first `cve-sync` from **Admin > Maintenance**. Do not wait
+8. Start the first `cve-sync` from **Admin > Maintenance**. Do not wait
    for the `cve-sync` system task, which runs daily at 01:30 UTC. See
    [CVE catalog](../user-guide/pull-requests-and-dependencies.md#cve-catalog).
+9. If the organization's `allowed_tools` lists `Skill` or `Task`, those
+   tools no longer go to every agent. Turn on `Skill` or `Agent` in the
+   **Built-in** group of the Tools tab of each agent that needs them.
 
 ## 2.49.0
 
