@@ -45,6 +45,7 @@ import {
   type TimelineFilters,
 } from './taskTimeline'
 import { findEntry } from './taskTrajectory'
+import { TimingOverview } from './TimingOverview'
 import {
   FAMILY_TAG,
   familyOf,
@@ -185,6 +186,11 @@ export function TaskLogTab({
           />
         </div>
       </div>
+      <TimingOverview
+        entries={all}
+        live={task.status === 'running'}
+        selected={selected?.event?.seq ?? null}
+      />
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" ref={listRef}>
           <ol className="py-4">

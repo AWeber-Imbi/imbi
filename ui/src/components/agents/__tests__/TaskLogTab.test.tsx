@@ -69,6 +69,42 @@ describe('TaskLogTab inspector', () => {
     expect(within(panel).getByText(/"call_id": "c3"/)).toBeInTheDocument()
   })
 
+  it('selects a call from the timing overview', async () => {
+    const user = userEvent.setup()
+    renderLog()
+    const timing = screen.getByRole('group', { name: 'Timing' })
+    expect(within(timing).getByText('T1')).toBeInTheDocument()
+    await user.click(within(timing).getByRole('link', { name: /^Bash/ }))
+    expect(within(inspector()!).getByRole('heading')).toHaveTextContent('Bash')
+  })
+
+  it('shows a running subagent as a start with no length', () => {
+    window.history.pushState({}, '', '/t/log')
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    render(
+      <TaskLogTab
+        events={[
+          LOG[0],
+          event(2, 'tool.called', {
+            arguments: { command: 'ls' },
+            call_id: 'c2',
+            duration_ms: 500,
+            parent_call_id: 'task-1',
+            tool: 'Bash',
+          }),
+        ]}
+        orgSlug="acme"
+        requests={[]}
+        task={t}
+      />,
+    )
+    const timing = screen.getByRole('group', { name: 'Timing' })
+    expect(
+      within(timing).getByRole('img', { name: /^Subagent running since/ }),
+    ).toBeInTheDocument()
+    expect(within(timing).getAllByRole('link')).toHaveLength(1)
+  })
+
   it('closes and drops the hash', async () => {
     const user = userEvent.setup()
     renderLog('/t/log#e4')
