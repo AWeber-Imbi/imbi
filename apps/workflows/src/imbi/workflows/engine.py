@@ -12,7 +12,6 @@ import asyncio
 import contextlib
 import datetime
 import logging
-import re
 import typing
 from collections import abc
 
@@ -32,10 +31,6 @@ LOGGER = logging.getLogger(__name__)
 
 #: Seconds of the first retry backoff; it doubles per attempt.
 RETRY_BACKOFF = 5
-
-_WHOLE_REFERENCE = re.compile(
-    r'^\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*\}\}$'
-)
 
 #: The activator, only when an active member of the run's organization.
 _ACTIVATOR_QUERY: typing.LiteralString = """
@@ -698,7 +693,7 @@ async def _render(
             '{{' not in value and '{%' not in value
         ):
             return value
-        whole = _WHOLE_REFERENCE.match(value)
+        whole = wf.WHOLE_REFERENCE.match(value)
         if whole:
             return _lookup(whole.group(1), scope)
         sources[path] = value

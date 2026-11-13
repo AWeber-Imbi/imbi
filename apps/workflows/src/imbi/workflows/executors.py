@@ -35,6 +35,7 @@ from imbi.common.llm import drivers, typesafe
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows.registry import (
     agent,
+    condition,
     deploy,
     email,
     model_decision,
@@ -231,10 +232,12 @@ class Executors:
         self.db = db
         self.config = config
 
-    async def run(self, call: Call) -> Outcome:
+    async def run(self, call: Call) -> Outcome:  # noqa: PLR0911
         match call.node.type:
             case 'wait':
                 return self._wait(call)
+            case 'condition':
+                return self._condition(call)
             case 'model_decision':
                 return await self._model_decision(call)
             case 'email':
@@ -264,6 +267,16 @@ class Executors:
                 state=call.state,
             )
         return Outcome(output={'waited_seconds': seconds})
+
+    def _condition(self, call: Call) -> Outcome:
+        params = _params(condition.Params, call)
+        try:
+            output = condition.evaluate(params)
+        except condition.EvaluationError as error:
+            raise StepError(error.code, retry=False) from error
+        return Outcome(
+            output=output.model_dump(), port=0 if output.result else 1
+        )
 
     async def _model_decision(self, call: Call) -> Outcome:
         params = _params(model_decision.Params, call)

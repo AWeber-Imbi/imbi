@@ -6,6 +6,7 @@ type is added only when the engine can execute it.
 
 from imbi.common.workflows.registry import (
     agent,
+    condition,
     deploy,
     email,
     manual,
@@ -27,6 +28,7 @@ STEP_TYPES: dict[str, StepType] = {
         task_completed,
         wait,
         model_decision,
+        condition,
         email,
         deploy,
         rollback,

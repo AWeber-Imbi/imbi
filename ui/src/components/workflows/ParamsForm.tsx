@@ -20,6 +20,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 
+import type { Condition } from './conditions'
+import { ConditionsField } from './ConditionsField'
 import type { OutputField } from './outputFields'
 import { OutputFieldsField } from './OutputFieldsField'
 import { TemplateInput } from './ReferencePicker'
@@ -197,6 +199,17 @@ function FieldControl({
           onChange={onChange}
           options={field.options}
           value={Array.isArray(value) ? value.map(String) : []}
+        />
+      )
+    case 'conditions':
+      return (
+        <ConditionsField
+          id={id}
+          label={field.label}
+          onChange={onChange}
+          operators={field.options}
+          references={references}
+          value={Array.isArray(value) ? (value as Condition[]) : []}
         />
       )
     case 'json':

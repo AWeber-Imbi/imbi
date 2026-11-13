@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { isIdOrReference, paramFields, paramSummary } from '../schemaFields'
+import { CONDITION } from './fixtures'
 
 describe('paramFields', () => {
   it('builds fields from a Pydantic schema, in schema order', () => {
@@ -144,6 +145,40 @@ describe('paramFields for the agent step', () => {
         kind: 'outputFields',
         label: 'Output fields',
         name: 'output_fields',
+        required: false,
+      },
+    ])
+  })
+})
+
+describe('paramFields for the condition step', () => {
+  it('builds condition rows with readable operators', () => {
+    expect(paramFields(CONDITION.params_schema)).toEqual([
+      {
+        kind: 'conditions',
+        label: 'Conditions',
+        name: 'conditions',
+        options: [
+          { label: 'equals', value: 'equals' },
+          { label: 'is greater than', value: 'greater_than' },
+          { label: 'is empty', value: 'is_empty' },
+        ],
+        required: true,
+      },
+      {
+        kind: 'boolean',
+        label: 'Ignore case',
+        name: 'ignore_case',
+        required: false,
+      },
+      {
+        kind: 'select',
+        label: 'Match',
+        name: 'match',
+        options: [
+          { label: 'All', value: 'all' },
+          { label: 'Any', value: 'any' },
+        ],
         required: false,
       },
     ])

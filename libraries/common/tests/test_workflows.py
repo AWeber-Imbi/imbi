@@ -317,9 +317,11 @@ class RegistryTestCase(unittest.TestCase):
                 'deploy',
                 'rollback',
                 'agent',
+                'condition',
             },
         )
         self.assertIsNone(described['model_decision']['ports'])
+        self.assertEqual(described['condition']['ports'], ['True', 'False'])
         self.assertEqual(described['deploy']['ports'], ['Succeeded', 'Failed'])
         self.assertEqual(described['wait']['ports'], [''])
         self.assertIn('properties', described['email']['params_schema'])

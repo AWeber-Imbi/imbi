@@ -23,6 +23,7 @@ dependencies = [
   # eMudhra roots after the 2026-10-19 intermediate key compromise.
   "certifi>=2026.10.23",
   "cryptography>=42.0.4",
+  "google-re2>=1.1",
   "httpx>=0.28.1,<1",
   "jinja2~=3.1",
   "jsonpatch>=1.33",

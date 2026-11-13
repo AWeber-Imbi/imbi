@@ -1,11 +1,16 @@
 """The graph and settings of a workflow version (ADR 0021)."""
 
+import re
 import typing
 
 import pydantic
 
 #: The pattern of a node key. A reference names a node by its key.
 KEY_PATTERN = r'^[a-z][a-z0-9_]*$'
+
+WHOLE_REFERENCE = re.compile(
+    r'^\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*\}\}$'
+)
 
 
 class Position(pydantic.BaseModel):

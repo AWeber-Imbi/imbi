@@ -1,3 +1,4 @@
+import { operatorLabel } from './conditions'
 import type { JsonSchema } from './types'
 
 // Turns a step type's `params_schema` into inspector form fields.
@@ -13,7 +14,7 @@ export type FieldSource =
 
 export type ParamField =
   | (FieldBase & {
-      kind: 'checks' | 'select'
+      kind: 'checks' | 'conditions' | 'select'
       options: { label: string; value: string }[]
     })
   | (FieldBase & { kind: 'multiline'; mono: boolean })
@@ -69,6 +70,18 @@ export function paramFields(schema: JsonSchema): ParamField[] {
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (name === 'output_fields') return { ...base, kind: 'outputFields' }
+    if (name === 'conditions' && prop.items) {
+      const item = resolve(schema, prop.items)
+      const operator = resolve(schema, item.properties?.operator ?? {})
+      return {
+        ...base,
+        kind: 'conditions',
+        options: (operator.enum ?? []).map((value) => ({
+          label: operatorLabel(String(value)),
+          value: String(value),
+        })),
+      }
+    }
     if (prop.enum) {
       return { ...base, kind: 'select', options: enumOptions(prop.enum) }
     }

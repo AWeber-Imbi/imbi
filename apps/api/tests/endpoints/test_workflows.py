@@ -319,6 +319,41 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'paused')
 
+    async def test_activate_allows_a_condition_type_mismatch(self) -> None:
+        check = _node(
+            'check',
+            'condition',
+            {
+                'conditions': [
+                    {
+                        'a': '{{ ship.status }}',
+                        'operator': 'greater_than',
+                        'b': '5',
+                    }
+                ]
+            },
+        )
+        response = await self._create(
+            graph={
+                'nodes': [*DEPLOY_GRAPH['nodes'], check],
+                'edges': [
+                    *DEPLOY_GRAPH['edges'],
+                    {'source': 'ship', 'port': 0, 'target': 'check'},
+                ],
+            }
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [
+                i['code']
+                for i in response.json()['version']['validation']['issues']
+            ],
+            ['condition_type_mismatch'],
+        )
+        response = await self.client.post(f'{self.base}/deploy-guard/activate')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'active')
+
     async def test_activate_needs_step_permissions(self) -> None:
         await self._create(graph=DEPLOY_GRAPH)
         self.permissions.discard('project:deployment:write')
@@ -358,6 +393,8 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         types = {s['type']: s for s in response.json()}
         self.assertEqual(types['deploy']['ports'], ['Succeeded', 'Failed'])
         self.assertIsNone(types['model_decision']['ports'])
+        self.assertEqual(types['condition']['ports'], ['True', 'False'])
+        self.assertEqual(types['condition']['category'], 'logic')
         self.assertTrue(types['manual']['trigger'])
 
     async def _resource_issues(

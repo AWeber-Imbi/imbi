@@ -472,6 +472,22 @@ An alternative to ADR 0024. Defines tickets: the record of one piece of work tha
 
 ---
 
+#### [ADR 0026: Workflow Condition Step](adr/0026-workflow-condition-step.md)
+
+*Date: 2026-11-13 | Status: Accepted*
+
+Adds the `condition` workflow step: it compares values from earlier steps and takes its `True` or `False` port, with no model call.
+
+**Key Decisions:**
+
+- Rows of `a`, an operator, and `b`, joined by `all` or `any`; text compares exactly unless `ignore_case`
+- Values coerce: numbers and numeric text compare as decimals, booleans as `true`/`false`, the rest as text
+- `matches` uses RE2, so a pattern runs in linear time
+- A row that cannot be evaluated fails the step and the run; there is no `Failed` port
+- A whole reference whose known type does not suit the operator is a `condition_type_mismatch` warning, and the editor outlines the row in red
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
