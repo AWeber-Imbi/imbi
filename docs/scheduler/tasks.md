@@ -113,6 +113,8 @@ Calls `imbi-api` as the task's identity.
 - It must start with `/`.
 - It cannot contain `%` or a backslash.
 - It cannot contain a `.` or `..` segment.
+- It cannot be under `/auth`. Those routes act on the session of the
+  caller, which is the scheduler's own service account.
 
 The scheduler checks them when you create the task (`422`). It checks them
 again on the rendered path when the task fires. A rendered path that breaks
