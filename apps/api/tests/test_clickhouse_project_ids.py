@@ -9,11 +9,12 @@ import datetime
 import unittest
 import uuid
 
-from imbi.api import drift
+from imbi.api import commit_pushed_at_repair, drift
 from imbi.api.agent_tasks import log
 from imbi.api.endpoints import project_deployments, projects
 from imbi.common import clickhouse
 from imbi.common.clickhouse import client
+from imbi.plugins.github import commits
 
 
 class ProjectIdsExternalTableTestCase(unittest.IsolatedAsyncioTestCase):
@@ -200,6 +201,31 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
             {task_id: (1, 3)}, await log.event_counts(org, task_ids)
         )
         self.assertEqual({}, await log.usage_counts(org, task_ids))
+
+    async def _insert_commit(self, sha: str, pushed_at: str) -> None:
+        await clickhouse.command(
+            'INSERT INTO imbi.commits (project_id, sha, ref, message,'
+            ' authored_at, pushed_at, recorded_at) VALUES ({pid:String},'
+            " {sha:String}, 'main', 'm', now64(3),"
+            ' {pushed:DateTime64(3)}, now64(3))',
+            {'pid': self.pid, 'sha': sha, 'pushed': pushed_at},
+        )
+
+    async def test_stored_pushed_at(self) -> None:
+        sha = 'f' * 40
+        await self._insert_commit(sha, '2026-08-01 00:00:00')
+        result = await commits._stored_pushed_at(self.pid, [*self.shas, sha])
+        self.assertEqual({sha: _at(1)}, result)
+
+    async def test_repair_commits_lookup(self) -> None:
+        sha = 'f' * 40
+        await self._insert_commit(sha, '2026-08-01 00:00:00')
+        rows = await clickhouse.query(
+            commit_pushed_at_repair._COMMITS_SQL,
+            {'project_id': self.pid},
+            tables={'shas': [*self.shas, sha]},
+        )
+        self.assertEqual([sha], [row['sha'] for row in rows])
 
 
 def _at(day: int) -> datetime.datetime:
