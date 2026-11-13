@@ -176,7 +176,12 @@ def _check_key(
     issues: _Issues,
 ) -> None:
     """Report a key template that is not valid, or that a trigger of
-    the graph cannot fill."""
+    the graph cannot fill.
+
+    Only a concurrency key needs each manual trigger to declare its
+    inputs: a manual run is never deduped, and one that lacks a value
+    of the dedupe key stores no key.
+    """
     paths = key_paths(key)
     if paths is None:
         issues.add(
@@ -195,7 +200,7 @@ def _check_key(
                 f'A {setting} key cannot be used with a schedule trigger',
                 node_id=node.id,
             )
-        elif node.type == 'manual':
+        elif node.type == 'manual' and setting == 'concurrency':
             raw: typing.Any = node.params.get('inputs')
             inputs: list[typing.Any] = raw if isinstance(raw, list) else []
             names = {

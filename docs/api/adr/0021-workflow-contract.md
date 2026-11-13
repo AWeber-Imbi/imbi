@@ -238,9 +238,12 @@ Concurrency only orders runs. Dedupe skips them. A workflow that sets
 skips a run whose key matches a run of the same workflow created within
 the window. No window means no limit. A window without a key is a
 validation error (`dedupe_window_without_key`). Dedupe does not depend on
-the concurrency mode. The key rules of `one_per_key` apply:
-`invalid_dedupe_key`, `dedupe_key_with_schedule`, and
-`dedupe_key_input_missing`.
+the concurrency mode. The key must be a valid key template
+(`invalid_dedupe_key`) and cannot be used with a `schedule` trigger
+(`dedupe_key_with_schedule`). Unlike `one_per_key`, a `manual` trigger
+does not have to declare the inputs that the key uses: a manual run is
+never skipped, and one that lacks a value of the key stores no key. A
+dotted webhook key could not be declared as a manual input anyway.
 
 imbi-api checks at run creation, in the transaction that writes the run,
 under a transaction advisory lock on the workflow and key, so two

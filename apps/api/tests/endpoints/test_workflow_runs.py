@@ -491,6 +491,24 @@ class ManualRunTestCase(WorkflowRunTestCase):
         self.assertEqual(row['status'], 'skipped')
         self.assertEqual(str(row['duplicate_of']), made[1]['id'])
 
+    async def test_manual_run_without_the_dedupe_value_stores_no_key(
+        self,
+    ) -> None:
+        # The manual trigger has no ``payload`` input, and activation
+        # does not need it to.
+        url = await self._workflow(
+            settings={'dedupe_key': '{{ trigger.payload.sha }}'}
+        )
+        for key in ('k1', 'k2'):
+            response = await self.client.post(
+                f'{url}/runs',
+                json={'inputs': {'version': '1'}},
+                headers={'Idempotency-Key': key},
+            )
+            self.assertEqual(response.status_code, 202, response.text)
+            self.assertEqual(response.json()['status'], 'queued')
+            self.assertIsNone(response.json()['dedupe_key'])
+
     async def test_cancel_needs_the_start_gate(self) -> None:
         url = await self._workflow()
         response = await self.client.post(

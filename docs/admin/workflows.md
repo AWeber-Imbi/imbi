@@ -466,9 +466,10 @@ More rules:
   workflow with the key.
 - Two deliveries with the same key at the same time start one run.
 - Dedupe works with any **Concurrency** mode.
-- The key rules of **One run per key** apply: each **Manual run** trigger
-  must declare each input that the key uses, and you cannot use a dedupe
-  key with a **Schedule** trigger.
+- You cannot use a dedupe key with a **Schedule** trigger.
+- A **Manual run** trigger does not have to declare the inputs that the
+  key uses. A manual run is never skipped, and one without a value for
+  the key stores no key.
 - A window without a key is an error.
 
 ## Validation
@@ -490,7 +491,7 @@ graph is too large.
 | Templates are valid, and references name earlier steps | `invalid_template`, `unknown_reference` |
 | Ids are literal where required, and exist in the organization | `invalid_reference`, `resource_not_in_organization` |
 | Concurrency key rules | `missing_concurrency_key` (warning), `invalid_concurrency_key`, `concurrency_key_with_schedule`, `concurrency_key_input_missing` |
-| Dedupe key rules | `invalid_dedupe_key`, `dedupe_key_with_schedule`, `dedupe_key_input_missing`, `dedupe_window_without_key` |
+| Dedupe key rules | `invalid_dedupe_key`, `dedupe_key_with_schedule`, `dedupe_window_without_key` |
 | An **Any input arrives** step can get two inputs | `any_join_overlap` (warning) |
 
 ## Activate a workflow
