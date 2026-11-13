@@ -469,7 +469,7 @@ describe('Tasks', () => {
     ).toHaveAttribute('aria-selected', 'true')
   })
 
-  describe('Conversation', () => {
+  describe('Log', () => {
     const log = [
       ...LOG,
       event(4, 'turn', { body: 'Look first.', kind: 'thinking' }),
@@ -502,7 +502,7 @@ describe('Tasks', () => {
     })
 
     it('shows turns, calls, and nested subagent work in one timeline', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
+      renderAt('/agents/tasks/acme/T-3/log')
       expect(await screen.findByText('I read the task.')).toBeInTheDocument()
       expect(screen.getByText('Look first.')).toBeInTheDocument()
       expect(screen.getByText('failed')).toBeInTheDocument()
@@ -516,7 +516,7 @@ describe('Tasks', () => {
     })
 
     it('filters by kind, errors, and text', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
+      renderAt('/agents/tasks/acme/T-3/log')
       await screen.findByText('I read the task.')
       fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
       expect(screen.queryByText('uv run pytest -q')).not.toBeInTheDocument()
@@ -533,7 +533,7 @@ describe('Tasks', () => {
     })
 
     it('collapses tool calls and thinking in Compact', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
+      renderAt('/agents/tasks/acme/T-3/log')
       await screen.findByText('Look first.')
       fireEvent.click(screen.getByRole('radio', { name: 'Compact' }))
       expect(screen.queryByText('Look first.')).not.toBeInTheDocument()
@@ -577,7 +577,7 @@ describe('Tasks', () => {
           { actor_kind: 'subagent' },
         ),
       ])
-      renderAt('/agents/tasks/acme/T-3/conversation')
+      renderAt('/agents/tasks/acme/T-3/log')
       await screen.findByText('I read the task.')
       expect(
         screen.getAllByText(/"file_path": "big.txt"/).length,
@@ -589,6 +589,20 @@ describe('Tasks', () => {
       expect(screen.getByText('+ l59')).toBeInTheDocument()
       expect(screen.getByText('Did not finish')).toBeInTheDocument()
       expect(screen.getByText(/1 of 1 done/)).toBeInTheDocument()
+    })
+
+    it('links each event by its seq', async () => {
+      renderAt('/agents/tasks/acme/T-3/log')
+      const reply = await screen.findByText('I read the task.')
+      const row = reply.closest('li')!
+      expect(row).toHaveAttribute('id', 'e2')
+      expect(within(row).getByTitle('Link to this event')).toHaveAttribute(
+        'href',
+        '#e2',
+      )
+      expect(
+        screen.getByRole('tab', { name: `Log${log.length}` }),
+      ).toHaveAttribute('aria-selected', 'true')
     })
 
     it('opens an old Actions taken link on the Conversation', async () => {
