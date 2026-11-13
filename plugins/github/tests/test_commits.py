@@ -134,14 +134,15 @@ def _query_router(
     """
 
     async def _answer(
-        sql: str, params: dict[str, typing.Any] | None = None
+        sql: str,
+        params: dict[str, typing.Any] | None = None,
+        tables: dict[str, list[str]] | None = None,
     ) -> list[dict[str, typing.Any]]:
-        params = params or {}
         if 'min(pushed_at)' in sql:
             return [
                 {'sha': sha, 'pushed_at': pushed_at}
                 for sha, pushed_at in (stored or {}).items()
-                if sha in params.get('shas', ())
+                if sha in (tables or {}).get('shas', ())
             ]
         if 'argMax(sha, pushed_at)' in sql:
             return [{'sha': last_known}] if last_known else []
@@ -457,7 +458,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         lookup = next(
             c for c in query.await_args_list if 'min(pushed_at)' in c.args[0]
         )
-        self.assertEqual([head], lookup.args[1]['shas'])
+        self.assertEqual([head], lookup.kwargs['tables']['shas'])
 
     @respx.mock
     async def test_only_new_commits_get_the_current_push_time(self) -> None:

@@ -9,7 +9,9 @@ import datetime
 import unittest
 import uuid
 
-from imbi.api.endpoints import projects
+from imbi.api import drift
+from imbi.api.agent_tasks import log
+from imbi.api.endpoints import project_deployments, projects
 from imbi.common import clickhouse
 from imbi.common.clickhouse import client
 
@@ -138,6 +140,66 @@ class ProjectsCallersTestCase(unittest.IsolatedAsyncioTestCase):
             [*targets, (self.pid, 'prod', '1.0.0', None)]
         )
         self.assertEqual({(self.pid, 'prod'): 'alice'}, result)
+
+
+class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
+    """The other reads that took a list as a bound array (#664).
+
+    A compare range answers up to 5000 commits and a task backlog grows
+    with the organization; either is longer than one form field.  Each
+    test pads its real input with IDs that match nothing.
+    """
+
+    async def asyncSetUp(self) -> None:
+        self._previous = client.Clickhouse._instance
+        client.Clickhouse._instance = None
+        self.addAsyncCleanup(self._restore_singleton)
+        await clickhouse.initialize()
+        self.pid = f'p664-{uuid.uuid4().hex}'
+        self.shas = [f'{n:040x}' for n in range(5000)]
+        self.assertGreater(len(str(self.shas)), 131072)
+
+    async def _restore_singleton(self) -> None:
+        await clickhouse.aclose()
+        client.Clickhouse._instance = self._previous
+
+    async def test_verdicts_by_sha(self) -> None:
+        sha = 'f' * 40
+        await clickhouse.command(
+            'INSERT INTO imbi.commit_drift (project_id, sha,'
+            ' drift_detected, paths, recorded_at) VALUES'
+            ' ({pid:String}, {sha:String}, true, [], now64(3))',
+            {'pid': self.pid, 'sha': sha},
+        )
+        result = await drift.verdicts_by_sha(self.pid, [*self.shas, sha])
+        self.assertEqual({sha: True}, result)
+
+    async def test_tags_by_sha(self) -> None:
+        sha = 'f' * 40
+        await clickhouse.command(
+            'INSERT INTO imbi.tags (project_id, name, sha, tagged_at,'
+            ' recorded_at) VALUES ({pid:String}, {name:String},'
+            ' {sha:String}, now64(3), now64(3))',
+            {'pid': self.pid, 'name': 'v1.0.0', 'sha': sha},
+        )
+        result = await project_deployments._tags_by_sha(
+            self.pid, [*self.shas, sha]
+        )
+        self.assertEqual({sha: 'v1.0.0'}, result)
+
+    async def test_task_event_counts(self) -> None:
+        org = f'o664-{uuid.uuid4().hex}'
+        task_id = str(uuid.uuid4())
+        await clickhouse.command(
+            'INSERT INTO imbi.agent_task_events (organization_id,'
+            ' task_id, seq) VALUES ({org:String}, {task:String}, 3)',
+            {'org': org, 'task': task_id},
+        )
+        task_ids = [str(uuid.uuid4()) for _ in range(5000)] + [task_id]
+        self.assertEqual(
+            {task_id: (1, 3)}, await log.event_counts(org, task_ids)
+        )
+        self.assertEqual({}, await log.usage_counts(org, task_ids))
 
 
 def _at(day: int) -> datetime.datetime:

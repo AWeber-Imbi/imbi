@@ -5582,7 +5582,7 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual({'aaa111': 'v1.10.0', 'bbb222': 'v0.9.0'}, tags)
         # The queried shas are lowercased to match the table join side.
         self.assertEqual(
-            ['aaa111', 'bbb222'], query.await_args.args[1]['shas']
+            ['aaa111', 'bbb222'], query.await_args.kwargs['tables']['shas']
         )
 
     def test_tags_by_sha_answers_empty_on_clickhouse_failure(self) -> None:

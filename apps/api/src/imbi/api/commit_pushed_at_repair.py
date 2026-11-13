@@ -135,7 +135,7 @@ _DELIVERIES_SQL: typing.Final = (
 _COMMITS_SQL: typing.Final = (
     'SELECT ' + ', '.join(_COMMIT_COLUMNS) + ' FROM commits FINAL '  # noqa: S608
     'WHERE project_id = {project_id:String} '
-    'AND sha IN {shas:Array(String)}'
+    'AND sha IN (SELECT id FROM shas)'
 )
 
 
@@ -214,7 +214,7 @@ async def repair_project(
         return RepairSummary(deliveries=deliveries)
     shas = sorted({sha for _, sha in push_times})
     rows = await clickhouse.query(
-        _COMMITS_SQL, {'project_id': project_id, 'shas': shas}
+        _COMMITS_SQL, {'project_id': project_id}, tables={'shas': shas}
     )
     examined = 0
     largest = datetime.timedelta(0)

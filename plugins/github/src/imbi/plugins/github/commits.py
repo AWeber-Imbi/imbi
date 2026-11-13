@@ -599,8 +599,9 @@ async def _stored_pushed_at(
         rows = await clickhouse.query(
             'SELECT sha, min(pushed_at) AS pushed_at FROM commits '
             'WHERE project_id = {pid:String} '
-            'AND sha IN {shas:Array(String)} GROUP BY sha',
-            {'pid': project_id, 'shas': wanted},
+            'AND sha IN (SELECT id FROM shas) GROUP BY sha',
+            {'pid': project_id},
+            tables={'shas': wanted},
         )
     except Exception:  # noqa: BLE001
         LOGGER.debug(
