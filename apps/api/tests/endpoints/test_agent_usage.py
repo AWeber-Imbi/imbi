@@ -10,9 +10,11 @@ import datetime
 import decimal
 import typing
 import uuid
+from unittest import mock
 
 from apps.api.tests.endpoints import test_agent_task_log
 from imbi.api.agent_tasks import log
+from imbi.api.endpoints import agent_usage
 from imbi.common import iggy
 
 TODAY = datetime.datetime.now(datetime.UTC).replace(
@@ -32,6 +34,16 @@ def _task(org: str, task: str, agent: str) -> dict[str, typing.Any]:
 
 
 class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        # The fixtures are relative to TODAY, so the endpoint must agree
+        # on the day even when a run crosses midnight UTC.
+        today = mock.patch.object(
+            agent_usage, '_today', return_value=TODAY.date()
+        )
+        today.start()
+        self.addCleanup(today.stop)
+
     async def create(
         self,
         *,

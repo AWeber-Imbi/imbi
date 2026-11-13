@@ -137,6 +137,10 @@ def _merge(
     return list(merged.values())
 
 
+def _today() -> datetime.date:
+    return datetime.datetime.now(datetime.UTC).date()
+
+
 def _midnight(day: datetime.date) -> datetime.datetime:
     return datetime.datetime.combine(day, datetime.time.min, datetime.UTC)
 
@@ -170,7 +174,7 @@ async def get_agent_usage(
         422: ``start`` is after ``end``, or the range is too long.
 
     """
-    today = datetime.datetime.now(datetime.UTC).date()
+    today = _today()
     end = end or today
     start = start or end - datetime.timedelta(days=DEFAULT_RANGE_DAYS - 1)
     if start > end:
