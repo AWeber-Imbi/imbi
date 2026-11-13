@@ -26,13 +26,22 @@ def _local_zone(
     """The ``tz`` zone.
 
     An unknown zone is a 422: a silent UTC fallback would show
-    tomorrow's date to an evening user in the Americas.
+    tomorrow's date to an evening user in the Americas. The error has
+    the same shape as other validation errors, so it matches the
+    declared ``HTTPValidationError`` response.
     """
     try:
         return zoneinfo.ZoneInfo(tz)
     except (zoneinfo.ZoneInfoNotFoundError, ValueError) as err:
-        raise fastapi.HTTPException(
-            status_code=422, detail=f'Invalid time zone: {tz!r}'
+        raise fastapi.exceptions.RequestValidationError(
+            [
+                {
+                    'type': 'value_error',
+                    'loc': ('query', 'tz'),
+                    'msg': f'Invalid time zone: {tz!r}',
+                    'input': tz,
+                }
+            ]
         ) from err
 
 

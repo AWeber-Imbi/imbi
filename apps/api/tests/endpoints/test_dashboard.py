@@ -448,6 +448,7 @@ class DashboardMetricsEndpointTestCase(support.SharedAppTestCase):
             '/admin/dashboard/metrics', params={'tz': 'Mars/Olympus'}
         )
         self.assertEqual(422, response.status_code)
+        self.assertEqual(['query', 'tz'], response.json()['detail'][0]['loc'])
 
     def test_metrics_requires_permission(self) -> None:
         self.admin_context.user.is_admin = False
