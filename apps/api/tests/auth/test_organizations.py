@@ -139,6 +139,18 @@ class OrgPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         await organizations.check_member(self.org_b, self.graph, auth)
         self.assertEqual(auth.permissions, {self.read})
 
+    async def test_org_permissions_also_limits_a_scheduler_request(
+        self,
+    ) -> None:
+        # Routes that call org_permissions directly (prompts, users) get
+        # the same limit as check_member.
+        auth = await self._scheduler_in_both_orgs()
+        auth.on_behalf_of = ('User', 'email', self.email)
+        self.assertEqual(
+            {self.read},
+            await organizations.org_permissions(self.graph, auth, self.org_b),
+        )
+
     async def test_scheduler_refused_where_accountable_is_no_member(
         self,
     ) -> None:

@@ -61,7 +61,9 @@ async def org_permissions(
     db: graph.Graph, auth: permissions.AuthContext, org_slug: str
 ) -> set[str]:
     """The caller's permissions in ``org_slug``: those of their role in
-    that organization, still limited by the scopes of an API key."""
+    that organization, still limited by the scopes of an API key. For a
+    scheduler request, also limited to the role in that organization of
+    the principal accountable for the task."""
     granted: set[str] = set()
     if auth.user is not None:
         granted = await common_permissions.load_principal_permissions(
@@ -74,6 +76,10 @@ async def org_permissions(
             'slug',
             auth.service_account.slug,
             org_slug=org_slug,
+        )
+    if auth.on_behalf_of is not None:
+        granted &= await common_permissions.load_principal_permissions(
+            db, *auth.on_behalf_of, org_slug=org_slug
         )
     return auth.permissions & granted
 
@@ -132,23 +138,6 @@ async def check_member(
             org_slug=org_slug,
         )
     auth.permissions = await org_permissions(db, auth, org_slug)
-    if auth.on_behalf_of is not None:
-        # A scheduler request: the person accountable for the task must
-        # be a member too, and it gets only what their role here allows.
-        key = auth.on_behalf_of[2]
-        granted = await common_permissions.load_principal_permissions(
-            db, *auth.on_behalf_of, org_slug=org_slug
-        )
-        if not granted:
-            raise autonomous.forbidden(
-                'organization_forbidden',
-                (
-                    f'{key!r}, accountable for this scheduled task, is not '
-                    f'a member of organization {org_slug!r}.'
-                ),
-                org_slug=org_slug,
-            )
-        auth.permissions &= granted
     return organization_id(graph.parse_agtype(records[0]['id']), org_slug)
 
 
