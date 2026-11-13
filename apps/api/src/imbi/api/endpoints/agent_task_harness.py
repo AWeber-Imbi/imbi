@@ -894,6 +894,10 @@ def _check_structured_output(
         raise _invalid_output(f'structured_output: {err.message}') from err
     except referencing_exceptions.Unresolvable as err:
         raise _invalid_output(f'structured_output: {err}') from err
+    except RecursionError as err:  # e.g. {'$ref': '#'}
+        raise _invalid_output(
+            'structured_output: output_schema recursion limit exceeded'
+        ) from err
 
 
 def _invalid_output(message: str) -> fastapi.HTTPException:
