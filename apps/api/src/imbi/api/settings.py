@@ -58,6 +58,9 @@ class ServerConfig(settings.ConfigFileSettings):
     # behind a reverse proxy so rate limiting keys on the real client
     # IP rather than the proxy address. Empty disables the middleware.
     forwarded_allow_ips: str = ''
+    # Largest request body, in bytes, before imbi-api answers 413.
+    # Uploads have their own limit, from ``Storage.max_file_size``.
+    max_request_body_bytes: int = 10 * 1024 * 1024
     # Public URL where the API is reachable from a browser, including
     # the path prefix it's mounted under (e.g.
     # ``https://imbi.example.com/api``). The path component drives

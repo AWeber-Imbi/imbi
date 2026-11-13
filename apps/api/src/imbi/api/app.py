@@ -21,7 +21,7 @@ from imbi.api import (
     workflows,
 )
 from imbi.api.auth import agent_api
-from imbi.api.middleware import rate_limit
+from imbi.api.middleware import body_limit, rate_limit
 from imbi.common import (
     access_log,
     graph,
@@ -87,6 +87,17 @@ def create_app() -> fastapi.FastAPI:
     )
 
     server_config = settings.get_server_config()
+    # Innermost, so that CORS and the access log wrap its 413. The
+    # upload limit adds room for the multipart framing.
+    app.add_middleware(
+        body_limit.BodyLimitMiddleware,
+        limit=server_config.max_request_body_bytes,
+        path_limits={
+            f'{server_config.api_prefix}/uploads': (
+                settings.get_storage_settings().max_file_size + 1024 * 1024
+            )
+        },
+    )
     # Quiet both the unprefixed and ``/api``-prefixed status route
     # because the served path depends on IMBI_API_URL at startup;
     # listing both keeps the middleware deployment-agnostic.
