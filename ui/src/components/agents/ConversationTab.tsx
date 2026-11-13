@@ -365,7 +365,7 @@ function TurnHeader({
   )
   return (
     <Trace>
-      {canCollapseTurn(turn, ctx.mode) ? (
+      {canCollapseTurn(turn) ? (
         <TraceCollapsible
           onOpenChange={(next) => ctx.setOpen(turn.id, next)}
           open={open}
@@ -381,7 +381,7 @@ function TurnHeader({
 
 function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
   const open =
-    !canCollapseTurn(turn, ctx.mode) ||
+    !canCollapseTurn(turn) ||
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
   const hasWork = turn.items.some((i) => i.kind === 'group')
   const footer = hasWork ? turnFooter(turn) : null

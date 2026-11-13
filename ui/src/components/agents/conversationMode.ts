@@ -14,8 +14,7 @@ export const CONVERSATION_MODES: ConversationMode[] = [
 export const MODE_KEY = 'imbi:agent-task:conversation-mode'
 
 /** No mode and no reader can fold a turn that runs, failed, or was steered. */
-export function canCollapseTurn(turn: Turn, mode: ConversationMode): boolean {
-  if (mode === 'verbose') return false
+export function canCollapseTurn(turn: Turn): boolean {
   return turn.status === 'done' && !turn.steered
 }
 
@@ -67,7 +66,7 @@ export function isConversationMode(value: unknown): value is ConversationMode {
 }
 
 export function turnOpenByDefault(turn: Turn, mode: ConversationMode): boolean {
-  return !canCollapseTurn(turn, mode)
+  return mode === 'verbose' || !canCollapseTurn(turn)
 }
 
 /** What the turn header says: `Worked for 2m 4s`, `Working…`. */

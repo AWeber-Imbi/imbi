@@ -81,10 +81,21 @@ describe('ConversationTab', () => {
       screen.getByRole('button', { name: /Bash make test/ }),
     ).toBeInTheDocument()
     expect(screen.queryByText(/tests passed/)).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /Worked for/ }),
-    ).not.toBeInTheDocument()
     expect(store.get(MODE_KEY)).toBe('verbose')
+    await user.click(screen.getByRole('button', { name: /Worked for/ }))
+    expect(
+      screen.queryByRole('button', { name: /Bash make test/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps a turn the reader opened open across a mode change', async () => {
+    const user = userEvent.setup()
+    renderTab('closed')
+    await user.click(screen.getByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('radio', { name: 'Compact' }))
+    expect(
+      screen.getByRole('button', { name: /Ran a command/ }),
+    ).toBeInTheDocument()
   })
 
   it('shows the live work of a running turn and cannot fold it', () => {

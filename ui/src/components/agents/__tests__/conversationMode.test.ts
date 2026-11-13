@@ -39,11 +39,10 @@ function group(...entries: ReturnType<typeof event>[]): ProcessGroup {
 }
 
 describe('fold rules', () => {
-  it('folds a finished turn in compact and standard only', () => {
+  it('folds a finished turn, and opens it by default only in verbose', () => {
     const done = firstTurn(false)
-    expect(canCollapseTurn(done, 'compact')).toBe(true)
-    expect(canCollapseTurn(done, 'standard')).toBe(true)
-    expect(canCollapseTurn(done, 'verbose')).toBe(false)
+    expect(canCollapseTurn(done)).toBe(true)
+    expect(turnOpenByDefault(done, 'compact')).toBe(false)
     expect(turnOpenByDefault(done, 'standard')).toBe(false)
     expect(turnOpenByDefault(done, 'verbose')).toBe(true)
   })
@@ -54,7 +53,7 @@ describe('fold rules', () => {
       live: false,
     })[0]
     for (const turn of [firstTurn(true), failed, firstTurn(false, true)]) {
-      expect(canCollapseTurn(turn, 'compact')).toBe(false)
+      expect(canCollapseTurn(turn)).toBe(false)
       expect(turnOpenByDefault(turn, 'compact')).toBe(true)
     }
   })
