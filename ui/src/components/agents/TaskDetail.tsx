@@ -47,7 +47,6 @@ import type { AgentTask, AgentTaskEvent } from '@/types'
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
-import { ConversationTab } from './ConversationTab'
 import {
   checksFrom,
   formatElapsed,
@@ -59,6 +58,7 @@ import {
   statusVariant,
   TRIGGERS,
 } from './taskEvents'
+import { TaskLogTab } from './TaskLogTab'
 import {
   errorMessage,
   useAgentTask,
@@ -195,7 +195,7 @@ export function TaskDetail({
           <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
         )}
         {current === 'conversation' && (
-          <ConversationTab
+          <TaskLogTab
             events={log}
             orgSlug={orgSlug}
             requests={requests}
