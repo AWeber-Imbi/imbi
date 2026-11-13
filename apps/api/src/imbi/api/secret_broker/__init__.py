@@ -44,6 +44,7 @@ async def initialize() -> None:
         relational.load_schemata(SCHEMATA_PATH),
         f'imbi.api.initialize.{store.SCHEMA}',
     )
+    await relational.initialize_deleted_organizations()
 
 
 async def run_sweeper(service: broker.Broker, *, stop: asyncio.Event) -> None:

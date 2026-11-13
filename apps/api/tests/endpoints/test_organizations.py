@@ -887,6 +887,18 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(response.status_code, 409, response.text)
         self.assertIn('workflows (1)', response.json()['detail'])
 
+    async def test_writers_after_a_delete_do_not_write(self) -> None:
+        response = await self.client.delete(f'/organizations/{self.org}')
+        self.assertEqual(response.status_code, 204, response.text)
+        secrets = secret_broker.store.SecretStore(self.pool)
+        with self.assertRaises(relational.OrganizationDeleted):
+            await secrets.put_identity_source(self.org, 'fake', {}, 'u')
+        with self.assertRaises(relational.OrganizationDeleted):
+            await workflows.WorkflowStore(self.pool).activate(
+                self.org, 'w', 1, 'u', []
+            )
+        self.assertIsNone(await secrets.identity_source(self.org))
+
     async def _assert_waits_for_delete(
         self, write: abc.Callable[[], abc.Awaitable[typing.Any]]
     ) -> None:

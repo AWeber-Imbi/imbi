@@ -28,6 +28,7 @@ from imbi.common import (
     lifespan,
     metrics,
     posthog,
+    relational,
     sentry,
     valkey,
 )
@@ -192,6 +193,17 @@ def create_app() -> fastapi.FastAPI:
                 'detail': f'The upstream service answered HTTP {upstream}'
             },
             headers=headers,
+        )
+
+    # The endpoint found the organization, but a delete committed before
+    # the store write took its lock (relational.lock_organization_shared).
+    @app.exception_handler(relational.OrganizationDeleted)
+    async def _organization_deleted(  # pyright: ignore[reportUnusedFunction]
+        _request: fastapi.Request,
+        exc: relational.OrganizationDeleted,
+    ) -> responses.JSONResponse:
+        return responses.JSONResponse(
+            status_code=404, content={'detail': str(exc)}
         )
 
     @app.exception_handler(PluginUnavailableError)

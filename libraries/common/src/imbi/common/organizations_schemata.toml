@@ -1,0 +1,12 @@
+# The ids of deleted organizations (relational.lock_organization_shared).
+# Ids are never reused, so a row is permanent.
+
+[[tables]]
+name = "deleted"
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+deleted_at = "TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id"]

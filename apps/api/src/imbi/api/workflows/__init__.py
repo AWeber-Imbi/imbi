@@ -51,6 +51,7 @@ async def initialize() -> None:
             relational.load_schemata(path),
             f'imbi.api.initialize.{schema}',
         )
+    await relational.initialize_deleted_organizations()
 
 
 @contextlib.asynccontextmanager

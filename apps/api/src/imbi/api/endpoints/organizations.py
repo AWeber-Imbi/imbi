@@ -858,6 +858,9 @@ async def delete_organization(
                 status_code=409,
                 detail=f'Organization {slug!r} changed during the delete',
             )
+        # A writer that read the organization before this delete gets
+        # the lock after the commit; the marker makes it stop.
+        await relational.mark_organization_deleted(conn, org_id)
 
     # The writers of the relational rows take this lock shared
     # (relational.lock_organization_shared). ponytail: graph writers do
