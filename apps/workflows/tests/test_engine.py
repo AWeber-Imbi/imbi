@@ -1074,6 +1074,94 @@ class BranchTestCase(EngineTestCase):
         )
 
 
+class ConditionTestCase(EngineTestCase):
+    async def _check(
+        self, conditions: list[dict[str, typing.Any]], match: str = 'all'
+    ) -> dict[str, typing.Any]:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'check',
+                    'condition',
+                    {'conditions': conditions, 'match': match},
+                ),
+                _node('yes', 'wait', {'duration': '1s'}),
+                _node('no', 'wait', {'duration': '1s'}),
+            ],
+            [
+                _edge('start', 'check'),
+                _edge('check', 'yes', 0),
+                _edge('check', 'no', 1),
+            ],
+        )
+        run_id = await self._start(
+            workflow_id, {'count': 5, 'tags': ['a', 'b'], 'name': 'abc'}
+        )
+        return await self._drive(run_id)
+
+    async def test_whole_references_keep_their_type(self) -> None:
+        run = await self._check(
+            [
+                {
+                    'a': '{{ trigger.count }}',
+                    'operator': 'greater_than',
+                    'b': '3',
+                },
+                {'a': '{{ trigger.tags }}', 'operator': 'contains', 'b': 'b'},
+            ]
+        )
+        self.assertEqual(run['status'], 'succeeded', run)
+        check = run['steps']['check']
+        self.assertEqual(check['port'], 0)
+        self.assertEqual(
+            [(r['a'], r['result']) for r in check['output']['conditions']],
+            [(5, True), (['a', 'b'], True)],
+        )
+        self.assertTrue(check['output']['result'])
+        self.assertEqual(
+            self._states(run),
+            {
+                'start': 'succeeded',
+                'check': 'succeeded',
+                'yes': 'succeeded',
+                'no': 'skipped',
+            },
+        )
+
+    async def test_text_templates_render_as_text(self) -> None:
+        run = await self._check(
+            [
+                {
+                    'a': '{{ trigger.count + 1 }}',
+                    'operator': 'less_than',
+                    'b': '{{ trigger.count }}',
+                },
+                {'a': '{{ trigger.name }}x', 'operator': 'equals', 'b': 'abc'},
+            ],
+            match='any',
+        )
+        self.assertEqual(run['status'], 'succeeded', run)
+        check = run['steps']['check']
+        self.assertEqual(check['port'], 1)
+        self.assertEqual(
+            [r['a'] for r in check['output']['conditions']], ['6', 'abcx']
+        )
+        self.assertEqual(self._states(run)['yes'], 'skipped')
+        self.assertEqual(self._states(run)['no'], 'succeeded')
+
+    async def test_an_error_fails_the_run(self) -> None:
+        run = await self._check(
+            [{'a': '{{ trigger.name }}', 'operator': 'greater_than', 'b': 1}]
+        )
+        self.assertEqual(run['status'], 'failed', run)
+        check = run['steps']['check']
+        self.assertEqual(
+            (check['status'], check['error']), ('failed', 'not_a_number')
+        )
+        self.assertEqual(check['attempt'], 1)
+
+
 class CancelTestCase(EngineTestCase):
     async def test_cancel_stops_the_run(self) -> None:
         workflow_id = await self._workflow(

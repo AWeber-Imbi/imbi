@@ -6100,7 +6100,8 @@ export interface paths {
          *         403: ``missing_permissions``: the caller does not hold every
          *             permission that the steps of the version need.
          *         404: No such workflow or version.
-         *         422: ``validation_failed``: the version has issues.
+         *         422: ``validation_failed``: the version has issues other than
+         *             advisory warnings.
          */
         post: operations["activate_workflow_api_organizations__org_slug__workflows__slug__activate_post"];
         delete?: never;

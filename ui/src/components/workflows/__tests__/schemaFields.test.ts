@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { isIdOrReference, paramFields, paramSummary } from '../schemaFields'
+import { CONDITION } from './fixtures'
 
 describe('paramFields', () => {
   it('builds fields from a Pydantic schema, in schema order', () => {
@@ -150,6 +151,40 @@ describe('paramFields for the agent step', () => {
   })
 })
 
+describe('paramFields for the condition step', () => {
+  it('builds condition rows with readable operators', () => {
+    expect(paramFields(CONDITION.params_schema)).toEqual([
+      {
+        kind: 'conditions',
+        label: 'Conditions',
+        name: 'conditions',
+        options: [
+          { label: 'equals', value: 'equals' },
+          { label: 'is greater than', value: 'greater_than' },
+          { label: 'is empty', value: 'is_empty' },
+        ],
+        required: true,
+      },
+      {
+        kind: 'boolean',
+        label: 'Ignore case',
+        name: 'ignore_case',
+        required: false,
+      },
+      {
+        kind: 'select',
+        label: 'Match',
+        name: 'match',
+        options: [
+          { label: 'All', value: 'all' },
+          { label: 'Any', value: 'any' },
+        ],
+        required: false,
+      },
+    ])
+  })
+})
+
 describe('paramFields for the task completed trigger', () => {
   it('takes an optional agent and checks for the outcomes', () => {
     const fields = paramFields({
@@ -200,6 +235,12 @@ describe('paramSummary', () => {
         timeout: 'not shown',
       }),
     ).toBe('2 branches · Roll back?')
+  })
+
+  it('names one item in the singular', () => {
+    expect(paramSummary({ conditions: [{}] })).toBe('1 condition')
+    expect(paramSummary({ branches: ['Yes'] })).toBe('1 branch')
+    expect(paramSummary({ output_fields: [{}] })).toBe('1 output field')
   })
 })
 

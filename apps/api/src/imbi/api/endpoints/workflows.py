@@ -731,7 +731,8 @@ async def activate_workflow(
         403: ``missing_permissions``: the caller does not hold every
             permission that the steps of the version need.
         404: No such workflow or version.
-        422: ``validation_failed``: the version has issues.
+        422: ``validation_failed``: the version has issues other than
+            advisory warnings.
 
     """
     workflow = await _get(store, db, org_id, slug)
@@ -746,12 +747,17 @@ async def activate_workflow(
     result = await _validate(
         db, org_id, wf_graph, wf.Settings.model_validate(row['settings'])
     )
-    if result.issues:
+    blocking = [
+        issue
+        for issue in result.issues
+        if issue.code not in validation.ADVISORY_CODES
+    ]
+    if blocking:
         raise fastapi.HTTPException(
             status_code=422,
             detail={
                 'error': 'validation_failed',
-                'issues': [i.model_dump() for i in result.issues],
+                'issues': [issue.model_dump() for issue in blocking],
             },
         )
     required: set[str] = set()

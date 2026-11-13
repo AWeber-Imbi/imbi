@@ -293,6 +293,20 @@ def unknown_field(
     return None
 
 
+def field_type(
+    fields: abc.Sequence[OutputField | ObjectField], path: list[str]
+) -> str | None:
+    """Return the type of the field that ``path`` names, if any."""
+    field = next((f for f in fields if path and f.name == path[0]), None)
+    if field is None:
+        return None
+    if len(path) == 1:
+        return field.type
+    if isinstance(field, OutputField) and field.type == 'object':
+        return field_type(field.fields or [], path[1:])
+    return None
+
+
 class Params(pydantic.BaseModel):
     agent_id: str = pydantic.Field(
         min_length=1, description='An agent of the organization.'

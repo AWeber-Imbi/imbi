@@ -16,6 +16,7 @@ import pydantic
 
 from imbi.common.workflows import graph, registry
 from imbi.common.workflows.registry import agent as agent_step
+from imbi.common.workflows.registry import condition
 
 MAX_NODES = 100
 MAX_EDGES = 200
@@ -29,6 +30,8 @@ TRIGGER_SCOPE = 'trigger'
 LIMIT_CODES = frozenset(
     {'too_many_nodes', 'too_many_edges', 'graph_too_large'}
 )
+#: Warnings that do not stop activation.
+ADVISORY_CODES = frozenset({'condition_type_mismatch'})
 
 #: ``{{ trigger.<name> }}``, or a nested field of the trigger payload
 #: such as ``{{ trigger.payload.repository.name }}``. A key template
@@ -144,6 +147,23 @@ def _output_fields(node: graph.Node) -> list[agent_step.OutputField] | None:
         return agent_step.Params.model_validate(node.params).output_fields
     except pydantic.ValidationError:
         return None
+
+
+def _schema_types(schema: dict[str, typing.Any]) -> set[str]:
+    """Return the JSON types of ``schema``, without ``null``."""
+    branches: list[dict[str, typing.Any]] = schema.get('anyOf', [schema])
+    found = {b.get('type', 'object' if '$ref' in b else '') for b in branches}
+    return found - {'', 'null'}
+
+
+def _conditions(node: graph.Node) -> list[condition.Condition]:
+    """Return the conditions of a condition node with valid params."""
+    if node.type != condition.STEP.type:
+        return []
+    try:
+        return condition.Params.model_validate(node.params).conditions
+    except pydantic.ValidationError:
+        return []
 
 
 def _check_params(node: graph.Node, issues: _Issues) -> None:
@@ -549,6 +569,7 @@ class _Validator:
                         node_id=node_id,
                     )
             self._check_result_fields(node)
+            self._check_condition_types(node)
 
     def _check_result_fields(self, node: graph.Node) -> None:
         """Report a reference to a field that an agent step lacks."""
@@ -573,6 +594,50 @@ class _Validator:
                 f'{node.title}: {path[0]}.result has no field {missing!r}',
                 node_id=node.id,
             )
+
+    def _reference_types(self, value: typing.Any) -> set[str]:
+        """Return the JSON types of a value that is one reference.
+
+        Empty when the value is not one reference to a step output
+        with a known type.
+        """
+        text = value if isinstance(value, str) else ''
+        whole = graph.WHOLE_REFERENCE.match(text)
+        path = whole.group(1).split('.') if whole else []
+        source_id = self.by_key.get(path[0]) if len(path) > 1 else None
+        if source_id is None:
+            return set()
+        source = self.nodes[source_id]
+        fields = _output_fields(source)
+        if fields is not None and len(path) > 2 and path[1] == 'result':
+            found = agent_step.field_type(fields, path[2:])
+            return {found} if found else set()
+        step = registry.STEP_TYPES.get(source.type)
+        schema = step.output.model_json_schema() if step else {}
+        properties: dict[str, typing.Any] = schema.get('properties', {})
+        if len(path) != 2 or path[1] not in properties:
+            return set()
+        return _schema_types(properties[path[1]])
+
+    def _check_condition_types(self, node: graph.Node) -> None:
+        """Warn about a reference whose type an operator cannot use."""
+        for number, row in enumerate(_conditions(node), 1):
+            sides: list[tuple[condition.Side, typing.Any]] = [('a', row.a)]
+            if row.operator not in condition.UNARY:
+                sides.append(('b', row.b))
+            for side, value in sides:
+                types = self._reference_types(value)
+                needs = condition.mismatch(row.operator, side, types)
+                if needs is None:
+                    continue
+                self.issues.add(
+                    'warning',
+                    'condition_type_mismatch',
+                    f'{node.title}: condition {number}: {value} is '
+                    f'{" or ".join(sorted(types))}, and {row.operator} '
+                    f'needs {needs} as {side}',
+                    node_id=node.id,
+                )
 
     def _check_any_joins(self, order: list[str]) -> None:
         """Warn about ``any`` joins whose inputs can both arrive in a run.
