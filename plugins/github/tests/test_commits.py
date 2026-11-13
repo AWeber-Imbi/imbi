@@ -2364,6 +2364,28 @@ class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('main', params['sha'])
 
     @respx.mock
+    async def test_since_window_deep_page_404_keeps_read(self) -> None:
+        """#686: GHES 404s a deep since-window page; keep what was read."""
+        self._mock_default_branch()
+        url = f'{self._REPO}/commits'
+        respx.get(url).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[_commit('c' * 40)],
+                    headers={'link': f'<{url}?page=2>; rel="next"'},
+                ),
+                httpx.Response(404, json={'message': 'Not Found'}),
+            ]
+        )
+        since = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)
+        with mock.patch(_QUERY, new=mock.AsyncMock(return_value=[])):
+            with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
+                written, _ = await self._sync(since=since)
+        self.assertEqual(1, written)
+        self.assertTrue(any('page 2' in x for x in cm.output))
+
+    @respx.mock
     async def test_recent_page_when_no_sha_and_no_since(self) -> None:
         self._mock_default_branch()
         history = respx.get(f'{self._REPO}/commits').mock(
