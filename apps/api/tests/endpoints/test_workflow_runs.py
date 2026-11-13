@@ -1590,11 +1590,17 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
 
     async def test_confirmed_deployment_is_stored_and_retried(self) -> None:
         run = plugin_base.DeploymentRun(run_id='42', status='in_progress')
-        await self._as_deployment([run])
+        find = await self._as_deployment([run])
         response = await self._resolve(
             resolution='mark_done', deployment_run_id='42', retry=True
         )
         self.assertEqual(response.status_code, 204, response.text)
+        find.assert_awaited_once()
+        args, kwargs = find.call_args
+        self.assertEqual(args[1:3], (self.org, 'p1'))
+        self.assertEqual(
+            (kwargs['environment'], kwargs['ref']), ('staging', '1.2.0')
+        )
         status, steps, effect = await self._state()
         self.assertEqual((status, steps['tell']), ('running', 'running'))
         stored = project_deployments.DeploymentTriggerResponse.model_validate(
@@ -1606,12 +1612,20 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         )
 
     async def test_unconfirmed_deployment_run_changes_nothing(self) -> None:
-        await self._as_deployment([])
+        find = await self._as_deployment([])
         before = await self._state()
         response = await self._resolve(
             resolution='mark_done', deployment_run_id='42', retry=True
         )
         self.assertEqual(response.status_code, 409, response.text)
+        find.assert_awaited_once()
+        self.assertEqual(
+            (
+                find.call_args.kwargs['environment'],
+                find.call_args.kwargs['ref'],
+            ),
+            ('staging', '1.2.0'),
+        )
         response = await self._resolve(
             resolution='clear', deployment_run_id='42'
         )

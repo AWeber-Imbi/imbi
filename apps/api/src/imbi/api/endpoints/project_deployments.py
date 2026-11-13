@@ -3313,8 +3313,15 @@ async def find_deployments(
             status_code=404,
             detail=f'Project {project_id!r} not found in {org_slug!r}',
         )
+    # A read-only lookup: an operator with no connected identity uses
+    # the Integration's service credentials.
     resolved, ctx, credentials = await _resolve_and_context(
-        db, org_slug, project_id, auth, environment=environment
+        db,
+        org_slug,
+        project_id,
+        auth,
+        environment=environment,
+        best_effort_identity=True,
     )
     try:
         runs = await call_with_timeout(

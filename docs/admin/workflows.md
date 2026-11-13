@@ -586,21 +586,24 @@ call:
 1. Find out what happened. For a deployment, click **Find deployment**.
    Imbi asks the project's deployment plugin for the deployments of the
    step's version to the step's environment that started at most one
-   minute before the call. Click **Use this deployment** on the one that
-   the call made, and confirm. Imbi records it as the result of the call,
-   so a retry follows that deployment and does not deploy again. Another
-   deploy of the same version and environment at that time also shows, so
-   make sure that you select the correct one. If the plugin cannot search
-   (only GitHub can), look in the deployment provider yourself. For an
-   email, ask the recipients.
-2. Select **Retry step** to open the run again and run the step again. The
-   box shows only when the step failed the run with `outcome_unknown`, the
-   run is not archived, and its max run time has not passed.
-3. Click **Clear** to make Imbi forget the call: a retry deploys or sends
-   again. Click **Mark done** to record that the call acted: a retry of a
-   step email sends nothing and the step succeeds. A deployment marked
-   done with **Mark done** cannot run again, because Imbi does not know
-   its deployment run.
+   minute before the call. Another deploy of the same version and
+   environment at that time also shows, so make sure that you select the
+   correct one. If the plugin cannot search (only GitHub can), look in the
+   deployment provider yourself. For an email, ask the recipients.
+2. Set **Retry step** before you resolve the call. When it is selected,
+   the run opens again and the step runs again when you resolve the call.
+   The box shows only when the step failed the run with `outcome_unknown`,
+   the run is not archived, and its max run time has not passed.
+3. Resolve the call with one of these actions:
+   - Click **Use this deployment** on the deployment that the call made,
+     and confirm. Imbi records it as the result of the call, so a retry
+     follows that deployment and does not deploy again.
+   - Click **Clear** to make Imbi forget the call: a retry deploys or
+     sends again.
+   - Click **Mark done** to record that the call acted: a retry of a step
+     email sends nothing and the step succeeds. A deployment marked done
+     with **Mark done** cannot run again, because Imbi does not know its
+     deployment run.
 
 The row shows the step's parameters (for a deployment, the project, the
 environment, and the version) and links to the run.
