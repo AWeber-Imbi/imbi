@@ -40,7 +40,8 @@ _EPOCH = '1970-01-01T00:00:00+00:00'
 
 # The latest row of each run, then per workflow. Inner aliases differ
 # from the column names: an alias that shadows a column turns the outer
-# argMax into an aggregate of an aggregate.
+# argMax into an aggregate of an aggregate. A skipped run never ran, so
+# it is left out: it would hide the outcome of the run it repeats.
 _STATS_QUERY = """
 SELECT workflow_id,
        countIf(created >= now64() - INTERVAL 30 DAY) AS runs_30d,
@@ -54,6 +55,7 @@ FROM (
   WHERE organization_id = {organization_id:String}
   GROUP BY workflow_id, run_id
 )
+WHERE latest_status != 'skipped'
 GROUP BY workflow_id
 """
 
@@ -200,7 +202,7 @@ def steps(events: abc.Iterable[Row]) -> list[Row]:
 
 async def stats(organization_id: str) -> dict[str, Row]:
     """Return runs in 30 days, last run time, and last status, by
-    workflow id."""
+    workflow id. ``skipped`` runs are not counted."""
     found = await clickhouse.query(
         _STATS_QUERY, {'organization_id': organization_id}
     )

@@ -185,6 +185,47 @@ class SummaryTestCase(RunHistoryTestCase):
             {str(run['id']): 'failed'},
         )
 
+    async def test_skipped_runs_are_left_out_of_stats(self) -> None:
+        workflow_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.UTC)
+        base = {
+            'organization_id': self.org,
+            'workflow_id': workflow_id,
+            'version': 1,
+            'origin_kind': 'webhook',
+            'origin_id': 'wh-1',
+            'error': None,
+            'last_seq': 2,
+        }
+        failed = {
+            **base,
+            'id': uuid.uuid4(),
+            'status': 'failed',
+            'created_at': now - datetime.timedelta(minutes=5),
+            'started_at': now - datetime.timedelta(minutes=5),
+            'closed_at': now - datetime.timedelta(minutes=4),
+        }
+        skipped = {
+            **base,
+            'id': uuid.uuid4(),
+            'status': 'skipped',
+            'created_at': now,
+            'started_at': None,
+            'closed_at': now,
+        }
+        only_skipped = {**skipped, 'id': uuid.uuid4()}
+        only_skipped['workflow_id'] = str(uuid.uuid4())
+        with support.sink_to_clickhouse():
+            for run in (failed, skipped, only_skipped):
+                await history.publish(run, [], summary=True)
+        stats = await history.stats(self.org)
+        self.assertEqual(stats[workflow_id]['runs_30d'], 1)
+        self.assertEqual(stats[workflow_id]['last_status'], 'failed')
+        self.assertEqual(
+            stats[workflow_id]['last_run_at'], failed['created_at']
+        )
+        self.assertNotIn(only_skipped['workflow_id'], stats)
+
 
 class AttentionTestCase(test_workflow_runs.WorkflowRunTestCase):
     async def test_failed_and_stuck_runs(self) -> None:

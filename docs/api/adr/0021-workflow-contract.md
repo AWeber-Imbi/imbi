@@ -406,7 +406,8 @@ This follows ADR 0020.
   origin, and the outcome, so the API always knows where to read a run's
   log, and audit references never depend on ClickHouse alone.
 - **Reads.** Run detail reads Postgres before archive and ClickHouse after.
-  The list page's runs in 30 days and last outcome read `workflow_runs`.
+  The list page's runs in 30 days and last outcome read `workflow_runs`,
+  leaving out `skipped` runs.
   Live views read Postgres only.
 - **Retention.** No TTL to start, as for `agent_task_events`. Both
   ClickHouse tables carry `run_created_at` on every row, so a later TTL can

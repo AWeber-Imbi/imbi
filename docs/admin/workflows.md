@@ -593,6 +593,8 @@ first. Click a run to see each step: status, duration, branch, error,
 input, and output. Open runs refresh every 2 seconds.
 
 The workflow list shows **Runs 30d** and **Last run** for each workflow.
+Neither counts `skipped` runs, so a skipped repeat does not hide the
+outcome of the run before it.
 
 | Run status | Meaning |
 |---|---|
