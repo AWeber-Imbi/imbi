@@ -414,7 +414,7 @@ unset.
 | `VITE_POSTHOG_HOST` | str | none | PostHog ingestion host of the UI |
 | `VITE_POSTHOG_ERROR_TRACKING` | str | none | `false` stops sending UI exceptions. Default: `true`. |
 | `VITE_POSTHOG_WEB_ANALYTICS` | str | none | `true` sends pageviews, page leaves, and web vitals |
-| `VITE_POSTHOG_SESSION_REPLAY` | str | none | `true` records sessions. All text and inputs are always masked. |
+| `VITE_POSTHOG_SESSION_REPLAY` | str | none | `true` records sessions. Inputs are always masked; text that shows a secret is not recorded. |
 | `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | str | none | Share of sessions that record, `0` to `1`. Default: `1`. |
 | `VITE_POSTHOG_PERSON_PROFILES` | str | none | `identified_only` identifies each user by a hash of their email and names the person by the email local part. Default: `never`. |
 

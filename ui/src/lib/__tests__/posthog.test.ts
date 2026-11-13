@@ -59,7 +59,7 @@ describe('initPostHog', () => {
     expect(posthog.init).not.toHaveBeenCalled()
   })
 
-  it('keeps analytics and replay off by default, always masks', async () => {
+  it('keeps analytics and replay off by default, masks inputs, records text', async () => {
     window.__IMBI_POSTHOG_KEY__ = 'phc_x'
     await initPostHog()
     const options = vi.mocked(posthog.init).mock.calls[0][1]
@@ -73,9 +73,9 @@ describe('initPostHog', () => {
       session_recording: {
         blockSelector: '[data-ph-no-capture]',
         maskAllInputs: true,
-        maskTextSelector: '*',
       },
     })
+    expect(options?.session_recording).not.toHaveProperty('maskTextSelector')
   })
 
   it('turns on web analytics and replay from their switches', async () => {
@@ -93,7 +93,6 @@ describe('initPostHog', () => {
       session_recording: {
         blockSelector: '[data-ph-no-capture]',
         maskAllInputs: true,
-        maskTextSelector: '*',
       },
     })
   })

@@ -56,6 +56,14 @@ describe('SettingsSecurity two-factor authentication', () => {
       'src',
       'data:image/png;base64,iVBORw0KGgo=',
     )
+    // Session replay records text, so each secret is blocked.
+    for (const el of [
+      screen.getByText('JBSWY3DPEHPK3PXP'),
+      screen.getByText('aaaa1111'),
+      screen.getByAltText(/qr code/i),
+    ]) {
+      expect(el.closest('[data-ph-no-capture]')).not.toBeNull()
+    }
 
     await user.type(screen.getByLabelText(/code from the app/i), '123456')
     await user.click(screen.getByRole('button', { name: /turn on/i }))

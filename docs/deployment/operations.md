@@ -338,10 +338,12 @@ Caddy writes these values into the page when it serves the UI.
 | `VITE_POSTHOG_REPLAY_SAMPLE_RATE` | The share of sessions that record, `0` to `1`. The default is `1` |
 | `VITE_POSTHOG_PERSON_PROFILES` | `identified_only` identifies each user by the SHA-256 hash of their email, the same ID as in the MCP and AI events, and names the person by the local part of the email. The full email is not sent. The default is `never`: events have no person |
 
-Session replay always masks all text and all inputs. No setting turns this
-off. The fields that show an API key or a client secret one time are not
-recorded at all. The UI removes the query string from every URL that it
-sends.
+Session replay records the text on the page and always masks all inputs.
+No setting turns off the input mask. The elements that show a secret as
+text are not recorded at all: a new API key or client secret, the MFA
+secret, QR code and backup codes, the device verification code, and secret
+project configuration values (and values that hold URL credentials). The
+UI removes the query string from every URL that it sends.
 
 To show UI stack frames as source code, upload the source maps. Set these
 on the container (`all` or `ui` mode). It uploads the maps in the

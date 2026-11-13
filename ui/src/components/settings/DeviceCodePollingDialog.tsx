@@ -187,7 +187,11 @@ export function DeviceCodePollingDialog({
             <div className="text-muted-foreground text-xs tracking-wide uppercase">
               Verification code
             </div>
-            <div className="mt-1 font-mono text-2xl font-semibold tracking-widest select-all">
+            {/* Session replay never records the code (lib/posthog.ts). */}
+            <div
+              className="mt-1 font-mono text-2xl font-semibold tracking-widest select-all"
+              data-ph-no-capture
+            >
               {polling.user_code}
             </div>
           </div>
