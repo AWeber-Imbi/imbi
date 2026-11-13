@@ -113,7 +113,11 @@ export function TaskLogTab({
   const location = useLocation()
   const navigate = useNavigate()
   const seq = /^#e(\d+)$/.exec(location.hash)?.[1]
-  const selected = seq ? findEntry(all, Number(seq)) : null
+  const selected = seq
+    ? (findEntry(all, Number(seq))?.event ??
+      events.find((e) => e.seq === Number(seq)) ??
+      null)
+    : null
   const origin = events.length ? Date.parse(events[0].at) : 0
   const close = () =>
     navigate(
@@ -133,7 +137,7 @@ export function TaskLogTab({
     isOpen,
     orgSlug,
     requests,
-    selected: selected?.event?.seq ?? null,
+    selected: selected?.seq ?? null,
     task,
     toggle,
   }
@@ -189,7 +193,7 @@ export function TaskLogTab({
       <TimingOverview
         entries={all}
         live={task.status === 'running'}
-        selected={selected?.event?.seq ?? null}
+        selected={selected?.seq ?? null}
       />
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" ref={listRef}>
@@ -215,10 +219,10 @@ export function TaskLogTab({
             ))}
           </ol>
         </div>
-        {selected?.event && (
+        {selected && (
           <Inspector
-            event={selected.event}
-            key={selected.id}
+            event={selected}
+            key={selected.event_id}
             onClose={close}
             orgSlug={orgSlug}
             origin={origin}

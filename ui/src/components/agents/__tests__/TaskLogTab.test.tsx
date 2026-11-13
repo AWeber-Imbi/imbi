@@ -105,6 +105,22 @@ describe('TaskLogTab inspector', () => {
     expect(within(timing).getAllByRole('link')).toHaveLength(1)
   })
 
+  it('inspects an event the ledger does not list', () => {
+    window.history.pushState({}, '', '/t/log#e5')
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <TaskLogTab
+        events={[...LOG, event(5, 'session.heartbeat', { pid: 7 })]}
+        orgSlug="acme"
+        requests={[]}
+        task={t}
+      />,
+    )
+    expect(within(inspector()!).getByRole('heading')).toHaveTextContent(
+      'session.heartbeat',
+    )
+  })
+
   it('closes and drops the hash', async () => {
     const user = userEvent.setup()
     renderLog('/t/log#e4')
