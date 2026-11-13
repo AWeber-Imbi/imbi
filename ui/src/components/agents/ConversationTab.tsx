@@ -255,7 +255,7 @@ function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
     <Message align="end">
       <MessageContent>
         <MessageHeader>{actorName(e.actor_id)}</MessageHeader>
-        <div className="bg-secondary max-w-[85%] rounded-xl px-3.5 py-2.5">
+        <div className="bg-secondary max-w-[85%] self-end rounded-xl px-3.5 py-2.5">
           <Prose>{body}</Prose>
           {typeof e.payload.decision === 'string' && (
             <p className="text-secondary mt-1 text-sm">{e.payload.decision}</p>
