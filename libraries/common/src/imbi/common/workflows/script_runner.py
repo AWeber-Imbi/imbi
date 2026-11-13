@@ -159,7 +159,7 @@ def result(params: script.Params, value: typing.Any, printed: str) -> Result:
         raise _invalid(
             f'the last expression is a {type(value).__name__}, not a dict'
         )
-    found = typing.cast('dict[str, typing.Any]', _json(value, 0))
+    found = typing.cast('dict[str, typing.Any]', _Converter().convert(value))
     branch: typing.Any = None
     port = 0
     if params.branches:
@@ -201,32 +201,70 @@ def _invalid(message: str) -> ScriptError:
     return ScriptError('script_output_invalid', message)
 
 
-def _json(value: typing.Any, depth: int) -> typing.Any:
-    """Return ``value`` with JSON types only.
+class _Converter:
+    """Convert a result to JSON types, within a budget of bytes.
 
-    Raises:
-        ScriptError: A value has no JSON form, or nests too deep.
-
+    A script can return one list many times over, such as ``[a] * 1000``
+    where ``a`` is ``[0] * 1000``. It crosses to the host as shared
+    references, so its full form can be much larger than the memory
+    limit of the sandbox. Each value is charged no more than the bytes
+    of its JSON, so the walk stops as soon as the result cannot fit in
+    :data:`MAX_OUTPUT_BYTES`, before it expands the rest.
     """
-    if depth > MAX_DEPTH:
-        raise _invalid(f'the result nests deeper than {MAX_DEPTH}')
-    match value:
-        case None | bool() | str() | int():
-            return value
-        case float() | decimal.Decimal():
-            number = float(value)
-            if not math.isfinite(number):
-                raise _invalid(f'{value} is not a finite number')
-            return number
-        case datetime.datetime() | datetime.date() | datetime.time():
-            return value.isoformat()
-        case dict():
-            mapping = typing.cast('dict[typing.Any, typing.Any]', value)  # type: ignore[redundant-cast]
-            if not all(isinstance(k, str) for k in mapping):
-                raise _invalid('a dict key is not a string')
-            return {k: _json(v, depth + 1) for k, v in mapping.items()}
-        case list() | tuple() | set() | frozenset():
-            items = typing.cast('abc.Iterable[typing.Any]', value)
-            return [_json(v, depth + 1) for v in items]
-        case _:
-            raise _invalid(f'a {type(value).__name__} has no JSON form')
+
+    def __init__(self) -> None:
+        self.left = MAX_OUTPUT_BYTES
+
+    def _charge(self, size: int) -> None:
+        self.left -= size
+        if self.left < 0:
+            raise ScriptError(
+                'script_output_too_large',
+                f'the result is more than {MAX_OUTPUT_BYTES} bytes of JSON',
+            )
+
+    def convert(self, value: typing.Any, depth: int = 0) -> typing.Any:
+        """Return ``value`` with JSON types only.
+
+        Raises:
+            ScriptError: A value has no JSON form, nests too deep, or
+                the result is too large.
+
+        """
+        if depth > MAX_DEPTH:
+            raise _invalid(f'the result nests deeper than {MAX_DEPTH}')
+        # A comma or a bracket: every value takes one byte at least.
+        self._charge(1)
+        match value:
+            case str():
+                self._charge(len(value))
+                return value
+            case None | bool():
+                return value
+            case int():
+                # Python cannot write an int of more than 4300 digits
+                # as text, and JSON readers lose precision past 64 bits.
+                if not -(2**63) <= value < 2**64:
+                    raise _invalid('an integer is out of the 64-bit range')
+                return value
+            case float() | decimal.Decimal():
+                number = float(value)
+                if not math.isfinite(number):
+                    raise _invalid(f'{value} is not a finite number')
+                return number
+            case datetime.datetime() | datetime.date() | datetime.time():
+                return self.convert(value.isoformat(), depth)
+            case dict():
+                mapping = typing.cast('dict[typing.Any, typing.Any]', value)  # type: ignore[redundant-cast]
+                found: dict[str, typing.Any] = {}
+                for key, item in mapping.items():
+                    if not isinstance(key, str):
+                        raise _invalid('a dict key is not a string')
+                    self._charge(len(key) + 1)
+                    found[key] = self.convert(item, depth + 1)
+                return found
+            case list() | tuple() | set() | frozenset():
+                items = typing.cast('abc.Iterable[typing.Any]', value)
+                return [self.convert(v, depth + 1) for v in items]
+            case _:
+                raise _invalid(f'a {type(value).__name__} has no JSON form')

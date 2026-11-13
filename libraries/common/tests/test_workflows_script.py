@@ -1,5 +1,6 @@
 """Tests for the ``script`` step type and its runner (ADR 0026)."""
 
+import time
 import typing
 import unittest
 
@@ -160,28 +161,36 @@ class ResultTestCase(unittest.TestCase):
 
     def test_invalid(self) -> None:
         branched = _params(branches=['low', 'high'])
-        for params, value, code in (
-            (_params(), 42, 'script_output_invalid'),
-            (_params(), {'count': 'one'}, 'script_output_invalid'),
-            (_params(), {'count': 1, 'extra': 1}, 'script_output_invalid'),
-            (_params(), {'count': float('nan')}, 'script_output_invalid'),
-            (_params(), {1: 'int key'}, 'script_output_invalid'),
-            (_params(), {'count': object()}, 'script_output_invalid'),
+        for index, (params, value, code) in enumerate(
             (
-                _params(),
-                {'count': 1, 'branch': 'low'},
-                'script_output_invalid',
-            ),
-            (branched, {'count': 1}, 'script_branch_invalid'),
-            (branched, {'count': 1, 'branch': 'mid'}, 'script_branch_invalid'),
-            (
-                _params(),
-                {'count': 1, 'note': 'x' * 70_000},
-                'script_output_too_large',
-            ),
+                (_params(), 42, 'script_output_invalid'),
+                (_params(), {'count': 'one'}, 'script_output_invalid'),
+                (_params(), {'count': 1, 'extra': 1}, 'script_output_invalid'),
+                (_params(), {'count': float('nan')}, 'script_output_invalid'),
+                (_params(), {1: 'int key'}, 'script_output_invalid'),
+                (_params(), {'count': object()}, 'script_output_invalid'),
+                (
+                    _params(),
+                    {'count': 1, 'branch': 'low'},
+                    'script_output_invalid',
+                ),
+                (branched, {'count': 1}, 'script_branch_invalid'),
+                (
+                    branched,
+                    {'count': 1, 'branch': 'mid'},
+                    'script_branch_invalid',
+                ),
+                (
+                    _params(),
+                    {'count': 1, 'note': 'x' * 70_000},
+                    'script_output_too_large',
+                ),
+                (_params(), {'count': 2**64}, 'script_output_invalid'),
+                (_params(), {'count': 10**5000}, 'script_output_invalid'),
+            )
         ):
             with (
-                self.subTest(value=str(value)[:40]),
+                self.subTest(index),
                 self.assertRaises(script_runner.ScriptError) as raised,
             ):
                 script_runner.result(params, value, '')
@@ -195,6 +204,18 @@ class ResultTestCase(unittest.TestCase):
         with self.assertRaises(script_runner.ScriptError) as raised:
             script_runner.result(_params(), {'count': value}, '')
         self.assertIn('nests deeper', raised.exception.message)
+
+    def test_shared_references_stop_early(self) -> None:
+        # A billion items by reference: the walk must stop at the cap
+        # without expanding them.
+        shared: typing.Any = [0] * 1000
+        for _ in range(2):
+            shared = [shared] * 1000
+        start = time.perf_counter()
+        with self.assertRaises(script_runner.ScriptError) as raised:
+            script_runner.result(_params(), {'count': shared}, '')
+        self.assertEqual(raised.exception.code, 'script_output_too_large')
+        self.assertLess(time.perf_counter() - start, 1.0)
 
 
 class RunnerTestCase(unittest.IsolatedAsyncioTestCase):
@@ -272,3 +293,9 @@ class RunnerTestCase(unittest.IsolatedAsyncioTestCase):
         await self._run("secret = 1\n{'count': secret}")
         error = await self._error("{'count': secret}")
         self.assertIn('NameError', error.message)
+
+    async def test_shared_reference_fan_out_is_refused(self) -> None:
+        error = await self._error(
+            'a = [0] * 1000\nb = [a] * 1000\nc = [b] * 1000\n{"count": c}'
+        )
+        self.assertEqual(error.code, 'script_output_too_large')
