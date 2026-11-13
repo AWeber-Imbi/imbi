@@ -4,7 +4,10 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Download, ShieldCheck } from 'lucide-react'
 
 import { getProblemPackages } from '@/api/endpoints'
-import { AdvisoryChips } from '@/components/packages/AdvisoryChips'
+import {
+  AdvisoryChips,
+  SeverityBadge,
+} from '@/components/packages/AdvisoryChips'
 import { ComponentNotesDialog } from '@/components/packages/ComponentNotesDialog'
 import { EnvironmentChips } from '@/components/packages/EnvironmentChips'
 import { statusLabel, statusVariant } from '@/components/packages/status'
@@ -233,7 +236,16 @@ function FindingRow({
                     >
                       {advisory.cve_id}
                     </a>
+                    <span className="ml-1.5">
+                      <SeverityBadge advisory={advisory} />
+                    </span>
                     {advisory.title ? ` — ${advisory.title}` : ''}
+                    {advisory.description &&
+                      advisory.description !== advisory.title && (
+                        <p className="text-secondary mt-0.5 max-w-3xl">
+                          {advisory.description}
+                        </p>
+                      )}
                   </li>
                 ))}
               </ul>

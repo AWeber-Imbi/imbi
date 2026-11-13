@@ -36,6 +36,7 @@ MaintenanceSlug = typing.Literal[
     'pr-sync',
     'search-reindex',
     'marketplace-sync',
+    'cve-sync',
 ]
 
 
@@ -315,6 +316,22 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_marketplaces,
             execute=operations.execute_marketplace_sync,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='cve-sync',
+            label='Sync CVE Catalog',
+            description=(
+                'Import the CVE List (CVEProject/cvelistV5) into the CVE '
+                'catalog that advisories read severity and descriptions '
+                'from. Only records that changed since the last import '
+                'are written. The first run imports every record and '
+                'needs about 1.5 GB of temporary disk. The scheduler runs '
+                'this daily at 01:30 UTC.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_cve_release,
+            execute=operations.execute_cve_sync,
             items_are_projects=False,
         ),
     )

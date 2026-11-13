@@ -734,3 +734,28 @@ PARTITION BY toYYYYMM(at)
 ORDER BY (organization_id, at, event_id);
 """
 enabled = true
+
+# The CVE catalog: one row per CVE record from the CVE List
+# (CVEProject/cvelistV5), written by the `cve-sync` maintenance
+# operation. A record that changes upstream is published again with a
+# newer `updated_at`, and ReplacingMergeTree keeps the newest row, so
+# read with FINAL. No TTL: a CVE record does not expire.
+[cves]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.cves {on_cluster}(
+  cve_id          String,
+  state           LowCardinality(String),
+  assigner        LowCardinality(String) DEFAULT '',
+  published_at    Nullable(DateTime64(3, 'UTC')),
+  updated_at      DateTime64(3, 'UTC'),
+  title           String DEFAULT '',
+  description     String DEFAULT '',
+  cvss_score      Nullable(Float64),
+  cvss_severity   LowCardinality(Nullable(String)),
+  cvss_vector     Nullable(String),
+  cwe_ids         Array(String),
+  references      Array(String)
+) ENGINE = {replicated}ReplacingMergeTree(updated_at)
+ORDER BY cve_id;
+"""
+enabled = true

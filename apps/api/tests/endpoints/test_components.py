@@ -961,6 +961,112 @@ class ComponentAdvisoriesTestCase(_ComponentsTestBase):
             ['CVE-2025-0001', 'CVE-2025-0002'],
         )
 
+    def _catalog_row(self, cve_id: str) -> dict[str, typing.Any]:
+        """One ``imbi.cves`` row, as ClickHouse returns it."""
+        return {
+            'cve_id': cve_id,
+            'state': 'PUBLISHED',
+            'assigner': 'apache',
+            'published_at': datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
+            'updated_at': datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC),
+            'title': 'Catalog title',
+            'description': 'Catalog description',
+            'cvss_score': 9.8,
+            'cvss_severity': 'CRITICAL',
+            'cvss_vector': None,
+            'cwe_ids': [],
+            'references': [],
+        }
+
+    def test_upsert_fills_title_and_url_from_the_catalog(self) -> None:
+        self.mock_db.execute.side_effect = [
+            self._projects('proj-1'),
+            [{'component_id': COMPONENT_ID}],
+            [{'cve_id': 'CVE-2025-1234'}],
+        ]
+        self._ch_results([{'hit': 1}], [self._catalog_row('CVE-2025-1234')])
+        response = self.client.put(
+            self._versions(f'/{RELEASE_A}/advisories/CVE-2025-1234'), json={}
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(
+            'https://www.cve.org/CVERecord?id=CVE-2025-1234', body['url']
+        )
+        self.assertEqual('Catalog title', body['title'])
+        self.assertEqual('CRITICAL', body['severity'])
+        self.assertTrue(body['in_catalog'])
+        self.assertEqual('Catalog title', self._params(2)['title'])
+
+    def test_upsert_accepts_an_id_not_in_the_catalog(self) -> None:
+        self.mock_db.execute.side_effect = [
+            self._projects('proj-1'),
+            [{'component_id': COMPONENT_ID}],
+            [{'cve_id': 'CVE-2026-99999'}],
+        ]
+        self._ch_results([{'hit': 1}], [])
+        response = self.client.put(
+            self._versions(f'/{RELEASE_A}/advisories/CVE-2026-99999'),
+            json={'url': '', 'title': 'Mine'},
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body['in_catalog'])
+        self.assertEqual('Mine', body['title'])
+        self.assertIsNone(body['severity'])
+        self.assertEqual(
+            'https://www.cve.org/CVERecord?id=CVE-2026-99999', body['url']
+        )
+
+    def test_list_reads_the_catalog_once(self) -> None:
+        advisory = {
+            'url': 'https://example.com/1',
+            'title': None,
+            'created_by': 'bob@example.com',
+            'created_at': '2026-06-01T00:00:00+00:00',
+        }
+        self.mock_db.execute.side_effect = [
+            self._projects('proj-1'),
+            [{'component_id': COMPONENT_ID}],
+            [
+                {'cve_id': 'CVE-2025-0001', **advisory},
+                {'cve_id': 'CVE-2025-0002', **advisory},
+            ],
+        ]
+        self._ch_results([{'hit': 1}], [self._catalog_row('CVE-2025-0001')])
+        body = self.client.get(
+            self._versions(f'/{RELEASE_A}/advisories')
+        ).json()
+        self.assertEqual(2, self.mock_ch.await_count)
+        self.assertEqual(
+            {'cve_ids': ['CVE-2025-0001', 'CVE-2025-0002']},
+            self.mock_ch.await_args_list[1].kwargs['tables'],
+        )
+        self.assertEqual('CRITICAL', body[0]['severity'])
+        self.assertEqual('Catalog description', body[0]['description'])
+        self.assertFalse(body[1]['in_catalog'])
+
+    def test_list_omits_catalog_fields_when_clickhouse_fails(self) -> None:
+        self.mock_db.execute.side_effect = [
+            self._projects('proj-1'),
+            [{'component_id': COMPONENT_ID}],
+            [
+                {
+                    'cve_id': 'CVE-2025-0001',
+                    'url': 'https://example.com/1',
+                    'title': None,
+                    'created_by': 'bob@example.com',
+                    'created_at': '2026-06-01T00:00:00+00:00',
+                }
+            ],
+        ]
+        self.mock_ch.side_effect = [[{'hit': 1}], RuntimeError('down')]
+        response = self.client.get(self._versions(f'/{RELEASE_A}/advisories'))
+        self.assertEqual(response.status_code, 200)
+        (advisory,) = response.json()
+        self.assertIsNone(advisory['severity'])
+        self.assertIsNone(advisory['in_catalog'])
+
 
 #: Which columns of a report row the graph supplies. The rest are the
 #: deployment pointer's -- project, team, environment -- and the two

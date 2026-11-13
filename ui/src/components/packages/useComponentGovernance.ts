@@ -141,12 +141,16 @@ export function useComponentGovernance(
     mutationFn: ({ componentReleaseId, cveId, title, url }: AdvisoryVars) =>
       upsertComponentAdvisory(orgSlug, componentReleaseId, cveId, {
         title: title || null,
-        url,
+        url: url || null,
       }),
     onError: (err) => toast.error(message(err)),
     onSuccess: (data, { componentReleaseId }) => {
       invalidate(componentReleaseId)
-      toast.success(`Recorded ${data.cve_id}`)
+      toast.success(
+        data.in_catalog === false
+          ? `Recorded ${data.cve_id}. It is not in the CVE catalog yet.`
+          : `Recorded ${data.cve_id}`,
+      )
     },
   })
 

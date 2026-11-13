@@ -244,9 +244,9 @@ An unmarked package has no status. The menu shows **Set status**.
 
 You can also record these on a package version:
 
-- An advisory: an **Identifier** (for example `CVE-2025-1234`), a **URL**,
-  and an optional **Title**. The same identifier on another version links
-  to the same advisory. Imbi does not collect a severity.
+- An advisory: an **Identifier** (for example `CVE-2025-1234`), and an
+  optional **URL** and **Title**. The same identifier on another version
+  links to the same advisory. See [CVE catalog](#cve-catalog).
 - A note. Every team can see the notes. A note cannot be changed or
   removed.
 
@@ -262,6 +262,25 @@ Reading the marks and the package reports needs `component:read`. The
 `admin`, `developer`, `default`, and `readonly` roles have it. Setting a
 mark, an advisory, or a note needs `component:write`. Only the `admin`
 role has it.
+
+### CVE catalog
+
+Imbi keeps a copy of the [CVE List](https://github.com/CVEProject/cvelistV5)
+in the ClickHouse `cves` table. The `cve-sync` maintenance operation updates
+it every day at 01:30 UTC (see [Maintenance](../admin/maintenance.md)), so the
+catalog can be up to about a day behind.
+
+- An advisory with a CVE identifier shows the severity, the CVSS score, and
+  the description from the catalog. Imbi reads these when it shows the
+  advisory, so they are always the catalog's current values. You do not
+  enter a severity.
+- When you record an advisory without a **Title**, Imbi uses the catalog
+  title. Without a **URL**, Imbi links to the record on
+  `https://www.cve.org`.
+- An identifier that is not in the catalog is accepted. It shows no
+  severity until a later sync adds it.
+- `GET /cves/{cve_id}` returns one catalog record. It needs
+  `component:read`.
 
 ### Package reports
 

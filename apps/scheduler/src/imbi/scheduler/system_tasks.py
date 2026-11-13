@@ -37,6 +37,20 @@ SYSTEM_TASKS: tuple[dict[str, typing.Any], ...] = (
             'path': '/maintenance/operations/marketplace-sync/run',
         },
     },
+    {
+        'slug': 'cve-sync',
+        'name': 'Sync the CVE catalog',
+        'description': (
+            'Starts the cve-sync maintenance operation, which imports the '
+            'CVE records that changed in the CVE List.'
+        ),
+        'trigger': {'kind': 'cron', 'expression': '30 1 * * *'},
+        'target': {
+            'kind': 'api',
+            'method': 'POST',
+            'path': '/maintenance/operations/cve-sync/run',
+        },
+    },
 )
 
 

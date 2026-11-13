@@ -1875,8 +1875,9 @@ class Advisory(GraphModel):
     One node per ``cve_id`` — the identifier is globally unique and
     MERGEd on, so the same CVE affecting five versions is one node
     with five ``HAS_ADVISORY`` edges rather than five copies. Severity
-    is deliberately absent until an OSV/GHSA feed can populate it;
-    hand-entered severities go stale silently.
+    is deliberately absent: advisory responses read it from the CVE
+    catalog (the ClickHouse ``cves`` table) when they are built, so it
+    never goes stale here.
     """
 
     cve_id: str = pydantic.Field(

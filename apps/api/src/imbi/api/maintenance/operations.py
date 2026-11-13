@@ -22,8 +22,10 @@ import logging
 import typing
 
 import fastapi
+import httpx
 from valkey import asyncio as valkey
 
+from imbi.api import cves
 from imbi.api.auth import permissions, principals
 from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
@@ -1133,4 +1135,53 @@ async def execute_marketplace_sync(
         raise MaintenanceItemFailed(
             f'Marketplace {row["slug"]}: {synced["sync_error"]}'
         )
+    return 'succeeded'
+
+
+async def enumerate_cve_release(db: graph.Graph) -> list[str]:
+    """The tag of the newest CVE List release: one item per run.
+
+    A GitHub failure is a ``502`` from the run endpoint, so the scheduler
+    run that started it shows the cause.
+    """
+    try:
+        async with cves.http_client() as http:
+            return [await cves.latest_release_tag(http)]
+    except httpx.HTTPError as err:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f'Cannot read the latest CVE List release: {err!r}',
+        ) from err
+
+
+async def execute_cve_sync(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Import the CVE records of release ``item_id`` that changed.
+
+    The whole import is one item, so a failure fails the run and the
+    next daily run tries again. Records published before the failure
+    stay, and the next run does not publish them again.
+    """
+    try:
+        async with cves.http_client() as http:
+            result = await cves.import_release(http, item_id)
+    except cves.ImportFailed as err:
+        raise MaintenanceItemFailed(str(err)) from err
+    except httpx.HTTPError as err:
+        raise MaintenanceItemFailed(
+            f'CVE List download failed: {err!r}'
+        ) from err
+    ctx.log.record(
+        'succeeded',
+        'cve-sync',
+        f'Read {result.records} CVE records, published {result.published}',
+        release=item_id,
+        records=result.records,
+        published=result.published,
+    )
     return 'succeeded'

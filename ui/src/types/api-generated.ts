@@ -1285,6 +1285,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cves/{cve_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cve
+         * @description Return one CVE record from the catalog.
+         */
+        get: operations["get_cve_api_cves__cve_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/dashboard/status": {
         parameters: {
             query?: never;
@@ -8290,6 +8310,11 @@ export interface paths {
          *     several versions is one node with several edges. Re-recording it
          *     updates the URL and title but keeps the original author and
          *     creation time.
+         *
+         *     An empty title is filled from the CVE catalog, and an empty URL
+         *     becomes the record's page on cve.org. An identifier that is not in
+         *     the catalog is accepted, because the catalog can be a day behind;
+         *     the response then has ``in_catalog: false``.
          */
         put: operations["upsert_component_advisory_api_organizations__org_slug__component_releases__component_release_id__advisories__cve_id__put"];
         post?: never;
@@ -10513,18 +10538,24 @@ export interface components {
          * AdvisoryRequest
          * @description Body for ``PUT .../advisories/{cve_id}``.
          *
-         *     Severity is deliberately absent — see :class:`imbi.common.models.
-         *     Advisory`.
+         *     Severity is deliberately absent: it comes from the CVE catalog. An
+         *     empty ``url`` becomes the record's page on cve.org, and an empty
+         *     ``title`` becomes the catalog title.
          */
         AdvisoryRequest: {
             /** Url */
-            url: string;
+            url?: string | null;
             /** Title */
             title?: string | null;
         };
         /**
          * AdvisoryResponse
          * @description One advisory recorded against a component version.
+         *
+         *     ``severity``, ``cvss_score``, ``description``, and ``published_at``
+         *     come from the CVE catalog when the response is built, so they are
+         *     never stale. ``in_catalog`` is ``None`` when the catalog could not be
+         *     read; then the catalog fields are empty too.
          */
         AdvisoryResponse: {
             /** Cve Id */
@@ -10537,6 +10568,16 @@ export interface components {
             created_by?: string | null;
             /** Created At */
             created_at?: string | null;
+            /** Severity */
+            severity?: string | null;
+            /** Cvss Score */
+            cvss_score?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** In Catalog */
+            in_catalog?: boolean | null;
         };
         /**
          * AgePolicy
@@ -13133,6 +13174,54 @@ export interface components {
              * @default []
              */
             teams: components["schemas"]["TeamMembership"][];
+        };
+        /**
+         * CveRecord
+         * @description One row of the ClickHouse ``cves`` table.
+         */
+        CveRecord: {
+            /** Cve Id */
+            cve_id: string;
+            /** State */
+            state: string;
+            /**
+             * Assigner
+             * @default
+             */
+            assigner: string;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Cvss Score */
+            cvss_score?: number | null;
+            /** Cvss Severity */
+            cvss_severity?: string | null;
+            /** Cvss Vector */
+            cvss_vector?: string | null;
+            /**
+             * Cwe Ids
+             * @default []
+             */
+            cwe_ids: string[];
+            /**
+             * References
+             * @default []
+             */
+            references: string[];
         };
         /**
          * DashboardMetrics
@@ -24036,6 +24125,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClientCredentialCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cve_api_cves__cve_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cve_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveRecord"];
                 };
             };
             /** @description Validation Error */
