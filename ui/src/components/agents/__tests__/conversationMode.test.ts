@@ -68,6 +68,20 @@ describe('fold rules', () => {
     expect(groupOpenByDefault(old, done, 'standard')).toBe(false)
     expect(groupOpenByDefault(old, done, 'verbose')).toBe(true)
   })
+
+  it('keeps the live group open when a note follows it', () => {
+    const [running] = turns(
+      timeline([
+        human(1),
+        call(2, 'Bash'),
+        event(3, 'state.changed', { from: 'queued', to: 'running' }),
+      ]),
+      { live: true },
+    )
+    const live = running.items[0] as ProcessGroup
+    expect(running.items[1].kind).toBe('note')
+    expect(groupOpenByDefault(live, running, 'standard')).toBe(true)
+  })
 })
 
 describe('groupSummary', () => {

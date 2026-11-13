@@ -34,9 +34,9 @@ export function groupOpenByDefault(
 ): boolean {
   if (mode === 'verbose') return true
   if (mode === 'compact') return false
-  return (
-    turn.status === 'running' && turn.items[turn.items.length - 1] === group
-  )
+  if (turn.status !== 'running') return false
+  const groups = turn.items.filter((item) => item.kind === 'group')
+  return groups[groups.length - 1] === group
 }
 
 /** `Ran 3 commands, read 2 files, 1 failed`. */
