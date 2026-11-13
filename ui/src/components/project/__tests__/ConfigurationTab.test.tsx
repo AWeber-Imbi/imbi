@@ -240,3 +240,37 @@ describe('ConfigurationTab Duplicate action', () => {
     )
   })
 })
+
+describe('ConfigurationTab session replay', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    stubValues({
+      production: async () => [value(PASSWORD_KEY, 'pw-prod')],
+      staging: async () => [value(PASSWORD_KEY, 'pw-staging')],
+    })
+  })
+
+  it('blocks secret values from session replay', async () => {
+    vi.mocked(listConfigurationKeys).mockImplementation(
+      async () => keyList(true) as never,
+    )
+    renderTab()
+    const reveal = await screen.findAllByRole('button', {
+      name: 'Reveal value',
+    })
+    expect(reveal).toHaveLength(2)
+    for (const button of reveal) {
+      expect(button.closest('[data-ph-no-capture]')).not.toBeNull()
+    }
+  })
+
+  it('records non-secret values', async () => {
+    vi.mocked(listConfigurationKeys).mockImplementation(
+      async () => keyList() as never,
+    )
+    renderTab()
+    const input = await screen.findByDisplayValue('pw-staging')
+    expect(input.closest('[data-ph-no-capture]')).toBeNull()
+    expect(document.querySelector('[data-ph-no-capture]')).toBeNull()
+  })
+})

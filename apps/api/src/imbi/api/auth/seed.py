@@ -6,6 +6,7 @@ import typing
 import nanoid
 
 from imbi.common import graph
+from imbi.common.auth import permissions as common_permissions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -622,6 +623,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'maintenance:manage',
         'Run and cancel global maintenance operations',
     ),
+    (
+        'admin:maintenance:marketplace-sync',
+        'admin',
+        'maintenance:marketplace-sync',
+        'Start the marketplace-sync maintenance operation',
+    ),
     # Project plugin access
     (
         'project:configuration:read',
@@ -988,7 +995,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
     # are infrastructure principals, not people, and neither is
     # `is_default` -- they are attached by the seed, never on first login.
     (
-        'imbi-scheduler',
+        common_permissions.SCHEDULER_ACCOUNT,
         'Imbi Scheduler',
         'Service role for imbi-scheduler: manage and fire scheduled '
         'tasks, and read the entities a task inspects',
@@ -1002,6 +1009,11 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # `system` tasks belong to no user, so firing and managing
             # them is an :admin operation by definition.
             'scheduled_task:admin',
+            # The marketplace-sync system task starts that one
+            # maintenance operation. Not admin:maintenance:manage: a user
+            # who can make a task that runs as this account could then
+            # start any operation, including the purges.
+            'admin:maintenance:marketplace-sync',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
@@ -1032,7 +1044,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         False,
     ),
     (
-        'imbi-gateway',
+        common_permissions.GATEWAY_ACCOUNT,
         'Imbi Gateway',
         'Service role for imbi-gateway: patch projects, record '
         'releases, and attribute events to users',
@@ -1055,7 +1067,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         False,
     ),
     (
-        'imbi-workflows',
+        common_permissions.WORKFLOWS_ACCOUNT,
         'Imbi Workflows',
         'Service role for imbi-workflows: deploy and roll back the '
         'projects that workflow steps name, and keep the scheduler tasks '
@@ -1077,7 +1089,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         False,
     ),
     (
-        'imbi-assistant',
+        common_permissions.ASSISTANT_ACCOUNT,
         'Imbi Assistant',
         'Service role for imbi-assistant: get the token of its AI '
         'provider (WIF plan 4.6)',
@@ -1086,7 +1098,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         False,
     ),
     (
-        'imbi-slackbot',
+        common_permissions.SLACKBOT_ACCOUNT,
         'Imbi Slackbot',
         'Service role for imbi-slackbot: get the token of its AI '
         'provider (WIF plan 4.6)',

@@ -15,6 +15,7 @@ from psycopg import rows
 from psycopg.types import json as pg_json
 
 from imbi.api.workflows import store
+from imbi.common.auth import permissions
 from imbi.common.workflows import history, runtime
 
 #: A side effect with no response for this long is stale: its call has
@@ -23,7 +24,7 @@ STALE_AFTER = '15 minutes'
 
 #: The principal of the engine: the slug of its service account
 #: (``auth/internal_services.py``).
-ENGINE_PRINCIPAL = 'imbi-workflows'
+ENGINE_PRINCIPAL = permissions.WORKFLOWS_ACCOUNT
 
 #: The stale side effects of runs of an organization. A key is
 #: ``[principal, action, caller key]`` (:func:`side_effect_key`), and the

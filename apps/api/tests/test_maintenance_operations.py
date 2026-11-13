@@ -1375,3 +1375,62 @@ class ExecuteCommitPushedAtRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('No stored commit matches', row.message)
         self.assertEqual(4, row.detail['deliveries'])
         self.assertNotIn('examined', row.detail)
+
+
+class MarketplaceSyncTests(unittest.IsolatedAsyncioTestCase):
+    """``marketplace-sync`` runs the same sync as the endpoint."""
+
+    ROW: typing.ClassVar[dict[str, str]] = {
+        'id': 'm-1',
+        'organization_id': 'org-1',
+        'slug': 'tools',
+        'url': 'https://github.com/acme/tools',
+    }
+
+    def setUp(self) -> None:
+        self.store = mock.AsyncMock()
+        self.store.marketplace_by_id.return_value = dict(self.ROW)
+        patcher = mock.patch(
+            'imbi.api.harness.get_store', return_value=self.store
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        sync = mock.patch(
+            'imbi.api.harness.marketplaces.sync', new_callable=mock.AsyncMock
+        )
+        self.sync = sync.start()
+        self.addCleanup(sync.stop)
+        self.db = mock.AsyncMock()
+        self.db.execute.return_value = [{'id': '"org-1"', 'slug': '"acme"'}]
+
+    async def _run(self) -> str:
+        return await operations.execute_marketplace_sync(
+            self.db, mock.AsyncMock(), 'm-1', ctx=_ctx('m-1')
+        )
+
+    async def test_enumerates_every_marketplace(self) -> None:
+        self.store.marketplace_ids.return_value = ['m-1', 'm-2']
+        items = await operations.enumerate_marketplaces(self.db)
+        self.assertEqual(['m-1', 'm-2'], items)
+
+    async def test_syncs_with_the_organization_slug(self) -> None:
+        self.sync.return_value = {**self.ROW, 'sync_error': None}
+        self.assertEqual('succeeded', await self._run())
+        self.assertEqual('acme', self.sync.await_args.args[2])
+
+    async def test_records_a_sync_error_as_a_failure(self) -> None:
+        self.sync.return_value = {**self.ROW, 'sync_error': 'HTTP 404'}
+        with self.assertRaisesRegex(
+            operations.MaintenanceItemFailed, 'tools: HTTP 404'
+        ):
+            await self._run()
+
+    async def test_skips_a_deleted_marketplace(self) -> None:
+        self.store.marketplace_by_id.return_value = None
+        self.assertEqual('skipped', await self._run())
+        self.sync.assert_not_awaited()
+
+    async def test_skips_a_marketplace_with_no_organization(self) -> None:
+        self.db.execute.return_value = []
+        self.assertEqual('skipped', await self._run())
+        self.sync.assert_not_awaited()

@@ -213,18 +213,27 @@ function TwoFactorSection() {
           <p className="text-primary text-[13.5px]">
             1. Scan the QR code with your authenticator app, or enter the key.
           </p>
+          {/* Session replay never records the TOTP secret or the backup
+              codes (lib/posthog.ts). */}
           <img
             alt="MFA QR code"
             className="size-40 rounded bg-white"
+            data-ph-no-capture
             src={`data:image/png;base64,${setup.qr_code}`}
           />
-          <p className="text-secondary font-mono text-[12px] break-all">
+          <p
+            className="text-secondary font-mono text-[12px] break-all"
+            data-ph-no-capture
+          >
             {setup.secret}
           </p>
           <Alert title="2. Save your backup codes" variant="warning">
             Each code signs you in once if you lose your device. They are not
             shown again.
-            <ul className="mt-2 grid grid-cols-2 gap-1 font-mono">
+            <ul
+              className="mt-2 grid grid-cols-2 gap-1 font-mono"
+              data-ph-no-capture
+            >
               {setup.backup_codes.map((c) => (
                 <li key={c}>{c}</li>
               ))}

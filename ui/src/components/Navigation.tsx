@@ -133,7 +133,7 @@ export function Navigation({ currentView }: NavigationProps) {
           <div className="flex items-center gap-8">
             <Button
               asChild
-              className="hover:bg-secondary h-auto rounded-lg px-2 py-1.5 transition-all"
+              className="hover:bg-secondary h-auto shrink-0 rounded-lg px-2 py-1.5 transition-all"
               variant="ghost"
             >
               <Link to="/dashboard">

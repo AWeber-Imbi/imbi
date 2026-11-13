@@ -279,6 +279,7 @@ it.
 | `admin:plugins:manage` | Install and uninstall plugins | yes |  |  |  |  |  |  |  |  |
 | `admin:maintenance:read` | View global maintenance operations | yes |  |  |  |  |  |  |  |  |
 | `admin:maintenance:manage` | Run and cancel global maintenance operations | yes |  |  |  |  |  |  |  |  |
+| `admin:maintenance:marketplace-sync` | Start the marketplace-sync maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `project:configuration:read` | Read project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:read_secrets` | Read secret configuration values via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:write` | Write project configuration via plugins | yes | yes |  |  |  |  |  |  |  |

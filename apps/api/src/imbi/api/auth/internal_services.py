@@ -31,6 +31,7 @@ import psycopg
 from imbi.api import models
 from imbi.api.auth import password
 from imbi.common import graph
+from imbi.common.auth import permissions as common_permissions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,52 +65,52 @@ class InternalService(typing.NamedTuple):
 
 INTERNAL_SERVICES: tuple[InternalService, ...] = (
     InternalService(
-        slug='imbi-scheduler',
+        slug=common_permissions.SCHEDULER_ACCOUNT,
         display_name='Imbi Scheduler',
         description=(
             'Runs scheduled tasks that target the Imbi API (ADR 0002)'
         ),
-        role_slug='imbi-scheduler',
+        role_slug=common_permissions.SCHEDULER_ACCOUNT,
         credential='client_credential',
         client_id_var='IMBI_SCHEDULER_SA_CLIENT_ID',
         secret_var='IMBI_SCHEDULER_SA_CLIENT_SECRET',
     ),
     InternalService(
-        slug='imbi-gateway',
+        slug=common_permissions.GATEWAY_ACCOUNT,
         display_name='Imbi Gateway',
         description=(
             'Attributes inbound webhook events and patches projects '
             'and releases on their behalf'
         ),
-        role_slug='imbi-gateway',
+        role_slug=common_permissions.GATEWAY_ACCOUNT,
         credential='api_key',
         client_id_var=None,
         secret_var='IMBI_GATEWAY_API_TOKEN',
     ),
     InternalService(
-        slug='imbi-workflows',
+        slug=common_permissions.WORKFLOWS_ACCOUNT,
         display_name='Imbi Workflows',
         description='Runs the side effects of workflow steps (ADR 0021)',
-        role_slug='imbi-workflows',
+        role_slug=common_permissions.WORKFLOWS_ACCOUNT,
         credential='client_credential',
         client_id_var='IMBI_WORKFLOWS_SA_CLIENT_ID',
         secret_var='IMBI_WORKFLOWS_SA_CLIENT_SECRET',
     ),
     InternalService(
-        slug='imbi-assistant',
+        slug=common_permissions.ASSISTANT_ACCOUNT,
         display_name='Imbi Assistant',
         description='Gets the token of its AI provider (WIF plan 4.6)',
-        role_slug='imbi-assistant',
+        role_slug=common_permissions.ASSISTANT_ACCOUNT,
         credential='api_key',
         client_id_var=None,
         secret_var='IMBI_ASSISTANT_API_TOKEN',
         optional=True,
     ),
     InternalService(
-        slug='imbi-slackbot',
+        slug=common_permissions.SLACKBOT_ACCOUNT,
         display_name='Imbi Slackbot',
         description='Gets the token of its AI provider (WIF plan 4.6)',
-        role_slug='imbi-slackbot',
+        role_slug=common_permissions.SLACKBOT_ACCOUNT,
         credential='api_key',
         client_id_var=None,
         secret_var='IMBI_SLACKBOT_API_TOKEN',

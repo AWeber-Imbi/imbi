@@ -248,3 +248,23 @@ concurrency limit as a scheduled firing.
 `POST /runs/{run_id}/cancel` interrupts a run in flight. The request is broadcast
 with `pg_notify`, so it reaches whichever replica is holding the call open rather
 than only the one that received it.
+
+## System tasks
+
+The scheduler creates some `kind: system` tasks for the platform itself. They
+are listed in `imbi.scheduler.system_tasks.SYSTEM_TASKS`, and each one calls
+imbi-api as the scheduler's service account.
+
+| Slug | Fires | Calls |
+| --- | --- | --- |
+| `marketplace-sync` | Every 6 hours | `POST /maintenance/operations/marketplace-sync/run` |
+
+At startup the scheduler creates each system task that does not exist. It
+never changes a task that exists, so a changed schedule or a pause stays after
+a restart. A new default in a later release does not change a task that
+exists. To get the new default, delete the task and restart the scheduler.
+To stop a system task, pause it: a deleted one comes back at the next start.
+
+A system task that fires while the previous maintenance run is still active
+gets a `409` from imbi-api and records a `failed` run. The work did not fail;
+the task fired again before the previous run finished.

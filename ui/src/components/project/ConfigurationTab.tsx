@@ -1212,12 +1212,9 @@ function EnvRow({
   // strings (rabbitmq, postgres) whose passwords still shouldn't be shown
   // in plain text. The eye toggle reveals on demand either way.
   const looksSensitive = !isCreate && containsCredentials(local)
+  const sensitive = isSecret || looksSensitive
   const shouldMask =
-    !isCreate &&
-    (isSecret || looksSensitive) &&
-    !revealed &&
-    !focused &&
-    (isSet || Boolean(local))
+    !isCreate && sensitive && !revealed && !focused && (isSet || Boolean(local))
   const placeholder = isLoadingValue
     ? 'Loading…'
     : isCreate
@@ -1234,10 +1231,7 @@ function EnvRow({
         : (local ?? '')
 
   const showRevealButton =
-    !isCreate &&
-    !isLoadingValue &&
-    (isSecret || looksSensitive) &&
-    (isSet || Boolean(local))
+    !isCreate && !isLoadingValue && sensitive && (isSet || Boolean(local))
 
   return (
     <>
@@ -1256,7 +1250,11 @@ function EnvRow({
           {env.name}
         </span>
       </div>
-      <div className="flex items-start gap-1.5">
+      {/* Session replay never records a secret value (lib/posthog.ts). */}
+      <div
+        className="flex items-start gap-1.5"
+        data-ph-no-capture={sensitive || undefined}
+      >
         {dataType === 'string_list' ? (
           <textarea
             className={cn(

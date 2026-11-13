@@ -7,6 +7,7 @@ Shared settings (Postgres, ClickHouse, auth) come from
 import pydantic
 
 from imbi.common import settings as common_settings
+from imbi.common.auth import permissions
 
 
 class Scheduler(common_settings.InternalApi):
@@ -37,7 +38,7 @@ class Scheduler(common_settings.InternalApi):
         description='imbi-gateway base URL for gateway targets',
     )
     sa_slug: str = pydantic.Field(
-        default='imbi-scheduler',
+        default=permissions.SCHEDULER_ACCOUNT,
         description="The scheduler's own service account slug",
     )
     sa_client_id: str | None = pydantic.Field(

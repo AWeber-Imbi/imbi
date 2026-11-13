@@ -51,6 +51,45 @@ RequireManage = typing.Annotated[
 ]
 
 
+async def _require_run(
+    slug: str,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> permissions.AuthContext:
+    """Allow ``admin:maintenance:manage`` or ``admin:maintenance:<slug>``.
+
+    The per-operation permission is what a service account gets to start
+    one operation. The scheduler's account has only
+    ``admin:maintenance:marketplace-sync``: a user who can make a task that
+    runs as that account can then start the marketplace refresh, and no
+    other operation.
+    """
+    if (
+        auth.is_admin
+        or {
+            'admin:maintenance:manage',
+            f'admin:maintenance:{slug}',
+        }
+        & auth.permissions
+    ):
+        return auth
+    LOGGER.warning(
+        'Permission denied: principal=%s maintenance run=%s',
+        auth.principal_name,
+        slug,
+    )
+    raise fastapi.HTTPException(
+        status_code=403,
+        detail=f'Permission denied: admin:maintenance:{slug} is required',
+    )
+
+
+RequireRun = typing.Annotated[
+    permissions.AuthContext, fastapi.Depends(_require_run)
+]
+
+
 class MaintenanceProgress(pydantic.BaseModel):
     """Counters for an operation's current or last run."""
 
@@ -167,7 +206,7 @@ async def get_maintenance_operation(
 @maintenance_router.post('/operations/{slug}/run', status_code=202)
 async def run_maintenance_operation(
     slug: str,
-    auth: RequireManage,
+    auth: RequireRun,
     db: graph.Pool,
     client: OptionalValkeyClient,
 ) -> MaintenanceRunResponse:

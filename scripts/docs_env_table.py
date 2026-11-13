@@ -516,8 +516,8 @@ DESCRIPTIONS: dict[str, str] = {
     'Default: `true`.',
     'VITE_POSTHOG_WEB_ANALYTICS': '`true` sends pageviews, page leaves, '
     'and web vitals',
-    'VITE_POSTHOG_SESSION_REPLAY': '`true` records sessions. All text and '
-    'inputs are always masked.',
+    'VITE_POSTHOG_SESSION_REPLAY': '`true` records sessions. Inputs are '
+    'always masked; text that shows a secret is not recorded.',
     'VITE_POSTHOG_REPLAY_SAMPLE_RATE': 'Share of sessions that record, '
     '`0` to `1`. Default: `1`.',
     'VITE_POSTHOG_PERSON_PROFILES': '`identified_only` identifies each user '

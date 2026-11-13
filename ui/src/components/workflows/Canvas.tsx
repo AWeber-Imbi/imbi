@@ -424,7 +424,7 @@ export function Canvas({
               const Icon = stepIcon(t.type, t.category)
               return (
                 <button
-                  className="border-tertiary hover:border-amber-border flex items-center gap-3 rounded-md border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border-tertiary hover:border-amber-border flex cursor-pointer items-center gap-3 rounded-md border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={readOnly}
                   key={t.type}
                   onClick={() => {

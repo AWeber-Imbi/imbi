@@ -46,8 +46,9 @@ export async function initPostHog(): Promise<void> {
     disable_surveys: true,
     person_profiles: config.personProfiles,
     rageclick: false,
-    // Always mask, no override: pages show API keys and secrets once.
-    // Elements that show one carry `data-ph-no-capture`, which blocks
+    // Text is recorded; inputs are always masked, no override. Elements
+    // that show a secret as text (API keys, client secrets, secret
+    // configuration values) carry `data-ph-no-capture`, which blocks
     // them from the recording completely.
     session_recording: {
       blockSelector: '[data-ph-no-capture]',
@@ -57,7 +58,6 @@ export async function initPostHog(): Promise<void> {
         ...request,
         name: request.name.split(/[?#]/)[0],
       }),
-      maskTextSelector: '*',
       recordBody: false,
       recordHeaders: false,
       sampleRate: config.replaySampleRate,
