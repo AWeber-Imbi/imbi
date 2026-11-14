@@ -1,13 +1,14 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { act, fireEvent, render, screen, within } from '@/test/utils'
+import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
-import { startedText, tabsFor } from '../TrajectoryInspector'
+import { inspectedSeq, startedText, tabsFor } from '../TrajectoryInspector'
 import { focusedBy, totalText } from '../TrajectoryOverview'
 import { TrajectoryTab } from '../TrajectoryTab'
 import { DURATION_KEY } from '../TrajectoryToolbar'
+import { frameOf, windowOf } from '../trajectoryWindow'
 import { event, task } from './taskFixtures'
 
 const LOG = [
@@ -732,7 +733,194 @@ describe('TrajectoryTab inspector', () => {
   })
 })
 
+describe('TrajectoryTab selection and the conversation', () => {
+  function renderWith(onShow = vi.fn(), events = LOG) {
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={events} onShowInConversation={onShow} task={t} />
+      </div>,
+    )
+    return onShow
+  }
+
+  it('tints and rings the selected row and the row of a selected request', async () => {
+    renderWith()
+    await userEvent.click(rows()[3])
+    expect(rows()[3]).toHaveClass('bg-action/10', 'inset-ring-action/35')
+    expect(rows()[2]).not.toHaveClass('bg-action/10')
+    await userEvent.click(
+      within(rows()[2]).getByRole('button', { name: 'Request #1' }),
+    )
+    expect(rows()[2]).toHaveAttribute('data-request-selected', 'true')
+    expect(rows()[2]).toHaveClass('bg-action/10', 'inset-ring-action/35')
+    expect(rows()[3]).not.toHaveClass('bg-action/10')
+  })
+
+  it('shows the selected event in the conversation', async () => {
+    const onShow = renderWith()
+    await userEvent.click(rows()[3])
+    await userEvent.click(
+      within(inspector()).getByRole('button', { name: 'Show in conversation' }),
+    )
+    expect(onShow).toHaveBeenLastCalledWith(5)
+    await userEvent.click(
+      within(rows()[2]).getByRole('button', { name: 'Request #1' }),
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('button', { name: 'Show in conversation' }),
+    )
+    expect(onShow).toHaveBeenLastCalledWith(4)
+  })
+
+  it('shows a subagent call by its first subagent event', async () => {
+    const sub = { actor_kind: 'subagent' as const }
+    const onShow = renderWith(vi.fn(), [
+      ...LOG,
+      event(12, 'turn', { body: 'Sub says hi', parent_call_id: 'a1' }, sub),
+      event(13, 'tool.called', {
+        arguments: { description: 'look' },
+        call_id: 'a1',
+        duration_ms: 50,
+        result: 'ok',
+        tool: 'Agent',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:a1')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('button', { name: 'Show in conversation' }),
+    )
+    expect(onShow).toHaveBeenLastCalledWith(12)
+  })
+
+  it('has no conversation button without a handler', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    expect(
+      within(inspector()).queryByRole('button', {
+        name: 'Show in conversation',
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('frames the rows in view on the strip and follows the scroll', async () => {
+    let scrolled = 0
+    const rect = (top: number, bottom: number) =>
+      ({
+        bottom,
+        height: bottom - top,
+        left: 0,
+        right: 0,
+        top,
+        width: 0,
+      }) as DOMRect
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.dataset.record) {
+          const i = rows().indexOf(this)
+          return rect(i * 36 - scrolled, i * 36 + 36 - scrolled)
+        }
+        if (this.querySelector(':scope > table')) return rect(0, 108)
+        return rect(0, 0)
+      })
+    try {
+      renderTab()
+      const frame = () => document.querySelector<HTMLElement>('[data-window]')
+      await waitFor(() => expect(frame()).toBeInTheDocument())
+      expect(frame()?.style.left).toBe('0%')
+      expect(frame()).toHaveClass('pointer-events-none')
+      const width = frame()?.style.width
+      scrolled = 36 * 5
+      const pane = screen.getByRole('grid', {
+        name: 'Trajectory',
+      }).parentElement!
+      fireEvent.scroll(pane)
+      await waitFor(() => expect(frame()?.style.left).not.toBe('0%'))
+      expect(parseFloat(frame()?.style.left ?? '')).toBeCloseTo(500 / 9)
+      expect(frame()?.style.width).toBe(width)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('marks the selected span on the strip', async () => {
+    renderTab()
+    expect(document.querySelector('[data-picked]')).toBeNull()
+    await userEvent.click(rows()[3])
+    expect(document.querySelector('[data-picked]')).toBeInTheDocument()
+  })
+})
+
+describe('trajectory window helpers', () => {
+  const spans = [
+    { end: 1, id: 'a', lane: 0 as const, start: 0 },
+    { end: 4, id: 'b', lane: 1 as const, start: 1 },
+    { end: 3, id: 'c', lane: 2 as const, start: 2 },
+  ]
+
+  it('takes the first and last rows that show', () => {
+    const list = ['a', 'b', 'c'].map((id, i) => ({
+      bottom: i * 10 + 10,
+      id,
+      top: i * 10,
+    }))
+    expect(windowOf(list, 5, 15)).toEqual({ from: 'a', to: 'b' })
+    expect(windowOf(list, 10, 30)).toEqual({ from: 'b', to: 'c' })
+    expect(windowOf(list, 40, 50)).toBeNull()
+  })
+
+  it('frames from the earliest start to the latest end', () => {
+    expect(frameOf(spans, { from: 'b', to: 'c' })).toEqual([1, 4])
+    expect(frameOf(spans, { from: 'a', to: 'a' })).toEqual([0, 1])
+    expect(frameOf(spans, { from: 'a', to: 'x' })).toBeNull()
+    expect(frameOf(spans, null)).toBeNull()
+  })
+})
+
 describe('inspector helpers', () => {
+  it('finds the first shown event of a record or a request', () => {
+    const ev = (seq: number, type = 'turn') => ({ seq, type })
+    const trajectory = {
+      records: [
+        { events: [ev(3, 'usage.reported'), ev(7), ev(4)], id: 'm' },
+        { events: [ev(2, 'usage.reported')], id: 'u', seqs: [2] },
+      ],
+    } as never
+    expect(
+      inspectedSeq(
+        { record: { events: [ev(9), ev(6)] }, type: 'record' } as never,
+        trajectory,
+      ),
+    ).toBe(6)
+    expect(
+      inspectedSeq(
+        {
+          request: { assistant: 'm', usage: { seq: 3 } },
+          type: 'request',
+        } as never,
+        trajectory,
+      ),
+    ).toBe(4)
+    expect(
+      inspectedSeq(
+        {
+          request: { assistant: 'u', usage: { seq: 2 } },
+          type: 'request',
+        } as never,
+        trajectory,
+      ),
+    ).toBe(2)
+    expect(
+      inspectedSeq(
+        { record: { events: [], seqs: [] }, type: 'record' } as never,
+        trajectory,
+      ),
+    ).toBeNull()
+  })
+
   it('gives each kind its tabs', () => {
     const t = { record: { kind: 'user' }, type: 'record' } as never
     expect(tabsFor(t)).toEqual(['Summary', 'Preview', 'Raw'])

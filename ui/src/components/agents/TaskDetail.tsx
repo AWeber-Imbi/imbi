@@ -52,6 +52,7 @@ import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
+import type { RevealState } from './conversationTurns'
 import {
   checksFrom,
   formatElapsed,
@@ -173,6 +174,10 @@ export function TaskDetail({
   const current: TabKey = view ? 'activity' : (route as TabKey)
   const go = (key: RouteKey) =>
     navigate(agentsPath('tasks', orgSlug, shortId, key))
+  const showInConversation = (seq: number) =>
+    navigate(agentsPath('tasks', orgSlug, shortId, 'conversation'), {
+      state: { revealSeq: seq } satisfies RevealState,
+    })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -222,7 +227,11 @@ export function TaskDetail({
               task={t}
             />
           ) : view === 'trajectory' ? (
-            <TrajectoryTab events={log} task={t} />
+            <TrajectoryTab
+              events={log}
+              onShowInConversation={showInConversation}
+              task={t}
+            />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               {current === 'overview' && (

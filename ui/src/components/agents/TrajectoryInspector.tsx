@@ -7,8 +7,9 @@ import {
   useState,
 } from 'react'
 
-import { Check, ChevronRight, Copy, X } from 'lucide-react'
+import { Check, ChevronRight, Copy, MessageSquareText, X } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { useClipboard } from '@/hooks/useClipboard'
 import { cn } from '@/lib/utils'
 import type { AgentTaskEvent } from '@/types'
@@ -48,6 +49,34 @@ interface UsageTotals {
   output: number
 }
 
+/**
+ * The first event of what is inspected, which the conversation finds a
+ * turn by: a record's own, or a request's model turn. A usage report
+ * only counts when nothing else does, since the conversation leaves it
+ * out of the work it shows.
+ */
+export function inspectedSeq(
+  inspected: Inspected,
+  trajectory: Trajectory,
+): null | number {
+  const record =
+    inspected.type === 'record'
+      ? inspected.record
+      : trajectory.records.find((r) => r.id === inspected.request.assistant)
+  const shown = (record?.events ?? [])
+    .filter((e) => e.type !== 'usage.reported')
+    .map((e) => e.seq)
+  const seqs = shown.length
+    ? shown
+    : [
+        ...(record?.seqs ?? []),
+        ...(inspected.type === 'request' && inspected.request.usage
+          ? [inspected.request.usage.seq]
+          : []),
+      ]
+  return seqs.length ? Math.min(...seqs) : null
+}
+
 /** `2026-10-08 12:00:05.250`. */
 export function startedText(ms: number): string {
   const d = new Date(ms)
@@ -80,6 +109,7 @@ export function TrajectoryInspector({
   live,
   onClose,
   onSelect,
+  onShowInConversation,
   onTab,
   tab,
   trajectory,
@@ -88,6 +118,7 @@ export function TrajectoryInspector({
   live: boolean
   onClose: () => void
   onSelect: (target: Inspected) => void
+  onShowInConversation?: (seq: number) => void
   onTab: (tab: InspectorTab) => void
   tab: InspectorTab
   trajectory: Trajectory
@@ -97,6 +128,7 @@ export function TrajectoryInspector({
   const tabs = tabsFor(inspected)
   const current = tabs.includes(tab) ? tab : 'Summary'
   const base = useId()
+  const seq = inspectedSeq(inspected, trajectory)
 
   const limit = (w: number) => {
     const split = panel.current?.parentElement?.clientWidth ?? 0
@@ -233,6 +265,19 @@ export function TrajectoryInspector({
           trajectory={trajectory}
         />
       </div>
+      {onShowInConversation && seq !== null && (
+        <div className="hairline-t shrink-0 border-(--tj-border-2) px-3 py-2.5">
+          <Button
+            className="w-full"
+            onClick={() => onShowInConversation(seq)}
+            size="sm"
+            variant="outline"
+          >
+            <MessageSquareText />
+            Show in conversation
+          </Button>
+        </div>
+      )}
     </aside>
   )
 }

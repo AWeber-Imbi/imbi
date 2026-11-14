@@ -1,4 +1,10 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef } from 'react'
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'react'
 
 import { Info, Settings, Sparkle, User, Wrench } from 'lucide-react'
 
@@ -12,6 +18,7 @@ import {
   type TrajectoryRequest,
   type TrajectoryRow,
 } from './trajectoryModel'
+import { type TrajectoryWindow, windowOf } from './trajectoryWindow'
 
 export type TrajectorySelection =
   | null
@@ -45,6 +52,8 @@ interface LedgerProps {
   onDoubleClick: (record: TrajectoryRecord) => void
   onFold: (fold: Fold) => void
   onSelect: (selection: TrajectorySelection) => void
+  /** Called with the first and last record rows in view as they change. */
+  onVisible?: (visible: null | TrajectoryWindow) => void
   requests: TrajectoryRequest[]
   rows: TrajectoryRow[]
   /** A new object scrolls the ledger to that record. */
@@ -85,6 +94,7 @@ export function TrajectoryLedger({
   onDoubleClick,
   onFold,
   onSelect,
+  onVisible,
   requests,
   rows,
   scrollTo,
@@ -94,11 +104,50 @@ export function TrajectoryLedger({
   const pane = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const requestAt = new Map(requests.map((r) => [r.assistant, r]))
+  const shown = useRef<null | TrajectoryWindow>(null)
+  const frame = useRef(0)
+
+  const measure = useCallback(() => {
+    const el = pane.current
+    if (!el || !onVisible) return
+    const box = el.getBoundingClientRect()
+    const list = [...el.querySelectorAll<HTMLElement>('[data-record]')].map(
+      (row) => {
+        const r = row.getBoundingClientRect()
+        return { bottom: r.bottom, id: row.dataset.record ?? '', top: r.top }
+      },
+    )
+    const next = windowOf(list, box.top, box.bottom)
+    const prev = shown.current
+    if (prev?.from === next?.from && prev?.to === next?.to) return
+    shown.current = next
+    onVisible(next)
+  }, [onVisible])
+
+  const schedule = useCallback(() => {
+    cancelAnimationFrame(frame.current)
+    frame.current = requestAnimationFrame(measure)
+  }, [measure])
 
   useLayoutEffect(() => {
     const el = pane.current
     if (el && following.current) el.scrollTop = el.scrollHeight
   }, [rows.length])
+
+  useEffect(() => {
+    schedule()
+  }, [rows, schedule])
+
+  useEffect(() => {
+    const el = pane.current
+    if (!el) return
+    const observer = new ResizeObserver(schedule)
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame.current)
+    }
+  }, [schedule])
 
   useEffect(() => {
     if (!scrollTo) return
@@ -135,6 +184,7 @@ export function TrajectoryLedger({
         const el = e.currentTarget
         following.current =
           el.scrollHeight - el.clientHeight - el.scrollTop <= 2
+        schedule()
       }}
       ref={pane}
     >
@@ -285,13 +335,16 @@ function RecordRow({
       aria-rowindex={index + 1}
       aria-selected={selected}
       className={cn(
-        'h-9 cursor-default transition-[background-color,opacity] duration-120 outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]',
-        selected && 'bg-(--tj-active) hover:bg-(--tj-active)',
+        'h-9 cursor-default transition-[background-color,opacity] duration-120 outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]',
+        selected || requestSelected
+          ? 'bg-action/10 inset-ring inset-ring-action/35'
+          : 'hover:bg-(--tj-hover)',
         focus === 'outside' && 'opacity-[.24]',
       )}
       data-error={record.error || undefined}
       data-kind={record.kind}
       data-record={record.id}
+      data-request-selected={requestSelected || undefined}
       data-selected={selected || undefined}
       data-timeline-focus={focus}
       data-turn-start={turnStart !== undefined || undefined}
@@ -315,13 +368,10 @@ function RecordRow({
             )}
           />
         )}
-        {selected && (
+        {selected && record.error && (
           <span
             aria-hidden
-            className={cn(
-              'absolute inset-y-0 left-0 w-0.75',
-              record.error ? 'bg-(--tj-error)' : 'bg-(--tj-select)',
-            )}
+            className="absolute inset-y-0 left-0 w-0.75 bg-(--tj-error)"
           />
         )}
         {turnStart !== undefined && (

@@ -20,6 +20,7 @@ import {
   type TrajectoryRecord,
   type TrajectorySpan,
 } from './trajectoryModel'
+import { frameOf, type TrajectoryWindow } from './trajectoryWindow'
 
 export type TrajectoryRange = [number, number]
 
@@ -72,6 +73,7 @@ export function TrajectoryOverview({
   records,
   selected,
   spans,
+  visible = null,
 }: {
   /** Where each turn after the first starts, in domain units. */
   boundaries: number[]
@@ -85,6 +87,8 @@ export function TrajectoryOverview({
   records: Map<string, TrajectoryRecord>
   selected: null | string
   spans: TrajectorySpan[]
+  /** The first and last records the ledger shows, framed on the strip. */
+  visible?: null | TrajectoryWindow
 }) {
   const track = useRef<HTMLDivElement>(null)
   const full = Math.max(domain, 1e-9)
@@ -108,6 +112,8 @@ export function TrajectoryOverview({
     return v.start + Math.min(Math.max(ratio, 0), 1) * v.size
   }
   const pct = (value: number) => ((value - v.start) / v.size) * 100
+  const frame = frameOf(spans, visible)
+  const picked = selected ? spans.find((s) => s.id === selected) : undefined
 
   useEffect(() => {
     const el = track.current
@@ -313,6 +319,25 @@ export function TrajectoryOverview({
               })}
             </div>
           </TooltipProvider>
+        )}
+        {frame && (
+          <span
+            aria-hidden
+            className="bg-action/10 inset-ring-action/45 pointer-events-none absolute inset-y-0.5 rounded-sm inset-ring transition-[left,width] duration-150 ease-out motion-reduce:transition-none"
+            data-window
+            style={{
+              left: `${pct(frame[0])}%`,
+              width: `${Math.max(((frame[1] - frame[0]) / v.size) * 100, 0.4)}%`,
+            }}
+          />
+        )}
+        {picked && (
+          <span
+            aria-hidden
+            className="bg-action pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full"
+            data-picked
+            style={{ left: `${pct((picked.start + picked.end) / 2)}%` }}
+          />
         )}
         {hoverX !== null && !draft && (
           <span

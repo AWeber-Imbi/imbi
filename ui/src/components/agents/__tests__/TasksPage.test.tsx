@@ -601,6 +601,26 @@ describe('Tasks', () => {
       ).toHaveAttribute('aria-checked', 'true')
     })
 
+    it('shows a Trajectory event in the Conversation', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Show in conversation' }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/conversation',
+        ),
+      )
+      expect(window.location.hash).toBe('')
+      await waitFor(() =>
+        expect(document.querySelector('[data-flash]')).toBeInTheDocument(),
+      )
+    })
+
     it('switches the Activity view from the toolbar', async () => {
       renderAt('/agents/tasks/acme/T-3/conversation')
       fireEvent.click(await screen.findByRole('radio', { name: /^Trajectory/ }))

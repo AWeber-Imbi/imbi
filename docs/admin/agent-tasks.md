@@ -264,8 +264,10 @@ The **Conversation** view shows the task as turns. A turn starts with a person's
 The **Trajectory** view shows every event of the task as one row: a person's input, a model turn, a tool call, a subagent's call, or a system event.
 
 - The strip at the top shows the Input, Model, and Tools lanes over time. A failed call is red. Click a block to select its row. The clock button switches between actual duration and equal widths, and the browser remembers the choice.
+- A tinted box on the strip marks the rows that the table shows, and moves as you scroll or fold. A thin line marks the selected event.
 - The fold buttons fold or unfold the turns, the tool calls, and the subagent calls. A greyed-out button has nothing to fold, and its tooltip says why.
-- Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, and most rows have **Raw**, which shows the raw event.
+- Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, and most rows have **Raw**, which shows the raw event. The selected row, or the row of the selected request, is tinted and outlined.
+- **Show in conversation**, at the bottom of the inspector, opens the Conversation view at the turn that holds the event.
 - A link that ends in `#e` and an event number opens the trajectory at that event.
 
 Old links to the **Actions taken** and **Conversation** tabs open the Conversation view. Old links to the **Log** tab, and event links that end in `#e` and an event number, open the Trajectory view.

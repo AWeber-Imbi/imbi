@@ -777,6 +777,11 @@
   border-right-width: 0.5px;
 }
 
+@utility hairline-t {
+  border-top-style: solid;
+  border-top-width: 0.5px;
+}
+
 /* Trajectory tab roles, mapped onto the imbi theme tokens (light and dark). */
 .trajectory {
   --tj-bg-1: var(--ds-bg-tertiary);

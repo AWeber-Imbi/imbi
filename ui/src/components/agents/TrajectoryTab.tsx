@@ -29,6 +29,7 @@ import {
   type TrajectoryRange,
 } from './TrajectoryOverview'
 import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
+import type { TrajectoryWindow } from './trajectoryWindow'
 
 /**
  * The Trajectory tab, after the DeepSeek Harness trajectory view: a
@@ -37,9 +38,12 @@ import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
  */
 export function TrajectoryTab({
   events,
+  onShowInConversation,
   task,
 }: {
   events: AgentTaskEvent[]
+  /** Opens the conversation at the turn that holds this event. */
+  onShowInConversation?: (seq: number) => void
   task: AgentTask
 }) {
   const navigate = useNavigate()
@@ -52,6 +56,7 @@ export function TrajectoryTab({
   const [folds, setFolds] = useState<Folds>(emptyFolds)
   const [selection, setSelection] = useState<TrajectorySelection>(null)
   const [scrollTo, setScrollTo] = useState<null | { id: string }>(null)
+  const [visible, setVisible] = useState<null | TrajectoryWindow>(null)
   const [query, setQuery] = useTaskSearch()
   const root = useRef<HTMLDivElement>(null)
   useSearchHighlight(root, query)
@@ -248,6 +253,7 @@ export function TrajectoryTab({
         records={byId}
         selected={selection?.type === 'record' ? selection.id : null}
         spans={spans}
+        visible={rows.length ? visible : null}
       />
       <div className="@container/tjpane relative flex min-h-0 flex-1 overflow-hidden">
         {rows.length === 0 ? (
@@ -266,6 +272,7 @@ export function TrajectoryTab({
             onDoubleClick={onDoubleClick}
             onFold={toggle}
             onSelect={select}
+            onVisible={setVisible}
             requests={requests}
             rows={rows}
             scrollTo={scrollTo}
@@ -290,6 +297,7 @@ export function TrajectoryTab({
               select({ id: target.record.id, type: 'record' })
               reveal(target.record)
             }}
+            onShowInConversation={onShowInConversation}
             onTab={setTab}
             tab={tab}
             trajectory={trajectory}
