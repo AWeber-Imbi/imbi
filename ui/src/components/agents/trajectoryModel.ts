@@ -497,17 +497,6 @@ function join(a: string, b: string): string {
 }
 
 function lineFor(e: AgentTaskEvent): string {
-  const p = e.payload
-  switch (e.type) {
-    case 'secret.resolution':
-      return `Secret ${String(p.action ?? 'resolved')}: ${String(p.reference ?? p.purpose ?? '')}`
-    case 'session.closed':
-      return 'Session closed'
-    case 'session.opened':
-      return 'Session opened'
-    case 'todos.updated':
-      return 'Plan updated'
-  }
   return systemText(e)
 }
 
