@@ -14,7 +14,7 @@ interface OutputProps {
 
 export const Prose = memo(function Prose({ children }: { children: string }) {
   return (
-    <div className="document-markdown max-w-[74ch] text-sm">
+    <div className="document-markdown max-w-[62ch] text-sm">
       <RichMarkdown deferImages>{children}</RichMarkdown>
     </div>
   )

@@ -293,6 +293,46 @@ describe('ConversationTab', () => {
     expect(screen.getByText(/ran a command/i)).toBeInTheDocument()
   })
 
+  it('opens with what started the task', () => {
+    const t = task({
+      description: 'Review the ingest service',
+      origin: { kind: 'webhook' },
+      status: 'closed',
+    }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={LOG} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    expect(screen.getByText('Review the ingest service')).toBeInTheDocument()
+    expect(screen.getByText('Webhook')).toBeInTheDocument()
+  })
+
+  it('does not repeat a request a person already sent', () => {
+    const t = task({
+      description: 'fix it',
+      status: 'closed',
+    }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={LOG} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    expect(screen.getAllByText('fix it')).toHaveLength(1)
+  })
+
+  it('leaves the start and the close to the footer and outcome', () => {
+    renderTab('closed', [
+      event(1, 'state.changed', { from: 'queued', to: 'running' }),
+      ...LOG,
+      event(5, 'state.changed', { from: 'running', to: 'paused' }),
+      event(6, 'state.changed', { from: 'paused', to: 'closed' }),
+    ])
+    expect(screen.queryByText('Started')).toBeNull()
+    expect(screen.queryByText('Stopped')).toBeNull()
+    expect(screen.getByText('Paused')).toBeInTheDocument()
+  })
+
   it('says when there is nothing yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()

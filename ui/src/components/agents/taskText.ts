@@ -23,7 +23,7 @@ export function systemText(e: AgentTaskEvent): string {
     case 'control.changed':
       return `Control ${p.from} → ${p.to} by ${e.actor_id ?? 'system'}`
     case 'outcome.set':
-      return `Closed: ${statusLabel({ outcome: String(p.outcome), status: 'closed' })}${p.reason ? ` (${p.reason})` : ''}`
+      return `Closed as ${statusLabel({ outcome: String(p.outcome), status: 'closed' }).toLowerCase()}${p.reason ? `: ${String(p.reason).replace(/_/g, ' ')}` : ''}`
     case 'owner.changed':
       return `Owner ${p.from} → ${p.to}`
     case 'phase.changed':
@@ -33,7 +33,7 @@ export function systemText(e: AgentTaskEvent): string {
     case 'request.resolved':
       return `${RESOLVED[p.status as TaskRequestView['status']] ?? p.status} by ${p.resolved_by ?? e.actor_id}`
     case 'state.changed':
-      return `Status ${p.from} → ${p.to}${p.reason ? ` (${p.reason})` : ''}`
+      return stateText(String(p.from), String(p.to))
     case 'usage.reported':
       return `Usage ${p.model_id}: ${formatTokens(Number(p.tokens_in ?? 0))} in, ${formatTokens(Number(p.tokens_out ?? 0))} out${p.cost != null ? `, $${Number(p.cost).toFixed(2)}` : ''}`
     default:
@@ -46,4 +46,13 @@ export function useActorName(orgSlug: string) {
   const { data: agents } = useAgentList(orgSlug)
   return (id: null | string | undefined) =>
     agents?.find((a) => a.id === id)?.name ?? id ?? 'Unknown'
+}
+
+function stateText(from: string, to: string): string {
+  if (to === 'running') return from === 'queued' ? 'Started' : 'Resumed'
+  if (to === 'paused') return 'Paused'
+  if (to === 'blocked') return 'Waiting for input'
+  if (to === 'queued') return 'Queued'
+  if (to === 'closed') return 'Stopped'
+  return `Moved from ${from} to ${to}`
 }

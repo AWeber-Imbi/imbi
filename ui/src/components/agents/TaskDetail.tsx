@@ -47,7 +47,6 @@ import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
-import { turns } from './conversationTurns'
 import {
   checksFrom,
   formatElapsed,
@@ -67,7 +66,6 @@ import {
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
-import { timeline } from './taskTimeline'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
 
@@ -96,13 +94,10 @@ export function TaskDetail({
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
-  const [conversationCount, trajectoryCount] = useMemo(() => {
-    const all = events.data ?? []
-    return [
-      turns(timeline(all), { live: false }).length,
-      buildTrajectory(all, false).records.length,
-    ]
-  }, [events.data])
+  const trajectoryCount = useMemo(
+    () => buildTrajectory(events.data ?? [], false).records.length,
+    [events.data],
+  )
   useEffect(() => {
     const linked = /^#e\d+$/.test(hash)
     const old =
@@ -138,11 +133,7 @@ export function TaskDetail({
   const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
-    {
-      count: conversationCount,
-      key: 'conversation',
-      label: 'Conversation',
-    },
+    { key: 'conversation', label: 'Conversation' },
     { count: trajectoryCount, key: 'trajectory', label: 'Trajectory' },
     {
       count: failing ? `${failing} failing` : undefined,

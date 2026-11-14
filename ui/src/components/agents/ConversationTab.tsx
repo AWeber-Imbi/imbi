@@ -38,7 +38,7 @@ import {
   TraceLine,
   TraceTitle,
 } from '@/components/ui/trace'
-import type { AgentTask } from '@/types'
+import type { AgentTask, AgentTaskEvent } from '@/types'
 
 import { conversationMarkdown, turnFooter } from './conversationMarkdown'
 import {
@@ -60,7 +60,12 @@ import {
   turns,
 } from './conversationTurns'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
-import { formatElapsed, isFailed, type TaskRequestView } from './taskEvents'
+import {
+  formatElapsed,
+  isFailed,
+  type TaskRequestView,
+  TRIGGERS,
+} from './taskEvents'
 import { RequestCard } from './TaskTabs'
 import { systemText, useActorName } from './taskText'
 import { isDenied, isError, timeline, type TimelineEntry } from './taskTimeline'
@@ -90,6 +95,8 @@ const FAMILY_ICON: Record<Family, ReactNode> = {
   search: <Search />,
   shell: <SquareTerminal />,
 }
+
+const ASK_PREVIEW = 600
 
 const MODE_LABEL: Record<ConversationMode, string> = {
   compact: 'Compact',
@@ -142,7 +149,11 @@ export function ConversationTab({
             variant="outline"
           >
             {(Object.keys(MODE_LABEL) as ConversationMode[]).map((m) => (
-              <ToggleGroupItem key={m} value={m}>
+              <ToggleGroupItem
+                className="data-[state=on]:bg-foreground data-[state=on]:text-background"
+                key={m}
+                value={m}
+              >
                 {MODE_LABEL[m]}
               </ToggleGroupItem>
             ))}
@@ -152,6 +163,7 @@ export function ConversationTab({
         <MessageScroller className="flex-1">
           <MessageScrollerViewport aria-label="Conversation">
             <MessageScrollerContent className="mx-auto w-full max-w-3xl px-6 py-5">
+              <TaskAsk ctx={ctx} first={list[0]} />
               {list.length === 0 ? (
                 <p className="text-tertiary text-sm">No conversation yet.</p>
               ) : (
@@ -346,6 +358,13 @@ function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   )
 }
 
+/** The start and the close are said by the footer and the outcome. */
+function quiet(e: AgentTaskEvent | null | undefined): boolean {
+  if (e?.type !== 'state.changed') return false
+  const { from, to } = e.payload
+  return to === 'closed' || (from === 'queued' && to === 'running')
+}
+
 function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const e = entry.event
   const request = ctx.requests.find((r) => r.id === e?.payload.request_id)
@@ -359,6 +378,43 @@ function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
         <TraceTitle>{e ? systemText(e) : ''}</TraceTitle>
       </TraceLine>
     </Trace>
+  )
+}
+
+/** What started the task, as the first message, unless a person already said it. */
+function TaskAsk({ ctx, first }: { ctx: Ctx; first?: Turn }) {
+  const actorName = useActorName(ctx.orgSlug)
+  const [all, setAll] = useState(false)
+  const { task } = ctx
+  const body = (task.description || task.title || '').trim()
+  const said = first?.opening.some(
+    (entry) =>
+      entry.event?.actor_kind === 'human' &&
+      String(entry.event.payload.body ?? '').trim() === body,
+  )
+  if (!body || said) return null
+  const source = TRIGGERS[task.origin.kind].label
+  const long = body.length > ASK_PREVIEW
+  return (
+    <Message align="end" className="mb-4">
+      <MessageContent>
+        <MessageHeader>
+          {task.origin.user
+            ? `${source} · ${actorName(task.origin.user)}`
+            : source}
+        </MessageHeader>
+        <div className="bg-secondary flex max-w-[85%] flex-col items-start gap-1 self-end rounded-xl px-3.5 py-2.5">
+          <Prose>
+            {long && !all ? `${body.slice(0, ASK_PREVIEW)}…` : body}
+          </Prose>
+          {long && (
+            <Button onClick={() => setAll(!all)} size="sm" variant="link">
+              {all ? 'Show less' : 'Show all'}
+            </Button>
+          )}
+        </div>
+      </MessageContent>
+    </Message>
   )
 }
 
@@ -407,8 +463,10 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
   const open =
     !canCollapseTurn(turn) ||
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
+  const actorName = useActorName(ctx.orgSlug)
   const hasWork = turn.items.some((i) => i.kind === 'group')
   const footer = turnFooter(turn)
+  const firstReply = turn.items.find((i) => i.kind === 'reply')?.id
   return (
     <MessageScrollerItem messageId={turn.id} scrollAnchor>
       <div className="flex flex-col gap-4">
@@ -431,7 +489,7 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
                 <PersonMessage ctx={ctx} entry={item.entry} key={item.id} />
               )
             case 'note':
-              return (
+              return quiet(item.entry.event) ? null : (
                 <Trace key={item.id}>
                   <TraceLine>
                     <TraceTitle>
@@ -444,6 +502,11 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
               return (
                 <Message key={item.id}>
                   <MessageContent>
+                    {item.id === firstReply && (
+                      <MessageHeader className="px-0">
+                        {actorName(ctx.task.agent_id)} v{ctx.task.agent_version}
+                      </MessageHeader>
+                    )}
                     <Prose>
                       {String(item.entry.event?.payload.body ?? '')}
                     </Prose>

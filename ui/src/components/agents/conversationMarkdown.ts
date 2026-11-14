@@ -54,7 +54,7 @@ export function turnFooter(turn: Turn): null | string {
   if (durationMs !== null) parts.push(elapsed(durationMs))
   if (tools) parts.push(`${tools} ${tools === 1 ? 'tool' : 'tools'}`)
   if (errors) parts.push(`${errors} failed`)
-  if (tokens) parts.push(`${formatTokens(tokens)} tokens`)
+  if (tokens) parts.push(`${formatTokens(tokens)} uncached tokens`)
   return parts.length ? parts.join(' · ') : null
 }
 

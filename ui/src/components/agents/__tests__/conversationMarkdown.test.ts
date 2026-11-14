@@ -47,7 +47,7 @@ describe('conversationMarkdown', () => {
   })
 
   it('ends each turn with its footer and the text with one newline', () => {
-    expect(md).toContain('*5s · 2 tools · 1 failed · 12k tokens*')
+    expect(md).toContain('*5s · 2 tools · 1 failed · 12k uncached tokens*')
     expect(md.endsWith('Any time.\n\n*1s*\n')).toBe(true)
   })
 
