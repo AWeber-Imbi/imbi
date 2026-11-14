@@ -15,7 +15,6 @@ import logging
 import typing
 from collections import abc
 
-import pydantic
 from psycopg import sql
 from psycopg.types import json as pg_json
 
@@ -230,6 +229,7 @@ class Engine:
                 steps,
                 run['payload'],
                 {n.id: n for n in wf_graph.nodes},
+                registry.STEP_TYPES[node.type].raw_params,
             )
         except rendering.RenderError as e:
             LOGGER.info('Run %s: %s: %s', run['id'], node.key, e)
@@ -619,17 +619,14 @@ def _blank_output(
 ) -> dict[str, typing.Any]:
     """Return empty text for each output field of a skipped node.
 
-    The ``result`` of an agent step has empty text for each of its
-    output fields too.
+    The ``result`` of a step with structured output has empty text for
+    each of its output fields too.
     """
-    output = registry.STEP_TYPES[node_type].output
-    blank: dict[str, typing.Any] = dict.fromkeys(output.model_fields, '')
-    if node is not None and node_type == agent_step.STEP.type:
-        try:
-            params = agent_step.Params.model_validate(node.params)
-        except pydantic.ValidationError:
-            return blank
-        blank['result'] = agent_step.blank_result(params.output_fields)
+    step = registry.STEP_TYPES[node_type]
+    blank: dict[str, typing.Any] = dict.fromkeys(step.output.model_fields, '')
+    fields = agent_step.structured_fields(step, node.params) if node else None
+    if fields is not None:
+        blank['result'] = agent_step.blank_result(fields)
     return blank
 
 
@@ -669,11 +666,13 @@ async def _render(
     steps: dict[str, store.Row],
     payload: dict[str, typing.Any],
     nodes: abc.Mapping[str, wf.Node],
+    raw: frozenset[str] = frozenset(),
 ) -> dict[str, typing.Any]:
     """Resolve the references in ``params`` (ADR 0021, References).
 
     A value that is one reference resolves to the typed value. Any other
-    template renders as text in the sandbox of the prompt CMS.
+    template renders as text in the sandbox of the prompt CMS. The
+    top-level keys in ``raw`` (a script's code) are kept as written.
 
     Raises:
         rendering.RenderError: A template fails.
@@ -699,7 +698,11 @@ async def _render(
         sources[path] = value
         return value
 
-    resolved = typing.cast('dict[str, typing.Any]', collect(params, ''))
+    resolved = typing.cast(
+        'dict[str, typing.Any]',
+        collect({k: v for k, v in params.items() if k not in raw}, ''),
+    )
+    resolved.update((k, v) for k, v in params.items() if k in raw)
     if not sources:
         return resolved
     schema = {k: models.PromptVariable(type='object') for k in variables}

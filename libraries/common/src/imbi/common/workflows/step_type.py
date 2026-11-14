@@ -39,14 +39,29 @@ class StepType:
     required_permissions: abc.Callable[[dict[str, typing.Any]], set[str]] = (
         _no_permissions
     )
+    #: Top-level parameters that are never rendered as templates or
+    #: checked for references, such as the code of a script.
+    raw_params: frozenset[str] = frozenset()
+    #: ``params.output_fields`` declares the fields of ``output.result``.
+    structured_output: bool = False
 
     def ports_for(self, params: dict[str, typing.Any]) -> list[str]:
-        """Return the output ports of a node of this type."""
+        """Return the output ports of a node of this type.
+
+        A type with ports from ``params.branches`` and no branches has
+        one unnamed port.
+        """
         if self.ports is not None:
             return list(self.ports)
         raw: typing.Any = params.get('branches')
         branches: list[typing.Any] = raw if isinstance(raw, list) else []
-        return [str(b) for b in branches]
+        return [str(b) for b in branches] or ['']
+
+    def renderable(
+        self, params: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        """Return ``params`` without the raw parameters."""
+        return {k: v for k, v in params.items() if k not in self.raw_params}
 
     def describe(self) -> dict[str, typing.Any]:
         """Return the step type as the API serves it."""

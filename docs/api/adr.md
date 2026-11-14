@@ -488,6 +488,21 @@ Adds the `condition` workflow step: it compares values from earlier steps and ta
 
 ---
 
+#### [ADR 0027: Workflow Script Step](adr/0027-workflow-script-step.md)
+
+*Date: 2026-11-13 | Status: Accepted*
+
+Adds the `script` workflow step: a Python snippet that runs in the pydantic-monty sandbox, takes declared inputs, and returns a structured result that can pick a branch.
+
+**Key Decisions:**
+
+- The script gets no host functions, modules, or mounts, so it needs no permission and has no side effect
+- One runner in `imbi-common`, behind the `script` extra, holds the pool, limits, conversion, and error codes for the engine and the preview
+- `code` is a raw parameter that is never rendered as a template
+- The editor preview runs in imbi-api with its own small pool; the escape risk this adds is recorded
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:

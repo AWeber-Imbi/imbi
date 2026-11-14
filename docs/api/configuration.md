@@ -368,6 +368,8 @@ unset.
 | `IMBI_WORKFLOWS_AGENT_POLL_SECONDS` | int | `30` | Seconds between agent task polls |
 | `IMBI_WORKFLOWS_SCHEDULER_URL` | str | `http://localhost:8005/api` | imbi-scheduler's task API, with its route prefix |
 | `IMBI_WORKFLOWS_RECONCILE_INTERVAL` | float | `300.0` | Seconds between passes of the trigger reconciler. imbi-api also wakes it after each activation and pause. |
+| `IMBI_WORKFLOWS_SCRIPT_MAX_MEMORY_MB` | int | `64` | Memory one script step can use, in MiB |
+| `IMBI_WORKFLOWS_SCRIPT_MAX_SECONDS` | float | `5.0` | Seconds one script step can run. A step timeout that is shorter wins. |
 
 ### imbi-harness (agent runner pods)
 

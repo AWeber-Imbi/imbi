@@ -410,6 +410,7 @@ class RegistryTestCase(unittest.TestCase):
                 'task_completed',
                 'wait',
                 'model_decision',
+                'script',
                 'email',
                 'deploy',
                 'rollback',
