@@ -303,9 +303,11 @@ function stampedBefore(entry: TimelineEntry, opening?: TimelineEntry): boolean {
   return !!opening && stampOf(entry) < timeOf(opening)
 }
 
-/** A call that is still running has no event; it takes its first child's time. */
+/**
+ * When an entry's work began: the earliest time over it and its children,
+ * since a call is stamped when it ends and a running call has no event.
+ */
 function stampOf(entry: TimelineEntry): number {
-  if (entry.event) return timeOf(entry)
   const times = eventsOf(entry)
     .map(timeOf)
     .filter((t) => !Number.isNaN(t))

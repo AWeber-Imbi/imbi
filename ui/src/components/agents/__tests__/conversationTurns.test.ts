@@ -342,6 +342,36 @@ describe('turns', () => {
     ])
   })
 
+  it('puts a finished call stamped before the answer back before its request', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        human(1, 'Go.'),
+        bash(2),
+        event(3, 'request.opened', { request_id: 'r1' }, at('12:00:06')),
+        event(
+          4,
+          'request.resolved',
+          { request_id: 'r1' },
+          { ...at('13:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        bash(5, { parent_call_id: 'task-9' }),
+        event(
+          6,
+          'tool.called',
+          { call_id: 'task-9', result: 'Done.', tool: 'Task' },
+          at('13:00:20'),
+        ),
+        event(7, 'turn', { body: 'Done.' }, at('13:00:30')),
+      ]),
+      { live: false },
+    )
+    expect(shape(list).map((t) => t.items)).toEqual([
+      ['group:2', 'input'],
+      ['reply'],
+    ])
+  })
+
   it('stops a turn at the next opening when a subagent works past it', () => {
     const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
     const list = turns(

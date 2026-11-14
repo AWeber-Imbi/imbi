@@ -49,7 +49,7 @@ export function systemText(e: AgentTaskEvent): string {
     case 'session.opened':
       return 'Session opened'
     case 'state.changed':
-      return stateText(String(p.from), String(p.to))
+      return stateText(String(p.from), String(p.to), p.reason)
     case 'task.created':
       return 'Task created'
     case 'todos.updated':
@@ -68,7 +68,17 @@ export function useActorName(orgSlug: string) {
     agents?.find((a) => a.id === id)?.name ?? id ?? 'Unknown'
 }
 
-function stateText(from: string, to: string): string {
+const ROUTINE = new Set(['request_resolved', 'session_closed'])
+
+function stateText(from: string, to: string, reason: unknown): string {
+  const why =
+    reason && !ROUTINE.has(String(reason))
+      ? `: ${String(reason).replace(/_/g, ' ')}`
+      : ''
+  return `${stateWord(from, to)}${why}`
+}
+
+function stateWord(from: string, to: string): string {
   if (to === 'running') return from === 'queued' ? 'Started' : 'Resumed'
   if (to === 'paused') return 'Paused'
   if (to === 'blocked') return 'Waiting for input'
