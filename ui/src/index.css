@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
 
@@ -750,4 +751,9 @@
   .animate-imbi-pulse {
     animation: none !important;
   }
+}
+
+::highlight(task-search) {
+  background-color: color-mix(in srgb, var(--ds-action-bg) 40%, transparent);
+  color: inherit;
 }

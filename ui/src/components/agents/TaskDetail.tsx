@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -37,7 +37,6 @@ import {
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
-import { useFollowBottom } from '@/hooks/useFollowBottom'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
@@ -66,16 +65,28 @@ import {
   useAgentTaskMutation,
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
+import { TaskSearchProvider } from './taskSearch'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
-import { timeline } from './taskTimeline'
+
+/** A tab, or the Conversation view of the Activity tab: what the URL names. */
+type RouteKey = 'conversation' | TabKey
 
 type TabKey =
+  | 'activity'
   | 'checks'
-  | 'conversation'
   | 'input'
   | 'overview'
   | 'projects'
   | 'related'
+
+const TAB_KEYS: readonly TabKey[] = [
+  'activity',
+  'checks',
+  'input',
+  'overview',
+  'projects',
+  'related',
+]
 
 /** The task in the inbox: its header, phase timeline, and tabs. */
 export function TaskDetail({
@@ -92,19 +103,6 @@ export function TaskDetail({
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
-  const conversationCount = useMemo(
-    () => timeline(events.data ?? []).length,
-    [events.data],
-  )
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const eventCount = events.data?.length ?? 0
-  useFollowBottom(
-    scrollRef,
-    eventCount,
-    !!task.data &&
-      eventCount > 0 &&
-      (tab === 'conversation' || tab === 'actions'),
-  )
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -130,11 +128,7 @@ export function TaskDetail({
   const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
-    {
-      count: conversationCount,
-      key: 'conversation',
-      label: 'Conversation',
-    },
+    { key: 'activity', label: 'Activity' },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',
@@ -143,11 +137,11 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  // Actions taken is part of the Conversation now; keep its old links.
-  const wanted = tab === 'actions' ? 'conversation' : tab
-  const current: TabKey = tabs.some((x) => x.key === wanted)
-    ? (wanted as TabKey)
-    : 'overview'
+  const wanted = tab === 'actions' || tab === 'log' ? 'conversation' : tab
+  const route: RouteKey = isRouteKey(wanted) ? wanted : 'overview'
+  const current: TabKey = route === 'conversation' ? 'activity' : route
+  const go = (key: RouteKey) =>
+    navigate(agentsPath('tasks', orgSlug, shortId, key))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -167,9 +161,7 @@ export function TaskDetail({
               x.key === 'input' && open > 0 && 'text-amber-text',
             )}
             key={x.key}
-            onClick={() =>
-              navigate(agentsPath('tasks', orgSlug, shortId, x.key))
-            }
+            onClick={() => go(x.key === 'activity' ? 'conversation' : x.key)}
             role="tab"
             type="button"
           >
@@ -182,34 +174,41 @@ export function TaskDetail({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
-        {events.error && (
-          <p className="text-danger px-6 pt-4 text-sm" role="alert">
-            Could not load the task log: {events.error.message}
-          </p>
-        )}
-        {current === 'overview' && (
-          <OverviewTab end={end} events={log} task={t} />
-        )}
-        {current === 'input' && (
-          <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
-        )}
-        {current === 'conversation' && (
+      {events.error && (
+        <p className="text-danger shrink-0 px-6 pt-4 text-sm" role="alert">
+          Could not load the task log: {events.error.message}
+        </p>
+      )}
+      <TaskSearchProvider key={t.id}>
+        {current === 'activity' ? (
           <ConversationTab
             events={log}
             orgSlug={orgSlug}
             requests={requests}
             task={t}
           />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {current === 'overview' && (
+              <OverviewTab end={end} events={log} task={t} />
+            )}
+            {current === 'input' && (
+              <InputRequiredTab
+                orgSlug={orgSlug}
+                requests={requests}
+                task={t}
+              />
+            )}
+            {current === 'checks' && <ChecksTab events={log} />}
+            {current === 'related' && (
+              <RelatedTasksTab orgSlug={orgSlug} task={t} />
+            )}
+            {current === 'projects' && (
+              <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
+            )}
+          </div>
         )}
-        {current === 'checks' && <ChecksTab events={log} />}
-        {current === 'related' && (
-          <RelatedTasksTab orgSlug={orgSlug} task={t} />
-        )}
-        {current === 'projects' && (
-          <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
-        )}
-      </div>
+      </TaskSearchProvider>
       {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
@@ -222,6 +221,10 @@ function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
       {children}
     </span>
   )
+}
+
+function isRouteKey(value: unknown): value is RouteKey {
+  return TAB_KEYS.includes(value as TabKey) || value === 'conversation'
 }
 
 function OverviewTab({
@@ -631,7 +634,7 @@ function TaskHeader({
                 <span
                   className={cn(
                     'text-sm',
-                    current ? 'text-primary font-medium' : 'text-secondary',
+                    current ? 'font-medium text-primary' : 'text-secondary',
                   )}
                 >
                   {p.phase}
