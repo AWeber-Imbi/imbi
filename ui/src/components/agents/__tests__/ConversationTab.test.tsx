@@ -6,6 +6,7 @@ import type { AgentTask } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
 import { ConversationTab } from '../ConversationTab'
+import type { TaskRequestView } from '../taskEvents'
 import { TaskSearchProvider } from '../taskSearch'
 import { event, task } from './taskFixtures'
 import { captureHighlights, layout, scrollPane } from './virtualLayout'
@@ -714,6 +715,78 @@ describe('ConversationTab with many turns', () => {
       expect(screen.getByText('reply 50')).toBeInTheDocument(),
     )
     await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+  })
+
+  it('keeps a long ask shown in full after it scrolls out of view', async () => {
+    const user = userEvent.setup()
+    const description = `${'word '.repeat(150)}the end`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={MANY} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: 'Show all' }))
+    expect(screen.getByText(/the end$/)).toBeInTheDocument()
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() =>
+      expect(screen.queryByText(/the end$/)).not.toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    expect(await screen.findByText(/the end$/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
+  })
+
+  it('keeps a turn with an open request rendered while it is out of view', async () => {
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'request.opened', {
+        kind: 'feedback',
+        request_id: 'r1',
+        title: 'Pick a database',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const request: TaskRequestView = {
+      answer: null,
+      artifact_digests: null,
+      artifacts: [],
+      expires_at: null,
+      id: 'r1',
+      kind: 'feedback',
+      opened_at: '2026-10-08T12:00:02Z',
+      opened_by: null,
+      options: [],
+      resolved_at: null,
+      resolved_by: null,
+      status: 'open',
+      title: 'Pick a database',
+      why: null,
+    }
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[request]}
+          task={t}
+        />
+      </div>,
+    )
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('ask 0')).toBeInTheDocument()
+    expect(screen.queryByText('ask 1')).not.toBeInTheDocument()
   })
 
   it('scrolls to a far turn another view asks for, and flashes it', async () => {

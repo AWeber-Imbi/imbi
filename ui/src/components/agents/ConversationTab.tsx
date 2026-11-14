@@ -239,10 +239,21 @@ export function ConversationTab({
   }
 
   const ask = showAsk && !!taskAsk(task, list[0])
+  const [askAll, setAskAll] = useState(false)
   const rows = useMemo(
     () => [...(ask ? ['ask'] : []), ...shown.map((turn) => turn.id)],
     [ask, shown],
   )
+  const asking = useMemo(() => {
+    const open = new Set(
+      requests.flatMap((r) => (r.status === 'open' ? [r.id] : [])),
+    )
+    if (!open.size) return []
+    const offset = ask ? 1 : 0
+    return shown.flatMap((turn, i) =>
+      holdsRequest(turn, open) ? [i + offset] : [],
+    )
+  }, [ask, requests, shown])
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
   const lastTop = useRef(0)
@@ -254,7 +265,7 @@ export function ConversationTab({
     estimateSize: (i) => (rows[i] === 'ask' ? 120 : 240),
     gap: TURN_GAP,
     getItemKey: (i) => rows[i],
-    keep: [flashRow, focusRow ?? -1],
+    keep: [flashRow, focusRow ?? -1, ...asking],
     overscan: 4,
     paddingEnd: 20,
     paddingStart: 20,
@@ -361,8 +372,10 @@ export function ConversationTab({
                           />
                         ) : (
                           <TaskAsk
+                            all={askAll}
                             ctx={ctx}
                             first={list[0]}
+                            onAll={setAskAll}
                             reveal={askMatches}
                           />
                         )}
@@ -512,6 +525,16 @@ function GroupView({
   )
 }
 
+function holdsRequest(turn: Turn, open: Set<string>): boolean {
+  const holds = (entry: TimelineEntry): boolean =>
+    (entry.event?.type === 'request.opened' &&
+      open.has(String(entry.event.payload.request_id))) ||
+    entry.children.some(holds)
+  return turn.items.some((item) =>
+    (item.kind === 'group' ? item.entries : [item.entry]).some(holds),
+  )
+}
+
 function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const actorName = useActorName(ctx.orgSlug)
   const e = entry.event
@@ -607,16 +630,19 @@ function searchText(entry: TimelineEntry): string {
 
 /** What started the task, as the first message, unless a person already said it. */
 function TaskAsk({
+  all,
   ctx,
   first,
+  onAll,
   reveal,
 }: {
+  all: boolean
   ctx: Ctx
   first?: Turn
+  onAll: (all: boolean) => void
   reveal: boolean
 }) {
   const actorName = useActorName(ctx.orgSlug)
-  const [all, setAll] = useState(false)
   const { task } = ctx
   const body = taskAsk(task, first)
   if (!body) return null
@@ -635,7 +661,7 @@ function TaskAsk({
             {long && !all ? `${body.slice(0, ASK_PREVIEW)}…` : body}
           </Prose>
           {long && (
-            <Button onClick={() => setAll(!all)} size="sm" variant="link">
+            <Button onClick={() => onAll(!all)} size="sm" variant="link">
               {all ? 'Show less' : 'Show all'}
             </Button>
           )}
