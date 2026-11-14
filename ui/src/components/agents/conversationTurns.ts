@@ -87,13 +87,14 @@ export function revealSeqOf(state: unknown): null | number {
  * Where an event shows in the conversation: the turn that holds it, with
  * a subagent's events in the turn of their Agent call, and the work group
  * it sits in. An event the conversation leaves out, such as a usage
- * report, belongs to the last turn that started before it.
+ * report, belongs to the last turn that started before it, and one from
+ * before every turn, such as the task's creation, to the first turn.
  */
 export function turnForSeq(
   list: Turn[],
   seq: number,
 ): null | { group: null | string; turn: Turn } {
-  let before: Turn | undefined
+  let before: Turn | undefined = list[0]
   for (const turn of list) {
     if (turn.opening.flatMap(eventsOf).some((e) => e.seq === seq))
       return { group: null, turn }

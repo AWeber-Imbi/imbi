@@ -255,9 +255,12 @@ describe('turnForSeq', () => {
     expect(turnForSeq(list, 3)?.turn).toBe(list[0])
   })
 
-  it('finds nothing before the first turn', () => {
+  it('puts an event from before every turn in the first turn', () => {
+    expect(turnForSeq(list, 0)).toEqual({ group: null, turn: list[0] })
+  })
+
+  it('finds nothing without a turn', () => {
     expect(turnForSeq([], 1)).toBeNull()
-    expect(turnForSeq(list, 0)).toBeNull()
   })
 })
 
