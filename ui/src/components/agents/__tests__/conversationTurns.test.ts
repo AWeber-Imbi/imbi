@@ -250,6 +250,13 @@ describe('turnForSeq', () => {
     })
   })
 
+  it('finds an Agent call by its own seq, after its subagent events', () => {
+    expect(turnForSeq(list, 4)).toEqual({
+      group: list[0].items[0].id,
+      turn: list[0],
+    })
+  })
+
   it('puts an event the conversation leaves out in the turn before it', () => {
     expect(turnForSeq(list, 8)?.turn).toBe(list[1])
     expect(turnForSeq(list, 3)?.turn).toBe(list[0])

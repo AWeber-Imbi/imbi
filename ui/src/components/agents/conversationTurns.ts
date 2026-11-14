@@ -96,18 +96,18 @@ export function turnForSeq(
 ): null | { group: null | string; turn: Turn } {
   let before: Turn | undefined = list[0]
   for (const turn of list) {
-    if (turn.opening.flatMap(eventsOf).some((e) => e.seq === seq))
+    if (turn.opening.flatMap(eventsOf).some((e) => seqOf(e) === seq))
       return { group: null, turn }
     for (const item of turn.items)
       if (
         entriesOf([item])
           .flatMap(eventsOf)
-          .some((e) => e.seq === seq)
+          .some((e) => seqOf(e) === seq)
       )
         return { group: item.kind === 'group' ? item.id : null, turn }
     const seqs = [...turn.opening, ...entriesOf(turn.items)]
       .flatMap(eventsOf)
-      .map((e) => e.seq)
+      .map(seqOf)
     if (seqs.length && Math.min(...seqs) <= seq) before = turn
   }
   return before ? { group: null, turn: before } : null
@@ -220,6 +220,11 @@ function newTurn(opening: TimelineEntry[], first: TimelineEntry): Turn {
     status: 'done',
     steered: false,
   }
+}
+
+/** A call entry takes its first child's seq; match on its own event's. */
+function seqOf(entry: TimelineEntry): number {
+  return entry.event?.seq ?? entry.seq
 }
 
 function tokensOf(entry: TimelineEntry): number {
