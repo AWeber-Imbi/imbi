@@ -90,6 +90,7 @@ describe('taskActivity', () => {
           usage: null,
         },
       ],
+      subrequests: [],
       turns: [{ first: '', number: 1, steps: 1, toolCalls: 2 }],
     } satisfies Trajectory
     const a = taskActivity(trajectory, 100)
@@ -122,5 +123,29 @@ describe('taskActivity', () => {
     expect(a.modelMs).toBe(2000)
     expect(a.toolMs).toBe(2000)
     expect(a.outputPerSecond).toBe(100)
+  })
+
+  it('counts the model requests of subagents', () => {
+    const trajectory = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+        event(3, 'usage.reported', { message_id: 's1', tokens_in: 1 }),
+        event(4, 'tool.called', {
+          call_id: 'r1',
+          message_id: 's1',
+          parent_call_id: 'c1',
+          tool: 'Read',
+        }),
+        event(5, 'tool.called', {
+          call_id: 'c1',
+          message_id: 'm1',
+          tool: 'Agent',
+        }),
+      ],
+      false,
+    )
+    expect(trajectory.requests).toHaveLength(1)
+    expect(taskActivity(trajectory, 0).requests).toBe(2)
   })
 })

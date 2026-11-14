@@ -55,7 +55,7 @@ export function taskActivity(
     modelMs,
     outputPerSecond:
       modelMs > 0 && output > 0 ? output / (modelMs / 1000) : null,
-    requests: trajectory.requests.length,
+    requests: trajectory.requests.length + trajectory.subrequests.length,
     toolCalls: tools.length,
     toolMs: tools.reduce((n, r) => n + span(r.startedAt, r.endedAt), 0),
     turns: trajectory.turns.length,
