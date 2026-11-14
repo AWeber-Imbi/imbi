@@ -191,6 +191,28 @@ class RecorderTestCase(unittest.TestCase):
         self.assertEqual(call['payload']['parent_call_id'], 't1')
         self.assertTrue(call['payload']['is_error'])
 
+    def test_events_have_the_newest_input_seq(self) -> None:
+        self.recorder.notice('before any input')
+        self.recorder.saw_input(3)
+        self.recorder.message(
+            sdk.AssistantMessage(
+                content=[
+                    sdk.ThinkingBlock('asking', 'sig'),
+                    sdk.ToolUseBlock('t1', 'mcp__imbi__request_input', {}),
+                ],
+                model='m',
+            )
+        )
+        self.recorder.saw_input(9)
+        self.recorder.saw_input(7)
+        self.recorder.message(
+            sdk.UserMessage(content=[sdk.ToolResultBlock('t1', 'yes', False)])
+        )
+        notice, thinking, call = self.recorder.take()
+        self.assertNotIn('input_seq', notice['payload'])
+        self.assertEqual(thinking['payload']['input_seq'], 3)
+        self.assertEqual(call['payload']['input_seq'], 9)
+
     def test_unknown_result_and_other_messages(self) -> None:
         self.recorder.message(sdk.UserMessage(content='plain text'))
         self.recorder.message(sdk.SystemMessage('init', {}))

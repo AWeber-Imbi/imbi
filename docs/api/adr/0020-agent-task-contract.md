@@ -150,6 +150,14 @@ Standard types:
 | `request.opened` / `request.resolved` / `request.expired` | Imbi | Request id and content, resolution |
 | `outcome.set` | Imbi | Outcome, reason |
 
+Every event the harness writes can have `input_seq`: the seq of the
+newest person input it had when it recorded the event (the task's
+`last_seq` when its session opened, then each `request.resolved` it
+read). Work that reaches Imbi after a person answers still names the
+input of the turn it was done in, so a reader groups it without comparing
+the runner's clock with Imbi's. The field is optional and lives in the
+payload only; events from older harnesses do not have it.
+
 A new type, or an incompatible payload change, raises `schema_version`.
 Readers ignore types they do not know.
 

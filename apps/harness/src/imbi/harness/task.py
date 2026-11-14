@@ -778,6 +778,7 @@ class TaskRun:
         self.session_id = str(opened['session']['id'])
         self._state(opened['task'])
         self.seq = int(opened['task'].get('last_seq') or 0)
+        self.recorder.saw_input(self.seq)
         heartbeat = asyncio.create_task(self._heartbeat())
         try:
             result = await self._work()
@@ -1979,6 +1980,7 @@ class TaskRun:
                 if payload.get('request_id') != request_id:
                     continue
                 if event.get('type') == 'request.resolved':
+                    self.recorder.saw_input(int(event.get('seq') or 0))
                     return payload
                 if event.get('type') == 'request.expired':
                     return {'status': 'expired'}
