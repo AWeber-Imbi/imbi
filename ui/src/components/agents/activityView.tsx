@@ -1,18 +1,19 @@
-import { ChartGantt, MessageSquareText } from 'lucide-react'
+import { ChartColumn, ChartGantt, MessageSquareText } from 'lucide-react'
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 import { TOOLBAR_ITEM } from './TaskToolbar'
 
-export type ActivityView = 'conversation' | 'trajectory'
+export type ActivityView = 'conversation' | 'statistics' | 'trajectory'
 
 const VIEWS: {
-  icon: typeof ChartGantt
+  icon: typeof ChartColumn
   label: string
   value: ActivityView
 }[] = [
   { icon: MessageSquareText, label: 'Conversation', value: 'conversation' },
   { icon: ChartGantt, label: 'Trajectory', value: 'trajectory' },
+  { icon: ChartColumn, label: 'Statistics', value: 'statistics' },
 ]
 
 /** Switches between the three views of a task's activity. */

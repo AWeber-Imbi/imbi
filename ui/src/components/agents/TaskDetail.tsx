@@ -53,6 +53,7 @@ import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { StatisticsTab } from './StatisticsTab'
 import {
   checksFrom,
   formatElapsed,
@@ -232,6 +233,8 @@ export function TaskDetail({
               onShowInConversation={showInConversation}
               task={t}
             />
+          ) : view === 'statistics' ? (
+            <StatisticsTab events={log} task={t} />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               {current === 'overview' && (
