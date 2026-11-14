@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import type { AgentTask } from '@/types'
@@ -207,7 +208,35 @@ describe('StatisticsTab', () => {
         <StatisticsTab events={[]} task={t} />
       </div>,
     )
+    expect(screen.getByText('No activity yet')).toBeInTheDocument()
     expect(screen.getByText('No model requests yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull()
+  })
+
+  it('says when nothing matches and clears the search', async () => {
+    const user = userEvent.setup()
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={LOG} task={t} />
+      </div>,
+    )
+    const search = screen.getByRole('searchbox', { name: 'Search statistics' })
+    await user.type(search, 'zzqx-no-match')
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+    expect(
+      screen.getByText('Nothing in this view matches “zzqx-no-match”.'),
+    ).toBeInTheDocument()
+    const empty = screen
+      .getByText('No matches')
+      .closest('[data-slot="empty"]') as HTMLElement
+    expect(empty).toHaveAttribute('data-search-skip')
+    await user.click(
+      within(empty).getByRole('button', { name: 'Clear search' }),
+    )
+    expect(search).toHaveValue('')
+    expect(screen.getByRole('table')).toBeInTheDocument()
   })
 
   it('opens the only turn once its events load', () => {

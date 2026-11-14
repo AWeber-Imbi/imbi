@@ -1,6 +1,12 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
 
-import { ArrowRightToLine, ChevronRight, Diff, Sigma } from 'lucide-react'
+import {
+  ArrowRightToLine,
+  ChartColumn,
+  ChevronRight,
+  Diff,
+  Sigma,
+} from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import {
@@ -15,6 +21,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
+import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import {
   type ContextBasis,
   type StatsCells,
@@ -177,14 +184,14 @@ export function StatisticsTab({
           <TaskCopyMenu events={events} task={task} />
         </div>
       </TaskToolbar>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {shown.length === 0 ? (
-          <p className="text-tertiary p-6 text-sm">
-            {stats.turns.length === 0
-              ? 'No model requests yet.'
-              : `No steps match “${query.trim()}”.`}
-          </p>
-        ) : (
+      {stats.turns.length === 0 ? (
+        <ActivityEmpty icon={<ChartColumn />} title="No activity yet">
+          No model requests yet.
+        </ActivityEmpty>
+      ) : shown.length === 0 ? (
+        <NoMatches onClear={() => setQuery('')} query={query} />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-auto">
           <Table className="text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5">
             <TableHeader className="bg-tertiary sticky top-0 z-1">
               <TableRow>
@@ -279,8 +286,8 @@ export function StatisticsTab({
               </TableRow>
             </TableFooter>
           </Table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
