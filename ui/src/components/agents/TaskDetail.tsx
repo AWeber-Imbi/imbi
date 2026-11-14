@@ -1,6 +1,6 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -37,7 +37,6 @@ import {
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
-import { useFollowBottom } from '@/hooks/useFollowBottom'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
@@ -67,7 +66,8 @@ import {
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
-import { timeline } from './taskTimeline'
+import { buildTrajectory } from './trajectoryModel'
+import { TrajectoryTab } from './TrajectoryTab'
 
 type TabKey =
   | 'checks'
@@ -76,6 +76,7 @@ type TabKey =
   | 'overview'
   | 'projects'
   | 'related'
+  | 'trajectory'
 
 /** The task in the inbox: its header, phase timeline, and tabs. */
 export function TaskDetail({
@@ -88,23 +89,25 @@ export function TaskDetail({
   tab?: string
 }) {
   const navigate = useNavigate()
+  const { hash } = useLocation()
   const task = useAgentTask(orgSlug, shortId)
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
-  const conversationCount = useMemo(
-    () => timeline(events.data ?? []).length,
+  const trajectoryCount = useMemo(
+    () => buildTrajectory(events.data ?? [], false).records.length,
     [events.data],
   )
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const eventCount = events.data?.length ?? 0
-  useFollowBottom(
-    scrollRef,
-    eventCount,
-    !!task.data &&
-      eventCount > 0 &&
-      (tab === 'conversation' || tab === 'actions'),
-  )
+  useEffect(() => {
+    const linked = /^#e\d+$/.test(hash)
+    const old =
+      tab === 'log' || (linked && (tab === 'conversation' || tab === 'actions'))
+    if (!old) return
+    navigate(
+      `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,
+      { replace: true },
+    )
+  }, [hash, navigate, orgSlug, shortId, tab])
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -130,11 +133,8 @@ export function TaskDetail({
   const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
-    {
-      count: conversationCount,
-      key: 'conversation',
-      label: 'Conversation',
-    },
+    { key: 'conversation', label: 'Conversation' },
+    { count: trajectoryCount, key: 'trajectory', label: 'Trajectory' },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',
@@ -143,8 +143,8 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  // Actions taken is part of the Conversation now; keep its old links.
-  const wanted = tab === 'actions' ? 'conversation' : tab
+  const wanted =
+    tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
   const current: TabKey = tabs.some((x) => x.key === wanted)
     ? (wanted as TabKey)
     : 'overview'
@@ -182,34 +182,37 @@ export function TaskDetail({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
-        {events.error && (
-          <p className="text-danger px-6 pt-4 text-sm" role="alert">
-            Could not load the task log: {events.error.message}
-          </p>
-        )}
-        {current === 'overview' && (
-          <OverviewTab end={end} events={log} task={t} />
-        )}
-        {current === 'input' && (
-          <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
-        )}
-        {current === 'conversation' && (
-          <ConversationTab
-            events={log}
-            orgSlug={orgSlug}
-            requests={requests}
-            task={t}
-          />
-        )}
-        {current === 'checks' && <ChecksTab events={log} />}
-        {current === 'related' && (
-          <RelatedTasksTab orgSlug={orgSlug} task={t} />
-        )}
-        {current === 'projects' && (
-          <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
-        )}
-      </div>
+      {events.error && (
+        <p className="text-danger shrink-0 px-6 pt-4 text-sm" role="alert">
+          Could not load the task log: {events.error.message}
+        </p>
+      )}
+      {current === 'conversation' ? (
+        <ConversationTab
+          events={log}
+          orgSlug={orgSlug}
+          requests={requests}
+          task={t}
+        />
+      ) : current === 'trajectory' ? (
+        <TrajectoryTab events={log} task={t} />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {current === 'overview' && (
+            <OverviewTab end={end} events={log} task={t} />
+          )}
+          {current === 'input' && (
+            <InputRequiredTab orgSlug={orgSlug} requests={requests} task={t} />
+          )}
+          {current === 'checks' && <ChecksTab events={log} />}
+          {current === 'related' && (
+            <RelatedTasksTab orgSlug={orgSlug} task={t} />
+          )}
+          {current === 'projects' && (
+            <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
+          )}
+        </div>
+      )}
       {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
@@ -631,7 +634,7 @@ function TaskHeader({
                 <span
                   className={cn(
                     'text-sm',
-                    current ? 'text-primary font-medium' : 'text-secondary',
+                    current ? 'font-medium text-primary' : 'text-secondary',
                   )}
                 >
                   {p.phase}

@@ -469,30 +469,32 @@ describe('Tasks', () => {
     ).toHaveAttribute('aria-selected', 'true')
   })
 
-  describe('Conversation', () => {
+  describe('Trajectory', () => {
     const log = [
       ...LOG,
-      event(4, 'turn', { body: 'Look first.', kind: 'thinking' }),
-      event(
-        5,
-        'turn',
-        { body: 'Searching the feeds.', parent_call_id: 'task-1' },
-        { actor_kind: 'subagent' },
-      ),
+      event(4, 'usage.reported', { tokens_in: 3, tokens_out: 40 }),
+      event(5, 'turn', { body: 'Look first.', kind: 'thinking' }),
       event(6, 'tool.called', {
         arguments: { command: 'uv run pytest -q' },
         call_id: 'bash-1',
+        duration_ms: 900,
         is_error: true,
         result: '1 failed, 3 passed',
         tool: 'Bash',
       }),
-      event(7, 'tool.called', {
+      event(
+        7,
+        'tool.called',
+        { call_id: 'grep-1', parent_call_id: 'task-1', tool: 'Grep' },
+        { actor_kind: 'subagent' },
+      ),
+      event(8, 'tool.called', {
         arguments: { description: 'Find calls', subagent_type: 'search' },
         call_id: 'task-1',
         result: 'Two call sites.',
         tool: 'Task',
       }),
-      event(8, 'phase.changed', { phase: 'fix' }),
+      event(9, 'phase.changed', { phase: 'fix' }),
     ]
 
     beforeEach(() => {
@@ -501,94 +503,77 @@ describe('Tasks', () => {
       )
     })
 
-    it('shows turns, calls, and nested subagent work in one timeline', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
-      expect(await screen.findByText('I read the task.')).toBeInTheDocument()
-      expect(screen.getByText('Look first.')).toBeInTheDocument()
-      expect(screen.getByText('failed')).toBeInTheDocument()
-      // Full detail shows the command and its output.
-      expect(screen.getByText(/1 failed, 3 passed/)).toBeInTheDocument()
-      const subagent = screen.getByText('search · Find calls').closest('div')!
-      expect(subagent.parentElement!.parentElement).toHaveTextContent(
-        'Searching the feeds.',
-      )
-      expect(screen.getByText('Phase fix')).toBeInTheDocument()
-    })
+    async function ledgerRows() {
+      const grid = await screen.findByRole('grid', { name: 'Trajectory' })
+      await within(grid).findByText('Phase fix')
+      return within(grid).getAllByRole('row')
+    }
 
-    it('filters by kind, errors, and text', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
-      await screen.findByText('I read the task.')
-      fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
-      expect(screen.queryByText('uv run pytest -q')).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
-      fireEvent.click(screen.getByRole('button', { name: /^Errors only/ }))
-      expect(screen.queryByText('I read the task.')).not.toBeInTheDocument()
-      expect(screen.getByText('uv run pytest -q')).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: /^Errors only/ }))
-      fireEvent.change(screen.getByLabelText('Search this task'), {
-        target: { value: 'feeds' },
-      })
-      expect(screen.queryByText('I read the task.')).not.toBeInTheDocument()
-      expect(screen.getByText('Searching the feeds.')).toBeInTheDocument()
-    })
-
-    it('collapses tool calls and thinking in Compact', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
-      await screen.findByText('Look first.')
-      fireEvent.click(screen.getByRole('radio', { name: 'Compact' }))
-      expect(screen.queryByText('Look first.')).not.toBeInTheDocument()
-      expect(screen.queryByText(/1 failed, 3 passed/)).not.toBeInTheDocument()
-      fireEvent.click(screen.getByText('uv run pytest -q'))
-      expect(screen.getByText(/1 failed, 3 passed/)).toBeInTheDocument()
-    })
-
-    it('renders cut arguments, notebooks, long edits, and nested plans', async () => {
-      vi.mocked(endpoints.getAgentTask).mockResolvedValue({
-        ...BLOCKED,
-        closed_at: '2026-10-08T13:00:00Z',
-        outcome: 'cancelled_by_human',
-        status: 'closed',
-      })
-      vi.mocked(endpoints.listAgentTaskEvents).mockResolvedValue([
-        ...LOG,
-        event(4, 'tool.called', {
-          arguments: '{"file_path": "big.txt", "content": "aaa',
-          arguments_truncated: true,
-          call_id: 'write-1',
-          tool: 'Write',
-        }),
-        event(5, 'tool.called', {
-          arguments: { new_source: 'print(1)', notebook_path: 'nb.ipynb' },
-          call_id: 'nb-1',
-          tool: 'NotebookEdit',
-        }),
-        event(6, 'tool.called', {
-          arguments: {
-            content: Array.from({ length: 60 }, (_, i) => `l${i}`).join('\n'),
-            file_path: 'long.txt',
-          },
-          call_id: 'write-2',
-          tool: 'Write',
-        }),
-        event(
-          7,
-          'todos.updated',
-          { parent_call_id: 'task-9', todos: [{ done: true, title: 'Dig' }] },
-          { actor_kind: 'subagent' },
-        ),
+    it('shows every record with its DSH kind', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory')
+      const rows = await ledgerRows()
+      expect(rows.map((r) => r.dataset.kind)).toEqual([
+        'user',
+        'assistant',
+        'context',
+        'assistant',
+        'tool',
+        'tool',
+        'subtool',
+        'system',
       ])
-      renderAt('/agents/tasks/acme/T-3/conversation')
-      await screen.findByText('I read the task.')
+      expect(within(rows[1]).getByText('I read the task.')).toBeInTheDocument()
       expect(
-        screen.getAllByText(/"file_path": "big.txt"/).length,
-      ).toBeGreaterThan(0)
-      expect(screen.getAllByText('nb.ipynb').length).toBe(2)
-      expect(screen.getByText('+ print(1)')).toBeInTheDocument()
-      expect(screen.queryByText('+ l59')).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'Show all 60 lines' }))
-      expect(screen.getByText('+ l59')).toBeInTheDocument()
-      expect(screen.getByText('Did not finish')).toBeInTheDocument()
-      expect(screen.getByText(/1 of 1 done/)).toBeInTheDocument()
+        within(rows[4]).getByText('1 failed, 3 passed'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('tab', { name: `Trajectory${rows.length}` }),
+      ).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('searches the trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory')
+      await ledgerRows()
+      fireEvent.change(
+        screen.getByRole('searchbox', { name: 'Search trajectory' }),
+        { target: { value: 'pytest' } },
+      )
+      const grid = screen.getByRole('grid', { name: 'Trajectory' })
+      expect(within(grid).getAllByRole('row')).toHaveLength(1)
+    })
+
+    it('selects the record of a #e link and opens the inspector', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+      expect(
+        screen.getByRole('complementary', { name: 'Inspector' }),
+      ).toHaveTextContent('Failed')
+    })
+
+    it('sends an old Log link to the Trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/log#e6')
+      expect(
+        await screen.findByRole('tab', { name: /^Trajectory/ }),
+      ).toHaveAttribute('aria-selected', 'true')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+      expect(window.location.hash).toBe('#e6')
+    })
+
+    it('sends an old Conversation event link to the Trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation#e2')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+      expect(window.location.hash).toBe('#e2')
     })
 
     it('opens an old Actions taken link on the Conversation', async () => {

@@ -144,7 +144,7 @@ function MarketplacePlugins({
 }) {
   return (
     <Collapsible
-      className="border-tertiary group rounded-lg border"
+      className="group border-tertiary rounded-lg border"
       defaultOpen
     >
       <CollapsibleTrigger className="border-tertiary flex w-full items-center gap-2 px-3 py-2 text-left group-data-[state=open]:border-b">

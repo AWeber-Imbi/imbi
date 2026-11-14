@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
 
@@ -750,4 +751,92 @@
   .animate-imbi-pulse {
     animation: none !important;
   }
+}
+
+@theme {
+  --font-tj-code: var(--font-mono);
+}
+
+@utility hairline {
+  border-style: solid;
+  border-width: 0.5px;
+}
+
+@utility hairline-b {
+  border-bottom-style: solid;
+  border-bottom-width: 0.5px;
+}
+
+@utility hairline-l {
+  border-left-style: solid;
+  border-left-width: 0.5px;
+}
+
+@utility hairline-r {
+  border-right-style: solid;
+  border-right-width: 0.5px;
+}
+
+/* Trajectory tab roles, mapped onto the imbi theme tokens (light and dark). */
+.trajectory {
+  --tj-bg-1: var(--ds-bg-primary);
+  --tj-bg-2: var(--ds-bg-primary);
+  --tj-bg-module: var(--ds-bg-secondary);
+  --tj-label-1: var(--ds-text-primary);
+  --tj-label-2: var(--ds-text-secondary);
+  --tj-label-3: var(--ds-text-tertiary);
+  --tj-caption: var(--ds-text-tertiary);
+  --tj-border-1: color-mix(in srgb, var(--ds-border-tertiary) 50%, transparent);
+  --tj-border-2: var(--ds-border-tertiary);
+  --tj-border-4: var(--ds-border-secondary);
+  --tj-hover: color-mix(in srgb, var(--ds-text-primary) 5%, transparent);
+  --tj-active: color-mix(in srgb, var(--ds-text-primary) 9%, transparent);
+  --tj-brand: var(--ds-action-bg);
+  --tj-select: var(--ds-text-primary);
+  --tj-business: var(--ds-text-info);
+  --tj-business-3: var(--ds-bg-info);
+  --tj-assistant: var(--ds-text-accent);
+  --tj-assistant-bg: var(--ds-bg-accent);
+  --tj-context: var(--ds-text-success);
+  --tj-success-3: var(--ds-bg-success);
+  --tj-warn: var(--ds-text-warning);
+  --tj-warn-3: var(--ds-bg-warning);
+  --tj-subtool: var(--ds-text-teal);
+  --tj-subtool-bg: var(--ds-bg-teal);
+  --tj-error: var(--ds-text-danger);
+  --tj-code-bg: var(--ds-bg-tertiary);
+  --tj-citation: var(--ds-border-tertiary);
+  --tj-span-user: var(--color-activity-info-dot);
+  --tj-span-assistant: var(--color-status-implementing-dot);
+  --tj-span-tool: var(--color-activity-warning-dot);
+  --tj-span-subtool: var(--ds-text-teal);
+  --tj-span-context: var(--color-status-review-dot);
+  --tj-span-error: var(--color-status-failed-dot);
+  --tj-turn-accent: color-mix(
+    in srgb,
+    var(--ds-text-primary) 12%,
+    var(--ds-bg-primary)
+  );
+  --tj-turn-error: color-mix(
+    in srgb,
+    var(--ds-text-danger) 30%,
+    var(--ds-bg-primary)
+  );
+  background: var(--tj-bg-1);
+  color: var(--tj-label-1);
+}
+
+.trajectory tr[data-turn-start] > td::before {
+  background: var(--tj-border-1);
+  content: '';
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translateY(-50%);
+}
+
+.trajectory tr[data-turn-start]:first-child > td::before {
+  display: none;
 }
