@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 
 import type { Condition } from './conditions'
 import { ConditionsField } from './ConditionsField'
+import { InputsField } from './InputsField'
 import type { OutputField } from './outputFields'
 import { OutputFieldsField } from './OutputFieldsField'
 import { TemplateInput } from './ReferencePicker'
@@ -29,6 +30,7 @@ import type { ReferenceGroup } from './references'
 import {
   type FieldSource,
   isIdOrReference,
+  isRecord,
   type ParamField,
   TRIGGER_PROJECT,
 } from './schemaFields'
@@ -201,6 +203,17 @@ function FieldControl({
           value={Array.isArray(value) ? value.map(String) : []}
         />
       )
+    case 'code':
+      return (
+        <Textarea
+          className="font-mono text-xs"
+          id={id}
+          onChange={(e) => onChange(e.target.value)}
+          rows={10}
+          spellCheck={false}
+          value={typeof value === 'string' ? value : ''}
+        />
+      )
     case 'conditions':
       return (
         <ConditionsField
@@ -211,6 +224,17 @@ function FieldControl({
           operators={field.options}
           references={references}
           value={Array.isArray(value) ? (value as Condition[]) : []}
+        />
+      )
+    case 'inputs':
+      return (
+        <InputsField
+          id={id}
+          key={id}
+          label={field.label}
+          onChange={onChange}
+          references={references}
+          value={isRecord(value) ? value : {}}
         />
       )
     case 'json':

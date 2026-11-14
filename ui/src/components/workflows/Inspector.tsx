@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
+import { JsonBlock } from './JsonBlock'
 import { ParamsForm, SelectField } from './ParamsForm'
 import { referenceGroups } from './references'
 import { StatusBadge } from './RunPanel'
@@ -18,6 +19,7 @@ import {
   windowSeconds,
 } from './runs'
 import { paramFields } from './schemaFields'
+import { ScriptPreview } from './ScriptPreview'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type {
   ValidationIssue,
@@ -120,7 +122,7 @@ export function NodePanel({
   const type = types[node.type]
   const Icon = stepIcon(node.type, type?.category)
   const fields = useMemo(
-    () => (type ? paramFields(type.params_schema) : []),
+    () => (type ? paramFields(type.params_schema, type.raw_params) : []),
     [type],
   )
   const references = useMemo(
@@ -224,6 +226,9 @@ export function NodePanel({
             references={references}
             webhookProject={graph.nodes.some((n) => n.type === 'webhook')}
           />
+          {node.type === 'script' && !readOnly && (
+            <ScriptPreview key={node.id} node={node} orgSlug={orgSlug} />
+          )}
           {incoming > 1 && (
             <FormField
               description="Any runs the step when the first connection arrives. All waits for every connection."
@@ -487,17 +492,6 @@ function IssueList({ issues }: { issues: ValidationIssue[] }) {
         </li>
       ))}
     </ul>
-  )
-}
-
-function JsonBlock({ label, value }: { label: string; value: unknown }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-tertiary text-xs">{label}</span>
-      <pre className="bg-secondary rounded-md p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    </div>
   )
 }
 

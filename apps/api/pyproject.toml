@@ -29,7 +29,7 @@ dependencies = [
   "filetype",
   "httpx>=0.28.1,<1",
   "idna>=3.18",
-  "imbi-common[databases,llm,mcp,sentry,server]==2.50.0",
+  "imbi-common[databases,llm,mcp,script,sentry,server]==2.50.0",
   "jinja2",
   "jsonpatch>=1.33",
   "jsonschema>=4.26",

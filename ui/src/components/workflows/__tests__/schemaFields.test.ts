@@ -1,7 +1,38 @@
 import { describe, expect, it } from 'vitest'
 
 import { isIdOrReference, paramFields, paramSummary } from '../schemaFields'
-import { CONDITION } from './fixtures'
+import { CONDITION, SCRIPT } from './fixtures'
+
+describe('paramFields for the script step', () => {
+  it('edits code as plain text and inputs as name and value rows', () => {
+    expect(
+      paramFields(SCRIPT.params_schema, SCRIPT.raw_params).map((f) => [
+        f.name,
+        f.kind,
+      ]),
+    ).toEqual([
+      ['branches', 'list'],
+      ['code', 'code'],
+      ['inputs', 'inputs'],
+      ['output_fields', 'outputFields'],
+    ])
+  })
+
+  it('treats a param as code only when the step type names it raw', () => {
+    const [field] = paramFields(SCRIPT.params_schema).filter(
+      (f) => f.name === 'code',
+    )
+    expect(field?.kind).toBe('text')
+  })
+
+  it('keeps a list of manual trigger inputs as JSON', () => {
+    const [field] = paramFields({
+      properties: { inputs: { items: { type: 'object' }, type: 'array' } },
+      type: 'object',
+    })
+    expect(field?.kind).toBe('json')
+  })
+})
 
 describe('paramFields', () => {
   it('builds fields from a Pydantic schema, in schema order', () => {

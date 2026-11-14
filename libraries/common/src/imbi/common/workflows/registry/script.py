@@ -27,8 +27,10 @@ BRANCH_FIELD = 'branch'
 
 
 class Params(pydantic.BaseModel):
+    # Plain defaults, not factories, so the JSON Schema has them and the
+    # editor starts a new script with no inputs and no branches.
     inputs: dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict[str, typing.Any],
+        default={},
         description='Globals of the script. A value can be a reference, '
         'such as {{ trigger.payload }}.',
     )
@@ -45,7 +47,7 @@ class Params(pydantic.BaseModel):
     )
     branches: list[typing.Annotated[str, pydantic.Field(min_length=1)]] = (
         pydantic.Field(
-            default_factory=list[str],
+            default=[],
             description='One output port per branch. The result names '
             f'the branch to take in {BRANCH_FIELD!r}.',
         )
@@ -59,7 +61,7 @@ class Params(pydantic.BaseModel):
         if len(value) > MAX_INPUTS:
             raise ValueError(f'at most {MAX_INPUTS} inputs')
         for name in value:
-            if not re.match(graph.KEY_PATTERN, name):
+            if not re.fullmatch(graph.KEY_PATTERN, name):
                 raise ValueError(f'{name!r} is not a valid input name')
             if keyword.iskeyword(name):
                 raise ValueError(f'{name!r} is a Python keyword')

@@ -112,6 +112,35 @@ export const CONDITION: StepType = stepType({
   type: 'condition',
 })
 
+/** The script step's schema, as Pydantic writes it (ADR 0027). */
+export const SCRIPT: StepType = stepType({
+  description: 'Runs Python in a sandbox and returns a structured result.',
+  label: 'Script',
+  params_schema: {
+    $defs: {
+      OutputField: {
+        properties: { name: { type: 'string' }, type: { type: 'string' } },
+        required: ['name', 'type'],
+        type: 'object',
+      },
+    },
+    properties: {
+      branches: { default: [], items: { type: 'string' }, type: 'array' },
+      code: { type: 'string' },
+      inputs: { default: {}, type: 'object' },
+      output_fields: {
+        items: { $ref: '#/$defs/OutputField' },
+        type: 'array',
+      },
+    },
+    required: ['code', 'output_fields'],
+    type: 'object',
+  },
+  ports: null,
+  raw_params: ['code'],
+  type: 'script',
+})
+
 export const TYPES = Object.fromEntries(STEP_TYPES.map((t) => [t.type, t]))
 
 export function node(overrides: Partial<WorkflowNode> = {}): WorkflowNode {
@@ -140,6 +169,7 @@ export function stepType(overrides: Partial<StepType> = {}): StepType {
       type: 'object',
     },
     ports: [''],
+    raw_params: [],
     retries: 0,
     sample_output: {},
     side_effect: false,

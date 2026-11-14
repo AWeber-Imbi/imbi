@@ -127,6 +127,7 @@ with one output port has no port name.
 | `wait` | Wait | Logic | One |
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
+| `script` | Script | Logic | One, or one for each branch |
 | `email` | Send email | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
@@ -140,6 +141,7 @@ count:
 | `wait` | None | 0 |
 | `model_decision` | 60 seconds | 2 |
 | `condition` | 10 seconds | 0 |
+| `script` | 30 seconds. The script itself stops at 5 seconds | 0 |
 | `email` | 2 minutes | 0 |
 | `deploy`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
@@ -284,6 +286,65 @@ value that does not fit fails the step when the workflow runs.
 **Output:** `result`, and `conditions`: each row with its values and its
 `result`.
 
+### Script
+
+Runs a short Python program and returns a structured result. Use it to
+count, filter, or reshape data from earlier steps, or to select a branch
+by a rule that is too complex for a condition. See
+[ADR 0027](../api/adr/0027-workflow-script-step.md).
+
+| Parameter | What to enter | Default |
+|---|---|---|
+| `inputs` | Up to 20 names and values. Each name becomes a variable of the script. A value can be a template | None |
+| `code` | Python, up to 16 KiB. It is never a template | Required |
+| `output_fields` | The fields of the result, as for an agent step | Required |
+| `branches` | Unique names. Each name is one output port | None (one port) |
+
+The value of the last line of `code` is the result. It must be a dict with
+the fields of `output_fields`:
+
+```python
+failed = [run for run in runs if run["status"] == "failure"]
+{"count": len(failed), "branch": "alert" if len(failed) > limit else "ok"}
+```
+
+Here `runs` and `limit` are inputs. A value that is one reference, such as
+`{{ trigger.payload.runs }}`, keeps its type, so `runs` is a list. Any other
+value is text.
+
+With `branches`, the result must also hold `branch`, the name of the
+branch to take. You cannot name an output field `branch`.
+
+**The sandbox.** The script runs in
+[pydantic-monty](https://github.com/pydantic/monty), a sandbox for a part of
+Python. The script cannot read files or environment variables, open a
+network connection, or call Imbi. It stops after 5 seconds or 64 MiB of
+memory. Some Python features are not available, for example class
+inheritance, generators, and third-party packages. The vendor lists them at
+[Limitations](https://pydantic.dev/docs/monty/limitations/).
+
+**Run script.** Below the parameters, the inspector has **Sample inputs**
+and a **Run script** button. The button runs the code now, in the same
+sandbox and with the same limits, and shows the result, the branch, the
+printed text, or the error. It renders no reference: write a sample value
+for each input. It saves nothing. It needs `workflow:write`.
+
+A script error fails the step and the run. The step does not retry. The
+error is one of these:
+
+| Error | Cause |
+|---|---|
+| `script_syntax_error` | The code is not valid Python |
+| `script_error` | The code raised an exception. The error has its type and message |
+| `script_timeout` | The code ran for more than 5 seconds |
+| `script_memory` | The code used more than 64 MiB, or printed more than 64 KiB |
+| `script_output_invalid` | The last line is not a dict, a value has no JSON form, text holds a NUL character, or the result does not match `output_fields` |
+| `script_output_too_large` | The output is more than 64 KiB of JSON |
+| `script_branch_invalid` | `branch` is missing, or is not one of `branches` |
+
+**Output:** `result` (use `{{ <key>.result.<field> }}`), `branch`, and
+`stdout`: the first 8 KiB of the text that the script printed.
+
 ### Send email
 
 Sends an email to users and teams of the organization.
@@ -420,9 +481,9 @@ A step with more than one input has a join. Set it in **Run when**:
 - **All inputs arrive** (`all`): the step runs when every input arrived or
   will not arrive, and at least one arrived.
 
-A branching step (model decision, condition, deploy, agent task) takes one
-port. The steps on its other ports are `skipped`. A step whose inputs are
-all from skipped paths is `skipped` too.
+A branching step (model decision, condition, script with branches, deploy,
+agent task) takes one port. The steps on its other ports are `skipped`. A
+step whose inputs are all from skipped paths is `skipped` too.
 
 Validation warns when an **Any input arrives** step can get two inputs in
 one run.
@@ -859,6 +920,13 @@ See [Kubernetes](../deployment/kubernetes.md).
 | `IMBI_WORKFLOWS_AGENT_POLL_SECONDS` | Seconds between agent task checks | `30` |
 | `IMBI_WORKFLOWS_SCHEDULER_URL` | imbi-scheduler's task API. Helm sets it from `workflows.schedulerUrl` | `http://localhost:8005/api` |
 | `IMBI_WORKFLOWS_RECONCILE_INTERVAL` | Seconds between trigger binding syncs | `300` |
+| `IMBI_WORKFLOWS_SCRIPT_MAX_MEMORY_MB` | Memory one script step can use, in MiB | `64` |
+| `IMBI_WORKFLOWS_SCRIPT_MAX_SECONDS` | Seconds one script step can run | `5` |
+
+Each engine process keeps up to `IMBI_WORKFLOWS_WORKERS` `monty` sandbox
+processes for script steps, and imbi-api keeps two for **Run script**. Allow
+memory for them in the pod limits. The preview always uses the default
+limits.
 
 See also [Agents](agents.md), [Agent tasks](agent-tasks.md), and
 [Agent runners](../deployment/agent-runners.md).

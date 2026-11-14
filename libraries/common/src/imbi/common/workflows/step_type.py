@@ -79,4 +79,5 @@ class StepType:
             'idempotent': self.idempotent,
             'timeout_seconds': self.timeout_seconds,
             'retries': self.retries,
+            'raw_params': sorted(self.raw_params),
         }

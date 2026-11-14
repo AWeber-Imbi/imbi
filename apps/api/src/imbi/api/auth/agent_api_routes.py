@@ -299,6 +299,8 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/workflow-runs/side-effects/deployments',
         'POST /organizations/{org_slug}/workflow-runs/side-effects/resolve',
         'POST /organizations/{org_slug}/workflows/{slug}/test-runs',
+        # Runs code in a sandbox inside imbi-api (ADR 0027).
+        'POST /organizations/{org_slug}/workflows/script-preview',
         'PUT /organizations/{org_slug}/workflows/{slug}',
         # Global configuration writes: they change every organization (and are also governance). Component and component release status and advisories are global marks by design.
         'DELETE /blueprints/{type}/{slug}',

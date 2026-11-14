@@ -34,6 +34,7 @@ from imbi.api.storage.client import StorageClient
 from imbi.common import clickhouse, graph, iggy, valkey
 from imbi.common.llm import AnthropicClient, AnthropicSettings
 from imbi.common.llm import tokens as llm_tokens
+from imbi.common.workflows import script_runner
 
 LOGGER = logging.getLogger(__name__)
 
@@ -162,6 +163,36 @@ async def anthropic_hook() -> abc.AsyncGenerator[AnthropicClient]:
         yield client
     finally:
         await client.aclose()
+
+
+@contextlib.asynccontextmanager
+async def script_preview_hook() -> abc.AsyncGenerator[
+    script_runner.Runner | None
+]:
+    """Start the sandbox of the workflow editor's script preview.
+
+    A sandbox that does not start turns the preview off (it returns
+    ``503``); imbi-api still starts.
+    """
+    async with contextlib.AsyncExitStack() as stack:
+        try:
+            runner = await stack.enter_async_context(
+                script_runner.open_runner(
+                    # Few: a preview is a person at the editor, and each
+                    # worker is a process of imbi-api.
+                    processes=2,
+                    max_memory=script_runner.DEFAULT_MAX_MEMORY_MB
+                    * 1024
+                    * 1024,
+                    max_seconds=script_runner.DEFAULT_MAX_SECONDS,
+                )
+            )
+        except Exception:  # noqa: BLE001 -- the preview is optional
+            LOGGER.warning(
+                'The script preview sandbox did not start', exc_info=True
+            )
+            runner = None
+        yield runner
 
 
 @contextlib.asynccontextmanager

@@ -20,6 +20,8 @@ import type {
 } from '@/components/admin/secrets/types'
 import type {
   AttentionRun,
+  ScriptPreviewRequest,
+  ScriptPreviewResult,
   SideEffectResolve,
   StaleSideEffect,
   StepType,
@@ -4104,6 +4106,13 @@ export const cancelWorkflowRun = (
   apiClient.post<WorkflowRun>(
     `${workflowPath(orgSlug, slug)}/runs/${encodeURIComponent(runId)}/cancel`,
     {},
+  )
+
+/** Run a script step's code with sample inputs (ADR 0027). Stores nothing. */
+export const previewScript = (orgSlug: string, body: ScriptPreviewRequest) =>
+  apiClient.post<ScriptPreviewResult>(
+    `${workflowsPath(orgSlug)}/script-preview`,
+    body,
   )
 
 /** Walk the latest saved version with sample outputs. Sends nothing. */

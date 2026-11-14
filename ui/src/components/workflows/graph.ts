@@ -232,13 +232,15 @@ export function placeNew(
   return { from, position }
 }
 
-/** The output port labels of a node. `[""]` is one unnamed port. */
+/** The output port labels of a node. `[""]` is one unnamed port, also
+ * for a type with ports from `params.branches` and no branches. */
 export function portsOf(node: WorkflowNode, types: StepTypes): string[] {
   const type = types[node.type]
   if (!type) return ['']
   if (type.ports !== null) return type.ports
   const branches = node.params.branches
-  return Array.isArray(branches) ? branches.map(String) : []
+  const ports = Array.isArray(branches) ? branches.map(String) : []
+  return ports.length > 0 ? ports : ['']
 }
 
 /** Remove branch `index`: drop its edges and move higher ports down one. */

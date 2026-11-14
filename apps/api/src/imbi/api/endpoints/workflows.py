@@ -29,10 +29,16 @@ import slugify
 from imbi.api import workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
-from imbi.common import graph
+from imbi.common import graph, lifespan
 from imbi.common.workflows import graph as wf
-from imbi.common.workflows import history, registry, validation
+from imbi.common.workflows import (
+    history,
+    registry,
+    script_runner,
+    validation,
+)
 from imbi.common.workflows.registry import agent as agent_step
+from imbi.common.workflows.registry import script as script_step
 
 LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +153,11 @@ class StepType(pydantic.BaseModel):
     idempotent: bool
     timeout_seconds: int | None
     retries: int
+    raw_params: list[str] = pydantic.Field(
+        default=[],
+        description='Params that are never templates, such as the code '
+        'of a script.',
+    )
 
 
 # --- Helpers -----------------------------------------------------------
@@ -809,3 +820,65 @@ async def pause_workflow(
         )
     await store.pause(org_id, slug)
     return await _get(store, db, org_id, slug)
+
+
+class ScriptPreview(script_step.Params):
+    """The params of a script step, with sample values as ``inputs``."""
+
+
+class ScriptPreviewResult(pydantic.BaseModel):
+    """The output and port of a script, or the error that stopped it."""
+
+    output: script_step.Output | None = None
+    port: int | None = None
+    #: An error code of ADR 0027, such as ``script_error``.
+    error: str | None = None
+    message: str | None = None
+
+
+def _script_runner(
+    context: lifespan.InjectLifespan,
+) -> script_runner.Runner | None:
+    # Imported here: the lifespans import the endpoints.
+    from imbi.api import lifespans
+
+    return context.get_state(lifespans.script_preview_hook)
+
+
+ScriptRunner = typing.Annotated[
+    script_runner.Runner | None, fastapi.Depends(_script_runner)
+]
+
+
+@workflows_router.post('/script-preview', response_model=ScriptPreviewResult)
+async def preview_script(
+    data: ScriptPreview,
+    runner: ScriptRunner,
+    _: WriteAuth,
+) -> ScriptPreviewResult:
+    """Run the code of a script step with sample inputs (ADR 0027).
+
+    ``inputs`` are the values that the script gets: no reference is
+    rendered. Nothing is stored. The script runs in the same sandbox,
+    with the same limits, as in a run.
+
+    Raises:
+        503: The sandbox is not running, or every worker is busy.
+
+    """
+    if runner is None:
+        raise fastapi.HTTPException(
+            status_code=503, detail='The script sandbox is not running'
+        )
+    try:
+        done = await runner.run(data)
+    except script_runner.Busy as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail='Every script sandbox worker is busy; try again',
+        ) from e
+    except script_runner.ScriptError as e:
+        return ScriptPreviewResult(error=e.code, message=e.message or None)
+    return ScriptPreviewResult(
+        output=script_step.Output.model_validate(done.output), port=done.port
+    )

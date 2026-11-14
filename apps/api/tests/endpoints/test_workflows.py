@@ -15,7 +15,9 @@ import httpx
 from apps.api.tests import support
 from imbi.api import models, workflows
 from imbi.api.auth import permissions
+from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
+from imbi.common.workflows import script_runner
 
 ALL_PERMISSIONS = frozenset(
     {
@@ -699,3 +701,77 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         )
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(await self.store.agent_references(self.org, agent), 2)
+
+
+class ScriptPreviewTestCase(WorkflowTestCase):
+    """``POST .../workflows/script-preview`` in the real sandbox."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        runner = await self.enterAsyncContext(
+            script_runner.open_runner(
+                processes=1, max_memory=16 * 1024 * 1024, max_seconds=2.0
+            )
+        )
+        self.runner: script_runner.Runner | None = runner
+        self.test_app.dependency_overrides[
+            workflows_endpoints._script_runner
+        ] = lambda: self.runner
+
+    async def _preview(self, **body: typing.Any) -> httpx.Response:
+        return await self.client.post(
+            f'{self.base}/script-preview',
+            json={
+                'code': "{'count': n * 2}",
+                'inputs': {'n': 3},
+                'output_fields': [{'name': 'count', 'type': 'integer'}],
+            }
+            | body,
+        )
+
+    async def test_result(self) -> None:
+        response = await self._preview(
+            code="print('hi')\n{'count': n, 'branch': 'b'}",
+            branches=['a', 'b'],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {
+                'output': {
+                    'result': {'count': 3},
+                    'branch': 'b',
+                    'stdout': 'hi\n',
+                },
+                'port': 1,
+                'error': None,
+                'message': None,
+            },
+        )
+
+    async def test_script_error_is_a_result(self) -> None:
+        response = await self._preview(code="raise ValueError('nope')")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {
+                'output': None,
+                'port': None,
+                'error': 'script_error',
+                'message': 'ValueError: nope',
+            },
+        )
+
+    async def test_invalid_params(self) -> None:
+        response = await self._preview(inputs={'lambda': 1})
+        self.assertEqual(response.status_code, 422, response.text)
+
+    async def test_needs_workflow_write(self) -> None:
+        self.permissions.discard('workflow:write')
+        response = await self._preview()
+        self.assertEqual(response.status_code, 403, response.text)
+
+    async def test_no_sandbox(self) -> None:
+        self.runner = None
+        response = await self._preview()
+        self.assertEqual(response.status_code, 503, response.text)

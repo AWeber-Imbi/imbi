@@ -6134,6 +6134,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflows/script-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Script
+         * @description Run the code of a script step with sample inputs (ADR 0027).
+         *
+         *     ``inputs`` are the values that the script gets: no reference is
+         *     rendered. Nothing is stored. The script runs in the same sandbox,
+         *     with the same limits, as in a run.
+         *
+         *     Raises:
+         *         503: The sandbox is not running, or every worker is busy.
+         */
+        post: operations["preview_script_api_organizations__org_slug__workflows_script_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/workflows/{slug}/runs": {
         parameters: {
             query?: never;
@@ -16262,6 +16289,33 @@ export interface components {
             /** Client Id Issued At */
             client_id_issued_at: number;
         };
+        /**
+         * ObjectField
+         * @description A field of an object: a scalar, so nesting stops here.
+         */
+        ObjectField: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Enum */
+            enum?: string[] | null;
+            /** Format */
+            format?: ("date-time" | "time" | "date" | "duration" | "email" | "hostname" | "uri" | "ipv4" | "ipv6" | "uuid") | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "integer" | "number" | "boolean";
+        };
         /** OperationLogListResponse */
         OperationLogListResponse: {
             metrics?: components["schemas"]["OperationLogMetrics"] | null;
@@ -16426,6 +16480,42 @@ export interface components {
             structured_output?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** Output */
+        Output: {
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+            /** Branch */
+            branch?: string | null;
+            /** Stdout */
+            stdout?: string | null;
+        };
+        /** OutputField */
+        OutputField: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Enum */
+            enum?: string[] | null;
+            /** Format */
+            format?: ("date-time" | "time" | "date" | "duration" | "email" | "hostname" | "uri" | "ipv4" | "ipv6" | "uuid") | null;
+            /** Type */
+            type: ("string" | "integer" | "number" | "boolean") | ("array" | "object");
+            /** Items */
+            items?: ("string" | "integer" | "number" | "boolean") | "object" | null;
+            /** Fields */
+            fields?: components["schemas"]["ObjectField"][] | null;
         };
         /**
          * PRActivityResponse
@@ -19695,6 +19785,49 @@ export interface components {
             period_days: number;
         };
         /**
+         * ScriptPreview
+         * @description The params of a script step, with sample values as ``inputs``.
+         */
+        ScriptPreview: {
+            /**
+             * Inputs
+             * @description Globals of the script. A value can be a reference, such as {{ trigger.payload }}.
+             * @default {}
+             */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /**
+             * Code
+             * @description Python. The value of the last expression is the result. Never rendered as a template.
+             */
+            code: string;
+            /**
+             * Output Fields
+             * @description The fields of the result. Later steps use each field as {{ <key>.result.<field> }}.
+             */
+            output_fields: components["schemas"]["OutputField"][];
+            /**
+             * Branches
+             * @description One output port per branch. The result names the branch to take in 'branch'.
+             * @default []
+             */
+            branches: string[];
+        };
+        /**
+         * ScriptPreviewResult
+         * @description The output and port of a script, or the error that stopped it.
+         */
+        ScriptPreviewResult: {
+            output?: components["schemas"]["Output"] | null;
+            /** Port */
+            port?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Message */
+            message?: string | null;
+        };
+        /**
          * SearchResult
          * @description A single vector search result.
          *
@@ -20698,6 +20831,12 @@ export interface components {
             timeout_seconds: number | null;
             /** Retries */
             retries: number;
+            /**
+             * Raw Params
+             * @description Params that are never templates, such as the code of a script.
+             * @default []
+             */
+            raw_params: string[];
         };
         /** SurfaceCount */
         SurfaceCount: {
@@ -32315,6 +32454,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_script_api_organizations__org_slug__workflows_script_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptPreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptPreviewResult"];
                 };
             };
             /** @description Validation Error */
