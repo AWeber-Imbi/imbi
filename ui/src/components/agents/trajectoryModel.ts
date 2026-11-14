@@ -176,6 +176,10 @@ export function buildTrajectory(
       turn: state.turn,
     })
     state.current = request
+    if (usage) {
+      const end = at(usage)
+      if (state.lastEnd === null || end > state.lastEnd) state.lastEnd = end
+    }
     return request
   }
 
@@ -195,6 +199,14 @@ export function buildTrajectory(
       startTurn()
       const body = String(e.payload.body ?? '')
       push(instant(e, 'user', preview(body), state.turn))
+      continue
+    }
+    if (e?.type === 'turn' && e.payload.kind === 'warning') {
+      if (state.turn === 0) state.turn = 1
+      push({
+        ...instant(e, 'system', String(e.payload.body ?? ''), state.turn),
+        error: true,
+      })
       continue
     }
     if (e?.type === 'turn') {
@@ -568,11 +580,11 @@ function toolRecord(
         ]
       : [],
   )
-  const owned: number[] = []
+  const owned: AgentTaskEvent[] = []
   const walk = (x: TimelineEntry) => {
     for (const c of x.children)
       if (c.event && c.event.type !== 'tool.called') {
-        owned.push(c.seq)
+        owned.push(c.event)
         walk(c)
       }
   }
@@ -591,12 +603,12 @@ function toolRecord(
     body: { reply: '', thinking: '' },
     endedAt: end,
     error: isError(entry),
-    events: e ? [e] : [],
+    events: [...(e ? [e] : []), ...owned],
     id: entry.parentOf ? `call:${entry.parentOf}` : entry.id,
     kind,
     parent,
     request: request.number,
-    seqs: [...(e ? [e.seq] : []), ...owned],
+    seqs: [...(e ? [e.seq] : []), ...owned.map((c) => c.seq)],
     startedAt: start,
     step: request.step,
     text: `${toolLabel(tool)} ${summaryText}`,

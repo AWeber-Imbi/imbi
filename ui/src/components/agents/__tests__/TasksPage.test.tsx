@@ -580,6 +580,20 @@ describe('Tasks', () => {
       expect(window.location.hash).toBe('#e2')
     })
 
+    it('sends an Activity event link to the Trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/activity#e6')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+      expect(window.location.hash).toBe('#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+    })
+
     it('opens an old Actions taken link on the Conversation', async () => {
       renderAt('/agents/tasks/acme/T-3/actions')
       expect(

@@ -137,11 +137,18 @@ export function TrajectoryOverview({
     if (!view || !selected) return
     const span = spans.find((s) => s.id === selected)
     if (!span) return
-    if (span.start >= view.start && span.end <= view.start + view.size) return
+    const viewEnd = view.start + view.size
+    const fits = span.end - span.start <= view.size
+    if (fits && span.start >= view.start && span.end <= viewEnd) return
+    if (!fits && span.start <= view.start && span.end >= viewEnd) return
     const start = Math.min(
-      Math.max((span.start + span.end) / 2 - view.size / 2, 0),
+      Math.max(
+        fits ? (span.start + span.end) / 2 - view.size / 2 : span.start,
+        0,
+      ),
       full - view.size,
     )
+    if (start === view.start) return
     setView({ size: view.size, start })
   }, [selected, spans, view, full])
 

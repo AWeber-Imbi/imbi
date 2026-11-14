@@ -164,6 +164,32 @@ describe('TrajectoryTab links and live tasks', () => {
     expect(rows()[rows().length - 1]).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('moves a fallback link to its event once the event arrives', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/agents/tasks/acme/T-1/trajectory#e12',
+    )
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const view = render(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LOG} task={t} />
+      </div>,
+    )
+    expect(rows()[rows().length - 1]).toHaveAttribute('aria-selected', 'true')
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab
+          events={[...LOG, event(12, 'session.closed', {})]}
+          task={t}
+        />
+      </div>,
+    )
+    const last = rows()[rows().length - 1]
+    expect(last.dataset.kind).toBe('system')
+    expect(last).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('treats a blocked task as live, so a running call is Pending', async () => {
     window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
     renderTab('blocked', [
@@ -343,6 +369,19 @@ describe('TrajectoryTab overview', () => {
     ])
   })
 
+  it('zooms past a selected span without looping', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    renderTab()
+    await userEvent.click(screen.getByRole('button', { name: 'Duration' }))
+    await userEvent.click(rows()[3])
+    for (let i = 0; i < 4; i++) fireEvent.wheel(track(), { deltaY: -2000 })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(
+      error.mock.calls.some((c) => String(c[0]).includes('Maximum update')),
+    ).toBe(false)
+    error.mockRestore()
+  })
+
   it('selects a record when its span is clicked', () => {
     renderTab()
     const bar = spanBars()[3]
@@ -518,6 +557,40 @@ describe('TrajectoryTab inspector', () => {
       within(inspector()).getByRole('button', { name: 'Assistant Message' }),
     )
     expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('previews a person in full, with their Markdown', async () => {
+    const long = `**Bold** ${'word '.repeat(150)}the end`
+    renderTab('closed', [
+      event(1, 'task.created', { description: long, title: 'T' }),
+      ...LOG.slice(1),
+    ])
+    await userEvent.click(rows()[0])
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Preview' }),
+    )
+    expect(within(inspector()).getByText('Bold').tagName).toBe('STRONG')
+    expect(inspector()).toHaveTextContent(/the end/)
+  })
+
+  it('shows the messages of a subagent call in Raw', async () => {
+    const sub = { actor_kind: 'subagent' as const }
+    renderTab('closed', [
+      ...LOG,
+      event(12, 'turn', { body: 'Sub says hi', parent_call_id: 'a1' }, sub),
+      event(13, 'tool.called', {
+        arguments: { description: 'look' },
+        call_id: 'a1',
+        duration_ms: 50,
+        result: 'ok',
+        tool: 'Agent',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:a1')!,
+    )
+    await userEvent.click(within(inspector()).getByRole('tab', { name: 'Raw' }))
+    expect(inspector()).toHaveTextContent('Sub says hi')
   })
 
   it('shows thinking in the assistant preview', async () => {

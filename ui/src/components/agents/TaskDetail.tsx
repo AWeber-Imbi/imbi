@@ -119,7 +119,9 @@ export function TaskDetail({
   useEffect(() => {
     const linked = /^#e\d+$/.test(hash)
     const old =
-      tab === 'log' || (linked && (tab === 'conversation' || tab === 'actions'))
+      tab === 'log' ||
+      (linked &&
+        (tab === 'activity' || tab === 'conversation' || tab === 'actions'))
     if (!old) return
     navigate(
       `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,

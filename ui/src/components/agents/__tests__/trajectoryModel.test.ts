@@ -304,6 +304,45 @@ describe('subagent calls and previews', () => {
     const records = buildTrajectory(done, false).records
     expect(recordForSeq(records, 2)?.id).toBe('call:a1')
     expect(recordForSeq(records, 3)?.kind).toBe('subtool')
+    expect(
+      recordForSeq(records, 2)?.events.map((e) => e.payload.body ?? e.type),
+    ).toEqual(['tool.called', 'Searching'])
+  })
+
+  it('shows a harness warning as a failed system record', () => {
+    const t = buildTrajectory(
+      [
+        event(1, 'usage.reported', { tokens_in: 1, tokens_out: 1 }),
+        event(2, 'turn', { body: 'Hi' }),
+        event(3, 'turn', { body: 'Tools are not available', kind: 'warning' }),
+      ],
+      false,
+    )
+    expect(t.records.map((r) => r.kind)).toEqual(['assistant', 'system'])
+    expect(t.records[0].body.reply).toBe('Hi')
+    expect(t.records[1]).toMatchObject({
+      error: true,
+      text: 'Tools are not available',
+    })
+    expect(t.requests).toHaveLength(1)
+  })
+
+  it('starts a request when the request before it ended', () => {
+    const t = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { tokens_in: 1, tokens_out: 1 }),
+        event(3, 'turn', { body: 'one' }),
+        event(4, 'usage.reported', { tokens_in: 1, tokens_out: 1 }),
+        event(5, 'turn', { body: 'two' }),
+      ],
+      false,
+    )
+    const at = (seq: number) => Date.parse(`2026-10-08T12:00:0${seq}Z`)
+    expect(t.requests.map((r) => [r.startedAt, r.endedAt])).toEqual([
+      [at(1), at(2)],
+      [at(2), at(4)],
+    ])
   })
 
   it('shows string arguments in the ledger', () => {

@@ -123,12 +123,21 @@ export function TrajectoryTab({
   )
 
   const linked = /^#e(\d+)$/.exec(hash)?.[1]
-  const handled = useRef<null | string>(null)
+  const handled = useRef<null | { exact: boolean; id: string; seq: string }>(
+    null,
+  )
   useEffect(() => {
-    if (!linked || handled.current === linked) return
+    if (!linked) return
+    const prev = handled.current
+    if (prev?.seq === linked && prev.exact) return
     const record = recordForSeq(records, Number(linked))
     if (!record) return
-    handled.current = linked
+    if (prev?.seq === linked && prev.id === record.id) return
+    handled.current = {
+      exact: record.seqs.includes(Number(linked)),
+      id: record.id,
+      seq: linked,
+    }
     setSelection((prev) =>
       prev?.type === 'record' && prev.id === record.id
         ? prev

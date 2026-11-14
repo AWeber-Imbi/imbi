@@ -11,6 +11,7 @@ import { Check, ChevronRight, Copy, X } from 'lucide-react'
 
 import { useClipboard } from '@/hooks/useClipboard'
 import { cn } from '@/lib/utils'
+import type { AgentTaskEvent } from '@/types'
 
 import { Prose } from './taskEntryViews'
 import { KindTag } from './TrajectoryLedger'
@@ -60,7 +61,9 @@ export function tabsFor(inspected: Inspected): InspectorTab[] {
   switch (inspected.record.kind) {
     case 'subtool':
     case 'tool':
-      return ['Summary', 'Payload', 'Result', 'Timing']
+      return inspected.record.events.some((e) => e.type !== 'tool.called')
+        ? ['Summary', 'Payload', 'Result', 'Timing', 'Raw']
+        : ['Summary', 'Payload', 'Result', 'Timing']
     case 'system':
       return ['Summary', 'Raw']
     default:
@@ -324,7 +327,8 @@ function Payload({ error, text }: { error?: boolean; text: string }) {
 function Preview({ record }: { record: TrajectoryRecord }) {
   const [open, setOpen] = useState(true)
   const { reply, thinking } = record.body
-  const text = reply || (thinking ? '' : record.text)
+  const said = record.kind === 'user' ? userText(record.events[0]) : ''
+  const text = reply || (thinking ? '' : said || record.text)
   return (
     <div className="flex flex-col gap-3 px-3.5 pt-3">
       {thinking && (
@@ -661,4 +665,13 @@ function UsageView({
       <UsageGroup title="Session cumulative" usage={totals(upTo)} />
     </>
   )
+}
+
+/** What a person said, in full: the brief or their message. */
+function userText(e: AgentTaskEvent | undefined): string {
+  if (!e) return ''
+  const p = e.payload
+  return e.type === 'task.created'
+    ? String(p.description || p.title || '')
+    : String(p.body ?? '')
 }
