@@ -1393,10 +1393,12 @@ describe('TrajectoryTab folds across tasks', () => {
 
   it('remembers a fold button for the next task', async () => {
     renderTab()
+    const setItem = vi.mocked(window.localStorage.setItem)
+    setItem.mockClear()
     await userEvent.click(
       screen.getByRole('button', { name: 'Collapse turns' }),
     )
-    expect(vi.mocked(window.localStorage.setItem)).toHaveBeenCalledWith(
+    expect(setItem).toHaveBeenCalledExactlyOnceWith(
       'imbi.trajectory.folds',
       '["turns"]',
     )
