@@ -234,7 +234,11 @@ export function StatisticsTab({
                           ? () => onShowInConversation(seq)
                           : undefined
                       }
-                      onToggle={() => setOpen((s) => toggled(s, turn.number))}
+                      onToggle={
+                        searching
+                          ? undefined
+                          : () => setOpen((s) => toggled(s, turn.number))
+                      }
                       shownSteps={steps.length}
                       turn={turn}
                     />
@@ -487,22 +491,30 @@ function TurnRow({
   expanded: boolean
   max: number
   onShow?: () => void
-  onToggle: () => void
+  onToggle?: () => void
   shownSteps: number
   turn: StatsTurn
 }) {
   const count = plural(turn.steps.length, 'step')
   return (
-    <TableRow className="cursor-pointer font-medium" onClick={onToggle}>
+    <TableRow
+      className={cn('font-medium', onToggle && 'cursor-pointer')}
+      onClick={onToggle}
+    >
       <TableCell className="whitespace-nowrap">
         <div className="flex items-center gap-1">
           <button
             aria-expanded={expanded}
-            aria-label={`Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`}
-            className="flex items-center gap-1 outline-none focus-visible:underline"
+            aria-label={
+              onToggle
+                ? `Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`
+                : `Turn ${turn.number}: its ${count}, open while searching`
+            }
+            className="flex items-center gap-1 outline-none focus-visible:underline disabled:cursor-default"
+            disabled={!onToggle}
             onClick={(e) => {
               e.stopPropagation()
-              onToggle()
+              onToggle?.()
             }}
             type="button"
           >

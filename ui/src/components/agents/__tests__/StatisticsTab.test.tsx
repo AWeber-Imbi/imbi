@@ -350,13 +350,32 @@ describe('StatisticsTab', () => {
     const search = screen.getByRole('searchbox', { name: 'Search statistics' })
     await user.type(search, 'All done')
     const turn = screen.getByRole('button', {
-      name: 'Turn 1: hide its 2 steps',
+      name: 'Turn 1: its 2 steps, open while searching',
     })
     expect(turn).toHaveTextContent(/· 1 of 2 steps$/)
     await user.clear(search)
     expect(screen.getByRole('button', { name: /^Turn 1: / })).toHaveTextContent(
       /· 2 steps$/,
     )
+  })
+
+  it('leaves the turn folds alone while searching', async () => {
+    const user = userEvent.setup()
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={LOG} task={t} />
+      </div>,
+    )
+    const search = screen.getByRole('searchbox', { name: 'Search statistics' })
+    await user.type(search, 'All done')
+    const turn = screen.getByRole('button', { name: /^Turn 1: / })
+    expect(turn).toBeDisabled()
+    await user.click(turn.closest('tr') as HTMLElement)
+    await user.clear(search)
+    expect(
+      screen.getByRole('button', { name: 'Turn 1: hide its 2 steps' }),
+    ).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('opens the only turn once its events load', () => {
