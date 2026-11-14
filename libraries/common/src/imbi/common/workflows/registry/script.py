@@ -61,7 +61,7 @@ class Params(pydantic.BaseModel):
         if len(value) > MAX_INPUTS:
             raise ValueError(f'at most {MAX_INPUTS} inputs')
         for name in value:
-            if not re.match(graph.KEY_PATTERN, name):
+            if not re.fullmatch(graph.KEY_PATTERN, name):
                 raise ValueError(f'{name!r} is not a valid input name')
             if keyword.iskeyword(name):
                 raise ValueError(f'{name!r} is a Python keyword')

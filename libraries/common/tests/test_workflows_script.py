@@ -29,6 +29,7 @@ class ParamsTestCase(unittest.TestCase):
     def test_invalid(self) -> None:
         for overrides, message in (
             ({'inputs': {'Bad': 1}}, 'not a valid input name'),
+            ({'inputs': {'count\n': 1}}, 'not a valid input name'),
             ({'inputs': {'lambda': 1}}, 'Python keyword'),
             ({'inputs': {f'i{n}': n for n in range(21)}}, 'at most 20'),
             ({'code': 'x' * (16 * 1024 + 1)}, 'larger than'),
