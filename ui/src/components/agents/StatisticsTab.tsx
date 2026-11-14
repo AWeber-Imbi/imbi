@@ -5,10 +5,12 @@ import {
   ChartColumn,
   ChevronRight,
   Diff,
+  MessageSquareText,
   Sigma,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -18,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { IconTooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
@@ -113,9 +116,12 @@ const COLUMNS: { label: string; number?: boolean; title: string }[] = [
 
 export function StatisticsTab({
   events,
+  onShowInConversation,
   task,
 }: {
   events: AgentTaskEvent[]
+  /** Opens the conversation at the turn that holds this event. */
+  onShowInConversation?: (seq: number) => void
   task: AgentTask
 }) {
   const [basis, setBasis] = useState<ContextBasis>('latest')
@@ -211,6 +217,7 @@ export function StatisticsTab({
             </TableHeader>
             <TableBody>
               {shown.map(({ steps, turn }) => {
+                const { seq } = turn
                 const expanded = searching || open.has(turn.number)
                 const maxStep = Math.max(
                   0,
@@ -222,6 +229,11 @@ export function StatisticsTab({
                       delta={delta}
                       expanded={expanded}
                       max={maxTurn}
+                      onShow={
+                        onShowInConversation && seq !== null
+                          ? () => onShowInConversation(seq)
+                          : undefined
+                      }
                       onToggle={() => setOpen((s) => toggled(s, turn.number))}
                       shownSteps={steps.length}
                       turn={turn}
@@ -466,6 +478,7 @@ function TurnRow({
   delta,
   expanded,
   max,
+  onShow,
   onToggle,
   shownSteps,
   turn,
@@ -473,6 +486,7 @@ function TurnRow({
   delta: boolean
   expanded: boolean
   max: number
+  onShow?: () => void
   onToggle: () => void
   shownSteps: number
   turn: StatsTurn
@@ -481,30 +495,48 @@ function TurnRow({
   return (
     <TableRow className="cursor-pointer font-medium" onClick={onToggle}>
       <TableCell className="whitespace-nowrap">
-        <button
-          aria-expanded={expanded}
-          aria-label={`Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`}
-          className="flex items-center gap-1 outline-none focus-visible:underline"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggle()
-          }}
-          type="button"
-        >
-          <ChevronRight
-            className={cn(
-              'size-3.5 text-tertiary transition-transform',
-              expanded && 'rotate-90',
-            )}
-          />
-          Turn {turn.number}
-          <span className="text-tertiary font-normal">
-            ·{' '}
-            {shownSteps < turn.steps.length
-              ? `${shownSteps} of ${count}`
-              : count}
-          </span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            aria-expanded={expanded}
+            aria-label={`Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`}
+            className="flex items-center gap-1 outline-none focus-visible:underline"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle()
+            }}
+            type="button"
+          >
+            <ChevronRight
+              className={cn(
+                'size-3.5 text-tertiary transition-transform',
+                expanded && 'rotate-90',
+              )}
+            />
+            Turn {turn.number}
+            <span className="text-tertiary font-normal">
+              ·{' '}
+              {shownSteps < turn.steps.length
+                ? `${shownSteps} of ${count}`
+                : count}
+            </span>
+          </button>
+          {onShow && (
+            <IconTooltip label="Show in conversation">
+              <Button
+                aria-label={`Turn ${turn.number}: show in conversation`}
+                className="text-tertiary hover:text-primary size-6"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onShow()
+                }}
+                size="icon"
+                variant="ghost"
+              >
+                <MessageSquareText className="size-3.5" />
+              </Button>
+            </IconTooltip>
+          )}
+        </div>
       </TableCell>
       <TableCell className="max-w-64 font-normal">
         {turn.trigger.badge ? (

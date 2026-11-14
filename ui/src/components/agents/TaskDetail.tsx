@@ -234,7 +234,11 @@ export function TaskDetail({
               task={t}
             />
           ) : view === 'statistics' ? (
-            <StatisticsTab events={log} task={t} />
+            <StatisticsTab
+              events={log}
+              onShowInConversation={showInConversation}
+              task={t}
+            />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               {current === 'overview' && (

@@ -621,6 +621,23 @@ describe('Tasks', () => {
       )
     })
 
+    it('shows a Statistics turn in the Conversation', async () => {
+      renderAt('/agents/tasks/acme/T-3/statistics')
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'Turn 1: show in conversation',
+        }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/conversation',
+        ),
+      )
+      await waitFor(() =>
+        expect(document.querySelector('[data-flash]')).toBeInTheDocument(),
+      )
+    })
+
     it('switches the Activity view from the toolbar', async () => {
       renderAt('/agents/tasks/acme/T-3/conversation')
       fireEvent.click(await screen.findByRole('radio', { name: /^Trajectory/ }))

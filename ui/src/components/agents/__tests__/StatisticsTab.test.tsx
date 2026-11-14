@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentTask } from '@/types'
 
@@ -35,6 +35,18 @@ const LOG = [
     tokens_out: 10,
   }),
   event(7, 'turn', { body: 'All done' }),
+]
+
+const TWO_TURNS = [
+  ...LOG,
+  event(
+    8,
+    'turn',
+    { body: 'now test it' },
+    { actor_id: 'dev', actor_kind: 'human' },
+  ),
+  event(9, 'usage.reported', { tokens_in: 1300, tokens_out: 20 }),
+  event(10, 'turn', { body: 'Tested' }),
 ]
 
 function record(
@@ -253,6 +265,20 @@ describe('taskStatistics', () => {
     expect(totals.steps).toBe(4)
     expect(totals.subrequests).toBe(0)
   })
+
+  it('points each turn at its first event for the conversation', () => {
+    const trajectory = buildTrajectory(TWO_TURNS, false)
+    const { turns } = taskStatistics(t, trajectory, 'latest')
+    expect(turns.map((turn) => [turn.number, turn.seq])).toEqual([
+      [1, 1],
+      [2, 8],
+    ])
+  })
+
+  it('points a turn that only reported usage at that usage', () => {
+    const { turns } = taskStatistics(t, TRAJECTORY, 'latest')
+    expect(turns[0].seq).toBe(1)
+  })
 })
 
 describe('StatisticsTab', () => {
@@ -327,5 +353,60 @@ describe('StatisticsTab', () => {
       </div>,
     )
     expect(screen.getByText('All done')).toBeInTheDocument()
+  })
+
+  it('shows a turn in the conversation without folding it', async () => {
+    const user = userEvent.setup()
+    const onShow = vi.fn()
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab
+          events={TWO_TURNS}
+          onShowInConversation={onShow}
+          task={t}
+        />
+      </div>,
+    )
+    const fold = screen.getByRole('button', { name: /^Turn 2: show its/ })
+    await user.click(
+      screen.getByRole('button', { name: 'Turn 2: show in conversation' }),
+    )
+    expect(onShow).toHaveBeenCalledExactlyOnceWith(8)
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    await user.click(
+      screen.getByRole('button', { name: 'Turn 1: show in conversation' }),
+    )
+    expect(onShow).toHaveBeenLastCalledWith(1)
+    await user.click(fold)
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('names the button in a tooltip', async () => {
+    const user = userEvent.setup()
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={LOG} onShowInConversation={vi.fn()} task={t} />
+      </div>,
+    )
+    await user.hover(
+      screen.getByRole('button', { name: 'Turn 1: show in conversation' }),
+    )
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Show in conversation',
+    )
+  })
+
+  it('leaves the button out without a conversation to show', () => {
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={LOG} task={t} />
+      </div>,
+    )
+    expect(
+      screen.queryByRole('button', { name: /show in conversation/ }),
+    ).toBeNull()
   })
 })

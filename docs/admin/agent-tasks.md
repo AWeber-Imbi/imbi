@@ -278,6 +278,7 @@ The **Statistics** view shows one row for each turn, and a **Task total** row at
 - **Context** is the size of the prompt: uncached input, cache read, and cache write. **Cache** is the share of it served from the cache.
 - **Output**, **Model** (model time), **Tools** (tool time), and **Speed** (output tokens per model second) come from the model requests. The **Total** bar shows model time in purple, tool time in amber, and everything else in grey.
 - Click a turn to show its steps, one for each model request. Click a step to read its answer.
+- The speech-bubble button next to a turn opens the Conversation view at that turn.
 - **Latest** shows the context of the last step of a turn, and **Cumulative** adds up its steps. The **±** button shows how much the context grew at each step.
 
 Old links to the **Actions taken** and **Conversation** tabs open the Conversation view. Old links to the **Log** tab, and event links that end in `#e` and an event number, open the Trajectory view.

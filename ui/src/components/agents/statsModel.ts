@@ -42,6 +42,8 @@ export interface StatsTotals extends StatsCells {
 export interface StatsTurn extends StatsCells {
   contextDelta: null | number
   number: number
+  /** The first event of the turn, which the conversation shows it by. */
+  seq: null | number
   steps: StatsStep[]
   trigger: { badge: boolean; text: string }
 }
@@ -64,6 +66,7 @@ export function taskStatistics(
   const byId = new Map(trajectory.records.map((r) => [r.id, r]))
   const toolsOf = new Map<number, TrajectoryRecord[]>()
   const userOf = new Map<number, TrajectoryRecord>()
+  const seqOf = new Map<number, number>()
   for (const r of trajectory.records) {
     if (r.kind === 'tool' && r.request !== null) {
       const list = toolsOf.get(r.request) ?? []
@@ -71,7 +74,13 @@ export function taskStatistics(
       toolsOf.set(r.request, list)
     }
     if (r.kind === 'user' && !userOf.has(r.turn)) userOf.set(r.turn, r)
+    for (const e of r.events)
+      if (e.type !== 'usage.reported')
+        seqOf.set(r.turn, Math.min(e.seq, seqOf.get(r.turn) ?? e.seq))
   }
+  for (const request of trajectory.requests)
+    if (!seqOf.has(request.turn) && request.usage)
+      seqOf.set(request.turn, request.usage.seq)
   const subrequestsOf = new Map<number, number>()
   for (const s of trajectory.subrequests)
     if (s.request !== null)
@@ -105,6 +114,7 @@ export function taskStatistics(
           ? null
           : cells.context - lastTurnContext,
       number,
+      seq: seqOf.get(number) ?? null,
       steps,
       trigger: triggerOf(task, number, userOf.get(number)),
     })
