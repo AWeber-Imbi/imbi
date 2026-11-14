@@ -62,6 +62,20 @@ describe('ConversationTab', () => {
     expect(screen.queryByText(/Ran a command/)).not.toBeInTheDocument()
   })
 
+  it('wraps a warning instead of clipping it', async () => {
+    const user = userEvent.setup()
+    const warning = `Retrying the build. ${'Step '.repeat(60)}then report.`
+    renderTab('closed', [
+      ...LOG.slice(0, 3),
+      event(4, 'turn', { body: warning, kind: 'warning' }),
+      event(5, 'turn', { body: 'fixed' }),
+    ])
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    const title = screen.getByText(warning)
+    expect(title).not.toHaveClass('truncate')
+    expect(title).toHaveClass('whitespace-pre-wrap')
+  })
+
   it('opens the turn, then a call, one click at a time', async () => {
     const user = userEvent.setup()
     renderTab('closed')

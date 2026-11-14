@@ -606,11 +606,13 @@ function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const thought = e.payload.kind === 'thinking'
   if (e.type === 'turn' && e.payload.kind === 'warning')
     return (
-      <TraceLine status="error">
-        <TraceIcon>
+      <TraceLine className="items-start" status="error">
+        <TraceIcon className="mt-0.5">
           <TriangleAlert />
         </TraceIcon>
-        <TraceTitle>{body}</TraceTitle>
+        <TraceTitle className="wrap-break-word text-clip whitespace-pre-wrap">
+          {body}
+        </TraceTitle>
       </TraceLine>
     )
   if (e.type === 'turn' || e.type === 'todos.updated')
