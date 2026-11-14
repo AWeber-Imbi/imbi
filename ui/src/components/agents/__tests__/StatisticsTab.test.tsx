@@ -127,7 +127,40 @@ const TRAJECTORY: Trajectory = {
       tokens_out: 60,
     }),
   ],
+  subrequests: [],
   turns: [{ first: 'u', number: 1, steps: 2, toolCalls: 1 }],
+}
+
+/**
+ * The main agent (prompts of 1000 then 1100) runs a subagent whose two
+ * model requests have prompts of 60 and 80.
+ */
+function subagentLog(withIds: boolean) {
+  const id = (message_id: string) => (withIds ? { message_id } : {})
+  const usage = (tokens_in: number, message_id: string) =>
+    ({ tokens_in, tokens_out: 5, ...id(message_id) }) as Record<string, unknown>
+  return [
+    event(1, 'task.created', { description: 'Review', title: 'T' }),
+    event(2, 'usage.reported', usage(1000, 'm1')),
+    event(3, 'usage.reported', usage(60, 's1')),
+    event(4, 'turn', { body: 'Asking', kind: 'text', ...id('m1') }),
+    event(5, 'tool.called', {
+      call_id: 'r1',
+      parent_call_id: 'c1',
+      tool: 'Read',
+      ...id('s1'),
+    }),
+    event(6, 'usage.reported', usage(80, 's2')),
+    event(7, 'turn', {
+      body: 'Fine',
+      kind: 'text',
+      parent_call_id: 'c1',
+      ...id('s2'),
+    }),
+    event(8, 'tool.called', { call_id: 'c1', tool: 'Agent', ...id('m1') }),
+    event(9, 'usage.reported', usage(1100, 'm2')),
+    event(10, 'turn', { body: 'Done', kind: 'text', ...id('m2') }),
+  ]
 }
 
 describe('taskStatistics', () => {
@@ -197,6 +230,28 @@ describe('taskStatistics', () => {
     expect(taskStatistics(hook, TRAJECTORY, 'latest').turns[0].trigger).toEqual(
       { badge: true, text: 'Webhook' },
     )
+  })
+
+  it('keeps subagent requests out of the steps and the context', () => {
+    const trajectory = buildTrajectory(subagentLog(true), false)
+    const { totals, turns } = taskStatistics(t, trajectory, 'latest')
+    const steps = turns[0].steps
+    expect(steps.map((s) => [s.context, s.contextDelta])).toEqual([
+      [1000, null],
+      [1100, 100],
+    ])
+    expect(steps[0].did).toBe('Subagent · 2 subagent requests')
+    expect(turns[0].context).toBe(1100)
+    expect(totals.steps).toBe(2)
+    expect(totals.subrequests).toBe(2)
+  })
+
+  it('counts usage without a message id as steps, as before', () => {
+    const trajectory = buildTrajectory(subagentLog(false), false)
+    const { totals, turns } = taskStatistics(t, trajectory, 'latest')
+    expect(turns[0].steps.map((s) => s.context)).toEqual([1000, 60, 80, 1100])
+    expect(totals.steps).toBe(4)
+    expect(totals.subrequests).toBe(0)
   })
 })
 

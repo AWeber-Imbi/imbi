@@ -29,10 +29,13 @@ export interface StatsStep extends StatsCells {
   did: string
   number: number
   startedAt: null | number
+  /** The model requests of the subagents that the step started. */
+  subrequests: number
 }
 
 export interface StatsTotals extends StatsCells {
   steps: number
+  subrequests: number
   turns: number
 }
 
@@ -48,6 +51,11 @@ export interface TaskStatistics {
   turns: StatsTurn[]
 }
 
+/**
+ * The steps are the main agent's model requests. A subagent's requests
+ * have their own context, so they stay out of the steps, the context
+ * and its deltas; each step counts the ones its Agent calls started.
+ */
 export function taskStatistics(
   task: AgentTask,
   trajectory: Trajectory,
@@ -64,9 +72,18 @@ export function taskStatistics(
     }
     if (r.kind === 'user' && !userOf.has(r.turn)) userOf.set(r.turn, r)
   }
+  const subrequestsOf = new Map<number, number>()
+  for (const s of trajectory.subrequests)
+    if (s.request !== null)
+      subrequestsOf.set(s.request, (subrequestsOf.get(s.request) ?? 0) + 1)
   const groups = new Map<number, StatsStep[]>()
   for (const request of trajectory.requests) {
-    const step = stepOf(request, toolsOf.get(request.number) ?? [], byId)
+    const step = stepOf(
+      request,
+      toolsOf.get(request.number) ?? [],
+      byId,
+      subrequestsOf.get(request.number) ?? 0,
+    )
     const list = groups.get(request.turn) ?? []
     list.push(step)
     groups.set(request.turn, list)
@@ -99,6 +116,7 @@ export function taskStatistics(
     totals: {
       ...totals,
       steps: all.length,
+      subrequests: all.reduce((n, s) => n + s.subrequests, 0),
       totalMs: totals.modelMs + totals.toolMs,
       turns: turns.length,
     },
@@ -106,16 +124,23 @@ export function taskStatistics(
   }
 }
 
-function didText(tools: TrajectoryRecord[], answer: string): string {
+function didText(
+  tools: TrajectoryRecord[],
+  answer: string,
+  subrequests: number,
+): string {
   if (!tools.length) return answer ? preview(answer) : ''
   const counts = new Map<string, number>()
   for (const r of tools) {
     const name = r.tool?.name ?? 'tool'
     counts.set(name, (counts.get(name) ?? 0) + 1)
   }
-  return [...counts]
+  const did = [...counts]
     .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
     .join(', ')
+  if (!subrequests) return did
+  const noun = subrequests === 1 ? 'subagent request' : 'subagent requests'
+  return `${did} · ${subrequests} ${noun}`
 }
 
 function hit(read: number, prompt: number): null | number {
@@ -143,6 +168,7 @@ function stepOf(
   request: TrajectoryRequest,
   tools: TrajectoryRecord[],
   byId: Map<string, TrajectoryRecord>,
+  subrequests: number,
 ): StatsStep {
   const u = usageOf(request.usage)
   const assistant = byId.get(request.assistant)
@@ -159,13 +185,14 @@ function stepOf(
     cacheWrite: u.cacheWrite,
     context: u.reported ? prompt : null,
     contextDelta: null,
-    did: didText(tools, answer),
+    did: didText(tools, answer, subrequests),
     input: u.input,
     modelMs,
     number: request.step,
     output: u.output,
     outputPerSecond: speed(u.output, modelMs),
     startedAt: request.startedAt,
+    subrequests,
     toolMs: tools.reduce((n, r) => n + span(r.startedAt, r.endedAt), 0),
     totalMs:
       request.startedAt !== null && ends.length
