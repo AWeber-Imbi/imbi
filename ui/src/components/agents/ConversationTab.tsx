@@ -189,6 +189,9 @@ export function ConversationTab({
     () => (searching ? list.filter((t) => matches(turnText(t), query)) : list),
     [list, query, searching],
   )
+  const askMatches =
+    searching && matches((task.description || task.title || '').trim(), query)
+  const showAsk = !searching || askMatches || shown.length > 0
   const ctx: Ctx = useMemo(
     () => ({
       isOpen: searching ? () => true : isOpen,
@@ -226,7 +229,7 @@ export function ConversationTab({
             <TaskCopyMenu events={events} task={task} />
           </div>
         </TaskToolbar>
-        {searching && shown.length === 0 ? (
+        {!showAsk ? (
           <NoMatches onClear={() => setQuery('')} query={query} />
         ) : (
           <MessageScroller className="flex-1">
@@ -238,7 +241,7 @@ export function ConversationTab({
                 )}
               >
                 <TaskAsk ctx={ctx} first={list[0]} />
-                {shown.length === 0 ? (
+                {shown.length === 0 && !searching ? (
                   <ActivityEmpty
                     icon={<MessageSquare />}
                     title="No activity yet"

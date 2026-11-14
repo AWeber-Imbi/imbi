@@ -396,6 +396,22 @@ describe('ConversationTab', () => {
     expect(screen.getByText('fixed')).toBeInTheDocument()
   })
 
+  it('keeps the ask when only the ask matches the search', async () => {
+    const user = userEvent.setup()
+    renderTab('closed')
+    const box = screen.getByRole('searchbox', { name: 'Search conversation' })
+    await user.type(box, 'why the build')
+    expect(screen.queryByText('No matches')).toBeNull()
+    expect(screen.queryByText('No conversation yet.')).toBeNull()
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'P' && el.textContent === 'Find why the build fails.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('fixed')).toBeNull()
+  })
+
   it('says when there is nothing yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()
