@@ -1682,6 +1682,18 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'failed_external', 'reason': 'finder_killed'}],
         )
 
+    async def test_error_result_ends_the_wait(self) -> None:
+        turn = self.background_turn()
+        turn[-1] = result_message(subtype='error_max_turns', is_error=True)
+        FakeClient.messages = turn
+        FakeClient.hang = True
+        await asyncio.wait_for(self.run_task.run(), 5)
+        self.assertEqual(self.run_task.background, {'a1'})
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'partial_capped', 'reason': 'max_turns'}],
+        )
+
     async def test_background_shell_does_not_hold_the_task(self) -> None:
         turn = self.background_turn()
         started = turn[1]

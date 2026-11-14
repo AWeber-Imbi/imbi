@@ -1761,7 +1761,9 @@ class TaskRun:
                 self.result_text = message.result
             if isinstance(message, (sdk.UserMessage, sdk.ResultMessage)):
                 await self.flush()
-            if isinstance(message, sdk.ResultMessage) and not self._waits():
+            if isinstance(message, sdk.ResultMessage) and not self._waits(
+                message
+            ):
                 return
 
     def _track_background(self, message: typing.Any) -> None:
@@ -1775,10 +1777,16 @@ class TaskRun:
         ):
             self.background.discard(message.task_id)
 
-    def _waits(self) -> bool:
-        """The session goes on after a result: a background task runs
-        and the task is not stopping."""
-        if not self.background or self.stopping is not None:
+    def _waits(self, result: sdk.ResultMessage) -> bool:
+        """The session goes on after a ``success`` result: a background
+        task runs and the task is not stopping. An error result ends
+        the session: no turn follows it to merge the background work."""
+        if (
+            result.is_error
+            or result.subtype != 'success'
+            or not self.background
+            or self.stopping is not None
+        ):
             return False
         LOGGER.info(
             'Task %s waits for %d background tasks',

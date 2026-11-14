@@ -153,10 +153,10 @@ The runner has these parts:
   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so a subagent of `Agent` and
   a `Bash` command run in the foreground: the result comes back in the
   turn that started them. If a subagent or workflow still runs in the
-  background, a result ends only the turn. The runner keeps the session
-  open until each background task ends and the CLI gives its result to
-  the agent in a new turn. The task timeout, the budget, and a cancel end
-  the wait.
+  background, a `success` result ends only the turn. The runner keeps
+  the session open until each background task ends and the CLI gives its
+  result to the agent in a new turn. An error result, the task timeout,
+  the budget, and a cancel end the wait.
 
 ## 5. Secrets broker
 
