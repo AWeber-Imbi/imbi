@@ -119,7 +119,7 @@ export function TrajectoryLedger({
   const following = useRef(true)
   const requestAt = new Map(requests.map((r) => [r.assistant, r]))
   const shown = useRef<null | TrajectoryWindow>(null)
-  const [focusRow, setFocusRow] = useState<null | number>(null)
+  const [focusKey, setFocusKey] = useState<null | string>(null)
   const moving = useRef<null | number>(null)
   const scrolled = useRef<LedgerProps['scrollTo']>(null)
   const centred = useRef('')
@@ -131,6 +131,12 @@ export function TrajectoryLedger({
         (selection?.type === 'request' &&
           selection.assistant === row.record.id)),
   )
+  const keyOf = (i: number) => {
+    const row = rows[i]
+    return row.kind === 'summary' ? row.id : row.record.id
+  }
+  const focusRow =
+    focusKey === null ? -1 : rows.findIndex((_, i) => keyOf(i) === focusKey)
   const report = (v: typeof virtualizer) => {
     if (!onVisible) return
     const top = v.scrollOffset ?? 0
@@ -153,11 +159,8 @@ export function TrajectoryLedger({
   const virtualizer = useVirtualRows({
     count: rows.length,
     estimateSize: (i) => (rows[i]?.kind === 'summary' ? 24 : 36),
-    getItemKey: (i) => {
-      const row = rows[i]
-      return row.kind === 'summary' ? row.id : row.record.id
-    },
-    keep: [selectedRow, focusRow ?? -1],
+    getItemKey: keyOf,
+    keep: [selectedRow, focusRow],
     onChange: report,
     scroller: pane,
   })
@@ -225,7 +228,7 @@ export function TrajectoryLedger({
         move(Number(row.dataset.index), rows.length - 1),
       ),
     )
-    setFocusRow(next)
+    setFocusKey(keyOf(next))
     virtualizer.scrollToIndex(next, { align: 'auto' })
     const target = pane.current?.querySelector<HTMLElement>(
       `[data-index="${next}"]`,
@@ -267,7 +270,7 @@ export function TrajectoryLedger({
             const index = (e.target as HTMLElement).closest<HTMLElement>(
               '[data-index]',
             )?.dataset.index
-            if (index !== undefined) setFocusRow(Number(index))
+            if (index !== undefined) setFocusKey(keyOf(Number(index)))
           }}
           onKeyDown={onKeyDown}
         >

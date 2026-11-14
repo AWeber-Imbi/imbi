@@ -72,7 +72,7 @@ export function useVirtualRows({
     },
     [kept],
   )
-  return useVirtualizer({
+  const virtualizer = useVirtualizer({
     count,
     estimateSize,
     gap,
@@ -89,4 +89,15 @@ export function useVirtualRows({
     paddingStart,
     rangeExtractor,
   })
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = growsAbove
+  return virtualizer
+}
+
+/** Keep the view still unless a row that changed size ends above it. */
+function growsAbove(
+  item: VirtualItem,
+  _delta: number,
+  instance: Virtualizer<HTMLDivElement, Element>,
+) {
+  return item.end <= (instance.scrollOffset ?? 0)
 }

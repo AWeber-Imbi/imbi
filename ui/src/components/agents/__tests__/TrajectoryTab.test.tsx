@@ -1336,6 +1336,42 @@ describe('TrajectoryTab with many rows', () => {
     expect(search).toHaveValue('needle')
   })
 
+  it('keeps the focused row rendered when rows land above it', async () => {
+    const view = renderTab('closed', LONG)
+    scrollPane(ledger(), 0)
+    const dot = within(rows()[4]).getByRole('button', { name: /^Request #/ })
+    dot.focus()
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab
+          events={[
+            ...LONG,
+            event(500, 'tool.called', {
+              arguments: { command: 'pwd' },
+              call_id: 'k1',
+              duration_ms: 1,
+              parent_call_id: 'c0',
+              result: 'x',
+              tool: 'Bash',
+            }),
+          ]}
+          task={t}
+        />
+      </div>,
+    )
+    expect(screen.getByRole('grid', { name: 'Trajectory' })).toHaveAttribute(
+      'aria-rowcount',
+      '303',
+    )
+    scrollPane(ledger(), 5000)
+    await waitFor(() =>
+      expect(rows()[0]).not.toHaveAttribute('aria-rowindex', '1'),
+    )
+    expect(dot).toBeInTheDocument()
+    expect(document.activeElement).toBe(dot)
+  })
+
   it('keeps a row rendered while its request dot has focus', async () => {
     renderTab('closed', LONG)
     scrollPane(ledger(), 0)

@@ -214,15 +214,18 @@ export function StatisticsTab({
     [answers, open, searching, shown],
   )
   const scroller = useRef<HTMLDivElement>(null)
-  const [focusRow, setFocusRow] = useState<null | number>(null)
+  const [focusKey, setFocusKey] = useState<null | string>(null)
+  const keyOf = (i: number) => {
+    const row = flat[i]
+    return row.kind === 'turn' ? `turn:${row.turn.number}` : row.key
+  }
+  const focusRow =
+    focusKey === null ? -1 : flat.findIndex((_, i) => keyOf(i) === focusKey)
   const virtualizer = useVirtualRows({
     count: flat.length,
     estimateSize: (i) => (flat[i]?.kind === 'answer' ? 160 : 37),
-    getItemKey: (i) => {
-      const row = flat[i]
-      return row.kind === 'turn' ? `turn:${row.turn.number}` : row.key
-    },
-    keep: [focusRow ?? -1],
+    getItemKey: keyOf,
+    keep: [focusRow],
     scroller,
   })
   const { after, rows: rendered } = gapsOf(
@@ -354,7 +357,7 @@ export function StatisticsTab({
                 const index = (e.target as HTMLElement).closest<HTMLElement>(
                   '[data-index]',
                 )?.dataset.index
-                if (index !== undefined) setFocusRow(Number(index))
+                if (index !== undefined) setFocusKey(keyOf(Number(index)))
               }}
             >
               {rendered.flatMap(({ before, item }) => [

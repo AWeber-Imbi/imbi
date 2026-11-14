@@ -789,6 +789,83 @@ describe('ConversationTab with many turns', () => {
     expect(screen.queryByText('ask 1')).not.toBeInTheDocument()
   })
 
+  it('stays where the reader opens a fold at the bottom', async () => {
+    const user = userEvent.setup()
+    const observers: { els: Set<Element>; fire: ResizeObserverCallback }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        els = new Set<Element>()
+        constructor(fire: ResizeObserverCallback) {
+          observers.push({ els: this.els, fire })
+        }
+        disconnect() {
+          this.els.clear()
+        }
+        observe(el: Element) {
+          this.els.add(el)
+        }
+        unobserve(el: Element) {
+          this.els.delete(el)
+        }
+      },
+    )
+    spy.mockRestore()
+    spy = layout({
+      content,
+      isPane,
+      pane: 600,
+      row: (el) => 100 + 10 * el.querySelectorAll('*').length,
+    })
+    render(
+      view('closed', [
+        ...MANY,
+        event(
+          161,
+          'turn',
+          { body: 'ask 80' },
+          { ...HUMAN, at: '2026-10-08T12:05:00Z' },
+        ),
+        event(
+          162,
+          'tool.called',
+          {
+            arguments: { command: 'make test' },
+            call_id: 'c162',
+            result: 'tests passed',
+            tool: 'Bash',
+          },
+          { at: '2026-10-08T12:05:01Z' },
+        ),
+        event(
+          163,
+          'turn',
+          { body: 'reply 80' },
+          { at: '2026-10-08T12:05:09Z' },
+        ),
+      ]),
+    )
+    await waitFor(() =>
+      expect(screen.getByText('reply 80')).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+    const before = pane().scrollTop
+    await user.click(screen.getByRole('button', { name: /Worked for/ }))
+    const row = screen
+      .getByText('reply 80')
+      .closest<HTMLElement>('[data-index]')!
+    act(() => {
+      for (const o of observers)
+        if (o.els.has(row))
+          o.fire(
+            [{ target: row } as unknown as ResizeObserverEntry],
+            o as unknown as ResizeObserver,
+          )
+    })
+    expect(content(pane()) - 600).toBeGreaterThan(before)
+    expect(pane().scrollTop).toBe(before)
+  })
+
   it('scrolls to a far turn another view asks for, and flashes it', async () => {
     window.history.replaceState(
       { idx: 0, key: 'reveal', usr: { revealSeq: 3 } },

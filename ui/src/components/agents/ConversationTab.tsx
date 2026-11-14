@@ -211,13 +211,19 @@ export function ConversationTab({
   const askMatches =
     searching && matches((task.description || task.title || '').trim(), query)
   const showAsk = !searching || askMatches || shown.length > 0
+  const follow = useRef(true)
   const ctx: Ctx = useMemo(
     () => ({
       isOpen: searching ? () => true : isOpen,
       mode: searching ? 'verbose' : mode,
       orgSlug,
       requests,
-      setOpen: searching ? ignoreFold : setOpen,
+      setOpen: searching
+        ? ignoreFold
+        : (id: string, open: boolean) => {
+            follow.current = false
+            setOpen(id, open)
+          },
       task,
     }),
     [isOpen, mode, orgSlug, requests, searching, setOpen, task],
@@ -256,16 +262,18 @@ export function ConversationTab({
   }, [ask, requests, shown])
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
+  const seen = useRef(events.length)
   const lastTop = useRef(0)
   const [atEnd, setAtEnd] = useState(true)
-  const [focusRow, setFocusRow] = useState<null | number>(null)
+  const [focusKey, setFocusKey] = useState<null | string>(null)
+  const focusRow = focusKey === null ? -1 : rows.indexOf(focusKey)
   const flashRow = flash ? rows.indexOf(flash.id) : -1
   const virtualizer = useVirtualRows({
     count: rows.length,
     estimateSize: (i) => (rows[i] === 'ask' ? 120 : 240),
     gap: TURN_GAP,
     getItemKey: (i) => rows[i],
-    keep: [flashRow, focusRow ?? -1, ...asking],
+    keep: [flashRow, focusRow, ...asking],
     overscan: 4,
     paddingEnd: 20,
     paddingStart: 20,
@@ -275,8 +283,10 @@ export function ConversationTab({
 
   useLayoutEffect(() => {
     const el = scroller.current
-    if (el && pinned.current) el.scrollTop = el.scrollHeight
-  }, [rows.length, total])
+    if (seen.current !== events.length) follow.current = true
+    seen.current = events.length
+    if (el && pinned.current && follow.current) el.scrollTop = el.scrollHeight
+  }, [events.length, rows.length, total])
 
   const scrolled = useRef<typeof revealed>(null)
   useEffect(() => {
@@ -292,6 +302,7 @@ export function ConversationTab({
     const el = scroller.current
     if (!el) return
     pinned.current = true
+    follow.current = true
     el.scrollTop = el.scrollHeight
   }
 
@@ -332,7 +343,7 @@ export function ConversationTab({
                 const index = (e.target as HTMLElement).closest<HTMLElement>(
                   '[data-index]',
                 )?.dataset.index
-                if (index !== undefined) setFocusRow(Number(index))
+                if (index !== undefined) setFocusKey(rows[Number(index)])
               }}
               onScroll={(e) => {
                 const el = e.currentTarget

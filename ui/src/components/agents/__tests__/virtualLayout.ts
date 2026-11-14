@@ -7,7 +7,7 @@ interface Layout {
   content: (pane: HTMLElement) => number
   isPane: (el: HTMLElement) => boolean
   pane: number
-  row: number
+  row: ((row: HTMLElement) => number) | number
 }
 
 /**
@@ -70,7 +70,8 @@ export function layout({ content, isPane, pane, row }: Layout) {
     vi
       .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
       .mockImplementation(function (this: HTMLElement) {
-        if (this.dataset.index !== undefined) return row
+        if (this.dataset.index !== undefined)
+          return typeof row === 'number' ? row : row(this)
         return isPane(this) ? pane : 0
       }),
     vi
