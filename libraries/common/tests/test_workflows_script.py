@@ -187,6 +187,19 @@ class ResultTestCase(unittest.TestCase):
                 ),
                 (_params(), {'count': 2**64}, 'script_output_invalid'),
                 (_params(), {'count': 10**5000}, 'script_output_invalid'),
+                # Each format needs a checker from the format-nongpl extra.
+                *(
+                    (
+                        _params(
+                            output_fields=[
+                                {'name': 'at', 'type': 'string', 'format': f}
+                            ]
+                        ),
+                        {'at': 'not-a-date'},
+                        'script_output_invalid',
+                    )
+                    for f in ('date-time', 'time', 'duration')
+                ),
             )
         ):
             with (
@@ -323,6 +336,12 @@ class RunnerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_raise_keeps_the_message(self) -> None:
         error = await self._error("raise ValueError('bad input')")
         self.assertEqual(str(error), 'script_error: ValueError: bad input')
+
+    async def test_raise_escapes_a_nul_character(self) -> None:
+        error = await self._error('raise ValueError(chr(0))')
+        self.assertEqual(error.code, 'script_error')
+        self.assertNotIn('\x00', error.message)
+        self.assertIn('\\x00', error.message)
 
     async def test_max_seconds_lowers_the_limit(self) -> None:
         with self.assertRaises(script_runner.ScriptError) as raised:

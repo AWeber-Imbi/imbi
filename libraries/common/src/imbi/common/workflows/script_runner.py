@@ -54,7 +54,9 @@ class ScriptError(Exception):
         self, code: str, message: str = '', *, retry: bool = False
     ) -> None:
         self.code = code
-        self.message = message[:MAX_MESSAGE]
+        # The engine stores the message, and PostgreSQL rejects a NUL
+        # character in text.
+        self.message = message.replace('\x00', '\\x00')[:MAX_MESSAGE]
         self.retry = retry
         super().__init__(f'{code}: {self.message}' if self.message else code)
 
