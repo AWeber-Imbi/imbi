@@ -1,7 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen, within } from '@/test/utils'
+import { act, fireEvent, render, screen, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { startedText, tabsFor } from '../TrajectoryInspector'
@@ -150,6 +150,25 @@ describe('TrajectoryTab ledger', () => {
     )
     renderTab()
     expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('selects the record again when a #e link comes back', async () => {
+    const path = '/agents/tasks/acme/T-1/trajectory'
+    const go = (url: string) =>
+      act(() => {
+        window.history.pushState(null, '', url)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      })
+    window.history.replaceState(null, '', `${path}#e5`)
+    renderTab()
+    expect(rows()[3]).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(
+      within(inspector()).getByRole('button', { name: 'Close inspector' }),
+    )
+    go(path)
+    go(`${path}#e5`)
+    expect(rows()[3]).toHaveAttribute('aria-selected', 'true')
+    expect(inspector()).toBeInTheDocument()
   })
 })
 
@@ -648,6 +667,28 @@ describe('TrajectoryTab inspector', () => {
     )
     await userEvent.click(within(inspector()).getByRole('tab', { name: 'Raw' }))
     expect(inspector()).toHaveTextContent('Sub says hi')
+  })
+
+  it('finds a subagent call by the messages of the subagent', async () => {
+    const sub = { actor_kind: 'subagent' as const }
+    renderTab('closed', [
+      ...LOG,
+      event(12, 'turn', { body: 'Sub says hi', parent_call_id: 'a1' }, sub),
+      event(13, 'tool.called', {
+        arguments: { description: 'look' },
+        call_id: 'a1',
+        duration_ms: 50,
+        result: 'ok',
+        tool: 'Agent',
+      }),
+    ])
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search trajectory' }),
+      'sub says hi',
+    )
+    expect(
+      rows().some((r) => r.getAttribute('data-record') === 'call:a1'),
+    ).toBe(true)
   })
 
   it('shows thinking in the assistant preview', async () => {

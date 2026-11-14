@@ -561,12 +561,14 @@ function searchText(record: TrajectoryRecord): string {
       record.tool.callId ?? '',
       JSON.stringify(record.tool.arguments ?? ''),
     )
-  if (record.kind === 'user')
-    for (const e of record.events)
+  for (const e of record.events)
+    if (record.kind === 'user')
       parts.push(
         String(e.payload.description || e.payload.title || ''),
         String(e.payload.body ?? ''),
       )
+    else if (record.tool && e.type === 'turn')
+      parts.push(String(e.payload.body ?? ''))
   return parts.join(' ').toLowerCase()
 }
 

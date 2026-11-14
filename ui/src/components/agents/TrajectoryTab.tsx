@@ -130,7 +130,10 @@ export function TrajectoryTab({
     null,
   )
   useEffect(() => {
-    if (!linked) return
+    if (!linked) {
+      handled.current = null
+      return
+    }
     const prev = handled.current
     if (prev?.seq === linked && prev.exact) return
     const record = recordForSeq(records, Number(linked))
