@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { TaskUsageCard } from '../TaskUsageCards'
-import { task } from './taskFixtures'
+import { event, task } from './taskFixtures'
 
 function renderCard(over: Record<string, unknown> = {}) {
   render(
@@ -33,6 +33,29 @@ describe('TaskUsageCard', () => {
     expect(
       screen.getByRole('button', { name: /tokens, \$1\.25 of \$5\.00$/ }),
     ).toBeInTheDocument()
+  })
+
+  it('shows a model that cost under a cent', () => {
+    const usage = (seq: number, model_id: string, cost: string) =>
+      event(seq, 'usage.reported', {
+        cost,
+        model_id,
+        tokens_in: 100,
+        tokens_out: 10,
+      })
+    render(
+      <TaskUsageCard
+        events={[
+          usage(1, 'claude-opus', '0.120000'),
+          usage(2, 'claude-haiku', '0.004200'),
+        ]}
+        task={task() as unknown as AgentTask}
+      />,
+    )
+    fireEvent.pointerUp(screen.getByRole('button', { name: /tokens/ }), {
+      pointerType: 'touch',
+    })
+    expect(screen.getByText('110 · $0.0042')).toBeInTheDocument()
   })
 
   it('treats a zero budget as a budget', () => {

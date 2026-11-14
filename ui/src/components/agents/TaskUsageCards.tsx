@@ -134,7 +134,7 @@ export function TaskUsageCard({
               m.model,
               [
                 formatTokens(m.input + m.output + m.cacheRead + m.cacheWrite),
-                m.cost !== null ? formatMoney(m.cost) : null,
+                m.cost !== null ? formatMoney(m.cost, 6) : null,
               ]
                 .filter(Boolean)
                 .join(' · '),
