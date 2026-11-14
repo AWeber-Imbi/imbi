@@ -140,7 +140,12 @@ export function TrajectoryTab({
       return
     }
     const prev = handled.current
-    if (prev?.seq === linked && prev.exact) return
+    if (
+      prev?.seq === linked &&
+      prev.exact &&
+      byId.get(prev.id)?.seqs.includes(Number(linked))
+    )
+      return
     const record = recordForSeq(records, Number(linked))
     if (!record) return
     if (prev?.seq === linked && prev.id === record.id) return
@@ -156,7 +161,7 @@ export function TrajectoryTab({
     )
     setQuery((q) => (hides(q, record.id) ? '' : q))
     reveal(record)
-  }, [hides, linked, records, reveal])
+  }, [byId, hides, linked, records, reveal])
 
   const select = useCallback(
     (next: TrajectorySelection) => {
@@ -209,14 +214,15 @@ export function TrajectoryTab({
     selection?.type === 'record' ? byId.get(selection.id) : undefined
   const selectedRequest =
     selection?.type === 'request'
-      ? requests.find((r) => r.number === selection.number)
+      ? requests.find((r) => r.assistant === selection.assistant)
       : undefined
 
   const activeTurn =
     selection?.type === 'record'
       ? (byId.get(selection.id)?.turn ?? null)
       : selection?.type === 'request'
-        ? (requests.find((r) => r.number === selection.number)?.turn ?? null)
+        ? (requests.find((r) => r.assistant === selection.assistant)?.turn ??
+          null)
         : null
 
   return (
@@ -291,7 +297,10 @@ export function TrajectoryTab({
             onClose={() => setSelection(null)}
             onSelect={(target) => {
               if (target.type === 'request') {
-                select({ number: target.request.number, type: 'request' })
+                select({
+                  assistant: target.request.assistant,
+                  type: 'request',
+                })
                 return
               }
               select({ id: target.record.id, type: 'record' })

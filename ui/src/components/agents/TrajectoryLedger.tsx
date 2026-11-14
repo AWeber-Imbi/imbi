@@ -22,8 +22,8 @@ import { type TrajectoryWindow, windowOf } from './trajectoryWindow'
 
 export type TrajectorySelection =
   | null
+  | { assistant: string; type: 'request' }
   | { id: string; type: 'record' }
-  | { number: number; type: 'request' }
 
 const TAG: Record<TrajectoryKind, string> = {
   assistant:
@@ -52,7 +52,7 @@ interface LedgerProps {
   onDoubleClick: (record: TrajectoryRecord) => void
   onFold: (fold: Fold) => void
   onSelect: (selection: TrajectorySelection) => void
-  /** Called with the first and last record rows in view as they change. */
+  /** Called with the record rows in view as they change. */
   onVisible?: (visible: null | TrajectoryWindow) => void
   requests: TrajectoryRequest[]
   rows: TrajectoryRow[]
@@ -227,7 +227,7 @@ export function TrajectoryLedger({
                 request={requestAt.get(row.record.id)}
                 requestSelected={
                   selection?.type === 'request' &&
-                  selection.number === row.record.request &&
+                  selection.assistant === row.record.id &&
                   row.record.kind === 'assistant'
                 }
                 selected={
@@ -390,7 +390,7 @@ function RecordRow({
         {request && (
           <RequestDot
             onSelect={() =>
-              onSelect({ number: request.number, type: 'request' })
+              onSelect({ assistant: request.assistant, type: 'request' })
             }
             request={request}
             selected={requestSelected}

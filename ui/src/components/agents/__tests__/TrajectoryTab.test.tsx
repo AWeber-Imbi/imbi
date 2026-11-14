@@ -210,6 +210,59 @@ describe('TrajectoryTab links and live tasks', () => {
     expect(last).toHaveAttribute('aria-selected', 'true')
   })
 
+  const early = [
+    event(1, 'task.created', { title: 'T' }),
+    event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+    event(3, 'turn', { body: 'Asking', kind: 'text', message_id: 'm1' }),
+    event(4, 'usage.reported', { message_id: 's1', tokens_in: 2 }),
+    event(5, 'usage.reported', { message_id: 'm2', tokens_in: 3 }),
+    event(6, 'turn', { body: 'Done', kind: 'text', message_id: 'm2' }),
+  ]
+  const joined = event(
+    7,
+    'tool.called',
+    { call_id: 'r1', message_id: 's1', parent_call_id: 'c1', tool: 'Read' },
+    { actor_kind: 'subagent' },
+  )
+  function renderLive(events: typeof early) {
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const ui = (list: typeof early) => (
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={list} task={t} />
+      </div>
+    )
+    const view = render(ui(events))
+    return (next: typeof early) => view.rerender(ui(next))
+  }
+
+  it('keeps a selected request once a subagent report leaves the list', async () => {
+    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    const update = renderLive(early)
+    await userEvent.click(screen.getByRole('button', { name: 'Request #3' }))
+    update([...early, joined])
+    expect(within(inspector()).getByText('Request #2')).toBeInTheDocument()
+    expect(
+      rows().find((r) => r.getAttribute('data-record') === early[4].event_id),
+    ).toHaveAttribute('data-request-selected', 'true')
+  })
+
+  it('follows a linked subagent report to its Agent call', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/agents/tasks/acme/T-1/trajectory#e4',
+    )
+    const update = renderLive(early)
+    expect(
+      rows().find((r) => r.getAttribute('data-record') === early[3].event_id),
+    ).toHaveAttribute('aria-selected', 'true')
+    update([...early, joined])
+    expect(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c1'),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(inspector()).toBeInTheDocument()
+  })
+
   it('treats a blocked task as live, so a running call is Pending', async () => {
     window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
     renderTab('blocked', [
@@ -867,16 +920,36 @@ describe('trajectory window helpers', () => {
       id,
       top: i * 10,
     }))
-    expect(windowOf(list, 5, 15)).toEqual({ from: 'a', to: 'b' })
-    expect(windowOf(list, 10, 30)).toEqual({ from: 'b', to: 'c' })
+    expect(windowOf(list, 5, 15)).toEqual({
+      from: 'a',
+      ids: ['a', 'b'],
+      to: 'b',
+    })
+    expect(windowOf(list, 10, 30)).toEqual({
+      from: 'b',
+      ids: ['b', 'c'],
+      to: 'c',
+    })
     expect(windowOf(list, 40, 50)).toBeNull()
   })
 
   it('frames from the earliest start to the latest end', () => {
-    expect(frameOf(spans, { from: 'b', to: 'c' })).toEqual([1, 4])
-    expect(frameOf(spans, { from: 'a', to: 'a' })).toEqual([0, 1])
-    expect(frameOf(spans, { from: 'a', to: 'x' })).toBeNull()
+    const win = (ids: string[]) => ({ from: ids[0], ids, to: ids.at(-1)! })
+    expect(frameOf(spans, win(['b', 'c']))).toEqual([1, 4])
+    expect(frameOf(spans, win(['a']))).toEqual([0, 1])
+    expect(frameOf(spans, win(['x']))).toBeNull()
     expect(frameOf(spans, null)).toBeNull()
+  })
+
+  it('frames a row between the first and last that starts earlier', () => {
+    const out = [
+      { end: 10, id: 'a', lane: 2 as const, start: 9 },
+      { end: 11, id: 'b', lane: 2 as const, start: 1 },
+      { end: 12, id: 'c', lane: 2 as const, start: 11 },
+    ]
+    expect(frameOf(out, { from: 'a', ids: ['a', 'b', 'c'], to: 'c' })).toEqual([
+      1, 12,
+    ])
   })
 })
 
