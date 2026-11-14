@@ -230,32 +230,34 @@ of the task.
 |---|---|
 | Overview | The description, the latest todo list, the owner, the budget, the cost, the tokens, the prompt version, and the outcome |
 | Input required | The requests of the agent. See [Answer a request](#answer-a-request) |
-| Conversation | The whole task log in order: messages, thinking, tool calls, requests, and state changes. See [Read the conversation](#read-the-conversation) |
+| Conversation | The task as turns: each person's input, the agent's work folded under one line, and its reply. See [Read the conversation](#read-the-conversation) |
+| Trajectory | Every event as one row, with a timing overview and an inspector. See [Inspect the trajectory](#inspect-the-trajectory) |
 | Signals and checks | The latest report of each check, with its value, baseline, and verdict. The tab count shows the failing checks |
 | Related tasks | Dependencies, the parent task, and child tasks |
 | Associated projects | The projects of the task |
 
 ### Read the conversation
 
-The **Conversation** tab shows every event of the task on one timeline.
-A colored dot marks the kind of each event.
+The **Conversation** tab shows the task as turns. A turn starts with a person's input, then the agent's work, then the agent's reply.
 
-- Tool calls show the tool, a summary of the input, and the duration. A
-  call that failed or that policy denied has a red border. Bash calls
-  show the command and output in a terminal pane. Edit and Write calls
-  show a diff.
+- The work of a turn folds under one line, such as **Worked for 37s**. Click the line to open or close it.
+- Inside a turn, the work is grouped by kind, such as "ran 3 commands" or "read 2 files". A group with a failed or denied call is red.
+- Each tool call shows the tool, a summary of its input, and its duration. Open a call to see its input and output. Bash calls show the command and output in a terminal pane, and Edit and Write calls show a diff.
 - The work of a subagent shows under the call that started it.
 - An open request shows where the agent asked it, with its buttons.
-- Use the chips to show or hide messages, thinking, tools, subagents,
-  and system events. **Errors only** keeps the failed and denied calls.
-  The search field matches any text in the events.
-- **Full** opens every tool call and thinking block. **Compact** shows
-  one line for each. Click a line to open or close it.
-- Each call has a **Readable** and a **JSON** view. **JSON** shows the
-  raw event.
-- Click the time of an event to get a link to it.
+- **Compact**, **Standard**, and **Verbose** set how much work shows open. The browser remembers the choice.
+- **Copy as Markdown** copies the conversation loaded so far.
 
-Old links to the **Actions taken** tab open the **Conversation** tab.
+### Inspect the trajectory
+
+The **Trajectory** tab shows every event of the task as one row: a person's input, a model turn, a tool call, a subagent's call, or a system event.
+
+- The strip at the top shows the Input, Model, and Tools lanes over time. A failed call is red. Click a block to select its row. The clock button switches between actual duration and equal widths.
+- **Turns**, **Calls**, and **Subcalls** fold or unfold those rows. The search field matches any text in the events.
+- Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, and most rows have **Raw**, which shows the raw event.
+- A link that ends in `#e` and an event number opens the trajectory at that event.
+
+Old links to the **Actions taken** tab open the **Conversation** tab. Old links to the **Log** tab, and event links on the **Conversation** tab, open the **Trajectory** tab.
 
 ### Pause, resume, cancel, and reassign
 
