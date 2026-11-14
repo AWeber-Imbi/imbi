@@ -1,7 +1,9 @@
 import {
   type ComponentType,
+  createContext,
   type ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -17,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Separator } from '@/components/ui/separator'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { IconTooltip } from '@/components/ui/tooltip'
@@ -125,6 +128,9 @@ export function TaskCopyMenu({
   )
 }
 
+/** Controls that lead every toolbar of a view, such as the view switch. */
+export const ToolbarLead = createContext<ReactNode>(null)
+
 /** The row above every task view: view options first, search and copy at the end. */
 export function TaskToolbar({
   children,
@@ -133,12 +139,19 @@ export function TaskToolbar({
   children: ReactNode
   label: string
 }) {
+  const lead = useContext(ToolbarLead)
   return (
     <div
       aria-label={label}
       className="border-tertiary bg-tertiary flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-6 py-2"
       role="toolbar"
     >
+      {lead && (
+        <>
+          {lead}
+          <Separator className="mx-1 h-5" orientation="vertical" />
+        </>
+      )}
       {children}
     </div>
   )
