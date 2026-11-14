@@ -282,6 +282,36 @@ describe('TrajectoryTab links and live tasks', () => {
   })
 })
 
+describe('TrajectoryTab empty states', () => {
+  it('says when nothing matches and clears the search', async () => {
+    renderTab()
+    const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
+    await userEvent.type(search, 'zzqx-no-match')
+    expect(screen.queryByRole('grid', { name: 'Trajectory' })).toBeNull()
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+    expect(
+      screen.getByText('Nothing in this view matches “zzqx-no-match”.'),
+    ).toBeInTheDocument()
+    const empty = screen
+      .getByText('No matches')
+      .closest('[data-slot="empty"]') as HTMLElement
+    expect(empty).toHaveAttribute('data-search-skip')
+    await userEvent.click(
+      within(empty).getByRole('button', { name: 'Clear search' }),
+    )
+    expect(search).toHaveValue('')
+    expect(screen.queryByText('No matches')).toBeNull()
+    expect(rows().length).toBeGreaterThan(0)
+  })
+
+  it('says when there is no activity yet', () => {
+    renderTab('running', [])
+    expect(screen.getByText('No activity yet')).toBeInTheDocument()
+    expect(screen.getByText('No trajectory yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull()
+  })
+})
+
 describe('TrajectoryTab toolbar', () => {
   beforeEach(() => window.localStorage.clear())
 

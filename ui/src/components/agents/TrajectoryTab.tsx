@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
+import { ChartGantt } from 'lucide-react'
+
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
+import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import { useSearchHighlight, useTaskSearch } from './taskSearch'
 import { TaskCopyMenu } from './TaskToolbar'
 import { type InspectorTab, TrajectoryInspector } from './TrajectoryInspector'
@@ -244,19 +247,29 @@ export function TrajectoryTab({
         spans={spans}
       />
       <div className="@container/tjpane relative flex min-h-0 flex-1 overflow-hidden">
-        <TrajectoryLedger
-          activeTurn={activeTurn}
-          focused={focused}
-          onClear={() => setSelection(null)}
-          onDoubleClick={onDoubleClick}
-          onFold={toggle}
-          onSelect={select}
-          requests={requests}
-          rows={rows}
-          scrollTo={scrollTo}
-          selection={selection}
-          turnStarts={turnStarts}
-        />
+        {rows.length === 0 ? (
+          query.trim() ? (
+            <NoMatches onClear={() => setQuery('')} query={query} />
+          ) : (
+            <ActivityEmpty icon={<ChartGantt />} title="No activity yet">
+              No trajectory yet.
+            </ActivityEmpty>
+          )
+        ) : (
+          <TrajectoryLedger
+            activeTurn={activeTurn}
+            focused={focused}
+            onClear={() => setSelection(null)}
+            onDoubleClick={onDoubleClick}
+            onFold={toggle}
+            onSelect={select}
+            requests={requests}
+            rows={rows}
+            scrollTo={scrollTo}
+            selection={selection}
+            turnStarts={turnStarts}
+          />
+        )}
         {(selectedRecord || selectedRequest) && (
           <TrajectoryInspector
             inspected={
