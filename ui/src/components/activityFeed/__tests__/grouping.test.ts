@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { clusterConsecutive, sectionByDay } from '../grouping'
+import { clusterConsecutive } from '../grouping'
 
 interface Item {
   actor: string
@@ -66,32 +66,5 @@ describe('clusterConsecutive', () => {
 
   it('returns an empty list for no items', () => {
     expect(clusterConsecutive([], opts)).toEqual([])
-  })
-})
-
-describe('sectionByDay', () => {
-  const now = local(2026, 7, 17, 12, 0)
-
-  it('buckets by local day and labels Today/Yesterday', () => {
-    const items: Item[] = [
-      { actor: 'a', t: local(2026, 7, 17, 10, 0) },
-      { actor: 'a', t: local(2026, 7, 16, 10, 0) },
-    ]
-    const sections = sectionByDay(items, { ...opts, now })
-    expect(sections).toHaveLength(2)
-    expect(sections[0].label).toBe('Today')
-    expect(sections[1].label).toBe('Yesterday')
-  })
-
-  it('does not cluster across a day boundary even within the window', () => {
-    const items: Item[] = [
-      { actor: 'a', t: local(2026, 7, 17, 0, 10) },
-      { actor: 'a', t: local(2026, 7, 16, 23, 50) },
-    ]
-    const sections = sectionByDay(items, { ...opts, now })
-    // 20 min apart but different days -> two sections, each a single cluster.
-    expect(sections).toHaveLength(2)
-    expect(sections[0].clusters).toHaveLength(1)
-    expect(sections[1].clusters).toHaveLength(1)
   })
 })

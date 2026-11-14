@@ -3,8 +3,6 @@ import type { DeliveryMode } from '@/lib/delivery'
 import type { components } from './api-generated'
 import type { ProjectServiceEdge } from './integrations'
 
-export type ActivityFeedEntry = OperationsLogEntry | ProjectFeedEntry
-
 export interface AgeScoringPolicy extends ScoringPolicyBase {
   age_score_map: Record<string, number>
   attribute_name: string
@@ -393,36 +391,6 @@ export interface LinkPresenceScoringPolicyCreate extends ScoringPolicyCreateBase
 export interface NotCondition {
   not: Condition
 }
-// Activity feed projection; distinct from `OperationsLogRecord`.
-export interface OperationsLogEntry {
-  change_type:
-    | 'Configured'
-    | 'Decommissioned'
-    | 'Deployed'
-    | 'Migrated'
-    | 'Provisioned'
-    | 'Restarted'
-    | 'Rolled Back'
-    | 'Scaled'
-    | 'Upgraded'
-  completed_at?: null | string
-  description: string
-  display_name: string
-  email_address: string
-  environment: string
-  id: number
-  link?: null | string
-  notes?: null | string
-  occurred_at: string
-  performed_by?: null | string
-  project_id?: null | number
-  project_name?: null | string
-  recorded_at: string
-  recorded_by: string
-  ticket_slug?: null | string
-  type: 'OperationsLogEntry'
-  version?: null | string
-}
 export interface PendingDeployPullRequest {
   additions: number
   author: string
@@ -538,21 +506,6 @@ export interface ProjectCreate {
 // plugins assigned.
 export interface ProjectDeletedResponse {
   lifecycle_results: LifecycleInvocation[]
-}
-// Activity feed projection for the dashboard — not a 1:1 backend shape.
-export interface ProjectFeedEntry {
-  display_name: string
-  email_address: string
-  namespace: string
-  namespace_id: number
-  occurred_at?: string
-  project_id: number
-  project_name: string
-  project_type: string
-  type: 'ProjectFeedEntry'
-  what: 'created' | 'updated' | 'updated facts'
-  when?: string
-  who: string
 }
 
 // Response from project create / patch / archive / unarchive: the
@@ -1485,8 +1438,7 @@ export interface OperationsLogFilters {
   until?: string
 }
 
-// Raw record returned by the /operations-log/ API (distinct from the
-// activity-feed projection defined above in `OperationsLogEntry`).
+// Raw record returned by the /operations-log/ API.
 // `plugin_slug` is augmented here pending an openapi snapshot refresh against
 // the upstream `imbi-api` change — the backend already returns it.
 export type OperationsLogRecord = Schemas['OperationLogResponse'] & {

@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Activity, ChevronRight } from 'lucide-react'
 
-import { ACTIVITY_GROUP_WINDOW_MS } from '@/components/activityFeed/entryAdapters'
 import { clusterConsecutive } from '@/components/activityFeed/grouping'
 import type { ActivityCluster } from '@/components/activityFeed/grouping'
 import { Button } from '@/components/ui/button'
@@ -13,6 +12,9 @@ import { Sk } from '@/components/ui/skeleton'
 import { ActivityRow } from './ActivityRow'
 import { fetchActivity } from './api'
 import type { ActivityRecord, ActivityResponse } from './api'
+
+/** Consecutive same-actor+project entries within this window collapse into one group. */
+const ACTIVITY_GROUP_WINDOW_MS = 60 * 60 * 1000
 
 type ActivityPage = { data: ActivityResponse; nextCursor: null | string }
 
