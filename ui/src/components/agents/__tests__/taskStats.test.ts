@@ -148,4 +148,30 @@ describe('taskActivity', () => {
     expect(trajectory.requests).toHaveLength(1)
     expect(taskActivity(trajectory, 0).requests).toBe(2)
   })
+
+  it('times only the output of the main requests', () => {
+    const trajectory = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { message_id: 'm1', tokens_out: 100 }),
+        event(3, 'usage.reported', { message_id: 's1', tokens_out: 1000 }),
+        event(4, 'turn', { body: 'Asking', kind: 'text', message_id: 'm1' }),
+        event(5, 'tool.called', {
+          call_id: 'r1',
+          message_id: 's1',
+          parent_call_id: 'c1',
+          tool: 'Read',
+        }),
+        event(6, 'tool.called', {
+          call_id: 'c1',
+          message_id: 'm1',
+          tool: 'Agent',
+        }),
+      ],
+      false,
+    )
+    const a = taskActivity(trajectory, 1100)
+    expect(a.modelMs).toBeGreaterThan(0)
+    expect(a.outputPerSecond).toBe(100 / (a.modelMs / 1000))
+  })
 })

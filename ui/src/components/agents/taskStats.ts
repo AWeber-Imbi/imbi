@@ -50,11 +50,16 @@ export function taskActivity(
   const times = trajectory.records
     .flatMap((r) => [r.startedAt, r.endedAt])
     .filter((t): t is number => t !== null)
+  const timed = trajectory.subrequests.length
+    ? trajectory.requests.reduce(
+        (n, r) => n + num(r.usage?.payload.tokens_out),
+        0,
+      )
+    : output
   return {
     failedCalls: tools.filter((r) => r.error).length,
     modelMs,
-    outputPerSecond:
-      modelMs > 0 && output > 0 ? output / (modelMs / 1000) : null,
+    outputPerSecond: modelMs > 0 && timed > 0 ? timed / (modelMs / 1000) : null,
     requests: trajectory.requests.length + trajectory.subrequests.length,
     toolCalls: tools.length,
     toolMs: tools.reduce((n, r) => n + span(r.startedAt, r.endedAt), 0),
