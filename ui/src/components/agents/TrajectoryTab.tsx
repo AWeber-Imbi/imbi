@@ -31,6 +31,7 @@ import {
 } from './TrajectoryOverview'
 import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
 import type { TrajectoryWindow } from './trajectoryWindow'
+import { useStoredState } from './useStoredState'
 
 /** The records a range covered when picked, and its edges from theirs. */
 interface Picked {
@@ -44,6 +45,8 @@ interface Picked {
  * toolbar, a timing overview, and a ledger of every record the task
  * produced.
  */
+const FOLD_BUTTONS: readonly FoldButton[] = ['turns', 'calls', 'subcalls']
+
 export function TrajectoryTab({
   events,
   onShowInConversation,
@@ -62,6 +65,15 @@ export function TrajectoryTab({
     [events, live],
   )
   const [folds, setFolds] = useState<Folds>(emptyFolds)
+  const [foldPrefs, setFoldPrefs] = useStoredState<FoldButton[]>(
+    'imbi.trajectory.folds',
+    [],
+    (v) =>
+      Array.isArray(v)
+        ? v.filter((b): b is FoldButton => FOLD_BUTTONS.includes(b))
+        : undefined,
+  )
+  const seen = useRef<Set<string>>(new Set())
   const [selection, setSelection] = useState<TrajectorySelection>(null)
   const [scrollTo, setScrollTo] = useState<null | { id: string }>(null)
   const [visible, setVisible] = useState<null | TrajectoryWindow>(null)
@@ -126,6 +138,29 @@ export function TrajectoryTab({
     }),
     [trajectory],
   )
+  useEffect(() => {
+    const fresh = emptyFolds()
+    let any = false
+    for (const button of FOLD_BUTTONS) {
+      for (const k of keys[button]) {
+        const id = `${button}:${k}`
+        if (seen.current.has(id)) continue
+        seen.current.add(id)
+        if (!foldPrefs.includes(button)) continue
+        ;(fresh[button] as Set<number | string>).add(k)
+        any = true
+      }
+    }
+    if (!any) return
+    setFolds((prev) => {
+      const next = copyFolds(prev)
+      for (const button of FOLD_BUTTONS)
+        for (const k of fresh[button] as Set<number | string>)
+          (next[button] as Set<number | string>).add(k)
+      return next
+    })
+  }, [foldPrefs, keys])
+
   const folded = Object.fromEntries(
     (['turns', 'calls', 'subcalls'] as const).map((button) => {
       const set = folds[button] as Set<number | string>
@@ -210,6 +245,11 @@ export function TrajectoryTab({
 
   const foldAll = (button: FoldButton) => {
     const all = folded[button] === true
+    setFoldPrefs(
+      all
+        ? foldPrefs.filter((b) => b !== button)
+        : [...new Set([...foldPrefs, button])],
+    )
     setFolds((prev) => {
       const next = copyFolds(prev)
       const set = next[button] as Set<number | string>

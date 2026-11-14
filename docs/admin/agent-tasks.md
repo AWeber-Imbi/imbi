@@ -241,7 +241,7 @@ of the task.
 
 ### Read the activity
 
-The **Activity** tab shows the events of the task in three views. Pick a view with the switch at the start of the toolbar.
+The **Activity** tab shows the events of the task in three views. Pick a view with the switch at the start of the toolbar. The tab opens on the view you used last.
 
 - The search field matches any text in the view and marks each match. It keeps its text when you switch views.
 - The copy button copies the conversation loaded so far as Markdown, or the task and its events as JSON.
@@ -256,7 +256,7 @@ The **Conversation** view shows the task as turns. A turn starts with a person's
 - The work of a subagent shows under the call that started it.
 - An open request shows where the agent asked it, with its buttons.
 - **Compact**, **Standard**, and **Verbose** set how much work shows open. The browser remembers the choice.
-- **Narrow** and **Wide** set the reading width.
+- **Narrow** and **Wide** set the reading width. The browser remembers the choice.
 - When another view shows an event in the conversation, the turn that holds it opens, scrolls into view, and flashes for a moment. A subagent's event shows in the turn of the call that started it.
 
 #### Trajectory
@@ -265,7 +265,7 @@ The **Trajectory** view shows every event of the task as one row: a person's inp
 
 - The strip at the top shows the Input, Model, and Tools lanes over time. A failed call is red. Click a block to select its row. The clock button switches between actual duration and equal widths, and the browser remembers the choice.
 - A tinted box on the strip marks the rows that the table shows, and moves as you scroll or fold. A thin line marks the selected event.
-- The fold buttons fold or unfold the turns, the tool calls, and the subagent calls. A greyed-out button has nothing to fold, and its tooltip says why.
+- The fold buttons fold or unfold the turns, the tool calls, and the subagent calls. A greyed-out button has nothing to fold, and its tooltip says why. The browser remembers which fold buttons are on, and folds the new rows of a running task the same way.
 - Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, and most rows have **Raw**, which shows the raw event. The selected row, or the row of the selected request, is tinted and outlined.
 - **Show in conversation**, at the bottom of the inspector, opens the Conversation view at the turn that holds the event.
 - A link that ends in `#e` and an event number opens the trajectory at that event.
@@ -279,9 +279,11 @@ The **Statistics** view shows one row for each turn, and a **Task total** row at
 - **Output**, **Model** (model time), **Tools** (tool time), and **Speed** (output tokens per model second) come from the model requests. The **Total** bar shows model time in purple, tool time in amber, and everything else in grey.
 - Click a turn to show its steps, one for each model request. Click a step to read its answer.
 - The speech-bubble button next to a turn opens the Conversation view at that turn.
-- **Latest** shows the context of the last step of a turn, and **Cumulative** adds up its steps. The **±** button shows how much the context grew at each step.
+- **Latest** shows the context of the last step of a turn, and **Cumulative** adds up its steps. The **±** button shows how much the context grew at each step. The browser remembers both choices.
 
 Old links to the **Actions taken** and **Conversation** tabs open the Conversation view. Old links to the **Log** tab, and event links that end in `#e` and an event number, open the Trajectory view.
+
+A task link without a tab opens the tab you used last.
 
 ### Pause, resume, cancel, and reassign
 

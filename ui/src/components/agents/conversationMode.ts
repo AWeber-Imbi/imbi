@@ -141,14 +141,6 @@ const PHRASES: [string, string, string][] = [
 
 export type ConversationWidth = 'narrow' | 'wide'
 
-/** The Narrow / Wide reading width; narrow by default. */
-export function useConversationWidth(): [
-  ConversationWidth,
-  (width: ConversationWidth) => void,
-] {
-  return useState<ConversationWidth>('narrow')
-}
-
 function callKind(entry: TimelineEntry): null | string {
   if (!entry.event) return 'agent'
   if (entry.event.type !== 'tool.called') return null
@@ -178,4 +170,31 @@ function callKind(entry: TimelineEntry): null | string {
 function errorsIn(entry: TimelineEntry): number {
   const own = callKind(entry) && isError(entry) ? 1 : 0
   return entry.children.reduce((n, child) => n + errorsIn(child), own)
+}
+
+const WIDTH_KEY = 'imbi.conversation.width'
+
+/** The Narrow / Wide reading width, kept per browser; narrow by default. */
+export function useConversationWidth(): [
+  ConversationWidth,
+  (width: ConversationWidth) => void,
+] {
+  const [width, setWidth] = useState<ConversationWidth>(() => {
+    try {
+      return window.localStorage.getItem(WIDTH_KEY) === 'wide'
+        ? 'wide'
+        : 'narrow'
+    } catch {
+      return 'narrow'
+    }
+  })
+  const update = useCallback((next: ConversationWidth) => {
+    setWidth(next)
+    try {
+      window.localStorage.setItem(WIDTH_KEY, next)
+    } catch {
+      // Storage can be full or blocked; the width still applies to this page.
+    }
+  }, [])
+  return [width, update]
 }

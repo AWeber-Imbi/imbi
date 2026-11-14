@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
@@ -1329,5 +1329,33 @@ describe('inspector helpers', () => {
   it('formats the start time with milliseconds', () => {
     const ms = new Date(2026, 9, 8, 12, 0, 5, 250).getTime()
     expect(startedText(ms)).toBe('2026-10-08 12:00:05.250')
+  })
+})
+
+describe('TrajectoryTab folds across tasks', () => {
+  afterEach(() => {
+    vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+  })
+
+  it('opens a task with the turns folded when that was the last choice', () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'imbi.trajectory.folds' ? '["turns"]' : null,
+    )
+    renderTab()
+    expect(rows()).toHaveLength(4)
+    expect(
+      screen.getByRole('button', { name: 'Expand turns' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('remembers a fold button for the next task', async () => {
+    renderTab()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse turns' }),
+    )
+    expect(vi.mocked(window.localStorage.setItem)).toHaveBeenCalledWith(
+      'imbi.trajectory.folds',
+      '["turns"]',
+    )
   })
 })

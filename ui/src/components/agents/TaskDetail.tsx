@@ -77,6 +77,7 @@ import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
 import { ToolbarLead } from './TaskToolbar'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
+import { useStoredState } from './useStoredState'
 
 /** A tab, or one view of the Activity tab: what the URL names. */
 type RouteKey = ActivityView | TabKey
@@ -114,6 +115,20 @@ export function TaskDetail({
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
+  const [lastTab, setLastTab] = useStoredState<RouteKey>(
+    'imbi.task.tab',
+    'overview',
+    (raw) => (isRouteKey(raw) ? raw : undefined),
+  )
+  const [lastView, setLastView] = useStoredState<ActivityView>(
+    'imbi.task.view',
+    'conversation',
+    (raw) => (isActivityView(raw) ? raw : undefined),
+  )
+  useEffect(() => {
+    if (isRouteKey(tab)) setLastTab(tab)
+    if (isActivityView(tab)) setLastView(tab)
+  }, [setLastTab, setLastView, tab])
   const trajectoryCount = useMemo(
     () => buildTrajectory(events.data ?? [], false).records.length,
     [events.data],
@@ -166,11 +181,15 @@ export function TaskDetail({
   ]
   const wanted =
     tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
-  const route: RouteKey = isRouteKey(wanted) ? wanted : 'overview'
+  const route: RouteKey = isRouteKey(wanted)
+    ? wanted
+    : tab === undefined
+      ? lastTab
+      : 'overview'
   const view: ActivityView | null = isActivityView(route)
     ? route
     : route === 'activity'
-      ? 'conversation'
+      ? lastView
       : null
   const current: TabKey = view ? 'activity' : (route as TabKey)
   const go = (key: RouteKey) =>
@@ -198,7 +217,7 @@ export function TaskDetail({
               x.key === 'input' && open > 0 && 'text-amber-text',
             )}
             key={x.key}
-            onClick={() => go(x.key === 'activity' ? 'conversation' : x.key)}
+            onClick={() => go(x.key === 'activity' ? lastView : x.key)}
             role="tab"
             type="button"
           >
