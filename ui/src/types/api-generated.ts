@@ -21262,6 +21262,11 @@ export interface components {
             cache_write_tokens?: number | null;
             /** Session Id */
             session_id?: string | null;
+            /**
+             * Message Id
+             * @description The message id of the model's reply. The task events of that reply have it too.
+             */
+            message_id?: string | null;
         };
         /**
          * UsageResponse

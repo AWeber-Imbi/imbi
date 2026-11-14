@@ -1046,6 +1046,44 @@ class UsageTests(HarnessTestCase):
         )
         self.assertEqual(response.json()['input_cost_per_million'], '3.000000')
 
+    async def test_message_id_goes_on_the_event_only(self) -> None:
+        response = await self.report('u-1', message_id='msg_01abc')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertNotIn('message_id', response.json())
+        (row,) = await self.ledger()
+        self.assertNotIn('message_id', row)
+        event = (await self.events())[-1]
+        self.assertEqual(event['type'], 'usage.reported')
+        self.assertEqual(event['payload']['message_id'], 'msg_01abc')
+
+    async def test_report_without_message_id_writes_the_same_event(
+        self,
+    ) -> None:
+        response = await self.report('u-1')
+        self.assertEqual(response.status_code, 201, response.text)
+        event = (await self.events())[-1]
+        self.assertEqual(event['type'], 'usage.reported')
+        self.assertEqual(
+            set(event['payload']),
+            {
+                'report_id',
+                'model_id',
+                'tokens_in',
+                'tokens_out',
+                'cache_read_tokens',
+                'cache_write_tokens',
+                'cost',
+                'budget_remaining',
+            },
+        )
+
+    async def test_message_id_is_checked(self) -> None:
+        for message_id in ('', 'm' * 201, 5):
+            with self.subTest(message_id=message_id):
+                response = await self.report('u-1', message_id=message_id)
+                self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(await self.ledger(), [])
+
     async def test_repeat_key_returns_the_first_report(self) -> None:
         first = await self.report('u-1')
         last_seq = (await self.task_row())['last_seq']

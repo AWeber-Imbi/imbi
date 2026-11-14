@@ -186,6 +186,15 @@ class UsageReport(pydantic.BaseModel):
         default=None, ge=0, description='Input tokens written to the cache.'
     )
     session_id: uuid.UUID | None = None
+    message_id: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "The message id of the model's reply. The task events of"
+            ' that reply have it too.'
+        ),
+    )
 
 
 class AppendEventsResponse(pydantic.BaseModel):
@@ -786,6 +795,7 @@ async def report_agent_task_usage(
                 cache_read_tokens=data.cache_read_tokens,
                 cache_write_tokens=data.cache_write_tokens,
                 session_id=data.session_id,
+                message_id=data.message_id,
             ),
             prices,
             actor=_agent_actor(task),

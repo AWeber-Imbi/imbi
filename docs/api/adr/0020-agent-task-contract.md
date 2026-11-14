@@ -146,7 +146,7 @@ Standard types:
 | `phase.changed` | Harness | Phase name, furthest milestone (A3, CC5) |
 | `todos.updated` | Harness | The full todo list (F12) |
 | `check.reported` | Harness | Name, value, delta, baseline, verdict, source (J2) |
-| `usage.reported` | Imbi | Model, token counts, cost, remaining budget |
+| `usage.reported` | Imbi | Model, token counts, cost, remaining budget, and the `message_id` of the model reply when the harness sends it (the events of that reply have it too) |
 | `request.opened` / `request.resolved` / `request.expired` | Imbi | Request id and content, resolution |
 | `outcome.set` | Imbi | Outcome, reason |
 
