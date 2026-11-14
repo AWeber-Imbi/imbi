@@ -149,6 +149,14 @@ The runner has these parts:
        person (`blocked`). A tool in `approval_tools` also needs approval
        when no person started the task.
     4. imbi-api counts the call against its rate limit.
+- **Subagents and background work.** The runner sets
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so a subagent of `Agent` and
+  a `Bash` command run in the foreground: the result comes back in the
+  turn that started them. If a subagent or workflow still runs in the
+  background, a result ends only the turn. The runner keeps the session
+  open until each background task ends and the CLI gives its result to
+  the agent in a new turn. The task timeout, the budget, and a cancel end
+  the wait.
 
 ## 5. Secrets broker
 
@@ -194,7 +202,10 @@ stops the SDK. The **Agents > Usage** page reads `agent_usage`.
 ## 7. Outcome
 
 The agent reports its outcome with the `report_outcome` tool. The runner
-sets the outcome and closes the task. Then:
+sets the outcome and closes the task. When the agent stops without a
+report, the runner sets `failed_external` with the reason
+`no_outcome_reported`. A report never changes the outcome of a run that
+the SDK ended with an error (for example `partial_capped`). Then:
 
 - The close hooks release the secrets of the task and start the runs of
   the matching workflow `task_completed` triggers. If a hook fails, a

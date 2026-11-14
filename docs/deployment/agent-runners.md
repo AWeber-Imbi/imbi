@@ -693,6 +693,7 @@ Find the error code first:
 | `no_api_token` | The agent has Imbi tools, but Imbi gave no API token | Check the imbi-api log for the claim |
 | `executor_unavailable` | The runner cannot reach the executor socket | Check the `executor` container log |
 | `harness_error` | An unexpected error in the runner | Check the `runner` container log |
+| `no_outcome_reported` | The agent stopped without calling `report_outcome`. The runner log shows `ended without report_outcome` and whether the agent called a tool that changes data | Read the task's last turns. Tell the agent in its prompt to call `report_outcome` before it stops |
 
 A task event `egress.destination_pending` means that the claim left out a
 destination: `not_applied` (the sync has not made the policy of its
