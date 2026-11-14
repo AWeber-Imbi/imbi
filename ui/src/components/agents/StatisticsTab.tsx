@@ -54,6 +54,7 @@ import { gapsOf, useVirtualRows } from './virtualRows'
 const ANSWER_CAP = 16_000
 
 interface Measure {
+  'aria-rowindex': number
   'data-index': number
   ref: (row: HTMLElement | null) => void
 }
@@ -231,6 +232,7 @@ export function StatisticsTab({
 
   const renderRow = (row: StatsRow, index: number) => {
     const measure = {
+      'aria-rowindex': index + 2,
       'data-index': index,
       ref: virtualizer.measureElement,
     }
@@ -332,7 +334,7 @@ export function StatisticsTab({
             className="text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5"
           >
             <TableHeader className="bg-tertiary sticky top-0 z-1">
-              <TableRow>
+              <TableRow aria-rowindex={1}>
                 {COLUMNS.map((c) => (
                   <TableHead
                     className={cn(
@@ -364,7 +366,10 @@ export function StatisticsTab({
               {after > 0 && <Gap height={after} />}
             </TableBody>
             <TableFooter className="bg-secondary sticky bottom-0">
-              <TableRow className="hover:bg-transparent">
+              <TableRow
+                aria-rowindex={flat.length + 2}
+                className="hover:bg-transparent"
+              >
                 <TableCell
                   className="font-medium whitespace-nowrap"
                   title="Totals for the whole task, subagent tokens included. Total time adds up the time of each turn, without the gaps between turns."

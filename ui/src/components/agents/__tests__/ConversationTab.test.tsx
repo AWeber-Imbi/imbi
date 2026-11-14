@@ -650,7 +650,7 @@ describe('ConversationTab with many turns', () => {
   let spy: ReturnType<typeof layout>
   beforeEach(() => {
     spy = layout({ content, isPane, pane: 600, row: 100 })
-    scrollTo.mockClear()
+    scrollTo.mockReset()
     Element.prototype.scrollTo = scrollTo
   })
   afterEach(() => {
@@ -671,7 +671,6 @@ describe('ConversationTab with many turns', () => {
   })
 
   it('follows the bottom while the task runs, until the reader scrolls up', async () => {
-    const user = userEvent.setup()
     const { rerender } = render(view('running', MANY.slice(0, 100)))
     await waitFor(() =>
       expect(screen.getByText('reply 49')).toBeInTheDocument(),
@@ -688,11 +687,33 @@ describe('ConversationTab with many turns', () => {
     rerender(view('running', MANY.slice(0, 104)))
     expect(pane().scrollTop).toBe(0)
     expect(screen.queryByText('reply 51')).not.toBeInTheDocument()
-    await user.click(latest)
-    expect(scrollTo).toHaveBeenLastCalledWith({
-      behavior: 'smooth',
-      top: content(pane()),
+  })
+
+  it('jumps to the latest turn and keeps following it', async () => {
+    const user = userEvent.setup()
+    scrollTo.mockImplementation(function (
+      this: Element,
+      options: ScrollToOptions,
+    ) {
+      this.scrollTop =
+        options.behavior === 'smooth'
+          ? this.scrollTop + 100
+          : (options.top ?? 0)
     })
+    const { rerender } = render(view('running', MANY.slice(0, 100)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 49')).toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    const latest = screen.getByRole('button', { name: 'Scroll to end' })
+    await waitFor(() => expect(latest).toHaveAttribute('data-active', 'true'))
+    await user.click(latest)
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+    rerender(view('running', MANY.slice(0, 102)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 50')).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
   })
 
   it('scrolls to a far turn another view asks for, and flashes it', async () => {

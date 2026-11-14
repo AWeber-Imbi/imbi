@@ -1320,6 +1320,31 @@ describe('TrajectoryTab with many rows', () => {
     expect(document.activeElement).toHaveAttribute('aria-rowindex', '1')
   })
 
+  it('leaves focus where the reader moves it after Home on the first row', async () => {
+    renderTab('closed', LONG)
+    scrollPane(ledger(), 0)
+    rows()[0].focus()
+    await userEvent.keyboard('{Home}')
+    const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
+    await userEvent.click(search)
+    await userEvent.type(search, 'needle')
+    expect(document.activeElement).toBe(search)
+    expect(search).toHaveValue('needle')
+  })
+
+  it('keeps a row rendered while its request dot has focus', async () => {
+    renderTab('closed', LONG)
+    scrollPane(ledger(), 0)
+    const dot = within(rows()[2]).getByRole('button', { name: /^Request #/ })
+    dot.focus()
+    scrollPane(ledger(), 5000)
+    await waitFor(() =>
+      expect(rows()[0]).not.toHaveAttribute('aria-rowindex', '1'),
+    )
+    expect(dot).toBeInTheDocument()
+    expect(document.activeElement).toBe(dot)
+  })
+
   it('folds every call and opens one from the keyboard', async () => {
     renderTab('closed', LONG)
     rows()[0].focus()

@@ -245,6 +245,7 @@ export function ConversationTab({
   )
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
+  const lastTop = useRef(0)
   const [atEnd, setAtEnd] = useState(true)
   const [focusRow, setFocusRow] = useState<null | number>(null)
   const flashRow = flash ? rows.indexOf(flash.id) : -1
@@ -280,7 +281,7 @@ export function ConversationTab({
     const el = scroller.current
     if (!el) return
     pinned.current = true
-    el.scrollTo({ behavior: 'smooth', top: el.scrollHeight })
+    el.scrollTop = el.scrollHeight
   }
 
   return (
@@ -326,7 +327,9 @@ export function ConversationTab({
                 const el = e.currentTarget
                 const end =
                   el.scrollHeight - el.clientHeight - el.scrollTop <= END_SLACK
-                pinned.current = end
+                if (end) pinned.current = true
+                else if (el.scrollTop < lastTop.current) pinned.current = false
+                lastTop.current = el.scrollTop
                 setAtEnd(end)
               }}
               ref={scroller}

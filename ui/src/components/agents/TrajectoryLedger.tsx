@@ -225,9 +225,13 @@ export function TrajectoryLedger({
         move(Number(row.dataset.index), rows.length - 1),
       ),
     )
-    moving.current = next
     setFocusRow(next)
     virtualizer.scrollToIndex(next, { align: 'auto' })
+    const target = pane.current?.querySelector<HTMLElement>(
+      `[data-index="${next}"]`,
+    )
+    moving.current = target ? null : next
+    target?.focus({ preventScroll: true })
   }
 
   const { after, rows: shownRows } = gapsOf(items, virtualizer.getTotalSize())
@@ -260,7 +264,9 @@ export function TrajectoryLedger({
         </colgroup>
         <tbody
           onFocus={(e) => {
-            const index = (e.target as HTMLElement).dataset.index
+            const index = (e.target as HTMLElement).closest<HTMLElement>(
+              '[data-index]',
+            )?.dataset.index
             if (index !== undefined) setFocusRow(Number(index))
           }}
           onKeyDown={onKeyDown}

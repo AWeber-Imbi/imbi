@@ -524,6 +524,21 @@ describe('StatisticsTab with many turns', () => {
     expect(screen.getByText('Task total')).toBeInTheDocument()
   })
 
+  it('numbers the rows it renders for screen readers', async () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const all = () => within(screen.getByRole('table')).getAllByRole('row')
+    expect(all()[0]).toHaveAttribute('aria-rowindex', '1')
+    expect(all().at(-1)).toHaveAttribute('aria-rowindex', '102')
+    scrollPane(pane(), 37 * 60)
+    await waitFor(() =>
+      expect(Number(all()[1].getAttribute('aria-rowindex'))).toBeGreaterThan(
+        40,
+      ),
+    )
+    const indexes = all().map((r) => Number(r.getAttribute('aria-rowindex')))
+    expect(indexes.every((n, i) => i === 0 || n > indexes[i - 1])).toBe(true)
+  })
+
   it('shows a far turn in the conversation', async () => {
     const user = userEvent.setup()
     const onShow = vi.fn()
