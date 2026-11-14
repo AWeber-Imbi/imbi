@@ -283,7 +283,7 @@ describe('TrajectoryTab toolbar', () => {
   it('disables a fold button with nothing to fold', () => {
     renderTab()
     expect(
-      screen.getByRole('button', { name: 'Collapse subcalls' }),
+      screen.getByRole('button', { name: 'No subcalls to fold' }),
     ).toBeDisabled()
   })
 

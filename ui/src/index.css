@@ -792,6 +792,7 @@
   --tj-hover: color-mix(in srgb, var(--ds-text-primary) 5%, transparent);
   --tj-active: color-mix(in srgb, var(--ds-text-primary) 9%, transparent);
   --tj-brand: var(--ds-action-bg);
+  --tj-select: var(--ds-text-primary);
   --tj-business: var(--ds-text-info);
   --tj-business-3: var(--ds-bg-info);
   --tj-assistant: var(--ds-text-accent);
@@ -813,7 +814,7 @@
   --tj-span-error: var(--color-status-failed-dot);
   --tj-turn-accent: color-mix(
     in srgb,
-    var(--ds-action-bg) 30%,
+    var(--ds-text-primary) 12%,
     var(--ds-bg-primary)
   );
   --tj-turn-error: color-mix(

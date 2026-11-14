@@ -228,7 +228,7 @@ function Content({ record }: { record: TrajectoryRecord }) {
   }
   if (record.kind === 'assistant' && !record.text)
     return (
-      <span className="block truncate text-(--tj-label-3)">
+      <span className="block truncate text-(--tj-caption) italic opacity-70">
         (tool call only)
       </span>
     )
@@ -320,7 +320,7 @@ function RecordRow({
             aria-hidden
             className={cn(
               'absolute inset-y-0 left-0 w-0.75',
-              record.error ? 'bg-(--tj-error)' : 'bg-(--tj-brand)',
+              record.error ? 'bg-(--tj-error)' : 'bg-(--tj-select)',
             )}
           />
         )}
@@ -380,9 +380,9 @@ function RequestDot({
     >
       <span
         className={cn(
-          'size-1.25 rounded-full shadow-[0_0_0_2px_var(--tj-bg-1)] transition-colors group-hover/dot:bg-(--tj-brand) group-focus-visible/dot:bg-(--tj-brand)',
+          'size-1.25 rounded-full shadow-[0_0_0_2px_var(--tj-bg-1)] transition-colors group-hover/dot:bg-(--tj-select) group-focus-visible/dot:bg-(--tj-select)',
           selected
-            ? 'bg-[color-mix(in_srgb,var(--tj-brand)_18%,transparent)] shadow-[0_0_0_1.5px_var(--tj-brand)]'
+            ? 'bg-[color-mix(in_srgb,var(--tj-select)_18%,transparent)] shadow-[0_0_0_1.5px_var(--tj-select)]'
             : 'bg-(--tj-caption)',
         )}
       />

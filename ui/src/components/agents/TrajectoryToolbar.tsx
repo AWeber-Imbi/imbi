@@ -15,7 +15,7 @@ const FOLDS: { key: FoldButton; label: string; noun: string }[] = [
 ]
 
 const BUTTON =
-  'inline-flex h-5 shrink-0 items-center gap-1 rounded-lg text-(--tj-label-3) transition-colors outline-none hover:bg-(--tj-hover) hover:text-(--tj-label-1) focus-visible:shadow-[0_0_0_2px_var(--tj-business)] disabled:pointer-events-none disabled:opacity-50'
+  'inline-flex h-7 shrink-0 items-center gap-1 rounded-lg text-(--tj-label-2) transition-colors outline-none hover:bg-(--tj-hover) hover:text-(--tj-label-1) focus-visible:shadow-[0_0_0_2px_var(--tj-business)] disabled:cursor-default disabled:text-(--tj-label-3) disabled:hover:bg-transparent'
 
 /** The toolbar: Duration, the three fold buttons, and search. */
 export function TrajectoryToolbar({
@@ -36,14 +36,14 @@ export function TrajectoryToolbar({
 }) {
   return (
     <div
-      className="hairline-b sticky top-0 z-4 flex min-h-8 shrink-0 flex-wrap items-center gap-1 border-(--tj-border-2) bg-(--tj-bg-1) px-2 py-1.25 text-[12px] leading-[18px]"
+      className="hairline-b sticky top-0 z-4 flex min-h-10 shrink-0 flex-wrap items-center gap-1 border-(--tj-border-2) bg-(--tj-bg-1) px-2 py-1.5 text-[13px] leading-[18px]"
       role="toolbar"
     >
       <button
         aria-pressed={duration}
         className={cn(
           BUTTON,
-          'px-1.75',
+          'px-2',
           duration && 'bg-(--tj-hover) text-(--tj-label-1)',
         )}
         onClick={() => onDuration(!duration)}
@@ -70,11 +70,16 @@ export function TrajectoryToolbar({
       </button>
       {FOLDS.map(({ key, label, noun }) => {
         const all = folded[key]
-        const action = all ? `Expand ${noun}` : `Collapse ${noun}`
+        const action =
+          all === null
+            ? `No ${noun} to fold`
+            : all
+              ? `Expand ${noun}`
+              : `Collapse ${noun}`
         return (
           <button
             aria-label={action}
-            className={cn(BUTTON, 'px-1.25')}
+            className={cn(BUTTON, 'px-2')}
             disabled={all === null}
             key={key}
             onClick={() => onFold(key)}
@@ -91,11 +96,11 @@ export function TrajectoryToolbar({
           </button>
         )
       })}
-      <label className="hairline ml-auto flex h-[22px] min-w-21 flex-[0_1_164px] items-center gap-1 rounded-lg border-(--tj-border-4) bg-(--tj-bg-2) px-1.5 text-(--tj-label-3) transition-colors focus-within:border-(--tj-business) focus-within:bg-(--tj-bg-1) hover:border-(--tj-caption)">
+      <label className="hairline ml-auto flex h-7 min-w-21 flex-[0_1_164px] items-center gap-1 rounded-lg border-(--tj-border-4) bg-(--tj-bg-2) px-1.5 text-(--tj-label-3) transition-colors focus-within:border-(--tj-business) focus-within:bg-(--tj-bg-1) hover:border-(--tj-caption)">
         <Search aria-hidden className="size-tab-y shrink-0" />
         <input
           aria-label="Search trajectory"
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-(--tj-label-1) outline-none placeholder:text-(--tj-caption)"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-(--tj-label-1) outline-none placeholder:text-(--tj-caption)"
           onChange={(e) => onQuery(e.target.value)}
           placeholder="Search"
           type="search"

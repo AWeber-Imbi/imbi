@@ -307,7 +307,7 @@ export function TrajectoryOverview({
         {hoverX !== null && !draft && (
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-(--tj-brand)"
+            className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-(--tj-select)"
             style={{ left: `${pct(hoverX)}%` }}
           />
         )}
@@ -332,10 +332,10 @@ function Band({
     <span
       aria-hidden
       className={cn(
-        'pointer-events-none absolute inset-y-0 border-x-(--tj-brand)',
+        'pointer-events-none absolute inset-y-0 border-x-(--tj-select)',
         dim
-          ? 'border-x-[3px] bg-[color-mix(in_srgb,var(--tj-brand)_12%,transparent)] shadow-[0_0_0_9999px_color-mix(in_srgb,var(--tj-bg-1)_58%,transparent)]'
-          : 'border-x-2 bg-[color-mix(in_srgb,var(--tj-brand)_18%,transparent)]',
+          ? 'border-x-[3px] bg-[color-mix(in_srgb,var(--tj-select)_12%,transparent)] shadow-[0_0_0_9999px_color-mix(in_srgb,var(--tj-bg-1)_58%,transparent)]'
+          : 'border-x-2 bg-[color-mix(in_srgb,var(--tj-select)_18%,transparent)]',
       )}
       data-range={dim ? 'committed' : 'draft'}
       style={{ left: `${toPct(a)}%`, width: `${toPct(b) - toPct(a)}%` }}
@@ -370,9 +370,9 @@ function SpanBar({
       <TooltipTrigger asChild>
         <span
           className={cn(
-            'pointer-events-auto absolute h-2 min-w-0.5 rounded-[1px] opacity-[.78] transition-[left,opacity] duration-180 hover:shadow-[0_0_0_1px_var(--tj-bg-2),0_0_0_3px_color-mix(in_srgb,var(--tj-brand)_80%,transparent)]',
+            'pointer-events-auto absolute h-2 min-w-0.5 rounded-[1px] opacity-[.78] transition-[left,opacity] duration-180 hover:shadow-[0_0_0_1px_var(--tj-bg-2),0_0_0_3px_color-mix(in_srgb,var(--tj-select)_80%,transparent)]',
             record.error ? 'bg-(--tj-span-error)' : SPAN_COLOR[record.kind],
-            current && 'shadow-[0_0_0_2px_var(--tj-brand)]',
+            current && 'shadow-[0_0_0_2px_var(--tj-select)]',
             dim === 'range' && 'opacity-20',
             dim === 'search' && 'opacity-[.14]',
           )}

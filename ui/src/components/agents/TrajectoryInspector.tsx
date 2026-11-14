@@ -127,7 +127,7 @@ export function TrajectoryInspector({
   return (
     <aside
       aria-label="Inspector"
-      className="hairline-l relative flex w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] shrink-0 flex-col border-(--tj-border-2) bg-(--tj-bg-1) text-[13px] leading-5 max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:z-5 max-[760px]:max-w-none max-[760px]:shadow-xl"
+      className="hairline-l relative flex w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] shrink-0 flex-col border-(--tj-border-2) bg-(--tj-bg-1) text-[13px] leading-5 @max-[720px]/tjpane:absolute @max-[720px]/tjpane:inset-y-0 @max-[720px]/tjpane:right-0 @max-[720px]/tjpane:z-5 @max-[720px]/tjpane:max-w-[calc(100%-24px)] @max-[720px]/tjpane:shadow-xl"
       ref={panel}
       style={width === null ? undefined : { width }}
     >
@@ -548,11 +548,7 @@ function TabBody({
             <Timing record={record} />
           </Section>
         </>
-      ) : record.kind === 'system' ? (
-        <Section onOpen={() => onTab('Raw')} title="Raw">
-          <Payload text={json(record.events[0]?.payload ?? {})} />
-        </Section>
-      ) : (
+      ) : record.kind === 'system' ? null : (
         <>
           <Section onOpen={() => onTab('Preview')} title="Preview">
             <Preview record={record} />

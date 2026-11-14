@@ -226,7 +226,7 @@ export function TrajectoryTab({
         selected={selection?.type === 'record' ? selection.id : null}
         spans={spans}
       />
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <div className="@container/tjpane relative flex min-h-0 flex-1 overflow-hidden">
         <TrajectoryLedger
           activeTurn={activeTurn}
           focused={focused}
