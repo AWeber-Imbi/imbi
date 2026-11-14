@@ -50,6 +50,7 @@ import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import {
   conversationMarkdown,
   resolution,
+  taskAsk,
   turnFooter,
 } from './conversationMarkdown'
 import {
@@ -67,6 +68,7 @@ import {
 } from './conversationMode'
 import {
   entryKey,
+  hashSeqOf,
   type ProcessGroup,
   revealSeqOf,
   type Turn,
@@ -127,6 +129,9 @@ const ASK_PREVIEW = 600
 const FLASH_MS = 1600
 
 type RevealTarget = NonNullable<ReturnType<typeof turnForSeq>>
+
+/** While a search holds every row open, a fold click is not kept. */
+function ignoreFold() {}
 
 const MODES: ToolbarOption<ConversationMode>[] = [
   {
@@ -207,7 +212,7 @@ export function ConversationTab({
       mode: searching ? 'verbose' : mode,
       orgSlug,
       requests,
-      setOpen,
+      setOpen: searching ? ignoreFold : setOpen,
       task,
     }),
     [isOpen, mode, orgSlug, requests, searching, setOpen, task],
@@ -222,6 +227,7 @@ export function ConversationTab({
     if (searching && !shown.includes(target.turn)) setQuery('')
     if (canCollapseTurn(target.turn)) setOpen(target.turn.id, true)
     if (target.group) setOpen(target.group, true)
+    for (const key of target.calls) setOpen(key, true)
     setFlash({ id: target.turn.id })
   }
 
@@ -457,9 +463,10 @@ function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
 }
 
 /**
- * Shows the turn another view asked for through the router state: the
- * turn that holds that event opens, scrolls into view, and flashes. The
- * state is cleared, so a reload or Back does not show it again.
+ * Shows the turn another view asked for through the router state, or an
+ * `#e<seq>` permalink asked for: the turn that holds that event opens,
+ * scrolls into view, and flashes. The state and the permalink are
+ * cleared, so a reload or Back does not show it again.
  */
 function RevealTurn({
   list,
@@ -471,7 +478,7 @@ function RevealTurn({
   const location = useLocation()
   const navigate = useNavigate()
   const { scrollToMessage } = useMessageScroller()
-  const seq = revealSeqOf(location.state)
+  const seq = revealSeqOf(location.state) ?? hashSeqOf(location.hash)
   const handled = useRef<null | string>(null)
   const [target, setTarget] = useState<null | { id: string }>(null)
 
@@ -483,7 +490,10 @@ function RevealTurn({
     onReveal(found)
     setTarget({ id: found.turn.id })
     const { hash, pathname, search } = location
-    navigate({ hash, pathname, search }, { replace: true, state: null })
+    navigate(
+      { hash: hashSeqOf(hash) === null ? hash : '', pathname, search },
+      { replace: true, state: null },
+    )
   }, [list, location, navigate, onReveal, seq])
 
   useEffect(() => {
@@ -522,13 +532,8 @@ function TaskAsk({
   const actorName = useActorName(ctx.orgSlug)
   const [all, setAll] = useState(false)
   const { task } = ctx
-  const body = (task.description || task.title || '').trim()
-  const said = first?.opening.some(
-    (entry) =>
-      entry.event?.actor_kind === 'human' &&
-      String(entry.event.payload.body ?? '').trim() === body,
-  )
-  if (!body || said) return null
+  const body = taskAsk(task, first)
+  if (!body) return null
   const source = TRIGGERS[task.origin.kind].label
   const long = body.length > ASK_PREVIEW && !reveal
   return (

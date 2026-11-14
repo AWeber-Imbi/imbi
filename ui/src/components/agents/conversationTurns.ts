@@ -75,6 +75,12 @@ export function entryKey(entry: TimelineEntry): string {
   return entry.parentOf ? `call:${entry.parentOf}` : entry.id
 }
 
+/** The event seq of an `#e<seq>` permalink, if the hash is one. */
+export function hashSeqOf(hash: string): null | number {
+  const match = /^#e(\d+)$/.exec(hash)
+  return match ? Number(match[1]) : null
+}
+
 /** The event seq a view asked the conversation to show, if any. */
 export function revealSeqOf(state: unknown): null | number {
   if (!state || typeof state !== 'object' || !('revealSeq' in state))
@@ -85,32 +91,35 @@ export function revealSeqOf(state: unknown): null | number {
 
 /**
  * Where an event shows in the conversation: the turn that holds it, with
- * a subagent's events in the turn of their Agent call, and the work group
- * it sits in. An event the conversation leaves out, such as a usage
+ * a subagent's events in the turn of their Agent call, the work group it
+ * sits in, and the keys of the calls it is nested in. An event the conversation leaves out, such as a usage
  * report, belongs to the last turn that started before it, and one from
  * before every turn, such as the task's creation, to the first turn.
  */
 export function turnForSeq(
   list: Turn[],
   seq: number,
-): null | { group: null | string; turn: Turn } {
+): null | { calls: string[]; group: null | string; turn: Turn } {
   let before: Turn | undefined = list[0]
   for (const turn of list) {
     if (turn.opening.flatMap(eventsOf).some((e) => seqOf(e) === seq))
-      return { group: null, turn }
+      return { calls: [], group: null, turn }
     for (const item of turn.items)
-      if (
-        entriesOf([item])
-          .flatMap(eventsOf)
-          .some((e) => seqOf(e) === seq)
-      )
-        return { group: item.kind === 'group' ? item.id : null, turn }
+      for (const entry of entriesOf([item])) {
+        const path = pathTo(entry, seq)
+        if (path)
+          return {
+            calls: path.slice(0, -1).map(entryKey),
+            group: item.kind === 'group' ? item.id : null,
+            turn,
+          }
+      }
     const seqs = [...turn.opening, ...entriesOf(turn.items)]
       .flatMap(eventsOf)
       .map(seqOf)
     if (seqs.length && Math.min(...seqs) <= seq) before = turn
   }
-  return before ? { group: null, turn: before } : null
+  return before ? { calls: [], group: null, turn: before } : null
 }
 
 /**
@@ -220,6 +229,15 @@ function newTurn(opening: TimelineEntry[], first: TimelineEntry): Turn {
     status: 'done',
     steered: false,
   }
+}
+
+function pathTo(entry: TimelineEntry, seq: number): null | TimelineEntry[] {
+  if (seqOf(entry) === seq) return [entry]
+  for (const child of entry.children) {
+    const path = pathTo(child, seq)
+    if (path) return [entry, ...path]
+  }
+  return null
 }
 
 /** A call entry takes its first child's seq; match on its own event's. */

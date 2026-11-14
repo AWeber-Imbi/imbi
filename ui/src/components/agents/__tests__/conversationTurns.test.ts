@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { revealSeqOf, type Turn, turnForSeq, turns } from '../conversationTurns'
+import {
+  entryKey,
+  hashSeqOf,
+  revealSeqOf,
+  type Turn,
+  turnForSeq,
+  turns,
+} from '../conversationTurns'
 import { timeline } from '../taskTimeline'
 import { event } from './taskFixtures'
 
@@ -236,15 +243,31 @@ describe('turnForSeq', () => {
 
   it('finds the turn and the work group that hold an event', () => {
     expect(turnForSeq(list, 7)).toEqual({
+      calls: [],
       group: list[1].items[0].id,
       turn: list[1],
     })
-    expect(turnForSeq(list, 6)).toEqual({ group: null, turn: list[1] })
-    expect(turnForSeq(list, 5)).toEqual({ group: null, turn: list[0] })
+    expect(turnForSeq(list, 6)).toEqual({
+      calls: [],
+      group: null,
+      turn: list[1],
+    })
+    expect(turnForSeq(list, 5)).toEqual({
+      calls: [],
+      group: null,
+      turn: list[0],
+    })
   })
 
   it('shows a subagent event in the turn of its Agent call', () => {
+    const group = list[0].items[0]
+    const call =
+      group.kind === 'group'
+        ? group.entries.find((e) => e.children.length)
+        : undefined
+    expect(call).toBeDefined()
     expect(turnForSeq(list, 2)).toEqual({
+      calls: [call && entryKey(call)],
       group: list[0].items[0].id,
       turn: list[0],
     })
@@ -252,6 +275,7 @@ describe('turnForSeq', () => {
 
   it('finds an Agent call by its own seq, after its subagent events', () => {
     expect(turnForSeq(list, 4)).toEqual({
+      calls: [],
       group: list[0].items[0].id,
       turn: list[0],
     })
@@ -263,11 +287,21 @@ describe('turnForSeq', () => {
   })
 
   it('puts an event from before every turn in the first turn', () => {
-    expect(turnForSeq(list, 0)).toEqual({ group: null, turn: list[0] })
+    expect(turnForSeq(list, 0)).toEqual({
+      calls: [],
+      group: null,
+      turn: list[0],
+    })
   })
 
   it('finds nothing without a turn', () => {
     expect(turnForSeq([], 1)).toBeNull()
+  })
+
+  it('reads the seq of an event permalink', () => {
+    expect(hashSeqOf('#e42')).toBe(42)
+    expect(hashSeqOf('#top')).toBeNull()
+    expect(hashSeqOf('')).toBeNull()
   })
 })
 

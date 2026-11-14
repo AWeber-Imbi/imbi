@@ -6,6 +6,7 @@ import type { AgentTask } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
 import { ConversationTab } from '../ConversationTab'
+import { TaskSearchProvider } from '../taskSearch'
 import { event, task } from './taskFixtures'
 
 vi.mock('@/hooks/useHasPermission', () => ({
@@ -160,6 +161,41 @@ describe('ConversationTab', () => {
       renderTab('closed', TWO)
       expect(flashed()).toBeNull()
     })
+
+    it('flashes the turn of an event permalink and clears it', () => {
+      window.history.replaceState(null, '', '/#e6')
+      renderTab('closed', TWO)
+      expect(flashed()).toHaveTextContent('now test it')
+      expect(window.location.hash).toBe('')
+    })
+
+    it('opens the Agent call that holds a subagent event', () => {
+      window.history.replaceState(
+        { idx: 0, key: 'reveal', usr: { revealSeq: 2 } },
+        '',
+        '/',
+      )
+      renderTab('closed', [
+        LOG[0],
+        event(2, 'tool.called', {
+          arguments: { command: 'ls' },
+          call_id: 'c2',
+          parent_call_id: 'task-1',
+          result: 'a.py',
+          tool: 'Bash',
+        }),
+        event(3, 'tool.called', {
+          arguments: { description: 'look', subagent_type: 'search' },
+          call_id: 'task-1',
+          result: 'Found it.',
+          tool: 'Task',
+        }),
+        event(4, 'turn', { body: 'fixed' }),
+      ])
+      expect(
+        screen.getByRole('button', { name: /Bash ls/ }),
+      ).toBeInTheDocument()
+    })
   })
 
   it('keeps a turn the reader opened open across a mode change', async () => {
@@ -217,7 +253,9 @@ describe('ConversationTab', () => {
     await user.click(screen.getByRole('button', { name: /^Copy/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Copy as Markdown' }))
     expect(writeText).toHaveBeenCalledWith(
-      expect.stringMatching(/^# Fix the build\n/),
+      expect.stringMatching(
+        /^# Fix the build\n\n> Find why the build fails\.\n/,
+      ),
     )
     expect(
       await screen.findByRole('button', { name: /Copied Markdown/ }),
@@ -454,6 +492,54 @@ describe('ConversationTab', () => {
     expect(screen.queryByText('No matches')).toBeNull()
     expect(screen.getByText('Find why the build fails.')).toBeInTheDocument()
     expect(screen.getByText('fixed')).toBeInTheDocument()
+  })
+
+  it('keeps no fold click made while a search holds rows open', async () => {
+    const user = userEvent.setup()
+    renderTab('closed')
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    const box = screen.getByRole('searchbox', { name: 'Search conversation' })
+    await user.type(box, 'make')
+    await user.click(screen.getByRole('button', { name: /Ran a command/ }))
+    await user.clear(box)
+    expect(
+      screen.getByRole('button', { name: /Bash make test/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the cut part of an output a search matches', async () => {
+    const user = userEvent.setup()
+    const result = Array.from({ length: 60 }, (_, i) =>
+      i === 50 ? 'the hidden clue' : `line ${i}`,
+    ).join('\n')
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <TaskSearchProvider>
+        <div className="flex h-150 flex-col">
+          <ConversationTab
+            events={[
+              LOG[0],
+              event(2, 'tool.called', {
+                arguments: { command: 'make test' },
+                call_id: 'c2',
+                result,
+                tool: 'Bash',
+              }),
+              event(3, 'turn', { body: 'fixed' }),
+            ]}
+            orgSlug="acme"
+            requests={[]}
+            task={t}
+          />
+        </div>
+      </TaskSearchProvider>,
+    )
+    expect(screen.queryByText(/the hidden clue/)).toBeNull()
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search conversation' }),
+      'hidden clue',
+    )
+    expect(screen.getByText(/the hidden clue/)).toBeInTheDocument()
   })
 
   it('keeps the ask when only the ask matches the search', async () => {

@@ -7,17 +7,22 @@ import { systemText } from './taskText'
 import { isError, type TimelineEntry } from './taskTimeline'
 import { isRecord, toolLabel, toolSummary } from './toolCalls'
 
+interface TaskText {
+  description?: null | string
+  title?: null | string
+}
+
 /**
- * The loaded conversation as Markdown: the person's messages as quotes,
- * the calls as a list, the replies as they are. Thinking is left out.
+ * The loaded conversation as Markdown: what started the task and the
+ * person's messages as quotes, the calls as a list, the replies as they
+ * are. Thinking is left out.
  */
-export function conversationMarkdown(
-  task: { description?: string; title?: null | string },
-  list: Turn[],
-): string {
+export function conversationMarkdown(task: TaskText, list: Turn[]): string {
   const heading =
     task.title || (task.description ?? '').split('\n')[0] || 'Conversation'
   const blocks = [`# ${heading}`]
+  const ask = taskAsk(task, list[0])
+  if (ask && ask !== heading) blocks.push(quoteText(ask))
   list.forEach((turn, i) => {
     blocks.push(`## Turn ${i + 1}`)
     for (const entry of turn.opening) blocks.push(quote(entry))
@@ -60,6 +65,17 @@ export function resolution(e: AgentTaskEvent): {
       ? constraints.filter((c): c is string => typeof c === 'string')
       : [],
   }
+}
+
+/** What started the task, unless a person said it to open the first turn. */
+export function taskAsk(task: TaskText, first?: Turn): null | string {
+  const body = (task.description || task.title || '').trim()
+  const said = first?.opening.some(
+    (entry) =>
+      entry.event?.actor_kind === 'human' &&
+      String(entry.event.payload.body ?? '').trim() === body,
+  )
+  return body && !said ? body : null
 }
 
 /** `2m 4s · 5 tools · 1 failed · 12k tokens`, or null while it runs. */
@@ -107,12 +123,17 @@ function quote(entry: TimelineEntry): string {
       ? e.payload.body
       : systemText(e)
   const { answer, constraints } = resolution(e)
-  return [
-    body,
-    ...(answer ? [answer] : []),
-    ...constraints.map((c) => `- ${c}`),
-  ]
-    .join('\n')
+  return quoteText(
+    [
+      body,
+      ...(answer ? [answer] : []),
+      ...constraints.map((c) => `- ${c}`),
+    ].join('\n'),
+  )
+}
+
+function quoteText(text: string): string {
+  return text
     .split('\n')
     .map((line) => (line ? `> ${line}` : '>'))
     .join('\n')

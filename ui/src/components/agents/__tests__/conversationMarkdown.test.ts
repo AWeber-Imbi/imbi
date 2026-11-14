@@ -132,7 +132,27 @@ describe('conversationMarkdown', () => {
   it('falls back to the first description line', () => {
     expect(
       conversationMarkdown({ description: 'Do it\nnow', title: '' }, []),
-    ).toBe('# Do it\n')
+    ).toBe('# Do it\n\n> Do it\n> now\n')
+  })
+
+  it('quotes what started the task before the first turn', () => {
+    const out = conversationMarkdown(
+      { description: 'Review the API\nand report', title: 'Review' },
+      turns(timeline([bash(1, 'ls'), event(2, 'turn', { body: 'Done.' })]), {
+        live: false,
+      }),
+    )
+    expect(
+      out.startsWith('# Review\n\n> Review the API\n> and report\n\n## Turn 1'),
+    ).toBe(true)
+  })
+
+  it('does not repeat a request a person sent to open the task', () => {
+    const out = conversationMarkdown(
+      { description: 'fix it\nplease', title: 'T' },
+      turns(LOG, { live: false }),
+    )
+    expect(out.split('> fix it').length).toBe(2)
   })
 })
 

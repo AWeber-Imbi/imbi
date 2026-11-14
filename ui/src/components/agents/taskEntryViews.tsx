@@ -4,6 +4,7 @@ import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { cn } from '@/lib/utils'
 import type { AgentTaskEvent } from '@/types'
 
+import { matches, useTaskSearch } from './taskSearch'
 import { type Family, label, OUTPUT_LINES } from './toolCalls'
 
 interface OutputProps {
@@ -129,7 +130,8 @@ function Diff({ args }: { args: Record<string, unknown> }) {
       }),
     )
   })
-  const cut = !all && rows.length > OUTPUT_LINES
+  const hit = useSearchHit(rows.slice(OUTPUT_LINES).map((row) => row.text))
+  const cut = !all && !hit && rows.length > OUTPUT_LINES
   return (
     <>
       <div className="border-tertiary overflow-x-auto rounded-md border">
@@ -149,11 +151,15 @@ function Diff({ args }: { args: Record<string, unknown> }) {
   )
 }
 
-/** Output text, cut at {@link OUTPUT_LINES} until the reader asks. */
+/**
+ * Output text, cut at {@link OUTPUT_LINES} until the reader asks, or a
+ * search matches the part that is cut.
+ */
 function Output({ dark, error, text }: OutputProps) {
   const [all, setAll] = useState(false)
   const lines = text.split('\n')
-  const cut = !all && lines.length > OUTPUT_LINES
+  const hit = useSearchHit(lines.slice(OUTPUT_LINES))
+  const cut = !all && !hit && lines.length > OUTPUT_LINES
   return (
     <>
       <Pane dark={dark}>
@@ -212,5 +218,12 @@ function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
     >
       Show all {count} lines
     </button>
+  )
+}
+
+function useSearchHit(lines: string[]): boolean {
+  const [query] = useTaskSearch()
+  return (
+    query.trim() !== '' && lines.length > 0 && matches(lines.join('\n'), query)
   )
 }
