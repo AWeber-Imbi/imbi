@@ -82,6 +82,53 @@ describe('conversationMarkdown', () => {
     expect(md(false)).toContain('- `Subagent` did not finish\n')
   })
 
+  it('keeps a string argument as the call summary', () => {
+    const out = conversationMarkdown(
+      { title: 'T' },
+      turns(
+        timeline([
+          human(1, 'go'),
+          event(2, 'tool.called', {
+            arguments: 'raw input',
+            call_id: 'c2',
+            result: 'ok',
+            tool: 'mcp__x__y',
+          }),
+        ]),
+        { live: false },
+      ),
+    )
+    expect(out).toContain(' raw input\n')
+    expect(out).not.toContain('{}')
+  })
+
+  it('quotes what a person answered to a request', () => {
+    const out = conversationMarkdown(
+      { title: 'T' },
+      turns(
+        timeline([
+          human(1, 'go'),
+          event(2, 'turn', { body: 'Which database?' }),
+          event(
+            3,
+            'request.resolved',
+            {
+              answer: 'Staging',
+              constraints: ['No writes'],
+              kind: 'feedback',
+              request_id: 'r1',
+              resolved_by: 'dev',
+              status: 'answered',
+            },
+            { actor_id: 'dev', actor_kind: 'human' },
+          ),
+        ]),
+        { live: false },
+      ),
+    )
+    expect(out).toContain('> Staging\n> - No writes')
+  })
+
   it('falls back to the first description line', () => {
     expect(
       conversationMarkdown({ description: 'Do it\nnow', title: '' }, []),

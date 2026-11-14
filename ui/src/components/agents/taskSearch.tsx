@@ -23,6 +23,37 @@ export function matches(text: string, query: string): boolean {
   return !q || text.toLowerCase().includes(q)
 }
 
+/**
+ * Where the query occurs in the text, as [start, end) offsets into the
+ * text itself. Lowercasing can lengthen a character, as 'İ' becomes two
+ * code units, so the offsets are mapped back to the original.
+ */
+export function matchRanges(text: string, query: string): [number, number][] {
+  const q = query.toLowerCase()
+  if (!q) return []
+  let lowered = ''
+  const origin: number[] = []
+  let at = 0
+  for (const ch of text) {
+    const low = ch.toLowerCase()
+    for (let k = 0; k < low.length; k++) origin.push(at)
+    lowered += low
+    at += ch.length
+  }
+  origin.push(text.length)
+  const out: [number, number][] = []
+  for (
+    let i = lowered.indexOf(q);
+    i !== -1;
+    i = lowered.indexOf(q, i + q.length)
+  ) {
+    const start = origin[i]
+    const end = origin[i + q.length]
+    out.push([start, end > start ? end : Math.min(start + 1, text.length)])
+  }
+  return out
+}
+
 /** Keeps one search query for every view of a task, so it survives a tab switch. */
 export function TaskSearchProvider({ children }: { children: ReactNode }) {
   const state = useState('')
@@ -89,15 +120,11 @@ export function useSearchHighlight(
       const ranges: Range[] = []
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const text = (n.textContent ?? '').toLowerCase()
-        for (
-          let i = text.indexOf(q);
-          i !== -1 && ranges.length < MAX_MARKS;
-          i = text.indexOf(q, i + q.length)
-        ) {
+        for (const [start, end] of matchRanges(n.textContent ?? '', q)) {
+          if (ranges.length >= MAX_MARKS) break
           const range = new Range()
-          range.setStart(n, i)
-          range.setEnd(n, i + q.length)
+          range.setStart(n, start)
+          range.setEnd(n, end)
           ranges.push(range)
         }
       }

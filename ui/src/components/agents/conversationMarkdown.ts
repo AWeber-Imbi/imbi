@@ -1,3 +1,5 @@
+import type { AgentTaskEvent } from '@/types'
+
 import { elapsed } from './conversationMode'
 import type { Turn } from './conversationTurns'
 import { formatTokens } from './taskEvents'
@@ -46,6 +48,20 @@ export function conversationMarkdown(
   return `${blocks.map((b) => b.trimEnd()).join('\n\n')}\n`
 }
 
+/** What a person answered to a request: the answer, then each constraint. */
+export function resolution(e: AgentTaskEvent): {
+  answer: null | string
+  constraints: string[]
+} {
+  const { answer, constraints } = e.payload
+  return {
+    answer: typeof answer === 'string' && answer ? answer : null,
+    constraints: Array.isArray(constraints)
+      ? constraints.filter((c): c is string => typeof c === 'string')
+      : [],
+  }
+}
+
 /** `2m 4s · 5 tools · 1 failed · 12k tokens`, or null while it runs. */
 export function turnFooter(turn: Turn): null | string {
   if (turn.status === 'running') return null
@@ -66,9 +82,14 @@ function callLines(
   const e = entry.event
   if (e && e.type !== 'tool.called') return []
   const tool = e ? String(e.payload.tool ?? 'tool') : 'Task'
-  const args = isRecord(e?.payload.arguments) ? e.payload.arguments : {}
+  const raw = e?.payload.arguments
+  const args = isRecord(raw) ? raw : {}
   const pending = running ? 'running…' : 'did not finish'
-  const summary = e ? toolSummary(tool, args) : pending
+  const summary = !e
+    ? pending
+    : typeof raw === 'string'
+      ? raw.slice(0, 200)
+      : toolSummary(tool, args)
   const line = `${indent}- \`${toolLabel(tool)}\` ${summary}`.trimEnd()
   return [
     isError(entry) ? `${line} — failed` : line,
@@ -85,7 +106,13 @@ function quote(entry: TimelineEntry): string {
     typeof e.payload.body === 'string' && e.payload.body
       ? e.payload.body
       : systemText(e)
-  return body
+  const { answer, constraints } = resolution(e)
+  return [
+    body,
+    ...(answer ? [answer] : []),
+    ...constraints.map((c) => `- ${c}`),
+  ]
+    .join('\n')
     .split('\n')
     .map((line) => (line ? `> ${line}` : '>'))
     .join('\n')

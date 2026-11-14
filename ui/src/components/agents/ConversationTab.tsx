@@ -43,7 +43,11 @@ import {
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
-import { conversationMarkdown, turnFooter } from './conversationMarkdown'
+import {
+  conversationMarkdown,
+  resolution,
+  turnFooter,
+} from './conversationMarkdown'
 import {
   canCollapseTurn,
   type ConversationMode,
@@ -372,14 +376,20 @@ function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
     typeof e.payload.body === 'string' && e.payload.body
       ? e.payload.body
       : systemText(e)
+  const { answer, constraints } = resolution(e)
   return (
     <Message align="end">
       <MessageContent>
         <MessageHeader>{actorName(e.actor_id)}</MessageHeader>
         <div className="bg-secondary max-w-[85%] self-end rounded-xl px-3.5 py-2.5">
           <Prose>{body}</Prose>
-          {typeof e.payload.decision === 'string' && (
-            <p className="text-secondary mt-1 text-sm">{e.payload.decision}</p>
+          {answer && <Prose>{answer}</Prose>}
+          {constraints.length > 0 && (
+            <ul className="text-secondary mt-1 list-disc pl-5 text-sm">
+              {constraints.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
           )}
         </div>
       </MessageContent>
@@ -408,6 +418,13 @@ function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
       </TraceLine>
     </Trace>
   )
+}
+
+function searchText(entry: TimelineEntry): string {
+  return [
+    ...values(entry.event?.payload ?? {}),
+    ...entry.children.map(searchText),
+  ].join(' ')
 }
 
 /** What started the task, as the first message, unless a person already said it. */
@@ -488,11 +505,21 @@ function TurnHeader({
   )
 }
 
+/** The turn as Markdown plus every value its events hold, for search. */
 function turnText(turn: Turn): string {
-  return conversationMarkdown({ title: 'x' }, [turn]).replace(
-    /^# x\s+## Turn 1\s+/,
-    '',
-  )
+  const entries = [
+    ...turn.opening,
+    ...turn.items.flatMap((item) =>
+      item.kind === 'group' ? item.entries : [item.entry],
+    ),
+  ]
+  return [
+    conversationMarkdown({ title: 'x' }, [turn]).replace(
+      /^# x\s+## Turn 1\s+/,
+      '',
+    ),
+    ...entries.map(searchText),
+  ].join(' ')
 }
 
 function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
@@ -559,6 +586,15 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
       </div>
     </MessageScrollerItem>
   )
+}
+
+function values(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (typeof value === 'number') return [String(value)]
+  if (Array.isArray(value)) return value.flatMap(values)
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(values)
+  return []
 }
 
 /** One step inside a process group: a call, a thought, a plan, a note. */

@@ -362,4 +362,39 @@ describe('ConversationTab', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()
   })
+
+  it.each(['tests passed', 'Looking at the build'])(
+    'finds a turn by text only its work holds: %s',
+    async (text) => {
+      const user = userEvent.setup()
+      renderTab('closed')
+      await user.type(
+        screen.getByRole('searchbox', { name: 'Search conversation' }),
+        text,
+      )
+      expect(screen.queryByText(/No turns match/)).toBeNull()
+      expect(screen.getByText('fixed')).toBeInTheDocument()
+    },
+  )
+
+  it('shows what a person answered to a request', () => {
+    renderTab('closed', [
+      ...LOG,
+      event(
+        5,
+        'request.resolved',
+        {
+          answer: 'Use the staging database',
+          constraints: ['No writes'],
+          kind: 'feedback',
+          request_id: 'r1',
+          resolved_by: 'dev',
+          status: 'answered',
+        },
+        { actor_id: 'dev', actor_kind: 'human' },
+      ),
+    ])
+    expect(screen.getByText('Use the staging database')).toBeInTheDocument()
+    expect(screen.getByText('No writes')).toBeInTheDocument()
+  })
 })
