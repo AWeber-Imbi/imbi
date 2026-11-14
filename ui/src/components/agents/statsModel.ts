@@ -139,7 +139,7 @@ export function taskStatistics(
       output: plus(totals.output, (u) => u.output),
       steps: all.length,
       subrequests: all.reduce((n, s) => n + s.subrequests, 0),
-      totalMs: totals.modelMs + totals.toolMs,
+      totalMs: turns.reduce((n, turn) => n + (turn.totalMs ?? 0), 0),
       turns: turns.length,
     },
     turns,

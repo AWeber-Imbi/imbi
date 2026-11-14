@@ -284,7 +284,7 @@ export function StatisticsTab({
               <TableRow className="hover:bg-transparent">
                 <TableCell
                   className="font-medium whitespace-nowrap"
-                  title="Totals for the whole task, subagent tokens included. Total time is model time + tool time, without the gaps between turns."
+                  title="Totals for the whole task, subagent tokens included. Total time adds up the time of each turn, without the gaps between turns."
                 >
                   Task total
                 </TableCell>

@@ -206,6 +206,17 @@ describe('taskStatistics', () => {
     expect(totals.totalMs).toBe(4000)
   })
 
+  it('times the task total on the clock when tools run in parallel', () => {
+    const parallel: Trajectory = {
+      ...TRAJECTORY,
+      records: [...TRAJECTORY.records, { ...TRAJECTORY.records[2], id: 't2' }],
+    }
+    const { totals, turns } = taskStatistics(t, parallel, 'latest')
+    expect(totals.toolMs).toBe(2000)
+    expect(turns[0].totalMs).toBe(4000)
+    expect(totals.totalMs).toBe(4000)
+  })
+
   it('measures model time from the model, not its tool calls', () => {
     const trajectory = buildTrajectory(LOG, false)
     const { totals, turns } = taskStatistics(t, trajectory, 'latest')
