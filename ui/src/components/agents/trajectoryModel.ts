@@ -19,6 +19,8 @@ export interface Folds {
 export interface Trajectory {
   records: TrajectoryRecord[]
   requests: TrajectoryRequest[]
+  /** The model requests of subagents; they are not steps of a turn. */
+  subrequests: TrajectorySubrequest[]
   turns: TrajectoryTurn[]
 }
 
@@ -77,6 +79,15 @@ export interface TrajectorySpan {
   start: number
 }
 
+export interface TrajectorySubrequest {
+  /** The call id of the Agent call whose subagent made the request. */
+  agent: string
+  /** The request that made the Agent call, once the call is logged. */
+  request: null | number
+  turn: null | number
+  usage: AgentTaskEvent
+}
+
 export interface TrajectoryTool {
   args: string
   arguments: unknown
@@ -115,7 +126,9 @@ const LANE: Record<TrajectoryKind, 0 | 1 | 2> = {
 /**
  * The trajectory of a task log. The brief and each human turn start a
  * turn. A `usage.reported` opens a model request, and the agent turns
- * and tool calls after it belong to that request.
+ * and tool calls after it belong to that request. A usage report whose
+ * `message_id` names subagent events is a subrequest of their Agent
+ * call instead.
  */
 export function buildTrajectory(
   events: AgentTaskEvent[],
@@ -124,6 +137,7 @@ export function buildTrajectory(
   const records: TrajectoryRecord[] = []
   const requests: TrajectoryRequest[] = []
   const byId = new Map<string, TrajectoryRecord>()
+  const { main, sub } = splitUsage(events)
   const state = {
     current: null as null | TrajectoryRequest,
     lastEnd: null as null | number,
@@ -183,7 +197,7 @@ export function buildTrajectory(
     return request
   }
 
-  for (const entry of timeline(events, () => true)) {
+  for (const entry of timeline(main, () => true)) {
     const e = entry.event
     if (e?.type === 'usage.reported') {
       open(e, e.seq)
@@ -246,7 +260,19 @@ export function buildTrajectory(
       byId,
       live && request === requests[requests.length - 1],
     )
-  return { records, requests, turns: turnsOf(records) }
+  const callOf = new Map(
+    records.flatMap((r) => (r.tool?.callId ? [[r.tool.callId, r]] : [])),
+  )
+  const subrequests = sub.map(({ agent, usage }) => {
+    const call = callOf.get(agent)
+    return {
+      agent,
+      request: call?.request ?? null,
+      turn: call?.turn ?? null,
+      usage,
+    }
+  })
+  return { records, requests, subrequests, turns: turnsOf(records) }
 }
 
 /** The turns, assistants or tools that a fold button folds. */
@@ -542,6 +568,41 @@ function searchText(record: TrajectoryRecord): string {
         String(e.payload.body ?? ''),
       )
   return parts.join(' ').toLowerCase()
+}
+
+/**
+ * Take out the usage reports of subagents. A report's `message_id`
+ * joins it to the events of the same model reply, and their
+ * `parent_call_id` names the Agent call. A report with no
+ * `message_id`, or none that joins, stays in `main`.
+ */
+function splitUsage(events: AgentTaskEvent[]): {
+  main: AgentTaskEvent[]
+  sub: { agent: string; usage: AgentTaskEvent }[]
+} {
+  const agentOf = new Map<string, string>()
+  for (const e of events) {
+    const id = e.payload.message_id
+    const parent = e.payload.parent_call_id
+    if (
+      e.type !== 'usage.reported' &&
+      typeof id === 'string' &&
+      typeof parent === 'string'
+    )
+      agentOf.set(id, parent)
+  }
+  const main: AgentTaskEvent[] = []
+  const sub: { agent: string; usage: AgentTaskEvent }[] = []
+  for (const e of events) {
+    const id = e.payload.message_id
+    const agent =
+      e.type === 'usage.reported' && typeof id === 'string'
+        ? agentOf.get(id)
+        : undefined
+    if (agent) sub.push({ agent, usage: e })
+    else main.push(e)
+  }
+  return { main, sub }
 }
 
 /** The subagent tool calls under a call, flattened in start order. */

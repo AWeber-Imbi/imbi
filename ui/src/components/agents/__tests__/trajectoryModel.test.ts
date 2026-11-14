@@ -154,7 +154,81 @@ describe('buildTrajectory', () => {
     expect(t.records[3].parent).toBe(t.records[2].id)
     expect(t.requests[0].subtoolCalls).toBe(1)
   })
+
+  it('joins subagent usage to its Agent call by message id', () => {
+    const t = buildTrajectory(subagentLog(true), false)
+    expect(
+      t.requests.map((r) => [r.number, r.turn, r.step, r.toolCalls]),
+    ).toEqual([
+      [1, 1, 1, 1],
+      [2, 1, 2, 0],
+    ])
+    expect(t.records.filter((r) => r.kind === 'assistant')[0].text).toBe(
+      'I will ask a reviewer',
+    )
+    expect(
+      t.subrequests.map((s) => [s.agent, s.request, s.turn, s.usage.seq]),
+    ).toEqual([
+      ['c1', 1, 1, 3],
+      ['c1', 1, 1, 6],
+    ])
+    expect(t.turns[0].steps).toBe(2)
+  })
+
+  it('keeps usage without a message id as a request of its own', () => {
+    const t = buildTrajectory(subagentLog(false), false)
+    expect(t.requests).toHaveLength(4)
+    expect(t.subrequests).toEqual([])
+  })
+
+  it('keeps main-agent usage with a message id in the main requests', () => {
+    const t = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+        event(3, 'turn', { body: 'Hi', kind: 'text', message_id: 'm1' }),
+      ],
+      false,
+    )
+    expect(t.requests).toHaveLength(1)
+    expect(t.subrequests).toEqual([])
+  })
 })
+
+/**
+ * The main agent calls a subagent. The proxy reports each model call
+ * before the harness writes the events of the reply, so the subagent's
+ * first usage report comes before the main agent's own text turn.
+ */
+function subagentLog(withIds: boolean) {
+  const id = (message_id: string) => (withIds ? { message_id } : {})
+  return [
+    event(1, 'task.created', { title: 'T' }),
+    event(2, 'usage.reported', { tokens_in: 900, ...id('m1') }),
+    event(3, 'usage.reported', { tokens_in: 50, ...id('s1') }),
+    event(4, 'turn', {
+      body: 'I will ask a reviewer',
+      kind: 'text',
+      ...id('m1'),
+    }),
+    event(5, 'tool.called', {
+      call_id: 'r1',
+      parent_call_id: 'c1',
+      tool: 'Read',
+      ...id('s1'),
+    }),
+    event(6, 'usage.reported', { tokens_in: 60, ...id('s2') }),
+    event(7, 'turn', {
+      body: 'Looks fine',
+      kind: 'text',
+      parent_call_id: 'c1',
+      ...id('s2'),
+    }),
+    event(8, 'tool.called', { call_id: 'c1', tool: 'Agent', ...id('m1') }),
+    event(9, 'usage.reported', { tokens_in: 1000, ...id('m2') }),
+    event(10, 'turn', { body: 'Done', kind: 'text', ...id('m2') }),
+  ]
+}
 
 describe('rowsOf', () => {
   it('folds a turn to its first row and a summary', () => {
