@@ -554,6 +554,30 @@ describe('TrajectoryTab overview', () => {
     expect(rows()[0]).not.toHaveAttribute('data-timeline-focus')
   })
 
+  it('scrolls to a range once, not again when a live event arrives', () => {
+    const scrollTo = vi.fn()
+    const original = Element.prototype.scrollTo
+    Element.prototype.scrollTo = scrollTo
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const ui = (events: typeof LOG) => (
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={events} task={t} />
+      </div>
+    )
+    try {
+      const view = render(ui(LOG))
+      fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
+      fireEvent.pointerUp(track(), { button: 0, clientX: 0 })
+      expect(rows()[0]).toHaveAttribute('data-timeline-focus', 'inside')
+      expect(scrollTo).toHaveBeenCalledTimes(1)
+      view.rerender(ui([...LOG, event(12, 'session.closed', {})]))
+      expect(rows()[rows().length - 1].dataset.kind).toBe('system')
+      expect(scrollTo).toHaveBeenCalledTimes(1)
+    } finally {
+      Element.prototype.scrollTo = original
+    }
+  })
+
   it('dims the spans that do not match the search', async () => {
     renderTab()
     await userEvent.type(
@@ -813,6 +837,31 @@ describe('TrajectoryTab inspector', () => {
     expect(inspector().style.width).toBe('384px')
     await userEvent.dblClick(handle)
     expect(inspector().style.width).toBe('')
+  })
+
+  it('stops resizing when the pointer is cancelled', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    const handle = within(inspector()).getByRole('separator', {
+      name: 'Resize inspector',
+    })
+    vi.spyOn(inspector(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 400,
+      toJSON: () => ({}),
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+    })
+    fireEvent.pointerDown(handle, { button: 0, clientX: 500 })
+    fireEvent.pointerMove(window, { clientX: 480 })
+    expect(inspector().style.width).toBe('420px')
+    fireEvent.pointerCancel(window)
+    fireEvent.pointerMove(window, { clientX: 440 })
+    expect(inspector().style.width).toBe('420px')
   })
 })
 

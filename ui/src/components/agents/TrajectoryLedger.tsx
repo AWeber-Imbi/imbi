@@ -156,7 +156,11 @@ export function TrajectoryLedger({
     row?.scrollIntoView?.({ block: 'nearest' })
   }, [scrollTo])
 
+  const centred = useRef('')
   useEffect(() => {
+    const key = focused ? [...focused].join(' ') : ''
+    if (key === centred.current) return
+    centred.current = key
     const el = pane.current
     if (!focused || !el) return
     const inside = [
