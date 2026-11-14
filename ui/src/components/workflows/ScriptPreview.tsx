@@ -45,6 +45,7 @@ export function ScriptPreview({
       >
         <Textarea
           className="font-mono text-xs"
+          disabled={run.isPending}
           id={id}
           onChange={(e) => {
             setSample(e.target.value)
