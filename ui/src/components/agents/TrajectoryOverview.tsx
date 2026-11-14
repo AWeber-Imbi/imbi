@@ -133,10 +133,13 @@ export function TrajectoryOverview({
     return () => el.removeEventListener('wheel', onWheel)
   }, [full, mode])
 
+  const revealed = useRef<null | string>(null)
   useEffect(() => {
-    if (!view || !selected) return
+    if (!selected) revealed.current = null
+    if (!view || !selected || revealed.current === selected) return
     const span = spans.find((s) => s.id === selected)
     if (!span) return
+    revealed.current = selected
     const viewEnd = view.start + view.size
     const fits = span.end - span.start <= view.size
     if (fits && span.start >= view.start && span.end <= viewEnd) return

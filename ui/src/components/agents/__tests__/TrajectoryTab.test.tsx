@@ -371,6 +371,10 @@ describe('TrajectoryTab toolbar', () => {
   })
 })
 
+function leftOf(bar: HTMLElement) {
+  return Number(/calc\((-?[\d.]+)%/.exec(bar.getAttribute('style') ?? '')?.[1])
+}
+
 function spanBars() {
   return [...track().querySelectorAll<HTMLElement>('[data-span]')]
 }
@@ -410,6 +414,29 @@ describe('TrajectoryTab overview', () => {
       error.mock.calls.some((c) => String(c[0]).includes('Maximum update')),
     ).toBe(false)
     error.mockRestore()
+  })
+
+  it('keeps a manual pan away from the selected span', async () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    await userEvent.click(rows()[0])
+    fireEvent.wheel(track(), { clientX: 0, deltaY: -2000 })
+    expect(leftOf(spanBars()[0])).toBe(0)
+    fireEvent.pointerDown(track(), { button: 2, clientX: 900 })
+    fireEvent.pointerMove(track(), { button: 2, clientX: 0 })
+    fireEvent.pointerUp(track(), { button: 2, clientX: 0 })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(leftOf(spanBars()[0])).toBe(-100)
   })
 
   it('selects a record when its span is clicked', () => {

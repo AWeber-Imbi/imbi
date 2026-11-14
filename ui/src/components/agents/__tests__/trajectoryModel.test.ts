@@ -193,6 +193,25 @@ describe('rowsOf', () => {
   })
 })
 
+describe('rowsOf search', () => {
+  it('finds a user message by text past its preview', () => {
+    const long = `${'a '.repeat(300)}unique-marker`
+    const t = buildTrajectory(
+      [
+        event(1, 'task.created', { description: long, title: 'T' }),
+        event(2, 'turn', { body: `${'b '.repeat(300)}later-marker` }, human),
+      ],
+      false,
+    )
+    const ids = (q: string) =>
+      rowsOf(t, none(), q).flatMap((r) =>
+        r.kind === 'record' ? [r.record.kind] : [],
+      )
+    expect(ids('unique-marker')).toEqual(['user'])
+    expect(ids('later-marker')).toEqual(['user'])
+  })
+})
+
 describe('foldKeys', () => {
   it('lists the turns, assistants and tools a button folds', () => {
     const t = buildTrajectory(log(), false)
