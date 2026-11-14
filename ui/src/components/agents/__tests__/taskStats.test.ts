@@ -98,7 +98,6 @@ describe('taskActivity', () => {
     expect(a.toolMs).toBe(1500)
     expect(a.toolCalls).toBe(2)
     expect(a.failedCalls).toBe(1)
-    expect(a.wallMs).toBe(3500)
     expect(a.outputPerSecond).toBe(50)
   })
 

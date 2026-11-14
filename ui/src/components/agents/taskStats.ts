@@ -20,7 +20,6 @@ export interface TaskActivity {
   toolCalls: number
   toolMs: number
   turns: number
-  wallMs: null | number
 }
 
 export interface TaskStats {
@@ -47,9 +46,6 @@ export function taskActivity(
     .filter((r) => r.kind === 'assistant')
     .reduce((n, r) => n + span(r.startedAt, r.endedAt), 0)
   const tools = trajectory.records.filter((r) => r.kind === 'tool')
-  const times = trajectory.records
-    .flatMap((r) => [r.startedAt, r.endedAt])
-    .filter((t): t is number => t !== null)
   const timed = trajectory.subrequests.length
     ? trajectory.requests.reduce(
         (n, r) => n + num(r.usage?.payload.tokens_out),
@@ -64,7 +60,6 @@ export function taskActivity(
     toolCalls: tools.length,
     toolMs: tools.reduce((n, r) => n + span(r.startedAt, r.endedAt), 0),
     turns: trajectory.turns.length,
-    wallMs: times.length > 1 ? Math.max(...times) - Math.min(...times) : null,
   }
 }
 
