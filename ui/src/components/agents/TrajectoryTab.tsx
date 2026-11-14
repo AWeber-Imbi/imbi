@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -138,7 +145,7 @@ export function TrajectoryTab({
     }),
     [trajectory],
   )
-  useEffect(() => {
+  useLayoutEffect(() => {
     const fresh = emptyFolds()
     let any = false
     for (const button of FOLD_BUTTONS) {
@@ -163,9 +170,7 @@ export function TrajectoryTab({
 
   const folded = Object.fromEntries(
     (['turns', 'calls', 'subcalls'] as const).map((button) => {
-      const set = folds[button] as Set<number | string>
-      const list = keys[button]
-      return [button, list.length ? list.every((k) => set.has(k)) : null]
+      return [button, keys[button].length ? foldPrefs.includes(button) : null]
     }),
   ) as Record<FoldButton, boolean | null>
 

@@ -260,6 +260,45 @@ describe('Tasks', () => {
     }
   })
 
+  it('names the remembered tab in the address', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.task.tab' ? '"trajectory"' : null,
+    )
+    try {
+      renderAt('/agents/tasks/acme/T-3')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('sends an event link with no tab to the Trajectory', async () => {
+    renderAt('/agents/tasks/acme/T-3#e6')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(
+        '/agents/tasks/acme/T-3/trajectory',
+      ),
+    )
+    expect(window.location.hash).toBe('#e6')
+  })
+
+  it('remembers the view an old Actions link opens', async () => {
+    renderAt('/agents/tasks/acme/T-3/actions')
+    await screen.findByRole('tab', { name: /^Activity/, selected: true })
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'imbi.task.tab',
+      '"conversation"',
+    )
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'imbi.task.view',
+      '"conversation"',
+    )
+  })
+
   it('remembers the tab a task was opened on', async () => {
     renderAt('/agents/tasks/acme/T-3/trajectory')
     await screen.findByRole('tab', { name: /^Activity/, selected: true })
@@ -946,7 +985,7 @@ describe('Tasks', () => {
       }),
     )
     await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9'),
+      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9/overview'),
     )
   })
 })

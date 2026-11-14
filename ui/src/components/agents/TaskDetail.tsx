@@ -126,8 +126,9 @@ export function TaskDetail({
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
   useEffect(() => {
-    if (isRouteKey(tab)) setLastTab(tab)
-    if (isActivityView(tab)) setLastView(tab)
+    const shown = legacyRoute(tab)
+    if (isRouteKey(shown)) setLastTab(shown)
+    if (isActivityView(shown)) setLastView(shown)
   }, [setLastTab, setLastView, tab])
   const trajectoryCount = useMemo(
     () => buildTrajectory(events.data ?? [], false).records.length,
@@ -135,6 +136,15 @@ export function TaskDetail({
   )
   useEffect(() => {
     const linked = /^#e\d+$/.test(hash)
+    if (tab === undefined) {
+      navigate(
+        linked
+          ? `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${hash}`
+          : agentsPath('tasks', orgSlug, shortId, lastTab),
+        { replace: true },
+      )
+      return
+    }
     const old =
       tab === 'log' ||
       (linked &&
@@ -144,7 +154,7 @@ export function TaskDetail({
       `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,
       { replace: true },
     )
-  }, [hash, navigate, orgSlug, shortId, tab])
+  }, [hash, lastTab, navigate, orgSlug, shortId, tab])
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -179,8 +189,7 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  const wanted =
-    tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
+  const wanted = legacyRoute(tab)
   const route: RouteKey = isRouteKey(wanted)
     ? wanted
     : tab === undefined
@@ -297,6 +306,11 @@ function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
 
 function isRouteKey(value: unknown): value is RouteKey {
   return TAB_KEYS.includes(value as TabKey) || isActivityView(value)
+}
+
+/** The route an old tab name now opens. */
+function legacyRoute(tab: string | undefined): string | undefined {
+  return tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
 }
 
 function OverviewTab({

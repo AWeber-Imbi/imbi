@@ -1348,6 +1348,23 @@ describe('TrajectoryTab folds across tasks', () => {
     ).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('clears a remembered fold with one click after a row was unfolded', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'imbi.trajectory.folds' ? '["turns"]' : null,
+    )
+    renderTab()
+    expect(rows()).toHaveLength(4)
+    await userEvent.click(rows()[1])
+    expect(rows().length).toBeGreaterThan(4)
+    const button = screen.getByRole('button', { name: 'Expand turns' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(button)
+    expect(vi.mocked(window.localStorage.setItem)).toHaveBeenLastCalledWith(
+      'imbi.trajectory.folds',
+      '[]',
+    )
+  })
+
   it('remembers a fold button for the next task', async () => {
     renderTab()
     await userEvent.click(
