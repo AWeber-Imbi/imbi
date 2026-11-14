@@ -342,6 +342,100 @@ describe('turns', () => {
     ])
   })
 
+  it('keeps work in the turn of the message it names when the runner clock lags', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const log = (key: boolean) => {
+      const k = (seq: number) => (key ? { input_seq: seq } : {})
+      return timeline([
+        event(
+          1,
+          'turn',
+          { body: 'Go.' },
+          { ...at('12:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          2,
+          'tool.called',
+          { call_id: 'c2', tool: 'Bash', ...k(1) },
+          at('11:59:58'),
+        ),
+        event(3, 'turn', { body: 'Done.', ...k(1) }, at('11:59:59')),
+        event(
+          4,
+          'turn',
+          { body: 'Now test.' },
+          { ...at('12:00:10'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          5,
+          'tool.called',
+          { call_id: 'c5', tool: 'Bash', ...k(4) },
+          at('12:00:08'),
+        ),
+        event(6, 'turn', { body: 'Tested.', ...k(4) }, at('12:00:09')),
+      ])
+    }
+    expect(
+      shape(turns(log(false), { live: false })).map((t) => t.items),
+    ).toEqual([['group:1', 'reply', 'group:1', 'reply'], []])
+    expect(
+      shape(turns(log(true), { live: false })).map((t) => t.items),
+    ).toEqual([
+      ['group:1', 'reply'],
+      ['group:1', 'reply'],
+    ])
+  })
+
+  it('sends keyed late work back to its turn and keeps answered work after it', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        event(
+          1,
+          'turn',
+          { body: 'Go.' },
+          { ...at('12:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          2,
+          'tool.called',
+          { call_id: 'c2', input_seq: 1, tool: 'Bash' },
+          at('11:59:57'),
+        ),
+        event(3, 'request.opened', { request_id: 'r1' }, at('12:00:04')),
+        event(
+          4,
+          'request.resolved',
+          { request_id: 'r1' },
+          { ...at('12:00:10'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          5,
+          'turn',
+          { body: 'Hmm.', input_seq: 1, kind: 'thinking' },
+          at('12:00:00'),
+        ),
+        event(
+          6,
+          'tool.called',
+          { call_id: 'c6', input_seq: 4, tool: 'Bash' },
+          at('12:00:09'),
+        ),
+        event(7, 'turn', { body: 'Done.', input_seq: 4 }, at('12:00:12')),
+      ]),
+      { live: false },
+    )
+    expect(shape(list).map((t) => t.items)).toEqual([
+      ['group:2', 'input'],
+      ['group:1', 'reply'],
+    ])
+    expect(
+      list[1].items
+        .flatMap((i) => (i.kind === 'group' ? i.entries : [i.entry]))
+        .map((e) => e.event?.seq),
+    ).toEqual([6, 7])
+  })
+
   it('puts a finished call stamped before the answer back before its request', () => {
     const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
     const list = turns(

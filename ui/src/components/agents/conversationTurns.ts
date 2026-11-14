@@ -147,8 +147,12 @@ export function turns(
       turn = newTurn([], entry)
       list.push(turn)
     }
+    const keyed = turnOfInput(list, entry)
     const previous = list[list.length - 2]
-    if (previous && stampedBefore(entry, turn.opening[0]))
+    if (keyed) {
+      if (keyed === turn) add(turn, entry)
+      else addEarlier(keyed, entry)
+    } else if (previous && stampedBefore(entry, turn.opening[0]))
       addEarlier(previous, entry)
     else add(turn, entry)
   }
@@ -242,6 +246,18 @@ function finish(turn: Turn, next?: Turn) {
 
 function firstEntry(item: TurnItem): TimelineEntry {
   return item.kind === 'group' ? item.entries[0] : item.entry
+}
+
+/**
+ * The newest person input the harness had when it recorded the entry's
+ * earliest work, or null for an older harness that does not say.
+ */
+function inputSeqOf(entry: TimelineEntry): null | number {
+  const seqs = eventsOf(entry).flatMap((e) => {
+    const seq = e.event?.payload.input_seq
+    return typeof seq === 'number' ? [seq] : []
+  })
+  return seqs.length ? Math.min(...seqs) : null
 }
 
 function isPersonInput(entry: TimelineEntry): boolean {
@@ -339,6 +355,17 @@ function tokensOf(entry: TimelineEntry): number {
   const p = entry.event?.payload ?? {}
   const n = (v: unknown) => (typeof v === 'number' ? v : 0)
   return n(p.tokens_in) + n(p.tokens_out)
+}
+
+/** The turn the person input an entry names opened, if it names one. */
+function turnOfInput(list: Turn[], entry: TimelineEntry): Turn | undefined {
+  const seq = inputSeqOf(entry)
+  if (seq === null) return undefined
+  for (let i = list.length - 1; i > 0; i--) {
+    const opening = list[i].opening[0]
+    if (opening && seqOf(opening) <= seq) return list[i]
+  }
+  return list[0]
 }
 
 /** The agent's last word was a reply or a request: it waits on a person. */
