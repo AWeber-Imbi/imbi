@@ -218,6 +218,66 @@ describe('turns', () => {
     expect(turn.stats.durationMs).toBeNull()
     expect(turn.status).toBe('running')
   })
+
+  it('puts the work sent after an answer back before its request', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        human(1, 'Go.'),
+        bash(2),
+        event(3, 'request.opened', { request_id: 'r1' }, at('12:00:04')),
+        event(
+          4,
+          'request.resolved',
+          { request_id: 'r1' },
+          { ...at('13:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(5, 'turn', { body: 'Hmm.', kind: 'thinking' }, at('12:00:03')),
+        event(6, 'turn', { body: 'Which one?' }, at('12:00:03')),
+        event(7, 'tool.called', { call_id: 'c7', tool: 'ask' }, at('13:00:01')),
+        event(8, 'turn', { body: 'Done.' }, at('13:00:30')),
+      ]),
+      { live: false },
+    )
+    expect(shape(list).map((t) => t.items)).toEqual([
+      ['group:2', 'reply', 'input'],
+      ['group:1', 'reply'],
+    ])
+    expect(list[1].stats.durationMs).toBe(30_000)
+  })
+
+  it('leaves the time a task waited to resume out of the turn', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        human(1, 'Go.'),
+        reply(2, 'Done.'),
+        human(3, 'Again, later.'),
+        event(4, 'state.changed', { from: 'running', to: 'paused' }),
+        event(
+          5,
+          'state.changed',
+          { from: 'paused', to: 'queued' },
+          at('14:00:00'),
+        ),
+        event(
+          6,
+          'state.changed',
+          { from: 'queued', to: 'running' },
+          at('14:00:05'),
+        ),
+        event(
+          7,
+          'tool.called',
+          { call_id: 'c7', tool: 'Bash' },
+          at('14:00:06'),
+        ),
+        event(8, 'turn', { body: 'Done again.' }, at('14:00:10')),
+      ]),
+      { live: false },
+    )
+    expect(list[1].stats.durationMs).toBe(5000)
+  })
 })
 
 describe('turnForSeq', () => {
@@ -296,6 +356,19 @@ describe('turnForSeq', () => {
 
   it('finds nothing without a turn', () => {
     expect(turnForSeq([], 1)).toBeNull()
+  })
+
+  it('opens a running Agent call to show its first subagent event', () => {
+    const running = turns(
+      timeline([
+        human(1, 'Look around.'),
+        bash(2, { parent_call_id: 'task-1' }),
+        bash(3, { parent_call_id: 'task-1' }),
+      ]),
+      { live: true },
+    )
+    expect(turnForSeq(running, 2)?.calls).toEqual(['call:task-1'])
+    expect(turnForSeq(running, 3)?.calls).toEqual(['call:task-1'])
   })
 
   it('reads the seq of an event permalink', () => {

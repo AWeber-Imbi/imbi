@@ -133,7 +133,6 @@ export function turns(
 ): Turn[] {
   const list: Turn[] = []
   for (const entry of entries) {
-    const e = entry.event
     let turn = last(list)
     if (isPersonInput(entry)) {
       if (!turn || waiting(turn)) list.push(newTurn([entry], entry))
@@ -148,23 +147,10 @@ export function turns(
       turn = newTurn([], entry)
       list.push(turn)
     }
-    if (e?.type === 'usage.reported') turn.stats.tokens += tokensOf(entry)
-    else if (e?.type === 'turn' && isReply(entry))
-      turn.items.push({ entry, id: entry.id, kind: 'reply' })
-    else if (e?.type === 'request.opened')
-      turn.items.push({ entry, id: entry.id, kind: 'input' })
-    else if (e && NOTE_TYPES.has(e.type))
-      turn.items.push({ entry, id: entry.id, kind: 'note' })
-    else {
-      const group = last(turn.items)
-      if (group?.kind === 'group') group.entries.push(entry)
-      else
-        turn.items.push({
-          entries: [entry],
-          id: `g:${entryKey(entry)}`,
-          kind: 'group',
-        })
-    }
+    const previous = list[list.length - 2]
+    if (previous && stampedBefore(entry, turn.opening[0]))
+      addEarlier(previous, entry)
+    else add(turn, entry)
   }
 
   for (const turn of list) finish(turn)
@@ -172,6 +158,41 @@ export function turns(
   if (final && task.live && !waiting(final)) final.status = 'running'
   else if (final && !task.live && task.failed) final.status = 'failed'
   return list
+}
+
+function add(turn: Turn, entry: TimelineEntry) {
+  const e = entry.event
+  if (e?.type === 'usage.reported') turn.stats.tokens += tokensOf(entry)
+  else if (e?.type === 'turn' && isReply(entry))
+    turn.items.push({ entry, id: entry.id, kind: 'reply' })
+  else if (e?.type === 'request.opened')
+    turn.items.push({ entry, id: entry.id, kind: 'input' })
+  else if (e && NOTE_TYPES.has(e.type))
+    turn.items.push({ entry, id: entry.id, kind: 'note' })
+  else {
+    const group = last(turn.items)
+    if (group?.kind === 'group') group.entries.push(entry)
+    else
+      turn.items.push({
+        entries: [entry],
+        id: `g:${entryKey(entry)}`,
+        kind: 'group',
+      })
+  }
+}
+
+/**
+ * The harness sends what the agent did before it asked a person only once
+ * the person answers, so that work arrives after the answer. It goes back
+ * to the turn it was done in, before the items that came after it.
+ */
+function addEarlier(turn: Turn, entry: TimelineEntry) {
+  const at = timeOf(entry)
+  let cut = turn.items.length
+  while (cut > 0 && timeOf(firstEntry(turn.items[cut - 1])) > at) cut--
+  const later = turn.items.splice(cut)
+  add(turn, entry)
+  turn.items.push(...later)
 }
 
 function entriesOf(items: TurnItem[]): TimelineEntry[] {
@@ -187,18 +208,26 @@ function eventsOf(entry: TimelineEntry): TimelineEntry[] {
 function finish(turn: Turn) {
   const work = turn.items.filter(isWork)
   const all = [...turn.opening, ...entriesOf(turn.items)].flatMap(eventsOf)
-  const timed = [...turn.opening, ...entriesOf(work)].flatMap(eventsOf)
   for (const entry of all) {
     if (!entry.event || entry.event.type === 'tool.called') turn.stats.tools++
     if (isError(entry)) turn.stats.errors++
     if (entry.event?.type === 'usage.reported')
       turn.stats.tokens += tokensOf(entry)
   }
-  const times = timed
-    .map((entry) => (entry.event ? Date.parse(entry.event.at) : NaN))
+  const times = entriesOf(work)
+    .flatMap(eventsOf)
+    .map(timeOf)
     .filter((t) => !Number.isNaN(t))
+  const start = startOf(turn) ?? Math.min(...times)
+  const ends = times.filter((t) => t >= start)
   turn.stats.durationMs =
-    times.length > 1 ? Math.max(...times) - Math.min(...times) : null
+    ends.length && (turn.opening.length || ends.length > 1)
+      ? Math.max(...ends) - start
+      : null
+}
+
+function firstEntry(item: TurnItem): TimelineEntry {
+  return item.kind === 'group' ? item.entries[0] : item.entry
 }
 
 function isPersonInput(entry: TimelineEntry): boolean {
@@ -231,18 +260,48 @@ function newTurn(opening: TimelineEntry[], first: TimelineEntry): Turn {
   }
 }
 
+/**
+ * A call that is still running has no event yet and takes its first
+ * child's seq, so that child is looked for before the call itself.
+ */
 function pathTo(entry: TimelineEntry, seq: number): null | TimelineEntry[] {
-  if (seqOf(entry) === seq) return [entry]
+  if (entry.event?.seq === seq) return [entry]
   for (const child of entry.children) {
     const path = pathTo(child, seq)
     if (path) return [entry, ...path]
   }
-  return null
+  return !entry.event && entry.seq === seq ? [entry] : null
 }
 
 /** A call entry takes its first child's seq; match on its own event's. */
 function seqOf(entry: TimelineEntry): number {
   return entry.event?.seq ?? entry.seq
+}
+
+/** An agent entry the harness stamped before the person's opening. */
+function stampedBefore(entry: TimelineEntry, opening?: TimelineEntry): boolean {
+  return !!opening && timeOf(entry) < timeOf(opening)
+}
+
+/**
+ * When the agent began a turn a person opened: the last time it resumed
+ * before its first work, or the opening. A paused or queued task waits
+ * for a runner, and that wait is not work.
+ */
+function startOf(turn: Turn): null | number {
+  if (!turn.opening.length) return null
+  let start = Math.max(...turn.opening.map(timeOf))
+  for (const item of turn.items) {
+    if (item.kind !== 'note') break
+    const e = item.entry.event
+    if (e?.type === 'state.changed' && e.payload.to === 'running')
+      start = Math.max(start, timeOf(item.entry))
+  }
+  return start
+}
+
+function timeOf(entry: TimelineEntry): number {
+  return entry.event ? Date.parse(entry.event.at) : NaN
 }
 
 function tokensOf(entry: TimelineEntry): number {
