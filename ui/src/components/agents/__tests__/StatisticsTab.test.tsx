@@ -5,8 +5,36 @@ import type { AgentTask } from '@/types'
 
 import { StatisticsTab } from '../StatisticsTab'
 import { taskStatistics } from '../statsModel'
-import type { Trajectory, TrajectoryRecord } from '../trajectoryModel'
+import {
+  buildTrajectory,
+  type Trajectory,
+  type TrajectoryRecord,
+} from '../trajectoryModel'
 import { event, task } from './taskFixtures'
+
+const LOG = [
+  event(1, 'task.created', { description: 'Check', title: 'T' }),
+  event(2, 'usage.reported', {
+    cache_read_tokens: 0,
+    cache_write_tokens: 900,
+    tokens_in: 100,
+    tokens_out: 100,
+  }),
+  event(5, 'tool.called', {
+    arguments: { command: 'ls' },
+    call_id: 'c1',
+    duration_ms: 2000,
+    result: 'ok',
+    tool: 'Bash',
+  }),
+  event(6, 'usage.reported', {
+    cache_read_tokens: 900,
+    cache_write_tokens: 200,
+    tokens_in: 100,
+    tokens_out: 10,
+  }),
+  event(7, 'turn', { body: 'All done' }),
+]
 
 function record(
   over: Partial<TrajectoryRecord> & Pick<TrajectoryRecord, 'id' | 'kind'>,
@@ -53,8 +81,11 @@ const TRAJECTORY: Trajectory = {
     record({ id: 'u', kind: 'user', text: 'Fix the build' }),
     record({
       body: { reply: 'Looking.', thinking: '' },
+      endedAt: 2000,
       id: 'a1',
       kind: 'assistant',
+      request: 1,
+      startedAt: 0,
     }),
     record({
       endedAt: 3000,
@@ -74,8 +105,11 @@ const TRAJECTORY: Trajectory = {
     }),
     record({
       body: { reply: 'Done.', thinking: '' },
+      endedAt: 4000,
       id: 'a2',
       kind: 'assistant',
+      request: 2,
+      startedAt: 3000,
     }),
   ],
   requests: [
@@ -126,6 +160,37 @@ describe('taskStatistics', () => {
     expect(totals.totalMs).toBe(4000)
   })
 
+  it('measures model time from the model, not its tool calls', () => {
+    const trajectory = buildTrajectory(LOG, false)
+    const { totals, turns } = taskStatistics(t, trajectory, 'latest')
+    expect(turns[0].steps.map((s) => s.modelMs)).toEqual([1000, 1000])
+    expect(turns[0].steps[0].toolMs).toBe(2000)
+    expect(totals.modelMs).toBe(2000)
+    expect(totals.toolMs).toBe(2000)
+    expect(turns[0].steps[0].outputPerSecond).toBe(100)
+  })
+
+  it('leaves a request with no measured prompt out of the context', () => {
+    const trajectory = buildTrajectory(
+      [...LOG, event(8, 'usage.reported', { tokens_in: null, tokens_out: 5 })],
+      false,
+    )
+    const { turns } = taskStatistics(t, trajectory, 'latest')
+    const last = turns[0].steps[turns[0].steps.length - 1]
+    expect(last.context).toBeNull()
+    expect(last.contextDelta).toBeNull()
+    expect(turns[0].context).toBe(1200)
+  })
+
+  it('takes the cache share on the same basis as the context', () => {
+    expect(
+      taskStatistics(t, TRAJECTORY, 'latest').turns[0].cacheHit,
+    ).toBeCloseTo(0.75)
+    expect(
+      taskStatistics(t, TRAJECTORY, 'cumulative').turns[0].cacheHit,
+    ).toBeCloseTo(900 / 2200)
+  })
+
   it('shows an automation trigger as its source', () => {
     const hook = task({ origin: { kind: 'webhook' } }) as unknown as AgentTask
     expect(taskStatistics(hook, TRAJECTORY, 'latest').turns[0].trigger).toEqual(
@@ -143,5 +208,20 @@ describe('StatisticsTab', () => {
       </div>,
     )
     expect(screen.getByText('No model requests yet.')).toBeInTheDocument()
+  })
+
+  it('opens the only turn once its events load', () => {
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const view = render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={[]} task={t} />
+      </div>,
+    )
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={LOG} task={t} />
+      </div>,
+    )
+    expect(screen.getByText('All done')).toBeInTheDocument()
   })
 })

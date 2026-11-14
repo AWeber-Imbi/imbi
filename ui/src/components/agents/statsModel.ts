@@ -54,9 +54,19 @@ export function taskStatistics(
   basis: ContextBasis,
 ): TaskStatistics {
   const byId = new Map(trajectory.records.map((r) => [r.id, r]))
+  const toolsOf = new Map<number, TrajectoryRecord[]>()
+  const userOf = new Map<number, TrajectoryRecord>()
+  for (const r of trajectory.records) {
+    if (r.kind === 'tool' && r.request !== null) {
+      const list = toolsOf.get(r.request) ?? []
+      list.push(r)
+      toolsOf.set(r.request, list)
+    }
+    if (r.kind === 'user' && !userOf.has(r.turn)) userOf.set(r.turn, r)
+  }
   const groups = new Map<number, StatsStep[]>()
   for (const request of trajectory.requests) {
-    const step = stepOf(request, trajectory.records, byId)
+    const step = stepOf(request, toolsOf.get(request.number) ?? [], byId)
     const list = groups.get(request.turn) ?? []
     list.push(step)
     groups.set(request.turn, list)
@@ -79,7 +89,7 @@ export function taskStatistics(
           : cells.context - lastTurnContext,
       number,
       steps,
-      trigger: triggerOf(task, number, trajectory.records),
+      trigger: triggerOf(task, number, userOf.get(number)),
     })
     if (cells.context !== null) lastTurnContext = cells.context
   }
@@ -131,15 +141,13 @@ function speed(output: number, ms: number): null | number {
 
 function stepOf(
   request: TrajectoryRequest,
-  records: TrajectoryRecord[],
+  tools: TrajectoryRecord[],
   byId: Map<string, TrajectoryRecord>,
 ): StatsStep {
   const u = usageOf(request.usage)
-  const tools = records.filter(
-    (r) => r.kind === 'tool' && r.request === request.number,
-  )
-  const answer = byId.get(request.assistant)?.body.reply ?? ''
-  const modelMs = span(request.startedAt, request.endedAt)
+  const assistant = byId.get(request.assistant)
+  const answer = assistant?.body.reply ?? ''
+  const modelMs = assistant ? span(assistant.startedAt, assistant.endedAt) : 0
   const ends = [request.endedAt, ...tools.map((r) => r.endedAt)].filter(
     (t): t is number => t !== null,
   )
@@ -169,12 +177,14 @@ function stepOf(
 function sumCells(steps: StatsStep[], basis: ContextBasis): StatsCells {
   const sum = (pick: (s: StatsStep) => number) =>
     steps.reduce((n, s) => n + pick(s), 0)
-  const input = sum((s) => s.input)
-  const cacheRead = sum((s) => s.cacheRead)
-  const cacheWrite = sum((s) => s.cacheWrite)
+  const measured = steps.filter((s) => s.context !== null)
+  const latest = basis === 'latest' ? measured[measured.length - 1] : undefined
+  const prompt = latest ? [latest] : basis === 'latest' ? [] : steps
+  const input = prompt.reduce((n, s) => n + s.input, 0)
+  const cacheRead = prompt.reduce((n, s) => n + s.cacheRead, 0)
+  const cacheWrite = prompt.reduce((n, s) => n + s.cacheWrite, 0)
   const output = sum((s) => s.output)
   const modelMs = sum((s) => s.modelMs)
-  const measured = steps.filter((s) => s.context !== null)
   const starts = steps
     .map((s) => s.startedAt)
     .filter((t): t is number => t !== null)
@@ -191,8 +201,8 @@ function sumCells(steps: StatsStep[], basis: ContextBasis): StatsCells {
     cacheWrite,
     context: !measured.length
       ? null
-      : basis === 'latest'
-        ? measured[measured.length - 1].context
+      : latest
+        ? latest.context
         : measured.reduce((n, s) => n + (s.context ?? 0), 0),
     input,
     modelMs,
@@ -209,12 +219,11 @@ function sumCells(steps: StatsStep[], basis: ContextBasis): StatsCells {
 function triggerOf(
   task: AgentTask,
   turn: number,
-  records: TrajectoryRecord[],
+  user: TrajectoryRecord | undefined,
 ): StatsTurn['trigger'] {
   const kind = task.origin?.kind as keyof typeof TRIGGERS | undefined
   if (turn === 1 && kind && kind !== 'human')
     return { badge: true, text: TRIGGERS[kind]?.label ?? 'Automation' }
-  const user = records.find((r) => r.kind === 'user' && r.turn === turn)
   if (user?.text) return { badge: false, text: user.text }
   return { badge: true, text: turn === 1 ? 'Manual' : 'Resumed' }
 }
@@ -226,6 +235,9 @@ function usageOf(e: AgentTaskEvent | null) {
     cacheWrite: num(p.cache_write_tokens),
     input: num(p.tokens_in),
     output: num(p.tokens_out),
-    reported: e !== null,
+    reported:
+      p.tokens_in != null ||
+      p.cache_read_tokens != null ||
+      p.cache_write_tokens != null,
   }
 }

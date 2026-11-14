@@ -122,9 +122,12 @@ export function StatisticsTab({
     () => taskStatistics(task, trajectory, basis),
     [task, trajectory, basis],
   )
-  const [open, setOpen] = useState<Set<number>>(() =>
-    stats.turns.length === 1 ? new Set([stats.turns[0].number]) : new Set(),
-  )
+  const [open, setOpen] = useState<Set<number>>(new Set())
+  const [seeded, setSeeded] = useState(false)
+  if (!seeded && stats.turns.length) {
+    setSeeded(true)
+    if (stats.turns.length === 1) setOpen(new Set([stats.turns[0].number]))
+  }
   const [answers, setAnswers] = useState<Set<string>>(new Set())
   const [query, setQuery] = useTaskSearch()
   const root = useRef<HTMLDivElement>(null)
