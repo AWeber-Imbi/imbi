@@ -230,6 +230,9 @@ The header shows the id, the title, the state, the agent, the project, the
 trigger, the duration, and the cost. It also has a timeline of the phases
 of the task.
 
+- Hover the duration to see the turns, the model requests, the tool calls, the model time, the tool time, and the output speed.
+- Hover the cost to see the share of the budget the task used, its tokens by kind (uncached input, cache read, cache write, and output), the cache hit rate, and the cost of each model when the task used more than one.
+
 | Tab | What it shows |
 |---|---|
 | Overview | The description, the latest todo list, the owner, the budget, the cost, the tokens, the prompt version, and the outcome |
