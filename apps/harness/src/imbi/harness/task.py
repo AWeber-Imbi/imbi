@@ -1813,6 +1813,9 @@ class TaskRun:
 
         - A network error puts the unsent events back for the next
           flush.
+        - A cancel puts them back too, then goes on: a stop cancels the
+          reader in the middle of a flush, and the last flush of
+          :meth:`run` sends them.
         - A batch that imbi-api refuses as too large (413) is sent again
           one event at a time, so only the event that fails is lost.
         - Any other refusal drops the batch.
@@ -1828,6 +1831,9 @@ class TaskRun:
                 )
                 self.recorder.requeue([e for b in [batch, *queue] for e in b])
                 return
+            except asyncio.CancelledError:
+                self.recorder.requeue([e for b in [batch, *queue] for e in b])
+                raise
             except api.Refused as err:
                 if err.status == http.HTTPStatus.REQUEST_ENTITY_TOO_LARGE and (
                     len(batch) > 1

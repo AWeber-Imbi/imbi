@@ -2301,7 +2301,7 @@ class FlushTestCase(TaskTestCase):
         super().setUp()
         self.run_task.session_id = 's'
         self.sent: list[list[str]] = []
-        self.failures: list[Exception | None] = []
+        self.failures: list[BaseException | None] = []
 
         async def post(
             path: str, *_: typing.Any, **kwargs: typing.Any
@@ -2332,6 +2332,15 @@ class FlushTestCase(TaskTestCase):
         )
         await self.run_task.flush()
         self.assertEqual(self.sent, [['a', 'b', 'c']])
+
+    async def test_cancel_keeps_the_events(self) -> None:
+        self.queue('a', 'b')
+        self.failures = [asyncio.CancelledError()]
+        with self.assertRaises(asyncio.CancelledError):
+            await self.run_task.flush()
+        self.assertEqual(self.sent, [])
+        await self.run_task.flush()
+        self.assertEqual(self.sent, [['a', 'b']])
 
     async def test_too_large_batch_is_sent_one_by_one(self) -> None:
         self.queue('a', 'b', 'c')
