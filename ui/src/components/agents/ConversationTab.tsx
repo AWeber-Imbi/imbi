@@ -240,7 +240,7 @@ export function ConversationTab({
                   width === 'narrow' && 'mx-auto max-w-3xl',
                 )}
               >
-                <TaskAsk ctx={ctx} first={list[0]} />
+                <TaskAsk ctx={ctx} first={list[0]} reveal={askMatches} />
                 {shown.length === 0 && !searching ? (
                   <ActivityEmpty
                     icon={<MessageSquare />}
@@ -437,7 +437,15 @@ function searchText(entry: TimelineEntry): string {
 }
 
 /** What started the task, as the first message, unless a person already said it. */
-function TaskAsk({ ctx, first }: { ctx: Ctx; first?: Turn }) {
+function TaskAsk({
+  ctx,
+  first,
+  reveal,
+}: {
+  ctx: Ctx
+  first?: Turn
+  reveal: boolean
+}) {
   const actorName = useActorName(ctx.orgSlug)
   const [all, setAll] = useState(false)
   const { task } = ctx
@@ -449,7 +457,7 @@ function TaskAsk({ ctx, first }: { ctx: Ctx; first?: Turn }) {
   )
   if (!body || said) return null
   const source = TRIGGERS[task.origin.kind].label
-  const long = body.length > ASK_PREVIEW
+  const long = body.length > ASK_PREVIEW && !reveal
   return (
     <Message align="end" className="mb-4">
       <MessageContent>

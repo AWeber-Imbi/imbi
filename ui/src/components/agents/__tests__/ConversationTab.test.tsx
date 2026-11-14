@@ -412,6 +412,24 @@ describe('ConversationTab', () => {
     expect(screen.queryByText('fixed')).toBeNull()
   })
 
+  it('shows all of a long ask when the search matches past its preview', async () => {
+    const user = userEvent.setup()
+    const description = `${'word '.repeat(150)}the hidden clue`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={LOG} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    expect(screen.queryByText(/the hidden clue/)).toBeNull()
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search conversation' }),
+      'hidden clue',
+    )
+    expect(screen.getByText(/the hidden clue$/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show all' })).toBeNull()
+  })
+
   it('says when there is nothing yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()
