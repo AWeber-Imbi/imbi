@@ -1,5 +1,5 @@
 /** The family of a tool, which picks its tag color and its readable view. */
-export type Family = 'agent' | 'edit' | 'mcp' | 'read' | 'shell'
+export type Family = 'agent' | 'edit' | 'mcp' | 'read' | 'search' | 'shell'
 
 /** Lines of output shown before "Show all". */
 export const OUTPUT_LINES = 40
@@ -10,6 +10,7 @@ export function familyOf(tool: string): Family {
     return 'edit'
   if (tool === 'Task' || tool === 'Agent') return 'agent'
   if (tool.startsWith('mcp__')) return 'mcp'
+  if (['Glob', 'Grep', 'WebSearch'].includes(tool)) return 'search'
   return 'read'
 }
 
@@ -52,7 +53,7 @@ export function toolSummary(tool: string, args: unknown): string {
       return str(a.file_path) || str(a.notebook_path)
     case 'Glob':
     case 'Grep':
-      return [str(a.pattern), str(a.path)].filter(Boolean).join('  in ')
+      return [str(a.pattern), str(a.path)].filter(Boolean).join(' in ')
     case 'WebFetch':
       return str(a.url)
     case 'WebSearch':

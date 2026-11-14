@@ -4,12 +4,14 @@ import {
   Bot,
   Brain,
   Check,
+  ChevronRight,
   Copy,
   FilePen,
   FileText,
   ListTodo,
   MessageSquare,
   Plug,
+  Search,
   SquareTerminal,
   TriangleAlert,
 } from 'lucide-react'
@@ -85,6 +87,7 @@ const FAMILY_ICON: Record<Family, ReactNode> = {
   edit: <FilePen />,
   mcp: <Plug />,
   read: <FileText />,
+  search: <Search />,
   shell: <SquareTerminal />,
 }
 
@@ -119,7 +122,10 @@ export function ConversationTab({
       }),
     [events, task],
   )
-  const ctx: Ctx = { isOpen, mode, orgSlug, requests, setOpen, task }
+  const ctx: Ctx = useMemo(
+    () => ({ isOpen, mode, orgSlug, requests, setOpen, task }),
+    [isOpen, mode, orgSlug, requests, setOpen, task],
+  )
 
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -175,7 +181,9 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
     ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
     : running
       ? 'Running…'
-      : 'Did not finish'
+      : ctx.task.status === 'closed'
+        ? 'Did not finish'
+        : 'Not finished yet'
   const status = isError(entry)
     ? 'error'
     : !e && running
@@ -377,12 +385,17 @@ function TurnHeader({
   return (
     <Trace>
       {canCollapseTurn(turn) ? (
-        <TraceCollapsible
-          onOpenChange={(next) => ctx.setOpen(turn.id, next)}
-          open={open}
+        <button
+          aria-expanded={open}
+          className="group/trace-collapsible-trigger text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 has-[[data-status=error]]:text-destructive flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-md text-left transition-colors outline-none focus-visible:ring-3"
+          onClick={() => ctx.setOpen(turn.id, !open)}
+          type="button"
         >
-          <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
-        </TraceCollapsible>
+          {line}
+          <TraceIcon className="transition-transform group-aria-expanded/trace-collapsible-trigger:rotate-90">
+            <ChevronRight />
+          </TraceIcon>
+        </button>
       ) : (
         <div>{line}</div>
       )}

@@ -127,7 +127,7 @@ export function TrajectoryInspector({
   return (
     <aside
       aria-label="Inspector"
-      className="hairline-l relative flex w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] shrink-0 flex-col border-(--tj-border-2) bg-(--tj-bg-1) text-[13px] leading-5 max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:z-5 max-[760px]:max-w-none max-[760px]:shadow-[-12px_0_32px_rgba(0,0,0,.14)]"
+      className="hairline-l relative flex w-[clamp(320px,38%,440px)] max-w-[calc(100%-280px)] shrink-0 flex-col border-(--tj-border-2) bg-(--tj-bg-1) text-[13px] leading-5 max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:z-5 max-[760px]:max-w-none max-[760px]:shadow-xl"
       ref={panel}
       style={width === null ? undefined : { width }}
     >

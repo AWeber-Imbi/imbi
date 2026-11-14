@@ -152,8 +152,6 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  // Actions taken is part of the Conversation and the Log became the
-  // Trajectory; keep their old links.
   const wanted =
     tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
   const current: TabKey = tabs.some((x) => x.key === wanted)

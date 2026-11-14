@@ -264,6 +264,35 @@ describe('ConversationTab', () => {
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
   })
 
+  it.each([
+    ['paused', 'Not finished yet'],
+    ['closed', 'Did not finish'],
+  ] as const)(
+    'labels an unwritten subagent call on a %s task',
+    async (status, text) => {
+      const user = userEvent.setup()
+      renderTab(status, [
+        LOG[0],
+        event(2, 'turn', { body: 'Looking around.', parent_call_id: 'task-1' }),
+      ])
+      await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+      expect(
+        screen.getByRole('button', { name: new RegExp(`Subagent ${text}`) }),
+      ).toBeInTheDocument()
+    },
+  )
+
+  it('toggles a turn without pointing at a missing region', async () => {
+    const user = userEvent.setup()
+    renderTab('closed')
+    const header = screen.getByRole('button', { name: /Worked for 3s/ })
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    expect(header).not.toHaveAttribute('aria-controls')
+    await user.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(/ran a command/i)).toBeInTheDocument()
+  })
+
   it('says when there is nothing yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No conversation yet.')).toBeInTheDocument()

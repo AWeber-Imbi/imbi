@@ -386,7 +386,7 @@ function RequestDot({
             : 'bg-(--tj-caption)',
         )}
       />
-      <span className="hairline font-tj-code pointer-events-none invisible absolute top-1/2 left-4 -translate-x-1 -translate-y-1/2 rounded-xs border-(--tj-border-2) bg-(--tj-bg-1) px-1 text-[9px] leading-3 whitespace-nowrap text-(--tj-label-2) opacity-0 shadow-[0_2px_6px_rgba(0,0,0,.12)] transition-[opacity,transform] group-hover/dot:visible group-hover/dot:translate-x-0 group-hover/dot:opacity-100 group-focus-visible/dot:visible group-focus-visible/dot:translate-x-0 group-focus-visible/dot:opacity-100">
+      <span className="hairline font-tj-code pointer-events-none invisible absolute top-1/2 left-4 -translate-x-1 -translate-y-1/2 rounded-xs border-(--tj-border-2) bg-(--tj-bg-1) px-1 text-[9px] leading-3 whitespace-nowrap text-(--tj-label-2) opacity-0 shadow-sm transition-[opacity,transform] group-hover/dot:visible group-hover/dot:translate-x-0 group-hover/dot:opacity-100 group-focus-visible/dot:visible group-focus-visible/dot:translate-x-0 group-focus-visible/dot:opacity-100">
         Request #{request.number}
       </span>
     </button>

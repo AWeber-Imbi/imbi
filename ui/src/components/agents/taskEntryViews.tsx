@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { memo, type ReactNode, useState } from 'react'
 
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { cn } from '@/lib/utils'
@@ -12,13 +12,13 @@ interface OutputProps {
   text: string
 }
 
-export function Prose({ children }: { children: string }) {
+export const Prose = memo(function Prose({ children }: { children: string }) {
   return (
     <div className="document-markdown max-w-[74ch] text-sm">
       <RichMarkdown deferImages>{children}</RichMarkdown>
     </div>
   )
-}
+})
 
 export function Todos({ event }: { event: AgentTaskEvent }) {
   const todos = (event.payload.todos ?? []) as {

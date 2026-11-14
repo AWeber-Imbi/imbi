@@ -63,11 +63,6 @@ const NOTE_TYPES = new Set([
 ])
 
 /**
- * The turns of a timeline. The harness records no turn start or end, so
- * a turn starts at a person's input once the agent waits on a person
- * (its last reply or request); input while it works steers that turn.
- */
-/**
  * A key that survives a call being written: a still-running subagent call
  * is a placeholder until its own event lands with a new id.
  */
@@ -75,6 +70,11 @@ export function entryKey(entry: TimelineEntry): string {
   return entry.parentOf ? `call:${entry.parentOf}` : entry.id
 }
 
+/**
+ * The turns of a timeline. The harness records no turn start or end, so
+ * a turn starts at a person's input once the agent waits on a person
+ * (its last reply or request); input while it works steers that turn.
+ */
 export function turns(
   entries: TimelineEntry[],
   task: { failed?: boolean; live: boolean },
