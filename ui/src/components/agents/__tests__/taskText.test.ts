@@ -47,6 +47,15 @@ describe('systemText', () => {
         }),
       ),
     ).toBe('Paused')
+    for (const [reason, from, to, text] of [
+      ['request_opened', 'running', 'blocked', 'Waiting for input'],
+      ['session_opened', 'blocked', 'running', 'Resumed'],
+      ['control_changed', 'running', 'paused', 'Paused'],
+    ]) {
+      expect(systemText(event(4, 'state.changed', { from, reason, to }))).toBe(
+        text,
+      )
+    }
   })
 
   it('turns an unknown event type into words', () => {

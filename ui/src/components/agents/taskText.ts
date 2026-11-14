@@ -68,7 +68,13 @@ export function useActorName(orgSlug: string) {
     agents?.find((a) => a.id === id)?.name ?? id ?? 'Unknown'
 }
 
-const ROUTINE = new Set(['request_resolved', 'session_closed'])
+const ROUTINE = new Set([
+  'control_changed',
+  'request_opened',
+  'request_resolved',
+  'session_closed',
+  'session_opened',
+])
 
 function stateText(from: string, to: string, reason: unknown): string {
   const why =
