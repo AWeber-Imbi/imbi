@@ -1348,6 +1348,32 @@ describe('TrajectoryTab folds across tasks', () => {
     ).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('keeps a linked record in view when its turn becomes foldable', () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'imbi.trajectory.folds' ? '["turns"]' : null,
+    )
+    window.history.replaceState(
+      null,
+      '',
+      '/agents/tasks/acme/T-1/trajectory#e2',
+    )
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const view = render(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LOG.slice(0, 2)} task={t} />
+      </div>,
+    )
+    const selected = () =>
+      rows().filter((r) => r.getAttribute('aria-selected') === 'true')
+    expect(selected()).toHaveLength(1)
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LOG.slice(0, 4)} task={t} />
+      </div>,
+    )
+    expect(selected()).toHaveLength(1)
+  })
+
   it('clears a remembered fold with one click after a row was unfolded', async () => {
     vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
       key === 'imbi.trajectory.folds' ? '["turns"]' : null,

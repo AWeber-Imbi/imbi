@@ -145,8 +145,12 @@ export function TrajectoryTab({
     }),
     [trajectory],
   )
+  const linked = /^#e(\d+)$/.exec(hash)?.[1]
+  const handled = useRef<null | { exact: boolean; id: string; seq: string }>(
+    null,
+  )
   useLayoutEffect(() => {
-    const fresh = emptyFolds()
+    let fresh = emptyFolds()
     let any = false
     for (const button of FOLD_BUTTONS) {
       for (const k of keys[button]) {
@@ -159,6 +163,11 @@ export function TrajectoryTab({
       }
     }
     if (!any) return
+    const target =
+      linked && handled.current?.seq === linked
+        ? byId.get(handled.current.id)
+        : undefined
+    if (target) fresh = unfoldFor(fresh, target, trajectory)
     setFolds((prev) => {
       const next = copyFolds(prev)
       for (const button of FOLD_BUTTONS)
@@ -166,7 +175,7 @@ export function TrajectoryTab({
           (next[button] as Set<number | string>).add(k)
       return next
     })
-  }, [foldPrefs, keys])
+  }, [byId, foldPrefs, keys, linked, trajectory])
 
   const folded = Object.fromEntries(
     (['turns', 'calls', 'subcalls'] as const).map((button) => {
@@ -191,10 +200,6 @@ export function TrajectoryTab({
     [trajectory],
   )
 
-  const linked = /^#e(\d+)$/.exec(hash)?.[1]
-  const handled = useRef<null | { exact: boolean; id: string; seq: string }>(
-    null,
-  )
   useEffect(() => {
     if (!linked) {
       handled.current = null
