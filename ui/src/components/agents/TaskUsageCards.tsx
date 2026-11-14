@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useMemo } from 'react'
+import { Fragment, type ReactNode, useMemo, useState } from 'react'
 
 import { Clock, Coins } from 'lucide-react'
 
@@ -76,7 +76,14 @@ export function TaskUsageCard({
   const total = prompt + task.tokens_out
   const cost = Number(task.cost_total)
   const budget = task.budget == null ? null : Number(task.budget)
-  const share = budget ? cost / budget : null
+  const share =
+    budget === null
+      ? null
+      : budget > 0
+        ? cost / budget
+        : cost > 0
+          ? Infinity
+          : 0
   const rows: Row[] = [
     ['Uncached input', formatTokens(task.tokens_in)],
     ['Cache read', formatTokens(task.cache_read_tokens)],
@@ -101,7 +108,11 @@ export function TaskUsageCard({
       <Section className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
           <span className={cn(share !== null && share > 1 && 'text-danger')}>
-            {share === null ? 'No budget' : `${percent(share)} of budget`}
+            {share === null
+              ? 'No budget'
+              : Number.isFinite(share)
+                ? `${percent(share)} of budget`
+                : 'Over budget'}
           </span>
           <span className="text-muted-foreground font-mono">
             {formatMoney(cost)}
@@ -185,12 +196,16 @@ function StatCard({
   label: string
   trigger: ReactNode
 }) {
+  const [open, setOpen] = useState(false)
   return (
-    <HoverCard closeDelay={0} openDelay={0}>
+    <HoverCard closeDelay={0} onOpenChange={setOpen} open={open} openDelay={0}>
       <HoverCardTrigger asChild>
         <Button
           aria-label={label}
           className="text-secondary -mx-1 h-auto gap-1.5 px-1 py-0.5 font-mono font-normal tabular-nums"
+          onPointerUp={(e) => {
+            if (e.pointerType === 'touch') setOpen((o) => !o)
+          }}
           size="sm"
           type="button"
           variant="ghost"

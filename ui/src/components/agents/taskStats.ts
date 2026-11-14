@@ -43,10 +43,9 @@ export function taskActivity(
   trajectory: Trajectory,
   output: number,
 ): TaskActivity {
-  const modelMs = trajectory.requests.reduce(
-    (n, r) => n + span(r.startedAt, r.endedAt),
-    0,
-  )
+  const modelMs = trajectory.records
+    .filter((r) => r.kind === 'assistant')
+    .reduce((n, r) => n + span(r.startedAt, r.endedAt), 0)
   const tools = trajectory.records.filter((r) => r.kind === 'tool')
   const times = trajectory.records
     .flatMap((r) => [r.startedAt, r.endedAt])

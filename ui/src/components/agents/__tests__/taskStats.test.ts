@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { taskActivity, taskUsage } from '../taskStats'
-import type { Trajectory, TrajectoryRecord } from '../trajectoryModel'
+import {
+  buildTrajectory,
+  type Trajectory,
+  type TrajectoryRecord,
+} from '../trajectoryModel'
 import { event } from './taskFixtures'
 
 function record(
@@ -95,5 +99,28 @@ describe('taskActivity', () => {
     expect(a.failedCalls).toBe(1)
     expect(a.wallMs).toBe(3500)
     expect(a.outputPerSecond).toBe(50)
+  })
+
+  it('leaves tool time out of model time', () => {
+    const trajectory = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { tokens_in: 1, tokens_out: 100 }),
+        event(5, 'tool.called', {
+          arguments: { command: 'ls' },
+          call_id: 'c1',
+          duration_ms: 2000,
+          result: 'ok',
+          tool: 'Bash',
+        }),
+        event(6, 'usage.reported', { tokens_in: 1, tokens_out: 100 }),
+        event(7, 'turn', { body: 'done' }),
+      ],
+      false,
+    )
+    const a = taskActivity(trajectory, 200)
+    expect(a.modelMs).toBe(2000)
+    expect(a.toolMs).toBe(2000)
+    expect(a.outputPerSecond).toBe(100)
   })
 })
