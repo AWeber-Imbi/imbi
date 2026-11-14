@@ -65,6 +65,7 @@ export function totalText(ms: number): string {
 export function TrajectoryOverview({
   boundaries,
   domain,
+  focused = null,
   matches,
   mode,
   onRange,
@@ -78,6 +79,8 @@ export function TrajectoryOverview({
   /** Where each turn after the first starts, in domain units. */
   boundaries: number[]
   domain: number
+  /** The records the range covered when it was picked. */
+  focused?: null | Set<string>
   /** The ids that match the search; null when there is no search. */
   matches: null | Set<string>
   mode: TrajectoryMode
@@ -297,8 +300,7 @@ export function TrajectoryOverview({
               {spans.map((span) => {
                 const record = records.get(span.id)
                 if (!record) return null
-                const outside =
-                  range && !(span.start <= range[1] && span.end >= range[0])
+                const outside = focused && !focused.has(span.id)
                 return (
                   <SpanBar
                     current={selected === span.id}

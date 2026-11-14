@@ -61,7 +61,10 @@ export function TrajectoryTab({
   const root = useRef<HTMLDivElement>(null)
   useSearchHighlight(root, query)
   const [duration, setDuration] = useTrajectoryDuration()
-  const [range, setRange] = useState<null | TrajectoryRange>(null)
+  const [picked, setPicked] = useState<null | {
+    ids: Set<string>
+    range: TrajectoryRange
+  }>(null)
   const [tab, setTab] = useState<InspectorTab>('Summary')
 
   const { records, requests, turns } = trajectory
@@ -74,7 +77,15 @@ export function TrajectoryTab({
     () => spansOf(records, mode),
     [records, mode],
   )
-  const focused = useMemo(() => focusedBy(spans, range), [spans, range])
+  const range = picked?.range ?? null
+  const focused = picked?.ids ?? null
+  const setRange = useCallback(
+    (next: null | TrajectoryRange) => {
+      const ids = focusedBy(spans, next)
+      setPicked(next && ids ? { ids, range: next } : null)
+    },
+    [spans],
+  )
   const matches = useMemo(
     () =>
       query.trim()
@@ -169,7 +180,7 @@ export function TrajectoryTab({
       if (next?.type !== 'record') return
       const id = next.id
       setQuery((q) => (hides(q, id) ? '' : q))
-      if (focused && !focused.has(next.id)) setRange(null)
+      if (focused && !focused.has(next.id)) setPicked(null)
       const record = byId.get(next.id)
       const seq = record?.seqs.length ? Math.min(...record.seqs) : null
       if (seq !== null && hash !== `#e${seq}`)
@@ -236,7 +247,7 @@ export function TrajectoryTab({
         folded={folded}
         onDuration={(on) => {
           setDuration(on)
-          setRange(null)
+          setPicked(null)
         }}
         onFold={foldAll}
         onQuery={setQuery}
@@ -245,6 +256,7 @@ export function TrajectoryTab({
       <TrajectoryOverview
         boundaries={boundaries}
         domain={domain}
+        focused={focused}
         key={mode}
         matches={matches}
         mode={mode}

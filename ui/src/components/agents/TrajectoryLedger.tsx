@@ -429,6 +429,7 @@ function RequestDot({
         e.stopPropagation()
         onSelect()
       }}
+      onDoubleClick={(e) => e.stopPropagation()}
       type="button"
     >
       <span

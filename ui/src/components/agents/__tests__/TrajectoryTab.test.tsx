@@ -578,6 +578,61 @@ describe('TrajectoryTab overview', () => {
     }
   })
 
+  it('keeps a range at the live edge to the records it covered', () => {
+    const scrollTo = vi.fn()
+    const original = Element.prototype.scrollTo
+    Element.prototype.scrollTo = scrollTo
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const ui = (events: typeof LOG) => (
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={events} task={t} />
+      </div>
+    )
+    try {
+      const view = render(ui(LOG))
+      vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+        bottom: 50,
+        height: 50,
+        left: 0,
+        right: 900,
+        toJSON: () => ({}),
+        top: 0,
+        width: 900,
+        x: 0,
+        y: 0,
+      })
+      fireEvent.pointerDown(track(), { button: 0, clientX: 600 })
+      fireEvent.pointerMove(track(), { button: 0, clientX: 900 })
+      fireEvent.pointerUp(track(), { button: 0, clientX: 900 })
+      expect(rows()[rows().length - 1]).toHaveAttribute(
+        'data-timeline-focus',
+        'inside',
+      )
+      expect(scrollTo).toHaveBeenCalledTimes(1)
+      view.rerender(ui([...LOG, event(12, 'session.closed', {})]))
+      expect(rows()[rows().length - 1].dataset.kind).toBe('system')
+      expect(rows()[rows().length - 1]).toHaveAttribute(
+        'data-timeline-focus',
+        'outside',
+      )
+      expect(spanBars()[spanBars().length - 1]).toHaveAttribute(
+        'data-dim',
+        'range',
+      )
+      expect(scrollTo).toHaveBeenCalledTimes(1)
+    } finally {
+      Element.prototype.scrollTo = original
+    }
+  })
+
+  it('selects a request on a double-click of its dot without folding', async () => {
+    renderTab()
+    const dot = screen.getAllByRole('button', { name: /^Request #/ })[0]
+    const before = rows().length
+    await userEvent.dblClick(dot)
+    expect(rows()).toHaveLength(before)
+  })
+
   it('dims the spans that do not match the search', async () => {
     renderTab()
     await userEvent.type(
