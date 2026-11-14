@@ -1,6 +1,12 @@
-import { render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentTask } from '@/types'
 
@@ -12,6 +18,12 @@ import {
   type TrajectoryRecord,
 } from '../trajectoryModel'
 import { event, task } from './taskFixtures'
+import {
+  captureHighlights,
+  layout,
+  scrollPane,
+  tableHeight,
+} from './virtualLayout'
 
 const LOG = [
   event(1, 'task.created', { description: 'Check', title: 'T' }),
@@ -469,5 +481,94 @@ describe('StatisticsTab', () => {
     expect(
       screen.queryByRole('button', { name: /show in conversation/ }),
     ).toBeNull()
+  })
+})
+
+describe('StatisticsTab with many turns', () => {
+  const MANY = [
+    event(1, 'task.created', { description: 'Check', title: 'T' }),
+    ...Array.from({ length: 100 }, (_, i) => [
+      event(
+        2 + i * 3,
+        'turn',
+        { body: `ask ${i}` },
+        { actor_id: 'dev', actor_kind: 'human' },
+      ),
+      event(3 + i * 3, 'usage.reported', { tokens_in: 100, tokens_out: 10 }),
+      event(4 + i * 3, 'turn', { body: `answer ${i}` }),
+    ]).flat(),
+  ]
+  const isPane = (el: HTMLElement) => !!el.querySelector(':scope > div > table')
+  const pane = () => screen.getByRole('table').parentElement!.parentElement!
+  const t = task({ status: 'closed' }) as unknown as AgentTask
+  let spy: ReturnType<typeof layout>
+  beforeEach(() => {
+    spy = layout({
+      content: tableHeight(37),
+      isPane,
+      pane: 370,
+      row: 37,
+    })
+  })
+  afterEach(() => {
+    cleanup()
+    spy.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('renders only the turns in view and counts them all', () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '102')
+    const turns = screen.getAllByRole('button', { name: /^Turn \d+: show/ })
+    expect(turns.length).toBeLessThan(40)
+    expect(screen.getByText('Task total')).toBeInTheDocument()
+  })
+
+  it('shows a far turn in the conversation', async () => {
+    const user = userEvent.setup()
+    const onShow = vi.fn()
+    render(
+      <StatisticsTab events={MANY} onShowInConversation={onShow} task={t} />,
+    )
+    const { turns } = taskStatistics(t, buildTrajectory(MANY, false), 'latest')
+    const last = turns[turns.length - 1]
+    const name = `Turn ${last.number}: show in conversation`
+    expect(screen.queryByRole('button', { name })).toBeNull()
+    scrollPane(pane(), 100 * 37)
+    await user.click(await screen.findByRole('button', { name }))
+    expect(onShow).toHaveBeenCalledExactlyOnceWith(last.seq)
+  })
+
+  it('keeps the focused turn while it scrolls out of view', async () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const [first] = screen.getAllByRole('button', {
+      name: /^Turn \d+: show its/,
+    })
+    first.focus()
+    scrollPane(pane(), 100 * 37)
+    await screen.findByRole('button', { name: /^Turn 101: show/ })
+    expect(first).toBeInTheDocument()
+    expect(document.activeElement).toBe(first)
+    await userEvent.keyboard('{Enter}')
+    expect(first).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('filters every turn from the data and marks what renders', async () => {
+    const { marked, mutate } = captureHighlights()
+    const user = userEvent.setup()
+    render(<StatisticsTab events={MANY} task={t} />)
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search statistics' }),
+      'answer 7',
+    )
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '24')
+    scrollPane(pane(), 0)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('answer 7'))
+    expect(marked.current).not.toContain('answer 79')
+    scrollPane(pane(), 24 * 37)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('answer 79'))
+    expect(marked.current).not.toContain('answer 7')
   })
 })

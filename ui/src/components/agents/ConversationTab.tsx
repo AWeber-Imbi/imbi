@@ -1,8 +1,16 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
+  ArrowDown,
   Bot,
   Brain,
   ChevronRight,
@@ -24,15 +32,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Message, MessageContent, MessageHeader } from '@/components/ui/message'
-import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerItem,
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-  useMessageScroller,
-} from '@/components/ui/message-scroller'
 import {
   Trace,
   TraceCollapsible,
@@ -105,6 +104,7 @@ import {
   toolLabel,
   toolSummary,
 } from './toolCalls'
+import { useVirtualRows } from './virtualRows'
 
 interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
@@ -127,6 +127,11 @@ const FAMILY_ICON: Record<Family, ReactNode> = {
 const ASK_PREVIEW = 600
 
 const FLASH_MS = 1600
+
+const TURN_GAP = 24
+
+/** How close to the end still counts as at the end, in pixels. */
+const END_SLACK = 8
 
 type RevealTarget = NonNullable<ReturnType<typeof turnForSeq>>
 
@@ -218,6 +223,7 @@ export function ConversationTab({
     [isOpen, mode, orgSlug, requests, searching, setOpen, task],
   )
   const [flash, setFlash] = useState<null | { id: string }>(null)
+  const [revealed, setRevealed] = useState<null | { id: string }>(null)
   useEffect(() => {
     if (!flash) return
     const done = window.setTimeout(() => setFlash(null), FLASH_MS)
@@ -229,10 +235,56 @@ export function ConversationTab({
     if (target.group) setOpen(target.group, true)
     for (const key of target.calls) setOpen(key, true)
     setFlash({ id: target.turn.id })
+    setRevealed({ id: target.turn.id })
+  }
+
+  const ask = showAsk && !!taskAsk(task, list[0])
+  const rows = useMemo(
+    () => [...(ask ? ['ask'] : []), ...shown.map((turn) => turn.id)],
+    [ask, shown],
+  )
+  const scroller = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+  const [atEnd, setAtEnd] = useState(true)
+  const [focusRow, setFocusRow] = useState<null | number>(null)
+  const flashRow = flash ? rows.indexOf(flash.id) : -1
+  const virtualizer = useVirtualRows({
+    count: rows.length,
+    estimateSize: (i) => (rows[i] === 'ask' ? 120 : 240),
+    gap: TURN_GAP,
+    getItemKey: (i) => rows[i],
+    keep: [flashRow, focusRow ?? -1],
+    overscan: 4,
+    paddingEnd: 20,
+    paddingStart: 20,
+    scroller,
+  })
+  const total = virtualizer.getTotalSize()
+
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (el && pinned.current) el.scrollTop = el.scrollHeight
+  }, [rows.length, total])
+
+  const scrolled = useRef<typeof revealed>(null)
+  useEffect(() => {
+    if (!revealed || scrolled.current === revealed) return
+    const index = rows.indexOf(revealed.id)
+    if (index < 0) return
+    scrolled.current = revealed
+    pinned.current = false
+    virtualizer.scrollToIndex(index, { align: 'start' })
+  }, [revealed, rows, virtualizer])
+
+  const toLatest = () => {
+    const el = scroller.current
+    if (!el) return
+    pinned.current = true
+    el.scrollTo({ behavior: 'smooth', top: el.scrollHeight })
   }
 
   return (
-    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+    <>
       <RevealTurn list={list} onReveal={reveal} />
       <div className="flex min-h-0 flex-1 flex-col" ref={root}>
         <TaskToolbar label="Conversation">
@@ -260,39 +312,86 @@ export function ConversationTab({
         {!showAsk ? (
           <NoMatches onClear={() => setQuery('')} query={query} />
         ) : (
-          <MessageScroller className="flex-1">
-            <MessageScrollerViewport aria-label="Conversation">
-              <MessageScrollerContent
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              aria-label="Conversation"
+              className="scroll-fade-b size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content"
+              onFocus={(e) => {
+                const index = (e.target as HTMLElement).closest<HTMLElement>(
+                  '[data-index]',
+                )?.dataset.index
+                if (index !== undefined) setFocusRow(Number(index))
+              }}
+              onScroll={(e) => {
+                const el = e.currentTarget
+                const end =
+                  el.scrollHeight - el.clientHeight - el.scrollTop <= END_SLACK
+                pinned.current = end
+                setAtEnd(end)
+              }}
+              ref={scroller}
+              role="region"
+            >
+              <div
                 className={cn(
-                  'w-full px-10 py-5',
+                  'flex min-h-full w-full flex-col px-10',
                   width === 'narrow' && 'mx-auto max-w-3xl',
                 )}
               >
-                <TaskAsk ctx={ctx} first={list[0]} reveal={askMatches} />
-                {shown.length === 0 && !searching ? (
+                <div className="relative w-full" style={{ height: total }}>
+                  {virtualizer.getVirtualItems().map((item) => {
+                    const id = rows[item.index]
+                    const turn = shown.find((t) => t.id === id)
+                    return (
+                      <div
+                        className="absolute inset-x-0 top-0 flow-root"
+                        data-index={item.index}
+                        key={item.key}
+                        ref={virtualizer.measureElement}
+                        style={{ transform: `translateY(${item.start}px)` }}
+                      >
+                        {turn ? (
+                          <TurnView
+                            ctx={ctx}
+                            flash={flash?.id === turn.id}
+                            turn={turn}
+                          />
+                        ) : (
+                          <TaskAsk
+                            ctx={ctx}
+                            first={list[0]}
+                            reveal={askMatches}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {shown.length === 0 && !searching && (
                   <ActivityEmpty
                     icon={<MessageSquare />}
                     title="No activity yet"
                   >
                     No conversation yet.
                   </ActivityEmpty>
-                ) : (
-                  shown.map((turn) => (
-                    <TurnView
-                      ctx={ctx}
-                      flash={flash?.id === turn.id}
-                      key={turn.id}
-                      turn={turn}
-                    />
-                  ))
                 )}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <MessageScrollerButton />
-          </MessageScroller>
+              </div>
+            </div>
+            <Button
+              className="border-border bg-background text-foreground hover:bg-muted absolute bottom-4 left-1/2 -translate-x-1/2 transition-[translate,scale,opacity] duration-200 data-[active=false]:pointer-events-none data-[active=false]:translate-y-full data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100"
+              data-active={!atEnd}
+              onClick={toLatest}
+              size="icon-sm"
+              tabIndex={atEnd ? -1 : undefined}
+              variant="secondary"
+            >
+              <ArrowDown />
+              <span className="sr-only">Scroll to end</span>
+            </Button>
+          </div>
         )}
       </div>
-    </MessageScrollerProvider>
+    </>
   )
 }
 
@@ -477,10 +576,8 @@ function RevealTurn({
 }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { scrollToMessage } = useMessageScroller()
   const seq = revealSeqOf(location.state) ?? hashSeqOf(location.hash)
   const handled = useRef<null | string>(null)
-  const [target, setTarget] = useState<null | { id: string }>(null)
 
   useEffect(() => {
     if (seq === null || handled.current === location.key) return
@@ -488,26 +585,12 @@ function RevealTurn({
     if (!found) return
     handled.current = location.key
     onReveal(found)
-    setTarget({ id: found.turn.id })
     const { hash, pathname, search } = location
     navigate(
       { hash: hashSeqOf(hash) === null ? hash : '', pathname, search },
       { replace: true, state: null },
     )
   }, [list, location, navigate, onReveal, seq])
-
-  useEffect(() => {
-    if (!target) return
-    let tries = 0
-    let frame = 0
-    const tick = () => {
-      tries++
-      if (scrollToMessage(target.id, { align: 'start' }) || tries > 30) return
-      frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [scrollToMessage, target])
 
   return null
 }
@@ -634,14 +717,12 @@ function TurnView({
   const footer = turnFooter(turn)
   const firstReply = turn.items.find((i) => i.kind === 'reply')?.id
   return (
-    <MessageScrollerItem
+    <div
       className={cn(
-        '-mx-3 -my-1.5 rounded-2xl px-3 py-1.5 transition-[background-color,box-shadow] duration-700 motion-reduce:transition-none',
+        '-mx-3 -my-1.5 min-w-0 rounded-2xl px-3 py-1.5 transition-[background-color,box-shadow] duration-700 motion-reduce:transition-none',
         flash && 'bg-action/8 inset-ring-2 inset-ring-action/40 duration-200',
       )}
       data-flash={flash || undefined}
-      messageId={turn.id}
-      scrollAnchor
     >
       <div className="flex flex-col gap-4">
         {turn.opening.map((entry) => (
@@ -695,7 +776,7 @@ function TurnView({
           </Marker>
         )}
       </div>
-    </MessageScrollerItem>
+    </div>
   )
 }
 

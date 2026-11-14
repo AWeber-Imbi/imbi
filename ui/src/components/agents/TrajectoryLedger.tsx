@@ -1,9 +1,9 @@
 import {
   type KeyboardEvent,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
 } from 'react'
 
 import { Info, Settings, Sparkle, User, Wrench } from 'lucide-react'
@@ -19,6 +19,7 @@ import {
   type TrajectoryRow,
 } from './trajectoryModel'
 import { sameWindow, type TrajectoryWindow, windowOf } from './trajectoryWindow'
+import { gapsOf, unlaidOf, useVirtualRows } from './virtualRows'
 
 export type TrajectorySelection =
   | null
@@ -32,6 +33,13 @@ const TAG: Record<TrajectoryKind, string> = {
   system: 'bg-(--tj-bg-module) text-(--tj-label-2)',
   tool: 'bg-(--tj-warn-3) text-(--tj-warn)',
   user: 'bg-(--tj-business-3) text-(--tj-business)',
+}
+
+const MOVES: Record<string, (i: number, last: number) => number> = {
+  ArrowDown: (i) => i + 1,
+  ArrowUp: (i) => i - 1,
+  End: (_, last) => last,
+  Home: () => 0,
 }
 
 const ICON = {
@@ -111,28 +119,49 @@ export function TrajectoryLedger({
   const following = useRef(true)
   const requestAt = new Map(requests.map((r) => [r.assistant, r]))
   const shown = useRef<null | TrajectoryWindow>(null)
-  const frame = useRef(0)
+  const [focusRow, setFocusRow] = useState<null | number>(null)
+  const moving = useRef<null | number>(null)
+  const scrolled = useRef<LedgerProps['scrollTo']>(null)
+  const centred = useRef('')
 
-  const measure = useCallback(() => {
-    const el = pane.current
-    if (!el || !onVisible) return
-    const box = el.getBoundingClientRect()
-    const list = [...el.querySelectorAll<HTMLElement>('[data-record]')].map(
-      (row) => {
-        const r = row.getBoundingClientRect()
-        return { bottom: r.bottom, id: row.dataset.record ?? '', top: r.top }
-      },
-    )
-    const next = windowOf(list, box.top, box.bottom)
+  const selectedRow = rows.findIndex(
+    (row) =>
+      row.kind === 'record' &&
+      ((selection?.type === 'record' && selection.id === row.record.id) ||
+        (selection?.type === 'request' &&
+          selection.assistant === row.record.id)),
+  )
+  const report = (v: typeof virtualizer) => {
+    if (!onVisible) return
+    const top = v.scrollOffset ?? 0
+    const next = unlaidOf(v)
+      ? null
+      : windowOf(
+          v.getVirtualItems().flatMap((item) => {
+            const row = rows[item.index]
+            return row?.kind === 'record'
+              ? [{ bottom: item.end, id: row.record.id, top: item.start }]
+              : []
+          }),
+          top,
+          top + (v.scrollRect?.height ?? 0),
+        )
     if (sameWindow(shown.current, next)) return
     shown.current = next
     onVisible(next)
-  }, [onVisible])
-
-  const schedule = useCallback(() => {
-    cancelAnimationFrame(frame.current)
-    frame.current = requestAnimationFrame(measure)
-  }, [measure])
+  }
+  const virtualizer = useVirtualRows({
+    count: rows.length,
+    estimateSize: (i) => (rows[i]?.kind === 'summary' ? 24 : 36),
+    getItemKey: (i) => {
+      const row = rows[i]
+      return row.kind === 'summary' ? row.id : row.record.id
+    },
+    keep: [selectedRow, focusRow ?? -1],
+    onChange: report,
+    scroller: pane,
+  })
+  const items = virtualizer.getVirtualItems()
 
   useLayoutEffect(() => {
     const el = pane.current
@@ -140,48 +169,68 @@ export function TrajectoryLedger({
   }, [rows.length])
 
   useEffect(() => {
-    schedule()
-  }, [rows, schedule])
+    report(virtualizer)
+  })
+
+  useEffect(() => {
+    if (!scrollTo || scrolled.current === scrollTo) return
+    const index = rows.findIndex(
+      (row) => row.kind === 'record' && row.record.id === scrollTo.id,
+    )
+    if (index < 0) return
+    scrolled.current = scrollTo
+    virtualizer.scrollToIndex(index, { align: 'auto' })
+  }, [rows, scrollTo, virtualizer])
 
   useEffect(() => {
     const el = pane.current
-    if (!el) return
-    const observer = new ResizeObserver(schedule)
-    observer.observe(el)
-    return () => {
-      observer.disconnect()
-      cancelAnimationFrame(frame.current)
-    }
-  }, [schedule])
-
-  useEffect(() => {
-    if (!scrollTo) return
-    const row = [
-      ...(pane.current?.querySelectorAll<HTMLElement>('[data-record]') ?? []),
-    ].find((el) => el.dataset.record === scrollTo.id)
-    row?.scrollIntoView?.({ block: 'nearest' })
-  }, [scrollTo])
-
-  const centred = useRef('')
-  useEffect(() => {
     const key = focused ? [...focused].join(' ') : ''
-    if (key === centred.current) return
+    if (!focused) centred.current = ''
+    if (!focused || !el || centred.current === key) return
+    const inside = rows.flatMap((row, i) =>
+      row.kind === 'record' && focused.has(row.record.id) ? [i] : [],
+    )
+    const at = (i: number) => virtualizer.measurementsCache[i]
+    const first = at(inside[0])
+    const last = at(inside[inside.length - 1])
+    if (!first || !last) return
     centred.current = key
-    const el = pane.current
-    if (!focused || !el) return
-    const inside = [
-      ...el.querySelectorAll<HTMLElement>('[data-timeline-focus="inside"]'),
-    ]
-    if (!inside.length) return
-    const last = inside[inside.length - 1]
-    const top = inside[0].offsetTop
-    const bottom = last.offsetTop + last.offsetHeight
     const target =
-      bottom - top <= el.clientHeight
-        ? (top + bottom) / 2 - el.clientHeight / 2
-        : top
+      last.end - first.start <= el.clientHeight
+        ? (first.start + last.end) / 2 - el.clientHeight / 2
+        : first.start
     el.scrollTo?.({ behavior: 'smooth', top: Math.max(0, target) })
-  }, [focused])
+  }, [focused, rows, virtualizer])
+
+  useLayoutEffect(() => {
+    const index = moving.current
+    if (index === null) return
+    const row = pane.current?.querySelector<HTMLElement>(
+      `[data-index="${index}"]`,
+    )
+    if (!row) return
+    moving.current = null
+    row.focus({ preventScroll: true })
+  })
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTableSectionElement>) => {
+    const move = MOVES[e.key]
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-index]')
+    if (!move || !row || e.target !== row) return
+    e.preventDefault()
+    const next = Math.max(
+      0,
+      Math.min(
+        rows.length - 1,
+        move(Number(row.dataset.index), rows.length - 1),
+      ),
+    )
+    moving.current = next
+    setFocusRow(next)
+    virtualizer.scrollToIndex(next, { align: 'auto' })
+  }
+
+  const { after, rows: shownRows } = gapsOf(items, virtualizer.getTotalSize())
 
   return (
     <div
@@ -193,12 +242,12 @@ export function TrajectoryLedger({
         const el = e.currentTarget
         following.current =
           el.scrollHeight - el.clientHeight - el.scrollTop <= 2
-        schedule()
       }}
       ref={pane}
     >
       <table
         aria-label="Trajectory"
+        aria-rowcount={rows.length}
         className="w-full table-fixed border-collapse text-sm leading-5"
         onClick={(e) => {
           if (e.target === e.currentTarget) onClear()
@@ -209,43 +258,60 @@ export function TrajectoryLedger({
           <col className="w-34 @max-[620px]/tj:w-13" />
           <col />
         </colgroup>
-        <tbody>
-          {rows.map((row, i) =>
-            row.kind === 'summary' ? (
-              <SummaryRow
-                index={i}
-                key={row.id}
-                onFold={() => onFold(row.fold)}
-                text={row.text}
-              />
-            ) : (
-              <RecordRow
-                active={activeTurn === row.record.turn}
-                focus={
-                  focused
-                    ? focused.has(row.record.id)
-                      ? 'inside'
-                      : 'outside'
-                    : undefined
-                }
-                index={i}
-                key={row.record.id}
-                onDoubleClick={() => onDoubleClick(row.record)}
-                onSelect={onSelect}
-                record={row.record}
-                request={requestAt.get(row.record.id)}
-                requestSelected={
-                  selection?.type === 'request' &&
-                  selection.assistant === row.record.id &&
-                  row.record.kind === 'assistant'
-                }
-                selected={
-                  selection?.type === 'record' && selection.id === row.record.id
-                }
-                turnStart={turnStarts.get(row.record.id)}
-              />
-            ),
-          )}
+        <tbody
+          onFocus={(e) => {
+            const index = (e.target as HTMLElement).dataset.index
+            if (index !== undefined) setFocusRow(Number(index))
+          }}
+          onKeyDown={onKeyDown}
+        >
+          {shownRows.flatMap(({ before, item }) => {
+            const row = rows[item.index]
+            const i = item.index
+            return [
+              ...(before > 0
+                ? [<Gap height={before} key={`gap-${item.key}`} />]
+                : []),
+              row.kind === 'summary' ? (
+                <SummaryRow
+                  index={i}
+                  key={item.key}
+                  measure={virtualizer.measureElement}
+                  onFold={() => onFold(row.fold)}
+                  text={row.text}
+                />
+              ) : (
+                <RecordRow
+                  active={activeTurn === row.record.turn}
+                  focus={
+                    focused
+                      ? focused.has(row.record.id)
+                        ? 'inside'
+                        : 'outside'
+                      : undefined
+                  }
+                  index={i}
+                  key={item.key}
+                  measure={virtualizer.measureElement}
+                  onDoubleClick={() => onDoubleClick(row.record)}
+                  onSelect={onSelect}
+                  record={row.record}
+                  request={requestAt.get(row.record.id)}
+                  requestSelected={
+                    selection?.type === 'request' &&
+                    selection.assistant === row.record.id &&
+                    row.record.kind === 'assistant'
+                  }
+                  selected={
+                    selection?.type === 'record' &&
+                    selection.id === row.record.id
+                  }
+                  turnStart={turnStarts.get(row.record.id)}
+                />
+              ),
+            ]
+          })}
+          {after > 0 && <Gap height={after} />}
         </tbody>
       </table>
     </div>
@@ -298,10 +364,19 @@ function Content({ record }: { record: TrajectoryRecord }) {
   )
 }
 
+function Gap({ height }: { height: number }) {
+  return (
+    <tr aria-hidden style={{ height }}>
+      <td colSpan={2} />
+    </tr>
+  )
+}
+
 function RecordRow({
   active,
   focus,
   index,
+  measure,
   onDoubleClick,
   onSelect,
   record,
@@ -313,6 +388,7 @@ function RecordRow({
   active: boolean
   focus?: 'inside' | 'outside'
   index: number
+  measure: (row: HTMLElement | null) => void
   onDoubleClick: () => void
   onSelect: (selection: TrajectorySelection) => void
   record: TrajectoryRecord
@@ -351,6 +427,7 @@ function RecordRow({
         focus === 'outside' && 'opacity-[.24]',
       )}
       data-error={record.error || undefined}
+      data-index={index}
       data-kind={record.kind}
       data-record={record.id}
       data-request-selected={requestSelected || undefined}
@@ -360,6 +437,7 @@ function RecordRow({
       onClick={select}
       onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
+      ref={measure}
       tabIndex={0}
     >
       <td
@@ -458,10 +536,12 @@ function RequestDot({
 
 function SummaryRow({
   index,
+  measure,
   onFold,
   text,
 }: {
   index: number
+  measure: (row: HTMLElement | null) => void
   onFold: () => void
   text: string
 }) {
@@ -471,6 +551,7 @@ function SummaryRow({
       aria-label={`Expand ${text}`}
       aria-rowindex={index + 1}
       className="h-6 cursor-pointer outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]"
+      data-index={index}
       data-summary
       onClick={onFold}
       onKeyDown={(e) => {
@@ -479,6 +560,7 @@ function SummaryRow({
           onFold()
         }
       }}
+      ref={measure}
       tabIndex={0}
     >
       <td className="hairline-b h-6 border-(--tj-border-1)" />

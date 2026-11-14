@@ -1,7 +1,15 @@
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { inspectedSeq, startedText, tabsFor } from '../TrajectoryInspector'
@@ -10,6 +18,12 @@ import { TrajectoryTab } from '../TrajectoryTab'
 import { DURATION_KEY } from '../TrajectoryToolbar'
 import { frameOf, sameWindow, windowOf } from '../trajectoryWindow'
 import { event, task } from './taskFixtures'
+import {
+  captureHighlights,
+  layout,
+  scrollPane,
+  tableHeight,
+} from './virtualLayout'
 
 const LOG = [
   event(1, 'task.created', { description: 'Check the release', title: 'T' }),
@@ -56,6 +70,12 @@ function renderTab(status: AgentTask['status'] = 'closed', events = LOG) {
       <TrajectoryTab events={events} task={t} />
     </div>,
   )
+}
+
+const isLedger = (el: HTMLElement) => !!el.querySelector(':scope > table')
+
+function ledger() {
+  return screen.getByRole('grid', { name: 'Trajectory' }).parentElement!
 }
 
 function rows() {
@@ -581,6 +601,10 @@ describe('TrajectoryTab overview', () => {
 
   it('scrolls to a range once, not again when a live event arrives', () => {
     const scrollTo = vi.fn()
+    const smooth = () =>
+      scrollTo.mock.calls.filter(
+        ([options]) => (options as ScrollToOptions).behavior === 'smooth',
+      )
     const original = Element.prototype.scrollTo
     Element.prototype.scrollTo = scrollTo
     const t = task({ status: 'running' }) as unknown as AgentTask
@@ -594,10 +618,10 @@ describe('TrajectoryTab overview', () => {
       fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
       fireEvent.pointerUp(track(), { button: 0, clientX: 0 })
       expect(rows()[0]).toHaveAttribute('data-timeline-focus', 'inside')
-      expect(scrollTo).toHaveBeenCalledTimes(1)
+      expect(smooth()).toHaveLength(1)
       view.rerender(ui([...LOG, event(12, 'session.closed', {})]))
       expect(rows()[rows().length - 1].dataset.kind).toBe('system')
-      expect(scrollTo).toHaveBeenCalledTimes(1)
+      expect(smooth()).toHaveLength(1)
     } finally {
       Element.prototype.scrollTo = original
     }
@@ -1170,38 +1194,21 @@ describe('TrajectoryTab selection and the conversation', () => {
   })
 
   it('frames the rows in view on the strip and follows the scroll', async () => {
-    let scrolled = 0
-    const rect = (top: number, bottom: number) =>
-      ({
-        bottom,
-        height: bottom - top,
-        left: 0,
-        right: 0,
-        top,
-        width: 0,
-      }) as DOMRect
-    const spy = vi
-      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function (this: HTMLElement) {
-        if (this.dataset.record) {
-          const i = rows().indexOf(this)
-          return rect(i * 36 - scrolled, i * 36 + 36 - scrolled)
-        }
-        if (this.querySelector(':scope > table')) return rect(0, 108)
-        return rect(0, 0)
-      })
+    const spy = layout({
+      content: tableHeight(36),
+      isPane: isLedger,
+      pane: 108,
+      row: 36,
+    })
     try {
       renderTab()
+      scrollPane(ledger(), 0)
       const frame = () => document.querySelector<HTMLElement>('[data-window]')
       await waitFor(() => expect(frame()).toBeInTheDocument())
       expect(frame()?.style.left).toBe('0%')
       expect(frame()).toHaveClass('pointer-events-none')
       const width = frame()?.style.width
-      scrolled = 36 * 5
-      const pane = screen.getByRole('grid', {
-        name: 'Trajectory',
-      }).parentElement!
-      fireEvent.scroll(pane)
+      scrollPane(ledger(), 36 * 5)
       await waitFor(() => expect(frame()?.style.left).not.toBe('0%'))
       expect(parseFloat(frame()?.style.left ?? '')).toBeCloseTo(500 / 9)
       expect(frame()?.style.width).toBe(width)
@@ -1215,6 +1222,169 @@ describe('TrajectoryTab selection and the conversation', () => {
     expect(document.querySelector('[data-picked]')).toBeNull()
     await userEvent.click(rows()[3])
     expect(document.querySelector('[data-picked]')).toBeInTheDocument()
+  })
+})
+
+describe('TrajectoryTab with many rows', () => {
+  const LONG = [
+    event(1, 'task.created', { description: 'Check the release', title: 'T' }),
+    event(2, 'session.opened', { session_id: 's' }),
+    ...Array.from({ length: 150 }, (_, i) => [
+      event(3 + i * 3, 'usage.reported', {
+        message_id: `m${i}`,
+        tokens_in: 1,
+      }),
+      event(4 + i * 3, 'turn', {
+        body: `Step ${i}`,
+        kind: 'text',
+        message_id: `m${i}`,
+      }),
+      event(5 + i * 3, 'tool.called', {
+        arguments: { command: `ls ${i}` },
+        call_id: `c${i}`,
+        duration_ms: 5,
+        message_id: `m${i}`,
+        result: `needle ${i}`,
+        tool: 'Bash',
+      }),
+    ]).flat(),
+  ]
+  let spy: ReturnType<typeof layout>
+  beforeEach(() => {
+    spy = layout({
+      content: tableHeight(36),
+      isPane: isLedger,
+      pane: 360,
+      row: 36,
+    })
+  })
+  afterEach(() => {
+    cleanup()
+    spy.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('renders only the rows in view and counts them all', async () => {
+    renderTab('closed', LONG)
+    const grid = screen.getByRole('grid', { name: 'Trajectory' })
+    expect(grid).toHaveAttribute('aria-rowcount', '302')
+    expect(rows().length).toBeLessThan(40)
+    await waitFor(() =>
+      expect(rows()[rows().length - 1]).toHaveAttribute('aria-rowindex', '302'),
+    )
+  })
+
+  it('scrolls to a record a late #e link points at', () => {
+    const scrollTo = vi.fn()
+    window.history.replaceState(
+      null,
+      '',
+      '/agents/tasks/acme/T-1/trajectory#e434',
+    )
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const view = render(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LONG.slice(0, 20)} task={t} />
+      </div>,
+    )
+    ledger().scrollTo = scrollTo
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LONG} task={t} />
+      </div>,
+    )
+    const selected = document.querySelector<HTMLElement>('[data-selected]')
+    expect(selected).toHaveTextContent('ls 143')
+    const index = Number(selected?.getAttribute('aria-rowindex')) - 1
+    const [{ top }] = scrollTo.mock.lastCall as [{ top: number }]
+    expect(top).toBeLessThanOrEqual(index * 36)
+    expect(top + 360).toBeGreaterThanOrEqual(index * 36 + 36)
+  })
+
+  it('moves focus with the arrow keys, Home and End past the rows in view', async () => {
+    renderTab('closed', LONG)
+    scrollPane(ledger(), 0)
+    rows()[0].focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(document.activeElement).toHaveAttribute('aria-rowindex', '2')
+    await userEvent.keyboard('{End}')
+    await waitFor(() => expect(ledger().scrollTop).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(rows()[0]).not.toHaveAttribute('aria-rowindex', '1'),
+    )
+    expect(document.activeElement).toHaveAttribute('aria-rowindex', '302')
+    expect(document.activeElement).toHaveTextContent('needle 149')
+    await userEvent.keyboard('{ArrowUp}')
+    expect(document.activeElement).toHaveAttribute('aria-rowindex', '301')
+    await userEvent.keyboard('{Home}')
+    expect(document.activeElement).toHaveAttribute('aria-rowindex', '1')
+  })
+
+  it('folds every call and opens one from the keyboard', async () => {
+    renderTab('closed', LONG)
+    rows()[0].focus()
+    await userEvent.keyboard('{End}')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse tool calls' }),
+    )
+    const grid = screen.getByRole('grid', { name: 'Trajectory' })
+    expect(grid).toHaveAttribute('aria-rowcount', '302')
+    const summary = screen.getAllByRole('row', {
+      name: /^Expand 1 tool call/,
+    })
+    expect(summary.length).toBeLessThan(40)
+    summary[0].focus()
+    expect(document.activeElement).toBe(summary[0])
+    const at = summary[0].getAttribute('aria-rowindex')
+    const row = () =>
+      document.querySelector<HTMLElement>(`[aria-rowindex="${at}"]`)
+    expect(row()?.dataset.kind).toBeUndefined()
+    await userEvent.keyboard('{Enter}')
+    expect(row()?.dataset.kind).toBe('tool')
+    expect(row()).toHaveTextContent(/needle \d+/)
+  })
+
+  it('filters every record from the data and marks what renders', async () => {
+    const { marked, mutate } = captureHighlights()
+    renderTab('closed', LONG)
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search trajectory' }),
+      'needle 1',
+    )
+    const grid = screen.getByRole('grid', { name: 'Trajectory' })
+    expect(grid).toHaveAttribute('aria-rowcount', '61')
+    expect(rows().length).toBeLessThan(61)
+    scrollPane(ledger(), 0)
+    mutate()
+    await waitFor(() => expect(marked.current[0]).toBe('needle 1'))
+    expect(marked.current.every((text) => text.startsWith('needle 1'))).toBe(
+      true,
+    )
+    expect(marked.current).toHaveLength(rows().length)
+    scrollPane(ledger(), 60 * 36)
+    mutate()
+    await waitFor(() =>
+      expect(rows()[rows().length - 1]).toHaveTextContent('needle 149'),
+    )
+    await waitFor(() => expect(marked.current).toContain('needle 149'))
+    expect(marked.current).not.toContain('needle 10')
+  })
+
+  it('copies every event, not only the rows in view', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn((_: string) => Promise.resolve())
+    renderTab('closed', LONG)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    await user.click(screen.getByRole('button', { name: /^Copy/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Copy as JSON' }))
+    const copied = JSON.parse(writeText.mock.calls[0][0]) as {
+      events: unknown[]
+    }
+    expect(rows().length).toBeLessThan(40)
+    expect(copied.events).toHaveLength(LONG.length)
   })
 })
 

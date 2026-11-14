@@ -1,13 +1,14 @@
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { act, render, screen, within } from '@/test/utils'
+import { act, cleanup, render, screen, waitFor, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
 import { ConversationTab } from '../ConversationTab'
 import { TaskSearchProvider } from '../taskSearch'
 import { event, task } from './taskFixtures'
+import { captureHighlights, layout, scrollPane } from './virtualLayout'
 
 vi.mock('@/hooks/useHasPermission', () => ({
   useHasPermission: () => false,
@@ -614,5 +615,155 @@ describe('ConversationTab', () => {
     ])
     expect(screen.getByText('Use the staging database')).toBeInTheDocument()
     expect(screen.getByText('No writes')).toBeInTheDocument()
+  })
+})
+
+describe('ConversationTab with many turns', () => {
+  const MANY = Array.from({ length: 80 }, (_, i) => [
+    event(1 + i * 2, 'turn', { body: `ask ${i}` }, HUMAN),
+    event(2 + i * 2, 'turn', { body: `reply ${i}` }),
+  ]).flat()
+  const isPane = (el: HTMLElement) =>
+    el.getAttribute('aria-label') === 'Conversation'
+  const pane = () => screen.getByRole('region', { name: 'Conversation' })
+  const content = (el: HTMLElement) =>
+    parseFloat(
+      el.querySelector<HTMLElement>('[style*="height"]')?.style.height ?? '0',
+    )
+  const view = (status: AgentTask['status'], events = MANY) => {
+    const t = task({ status }) as unknown as AgentTask
+    return (
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>
+    )
+  }
+  const replies = () => screen.queryAllByText(/^reply \d+$/)
+  const flashed = () => document.querySelector<HTMLElement>('[data-flash]')
+  const scrollTo = vi.fn()
+  const original = Element.prototype.scrollTo
+  let spy: ReturnType<typeof layout>
+  beforeEach(() => {
+    spy = layout({ content, isPane, pane: 600, row: 100 })
+    scrollTo.mockClear()
+    Element.prototype.scrollTo = scrollTo
+  })
+  afterEach(() => {
+    cleanup()
+    spy.mockRestore()
+    Element.prototype.scrollTo = original
+    vi.unstubAllGlobals()
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('renders only the turns in view and opens at the latest', async () => {
+    render(view('closed'))
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('reply 0')).not.toBeInTheDocument()
+    expect(replies().length).toBeLessThan(20)
+  })
+
+  it('follows the bottom while the task runs, until the reader scrolls up', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(view('running', MANY.slice(0, 100)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 49')).toBeInTheDocument(),
+    )
+    const latest = screen.getByRole('button', { name: 'Scroll to end' })
+    expect(latest).toHaveAttribute('data-active', 'false')
+    rerender(view('running', MANY.slice(0, 102)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 50')).toBeInTheDocument(),
+    )
+    expect(pane().scrollTop).toBe(content(pane()) - 600)
+    scrollPane(pane(), 0)
+    expect(latest).toHaveAttribute('data-active', 'true')
+    rerender(view('running', MANY.slice(0, 104)))
+    expect(pane().scrollTop).toBe(0)
+    expect(screen.queryByText('reply 51')).not.toBeInTheDocument()
+    await user.click(latest)
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      behavior: 'smooth',
+      top: content(pane()),
+    })
+  })
+
+  it('scrolls to a far turn another view asks for, and flashes it', async () => {
+    window.history.replaceState(
+      { idx: 0, key: 'reveal', usr: { revealSeq: 3 } },
+      '',
+      '/',
+    )
+    render(view('closed'))
+    await waitFor(() => expect(flashed()).toHaveTextContent('ask 1'))
+    expect(flashed()).not.toHaveTextContent('ask 2')
+    const item = flashed()!.closest<HTMLElement>('[data-index]')!
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          top: Number(
+            /translateY\(([\d.]+)px\)/.exec(item.style.transform)?.[1],
+          ),
+        }),
+      ),
+    )
+    expect(screen.queryByText('reply 79')).toBeInTheDocument()
+  })
+
+  it('scrolls to an event link once the events load', async () => {
+    window.history.replaceState(null, '', '/#e150')
+    const { rerender } = render(view('running', []))
+    expect(flashed()).toBeNull()
+    expect(window.location.hash).toBe('#e150')
+    rerender(view('running'))
+    await waitFor(() => expect(flashed()).toHaveTextContent('reply 74'))
+    expect(window.location.hash).toBe('')
+    expect(scrollTo).toHaveBeenCalled()
+  })
+
+  it('filters every turn from the data and marks what renders', async () => {
+    const { marked, mutate } = captureHighlights()
+    const user = userEvent.setup()
+    render(view('closed'))
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search conversation' }),
+      'reply 7',
+    )
+    expect(screen.queryByText('reply 8')).not.toBeInTheDocument()
+    expect(screen.queryByText('ask 8')).not.toBeInTheDocument()
+    scrollPane(pane(), 1_000_000)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('reply 79'))
+    expect(marked.current).not.toContain('reply 7')
+    scrollPane(pane(), 0)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('reply 7'))
+    expect(marked.current.every((text) => /^reply 7\d?$/.test(text))).toBe(true)
+  })
+
+  it('copies every turn, not only the ones in view', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn((_: string) => Promise.resolve())
+    render(view('closed'))
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('reply 0')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Copy/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Copy as Markdown' }))
+    const copied = writeText.mock.calls[0][0]
+    expect(copied).toContain('reply 0')
+    expect(copied).toContain('reply 79')
   })
 })
