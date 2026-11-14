@@ -258,6 +258,14 @@ describe('taskStatistics', () => {
     expect(totals.subrequests).toBe(2)
   })
 
+  it('counts subagent tokens in the task total, not its context', () => {
+    const trajectory = buildTrajectory(subagentLog(true), false)
+    const { totals } = taskStatistics(t, trajectory, 'latest')
+    expect(totals.output).toBe(20)
+    expect(totals.input).toBe(2240)
+    expect(totals.context).toBe(2100)
+  })
+
   it('counts usage without a message id as steps, as before', () => {
     const trajectory = buildTrajectory(subagentLog(false), false)
     const { totals, turns } = taskStatistics(t, trajectory, 'latest')

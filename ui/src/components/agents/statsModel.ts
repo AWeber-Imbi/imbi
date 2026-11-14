@@ -57,6 +57,7 @@ export interface TaskStatistics {
  * The steps are the main agent's model requests. A subagent's requests
  * have their own context, so they stay out of the steps, the context
  * and its deltas; each step counts the ones its Agent calls started.
+ * Their tokens still count in the task total.
  */
 export function taskStatistics(
   task: AgentTask,
@@ -122,9 +123,20 @@ export function taskStatistics(
   }
   const all = turns.flatMap((t) => t.steps)
   const totals = sumCells(all, 'cumulative')
+  const sub = trajectory.subrequests.map((s) => usageOf(s.usage))
+  const plus = (main: number, pick: (u: (typeof sub)[number]) => number) =>
+    sub.reduce((n, u) => n + pick(u), main)
+  const input = plus(totals.input, (u) => u.input)
+  const cacheRead = plus(totals.cacheRead, (u) => u.cacheRead)
+  const cacheWrite = plus(totals.cacheWrite, (u) => u.cacheWrite)
   return {
     totals: {
       ...totals,
+      cacheHit: hit(cacheRead, input + cacheRead + cacheWrite),
+      cacheRead,
+      cacheWrite,
+      input,
+      output: plus(totals.output, (u) => u.output),
       steps: all.length,
       subrequests: all.reduce((n, s) => n + s.subrequests, 0),
       totalMs: totals.modelMs + totals.toolMs,
