@@ -22,6 +22,17 @@ export function frameOf(
   ]
 }
 
+/** Whether two windows show the same records in the same order. */
+export function sameWindow(
+  a: null | TrajectoryWindow,
+  b: null | TrajectoryWindow,
+): boolean {
+  if (!a || !b) return a === b
+  return (
+    a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i])
+  )
+}
+
 /**
  * The rows that show between `top` and `bottom`, given each row's
  * offsets in the same scroll box. Rows are in order.

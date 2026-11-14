@@ -649,7 +649,7 @@ function Timing({
   )
 }
 
-function totals(requests: TrajectoryRequest[]): UsageTotals {
+function totals(reports: (AgentTaskEvent | null)[]): UsageTotals {
   const sum: UsageTotals = {
     cacheRead: 0,
     cacheWrite: 0,
@@ -657,8 +657,8 @@ function totals(requests: TrajectoryRequest[]): UsageTotals {
     input: 0,
     output: 0,
   }
-  for (const r of requests) {
-    const p = r.usage?.payload ?? {}
+  for (const report of reports) {
+    const p = report?.payload ?? {}
     sum.input += Number(p.tokens_in ?? 0)
     sum.output += Number(p.tokens_out ?? 0)
     sum.cacheRead += Number(p.cache_read_tokens ?? 0)
@@ -703,10 +703,17 @@ function UsageView({
 }) {
   if (!request.usage)
     return <p className="px-3.5 pt-3 text-(--tj-label-3)">Usage unavailable</p>
-  const upTo = trajectory.requests.filter((r) => r.number <= request.number)
+  const upTo = [
+    ...trajectory.requests
+      .filter((r) => r.number <= request.number)
+      .map((r) => r.usage),
+    ...trajectory.subrequests
+      .filter((s) => s.request !== null && s.request <= request.number)
+      .map((s) => s.usage),
+  ]
   return (
     <>
-      <UsageGroup title="This request" usage={totals([request])} />
+      <UsageGroup title="This request" usage={totals([request.usage])} />
       <UsageGroup title="Session cumulative" usage={totals(upTo)} />
     </>
   )

@@ -1041,6 +1041,19 @@ class UsageTestCase(TaskTestCase):
         (body,) = self.posted('/usage')
         self.assertEqual(body['message_id'], 'msg_1')
 
+    async def test_report_leaves_out_a_message_id_the_api_refuses(
+        self,
+    ) -> None:
+        self.client.post.return_value = mock.Mock(
+            json=mock.Mock(return_value=self.reply())
+        )
+        await asyncio.to_thread(
+            self.run_task.meter, 'm', {'input_tokens': 1}, 'x' * 201
+        )
+        (body,) = self.posted('/usage')
+        self.assertNotIn('message_id', body)
+        self.assertEqual(body['tokens_in'], 1)
+
     async def test_budget_spent_stops_the_task(self) -> None:
         self.client.post.return_value = mock.Mock(
             json=mock.Mock(

@@ -18,7 +18,7 @@ import {
   type TrajectoryRequest,
   type TrajectoryRow,
 } from './trajectoryModel'
-import { type TrajectoryWindow, windowOf } from './trajectoryWindow'
+import { sameWindow, type TrajectoryWindow, windowOf } from './trajectoryWindow'
 
 export type TrajectorySelection =
   | null
@@ -118,8 +118,7 @@ export function TrajectoryLedger({
       },
     )
     const next = windowOf(list, box.top, box.bottom)
-    const prev = shown.current
-    if (prev?.from === next?.from && prev?.to === next?.to) return
+    if (sameWindow(shown.current, next)) return
     shown.current = next
     onVisible(next)
   }, [onVisible])

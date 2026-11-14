@@ -65,6 +65,9 @@ SESSION_HEARTBEAT = 10
 #: The largest CLI message line that the SDK reads.
 SDK_BUFFER = 64 * 1024 * 1024
 RESOLUTION_TTL = 300
+#: The longest reply id the API takes on a usage report; a longer one
+#: is left out, so the report and its cost still count.
+MESSAGE_ID_MAX = 200
 #: The longest refresh lead of a model access token (WIF plan 4.6).
 KEY_REFRESH_LEAD = 300.0
 #: The longest wait between two failed refreshes.
@@ -1017,7 +1020,7 @@ class TaskRun:
             'cache_write_tokens': count('cache_creation_input_tokens'),
             'session_id': self.session_id,
         }
-        if message_id:
+        if message_id and len(message_id) <= MESSAGE_ID_MAX:
             body['message_id'] = message_id
         for attempt in range(3):
             try:

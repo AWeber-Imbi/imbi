@@ -8,7 +8,7 @@ import { inspectedSeq, startedText, tabsFor } from '../TrajectoryInspector'
 import { focusedBy, totalText } from '../TrajectoryOverview'
 import { TrajectoryTab } from '../TrajectoryTab'
 import { DURATION_KEY } from '../TrajectoryToolbar'
-import { frameOf, windowOf } from '../trajectoryWindow'
+import { frameOf, sameWindow, windowOf } from '../trajectoryWindow'
 import { event, task } from './taskFixtures'
 
 const LOG = [
@@ -689,6 +689,36 @@ describe('TrajectoryTab inspector', () => {
     expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('adds the subagent requests so far to the session usage', async () => {
+    renderTab('closed', [
+      event(1, 'task.created', { title: 'T' }),
+      event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+      event(3, 'tool.called', {
+        arguments: {},
+        call_id: 'c1',
+        message_id: 'm1',
+        tool: 'Agent',
+      }),
+      event(4, 'usage.reported', { message_id: 's1', tokens_in: 20 }),
+      event(
+        5,
+        'tool.called',
+        { call_id: 'r1', message_id: 's1', parent_call_id: 'c1', tool: 'Read' },
+        { actor_kind: 'subagent' },
+      ),
+      event(6, 'usage.reported', { message_id: 'm2', tokens_in: 300 }),
+      event(7, 'turn', { body: 'Done', kind: 'text', message_id: 'm2' }),
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Request #2' }))
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Usage' }),
+    )
+    const group = (title: string) =>
+      within(inspector()).getByText(title).parentElement
+    expect(group('This request')).toHaveTextContent('300 tok')
+    expect(group('Session cumulative')).toHaveTextContent('321 tok')
+  })
+
   it('previews a person in full, with their Markdown', async () => {
     const long = `**Bold** ${'word '.repeat(150)}the end`
     renderTab('closed', [
@@ -931,6 +961,22 @@ describe('trajectory window helpers', () => {
       to: 'c',
     })
     expect(windowOf(list, 40, 50)).toBeNull()
+  })
+
+  it('tells a window apart by every row, not only its ends', () => {
+    const at = (ids: string[]) =>
+      windowOf(
+        ids.map((id, i) => ({ bottom: i * 10 + 10, id, top: i * 10 })),
+        0,
+        100,
+      )
+    const all = at(['a', 'b', 'c'])
+    const filtered = at(['a', 'c'])
+    expect([filtered?.from, filtered?.to]).toEqual([all?.from, all?.to])
+    expect(sameWindow(all, filtered)).toBe(false)
+    expect(sameWindow(all, at(['a', 'b', 'c']))).toBe(true)
+    expect(sameWindow(null, null)).toBe(true)
+    expect(sameWindow(all, null)).toBe(false)
   })
 
   it('frames from the earliest start to the latest end', () => {
