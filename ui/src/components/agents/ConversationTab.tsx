@@ -43,6 +43,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
+import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import {
   conversationMarkdown,
   resolution,
@@ -225,30 +226,35 @@ export function ConversationTab({
             <TaskCopyMenu events={events} task={task} />
           </div>
         </TaskToolbar>
-        <MessageScroller className="flex-1">
-          <MessageScrollerViewport aria-label="Conversation">
-            <MessageScrollerContent
-              className={cn(
-                'w-full px-10 py-5',
-                width === 'narrow' && 'mx-auto max-w-3xl',
-              )}
-            >
-              <TaskAsk ctx={ctx} first={list[0]} />
-              {shown.length === 0 ? (
-                <p className="text-tertiary text-sm">
-                  {searching
-                    ? `No turns match “${query.trim()}”.`
-                    : 'No conversation yet.'}
-                </p>
-              ) : (
-                shown.map((turn) => (
-                  <TurnView ctx={ctx} key={turn.id} turn={turn} />
-                ))
-              )}
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-          <MessageScrollerButton />
-        </MessageScroller>
+        {searching && shown.length === 0 ? (
+          <NoMatches onClear={() => setQuery('')} query={query} />
+        ) : (
+          <MessageScroller className="flex-1">
+            <MessageScrollerViewport aria-label="Conversation">
+              <MessageScrollerContent
+                className={cn(
+                  'w-full px-10 py-5',
+                  width === 'narrow' && 'mx-auto max-w-3xl',
+                )}
+              >
+                <TaskAsk ctx={ctx} first={list[0]} />
+                {shown.length === 0 ? (
+                  <ActivityEmpty
+                    icon={<MessageSquare />}
+                    title="No activity yet"
+                  >
+                    No conversation yet.
+                  </ActivityEmpty>
+                ) : (
+                  shown.map((turn) => (
+                    <TurnView ctx={ctx} key={turn.id} turn={turn} />
+                  ))
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
+        )}
       </div>
     </MessageScrollerProvider>
   )

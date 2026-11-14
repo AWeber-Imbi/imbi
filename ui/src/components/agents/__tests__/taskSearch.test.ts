@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { matches, matchRanges } from '../taskSearch'
+import { highlightable, matches, matchRanges } from '../taskSearch'
 
 describe('matchRanges', () => {
   it('finds every match, case-insensitively', () => {
@@ -22,5 +22,16 @@ describe('matchRanges', () => {
   it('matches nothing for an empty query', () => {
     expect(matchRanges('abc', '')).toEqual([])
     expect(matches('abc', ' ')).toBe(true)
+  })
+})
+
+describe('highlightable', () => {
+  it('leaves out text inside a skipped element', () => {
+    const root = document.createElement('div')
+    root.innerHTML =
+      '<p>zz in a turn</p><div data-search-skip><p>zz in the empty state</p></div>'
+    expect(highlightable(root).map((n) => n.textContent)).toEqual([
+      'zz in a turn',
+    ])
   })
 })

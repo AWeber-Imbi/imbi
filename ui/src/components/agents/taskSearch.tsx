@@ -14,9 +14,33 @@ import { Search, X } from 'lucide-react'
 const HIGHLIGHT = 'task-search'
 const MAX_MARKS = 2000
 
+/** Marks an element whose text the search highlighter leaves alone. */
+export const SKIP_HIGHLIGHT = 'data-search-skip'
+
+const unskipped: NodeFilter = {
+  acceptNode: (node) =>
+    node.parentElement?.closest(`[${SKIP_HIGHLIGHT}]`)
+      ? NodeFilter.FILTER_REJECT
+      : NodeFilter.FILTER_ACCEPT,
+}
+
 type SearchState = [string, Dispatch<SetStateAction<string>>]
 
 const TaskSearchContext = createContext<null | SearchState>(null)
+
+/** Every text node under the root that the highlighter may mark. */
+export function highlightable(root: Node): Text[] {
+  const out: Text[] = []
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT,
+    unskipped,
+  )
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    out.push(n as Text)
+  }
+  return out
+}
 
 export function matches(text: string, query: string): boolean {
   const q = query.trim().toLowerCase()
@@ -118,8 +142,7 @@ export function useSearchHighlight(
     let frame = 0
     const mark = () => {
       const ranges: Range[] = []
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      for (const n of highlightable(root)) {
         for (const [start, end] of matchRanges(n.textContent ?? '', q)) {
           if (ranges.length >= MAX_MARKS) break
           const range = new Range()

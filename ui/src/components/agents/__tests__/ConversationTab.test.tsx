@@ -1,7 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { act, render, screen } from '@/test/utils'
+import { act, render, screen, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
@@ -370,6 +370,30 @@ describe('ConversationTab', () => {
     expect(screen.queryByText('Started')).toBeNull()
     expect(screen.queryByText('Stopped')).toBeNull()
     expect(screen.getByText('Paused')).toBeInTheDocument()
+  })
+
+  it('says when nothing matches, hiding the ask, and clears the search', async () => {
+    const user = userEvent.setup()
+    renderTab('closed')
+    expect(screen.getByText('Find why the build fails.')).toBeInTheDocument()
+    const box = screen.getByRole('searchbox', { name: 'Search conversation' })
+    await user.type(box, 'zzqx-no-match')
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+    expect(
+      screen.getByText('Nothing in this view matches “zzqx-no-match”.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Find why the build fails.')).toBeNull()
+    const empty = screen
+      .getByText('No matches')
+      .closest('[data-slot="empty"]') as HTMLElement
+    expect(empty).toHaveAttribute('data-search-skip')
+    await user.click(
+      within(empty).getByRole('button', { name: 'Clear search' }),
+    )
+    expect(box).toHaveValue('')
+    expect(screen.queryByText('No matches')).toBeNull()
+    expect(screen.getByText('Find why the build fails.')).toBeInTheDocument()
+    expect(screen.getByText('fixed')).toBeInTheDocument()
   })
 
   it('says when there is nothing yet', () => {
