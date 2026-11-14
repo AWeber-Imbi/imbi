@@ -175,6 +175,18 @@ describe('buildTrajectory', () => {
     expect(t.turns[0].steps).toBe(2)
   })
 
+  it('puts subagent usage on the record of its Agent call', () => {
+    const t = buildTrajectory(subagentLog(true), false)
+    const call = t.records.find((r) => r.id === 'call:c1')!
+    expect(call.seqs).toEqual(expect.arrayContaining([3, 6]))
+    expect(call.events.map((e) => e.seq)).toEqual(
+      [...call.events.map((e) => e.seq)].sort((a, b) => a - b),
+    )
+    expect(recordForSeq(t.records, 3)?.id).toBe('call:c1')
+    expect(recordForSeq(t.records, 6)?.id).toBe('call:c1')
+    expect(recordForSeq(t.records, 2)?.kind).toBe('assistant')
+  })
+
   it('keeps usage without a message id as a request of its own', () => {
     const t = buildTrajectory(subagentLog(false), false)
     expect(t.requests).toHaveLength(4)

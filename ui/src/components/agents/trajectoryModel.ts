@@ -265,6 +265,12 @@ export function buildTrajectory(
   )
   const subrequests = sub.map(({ agent, usage }) => {
     const call = callOf.get(agent)
+    if (call) {
+      call.events.push(usage)
+      call.events.sort((a, b) => a.seq - b.seq)
+      call.seqs.push(usage.seq)
+      call.seqs.sort((a, b) => a - b)
+    }
     return {
       agent,
       request: call?.request ?? null,
