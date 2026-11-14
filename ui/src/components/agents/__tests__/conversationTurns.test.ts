@@ -278,6 +278,126 @@ describe('turns', () => {
     )
     expect(list[1].stats.durationMs).toBe(5000)
   })
+
+  it('puts delayed work inside a work group in time order', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        human(1, 'Go.'),
+        bash(2),
+        bash(5),
+        event(6, 'request.opened', { request_id: 'r1' }),
+        event(
+          7,
+          'request.resolved',
+          { request_id: 'r1' },
+          { ...at('13:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          8,
+          'tool.called',
+          { call_id: 'c8', tool: 'Read' },
+          at('12:00:03'),
+        ),
+        event(9, 'turn', { body: 'Noted.' }, at('12:00:04')),
+        event(10, 'turn', { body: 'Done.' }, at('13:00:30')),
+      ]),
+      { live: false },
+    )
+    const [first] = list
+    expect(shape(list).map((t) => t.items)).toEqual([
+      ['group:2', 'reply', 'group:1', 'input'],
+      ['reply'],
+    ])
+    const groups = first.items.filter((i) => i.kind === 'group')
+    expect(groups.map((g) => g.entries.map((e) => e.event!.seq))).toEqual([
+      [2, 8],
+      [5],
+    ])
+    expect(groups[0].id).toBe(`g:${entryKey(groups[0].entries[0])}`)
+    expect(groups[1].id).toBe(`g:${entryKey(groups[1].entries[0])}`)
+  })
+
+  it('puts a running call stamped before the answer back before its request', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        human(1, 'Go.'),
+        bash(2),
+        event(3, 'request.opened', { request_id: 'r1' }, at('12:00:06')),
+        event(
+          4,
+          'request.resolved',
+          { request_id: 'r1' },
+          { ...at('13:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        bash(5, { parent_call_id: 'task-9' }),
+        event(6, 'turn', { body: 'Done.' }, at('13:00:30')),
+      ]),
+      { live: false },
+    )
+    expect(shape(list).map((t) => t.items)).toEqual([
+      ['group:2', 'input'],
+      ['reply'],
+    ])
+  })
+
+  it('stops a turn at the next opening when a subagent works past it', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const list = turns(
+      timeline([
+        human(1, 'Go.'),
+        bash(2, { parent_call_id: 'task-1' }),
+        event(3, 'request.opened', { request_id: 'r1' }),
+        event(
+          4,
+          'request.resolved',
+          { request_id: 'r1' },
+          { ...at('13:00:00'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          5,
+          'tool.called',
+          { call_id: 'c5', parent_call_id: 'task-1', tool: 'Bash' },
+          at('13:00:05'),
+        ),
+        event(
+          6,
+          'tool.called',
+          { call_id: 'task-1', result: 'Done.', tool: 'Task' },
+          at('13:00:10'),
+        ),
+        event(7, 'turn', { body: 'Done.' }, at('13:00:20')),
+      ]),
+      { live: false },
+    )
+    expect(list.map((t) => t.stats.durationMs)).toEqual([2000, 20_000])
+  })
+
+  it('times a turn from its first opening message', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const [turn] = turns(
+      timeline([
+        human(1, 'Go.'),
+        event(
+          2,
+          'turn',
+          { body: 'Also check X.' },
+          { ...at('12:00:10'), actor_id: 'dev', actor_kind: 'human' },
+        ),
+        event(
+          3,
+          'tool.called',
+          { call_id: 'c3', tool: 'Bash' },
+          at('12:00:05'),
+        ),
+        event(4, 'turn', { body: 'Done.' }, at('12:00:20')),
+      ]),
+      { live: false },
+    )
+    expect(turn.opening).toHaveLength(2)
+    expect(turn.stats.durationMs).toBe(19_000)
+  })
 })
 
 describe('turnForSeq', () => {

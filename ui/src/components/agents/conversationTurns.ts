@@ -153,7 +153,7 @@ export function turns(
     else add(turn, entry)
   }
 
-  for (const turn of list) finish(turn)
+  list.forEach((turn, i) => finish(turn, list[i + 1]))
   const final = last(list)
   if (final && task.live && !waiting(final)) final.status = 'running'
   else if (final && !task.live && task.failed) final.status = 'failed'
@@ -187,11 +187,22 @@ function add(turn: Turn, entry: TimelineEntry) {
  * to the turn it was done in, before the items that came after it.
  */
 function addEarlier(turn: Turn, entry: TimelineEntry) {
-  const at = timeOf(entry)
+  const at = stampOf(entry)
   let cut = turn.items.length
-  while (cut > 0 && timeOf(firstEntry(turn.items[cut - 1])) > at) cut--
+  while (cut > 0 && stampOf(firstEntry(turn.items[cut - 1])) > at) cut--
   const later = turn.items.splice(cut)
+  const group = last(turn.items)
+  const rest = group?.kind === 'group' ? splitAfter(group, at) : []
+  const size = group?.kind === 'group' ? group.entries.length : 0
   add(turn, entry)
+  if (group?.kind === 'group' && group.entries.length > size)
+    group.entries.push(...rest)
+  else if (rest.length)
+    later.unshift({
+      entries: rest,
+      id: `g:${entryKey(rest[0])}`,
+      kind: 'group',
+    })
   turn.items.push(...later)
 }
 
@@ -205,7 +216,7 @@ function eventsOf(entry: TimelineEntry): TimelineEntry[] {
   return [entry, ...entry.children.flatMap(eventsOf)]
 }
 
-function finish(turn: Turn) {
+function finish(turn: Turn, next?: Turn) {
   const work = turn.items.filter(isWork)
   const all = [...turn.opening, ...entriesOf(turn.items)].flatMap(eventsOf)
   for (const entry of all) {
@@ -219,7 +230,10 @@ function finish(turn: Turn) {
     .map(timeOf)
     .filter((t) => !Number.isNaN(t))
   const start = startOf(turn) ?? Math.min(...times)
-  const ends = times.filter((t) => t >= start)
+  const stop = next?.opening.length
+    ? Math.min(...next.opening.map(timeOf))
+    : Infinity
+  const ends = times.filter((t) => t >= start && t <= stop)
   turn.stats.durationMs =
     ends.length && (turn.opening.length || ends.length > 1)
       ? Math.max(...ends) - start
@@ -278,19 +292,34 @@ function seqOf(entry: TimelineEntry): number {
   return entry.event?.seq ?? entry.seq
 }
 
+/** Take a group's entries stamped after a time out of it. */
+function splitAfter(group: ProcessGroup, at: number): TimelineEntry[] {
+  const split = group.entries.findIndex((e) => stampOf(e) > at)
+  return split > 0 ? group.entries.splice(split) : []
+}
+
 /** An agent entry the harness stamped before the person's opening. */
 function stampedBefore(entry: TimelineEntry, opening?: TimelineEntry): boolean {
-  return !!opening && timeOf(entry) < timeOf(opening)
+  return !!opening && stampOf(entry) < timeOf(opening)
+}
+
+/** A call that is still running has no event; it takes its first child's time. */
+function stampOf(entry: TimelineEntry): number {
+  if (entry.event) return timeOf(entry)
+  const times = eventsOf(entry)
+    .map(timeOf)
+    .filter((t) => !Number.isNaN(t))
+  return times.length ? Math.min(...times) : NaN
 }
 
 /**
  * When the agent began a turn a person opened: the last time it resumed
- * before its first work, or the opening. A paused or queued task waits
- * for a runner, and that wait is not work.
+ * before its first work, or its first opening message. A paused or
+ * queued task waits for a runner, and that wait is not work.
  */
 function startOf(turn: Turn): null | number {
   if (!turn.opening.length) return null
-  let start = Math.max(...turn.opening.map(timeOf))
+  let start = Math.min(...turn.opening.map(timeOf))
   for (const item of turn.items) {
     if (item.kind !== 'note') break
     const e = item.entry.event
