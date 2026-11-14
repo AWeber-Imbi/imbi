@@ -754,8 +754,7 @@
 }
 
 @theme {
-  --font-tj-code:
-    'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  --font-tj-code: var(--font-mono);
 }
 
 @utility hairline {
@@ -778,71 +777,52 @@
   border-right-width: 0.5px;
 }
 
-/* Trajectory tab: the DeepSeek Harness trajectory palette, light and dark. */
+/* Trajectory tab roles, mapped onto the imbi theme tokens (light and dark). */
 .trajectory {
-  --tj-bg-1: #ffffff;
-  --tj-bg-2: #ffffff;
-  --tj-bg-module: rgb(245 246 247);
-  --tj-label-1: rgb(15 17 21);
-  --tj-label-2: rgb(97 102 107);
-  --tj-label-3: rgb(129 133 140);
-  --tj-caption: rgb(173 178 184);
-  --tj-border-1: rgb(0 0 0 / 0.04);
-  --tj-border-2: rgb(0 0 0 / 0.1);
-  --tj-border-4: rgb(0 0 0 / 0.16);
-  --tj-hover: rgb(38 49 72 / 0.06);
-  --tj-active: rgb(38 49 72 / 0.1);
-  --tj-business: rgb(65 118 230);
-  --tj-business-3: rgb(228 237 253);
-  --tj-brand: rgb(65 118 230);
-  --tj-accent: rgb(59 130 246);
-  --tj-success: rgb(34 197 94);
-  --tj-success-3: rgb(230 250 237);
-  --tj-warn: rgb(221 134 41);
-  --tj-warn-3: rgb(254 245 231);
-  --tj-error: rgb(236 19 19);
-  --tj-error-2: rgb(242 90 90);
-  --tj-code-bg: rgb(249 250 251);
-  --tj-citation: rgb(235 238 242);
-  --tj-assistant: color-mix(in srgb, var(--tj-brand) 60%, var(--tj-error-2));
-  --tj-assistant-bg: color-mix(
+  --tj-bg-1: var(--ds-bg-primary);
+  --tj-bg-2: var(--ds-bg-primary);
+  --tj-bg-module: var(--ds-bg-secondary);
+  --tj-label-1: var(--ds-text-primary);
+  --tj-label-2: var(--ds-text-secondary);
+  --tj-label-3: var(--ds-text-tertiary);
+  --tj-caption: var(--ds-text-tertiary);
+  --tj-border-1: color-mix(in srgb, var(--ds-border-tertiary) 50%, transparent);
+  --tj-border-2: var(--ds-border-tertiary);
+  --tj-border-4: var(--ds-border-secondary);
+  --tj-hover: color-mix(in srgb, var(--ds-text-primary) 5%, transparent);
+  --tj-active: color-mix(in srgb, var(--ds-text-primary) 9%, transparent);
+  --tj-brand: var(--ds-action-bg);
+  --tj-business: var(--ds-text-info);
+  --tj-business-3: var(--ds-bg-info);
+  --tj-assistant: var(--ds-text-accent);
+  --tj-assistant-bg: var(--ds-bg-accent);
+  --tj-context: var(--ds-text-success);
+  --tj-success-3: var(--ds-bg-success);
+  --tj-warn: var(--ds-text-warning);
+  --tj-warn-3: var(--ds-bg-warning);
+  --tj-subtool: var(--ds-text-teal);
+  --tj-subtool-bg: var(--ds-bg-teal);
+  --tj-error: var(--ds-text-danger);
+  --tj-code-bg: var(--ds-bg-tertiary);
+  --tj-citation: var(--ds-border-tertiary);
+  --tj-span-user: var(--color-activity-info-dot);
+  --tj-span-assistant: var(--color-status-implementing-dot);
+  --tj-span-tool: var(--color-activity-warning-dot);
+  --tj-span-subtool: var(--ds-text-teal);
+  --tj-span-context: var(--color-status-review-dot);
+  --tj-span-error: var(--color-status-failed-dot);
+  --tj-turn-accent: color-mix(
     in srgb,
-    color-mix(in srgb, var(--tj-brand) 55%, var(--tj-error-2)) 15%,
-    var(--tj-bg-1)
+    var(--ds-action-bg) 30%,
+    var(--ds-bg-primary)
   );
-  --tj-context: color-mix(in srgb, var(--tj-success) 68%, var(--tj-label-2));
-  --tj-subtool: color-mix(in srgb, var(--tj-warn) 62%, var(--tj-label-3));
-  --tj-subtool-bg: color-mix(in srgb, var(--tj-warn-3) 58%, var(--tj-bg-1));
-  --tj-turn-accent: color-mix(in srgb, var(--tj-accent) 22%, var(--tj-bg-1));
-  --tj-turn-error: color-mix(in srgb, var(--tj-error) 30%, var(--tj-bg-1));
-  --tj-font:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  --tj-turn-error: color-mix(
+    in srgb,
+    var(--ds-text-danger) 30%,
+    var(--ds-bg-primary)
+  );
   background: var(--tj-bg-1);
   color: var(--tj-label-1);
-  font-family: var(--tj-font);
-}
-
-.dark .trajectory {
-  --tj-bg-1: rgb(35 35 36);
-  --tj-bg-2: rgb(44 44 46);
-  --tj-bg-module: rgb(53 54 56);
-  --tj-label-1: rgb(249 250 251);
-  --tj-label-2: rgb(207 211 214);
-  --tj-label-3: rgb(173 178 184);
-  --tj-caption: rgb(129 133 140);
-  --tj-border-1: rgb(255 255 255 / 0.06);
-  --tj-border-2: rgb(255 255 255 / 0.12);
-  --tj-border-4: rgb(255 255 255 / 0.2);
-  --tj-hover: rgb(255 255 255 / 0.08);
-  --tj-active: rgb(255 255 255 / 0.14);
-  --tj-business: rgb(122 170 255);
-  --tj-business-3: rgb(52 65 91);
-  --tj-brand: rgb(86 134 254);
-  --tj-success-3: rgb(35 60 44);
-  --tj-warn-3: rgb(39 36 31);
-  --tj-error: rgb(242 90 90);
-  --tj-code-bg: rgb(27 27 28);
-  --tj-citation: rgb(53 54 56);
 }
 
 .trajectory tr[data-turn-start] > td::before {

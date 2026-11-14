@@ -285,7 +285,7 @@ function RecordRow({
       aria-rowindex={index + 1}
       aria-selected={selected}
       className={cn(
-        'h-7.5 cursor-default transition-[background-color,opacity] duration-120 outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-business)]',
+        'h-7.5 cursor-default transition-[background-color,opacity] duration-120 outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]',
         selected && 'bg-(--tj-active) hover:bg-(--tj-active)',
         focus === 'outside' && 'opacity-[.24]',
       )}
@@ -382,7 +382,7 @@ function RequestDot({
         className={cn(
           'size-1.25 rounded-full shadow-[0_0_0_2px_var(--tj-bg-1)] transition-colors group-hover/dot:bg-(--tj-brand) group-focus-visible/dot:bg-(--tj-brand)',
           selected
-            ? 'bg-[color-mix(in_srgb,var(--tj-brand)_18%,transparent)] shadow-[0_0_0_1.5px_var(--tj-business)]'
+            ? 'bg-[color-mix(in_srgb,var(--tj-brand)_18%,transparent)] shadow-[0_0_0_1.5px_var(--tj-brand)]'
             : 'bg-(--tj-caption)',
         )}
       />
@@ -407,7 +407,7 @@ function SummaryRow({
       aria-expanded={false}
       aria-label={`Expand ${text}`}
       aria-rowindex={index + 1}
-      className="h-5 cursor-pointer outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-business)]"
+      className="h-5 cursor-pointer outline-none hover:bg-(--tj-hover) focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]"
       data-summary
       onClick={onFold}
       onKeyDown={(e) => {

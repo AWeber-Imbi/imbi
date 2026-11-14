@@ -31,12 +31,12 @@ interface View {
 const DRAG_PX = 3
 const LANES = ['Input', 'Model', 'Tools']
 const SPAN_COLOR: Record<TrajectoryKind, string> = {
-  assistant: 'bg-(--tj-assistant) opacity-100',
-  context: 'bg-(--tj-context)',
-  subtool: 'bg-(--tj-warn)',
+  assistant: 'bg-(--tj-span-assistant) opacity-100',
+  context: 'bg-(--tj-span-context)',
+  subtool: 'bg-(--tj-span-subtool)',
   system: 'bg-(--tj-label-2)',
-  tool: 'bg-(--tj-warn)',
-  user: 'bg-(--tj-business)',
+  tool: 'bg-(--tj-span-tool)',
+  user: 'bg-(--tj-span-user)',
 }
 
 /** The records a range covers: active at any point inside it. */
@@ -371,7 +371,7 @@ function SpanBar({
         <span
           className={cn(
             'pointer-events-auto absolute h-2 min-w-0.5 rounded-[1px] opacity-[.78] transition-[left,opacity] duration-180 hover:shadow-[0_0_0_1px_var(--tj-bg-2),0_0_0_3px_color-mix(in_srgb,var(--tj-brand)_80%,transparent)]',
-            record.error ? 'bg-(--tj-error)' : SPAN_COLOR[record.kind],
+            record.error ? 'bg-(--tj-span-error)' : SPAN_COLOR[record.kind],
             current && 'shadow-[0_0_0_2px_var(--tj-brand)]',
             dim === 'range' && 'opacity-20',
             dim === 'search' && 'opacity-[.14]',

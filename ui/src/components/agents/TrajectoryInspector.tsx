@@ -137,7 +137,7 @@ export function TrajectoryInspector({
         aria-valuemax={MAX_WIDTH}
         aria-valuemin={MIN_WIDTH}
         aria-valuenow={width ?? undefined}
-        className="absolute inset-y-0 -left-1 z-1 w-2 cursor-col-resize outline-none focus-visible:bg-(--tj-business)/30"
+        className="absolute inset-y-0 -left-1 z-1 w-2 cursor-col-resize outline-none focus-visible:bg-(--tj-brand)/30"
         onDoubleClick={() => setWidth(null)}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
@@ -179,9 +179,9 @@ export function TrajectoryInspector({
             aria-controls={`${base}-panel`}
             aria-selected={current === name}
             className={cn(
-              'relative shrink-0 px-2.25 text-[13px] leading-5 outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--tj-business)]',
+              'relative shrink-0 px-2.25 text-[13px] leading-5 outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]',
               current === name
-                ? 'text-(--tj-business)'
+                ? 'text-(--tj-label-1)'
                 : 'text-(--tj-label-3) hover:text-(--tj-label-1)',
             )}
             id={`${base}-${name}`}
@@ -210,7 +210,7 @@ export function TrajectoryInspector({
           >
             {name}
             {current === name && (
-              <span className="absolute inset-x-2.25 bottom-0 h-0.5 bg-(--tj-business)" />
+              <span className="absolute inset-x-2.25 bottom-0 h-0.5 bg-(--tj-brand)" />
             )}
           </button>
         ))}
