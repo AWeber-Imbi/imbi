@@ -629,6 +629,10 @@ describe('TrajectoryTab overview', () => {
 
   it('keeps a range at the live edge to the records it covered', () => {
     const scrollTo = vi.fn()
+    const smooth = () =>
+      scrollTo.mock.calls.filter(
+        ([options]) => (options as ScrollToOptions).behavior === 'smooth',
+      )
     const original = Element.prototype.scrollTo
     Element.prototype.scrollTo = scrollTo
     const t = task({ status: 'running' }) as unknown as AgentTask
@@ -657,7 +661,7 @@ describe('TrajectoryTab overview', () => {
         'data-timeline-focus',
         'inside',
       )
-      expect(scrollTo).toHaveBeenCalledTimes(1)
+      expect(smooth()).toHaveLength(1)
       view.rerender(ui([...LOG, event(12, 'session.closed', {})]))
       expect(rows()[rows().length - 1].dataset.kind).toBe('system')
       expect(rows()[rows().length - 1]).toHaveAttribute(
@@ -668,7 +672,7 @@ describe('TrajectoryTab overview', () => {
         'data-dim',
         'range',
       )
-      expect(scrollTo).toHaveBeenCalledTimes(1)
+      expect(smooth()).toHaveLength(1)
     } finally {
       Element.prototype.scrollTo = original
     }
