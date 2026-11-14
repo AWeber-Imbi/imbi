@@ -3,10 +3,8 @@
 // "grouped run" shape from the mockups by clustering *consecutive* entries
 // that share a key (actor + project) and fall within a time window of each
 // other. A cluster of one renders as a single row; two or more collapse into
-// an expandable group. See docs note in RecentActivity.tsx for where a
-// backend `group_id` would replace this heuristic.
-
-import { toDateOnlyIso } from '@/lib/formatDate'
+// an expandable group. A backend `group_id` would replace
+// this heuristic.
 
 export interface ActivityCluster<T> {
   /** Cluster members, preserving the input (newest-first) order. */
@@ -17,14 +15,6 @@ export interface ActivityCluster<T> {
   newest: number
   /** Oldest member timestamp (ms since epoch). */
   oldest: number
-}
-
-export interface DaySection<T> {
-  clusters: ActivityCluster<T>[]
-  /** Local calendar-day key, e.g. `2026-07-16`. */
-  key: string
-  /** Human label: "Today", "Yesterday", "Jul 16", or "May 12, 2026". */
-  label: string
 }
 
 interface ClusterOptions<T> {
@@ -65,49 +55,4 @@ export function clusterConsecutive<T>(
     }
   }
   return clusters
-}
-
-/**
- * Bucket a newest-first list by local calendar day, then cluster within each
- * day. Sectioning first keeps clusters from straddling midnight.
- */
-export function sectionByDay<T>(
-  items: T[],
-  options: ClusterOptions<T> & { now?: number },
-): DaySection<T>[] {
-  const now = options.now ?? Date.now()
-  const sections: DaySection<T>[] = []
-  const byKey = new Map<string, DaySection<T>>()
-  for (const item of items) {
-    const day = new Date(options.timeOf(item))
-    const key = toDateOnlyIso(day)
-    let section = byKey.get(key)
-    if (!section) {
-      section = { clusters: [], key, label: dayLabel(day, now) }
-      byKey.set(key, section)
-      sections.push(section)
-    }
-    section.clusters.push(item as never)
-  }
-  // The bucket temporarily holds raw items in `clusters`; cluster them now.
-  for (const section of sections) {
-    section.clusters = clusterConsecutive(
-      section.clusters as unknown as T[],
-      options,
-    )
-  }
-  return sections
-}
-
-function dayLabel(d: Date, now: number): string {
-  const today = new Date(now)
-  if (toDateOnlyIso(d) === toDateOnlyIso(today)) return 'Today'
-  const yesterday = new Date(now)
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (toDateOnlyIso(d) === toDateOnlyIso(yesterday)) return 'Yesterday'
-  return d.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(d.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
-  })
 }

@@ -40,8 +40,6 @@ import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCoun
 import { MyPullRequestsToDeployWidget } from './dashboard/widgets/MyPullRequestsToDeployWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
-import { ProjectActivityWidget } from './dashboard/widgets/ProjectActivityWidget'
-import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
 import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { StatWidget } from './dashboard/widgets/StatWidget'
 import { TeamActivityWidget } from './dashboard/widgets/TeamActivityWidget'
@@ -50,7 +48,6 @@ import { WidgetConfig, WidgetSelector } from './dashboard/WidgetSelector'
 
 interface DashboardProps {
   onProjectSelect?: (projectId: string) => void
-  onUserSelect?: (userName: string) => void
   onViewChange?: (view: ViewChangeEvent) => void
 }
 
@@ -70,8 +67,6 @@ type WidgetId =
   | 'my-pull-request-counts'
   | 'my-pull-requests'
   | 'outdated-components'
-  | 'project-activity'
-  | 'recent-activity'
   | 'recent-deployments'
   | 'stat-active-deployments'
   | 'stat-open-prs'
@@ -115,26 +110,10 @@ const availableWidgets: WidgetConfig[] = [
   {
     category: 'activity',
     columnSpan: 2,
-    description: 'Latest actions and updates across projects',
-    icon: '📝',
-    id: 'recent-activity',
-    name: 'Recent Activity',
-  },
-  {
-    category: 'activity',
-    columnSpan: 2,
     description: 'Latest deployment activity across environments',
     icon: '🚀',
     id: 'recent-deployments',
     name: 'Recent Deployments',
-  },
-  {
-    category: 'activity',
-    columnSpan: 2,
-    description: 'Compact, project-centric feed of recent activity',
-    icon: '📌',
-    id: 'project-activity',
-    name: 'Project Activity',
   },
   {
     category: 'stats',
@@ -198,8 +177,6 @@ const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
   'my-pull-request-counts',
   'my-pull-requests',
   'outdated-components',
-  'project-activity',
-  'recent-activity',
   'recent-deployments',
   'stat-active-deployments',
   'stat-open-prs',
@@ -238,11 +215,7 @@ interface UnconnectedIdentity {
 }
 
 // fallow-ignore-next-line complexity
-export function Dashboard({
-  onProjectSelect,
-  onUserSelect,
-  onViewChange,
-}: DashboardProps) {
+export function Dashboard({ onProjectSelect, onViewChange }: DashboardProps) {
   const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
@@ -404,15 +377,6 @@ export function Dashboard({
     'my-pull-requests': () => <MyPullRequestsWidget />,
     'outdated-components': () => (
       <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
-    ),
-    'project-activity': () => (
-      <ProjectActivityWidget onProjectSelect={onProjectSelect} />
-    ),
-    'recent-activity': () => (
-      <RecentActivityWidget
-        onProjectSelect={onProjectSelect}
-        onUserSelect={onUserSelect}
-      />
     ),
     'recent-deployments': () => <RecentDeploymentsWidget />,
     'stat-active-deployments': () => (
