@@ -296,7 +296,14 @@ export function StatisticsTab({
                   {plural(stats.totals.turns, 'turn')} ·{' '}
                   {plural(stats.totals.steps, 'step')}
                 </TableCell>
-                <Numbers cells={stats.totals} />
+                <Numbers
+                  cells={stats.totals}
+                  speedTitle={
+                    stats.totals.subrequests
+                      ? 'Main-agent output tokens per second of model time. Subagent tokens count in Output but carry no model time.'
+                      : undefined
+                  }
+                />
                 <TableCell className="text-right whitespace-nowrap tabular-nums">
                   {time(stats.totals.totalMs)}
                 </TableCell>
@@ -319,9 +326,11 @@ function clock(ms: null | number): string | undefined {
 function Numbers({
   cells,
   delta,
+  speedTitle = 'Output tokens per second of model time',
 }: {
   cells: StatsCells
   delta?: null | number
+  speedTitle?: string
 }) {
   const cell = 'text-right tabular-nums whitespace-nowrap'
   return (
@@ -351,11 +360,7 @@ function Numbers({
       <TableCell className={cell}>{time(cells.toolMs)}</TableCell>
       <TableCell
         className={cell}
-        title={
-          cells.outputPerSecond === null
-            ? undefined
-            : 'Output tokens per second of model time'
-        }
+        title={cells.outputPerSecond === null ? undefined : speedTitle}
       >
         {speed(cells.outputPerSecond)}
       </TableCell>

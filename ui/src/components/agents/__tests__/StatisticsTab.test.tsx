@@ -277,6 +277,16 @@ describe('taskStatistics', () => {
     expect(totals.context).toBe(2100)
   })
 
+  it('times only main-agent output in the task total speed', () => {
+    const trajectory = buildTrajectory(subagentLog(true), false)
+    const { totals, turns } = taskStatistics(t, trajectory, 'latest')
+    const main = turns
+      .flatMap((turn) => turn.steps)
+      .reduce((n, s) => n + s.output, 0)
+    expect(totals.output).toBeGreaterThan(main)
+    expect(totals.outputPerSecond).toBeCloseTo(main / (totals.modelMs / 1000))
+  })
+
   it('counts usage without a message id as steps, as before', () => {
     const trajectory = buildTrajectory(subagentLog(false), false)
     const { totals, turns } = taskStatistics(t, trajectory, 'latest')
@@ -376,6 +386,19 @@ describe('StatisticsTab', () => {
     expect(
       screen.getByRole('button', { name: 'Turn 1: hide its 2 steps' }),
     ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('says the task total speed is the main agent only', () => {
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={subagentLog(true)} task={t} />
+      </div>,
+    )
+    const footer = screen.getByText('Task total').closest('tr') as HTMLElement
+    expect(
+      within(footer).getByTitle(/^Main-agent output tokens per second/),
+    ).toBeInTheDocument()
   })
 
   it('opens the only turn once its events load', () => {
