@@ -74,6 +74,15 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Next release
+
+1. A task whose agent stops without calling `report_outcome` now fails
+   with `failed_external` and the reason `no_outcome_reported`. Before,
+   it closed as `done_acted` when the agent called a tool that changes
+   data, else as `done_nothing_to_act_on` (`no_mutating_tool_call`). A
+   workflow `agent` step on such a task now takes `Failed`. Check the
+   prompts of agents that do not call `report_outcome`.
+
 ## 2.50.0
 
 1. Scheduled tasks now run with only the permissions of the person

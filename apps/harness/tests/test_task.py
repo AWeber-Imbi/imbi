@@ -7,6 +7,7 @@ The user switches and the CLI start need the pod; the kind suite in
 
 import asyncio
 import contextlib
+import dataclasses
 import datetime
 import decimal
 import json
@@ -307,10 +308,7 @@ class OutcomeTestCase(unittest.TestCase):
     def test_outcomes(self) -> None:
         cases = [
             (None, ('failed_external', 'no_result')),
-            (
-                self.result(),
-                ('done_nothing_to_act_on', 'no_mutating_tool_call'),
-            ),
+            (self.result(), ('failed_external', 'no_outcome_reported')),
             (
                 self.result(subtype='error_max_turns', is_error=True),
                 ('partial_capped', 'max_turns'),
@@ -387,13 +385,19 @@ class OutcomeTestCase(unittest.TestCase):
                     task.require_output(given, subject, value), expected
                 )
 
-    def test_success_uses_the_report_then_the_mutating_calls(self) -> None:
-        reported = ('failed_external', 'project_forbidden')
+    def test_success_needs_a_report(self) -> None:
+        for reported in (
+            ('failed_external', 'project_forbidden'),
+            ('done_acted', 'fixed'),
+            ('done_nothing_to_act_on', 'up_to_date'),
+        ):
+            with self.subTest(reported=reported):
+                self.assertEqual(
+                    task.outcome(self.result(), reported), reported
+                )
         self.assertEqual(
-            task.outcome(self.result(), reported, mutated=True), reported
-        )
-        self.assertEqual(
-            task.outcome(self.result(), mutated=True), ('done_acted', None)
+            task.outcome(self.result()),
+            ('failed_external', 'no_outcome_reported'),
         )
         # A report never changes the outcome of an error result.
         self.assertEqual(
@@ -743,6 +747,7 @@ class ConfigTestCase(TaskTestCase):
         self.assertEqual(env['ANTHROPIC_API_KEY'], 'placeholder')
         self.assertEqual(env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'], '1')
         self.assertEqual(env['CLAUDE_CODE_ENABLE_TASKS'], '0')
+        self.assertEqual(env['CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'], '1')
         self.assertEqual(
             options.thinking, {'type': 'adaptive', 'display': 'summarized'}
         )
@@ -1449,12 +1454,38 @@ class WorkspaceTestCase(TaskTestCase):
         self.assertEqual(ctx.exception.reason, 'executor_unavailable')
 
 
+@dataclasses.dataclass
+class Report:
+    """A ``report_outcome`` call of the model in a :class:`FakeClient`
+    replay. The CLI calls the SDK MCP tool; the fake calls the task."""
+
+    outcome: str
+    reason: str
+
+
+def result_message(**changes: typing.Any) -> sdk.ResultMessage:
+    values: dict[str, typing.Any] = {
+        'subtype': 'success',
+        'duration_ms': 1,
+        'duration_api_ms': 1,
+        'is_error': False,
+        'num_turns': 2,
+        'session_id': 'x',
+    } | changes
+    return sdk.ResultMessage(**values)
+
+
 class FakeClient:
     """Stands in for ``ClaudeSDKClient``: replays messages."""
 
     messages: typing.ClassVar[list[typing.Any]] = []
+    #: Wait after the replay, like a CLI that has more to send.
+    hang: typing.ClassVar[bool] = False
 
-    def __init__(self, *_: typing.Any, **__: typing.Any) -> None:
+    def __init__(
+        self, options: sdk.ClaudeAgentOptions, **__: typing.Any
+    ) -> None:
+        self.options = options
         self.prompts: list[str] = []
         self.interrupt = mock.AsyncMock()
 
@@ -1467,9 +1498,29 @@ class FakeClient:
     async def query(self, prompt: str) -> None:
         self.prompts.append(prompt)
 
-    async def receive_response(self) -> typing.AsyncIterator[typing.Any]:
+    def _report(self, report: Report) -> None:
+        hooks = self.options.hooks or {}
+        hook = typing.cast(typing.Any, hooks['PreToolUse'][0].hooks[0])
+        run = typing.cast(task.TaskRun, hook.__self__)
+        run.report_outcome(
+            {'outcome': report.outcome, 'reason': report.reason}
+        )
+
+    async def receive_messages(self) -> typing.AsyncIterator[typing.Any]:
         for message in self.messages:
+            if isinstance(message, Report):
+                self._report(message)
+            else:
+                yield message
+        if self.hang:
+            await asyncio.Event().wait()
+
+    async def receive_response(self) -> typing.AsyncIterator[typing.Any]:
+        """As the SDK: stop after the first result."""
+        async for message in self.receive_messages():
             yield message
+            if isinstance(message, sdk.ResultMessage):
+                return
 
 
 class RunTestCase(TaskTestCase):
@@ -1518,15 +1569,10 @@ class RunTestCase(TaskTestCase):
                 content=[sdk.ToolResultBlock('tu1', f'key {KEY}', False)]
             ),
             sdk.AssistantMessage(content=[sdk.TextBlock('done')], model='m'),
-            sdk.ResultMessage(
-                subtype='success',
-                duration_ms=1,
-                duration_api_ms=1,
-                is_error=False,
-                num_turns=2,
-                session_id='x',
-            ),
+            Report('done_acted', 'listed'),
+            result_message(),
         ]
+        FakeClient.hang = False
 
     async def executor(self, message: dict[str, typing.Any]) -> typing.Any:
         if message['op'] == 'fetch':
@@ -1537,7 +1583,7 @@ class RunTestCase(TaskTestCase):
         await self.run_task.run()
         self.assertEqual(
             self.posted('/outcome'),
-            [{'outcome': 'done_acted', 'reason': None}],
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
         )
         events = [
             event
@@ -1555,6 +1601,152 @@ class RunTestCase(TaskTestCase):
         transcript = self.tmp / 'transcripts' / 't.jsonl'
         self.assertEqual(len(transcript.read_text().splitlines()), 4)
 
+    def background_turn(self) -> list[typing.Any]:
+        """A turn that starts a background subagent and ends before it."""
+        return [
+            sdk.AssistantMessage(
+                content=[
+                    sdk.ToolUseBlock(
+                        'tu2', 'Agent', {'prompt': 'find', 'description': 'f'}
+                    ),
+                ],
+                model='m',
+            ),
+            sdk.TaskStartedMessage(
+                subtype='task_started',
+                data={},
+                task_id='a1',
+                description='f',
+                uuid='u1',
+                session_id='x',
+                tool_use_id='tu2',
+                task_type='local_agent',
+            ),
+            sdk.UserMessage(
+                content=[
+                    sdk.ToolResultBlock(
+                        'tu2', 'Async agent launched successfully', False
+                    )
+                ]
+            ),
+            sdk.AssistantMessage(
+                content=[sdk.TextBlock('waiting for the finder')], model='m'
+            ),
+            result_message(result='waiting for the finder'),
+        ]
+
+    async def test_waits_for_a_background_subagent(self) -> None:
+        FakeClient.messages = [
+            *self.background_turn(),
+            sdk.TaskNotificationMessage(
+                subtype='task_notification',
+                data={},
+                task_id='a1',
+                status='completed',
+                output_file='a1.output',
+                summary='found 3',
+                uuid='u2',
+                session_id='x',
+            ),
+            sdk.AssistantMessage(content=[sdk.TextBlock('merged')], model='m'),
+            Report('done_acted', 'merged'),
+            result_message(result='merged'),
+        ]
+        with self.assertLogs('imbi.harness.task', 'INFO') as logs:
+            await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_acted', 'reason': 'merged'}],
+        )
+        self.assertEqual(self.run_task.background, set())
+        self.assertEqual(self.run_task.result_text, 'merged')
+        self.assertTrue(
+            any('waits for 1 background tasks' in line for line in logs.output)
+        )
+
+    async def test_killed_background_task_ends_the_wait(self) -> None:
+        FakeClient.messages = [
+            *self.background_turn(),
+            sdk.TaskUpdatedMessage(
+                subtype='task_updated',
+                data={},
+                task_id='a1',
+                patch={'status': 'killed'},
+            ),
+            Report('failed_external', 'finder_killed'),
+            result_message(),
+        ]
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'finder_killed'}],
+        )
+
+    async def test_error_result_ends_the_wait(self) -> None:
+        turn = self.background_turn()
+        turn[-1] = result_message(subtype='error_max_turns', is_error=True)
+        FakeClient.messages = turn
+        FakeClient.hang = True
+        await asyncio.wait_for(self.run_task.run(), 5)
+        self.assertEqual(self.run_task.background, {'a1'})
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'partial_capped', 'reason': 'max_turns'}],
+        )
+
+    async def test_background_shell_does_not_hold_the_task(self) -> None:
+        turn = self.background_turn()
+        started = turn[1]
+        assert isinstance(started, sdk.TaskStartedMessage)
+        started.task_type = 'local_bash'
+        FakeClient.messages = turn
+        FakeClient.hang = True
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await asyncio.wait_for(self.run_task.run(), 5)
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'no_outcome_reported'}],
+        )
+
+    async def test_stop_ends_the_wait_for_background_work(self) -> None:
+        FakeClient.messages = self.background_turn()
+        FakeClient.hang = True
+        running = asyncio.create_task(self.run_task.run())
+        for _ in range(500):
+            if self.run_task.result is not None:
+                break
+            await asyncio.sleep(0.01)
+        self.assertEqual(self.run_task.background, {'a1'})
+        # The task timeout: imbi-api closes the task, and the heartbeat
+        # or a usage report says so.
+        self.run_task._state({'status': 'closed'})
+        with self.assertLogs('imbi.harness.task', 'INFO'):
+            await asyncio.wait_for(running, 5)
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'no_outcome_reported'}],
+        )
+
+    async def test_no_report_fails_the_task(self) -> None:
+        FakeClient.messages = [
+            m for m in FakeClient.messages if not isinstance(m, Report)
+        ]
+        with self.assertLogs('imbi.harness.task', 'WARNING') as logs:
+            await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'no_outcome_reported'}],
+        )
+        self.assertIn('without report_outcome', logs.output[0])
+
+    async def test_keeps_the_reported_outcome(self) -> None:
+        FakeClient.messages[-2] = Report('done_nothing_to_act_on', 'clean')
+        await self.run_task.run()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_nothing_to_act_on', 'reason': 'clean'}],
+        )
+
     async def test_posts_the_structured_output(self) -> None:
         result = FakeClient.messages[-1]
         assert isinstance(result, sdk.ResultMessage)
@@ -1565,7 +1757,7 @@ class RunTestCase(TaskTestCase):
             [
                 {
                     'outcome': 'done_acted',
-                    'reason': None,
+                    'reason': 'listed',
                     'structured_output': {'subjects': ['Hi']},
                 }
             ],
@@ -1591,7 +1783,7 @@ class RunTestCase(TaskTestCase):
             [
                 {
                     'outcome': 'done_acted',
-                    'reason': None,
+                    'reason': 'listed',
                     'structured_output': {'subjects': 1},
                 },
                 {
@@ -2121,7 +2313,7 @@ class FlushTestCase(TaskTestCase):
         super().setUp()
         self.run_task.session_id = 's'
         self.sent: list[list[str]] = []
-        self.failures: list[Exception | None] = []
+        self.failures: list[BaseException | None] = []
 
         async def post(
             path: str, *_: typing.Any, **kwargs: typing.Any
@@ -2152,6 +2344,15 @@ class FlushTestCase(TaskTestCase):
         )
         await self.run_task.flush()
         self.assertEqual(self.sent, [['a', 'b', 'c']])
+
+    async def test_cancel_keeps_the_events(self) -> None:
+        self.queue('a', 'b')
+        self.failures = [asyncio.CancelledError()]
+        with self.assertRaises(asyncio.CancelledError):
+            await self.run_task.flush()
+        self.assertEqual(self.sent, [])
+        await self.run_task.flush()
+        self.assertEqual(self.sent, [['a', 'b']])
 
     async def test_too_large_batch_is_sent_one_by_one(self) -> None:
         self.queue('a', 'b', 'c')

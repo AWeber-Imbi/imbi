@@ -689,6 +689,19 @@ def bash(command: str) -> Row:
     }
 
 
+#: The reason of the outcome that :func:`report` sends.
+REASON = 'script_done'
+
+
+def report(outcome: str = 'done_acted') -> Row:
+    """The last step of a script whose test checks the outcome: a run
+    that ends without ``report_outcome`` is ``failed_external``."""
+    return {
+        'name': 'mcp__imbi__report_outcome',
+        'input': {'outcome': outcome, 'reason': REASON},
+    }
+
+
 class TaskFlowTests(unittest.TestCase):
     """A task with a repository, a pinned plugin, and a GitHub App."""
 
@@ -735,6 +748,7 @@ class TaskFlowTests(unittest.TestCase):
                             'content': 'x',
                         },
                     },
+                    report(),
                 ],
             },
         )
@@ -752,7 +766,7 @@ class TaskFlowTests(unittest.TestCase):
     def test_outcome(self) -> None:
         self.assertEqual(
             (self.detail['outcome'], self.detail['outcome_reason']),
-            ('done_acted', None),
+            ('done_acted', REASON),
         )
 
     def test_clone_in_the_workspace_without_a_credential(self) -> None:
@@ -808,7 +822,13 @@ class TaskFlowTests(unittest.TestCase):
         calls = self.events('tool.called')
         self.assertEqual(
             [c['payload']['tool'] for c in calls],
-            ['Bash', 'TodoWrite', 'Bash', 'Write'],
+            [
+                'Bash',
+                'TodoWrite',
+                'Bash',
+                'Write',
+                'mcp__imbi__report_outcome',
+            ],
         )
         self.assertIn('app: first commit', calls[0]['payload']['result'])
         self.assertTrue(calls[0]['payload']['mutating'])
@@ -867,12 +887,12 @@ class TaskFlowTests(unittest.TestCase):
         )
         usage = self.detail['usage']
         self.assertGreaterEqual(len(usage), len(requests))
-        self.assertEqual(len(requests), 5)
-        for report in usage:
-            self.assertEqual(report['tokens_in'], 10)
-            self.assertEqual(report['tokens_out'], 5)
-            self.assertEqual(report['cache_read_tokens'], 0)
-            self.assertEqual(report['cache_write_tokens'], 0)
+        self.assertEqual(len(requests), 6)
+        for row in usage:
+            self.assertEqual(row['tokens_in'], 10)
+            self.assertEqual(row['tokens_out'], 5)
+            self.assertEqual(row['cache_read_tokens'], 0)
+            self.assertEqual(row['cache_write_tokens'], 0)
         self.assertNotIn({'bad_key': True}, requests)
 
 
@@ -999,7 +1019,7 @@ class ApprovalTests(unittest.TestCase):
             {
                 'origin': 'webhook',
                 'approval_tools': ['Bash'],
-                'script': [bash('echo approved-run')],
+                'script': [bash('echo approved-run'), report()],
             }
         )
         opened = wait_for_event(task, 'request.opened')
@@ -1017,7 +1037,8 @@ class ApprovalTests(unittest.TestCase):
     def test_approved_call_runs(self) -> None:
         task, results, opened = self.run_approval('approved')
         self.assertIn('approved-run', results[0])
-        (call,) = tool_calls(task)
+        call, reported = tool_calls(task)
+        self.assertEqual(reported['tool'], 'mcp__imbi__report_outcome')
         self.assertEqual(
             call['policy'],
             {
@@ -1037,7 +1058,8 @@ class ApprovalTests(unittest.TestCase):
         task, results, _ = self.run_approval('rejected')
         self.assertIn('approval_rejected', results[0])
         self.assertNotIn('approved-run\n', results[0])
-        (call,) = tool_calls(task)
+        call, reported = tool_calls(task)
+        self.assertEqual(reported['tool'], 'mcp__imbi__report_outcome')
         self.assertEqual(call['policy']['decision'], 'deny')
         self.assertTrue(call['is_error'])
 
@@ -1095,10 +1117,13 @@ class ChildTaskTests(unittest.TestCase):
                 'repository': True,
                 # The repositories are private: a checkout token.
                 'binding': True,
-                'child': {'script': [bash('cat from-parent.txt; pwd')]},
+                'child': {
+                    'script': [bash('cat from-parent.txt; pwd'), report()]
+                },
                 'script': [
                     bash('echo hi-from-parent > from-parent.txt'),
                     child_task(),
+                    report(),
                 ],
             }
         )
@@ -1106,7 +1131,8 @@ class ChildTaskTests(unittest.TestCase):
         (cls.child,) = children_of(cls.task)
 
     def test_child_sees_the_parent_clone(self) -> None:
-        (result,) = tool_results(self.child)
+        result, recorded = tool_results(self.child)
+        self.assertEqual(recorded, 'Outcome recorded.')
         self.assertIn('hi-from-parent', result)
         self.assertIn(f'/work/{self.task["chain_id"]}/repos/app', result)
 
